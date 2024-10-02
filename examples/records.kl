@@ -1,0 +1,97 @@
+# Kola - Records
+
+# Record Type Defs
+
+User : {
+    first_name : Str
+    last_name : Str
+}
+
+User2 : {
+    first_name : Str
+    last_name : Str
+}
+
+User1 == User2
+
+# Record Type Extension
+
+Admin : { +id : Int | User }
+
+# Record Type Update
+
+Robot : {
+    first_name : Int
+    last_name : Int
+    | User
+}
+
+# Record Type Restriction
+
+FirstName : { -last_name | User }
+
+# Record Type Merge and polymorphic records
+
+Connection : {
+    source : User
+    target : User
+}
+
+Message 'a : Connection & {
+    msg : 'a
+}
+
+# Open Records (Row Polymorphism)
+
+# Inferred Type
+# full_name : { first_name : Str, last_name : Str, * } -> Str
+full_name =
+    fun user => "$(user.first_name) $(user.last_name)"
+
+## Open Records - Destructuring
+full_name =
+    fun { first_name, last_name, ... } => "$(first_name) $(last_name)"
+
+# Closed Records
+
+user_full_name : User -> Str
+user_full_name =
+    fun user => "$(user.first_name) $(user.last_name)"
+
+## Closed Records - Destructuring
+
+full_name2 : { first_name : Str, last_name : Str } -> Str
+full_name2 =
+    fun { first_name, last_name } => "$(first_name) $(last_name)"
+
+# Recursive Records
+
+rec = {
+    !first_name = "Max",
+    !last_name = "Mustermann",
+    full_name = "$(first_name) $(last_name)"
+}
+
+# Partial Records
+
+partial = {
+    ?first_name,
+    ?last_name,
+    full_name = "$(first_name) $(last_name)"
+}
+
+# Polymorphic Functions
+return_msg 'a : Message 'a -> Message 'a
+return_msg = fun msg => {
+    source = msg.target,
+    target = msg.source,
+    msg = msg.msg,
+}
+
+# Inferred Type
+# return_msg2 'a 'b 'c : { source : 'a, target : 'b, msg : 'c } -> { source : 'b, target : 'a, msg : 'c }
+return_msg2 = fun { source, target, msg } => {
+    source = target,
+    target = source,
+    msg, # syntactic sugar and equal to `msg = msg,`
+}

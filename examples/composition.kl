@@ -1,0 +1,78 @@
+# Functions are not always nice to override
+
+use pm.http
+
+glibc = fun { cc, version } => {
+    name = "glibc",
+    version,
+    src = (http.get {
+        url = "https://some-git.com/gnu/glibc/$(version)",
+        hash = "..."
+    }),
+    patches = [
+        ...some local patches included
+        import-file "./some-local.patch"
+        if some_condition is true import-file "./some-other.patch"
+    ],
+    build = "
+        $(cc)/bin/cc ...
+    ",
+    ...
+}
+
+use pm.pkgs.gcc
+
+build =
+    fun pkg => .. 
+        {
+            name = ..,
+            version = ..,
+            src = ...,
+            patches = [...]
+            ...
+        }
+
+export glibc-3.10 = build (glibc gcc "3.10")
+export glibc-3.20 = build (glibc gcc "3.20")
+# {
+#   name = "glibc",
+#   version = "3.20",
+#   src = { method = "get", url = "https://some-git.com/gnu/glibc/3.20", hash = "..." },
+#   patches = [
+#   "...................................",
+#   ...
+#   ],
+#   ...
+# }
+
+# Scenario I use some library which defines the building steps to build glibc neat!
+# Okay I need now a specific version of glibc with some patches applied
+# But how ??
+
+import some-lib.pkgs.glibc-3.20
+
+# Okay this creates a record try to override the version
+
+# Note // operator does not exists but denotes here that a field is updated
+my-glibc = glibc-3.20 // { version = "3.23.2" }
+# {
+#   name = "glibc",
+#   version = "3.23.2",
+#   src = { method = "get", url = "https://some-git.com/gnu/glibc/3.20", hash = "..." },
+#   patches = [...],
+#   ...
+# }
+
+# Well that doesnt work, still need to patch all the other fields, ask the library author if they expose their internal build function
+
+import pm.pkgs.gcc
+import some-lib.builders.glibc
+
+my-glibc = (glibc { version = "3.23.2", cc = gcc })
+
+# Okay that worked but how do I apply now my custom patch ??
+# Try to override glibc afterwards but there are some patches non compatible with my version ...
+...
+# too much hassle to wait for library authors again to parameterize `patches` just write my own package derivation
+
+First class modules ?

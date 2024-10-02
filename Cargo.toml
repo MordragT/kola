@@ -1,0 +1,16 @@
+[package]
+name = "kola"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+
+[dependencies]
+miette = "7.1.0"
+thiserror = "1.0"
+chumsky = { version = "=1.0.0-alpha.7", features = [
+    "label",
+    "nightly",
+    "unstable",
+] }
+ecow = "0.2.2"

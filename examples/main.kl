@@ -1,0 +1,20 @@
+# Kola
+
+User : {
+    first_name : Str
+    last_name : Str
+}
+
+User2 : {
+    first_name : Str
+    last_name : Str
+}
+
+# Record Type Extension
+
+Admin : { +id : Int | User }
+
+user = {
+    first_name = "max",
+    last_name = "mustermann",
+}

@@ -1,0 +1,74 @@
+# Platforms/Plugins allow Kola to perform side effects
+# for example a build system might want to create a sandbox
+# copy files etc.
+
+# Ideas on how to do preserve code reuse
+
+# Distinguish between library and and application code
+# Library code must not use platform handlers
+
+# Create plugin system with e.g. web assembly
+# (but as web assembly is itself somewhat constrained is this a good idea ?)
+
+print ~ Str -> ()
+
+io ~ {
+    print
+    input : () -> Str
+}
+
+# hello : Str -> print ~ ()
+hello =
+    \name => (print "Hello $(name)")
+
+
+# Main always signature of main : () -> platform ~ Int ??
+# When platform effect is disallowed elsewhere this would solve the code reuse problem
+# Welp but not really feasible to write all the code in main probably devs want more abstractions
+main =
+    handle (hello "World")
+        \s => (platform.print s)
+
+raise ~ Str -> ()
+
+# Here is a problem as I cannot easily just replace the raise function by the callback
+# Instead I want resume/return semantics.
+div_twice =
+    \{ x, y } => let
+        first = if (y == 0) then (raise "Cannot divide by 0") else (x / y)
+    in
+        if (x == 0) then (raise "Cannot divide by 0") else (first / x)
+
+main =
+    handle (zero_exp { x = 10, y = 0 })
+        \e => platform.print e
+
+yield ~ Int -> Bool
+
+# TODO this is recursive and not total
+# traverse : List Int -> yield ~ ()
+traverse =
+    \xs => when xs is
+        [head :: tail] => if (yield head) then (traverse tail) else ()
+        [] => ()
+
+main =
+    handle (traverse [1, 2, 3, 4, 5])
+        \i => platform.print i; i <= 2 
+    # 1, 2, 3
+
+undefined 'a ~ () -> 'a
+
+# partial : undefined ~ { first_name : Str, last_name : Str, full_name : Str }
+partial = {
+    first_name = undefined,
+    last_name = undefined,
+    full_name = "$(first_name) $(last_name)"
+}
+
+partial.full_name # compile error potentially undefined record
+
+# Automatic handling of undefined effects by merging
+
+# full : { first_name : Str, last_name : Str, full_name : Str }
+full = partial & { first_name = "Max", last_name = "Mustermann" }

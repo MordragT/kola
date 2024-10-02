@@ -1,0 +1,47 @@
+# Every file is a module
+# use import/export
+# imports are relative to the current file
+# folders with a `mod.kl` create a new modules
+# where all the other files are importable childs
+
+import some-module [Test, function, CONSTANT]
+
+# add 'a 'b 'c : 'a -> 'b -> 'c
+export add = \x => \y => x + y
+
+# To be determined:
+
+- dynamic imports ? 
+    - essentially imports at runtime which due to the language being lazy can drastically reduce evaluation time
+    - drawbacks of type checking ?
+    - language server must need some type infos to create meaningful feedback
+
+- static imports ?
+    - huge evaluation time with big configs ?
+    - maybe force programmers to annotate their exported functions with types
+        - then only evaluate type information ?
+    - only evaluate types of actually imported modules
+
+So essentially
+
+1. Parse File and gather all imports (e.g. import some-module [some-function])
+2. Parse Imports and extract relevant sections (e.g. only extract `some-function`) as well as imports
+    - ! Note welp that would not work because `some-function` might depend on some type in the module which is not extracted
+3. Determine relevant imports by looking at the extracted sections
+4. Parse those imports and go to 2
+    - ! Note this might be so computationally expensive that just eagerly evaluating everything might be just as good
+
+For now:
+
+- eagerly import
+- only allow child imports relative to the module to disallow circular imports
+
+
+import [
+    some-module
+]
+
+export [
+    constant,
+    function,
+]
