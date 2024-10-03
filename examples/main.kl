@@ -1,5 +1,8 @@
 # Kola
 
+import std.io.print
+export { hello }
+
 User : {
     first_name : Str
     last_name : Str
@@ -14,7 +17,25 @@ User2 : {
 
 Admin : { +id : Int | User }
 
-user = {
-    first_name = "max",
-    last_name = "mustermann",
+hello : Str -> Str
+hello = \name => "Hello " + name 
+
+# hello name = "Hello " + name
+
+Eq 't : {
+    eq : 't -> 't -> bool,
 }
+
+Eq : {
+    eq 't : 't -> 't -> bool
+}
+
+Range : {
+    start : UInt,
+    end : UInt,
+}
+
+range_eq : Range -> { start : Uint, end : Uint, eq : Range -> Range -> bool }
+range_eq = \range => { +eq = \left => \right => left.start == right.start and left.end == right.end }
+
+range = { start = 0, end = 10 }

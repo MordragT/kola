@@ -9,8 +9,8 @@ pub enum Delimiter {
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Op {
-    Plus,
-    Minus,
+    Add,
+    Sub,
     Mul,
     Div,
     Rem,
@@ -32,8 +32,8 @@ pub enum Op {
 impl fmt::Display for Op {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Plus => write!(f, "+"),
-            Self::Minus => write!(f, "-"),
+            Self::Add => write!(f, "+"),
+            Self::Sub => write!(f, "-"),
             Self::Mul => write!(f, "*"),
             Self::Div => write!(f, "/"),
             Self::Rem => write!(f, "%"),
@@ -45,7 +45,7 @@ impl fmt::Display for Op {
             Self::And => write!(f, "and"),
             Self::Or => write!(f, "or"),
             Self::Xor => write!(f, "xor"),
-            Self::Eq => write!(f, "="),
+            Self::Eq => write!(f, "=="),
             Self::NotEq => write!(f, "!="),
         }
     }
@@ -68,13 +68,21 @@ pub enum Token<'src> {
     If,
     Then,
     Else,
+    Case,
+    Of,
+    Import,
+    Export,
     // Control
     Dot,
     Colon,
     Comma,
     Tilde,
+    Assign,
     Pipe,
+    Backslash,
     Wildcard,
+    Arrow,
+    DoubleArrow,
 }
 
 impl<'src> fmt::Display for Token<'src> {
@@ -97,11 +105,19 @@ impl<'src> fmt::Display for Token<'src> {
             Self::If => write!(f, "if"),
             Self::Then => write!(f, "then"),
             Self::Else => write!(f, "else"),
+            Self::Case => write!(f, "case"),
+            Self::Of => write!(f, "of"),
+            Self::Import => write!(f, "import"),
+            Self::Export => write!(f, "export"),
             Self::Dot => write!(f, "."),
             Self::Colon => write!(f, ":"),
             Self::Comma => write!(f, ","),
             Self::Tilde => write!(f, "~"),
+            Self::Assign => write!(f, "="),
             Self::Pipe => write!(f, "|"),
+            Self::Backslash => write!(f, "\\"),
+            Self::Arrow => write!(f, "->"),
+            Self::DoubleArrow => write!(f, "=>"),
             Self::Wildcard => write!(f, "_"),
         }
     }

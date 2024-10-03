@@ -43,23 +43,36 @@ pub fn lexer<'src>() -> impl Parser<'src, &'src str, Vec<(Token<'src>, Span)>, E
         .map(Token::Str);
 
     let op = choice((
-        just('+').to(Op::Plus),
-        just('-').to(Op::Minus),
+        just('+').to(Op::Add),
+        just('-').to(Op::Sub),
         just('*').to(Op::Mul),
         just('/').to(Op::Div),
         just('%').to(Op::Rem),
-        just('<').to(Op::Less),
         just("<=").to(Op::LessEq),
-        just('>').to(Op::Greater),
+        just('<').to(Op::Less),
         just(">=").to(Op::GreaterEq),
+        just('>').to(Op::Greater),
         just('!').to(Op::Not),
         just("and").to(Op::And),
         just("or").to(Op::Or),
         just("xor").to(Op::Xor),
-        just('=').to(Op::Eq),
+        just("==").to(Op::Eq),
         just("!=").to(Op::NotEq),
     ))
     .map(Token::Op);
+
+    let ctrl = choice((
+        just("->").to(Token::Arrow),
+        just("=>").to(Token::DoubleArrow),
+        just('.').to(Token::Dot),
+        just(':').to(Token::Colon),
+        just(',').to(Token::Comma),
+        just('~').to(Token::Tilde),
+        just('|').to(Token::Pipe),
+        just('\\').to(Token::Backslash),
+        just('=').to(Token::Assign),
+        just('_').to(Token::Wildcard),
+    ));
 
     let delim = choice((
         just('(').to(Token::Open(Delimiter::Paren)),
@@ -70,26 +83,22 @@ pub fn lexer<'src>() -> impl Parser<'src, &'src str, Vec<(Token<'src>, Span)>, E
         just('}').to(Token::Close(Delimiter::Brace)),
     ));
 
-    let ctrl = choice((
-        just('.').to(Token::Dot),
-        just(':').to(Token::Colon),
-        just(',').to(Token::Comma),
-        just('~').to(Token::Tilde),
-        just('|').to(Token::Pipe),
-        just('_').to(Token::Wildcard),
-    ));
-
     let word = text::ident().map(|ident| match ident {
         "let" => Token::Let,
         "in" => Token::In,
         "if" => Token::If,
+        "then" => Token::Then,
         "else" => Token::Else,
+        "case" => Token::Case,
+        "of" => Token::Of,
+        "import" => Token::Import,
+        "export" => Token::Export,
         "true" => Token::Bool(true),
         "false" => Token::Bool(false),
         _ => Token::Ident(ident),
     });
 
-    let token = choice((num, character, string, op, delim, ctrl, word));
+    let token = choice((num, character, string, op, ctrl, delim, word));
 
     let comment = just('#')
         .then(any().and_is(just('\n').not()).repeated())
