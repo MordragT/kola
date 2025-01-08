@@ -247,8 +247,8 @@ pub fn expr_parser<'tokens, 'src: 'tokens>(
             .boxed();
 
         let unary = just(Token::Op(Op::Sub))
-            .to(UnaryOp::Neq)
-            .or(just(Token::Op(Op::Not)).to(UnaryOp::Neq))
+            .to(UnaryOp::Neg)
+            .or(just(Token::Op(Op::Not)).to(UnaryOp::Neg))
             .repeated()
             .foldr_with(select, |op, target, e| {
                 Expr::Unary(

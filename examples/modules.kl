@@ -45,3 +45,7 @@ export [
     constant,
     function,
 ]
+
+
+A module is essentially a series of `let ... in ...` expressions where the let-expr is omitted.
+Therefore the latter expr can have some sort of dependency on the former.

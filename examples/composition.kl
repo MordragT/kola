@@ -76,3 +76,19 @@ my-glibc = (glibc { version = "3.23.2", cc = gcc })
 # too much hassle to wait for library authors again to parameterize `patches` just write my own package derivation
 
 First class modules ?
+
+# module glibc
+
+name = ...
+
+version = ...
+
+src = ...
+
+patches = ...
+
+
+Okay now glibc is defined as a module.
+In difference to records, modules allow overrides to propogate, as overrides are evaluated before the actual module.
+
+import glibc { name = ... }

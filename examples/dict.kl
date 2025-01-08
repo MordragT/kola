@@ -1,0 +1,17 @@
+import List
+import Option
+export [new, map, last, is_empty]
+
+DictType k v : List { key : k, value : v }
+
+new k v : DictType k v
+new = []
+
+map k v a : (v -> a) -> DictType k v -> DictType k a
+map = \f => \dict => List.map (\kv => f kv.value) dict
+
+last k v : DictType k v -> Option v
+last = \dict => Option.map (\kv => kv.value) (List.last dict)
+
+is_empty k v : DictType k v -> Bool
+is_empty = \dict => Option.is_none (last dict)

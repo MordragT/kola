@@ -4,6 +4,17 @@ https://blog.devgenius.io/the-landscape-of-declarative-configuration-55bb85d6997
 
 https://www.lesswrong.com/posts/vTS8K4NBSi9iyCrPo/a-reckless-introduction-to-hindley-milner-type-inference
 
+## Notes
+
+ This does not solve the problem. The issue is that if you have a case expression such as
+
+case ... of
+  foo -> ...
+
+are you then matching a constructor foo or just binding any value to the name foo? This ends up depending on whether there is a constructor foo in scope, which is a subtle detail that may even change in the future as new imports are added. Making variables and constructors lexically distinct solves the issue quite cleanly. 
+
+-> TermIdent, TypeIdent
+
 ## Features
 
 - Statically typed with Type inference

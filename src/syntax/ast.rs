@@ -60,7 +60,7 @@ pub struct RecordUpdate {
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
 pub enum UnaryOp {
-    Neq,
+    Neg,
     Not,
 }
 
@@ -193,6 +193,8 @@ pub enum Expr {
     Case(CaseExpr, Span),
     Fn(FnExpr, Span),
 }
+
+// TODO Function Call
 
 impl Expr {
     pub fn into_literal(self) -> Option<(Literal, Span)> {
