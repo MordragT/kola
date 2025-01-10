@@ -1,5 +1,5 @@
 #![feature(assert_matches)]
 #![feature(let_chains)]
 
-pub mod inference;
+pub mod semantic;
 pub mod syntax;

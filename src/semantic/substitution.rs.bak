@@ -1,0 +1,228 @@
+use std::collections::HashMap;
+
+use cache::Cache;
+use indexmap::IndexMap;
+
+use super::{
+    error::{InferError, InferResult},
+    MonoType, TypeVar,
+};
+
+mod cache;
+
+// #[derive(Debug, Clone, PartialEq, Eq)]
+// enum Root {}
+
+// impl Root {
+//     fn rank(&self) -> u32 {
+//         match self {
+//             Self::Bound(_, rank) | Self::Unbound(rank) => *rank,
+//         }
+//     }
+
+//     fn set_rank(&mut self, rank: u32) {
+//         match self {
+//             Self::Bound(_, r) | Self::Unbound(r) => {
+//                 *r = rank;
+//             }
+//         }
+//     }
+// }
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum Root {
+    Bound(TypeVar),
+    Unbound(TypeVar),
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+
+enum TypeNode {
+    Parent(TypeVar),
+    Bound(MonoType, u32),
+    Unbound(u32),
+}
+
+impl TypeNode {
+    fn unbound() -> Self {
+        Self::Unbound(0)
+    }
+
+    fn bound(ty: MonoType) -> Self {
+        Self::Bound(ty, 0)
+    }
+
+    fn rank(&self) -> Option<u32> {
+        match self {
+            Self::Bound(_, rank) | Self::Unbound(rank) => Some(*rank),
+            _ => None,
+        }
+    }
+
+    fn set_rank(&mut self, rank: u32) {
+        match self {
+            Self::Bound(_, r) | Self::Unbound(r) => {
+                *r = rank;
+            }
+            _ => (),
+        }
+    }
+
+    fn as_parent(&self) -> Option<TypeVar> {
+        match self {
+            Self::Parent(child) => Some(*child),
+            _ => None,
+        }
+    }
+
+    fn is_parent(&self) -> bool {
+        self.as_parent().is_some()
+    }
+
+    fn as_bound(&self) -> Option<&MonoType> {
+        match self {
+            Self::Bound(ty, _) => Some(ty),
+            _ => None,
+        }
+    }
+
+    fn is_bound(&self) -> bool {
+        self.as_bound().is_some()
+    }
+
+    fn is_unbound(&self) -> bool {
+        match self {
+            Self::Unbound(_) => true,
+            _ => false,
+        }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct Substitution(HashMap<TypeVar, TypeNode>);
+
+impl Substitution {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn fresh(&mut self) -> TypeVar {
+        let id = self.0.len() as u32;
+        let tv = TypeVar::unchecked_new(id);
+
+        self.0.insert(tv, TypeNode::unbound());
+
+        tv
+    }
+
+    pub fn clear(&mut self) {
+        self.0.clear();
+    }
+
+    // pub fn bind(&mut self, tv: TypeVar, ty: MonoType) -> InferResult<()> {
+    //     // At first glance, `tv` and `ty` both look like variables.
+    //     if let MonoType::Var(r) = ty {
+    //         // But what do their roots have to say on the matter?
+    //         let l = self.root(tv);
+    //         let r = self.root(r);
+    //         let root_l = self.0[&l].as_root().unwrap();
+    //         let root_r = self.0[&r].as_root().unwrap();
+
+    //         match (root_l, root_r) {
+    //             Root::
+    //         }
+
+    //         self.unite(tv, r);
+
+    //         Ok(())
+    //     } else if ty.contains(&tv) {
+    //         Err(InferError::Occurs(tv))
+    //     } else {
+    //         self.0.insert(tv, TypeNode::bound(ty));
+    //         Ok(())
+    //     }
+    // }
+
+    fn parent(&self, tv: TypeVar) -> Option<TypeVar> {
+        self.0[&tv].as_parent()
+    }
+
+    /// Returns the "root variable" which is the variable that uniquely identifies a group of
+    /// variables that were unified
+    pub fn root(&mut self, mut tv: TypeVar) -> Root {
+        let mut stale = Vec::new();
+
+        while let Some(from) = self.parent(tv) {
+            stale.push(tv);
+            tv = from;
+        }
+
+        // set root of every cached index in path to "tv"
+        // when union find is run for a longer time the
+        // performance might degrade as find must traverse
+        // more parents in the former loop
+        // this allows to skip intermediate nodes and improves the performance
+        for to in stale {
+            self.0.insert(to, TypeNode::Parent(tv));
+        }
+
+        if self.0[&tv].is_bound() {
+            Root::Bound(tv)
+        } else {
+            Root::Unbound(tv)
+        }
+    }
+
+    pub fn get_bound(&self, tv: TypeVar) -> Option<&MonoType> {
+        self.0[&tv].as_bound()
+    }
+
+    /// Must be called on a TypeVar known to be a root
+    fn rank(&self, tv: TypeVar) -> u32 {
+        self.0[&tv].rank().unwrap()
+    }
+
+    /// Must be called on a TypeVar known to be a root
+    fn set_rank(&mut self, tv: TypeVar, rank: u32) {
+        self.0.get_mut(&tv).unwrap().set_rank(rank);
+    }
+
+    /// Unites two unbound  `TypeVar`s, recording the result in the substitution for later.
+    pub fn unify_unbound(&mut self, mut l: TypeVar, mut r: TypeVar) {
+        if l == r {
+            return;
+        }
+
+        let rank_l = self.rank(l);
+        let rank_r = self.rank(r);
+
+        // keep depth of trees small by appending small tree to big tree
+        // ensures find operation is not doing effectively a linked list search
+        if rank_l < rank_r {
+            std::mem::swap(&mut l, &mut r);
+        }
+
+        self.0.insert(l, TypeNode::Parent(r));
+        self.set_rank(r, rank_l + rank_r);
+    }
+}
+
+/// A type is `Substitutable` if a substitution can be applied to it.
+pub trait Substitutable: Sized {
+    /// Apply a substitution to a type variable.
+    fn apply(self, s: &mut Substitution) -> Self {
+        self.visit(s).unwrap_or(self)
+    }
+
+    /// Apply a substitution to a type variable.
+    fn apply_mut(&mut self, s: &mut Substitution) {
+        if let Some(new) = self.visit(s) {
+            *self = new;
+        }
+    }
+
+    /// Apply a non-mutating substitution to a type variable.
+    /// Should return `None` if there was nothing to apply
+    /// which allows for optimizations.
+    fn visit(&self, s: &mut Substitution) -> Option<Self>;
+}

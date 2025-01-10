@@ -1,6 +1,6 @@
 use crate::syntax::ast::Ident;
 
-use super::{PolyType, TypeVar};
+use super::types::{PolyType, TypeVar};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Scopes {
@@ -18,6 +18,11 @@ impl Default for Scopes {
 impl Scopes {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    pub fn clear(&mut self) {
+        self.scopes.clear();
+        self.scopes.push(Scope::new())
     }
 
     pub fn get(&self, ident: &Ident) -> Option<&PolyType> {
@@ -48,6 +53,8 @@ impl Scopes {
         vars
     }
 
+    // TODO instead of manual enter exit maybe callback for safer use ?
+
     pub fn enter(&mut self) {
         self.scopes.push(Scope::new())
     }
@@ -59,7 +66,7 @@ impl Scopes {
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Scope {
-    bindings: Vec<(Ident, PolyType)>,
+    bindings: Vec<(Ident, PolyType)>, // Indexmap ??
 }
 
 impl Scope {
