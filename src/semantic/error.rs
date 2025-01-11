@@ -1,13 +1,16 @@
+use std::sync::Arc;
+
+use miette::{Diagnostic, NamedSource, SourceSpan};
 use thiserror::Error;
 
-use crate::syntax::ast::Ident;
+use crate::syntax::{ast::Ident, Span};
 
 use super::{
     types::{MonoType, TypeVar},
     Kind,
 };
 
-#[derive(Debug, Clone, Error, PartialEq, Eq)]
+#[derive(Debug, Clone, Error, Diagnostic, PartialEq, Eq)]
 pub enum InferError {
     #[error("Unbound: {0}")]
     Unbound(Ident),
@@ -18,29 +21,44 @@ pub enum InferError {
         expected: MonoType,
         actual: MonoType,
     },
-    #[error("Cannot Unify Label: {label} : {expected} with {actual} because")]
+    #[error("Cannot Unify Label: {label} : {expected} with {actual} because {cause:?}")]
     CannotUnifyLabel {
         label: Ident,
         expected: MonoType,
         actual: MonoType,
-        // cause: Box<dyn std::error::Error>,
+        cause: Vec<InferError>,
     },
     #[error("Cannot Constrain: {expected:?} {actual}")]
     CannotConstrain { expected: Kind, actual: MonoType },
+    #[error("Extra Label: {0}")]
+    ExtraLabel(Ident),
+    #[error("Missing Label: {0}")]
+    MissingLabel(Ident),
 }
 
-#[derive(Debug, Clone, Error, PartialEq, Eq)]
-#[error("Inference failed with:")]
-pub struct InferErrors {
-    pub related: Vec<InferError>,
-}
-
-impl From<InferError> for InferErrors {
-    fn from(value: InferError) -> Self {
-        Self {
-            related: vec![value],
-        }
+impl InferError {
+    pub fn with(self, span: Span, source: NamedSource<Arc<str>>) -> InferReport {
+        InferReport::new(vec![self], span, source)
     }
 }
 
-pub type InferResult<T> = Result<T, InferError>;
+#[derive(Debug, Clone, Error, Diagnostic, PartialEq, Eq)]
+#[error("Inference failed with:")]
+pub struct InferReport {
+    #[source_code]
+    pub src: NamedSource<Arc<str>>,
+    #[label("This here")]
+    pub span: SourceSpan,
+    #[related]
+    pub related: Vec<InferError>,
+}
+
+impl InferReport {
+    pub fn new(related: Vec<InferError>, span: Span, source: NamedSource<Arc<str>>) -> Self {
+        Self {
+            span: SourceSpan::from(span.into_range()),
+            related,
+            src: source,
+        }
+    }
+}

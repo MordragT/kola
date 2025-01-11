@@ -1,6 +1,9 @@
 use crate::syntax::ast::Ident;
 
-use super::types::{PolyType, TypeVar};
+use super::{
+    error::InferError,
+    types::{PolyType, TypeVar},
+};
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Scopes {
@@ -27,6 +30,10 @@ impl Scopes {
 
     pub fn get(&self, ident: &Ident) -> Option<&PolyType> {
         self.scopes.iter().rev().find_map(|s| s.get(ident))
+    }
+
+    pub fn try_get(&self, ident: &Ident) -> Result<&PolyType, InferError> {
+        self.get(ident).ok_or(InferError::Unbound(ident.clone()))
     }
 
     pub fn insert(&mut self, ident: Ident, ty: PolyType) {

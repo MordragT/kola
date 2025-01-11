@@ -4,8 +4,7 @@ use std::{
 };
 
 use crate::semantic::{
-    error::{InferError, InferResult},
-    Cache, Constraints, Context, Substitutable, Substitution, Unify,
+    error::InferError, Cache, Constraints, Context, Substitutable, Substitution, Unify,
 };
 
 use super::{Kind, MonoType, Typed};
@@ -21,21 +20,19 @@ impl fmt::Display for TypeVar {
         write!(f, "'t{}", self.id)
     }
 }
+/// Efficient generalization with levels
+/// https://okmij.org/ftp/ML/generalization.html#levels
+static LEVEL: AtomicU32 = AtomicU32::new(0);
+static GENERATOR: AtomicU32 = AtomicU32::new(0);
 
 impl TypeVar {
-    const GENERATOR: AtomicU32 = AtomicU32::new(0);
-
-    /// Efficient generalization with levels
-    /// https://okmij.org/ftp/ML/generalization.html#levels
-    const LEVEL: AtomicU32 = AtomicU32::new(0);
-
     // pub fn unchecked_new(id: u32) -> Self {
     //     let level = Self::load_level();
     //     Self { id, level }
     // }
 
     pub fn new() -> Self {
-        let id = Self::GENERATOR.fetch_add(1, Ordering::Relaxed);
+        let id = GENERATOR.fetch_add(1, Ordering::Relaxed);
         let level = Self::load_level();
         Self { id, level }
     }
@@ -49,16 +46,16 @@ impl TypeVar {
     }
 
     pub fn load_level() -> u32 {
-        Self::LEVEL.load(Ordering::Relaxed)
+        LEVEL.load(Ordering::Relaxed)
     }
 
     pub fn branch<F, T>(mut f: F) -> T
     where
         F: FnMut() -> T,
     {
-        Self::LEVEL.fetch_add(1, Ordering::Relaxed);
+        LEVEL.fetch_add(1, Ordering::Relaxed);
         let result = f();
-        Self::LEVEL.fetch_sub(1, Ordering::Relaxed);
+        LEVEL.fetch_sub(1, Ordering::Relaxed);
         result
     }
 
@@ -80,7 +77,7 @@ impl TypeVar {
 }
 
 impl Typed for TypeVar {
-    fn constrain(&self, with: Kind, constraints: &mut Constraints) -> InferResult<()> {
+    fn constrain(&self, with: Kind, constraints: &mut Constraints) -> Result<(), InferError> {
         constraints
             .entry(*self)
             .and_modify(|constraint| constraint.push(with))

@@ -1,8 +1,7 @@
 use std::fmt;
 
 use crate::semantic::{
-    error::{InferError, InferResult},
-    merge, Cache, Constraints, Context, Kind, Substitutable, Substitution, Unify,
+    error::InferError, merge, Cache, Constraints, Context, Kind, Substitutable, Substitution, Unify,
 };
 
 use super::{MonoType, TypeVar, Typed};
@@ -35,7 +34,7 @@ impl Unify<&Self> for FunctionType {
 }
 
 impl Typed for FunctionType {
-    fn constrain(&self, with: Kind, _: &mut Constraints) -> InferResult<()> {
+    fn constrain(&self, with: Kind, _: &mut Constraints) -> Result<(), InferError> {
         Err(InferError::CannotConstrain {
             expected: with,
             actual: self.clone().into(),

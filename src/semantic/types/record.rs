@@ -2,8 +2,8 @@ use std::fmt;
 
 use crate::{
     semantic::{
-        error::{InferError, InferResult},
-        merge, Cache, Constraints, Context, Kind, Substitutable, Substitution, Unify,
+        error::InferError, merge, Cache, Constraints, Context, Kind, Substitutable,
+        Substitution, Unify,
     },
     syntax::ast::Ident,
 };
@@ -98,12 +98,108 @@ impl Unify<&Self> for RecordType {
     //
     // self represents the expected type.
     fn unify(&self, with: &Self, ctx: &mut Context) {
-        todo!()
+        match (self, with) {
+            (Self::Empty, Self::Empty) => (),
+            (
+                Self::Extension {
+                    head: Property { k: a, v: t },
+                    tail: MonoType::Var(l),
+                },
+                Self::Extension {
+                    head: Property { k: b, v: u },
+                    tail: MonoType::Var(r),
+                },
+            ) if a == b && l == r => {
+                ctx.branch_errors(
+                    |ctx| t.unify(u, ctx),
+                    |cause| InferError::CannotUnifyLabel {
+                        label: a.clone(),
+                        expected: t.clone(),
+                        actual: u.clone(),
+                        cause: cause.into(),
+                    },
+                );
+            }
+            (
+                Self::Extension {
+                    head: Property { k: a, .. },
+                    tail: MonoType::Var(l),
+                },
+                Self::Extension {
+                    head: Property { k: b, .. },
+                    tail: MonoType::Var(r),
+                },
+            ) if a != b && l == r => ctx.error(InferError::CannotUnify {
+                expected: MonoType::from(self.clone()),
+                actual: MonoType::from(with.clone()),
+            }),
+            (
+                Self::Extension {
+                    head: Property { k: a, v: t },
+                    tail: l,
+                },
+                Self::Extension {
+                    head: Property { k: b, v: u },
+                    tail: r,
+                },
+            ) if a == b => {
+                t.unify(u, ctx);
+                l.unify(r, ctx);
+            }
+            (
+                Self::Extension {
+                    head: Property { k: a, v: t },
+                    tail: l,
+                },
+                Self::Extension {
+                    head: Property { k: b, v: u },
+                    tail: r,
+                },
+            ) if a != b => {
+                let var = TypeVar::new();
+                let exp = MonoType::from(Self::Extension {
+                    head: Property {
+                        k: a.clone(),
+                        v: t.clone(),
+                    },
+                    tail: MonoType::Var(var),
+                });
+                let act = MonoType::from(Self::Extension {
+                    head: Property {
+                        k: b.clone(),
+                        v: u.clone(),
+                    },
+                    tail: MonoType::Var(var),
+                });
+                l.unify(&act, ctx);
+                exp.unify(r, ctx);
+            }
+            // If we are expecting {a: u | r} but find {}, label `a` is missing.
+            (
+                Self::Extension {
+                    head: Property { k: a, .. },
+                    ..
+                },
+                Self::Empty,
+            ) => ctx.error(InferError::MissingLabel(a.clone())),
+            // If we are expecting {} but find {a: u | r}, label `a` is extra.
+            (
+                Self::Empty,
+                Self::Extension {
+                    head: Property { k: a, .. },
+                    ..
+                },
+            ) => ctx.error(InferError::ExtraLabel(a.clone())),
+            _ => ctx.error(InferError::CannotUnify {
+                expected: MonoType::from(self.clone()),
+                actual: MonoType::from(with.clone()),
+            }),
+        }
     }
 }
 
 impl Typed for RecordType {
-    fn constrain(&self, with: Kind, constraints: &mut Constraints) -> InferResult<()> {
+    fn constrain(&self, with: Kind, constraints: &mut Constraints) -> Result<(), InferError> {
         todo!()
     }
 
@@ -139,66 +235,3 @@ impl Substitutable for RecordType {
         }
     }
 }
-
-// Property
-// pub type FieldType = (Ident, MonoType);
-
-// #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-// pub struct RecordType {
-//     /// We write the type of a record as a sequence of labeled types
-//     pub fields: Vec<FieldType>,
-//     /// Following Gaster and Jones [7], we
-//     /// consider an extensible row calculus where a row is either empty
-//     /// or an extension of a row.
-//     pub tail: Option<Box<MonoType>>,
-// }
-
-// pub struct FieldComparison {
-//     pub union: Vec<FieldType>,
-//     pub lhs: Vec<FieldType>,
-//     pub rhs: Vec<FieldType>,
-// }
-
-// impl RecordType {
-//     // eq-head
-
-//     // eq-swap
-
-//     // / Compares the fields in self with other
-//     // / Returns the fields both in self and other (union),
-//     // / as well as fields that are in self but not in other and vice versa.
-//     // pub fn compare_fields(&self, other: &Self) -> FieldComparison {
-//     //     for (n1, ty1) in &self.fields {
-
-//     //     }
-//     // }
-
-//     // /// Removes the intersection of self and other from both
-//     // /// and returns it.
-//     // pub fn symmetric_intersection_removal_by_field_name(
-//     //     &mut self,
-//     //     other: &mut Self,
-//     // ) -> Vec<(Ident, Type, Type)> {
-//     //     let mut intersection = Vec::new();
-
-//     //     for (n1, ty1) in self.fields.drain(..) {
-//     //         if let Some(i) = other.fields.iter().
-//     //     }
-//     // }
-// }
-
-// impl fmt::Display for RecordType {
-//     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-//         write!(f, "{{\n")?;
-
-//         for (name, ty) in &self.fields {
-//             write!(f, "\t{name} : {ty}\n")?;
-//         }
-
-//         if let Some(tail) = &self.tail {
-//             write!(f, "\t| {tail}\n")?;
-//         }
-
-//         write!(f, "}}\n")
-//     }
-// }

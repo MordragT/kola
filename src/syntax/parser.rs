@@ -2,7 +2,8 @@ use chumsky::prelude::*;
 use ecow::EcoString;
 
 use crate::syntax::ast::{
-    CaseExpr, Ident, LetExpr, List, RecordExtend, RecordRestrict, RecordSelect, RecordUpdate,
+    CallExpr, CaseExpr, Ident, LetExpr, List, RecordExtend, RecordRestrict, RecordSelect,
+    RecordUpdate,
 };
 
 use super::{
@@ -44,7 +45,7 @@ pub fn pat_parser<'tokens, 'src: 'tokens>(
         let ident = select! { Token::Ident(id) => EcoString::from(id) };
 
         let wildcard = just(Token::Wildcard).map_with(|_, e| Pat::Wildcard(e.span()));
-        let literal = literal_parser().map_with(|l, e| Pat::Literal(l, e.span()));
+        let literal = literal_parser().map_with(|l, e| Pat::Literal((l, e.span())));
 
         let record = nested_parser(
             ident
@@ -52,13 +53,13 @@ pub fn pat_parser<'tokens, 'src: 'tokens>(
                 .separated_by(just(Token::Comma))
                 .allow_trailing()
                 .collect()
-                .map_with(|fields, e| Pat::Record(RecordPat { fields }, e.span())),
+                .map_with(|fields, e| Pat::Record((RecordPat { fields }, e.span()))),
             Delimiter::Brace,
             Pat::Error,
         );
 
         choice((
-            ident.map_with(|i, e| Pat::Ident(i, e.span())),
+            ident.map_with(|i, e| Pat::Ident((i, e.span()))),
             wildcard,
             literal,
             record,
@@ -73,14 +74,14 @@ pub fn expr_parser<'tokens, 'src: 'tokens>(
     recursive(|expr| {
         let ident = select! { Token::Ident(id) => EcoString::from(id) };
 
-        let literal = literal_parser().map_with(|l, e| Expr::Literal(l, e.span()));
+        let literal = literal_parser().map_with(|l, e| Expr::Literal((l, e.span())));
 
         let list = nested_parser(
             expr.clone()
                 .separated_by(just(Token::Comma))
                 .allow_trailing()
                 .collect()
-                .map_with(|values, e| Expr::List(List { values }, e.span())),
+                .map_with(|values, e| Expr::List((List { values }, e.span()))),
             Delimiter::Bracket,
             Expr::Error,
         );
@@ -93,7 +94,7 @@ pub fn expr_parser<'tokens, 'src: 'tokens>(
             .separated_by(just(Token::Comma))
             .allow_trailing()
             .collect()
-            .map_with(|fields, e| Expr::Record(Record { fields }, e.span()))
+            .map_with(|fields, e| Expr::Record((Record { fields }, e.span())))
             .boxed();
 
         enum RecordOp {
@@ -125,29 +126,29 @@ pub fn expr_parser<'tokens, 'src: 'tokens>(
             .repeated()
             .at_least(1);
         let record_op = ident
-            .map_with(|i, e| Expr::Ident(i, e.span()))
+            .map_with(|i, e| Expr::Ident((i, e.span())))
             .foldl_with(inner_op, |source, op, e| {
                 let source = Box::new(source);
                 match op {
-                    RecordOp::Extend(field, value) => Expr::RecordExtend(
+                    RecordOp::Extend(field, value) => Expr::RecordExtend((
                         RecordExtend {
                             source,
                             field,
                             value,
                         },
                         e.span(),
-                    ),
+                    )),
                     RecordOp::Restrict(field) => {
-                        Expr::RecordRestrict(RecordRestrict { source, field }, e.span())
+                        Expr::RecordRestrict((RecordRestrict { source, field }, e.span()))
                     }
-                    RecordOp::Update(field, value) => Expr::RecordUpdate(
+                    RecordOp::Update(field, value) => Expr::RecordUpdate((
                         RecordUpdate {
                             source,
                             field,
                             value,
                         },
                         e.span(),
-                    ),
+                    )),
                 }
             })
             .boxed();
@@ -161,14 +162,14 @@ pub fn expr_parser<'tokens, 'src: 'tokens>(
             .then_ignore(just(Token::In))
             .then(expr.clone())
             .map_with(|((name, value), inside), e| {
-                Expr::Let(
+                Expr::Let((
                     LetExpr {
                         name,
                         value: Box::new(value),
                         inside: Box::new(inside),
                     },
                     e.span(),
-                )
+                ))
             });
 
         let if_ = just(Token::If)
@@ -178,14 +179,14 @@ pub fn expr_parser<'tokens, 'src: 'tokens>(
             .then_ignore(just(Token::Else))
             .then(expr.clone())
             .map_with(|((predicate, then), or), e| {
-                Expr::If(
+                Expr::If((
                     IfExpr {
                         predicate: Box::new(predicate),
                         then: Box::new(then),
                         or: Box::new(or),
                     },
                     e.span(),
-                )
+                ))
             })
             .boxed();
 
@@ -200,7 +201,7 @@ pub fn expr_parser<'tokens, 'src: 'tokens>(
             .ignore_then(ident)
             .then_ignore(just(Token::Of))
             .then(branches)
-            .map_with(|(source, branches), e| Expr::Case(CaseExpr { source, branches }, e.span()))
+            .map_with(|(source, branches), e| Expr::Case((CaseExpr { source, branches }, e.span())))
             .boxed();
 
         let fn_ = just(Token::Backslash)
@@ -208,19 +209,36 @@ pub fn expr_parser<'tokens, 'src: 'tokens>(
             .then_ignore(just(Token::DoubleArrow))
             .then(expr.clone())
             .map_with(|(param, body), e| {
-                Expr::Fn(
+                Expr::Fn((
                     FnExpr {
                         param: EcoString::from(param),
                         body: Box::new(body),
                     },
                     e.span(),
-                )
+                ))
             })
             .boxed();
 
+        let call = nested_parser(
+            ident
+                .map_with(|i, e| (i, e.span()))
+                .then(expr.clone())
+                .map_with(|(func, arg), e| {
+                    Expr::Call((
+                        CallExpr {
+                            func,
+                            arg: Box::new(arg),
+                        },
+                        e.span(),
+                    ))
+                }),
+            Delimiter::Paren,
+            Expr::Error,
+        )
+        .boxed();
+
         let atom = choice((
-            ident.map_with(|i, e| Expr::Ident(i, e.span())),
-            nested_parser(expr.clone(), Delimiter::Paren, Expr::Error), // ( <expr> )
+            ident.map_with(|i, e| Expr::Ident((i, e.span()))),
             literal,
             list,
             record_expr,
@@ -228,6 +246,7 @@ pub fn expr_parser<'tokens, 'src: 'tokens>(
             if_,
             case,
             fn_,
+            call,
         ))
         .boxed();
 
@@ -235,13 +254,13 @@ pub fn expr_parser<'tokens, 'src: 'tokens>(
             .foldl_with(
                 just(Token::Dot).ignore_then(ident).repeated(),
                 |source, field, e| {
-                    Expr::RecordSelect(
+                    Expr::RecordSelect((
                         RecordSelect {
                             source: Box::new(source),
                             field,
                         },
                         e.span(),
-                    )
+                    ))
                 },
             )
             .boxed();
@@ -251,13 +270,13 @@ pub fn expr_parser<'tokens, 'src: 'tokens>(
             .or(just(Token::Op(Op::Not)).to(UnaryOp::Neg))
             .repeated()
             .foldr_with(select, |op, target, e| {
-                Expr::Unary(
+                Expr::Unary((
                     UnaryExpr {
                         op,
                         target: Box::new(target),
                     },
                     e.span(),
-                )
+                ))
             })
             .boxed();
 
@@ -269,14 +288,14 @@ pub fn expr_parser<'tokens, 'src: 'tokens>(
         let product = unary
             .clone()
             .foldl_with(op.then(unary).repeated(), |left, (op, right), e| {
-                Expr::Binary(
+                Expr::Binary((
                     BinaryExpr {
                         op,
                         left: Box::new(left),
                         right: Box::new(right),
                     },
                     e.span(),
-                )
+                ))
             })
             .boxed();
 
@@ -286,14 +305,14 @@ pub fn expr_parser<'tokens, 'src: 'tokens>(
         let sum = product
             .clone()
             .foldl_with(op.then(product).repeated(), |left, (op, right), e| {
-                Expr::Binary(
+                Expr::Binary((
                     BinaryExpr {
                         op,
                         left: Box::new(left),
                         right: Box::new(right),
                     },
                     e.span(),
-                )
+                ))
             })
             .boxed();
 
@@ -308,14 +327,14 @@ pub fn expr_parser<'tokens, 'src: 'tokens>(
         let comparison = sum
             .clone()
             .foldl_with(op.then(sum).repeated(), |left, (op, right), e| {
-                Expr::Binary(
+                Expr::Binary((
                     BinaryExpr {
                         op,
                         left: Box::new(left),
                         right: Box::new(right),
                     },
                     e.span(),
-                )
+                ))
             })
             .boxed();
 
@@ -327,14 +346,14 @@ pub fn expr_parser<'tokens, 'src: 'tokens>(
         let logical = comparison
             .clone()
             .foldl_with(op.then(comparison).repeated(), |left, (op, right), e| {
-                Expr::Binary(
+                Expr::Binary((
                     BinaryExpr {
                         op,
                         left: Box::new(left),
                         right: Box::new(right),
                     },
                     e.span(),
-                )
+                ))
             })
             .boxed();
 
@@ -438,7 +457,7 @@ mod tests {
 
         let (first, rhs) = branches.pop().unwrap();
         let rhs = rhs.into_literal().unwrap().0;
-        assert_matches!(first, Pat::Literal(Literal::Num(1.0), _));
+        assert_matches!(first, Pat::Literal((Literal::Num(1.0), _)));
         assert_eq!(rhs, Literal::Bool(true));
 
         assert!(branches.is_empty());
@@ -574,11 +593,11 @@ mod tests {
 
         assert_matches!(
             record.remove("x").unwrap(),
-            Expr::Literal(Literal::Num(10.0), _)
+            Expr::Literal((Literal::Num(10.0), _))
         );
         assert_matches!(
             record.remove("y").unwrap(),
-            Expr::Literal(Literal::Num(20.0), _)
+            Expr::Literal((Literal::Num(20.0), _))
         );
 
         assert!(record.is_empty())

@@ -2,12 +2,12 @@ use chumsky::prelude::*;
 
 use super::{
     token::{Delimiter, Op, Token},
-    Span,
+    Span, Spanned,
 };
 
 pub type Extra<'src> = extra::Full<Rich<'src, char, Span>, (), ()>;
 
-pub fn lexer<'src>() -> impl Parser<'src, &'src str, Vec<(Token<'src>, Span)>, Extra<'src>> {
+pub fn lexer<'src>() -> impl Parser<'src, &'src str, Vec<Spanned<Token<'src>>>, Extra<'src>> {
     let num = text::int(10)
         .then(just('.').then(text::digits(10)).or_not())
         .to_slice()

@@ -1,11 +1,10 @@
 use std::fmt;
 
 use crate::semantic::{
-    error::{InferError, InferErrors, InferResult},
-    Cache, Constraints, Context, Kind, Substitutable, Substitution, Unify,
+    error::InferError, Cache, Constraints, Context, Kind, Substitutable, Substitution, Unify,
 };
 
-use super::{BuiltinType, FunctionType, PolyType, TypeVar, Typed};
+use super::{BuiltinType, FunctionType, PolyType, RecordType, TypeVar, Typed};
 
 /// MonoType
 /// Non-polymorphic types (e.g. `α → β`, `int → bool`)
@@ -15,9 +14,8 @@ use super::{BuiltinType, FunctionType, PolyType, TypeVar, Typed};
 pub enum MonoType {
     Builtin(BuiltinType),
     Func(Box<FunctionType>),
+    Record(Box<RecordType>),
     Var(TypeVar),
-    // RowVar(TypeVar), // kind preserving unification (see Extensible Records with Scoped Labels)
-    // Row(RowType),
 }
 
 impl MonoType {
@@ -94,22 +92,6 @@ impl MonoType {
 }
 
 impl MonoType {
-    /// Performs unification on the type with another type.
-    /// If successful, results in a solution to the unification problem,
-    /// in the form of a substitution. If there is no solution to the
-    /// unification problem then unification fails and an error is reported.
-    pub fn try_unify(&self, with: &Self, ctx: &mut Context) -> Result<MonoType, InferErrors> {
-        self.unify(with, ctx);
-
-        let errors = ctx.take_errors();
-
-        if errors.is_empty() {
-            Ok(self.clone())
-        } else {
-            Err(InferErrors { related: errors })
-        }
-    }
-
     /// Takes a type with type vars inside and returns a polytype, with the type vars generalized inside the forall
     // TODO use context instead of slice for bound ?
     pub fn generalize(&self, bound: &[TypeVar]) -> PolyType {
@@ -131,6 +113,7 @@ impl Substitutable for MonoType {
         match self {
             Self::Builtin(_) => None,
             Self::Func(f) => f.try_apply(s, cache).map(Into::into),
+            Self::Record(r) => r.try_apply(s, cache).map(Into::into),
             Self::Var(tv) => tv.try_apply(s, cache),
         }
     }
@@ -141,6 +124,7 @@ impl Unify<&Self> for MonoType {
         match (self, with) {
             (Self::Builtin(l), Self::Builtin(r)) => l.unify(r, ctx),
             (Self::Func(fl), Self::Func(fr)) => fl.unify(fr, ctx),
+            (Self::Record(l), Self::Record(r)) => l.unify(r, ctx),
             (Self::Var(l), r) => l.unify(r, ctx),
             (l, Self::Var(r)) => r.unify(l, ctx),
             (l, r) => {
@@ -154,10 +138,11 @@ impl Unify<&Self> for MonoType {
 }
 
 impl Typed for MonoType {
-    fn constrain(&self, with: Kind, constraints: &mut Constraints) -> InferResult<()> {
+    fn constrain(&self, with: Kind, constraints: &mut Constraints) -> Result<(), InferError> {
         match self {
             Self::Builtin(b) => b.constrain(with, constraints),
             Self::Func(f) => f.constrain(with, constraints),
+            Self::Record(r) => r.constrain(with, constraints),
             Self::Var(tv) => tv.constrain(with, constraints),
         }
     }
@@ -166,6 +151,7 @@ impl Typed for MonoType {
         match self {
             Self::Builtin(b) => b.contains(tv),
             Self::Func(f) => f.contains(tv),
+            Self::Record(r) => r.contains(tv),
             Self::Var(t) => t.contains(tv),
         }
     }
@@ -174,6 +160,7 @@ impl Typed for MonoType {
         match self {
             Self::Builtin(b) => b.type_vars(vars), // TODO save this call?
             Self::Func(f) => f.type_vars(vars),
+            Self::Record(r) => r.type_vars(vars),
             Self::Var(tv) => tv.type_vars(vars),
         }
     }
@@ -182,17 +169,11 @@ impl Typed for MonoType {
 impl fmt::Display for MonoType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Var(tv) => tv.fmt(f),
             Self::Builtin(tc) => tc.fmt(f),
             Self::Func(func) => func.fmt(f),
-            // Self::RowVar(tv) => tv.fmt(f),
-            // Self::Row(rt) => rt.fmt(f),
+            Self::Record(r) => r.fmt(f),
+            Self::Var(tv) => tv.fmt(f),
         }
-    }
-}
-impl From<TypeVar> for MonoType {
-    fn from(value: TypeVar) -> Self {
-        Self::Var(value)
     }
 }
 
@@ -211,6 +192,18 @@ impl From<&BuiltinType> for MonoType {
 impl From<FunctionType> for MonoType {
     fn from(value: FunctionType) -> Self {
         Self::Func(Box::new(value))
+    }
+}
+
+impl From<RecordType> for MonoType {
+    fn from(value: RecordType) -> Self {
+        Self::Record(Box::new(value))
+    }
+}
+
+impl From<TypeVar> for MonoType {
+    fn from(value: TypeVar) -> Self {
+        Self::Var(value)
     }
 }
 

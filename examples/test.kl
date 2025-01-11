@@ -1,0 +1,2 @@
+let sg = \a => if a == 0 then true else false in
+    (sg true)

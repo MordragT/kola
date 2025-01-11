@@ -2,7 +2,7 @@ use std::collections::BTreeMap;
 
 use ecow::EcoString;
 
-use super::Span;
+use super::{Span, Spanned};
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Literal {
@@ -121,9 +121,9 @@ pub struct RecordPat {
 pub enum Pat {
     Error(Span),
     Wildcard(Span),
-    Literal(Literal, Span),
-    Ident(Ident, Span),
-    Record(RecordPat, Span),
+    Literal(Spanned<Literal>),
+    Ident(Spanned<Ident>),
+    Record(Spanned<RecordPat>),
 }
 
 impl Pat {
@@ -141,23 +141,23 @@ impl Pat {
         }
     }
 
-    pub fn into_literal(self) -> Option<(Literal, Span)> {
+    pub fn into_literal(self) -> Option<Spanned<Literal>> {
         match self {
-            Self::Literal(l, span) => Some((l, span)),
+            Self::Literal(l) => Some(l),
             _ => None,
         }
     }
 
-    pub fn into_ident(self) -> Option<(Ident, Span)> {
+    pub fn into_ident(self) -> Option<Spanned<Ident>> {
         match self {
-            Self::Ident(i, span) => Some((i, span)),
+            Self::Ident(i) => Some(i),
             _ => None,
         }
     }
 
-    pub fn into_record(self) -> Option<(RecordPat, Span)> {
+    pub fn into_record(self) -> Option<Spanned<RecordPat>> {
         match self {
-            Self::Record(r, span) => Some((r, span)),
+            Self::Record(r) => Some(r),
             _ => None,
         }
     }
@@ -176,114 +176,128 @@ pub struct FnExpr {
 }
 
 #[derive(Clone, Debug, PartialEq)]
+pub struct CallExpr {
+    pub func: Spanned<Ident>,
+    pub arg: Box<Expr>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
 pub enum Expr {
     Error(Span),
-    Literal(Literal, Span),
-    Ident(Ident, Span),
-    List(List, Span),
-    Record(Record, Span),
-    RecordSelect(RecordSelect, Span),
-    RecordExtend(RecordExtend, Span),
-    RecordRestrict(RecordRestrict, Span),
-    RecordUpdate(RecordUpdate, Span),
-    Unary(UnaryExpr, Span),
-    Binary(BinaryExpr, Span),
-    Let(LetExpr, Span),
-    If(IfExpr, Span),
-    Case(CaseExpr, Span),
-    Fn(FnExpr, Span),
+    Literal(Spanned<Literal>),
+    Ident(Spanned<Ident>),
+    List(Spanned<List>),
+    Record(Spanned<Record>),
+    RecordSelect(Spanned<RecordSelect>),
+    RecordExtend(Spanned<RecordExtend>),
+    RecordRestrict(Spanned<RecordRestrict>),
+    RecordUpdate(Spanned<RecordUpdate>),
+    Unary(Spanned<UnaryExpr>),
+    Binary(Spanned<BinaryExpr>),
+    Let(Spanned<LetExpr>),
+    If(Spanned<IfExpr>),
+    Case(Spanned<CaseExpr>),
+    Fn(Spanned<FnExpr>),
+    Call(Spanned<CallExpr>),
 }
 
 // TODO Function Call
 
 impl Expr {
-    pub fn into_literal(self) -> Option<(Literal, Span)> {
+    pub fn into_literal(self) -> Option<Spanned<Literal>> {
         match self {
-            Self::Literal(l, span) => Some((l, span)),
+            Self::Literal(l) => Some(l),
             _ => None,
         }
     }
 
-    pub fn into_ident(self) -> Option<(Ident, Span)> {
+    pub fn into_ident(self) -> Option<Spanned<Ident>> {
         match self {
-            Self::Ident(i, span) => Some((i, span)),
+            Self::Ident(i) => Some(i),
             _ => None,
         }
     }
 
-    pub fn into_list(self) -> Option<(List, Span)> {
+    pub fn into_list(self) -> Option<Spanned<List>> {
         match self {
-            Self::List(l, span) => Some((l, span)),
+            Self::List(l) => Some(l),
             _ => None,
         }
     }
 
-    pub fn into_record(self) -> Option<(Record, Span)> {
+    pub fn into_record(self) -> Option<Spanned<Record>> {
         match self {
-            Self::Record(r, span) => Some((r, span)),
+            Self::Record(r) => Some(r),
             _ => None,
         }
     }
 
-    pub fn into_record_select(self) -> Option<(RecordSelect, Span)> {
+    pub fn into_record_select(self) -> Option<Spanned<RecordSelect>> {
         match self {
-            Self::RecordSelect(s, span) => Some((s, span)),
+            Self::RecordSelect(s) => Some(s),
             _ => None,
         }
     }
 
-    pub fn into_record_extend(self) -> Option<(RecordExtend, Span)> {
+    pub fn into_record_extend(self) -> Option<Spanned<RecordExtend>> {
         match self {
-            Self::RecordExtend(e, span) => Some((e, span)),
+            Self::RecordExtend(e) => Some(e),
             _ => None,
         }
     }
 
-    pub fn into_record_update(self) -> Option<(RecordUpdate, Span)> {
+    pub fn into_record_update(self) -> Option<Spanned<RecordUpdate>> {
         match self {
-            Self::RecordUpdate(u, span) => Some((u, span)),
+            Self::RecordUpdate(u) => Some(u),
             _ => None,
         }
     }
 
-    pub fn into_unary(self) -> Option<(UnaryExpr, Span)> {
+    pub fn into_unary(self) -> Option<Spanned<UnaryExpr>> {
         match self {
-            Self::Unary(u, span) => Some((u, span)),
+            Self::Unary(u) => Some(u),
             _ => None,
         }
     }
 
-    pub fn into_binary(self) -> Option<(BinaryExpr, Span)> {
+    pub fn into_binary(self) -> Option<Spanned<BinaryExpr>> {
         match self {
-            Self::Binary(b, span) => Some((b, span)),
+            Self::Binary(b) => Some(b),
             _ => None,
         }
     }
 
-    pub fn into_let(self) -> Option<(LetExpr, Span)> {
+    pub fn into_let(self) -> Option<Spanned<LetExpr>> {
         match self {
-            Self::Let(l, span) => Some((l, span)),
+            Self::Let(l) => Some(l),
             _ => None,
         }
     }
 
-    pub fn into_if(self) -> Option<(IfExpr, Span)> {
+    pub fn into_if(self) -> Option<Spanned<IfExpr>> {
         match self {
-            Self::If(i, span) => Some((i, span)),
+            Self::If(i) => Some(i),
             _ => None,
         }
     }
 
-    pub fn into_case(self) -> Option<(CaseExpr, Span)> {
+    pub fn into_case(self) -> Option<Spanned<CaseExpr>> {
         match self {
-            Self::Case(c, span) => Some((c, span)),
+            Self::Case(c) => Some(c),
             _ => None,
         }
     }
 
-    pub fn into_fn(self) -> Option<(FnExpr, Span)> {
+    pub fn into_fn(self) -> Option<Spanned<FnExpr>> {
         match self {
-            Self::Fn(f, span) => Some((f, span)),
+            Self::Fn(f) => Some(f),
+            _ => None,
+        }
+    }
+
+    pub fn into_call(self) -> Option<Spanned<CallExpr>> {
+        match self {
+            Self::Call(c) => Some(c),
             _ => None,
         }
     }
@@ -297,7 +311,7 @@ impl Expr {
 
 // #[derive(Clone, Debug, PartialEq)]
 // pub enum TypeExpr {
-//     RecordExpr(Box<RecordExpr<'src, Self>>, Span),
+//     RecordExpr(Box<RecordExpr<'src, Self>>),
 // }
 
 // #[derive(Clone, Debug, PartialEq)]

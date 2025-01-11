@@ -1,9 +1,6 @@
 use std::fmt;
 
-use crate::semantic::{
-    error::{InferError, InferResult},
-    Constraints, Context, Kind, Unify,
-};
+use crate::semantic::{error::InferError, Constraints, Context, Kind, Unify};
 
 use super::{TypeVar, Typed};
 
@@ -38,7 +35,7 @@ impl Unify<&Self> for BuiltinType {
 }
 
 impl Typed for BuiltinType {
-    fn constrain(&self, with: Kind, _: &mut Constraints) -> InferResult<()> {
+    fn constrain(&self, with: Kind, _: &mut Constraints) -> Result<(), InferError> {
         match self {
             Self::Bool => match with {
                 Kind::Equatable | Kind::Stringable => Ok(()),

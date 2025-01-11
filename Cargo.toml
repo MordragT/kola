@@ -6,12 +6,13 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
-miette = "7.1.0"
-thiserror = "1.0"
+clap = { version = "4.5", features = ["derive"] }
+miette = { version = "7.4.0", features = ["fancy"] }
+thiserror = "2.0"
 chumsky = { version = "=1.0.0-alpha.7", features = [
     "label",
     "nightly",
     "unstable",
 ] }
-ecow = "0.2.2"
-indexmap = "2.7.0"
+ecow = "0.2.3"
+# indexmap = "2.7.0"

@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use super::types::TypeVar;
 
 /// Represents a constraint on a type variable to a specific kind (*i.e.*, a type class).
+/// kind preserving unification (see Extensible Records with Scoped Labels)
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Kind {
     Addable,

@@ -1,4 +1,4 @@
-use super::{error::InferResult, Constraints, Context, Kind};
+use super::{error::InferError, Constraints, Kind};
 
 pub use builtin::*;
 pub use collection::*;
@@ -18,7 +18,7 @@ mod var;
 
 pub trait Typed {
     /// Validates that the current type meets the constraints of the specified kind.
-    fn constrain(&self, with: Kind, constraints: &mut Constraints) -> InferResult<()>;
+    fn constrain(&self, with: Kind, constraints: &mut Constraints) -> Result<(), InferError>;
     /// occurs check
     fn contains(&self, tv: TypeVar) -> bool;
     fn type_vars(&self, vars: &mut Vec<TypeVar>);

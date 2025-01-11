@@ -1,11 +1,56 @@
-use chumsky::Parser;
-use kola::syntax::lexer::lexer;
-use std::fs;
+use kola::{
+    semantic::Infer,
+    syntax::{try_parse, try_tokenize, Source},
+};
+use miette::IntoDiagnostic;
+use std::{fs, path::PathBuf};
 
-fn main() {
-    let src = fs::read_to_string("examples/main.kl").unwrap();
+#[derive(Debug, clap::Parser)]
+#[command(author, version, about, long_about = None)]
+pub struct Cli {
+    #[command(subcommand)]
+    command: Cmd,
+}
 
-    let tokens = lexer().parse(&src).into_result().unwrap();
+#[derive(clap::Subcommand, Debug)]
+pub enum Cmd {
+    Parse { path: PathBuf },
+    Analyze { path: PathBuf },
+}
 
-    println!("{tokens:?}")
+fn main() -> miette::Result<()> {
+    let cli: Cli = clap::Parser::parse();
+
+    match cli.command {
+        Cmd::Parse { path } => {
+            let path = path.canonicalize().into_diagnostic()?;
+            let name = path.file_name().unwrap().to_string_lossy();
+
+            let source = fs::read_to_string(&path).into_diagnostic()?;
+            let source = Source::new(name, source);
+
+            let tokens = try_tokenize(&source)?;
+            let ast = try_parse(&source, tokens)?;
+
+            println!("{ast:?}")
+        }
+        Cmd::Analyze { path } => {
+            let path = path.canonicalize().into_diagnostic()?;
+            let name = path.file_name().unwrap().to_string_lossy();
+
+            let source = fs::read_to_string(&path).into_diagnostic()?;
+            let source = Source::new(name, source);
+
+            let tokens = try_tokenize(&source)?;
+            let ast = try_parse(&source, tokens)?;
+
+            println!("{ast:?}");
+
+            let ty = ast.infer(source)?;
+
+            println!("{ty}");
+        }
+    }
+
+    Ok(())
 }
