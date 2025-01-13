@@ -1,2 +1,5 @@
-let sg = \a => if a == 0 then true else false in
-    (sg true)
+# let sg = \a => if a == 0 then true else false in
+#    (sg true)
+
+let id = \a => a in
+    (id true)

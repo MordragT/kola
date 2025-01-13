@@ -1,5 +1,7 @@
 use std::{borrow::Cow, collections::HashMap};
 
+use crate::node::Node;
+
 use super::types::{MonoType, TypeVar};
 
 pub type Substitution = HashMap<TypeVar, MonoType>;
@@ -48,6 +50,30 @@ pub trait Substitutable: Sized {
     /// Should return `None` if there was nothing to apply
     /// which allows for optimizations.
     fn try_apply(&self, s: &mut Substitution, cache: &mut Cache) -> Option<Self>;
+}
+
+impl<T, M> Substitutable for Node<T, M>
+where
+    T: Clone,
+    M: Substitutable,
+{
+    fn apply(mut self, s: &mut Substitution, cache: &mut Cache) -> Self {
+        self.meta = self.meta.apply(s, cache);
+        self
+    }
+
+    fn apply_mut(&mut self, s: &mut Substitution, cache: &mut Cache) {
+        self.meta.apply_mut(s, cache);
+    }
+
+    // TODO visit child nodes
+
+    fn try_apply(&self, s: &mut Substitution, cache: &mut Cache) -> Option<Self> {
+        self.meta.try_apply(s, cache).map(|meta| Self {
+            meta,
+            inner: self.inner.clone(),
+        })
+    }
 }
 
 pub fn merge<A, B, DA, DB>(

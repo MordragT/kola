@@ -1,9 +1,12 @@
-use crate::syntax::{ast::*, Source, Spanned};
+use crate::{
+    source::Source,
+    syntax::{ast::*, Spanned},
+};
 
 use super::{
     error::InferReport,
     types::{MonoType, PolyType, TypeVar},
-    Context, Unify,
+    Context, Substitutable, Unify,
 };
 
 type Result = std::result::Result<MonoType, InferReport>;
@@ -15,9 +18,9 @@ pub trait Infer {
     fn infer(&self, source: Source) -> Result {
         let mut ctx = Context::new(source);
 
-        let ty = self.infer_with(&mut ctx)?;
-
-        dbg!(&ctx);
+        let ty = self
+            .infer_with(&mut ctx)?
+            .apply(&mut ctx.substitution, &mut ctx.cache);
 
         assert!(!ctx.has_errors());
 
@@ -220,11 +223,12 @@ impl Infer for Spanned<BinaryExpr> {
 // Γ ⊢ let x = e0 in e1 : τ'
 impl Infer for Spanned<LetExpr> {
     fn infer_with(&self, ctx: &mut Context) -> Result {
-        let t = TypeVar::branch(|| self.0.value.infer_with(ctx))?;
+        let t = TypeVar::branch(|| self.0.value.infer_with(ctx))?
+            .apply(&mut ctx.substitution, &mut ctx.cache); // TODO is this correct ? Do I need to substitute before generalization
 
         let t_prime = ctx.branch(|ctx| {
-            let bound = ctx.scopes.bound_vars();
-            ctx.scopes.insert(self.0.name.clone(), t.generalize(&bound));
+            let pty = t.generalize(&ctx.scopes.bound_vars());
+            ctx.scopes.insert(self.0.name.clone(), pty);
             self.0.inside.infer_with(ctx)
         })?;
 

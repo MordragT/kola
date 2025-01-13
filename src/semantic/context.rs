@@ -2,7 +2,7 @@ use std::sync::Arc;
 
 use miette::NamedSource;
 
-use crate::syntax::{Source, Span};
+use crate::{source::Source, syntax::Span};
 
 use super::{
     error::{InferError, InferReport},

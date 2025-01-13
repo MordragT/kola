@@ -16,7 +16,7 @@ pub enum InferError {
     Unbound(Ident),
     #[error("Occurs: {0}")]
     Occurs(TypeVar),
-    #[error("Cannot Unify: {expected} {actual}")]
+    #[error("Cannot Unify: Expected `{expected}` but got `{actual}`")]
     CannotUnify {
         expected: MonoType,
         actual: MonoType,
