@@ -1,6 +1,6 @@
 use std::{borrow::Cow, collections::HashMap, ops::ControlFlow};
 
-use crate::syntax::visit::VisitMut;
+use crate::syntax::visit::{VisitMut, Visitable};
 
 use super::types::{MonoType, TypeVar};
 
@@ -52,6 +52,13 @@ impl Substitution {
                 }
             })
             .or_insert_with(|| ty.clone());
+    }
+
+    pub fn apply<N>(&mut self, node: &mut N)
+    where
+        N: Visitable,
+    {
+        node.visit_mut_by(self);
     }
 
     pub fn clear(&mut self) {

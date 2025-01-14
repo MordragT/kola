@@ -171,7 +171,7 @@ pub struct If {
 
 pub type IfExpr = Node<If>;
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct PatError {
     pub span: Span,
 }
@@ -180,6 +180,16 @@ pub struct PatError {
 pub struct Wildcard {
     pub span: Span,
     pub ty: MonoType,
+}
+
+impl Wildcard {
+    pub fn ty(&self) -> &MonoType {
+        &self.ty
+    }
+
+    pub fn ty_mut(&mut self) -> &mut MonoType {
+        &mut self.ty
+    }
 }
 
 pub type LiteralPat = Node<Literal>;
@@ -221,6 +231,28 @@ pub enum Pat {
 }
 
 impl Pat {
+    pub fn ty(&self) -> Result<&MonoType, PatError> {
+        let ty = match self {
+            Self::Error(e) => return Err(*e),
+            Self::Wildcard(w) => w.ty(),
+            Self::Literal(l) => l.ty(),
+            Self::Ident(i) => i.ty(),
+            Self::Record(r) => r.ty(),
+        };
+        Ok(ty)
+    }
+
+    pub fn ty_mut(&mut self) -> Result<&mut MonoType, PatError> {
+        let ty = match self {
+            Self::Error(e) => return Err(*e),
+            Self::Wildcard(w) => w.ty_mut(),
+            Self::Literal(l) => l.ty_mut(),
+            Self::Ident(i) => i.ty_mut(),
+            Self::Record(r) => r.ty_mut(),
+        };
+        Ok(ty)
+    }
+
     pub fn as_error(&self) -> Option<&PatError> {
         match self {
             Self::Error(e) => Some(e),
@@ -367,7 +399,7 @@ pub struct Call {
 
 pub type CallExpr = Node<Call>;
 
-#[derive(Clone, Debug, PartialEq, Eq)]
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub struct ExprError {
     pub span: Span,
 }
@@ -395,6 +427,52 @@ pub enum Expr {
 // TODO Function Call
 
 impl Expr {
+    pub fn ty(&self) -> Result<&MonoType, ExprError> {
+        let ty = match self {
+            Self::Error(e) => return Err(*e),
+            Self::Literal(l) => l.ty(),
+            Self::Ident(i) => i.ty(),
+            Self::List(l) => l.ty(),
+            Self::Record(r) => r.ty(),
+            Self::RecordSelect(r) => r.ty(),
+            Self::RecordExtend(r) => r.ty(),
+            Self::RecordRestrict(r) => r.ty(),
+            Self::RecordUpdate(r) => r.ty(),
+            Self::Unary(u) => u.ty(),
+            Self::Binary(b) => b.ty(),
+            Self::Let(l) => l.ty(),
+            Self::If(i) => i.ty(),
+            Self::Case(c) => c.ty(),
+            Self::Func(f) => f.ty(),
+            Self::Call(c) => c.ty(),
+        };
+
+        Ok(ty)
+    }
+
+    pub fn ty_mut(&mut self) -> Result<&MonoType, ExprError> {
+        let ty = match self {
+            Self::Error(e) => return Err(*e),
+            Self::Literal(l) => l.ty_mut(),
+            Self::Ident(i) => i.ty_mut(),
+            Self::List(l) => l.ty_mut(),
+            Self::Record(r) => r.ty_mut(),
+            Self::RecordSelect(r) => r.ty_mut(),
+            Self::RecordExtend(r) => r.ty_mut(),
+            Self::RecordRestrict(r) => r.ty_mut(),
+            Self::RecordUpdate(r) => r.ty_mut(),
+            Self::Unary(u) => u.ty_mut(),
+            Self::Binary(b) => b.ty_mut(),
+            Self::Let(l) => l.ty_mut(),
+            Self::If(i) => i.ty_mut(),
+            Self::Case(c) => c.ty_mut(),
+            Self::Func(f) => f.ty_mut(),
+            Self::Call(c) => c.ty_mut(),
+        };
+
+        Ok(ty)
+    }
+
     pub fn as_error(&self) -> Option<&ExprError> {
         match self {
             Self::Error(e) => Some(e),

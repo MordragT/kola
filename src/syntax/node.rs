@@ -34,6 +34,14 @@ impl<T> Node<T> {
         self.span
     }
 
+    pub fn ty(&self) -> &MonoType {
+        &self.ty
+    }
+
+    pub fn ty_mut(&mut self) -> &mut MonoType {
+        &mut self.ty
+    }
+
     // pub fn map<F, U>(self, f: F) -> Node<T, U>
     // where
     //     F: FnOnce(M) -> U,

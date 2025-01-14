@@ -1,5 +1,4 @@
 use chumsky::prelude::*;
-use ecow::EcoString;
 
 use crate::semantic::types::MonoType;
 

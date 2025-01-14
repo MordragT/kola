@@ -1,4 +1,4 @@
-use std::sync::Arc;
+use std::{ops::ControlFlow, sync::Arc};
 
 use miette::NamedSource;
 
@@ -88,16 +88,16 @@ pub trait Unify<With> {
     /// If successful, results in a solution to the unification problem,
     /// in the form of a substitution. If there is no solution to the
     /// unification problem then unification fails and an error is reported.
-    fn try_unify(&self, with: With, span: Span, ctx: &mut Unifier) -> Result<Self, InferReport>
+    fn try_unify(&self, with: With, span: Span, ctx: &mut Unifier) -> ControlFlow<InferReport>
     where
         Self: Sized + Clone,
     {
         self.unify(with, ctx);
 
         if ctx.has_errors() {
-            Err(ctx.report_with(span))
+            ControlFlow::Break(ctx.report_with(span))
         } else {
-            Ok(self.clone())
+            ControlFlow::Continue(())
         }
     }
 }

@@ -4,6 +4,98 @@ use crate::semantic::types::MonoType;
 
 use super::ast;
 
+pub trait Visitable {
+    fn visit_by<V>(&self, visitor: &mut V) -> ControlFlow<V::BreakValue>
+    where
+        V: Visit;
+
+    fn visit_mut_by<V>(&mut self, visitor: &mut V) -> ControlFlow<V::BreakValue>
+    where
+        V: VisitMut;
+}
+
+impl Visitable for MonoType {
+    fn visit_by<V>(&self, visitor: &mut V) -> ControlFlow<V::BreakValue>
+    where
+        V: Visit,
+    {
+        visitor.visit_ty(self)
+    }
+
+    fn visit_mut_by<V>(&mut self, visitor: &mut V) -> ControlFlow<V::BreakValue>
+    where
+        V: VisitMut,
+    {
+        visitor.visit_ty_mut(self)
+    }
+}
+
+impl Visitable for ast::Name {
+    fn visit_by<V>(&self, visitor: &mut V) -> ControlFlow<V::BreakValue>
+    where
+        V: Visit,
+    {
+        visitor.visit_name(self)
+    }
+
+    fn visit_mut_by<V>(&mut self, visitor: &mut V) -> ControlFlow<V::BreakValue>
+    where
+        V: VisitMut,
+    {
+        visitor.visit_name_mut(self)
+    }
+}
+
+impl Visitable for ast::ExprError {
+    fn visit_by<V>(&self, visitor: &mut V) -> ControlFlow<V::BreakValue>
+    where
+        V: Visit,
+    {
+        visitor.visit_error(self)
+    }
+
+    fn visit_mut_by<V>(&mut self, visitor: &mut V) -> ControlFlow<V::BreakValue>
+    where
+        V: VisitMut,
+    {
+        visitor.visit_error_mut(self)
+    }
+}
+
+impl Visitable for ast::IdentExpr {
+    fn visit_by<V>(&self, visitor: &mut V) -> ControlFlow<V::BreakValue>
+    where
+        V: Visit,
+    {
+        visitor.visit_ident(self)
+    }
+
+    fn visit_mut_by<V>(&mut self, visitor: &mut V) -> ControlFlow<V::BreakValue>
+    where
+        V: VisitMut,
+    {
+        visitor.visit_ident_mut(self)
+    }
+}
+
+// TODO more Visitable implementations
+
+impl Visitable for ast::Expr {
+    fn visit_by<V>(&self, visitor: &mut V) -> ControlFlow<V::BreakValue>
+    where
+        V: Visit,
+    {
+        visitor.visit_expr(self)
+    }
+
+    fn visit_mut_by<V>(&mut self, visitor: &mut V) -> ControlFlow<V::BreakValue>
+    where
+        V: VisitMut,
+    {
+        visitor.visit_expr_mut(self)
+    }
+}
+
 pub trait Visit: Sized {
     type BreakValue;
 
@@ -141,7 +233,7 @@ pub fn walk_ident<V>(visitor: &mut V, ident: &ast::IdentExpr) -> ControlFlow<V::
 where
     V: Visit,
 {
-    visitor.visit_ty(&ident.ty)?;
+    visitor.visit_ty(ident.ty())?;
     ControlFlow::Continue(())
 }
 
@@ -149,7 +241,7 @@ pub fn walk_literal<V>(visitor: &mut V, literal: &ast::LiteralExpr) -> ControlFl
 where
     V: Visit,
 {
-    visitor.visit_ty(&literal.ty)?;
+    visitor.visit_ty(literal.ty())?;
     ControlFlow::Continue(())
 }
 
@@ -160,7 +252,7 @@ where
     for value in &list.values {
         visitor.visit_expr(value)?;
     }
-    visitor.visit_ty(&list.ty)?;
+    visitor.visit_ty(list.ty())?;
     ControlFlow::Continue(())
 }
 
@@ -180,7 +272,7 @@ where
     for property in &record.fields {
         visitor.visit_property(property)?;
     }
-    visitor.visit_ty(&record.ty)?;
+    visitor.visit_ty(record.ty())?;
     ControlFlow::Continue(())
 }
 
@@ -193,7 +285,7 @@ where
 {
     visitor.visit_expr(&record_select.source)?;
     visitor.visit_name(&record_select.field)?;
-    visitor.visit_ty(&record_select.ty)?;
+    visitor.visit_ty(record_select.ty())?;
     ControlFlow::Continue(())
 }
 
@@ -207,7 +299,7 @@ where
     visitor.visit_expr(&record_extend.source)?;
     visitor.visit_name(&record_extend.field)?;
     visitor.visit_expr(&record_extend.value)?;
-    visitor.visit_ty(&record_extend.ty)?;
+    visitor.visit_ty(record_extend.ty())?;
     ControlFlow::Continue(())
 }
 
@@ -220,7 +312,7 @@ where
 {
     visitor.visit_expr(&record_restrict.source)?;
     visitor.visit_name(&record_restrict.field)?;
-    visitor.visit_ty(&record_restrict.ty)?;
+    visitor.visit_ty(record_restrict.ty())?;
     ControlFlow::Continue(())
 }
 
@@ -234,7 +326,7 @@ where
     visitor.visit_expr(&record_update.source)?;
     visitor.visit_name(&record_update.field)?;
     visitor.visit_expr(&record_update.value)?;
-    visitor.visit_ty(&record_update.ty)?;
+    visitor.visit_ty(record_update.ty())?;
     ControlFlow::Continue(())
 }
 
@@ -242,7 +334,7 @@ pub fn walk_unary_op<V>(visitor: &mut V, unary_op: &ast::UnaryOp) -> ControlFlow
 where
     V: Visit,
 {
-    visitor.visit_ty(&unary_op.ty)?;
+    visitor.visit_ty(unary_op.ty())?;
     ControlFlow::Continue(())
 }
 
@@ -252,7 +344,7 @@ where
 {
     visitor.visit_unary_op(&unary.op)?;
     visitor.visit_expr(&unary.target)?;
-    visitor.visit_ty(&unary.ty)?;
+    visitor.visit_ty(unary.ty())?;
     ControlFlow::Continue(())
 }
 
@@ -260,7 +352,7 @@ pub fn walk_binary_op<V>(visitor: &mut V, binary_op: &ast::BinaryOp) -> ControlF
 where
     V: Visit,
 {
-    visitor.visit_ty(&binary_op.ty)?;
+    visitor.visit_ty(binary_op.ty())?;
     ControlFlow::Continue(())
 }
 
@@ -271,7 +363,7 @@ where
     visitor.visit_binary_op(&binary.op)?;
     visitor.visit_expr(&binary.left)?;
     visitor.visit_expr(&binary.right)?;
-    visitor.visit_ty(&binary.ty)?;
+    visitor.visit_ty(binary.ty())?;
     ControlFlow::Continue(())
 }
 
@@ -282,7 +374,7 @@ where
     visitor.visit_name(&let_.name)?;
     visitor.visit_expr(&let_.value)?;
     visitor.visit_expr(&let_.inside)?;
-    visitor.visit_ty(&let_.ty)?;
+    visitor.visit_ty(let_.ty())?;
     ControlFlow::Continue(())
 }
 
@@ -293,7 +385,7 @@ where
     visitor.visit_expr(&if_.predicate)?;
     visitor.visit_expr(&if_.then)?;
     visitor.visit_expr(&if_.or)?;
-    visitor.visit_ty(&if_.ty)?;
+    visitor.visit_ty(if_.ty())?;
     ControlFlow::Continue(())
 }
 
@@ -321,7 +413,7 @@ where
     for branch in &case.branches {
         visitor.visit_branch(branch)?;
     }
-    visitor.visit_ty(&case.ty)?;
+    visitor.visit_ty(case.ty())?;
     ControlFlow::Continue(())
 }
 
@@ -331,7 +423,7 @@ where
 {
     visitor.visit_ident(&func.param)?;
     visitor.visit_expr(&func.body)?;
-    visitor.visit_ty(&func.ty)?;
+    visitor.visit_ty(func.ty())?;
     ControlFlow::Continue(())
 }
 
@@ -341,7 +433,7 @@ where
 {
     visitor.visit_ident(&call.func)?;
     visitor.visit_expr(&call.arg)?;
-    visitor.visit_ty(&call.ty)?;
+    visitor.visit_ty(call.ty())?;
     ControlFlow::Continue(())
 }
 
@@ -518,7 +610,7 @@ pub fn walk_ident_mut<V>(visitor: &mut V, ident: &mut ast::IdentExpr) -> Control
 where
     V: VisitMut,
 {
-    visitor.visit_ty_mut(&mut ident.ty)?;
+    visitor.visit_ty_mut(ident.ty_mut())?;
     ControlFlow::Continue(())
 }
 
@@ -529,7 +621,7 @@ pub fn walk_literal_mut<V>(
 where
     V: VisitMut,
 {
-    visitor.visit_ty_mut(&mut literal.ty)?;
+    visitor.visit_ty_mut(literal.ty_mut())?;
     ControlFlow::Continue(())
 }
 
@@ -540,7 +632,7 @@ where
     for value in &mut list.values {
         visitor.visit_expr_mut(value)?;
     }
-    visitor.visit_ty_mut(&mut list.ty)?;
+    visitor.visit_ty_mut(list.ty_mut())?;
     ControlFlow::Continue(())
 }
 
@@ -566,7 +658,7 @@ where
     for property in &mut record.fields {
         visitor.visit_property_mut(property)?;
     }
-    visitor.visit_ty_mut(&mut record.ty)?;
+    visitor.visit_ty_mut(record.ty_mut())?;
     ControlFlow::Continue(())
 }
 
@@ -579,7 +671,7 @@ where
 {
     visitor.visit_expr_mut(&mut record_select.source)?;
     visitor.visit_name_mut(&mut record_select.field)?;
-    visitor.visit_ty_mut(&mut record_select.ty)?;
+    visitor.visit_ty_mut(record_select.ty_mut())?;
     ControlFlow::Continue(())
 }
 
@@ -593,7 +685,7 @@ where
     visitor.visit_expr_mut(&mut record_extend.source)?;
     visitor.visit_name_mut(&mut record_extend.field)?;
     visitor.visit_expr_mut(&mut record_extend.value)?;
-    visitor.visit_ty_mut(&mut record_extend.ty)?;
+    visitor.visit_ty_mut(record_extend.ty_mut())?;
     ControlFlow::Continue(())
 }
 
@@ -606,7 +698,7 @@ where
 {
     visitor.visit_expr_mut(&mut record_restrict.source)?;
     visitor.visit_name_mut(&mut record_restrict.field)?;
-    visitor.visit_ty_mut(&mut record_restrict.ty)?;
+    visitor.visit_ty_mut(record_restrict.ty_mut())?;
     ControlFlow::Continue(())
 }
 
@@ -620,7 +712,7 @@ where
     visitor.visit_expr_mut(&mut record_update.source)?;
     visitor.visit_name_mut(&mut record_update.field)?;
     visitor.visit_expr_mut(&mut record_update.value)?;
-    visitor.visit_ty_mut(&mut record_update.ty)?;
+    visitor.visit_ty_mut(record_update.ty_mut())?;
     ControlFlow::Continue(())
 }
 
@@ -631,7 +723,7 @@ pub fn walk_unary_op_mut<V>(
 where
     V: VisitMut,
 {
-    visitor.visit_ty_mut(&mut unary_op.ty)?;
+    visitor.visit_ty_mut(unary_op.ty_mut())?;
     ControlFlow::Continue(())
 }
 
@@ -641,7 +733,7 @@ where
 {
     visitor.visit_unary_op_mut(&mut unary.op)?;
     visitor.visit_expr_mut(&mut unary.target)?;
-    visitor.visit_ty_mut(&mut unary.ty)?;
+    visitor.visit_ty_mut(unary.ty_mut())?;
     ControlFlow::Continue(())
 }
 
@@ -652,7 +744,7 @@ pub fn walk_binary_op_mut<V>(
 where
     V: VisitMut,
 {
-    visitor.visit_ty_mut(&mut binary_op.ty)?;
+    visitor.visit_ty_mut(binary_op.ty_mut())?;
     ControlFlow::Continue(())
 }
 
@@ -666,7 +758,7 @@ where
     visitor.visit_binary_op_mut(&mut binary.op)?;
     visitor.visit_expr_mut(&mut binary.left)?;
     visitor.visit_expr_mut(&mut binary.right)?;
-    visitor.visit_ty_mut(&mut binary.ty)?;
+    visitor.visit_ty_mut(binary.ty_mut())?;
     ControlFlow::Continue(())
 }
 
@@ -677,7 +769,7 @@ where
     visitor.visit_name_mut(&mut let_.name)?;
     visitor.visit_expr_mut(&mut let_.value)?;
     visitor.visit_expr_mut(&mut let_.inside)?;
-    visitor.visit_ty_mut(&mut let_.ty)?;
+    visitor.visit_ty_mut(let_.ty_mut())?;
     ControlFlow::Continue(())
 }
 
@@ -688,7 +780,7 @@ where
     visitor.visit_expr_mut(&mut if_.predicate)?;
     visitor.visit_expr_mut(&mut if_.then)?;
     visitor.visit_expr_mut(&mut if_.or)?;
-    visitor.visit_ty_mut(&mut if_.ty)?;
+    visitor.visit_ty_mut(if_.ty_mut())?;
     ControlFlow::Continue(())
 }
 
@@ -716,7 +808,7 @@ where
     for branch in &mut case.branches {
         visitor.visit_branch_mut(branch)?;
     }
-    visitor.visit_ty_mut(&mut case.ty)?;
+    visitor.visit_ty_mut(case.ty_mut())?;
     ControlFlow::Continue(())
 }
 
@@ -726,7 +818,7 @@ where
 {
     visitor.visit_ident_mut(&mut func.param)?;
     visitor.visit_expr_mut(&mut func.body)?;
-    visitor.visit_ty_mut(&mut func.ty)?;
+    visitor.visit_ty_mut(func.ty_mut())?;
     ControlFlow::Continue(())
 }
 
@@ -736,7 +828,7 @@ where
 {
     visitor.visit_ident_mut(&mut call.func)?;
     visitor.visit_expr_mut(&mut call.arg)?;
-    visitor.visit_ty_mut(&mut call.ty)?;
+    visitor.visit_ty_mut(call.ty_mut())?;
     ControlFlow::Continue(())
 }
 

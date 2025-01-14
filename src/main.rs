@@ -1,6 +1,7 @@
 use kola::{
-    semantic::Infer,
-    syntax::{try_parse, try_tokenize, Source},
+    semantic::Inferer,
+    source::Source,
+    syntax::{try_parse, try_tokenize},
 };
 use miette::IntoDiagnostic;
 use std::{fs, path::PathBuf};
@@ -42,13 +43,14 @@ fn main() -> miette::Result<()> {
             let source = Source::new(name, source);
 
             let tokens = try_tokenize(&source)?;
-            let ast = try_parse(&source, tokens)?;
+            let mut ast = try_parse(&source, tokens)?;
 
             println!("{ast:?}");
 
-            let ty = ast.infer(source)?;
+            let mut inferer = Inferer::new(&source);
+            inferer.infer(&mut ast)?;
 
-            println!("{ty}");
+            println!("{ast:?}");
         }
     }
 
