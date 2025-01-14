@@ -3,7 +3,7 @@ use std::sync::Arc;
 use miette::{Diagnostic, NamedSource, SourceSpan};
 use thiserror::Error;
 
-use crate::syntax::{ast::Ident, Span};
+use crate::syntax::{ast::Symbol, Span};
 
 use super::{
     types::{MonoType, TypeVar},
@@ -13,7 +13,7 @@ use super::{
 #[derive(Debug, Clone, Error, Diagnostic, PartialEq, Eq)]
 pub enum InferError {
     #[error("Unbound: {0}")]
-    Unbound(Ident),
+    Unbound(Symbol),
     #[error("Occurs: {0}")]
     Occurs(TypeVar),
     #[error("Cannot Unify: Expected `{expected}` but got `{actual}`")]
@@ -23,7 +23,7 @@ pub enum InferError {
     },
     #[error("Cannot Unify Label: {label} : {expected} with {actual} because {cause:?}")]
     CannotUnifyLabel {
-        label: Ident,
+        label: Symbol,
         expected: MonoType,
         actual: MonoType,
         cause: Vec<InferError>,
@@ -31,9 +31,9 @@ pub enum InferError {
     #[error("Cannot Constrain: {expected:?} {actual}")]
     CannotConstrain { expected: Kind, actual: MonoType },
     #[error("Extra Label: {0}")]
-    ExtraLabel(Ident),
+    ExtraLabel(Symbol),
     #[error("Missing Label: {0}")]
-    MissingLabel(Ident),
+    MissingLabel(Symbol),
 }
 
 impl InferError {

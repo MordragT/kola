@@ -6,14 +6,13 @@ use crate::{source::Source, syntax::Span};
 
 use super::{
     error::{InferError, InferReport},
-    Cache, Constraints, Scopes, Substitution,
+    Constraints, Scopes, Substitution,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Context {
     pub scopes: Scopes,
     pub substitution: Substitution,
-    pub cache: Cache,
     pub constraints: Constraints,
     pub errors: Vec<InferError>,
     pub source: Source,
@@ -23,8 +22,7 @@ impl Context {
     pub fn new(source: Source) -> Self {
         Self {
             scopes: Scopes::new(),
-            substitution: Substitution::new(),
-            cache: Cache::new(),
+            substitution: Substitution::empty(),
             constraints: Constraints::new(),
             errors: Vec::new(),
             source,
@@ -34,7 +32,6 @@ impl Context {
     pub fn clear(&mut self) {
         self.scopes.clear();
         self.substitution.clear();
-        self.cache.clear();
         self.constraints.clear();
         self.errors.clear();
     }

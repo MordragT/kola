@@ -4,7 +4,7 @@ use std::{
 };
 
 use crate::semantic::{
-    error::InferError, Cache, Constraints, Context, Substitutable, Substitution, Unify,
+    error::InferError, Constraints, Substitutable, Substitution, Unifier, Unify,
 };
 
 use super::{Kind, MonoType, Typed};
@@ -59,18 +59,11 @@ impl TypeVar {
         result
     }
 
-    pub fn try_apply(&self, s: &mut Substitution, cache: &mut Cache) -> Option<MonoType> {
-        let ty = cache.get(self).or_else(|| s.get(self)).cloned();
+    pub fn try_apply(&self, s: &mut Substitution) -> Option<MonoType> {
+        let ty = s.get(self).cloned();
         ty.map(|mut ty| {
-            ty.apply_mut(s, cache);
-            cache
-                .entry(*self)
-                .and_modify(|stored| {
-                    if stored != &ty {
-                        *stored = ty.clone();
-                    }
-                })
-                .or_insert_with(|| ty.clone());
+            ty.apply_mut(s);
+            s.cache(*self, &ty);
             ty
         })
     }
@@ -95,7 +88,7 @@ impl Typed for TypeVar {
 }
 
 impl Unify<&Self> for TypeVar {
-    fn unify(&self, with: &Self, ctx: &mut Context) {
+    fn unify(&self, with: &Self, ctx: &mut Unifier) {
         if self != with {
             // ctx.error(InferError::CannotUnify {
             //     expected: self.into(),
@@ -110,7 +103,7 @@ impl Unify<&Self> for TypeVar {
 }
 
 impl Unify<&MonoType> for TypeVar {
-    fn unify(&self, with: &MonoType, ctx: &mut Context) {
+    fn unify(&self, with: &MonoType, ctx: &mut Unifier) {
         if let MonoType::Var(with) = with {
             self.unify(with, ctx);
         } else if with.contains(*self) {

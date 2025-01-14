@@ -95,7 +95,7 @@ pub fn lexer<'src>() -> impl Parser<'src, &'src str, Vec<Spanned<Token<'src>>>, 
         "export" => Token::Export,
         "true" => Token::Bool(true),
         "false" => Token::Bool(false),
-        _ => Token::Ident(ident),
+        _ => Token::Symbol(ident),
     });
 
     let token = choice((num, character, string, op, ctrl, delim, word));

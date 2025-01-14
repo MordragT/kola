@@ -1,6 +1,6 @@
 use std::fmt;
 
-use crate::semantic::{error::InferError, Constraints, Context, Kind, Unify};
+use crate::semantic::{error::InferError, Constraints, Kind, Unifier, Unify};
 
 use super::{TypeVar, Typed};
 
@@ -24,7 +24,7 @@ impl fmt::Display for BuiltinType {
 }
 
 impl Unify<&Self> for BuiltinType {
-    fn unify(&self, with: &Self, ctx: &mut Context) {
+    fn unify(&self, with: &Self, ctx: &mut Unifier) {
         if self != with {
             ctx.errors.push(InferError::CannotUnify {
                 expected: self.into(),

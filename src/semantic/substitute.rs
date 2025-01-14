@@ -1,46 +1,94 @@
-use std::{borrow::Cow, collections::HashMap};
+use std::{borrow::Cow, collections::HashMap, ops::ControlFlow};
 
-use crate::node::Node;
+use crate::syntax::visit::VisitMut;
 
 use super::types::{MonoType, TypeVar};
 
-pub type Substitution = HashMap<TypeVar, MonoType>;
+#[derive(Debug, Clone, PartialEq, Eq, Default)]
+pub struct Substitution {
+    table: HashMap<TypeVar, MonoType>,
+    /// Path compression is a technique commonly used in Union-Find data structures.
+    /// We apply it here so that whenever a chain of substitutions is traversed,
+    /// each variable is updated to point to its ultimate value. For example, the
+    /// chain:
+    ///
+    /// `t0 ↦ t1`, `t1 ↦ t2`, and `t2 ↦ int`
+    ///
+    /// becomes
+    ///
+    /// `t0 ↦ int`, `t1 ↦ int`, and `t2 ↦ int`
+    ///
+    /// Rather than updating the actual mappings,
+    /// this cache maintains these compressed mappings.
+    cache: HashMap<TypeVar, MonoType>,
+}
 
-/// Path compression is a technique commonly used in Union-Find data structures.
-/// We apply it here so that whenever a chain of substitutions is traversed,
-/// each variable is updated to point to its ultimate value. For example, the
-/// chain:
-///
-/// `t0 ↦ t1`, `t1 ↦ t2`, and `t2 ↦ int`
-///
-/// becomes
-///
-/// `t0 ↦ int`, `t1 ↦ int`, and `t2 ↦ int`
-///
-/// Rather than updating the actual mappings,
-/// this cache maintains these compressed mappings.
-pub type Cache = HashMap<TypeVar, MonoType>;
+impl Substitution {
+    pub fn new(table: HashMap<TypeVar, MonoType>) -> Self {
+        Self {
+            table,
+            cache: HashMap::new(),
+        }
+    }
+
+    pub fn empty() -> Self {
+        Self::default()
+    }
+
+    pub fn get(&self, tv: &TypeVar) -> Option<&MonoType> {
+        self.cache.get(tv).or_else(|| self.table.get(tv))
+    }
+
+    pub fn insert(&mut self, tv: TypeVar, ty: MonoType) -> Option<MonoType> {
+        self.table.insert(tv, ty)
+    }
+
+    pub fn cache(&mut self, tv: TypeVar, ty: &MonoType) {
+        self.cache
+            .entry(tv)
+            .and_modify(|stored| {
+                if stored != ty {
+                    *stored = ty.clone();
+                }
+            })
+            .or_insert_with(|| ty.clone());
+    }
+
+    pub fn clear(&mut self) {
+        self.table.clear();
+        self.cache.clear();
+    }
+}
+
+impl VisitMut for Substitution {
+    type BreakValue = !;
+
+    fn visit_ty_mut(&mut self, ty: &mut MonoType) -> ControlFlow<Self::BreakValue> {
+        ty.apply_mut(self);
+        ControlFlow::Continue(())
+    }
+}
 
 /// A type is `Substitutable` if a substitution can be applied to it.
 pub trait Substitutable: Sized {
     /// Apply a substitution to a type variable.
-    fn apply(self, s: &mut Substitution, cache: &mut Cache) -> Self {
-        self.try_apply(s, cache).unwrap_or(self)
+    fn apply(self, s: &mut Substitution) -> Self {
+        self.try_apply(s).unwrap_or(self)
     }
 
     /// Apply a substitution to a type variable.
-    fn apply_mut(&mut self, s: &mut Substitution, cache: &mut Cache) {
-        if let Some(new) = self.try_apply(s, cache) {
+    fn apply_mut(&mut self, s: &mut Substitution) {
+        if let Some(new) = self.try_apply(s) {
             *self = new;
         }
     }
 
     /// Apply a substitution to a type variable.
-    fn apply_cow(&self, s: &mut Substitution, cache: &mut Cache) -> Cow<'_, Self>
+    fn apply_cow(&self, s: &mut Substitution) -> Cow<'_, Self>
     where
         Self: Clone,
     {
-        match self.try_apply(s, cache) {
+        match self.try_apply(s) {
             Some(t) => Cow::Owned(t),
             None => Cow::Borrowed(self),
         }
@@ -49,31 +97,7 @@ pub trait Substitutable: Sized {
     /// Apply a non-mutating substitution to a type variable.
     /// Should return `None` if there was nothing to apply
     /// which allows for optimizations.
-    fn try_apply(&self, s: &mut Substitution, cache: &mut Cache) -> Option<Self>;
-}
-
-impl<T, M> Substitutable for Node<T, M>
-where
-    T: Clone,
-    M: Substitutable,
-{
-    fn apply(mut self, s: &mut Substitution, cache: &mut Cache) -> Self {
-        self.meta = self.meta.apply(s, cache);
-        self
-    }
-
-    fn apply_mut(&mut self, s: &mut Substitution, cache: &mut Cache) {
-        self.meta.apply_mut(s, cache);
-    }
-
-    // TODO visit child nodes
-
-    fn try_apply(&self, s: &mut Substitution, cache: &mut Cache) -> Option<Self> {
-        self.meta.try_apply(s, cache).map(|meta| Self {
-            meta,
-            inner: self.inner.clone(),
-        })
-    }
+    fn try_apply(&self, s: &mut Substitution) -> Option<Self>;
 }
 
 pub fn merge<A, B, DA, DB>(

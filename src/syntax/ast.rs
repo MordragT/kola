@@ -1,79 +1,122 @@
-use std::collections::BTreeMap;
-
 use ecow::EcoString;
 
-use crate::node::Node;
+use crate::semantic::types::MonoType;
 
-use super::Span;
+use super::{node::Node, Span};
+
+pub type Symbol = EcoString;
+
+#[derive(Clone, Debug, PartialEq, Eq, Hash)]
+pub struct Name {
+    pub name: Symbol,
+    pub span: Span,
+}
+
+pub type IdentExpr = Node<Symbol>;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Literal {
     Bool(bool),
     Num(f64),
     Char(char),
-    Str(EcoString),
+    Str(Symbol),
 }
 
-pub type Ident = EcoString;
+pub type LiteralExpr = Node<Literal>;
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct List<M> {
-    pub values: Vec<Expr<M>>,
+pub struct List {
+    pub values: Vec<Expr>,
+}
+
+pub type ListExpr = Node<List>;
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct Property {
+    pub key: Name,
+    pub value: Expr,
+    pub span: Span,
+}
+
+impl Property {
+    pub fn value(&self) -> &Expr {
+        &self.value
+    }
 }
 
 // { x = 10, y = 20 }
 #[derive(Clone, Debug, PartialEq)]
-pub struct Record<M> {
-    pub fields: BTreeMap<Ident, Expr<M>>,
+pub struct Record {
+    pub fields: Vec<Property>,
 }
+
+impl Record {
+    pub fn get(&self, name: impl AsRef<str>) -> Option<&Property> {
+        self.fields.iter().find(|p| &p.key.name == name.as_ref())
+    }
+}
+
+pub type RecordExpr = Node<Record>;
 
 // x.y.z
 #[derive(Clone, Debug, PartialEq)]
-pub struct RecordSelect<M> {
-    pub source: Box<Expr<M>>,
-    pub field: Ident,
+pub struct RecordSelect {
+    pub source: Expr,
+    pub field: Name,
 }
+
+pub type RecordSelectExpr = Node<RecordSelect>;
 
 // following record operations can be combined with syntactic sugar:
 // { y | +x = 10 | x = 100 | -x } == y
 
 // { y | +x = 10 }
 #[derive(Clone, Debug, PartialEq)]
-pub struct RecordExtend<M> {
-    pub source: Box<Expr<M>>,
-    pub field: Ident,
-    pub value: Box<Expr<M>>,
+pub struct RecordExtend {
+    pub source: Expr,
+    pub field: Name,
+    pub value: Expr,
 }
+
+pub type RecordExtendExpr = Node<RecordExtend>;
 
 // { y | -x }
 #[derive(Clone, Debug, PartialEq)]
-pub struct RecordRestrict<M> {
-    pub source: Box<Expr<M>>,
-    pub field: Ident,
+pub struct RecordRestrict {
+    pub source: Expr,
+    pub field: Name,
 }
+
+pub type RecordRestrictExpr = Node<RecordRestrict>;
 
 // { y | x = 10 }
 #[derive(Clone, Debug, PartialEq)]
-pub struct RecordUpdate<M> {
-    pub source: Box<Expr<M>>,
-    pub field: Ident,
-    pub value: Box<Expr<M>>,
+pub struct RecordUpdate {
+    pub source: Expr,
+    pub field: Name,
+    pub value: Expr,
 }
 
+pub type RecordUpdateExpr = Node<RecordUpdate>;
+
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub enum UnaryOp {
+pub enum UnaryOpKind {
     Neg,
     Not,
 }
 
+pub type UnaryOp = Node<UnaryOpKind>;
+
 #[derive(Clone, Debug, PartialEq)]
-pub struct UnaryExpr<M> {
+pub struct Unary {
     pub op: UnaryOp,
-    pub target: Box<Expr<M>>,
+    pub target: Expr,
 }
 
+pub type UnaryExpr = Node<Unary>;
+
 #[derive(Copy, Clone, Debug, PartialEq, Eq)]
-pub enum BinaryOp {
+pub enum BinaryOpKind {
     Add,
     Sub,
     Mul,
@@ -93,71 +136,175 @@ pub enum BinaryOp {
     NotEq,
 }
 
+pub type BinaryOp = Node<BinaryOpKind>;
+
 #[derive(Clone, Debug, PartialEq)]
-pub struct BinaryExpr<M> {
+pub struct Binary {
     pub op: BinaryOp,
-    pub left: Box<Expr<M>>,
-    pub right: Box<Expr<M>>,
+    pub left: Expr,
+    pub right: Expr,
+}
+
+impl Binary {
+    pub fn kind(&self) -> BinaryOpKind {
+        *self.op.inner()
+    }
+}
+
+pub type BinaryExpr = Node<Binary>;
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct Let {
+    pub name: Name,
+    pub value: Expr,
+    pub inside: Expr,
+}
+
+pub type LetExpr = Node<Let>;
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct If {
+    pub predicate: Expr,
+    pub then: Expr,
+    pub or: Expr,
+}
+
+pub type IfExpr = Node<If>;
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct PatError {
+    pub span: Span,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct Wildcard {
+    pub span: Span,
+    pub ty: MonoType,
+}
+
+pub type LiteralPat = Node<Literal>;
+pub type IdentPat = Node<Symbol>;
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct PropertyPat {
+    pub key: Name,
+    pub value: Option<Pat>,
+    pub span: Span,
+}
+
+impl PropertyPat {
+    pub fn value(&self) -> Option<&Pat> {
+        self.value.as_ref()
+    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct LetExpr<M> {
-    pub name: Ident,
-    pub value: Box<Expr<M>>,
-    pub inside: Box<Expr<M>>,
+pub struct RecordPatRepr {
+    pub fields: Vec<PropertyPat>,
 }
+
+impl RecordPatRepr {
+    pub fn get(&self, name: impl AsRef<str>) -> Option<&PropertyPat> {
+        self.fields.iter().find(|p| &p.key.name == name.as_ref())
+    }
+}
+
+pub type RecordPat = Node<RecordPatRepr>;
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct IfExpr<M> {
-    pub predicate: Box<Expr<M>>,
-    pub then: Box<Expr<M>>,
-    pub or: Box<Expr<M>>,
+pub enum Pat {
+    Error(PatError),
+    Wildcard(Wildcard),
+    Literal(LiteralPat),
+    Ident(IdentPat),
+    Record(RecordPat),
 }
 
-#[derive(Clone, Debug, PartialEq)]
-pub struct RecordPat<M> {
-    pub fields: BTreeMap<Ident, Option<Pat<M>>>,
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub enum Pat<M> {
-    Error(Span),
-    Wildcard(Span),
-    Literal(Node<Literal, M>),
-    Ident(Node<Ident, M>),
-    Record(Node<RecordPat<M>, M>),
-}
-
-impl<M> Pat<M> {
-    pub fn into_error(self) -> Option<Span> {
+impl Pat {
+    pub fn as_error(&self) -> Option<&PatError> {
         match self {
-            Self::Error(span) => Some(span),
+            Self::Error(e) => Some(e),
             _ => None,
         }
     }
 
-    pub fn into_wildcard(self) -> Option<Span> {
+    pub fn as_wildcard(&self) -> Option<&Wildcard> {
         match self {
-            Self::Wildcard(span) => Some(span),
+            Self::Wildcard(w) => Some(w),
             _ => None,
         }
     }
 
-    pub fn into_literal(self) -> Option<Node<Literal, M>> {
+    pub fn as_literal(&self) -> Option<&LiteralPat> {
         match self {
             Self::Literal(l) => Some(l),
             _ => None,
         }
     }
 
-    pub fn into_ident(self) -> Option<Node<Ident, M>> {
+    pub fn as_ident(&self) -> Option<&IdentPat> {
         match self {
             Self::Ident(i) => Some(i),
             _ => None,
         }
     }
 
-    pub fn into_record(self) -> Option<Node<RecordPat<M>, M>> {
+    pub fn as_record(&self) -> Option<&RecordPat> {
+        match self {
+            Self::Record(r) => Some(r),
+            _ => None,
+        }
+    }
+
+    pub fn is_error(&self) -> bool {
+        self.as_error().is_some()
+    }
+
+    pub fn is_wildcard(&self) -> bool {
+        self.as_wildcard().is_some()
+    }
+
+    pub fn is_literal(&self) -> bool {
+        self.as_literal().is_some()
+    }
+
+    pub fn is_ident(&self) -> bool {
+        self.as_ident().is_some()
+    }
+
+    pub fn is_record(&self) -> bool {
+        self.as_record().is_some()
+    }
+
+    pub fn into_error(self) -> Option<PatError> {
+        match self {
+            Self::Error(e) => Some(e),
+            _ => None,
+        }
+    }
+
+    pub fn into_wildcard(self) -> Option<Wildcard> {
+        match self {
+            Self::Wildcard(w) => Some(w),
+            _ => None,
+        }
+    }
+
+    pub fn into_literal(self) -> Option<LiteralPat> {
+        match self {
+            Self::Literal(l) => Some(l),
+            _ => None,
+        }
+    }
+
+    pub fn into_ident(self) -> Option<IdentPat> {
+        match self {
+            Self::Ident(i) => Some(i),
+            _ => None,
+        }
+    }
+
+    pub fn into_record(self) -> Option<RecordPat> {
         match self {
             Self::Record(r) => Some(r),
             _ => None,
@@ -165,157 +312,293 @@ impl<M> Pat<M> {
     }
 }
 
-impl<M> From<Node<Literal, M>> for Pat<M> {
-    fn from(value: Node<Literal, M>) -> Self {
+impl From<Wildcard> for Pat {
+    fn from(value: Wildcard) -> Self {
+        Self::Wildcard(value)
+    }
+}
+
+impl From<LiteralPat> for Pat {
+    fn from(value: LiteralPat) -> Self {
         Self::Literal(value)
     }
 }
 
-impl<M> From<Node<Ident, M>> for Pat<M> {
-    fn from(value: Node<Ident, M>) -> Self {
+impl From<IdentPat> for Pat {
+    fn from(value: IdentPat) -> Self {
         Self::Ident(value)
     }
 }
 
-impl<M> From<Node<RecordPat<M>, M>> for Pat<M> {
-    fn from(value: Node<RecordPat<M>, M>) -> Self {
+impl From<RecordPat> for Pat {
+    fn from(value: RecordPat) -> Self {
         Self::Record(value)
     }
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct CaseExpr<M> {
-    pub source: Ident,
-    pub branches: Vec<(Pat<M>, Expr<M>)>,
+pub struct Branch {
+    pub pat: Pat,
+    pub matches: Expr,
+    pub span: Span,
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct FnExpr<M> {
-    pub param: Ident,
-    pub body: Box<Expr<M>>,
+pub struct Case {
+    pub source: IdentExpr,
+    pub branches: Vec<Branch>,
+}
+
+pub type CaseExpr = Node<Case>;
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct Func {
+    pub param: IdentExpr,
+    pub body: Expr,
+}
+
+pub type FuncExpr = Node<Func>;
+
+#[derive(Clone, Debug, PartialEq)]
+pub struct Call {
+    pub func: IdentExpr,
+    pub arg: Expr,
+}
+
+pub type CallExpr = Node<Call>;
+
+#[derive(Clone, Debug, PartialEq, Eq)]
+pub struct ExprError {
+    pub span: Span,
 }
 
 #[derive(Clone, Debug, PartialEq)]
-pub struct CallExpr<M> {
-    pub func: Node<Ident, M>,
-    pub arg: Box<Expr<M>>,
-}
-
-#[derive(Clone, Debug, PartialEq)]
-pub enum Expr<M> {
-    Error(Span),
-    Literal(Node<Literal, M>),
-    Ident(Node<Ident, M>),
-    List(Node<List<M>, M>),
-    Record(Node<Record<M>, M>),
-    RecordSelect(Node<RecordSelect<M>, M>),
-    RecordExtend(Node<RecordExtend<M>, M>),
-    RecordRestrict(Node<RecordRestrict<M>, M>),
-    RecordUpdate(Node<RecordUpdate<M>, M>),
-    Unary(Node<UnaryExpr<M>, M>),
-    Binary(Node<BinaryExpr<M>, M>),
-    Let(Node<LetExpr<M>, M>),
-    If(Node<IfExpr<M>, M>),
-    Case(Node<CaseExpr<M>, M>),
-    Fn(Node<FnExpr<M>, M>),
-    Call(Node<CallExpr<M>, M>),
+pub enum Expr {
+    Error(ExprError),
+    Literal(LiteralExpr),
+    Ident(IdentExpr),
+    List(ListExpr),
+    Record(RecordExpr),
+    RecordSelect(RecordSelectExpr),
+    RecordExtend(RecordExtendExpr),
+    RecordRestrict(RecordRestrictExpr),
+    RecordUpdate(RecordUpdateExpr),
+    Unary(UnaryExpr),
+    Binary(BinaryExpr),
+    Let(LetExpr),
+    If(IfExpr),
+    Case(CaseExpr),
+    Func(FuncExpr),
+    Call(CallExpr),
 }
 
 // TODO Function Call
 
-impl<M> Expr<M> {
-    pub fn into_literal(self) -> Option<Node<Literal, M>> {
+impl Expr {
+    pub fn as_error(&self) -> Option<&ExprError> {
+        match self {
+            Self::Error(e) => Some(e),
+            _ => None,
+        }
+    }
+
+    pub fn as_literal(&self) -> Option<&LiteralExpr> {
         match self {
             Self::Literal(l) => Some(l),
             _ => None,
         }
     }
 
-    pub fn into_ident(self) -> Option<Node<Ident, M>> {
+    pub fn as_ident(&self) -> Option<&IdentExpr> {
         match self {
             Self::Ident(i) => Some(i),
             _ => None,
         }
     }
 
-    pub fn into_list(self) -> Option<Node<List<M>, M>> {
+    pub fn as_list(&self) -> Option<&ListExpr> {
         match self {
             Self::List(l) => Some(l),
             _ => None,
         }
     }
 
-    pub fn into_record(self) -> Option<Node<Record<M>, M>> {
+    pub fn as_record(&self) -> Option<&RecordExpr> {
         match self {
             Self::Record(r) => Some(r),
             _ => None,
         }
     }
 
-    pub fn into_record_select(self) -> Option<Node<RecordSelect<M>, M>> {
+    pub fn as_record_select(&self) -> Option<&RecordSelectExpr> {
         match self {
             Self::RecordSelect(s) => Some(s),
             _ => None,
         }
     }
 
-    pub fn into_record_extend(self) -> Option<Node<RecordExtend<M>, M>> {
+    pub fn as_record_extend(&self) -> Option<&RecordExtendExpr> {
         match self {
             Self::RecordExtend(e) => Some(e),
             _ => None,
         }
     }
 
-    pub fn into_record_update(self) -> Option<Node<RecordUpdate<M>, M>> {
+    pub fn as_record_update(&self) -> Option<&RecordUpdateExpr> {
         match self {
             Self::RecordUpdate(u) => Some(u),
             _ => None,
         }
     }
 
-    pub fn into_unary(self) -> Option<Node<UnaryExpr<M>, M>> {
+    pub fn as_unary(&self) -> Option<&UnaryExpr> {
         match self {
             Self::Unary(u) => Some(u),
             _ => None,
         }
     }
 
-    pub fn into_binary(self) -> Option<Node<BinaryExpr<M>, M>> {
+    pub fn as_binary(&self) -> Option<&BinaryExpr> {
         match self {
             Self::Binary(b) => Some(b),
             _ => None,
         }
     }
 
-    pub fn into_let(self) -> Option<Node<LetExpr<M>, M>> {
+    pub fn as_let(&self) -> Option<&LetExpr> {
         match self {
             Self::Let(l) => Some(l),
             _ => None,
         }
     }
 
-    pub fn into_if(self) -> Option<Node<IfExpr<M>, M>> {
+    pub fn as_if(&self) -> Option<&IfExpr> {
         match self {
             Self::If(i) => Some(i),
             _ => None,
         }
     }
 
-    pub fn into_case(self) -> Option<Node<CaseExpr<M>, M>> {
+    pub fn as_case(&self) -> Option<&CaseExpr> {
         match self {
             Self::Case(c) => Some(c),
             _ => None,
         }
     }
 
-    pub fn into_fn(self) -> Option<Node<FnExpr<M>, M>> {
+    pub fn as_func(&self) -> Option<&FuncExpr> {
         match self {
-            Self::Fn(f) => Some(f),
+            Self::Func(f) => Some(f),
             _ => None,
         }
     }
 
-    pub fn into_call(self) -> Option<Node<CallExpr<M>, M>> {
+    pub fn as_call(&self) -> Option<&CallExpr> {
+        match self {
+            Self::Call(c) => Some(c),
+            _ => None,
+        }
+    }
+
+    pub fn into_error(self) -> Option<ExprError> {
+        match self {
+            Self::Error(e) => Some(e),
+            _ => None,
+        }
+    }
+
+    pub fn into_literal(self) -> Option<LiteralExpr> {
+        match self {
+            Self::Literal(l) => Some(l),
+            _ => None,
+        }
+    }
+
+    pub fn into_ident(self) -> Option<IdentExpr> {
+        match self {
+            Self::Ident(i) => Some(i),
+            _ => None,
+        }
+    }
+
+    pub fn into_list(self) -> Option<ListExpr> {
+        match self {
+            Self::List(l) => Some(l),
+            _ => None,
+        }
+    }
+
+    pub fn into_record(self) -> Option<RecordExpr> {
+        match self {
+            Self::Record(r) => Some(r),
+            _ => None,
+        }
+    }
+
+    pub fn into_record_select(self) -> Option<RecordSelectExpr> {
+        match self {
+            Self::RecordSelect(s) => Some(s),
+            _ => None,
+        }
+    }
+
+    pub fn into_record_extend(self) -> Option<RecordExtendExpr> {
+        match self {
+            Self::RecordExtend(e) => Some(e),
+            _ => None,
+        }
+    }
+
+    pub fn into_record_update(self) -> Option<RecordUpdateExpr> {
+        match self {
+            Self::RecordUpdate(u) => Some(u),
+            _ => None,
+        }
+    }
+
+    pub fn into_unary(self) -> Option<UnaryExpr> {
+        match self {
+            Self::Unary(u) => Some(u),
+            _ => None,
+        }
+    }
+
+    pub fn into_binary(self) -> Option<BinaryExpr> {
+        match self {
+            Self::Binary(b) => Some(b),
+            _ => None,
+        }
+    }
+
+    pub fn into_let(self) -> Option<LetExpr> {
+        match self {
+            Self::Let(l) => Some(l),
+            _ => None,
+        }
+    }
+
+    pub fn into_if(self) -> Option<IfExpr> {
+        match self {
+            Self::If(i) => Some(i),
+            _ => None,
+        }
+    }
+
+    pub fn into_case(self) -> Option<CaseExpr> {
+        match self {
+            Self::Case(c) => Some(c),
+            _ => None,
+        }
+    }
+
+    pub fn into_func(self) -> Option<FuncExpr> {
+        match self {
+            Self::Func(f) => Some(f),
+            _ => None,
+        }
+    }
+
+    pub fn into_call(self) -> Option<CallExpr> {
         match self {
             Self::Call(c) => Some(c),
             _ => None,
@@ -323,92 +606,92 @@ impl<M> Expr<M> {
     }
 }
 
-impl<M> From<Node<Literal, M>> for Expr<M> {
-    fn from(value: Node<Literal, M>) -> Self {
+impl From<LiteralExpr> for Expr {
+    fn from(value: LiteralExpr) -> Self {
         Self::Literal(value)
     }
 }
 
-impl<M> From<Node<Ident, M>> for Expr<M> {
-    fn from(value: Node<Ident, M>) -> Self {
+impl From<IdentExpr> for Expr {
+    fn from(value: IdentExpr) -> Self {
         Self::Ident(value)
     }
 }
 
-impl<M> From<Node<List<M>, M>> for Expr<M> {
-    fn from(value: Node<List<M>, M>) -> Self {
+impl From<ListExpr> for Expr {
+    fn from(value: ListExpr) -> Self {
         Self::List(value)
     }
 }
 
-impl<M> From<Node<Record<M>, M>> for Expr<M> {
-    fn from(value: Node<Record<M>, M>) -> Self {
+impl From<RecordExpr> for Expr {
+    fn from(value: RecordExpr) -> Self {
         Self::Record(value)
     }
 }
 
-impl<M> From<Node<RecordSelect<M>, M>> for Expr<M> {
-    fn from(value: Node<RecordSelect<M>, M>) -> Self {
+impl From<RecordSelectExpr> for Expr {
+    fn from(value: RecordSelectExpr) -> Self {
         Self::RecordSelect(value)
     }
 }
 
-impl<M> From<Node<RecordExtend<M>, M>> for Expr<M> {
-    fn from(value: Node<RecordExtend<M>, M>) -> Self {
+impl From<RecordExtendExpr> for Expr {
+    fn from(value: RecordExtendExpr) -> Self {
         Self::RecordExtend(value)
     }
 }
 
-impl<M> From<Node<RecordRestrict<M>, M>> for Expr<M> {
-    fn from(value: Node<RecordRestrict<M>, M>) -> Self {
+impl From<RecordRestrictExpr> for Expr {
+    fn from(value: RecordRestrictExpr) -> Self {
         Self::RecordRestrict(value)
     }
 }
 
-impl<M> From<Node<RecordUpdate<M>, M>> for Expr<M> {
-    fn from(value: Node<RecordUpdate<M>, M>) -> Self {
+impl From<RecordUpdateExpr> for Expr {
+    fn from(value: RecordUpdateExpr) -> Self {
         Self::RecordUpdate(value)
     }
 }
 
-impl<M> From<Node<UnaryExpr<M>, M>> for Expr<M> {
-    fn from(value: Node<UnaryExpr<M>, M>) -> Self {
+impl From<UnaryExpr> for Expr {
+    fn from(value: UnaryExpr) -> Self {
         Self::Unary(value)
     }
 }
 
-impl<M> From<Node<BinaryExpr<M>, M>> for Expr<M> {
-    fn from(value: Node<BinaryExpr<M>, M>) -> Self {
+impl From<BinaryExpr> for Expr {
+    fn from(value: BinaryExpr) -> Self {
         Self::Binary(value)
     }
 }
 
-impl<M> From<Node<LetExpr<M>, M>> for Expr<M> {
-    fn from(value: Node<LetExpr<M>, M>) -> Self {
+impl From<LetExpr> for Expr {
+    fn from(value: LetExpr) -> Self {
         Self::Let(value)
     }
 }
 
-impl<M> From<Node<IfExpr<M>, M>> for Expr<M> {
-    fn from(value: Node<IfExpr<M>, M>) -> Self {
+impl From<IfExpr> for Expr {
+    fn from(value: IfExpr) -> Self {
         Self::If(value)
     }
 }
 
-impl<M> From<Node<CaseExpr<M>, M>> for Expr<M> {
-    fn from(value: Node<CaseExpr<M>, M>) -> Self {
+impl From<CaseExpr> for Expr {
+    fn from(value: CaseExpr) -> Self {
         Self::Case(value)
     }
 }
 
-impl<M> From<Node<FnExpr<M>, M>> for Expr<M> {
-    fn from(value: Node<FnExpr<M>, M>) -> Self {
-        Self::Fn(value)
+impl From<FuncExpr> for Expr {
+    fn from(value: FuncExpr) -> Self {
+        Self::Func(value)
     }
 }
 
-impl<M> From<Node<CallExpr<M>, M>> for Expr<M> {
-    fn from(value: Node<CallExpr<M>, M>) -> Self {
+impl From<CallExpr> for Expr {
+    fn from(value: CallExpr) -> Self {
         Self::Call(value)
     }
 }

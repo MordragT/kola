@@ -1,30 +1,64 @@
+use std::ops::ControlFlow;
+
 use crate::{
     source::Source,
-    syntax::{ast::*, Spanned},
+    syntax::{ast, visit::VisitMut, Spanned},
 };
 
 use super::{
     error::InferReport,
     types::{MonoType, PolyType, TypeVar},
-    Context, Substitutable, Unify,
+    Constraints, Context, Scopes, Substitutable, Unifier, Unify,
 };
 
-type Result = std::result::Result<MonoType, InferReport>;
+pub struct Inferer {
+    pub unifier: Unifier,
+    pub scopes: Scopes,
+    pub constraints: Constraints,
+}
 
-pub trait Infer {
-    // TODO when do I want to propagate errors ?
-    fn infer_with(&self, ctx: &mut Context) -> Result;
+impl Inferer {
+    pub fn new(source: &Source) -> Self {
+        Self {
+            unifier: Unifier::new(source),
+            scopes: Scopes::new(),
+            constraints: Constraints::new(),
+        }
+    }
 
-    fn infer(&self, source: Source) -> Result {
-        let mut ctx = Context::new(source);
+    pub fn clear(&mut self) {
+        self.unifier.clear();
+        self.scopes.clear();
+        self.constraints.clear();
+    }
 
-        let ty = self
-            .infer_with(&mut ctx)?
-            .apply(&mut ctx.substitution, &mut ctx.cache);
+    pub fn branch<F, T>(&mut self, f: F) -> T
+    where
+        F: FnOnce(&mut Self) -> T,
+    {
+        self.scopes.enter();
+        let result = f(self);
+        self.scopes.exit();
+        result
+    }
 
-        assert!(!ctx.has_errors());
+    pub fn infer(&mut self, expr: &mut ast::Expr) -> Result<(), InferReport> {
+        match self.visit_expr_mut(expr) {
+            ControlFlow::Break(report) => Err(report),
+            ControlFlow::Continue(_) => {
+                assert!(!self.unifier.has_errors());
+                self.unifier.substitution.visit_expr_mut(expr);
+                Ok(())
+            }
+        }
 
-        Ok(ty)
+        // let mut ctx = Context::new(source);
+
+        // let ty = self
+        //     .infer_with(&mut ctx)?
+        //     .apply(&mut ctx.substitution, &mut ctx.cache);
+
+        // Ok(ty)
 
         // match self.infer_with(&mut ctx) {
         //     Ok(ty) => {
@@ -50,6 +84,15 @@ pub trait Infer {
     }
 }
 
+impl VisitMut for Inferer {
+    type BreakValue = InferReport;
+}
+
+pub trait Infer {
+    // TODO when do I want to propagate errors ?
+    fn infer_with(&self, ctx: &mut Context) -> Result;
+}
+
 // Unit rule
 // -----------------------
 // Γ ⊢ () : unit
@@ -69,7 +112,7 @@ impl Infer for Spanned<Literal> {
 // x : σ ∈ Γ   τ = inst(σ)
 // -----------------------
 // Γ ⊢ x : τ
-impl Infer for Spanned<Ident> {
+impl Infer for Spanned<Symbol> {
     fn infer_with(&self, ctx: &mut Context) -> Result {
         let t = ctx
             .scopes

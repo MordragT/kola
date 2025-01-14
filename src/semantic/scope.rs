@@ -1,4 +1,4 @@
-use crate::syntax::ast::Ident;
+use crate::syntax::ast::Symbol;
 
 use super::{
     error::InferError,
@@ -28,15 +28,15 @@ impl Scopes {
         self.scopes.push(Scope::new())
     }
 
-    pub fn get(&self, ident: &Ident) -> Option<&PolyType> {
+    pub fn get(&self, ident: &Symbol) -> Option<&PolyType> {
         self.scopes.iter().rev().find_map(|s| s.get(ident))
     }
 
-    pub fn try_get(&self, ident: &Ident) -> Result<&PolyType, InferError> {
+    pub fn try_get(&self, ident: &Symbol) -> Result<&PolyType, InferError> {
         self.get(ident).ok_or(InferError::Unbound(ident.clone()))
     }
 
-    pub fn insert(&mut self, ident: Ident, ty: PolyType) {
+    pub fn insert(&mut self, ident: Symbol, ty: PolyType) {
         self.scopes
             .last_mut()
             .expect("no active scope")
@@ -73,7 +73,7 @@ impl Scopes {
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Scope {
-    bindings: Vec<(Ident, PolyType)>, // Indexmap ??
+    bindings: Vec<(Symbol, PolyType)>, // Indexmap ??
 }
 
 impl Scope {
@@ -81,13 +81,13 @@ impl Scope {
         Self::default()
     }
 
-    pub fn get(&self, ident: &Ident) -> Option<&PolyType> {
+    pub fn get(&self, ident: &Symbol) -> Option<&PolyType> {
         self.bindings
             .iter()
             .find_map(|(i, t)| if i == ident { Some(t) } else { None })
     }
 
-    pub fn insert(&mut self, ident: Ident, ty: PolyType) {
+    pub fn insert(&mut self, ident: Symbol, ty: PolyType) {
         self.bindings.push((ident, ty));
     }
 }

@@ -1,7 +1,7 @@
 use std::fmt;
 
 use crate::semantic::{
-    error::InferError, merge, Cache, Constraints, Context, Kind, Substitutable, Substitution, Unify,
+    error::InferError, merge, Constraints, Kind, Substitutable, Substitution, Unifier, Unify,
 };
 
 use super::{MonoType, TypeVar, Typed};
@@ -25,10 +25,10 @@ impl fmt::Display for FunctionType {
 }
 
 impl Unify<&Self> for FunctionType {
-    fn unify(&self, with: &Self, ctx: &mut Context) {
+    fn unify(&self, with: &Self, ctx: &mut Unifier) {
         self.arg.unify(&with.arg, ctx);
-        let l = self.ret.apply_cow(&mut ctx.substitution, &mut ctx.cache);
-        let r = with.ret.apply_cow(&mut ctx.substitution, &mut ctx.cache);
+        let l = self.ret.apply_cow(&mut ctx.substitution);
+        let r = with.ret.apply_cow(&mut ctx.substitution);
         l.unify(&r, ctx);
     }
 }
@@ -52,9 +52,9 @@ impl Typed for FunctionType {
 }
 
 impl Substitutable for FunctionType {
-    fn try_apply(&self, s: &mut Substitution, cache: &mut Cache) -> Option<Self> {
-        let arg = self.arg.try_apply(s, cache);
-        let ret = self.ret.try_apply(s, cache);
+    fn try_apply(&self, s: &mut Substitution) -> Option<Self> {
+        let arg = self.arg.try_apply(s);
+        let ret = self.ret.try_apply(s);
 
         merge(arg, || self.arg.clone(), ret, || self.ret.clone())
             .map(|(arg, ret)| FunctionType { arg, ret })

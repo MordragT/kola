@@ -1,6 +1,4 @@
-use std::collections::HashMap;
-
-use crate::semantic::Substitutable;
+use crate::semantic::{Substitutable, Substitution};
 
 use super::{MonoType, TypeVar};
 
@@ -36,14 +34,15 @@ impl PolyType {
     pub fn instantiate(&self) -> MonoType {
         let mut ty = self.ty.clone();
 
-        let mut substitution = self
+        let table = self
             .vars
             .iter()
             .copied()
             .map(|tv| (tv, MonoType::variable()))
             .collect();
+        let mut substitution = Substitution::new(table);
 
-        ty.apply_mut(&mut substitution, &mut HashMap::new());
+        ty.apply_mut(&mut substitution);
 
         ty
     }

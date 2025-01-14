@@ -2,10 +2,9 @@ use std::fmt;
 
 use crate::{
     semantic::{
-        error::InferError, merge, Cache, Constraints, Context, Kind, Substitutable,
-        Substitution, Unify,
+        error::InferError, merge, Constraints, Kind, Substitutable, Substitution, Unifier, Unify,
     },
-    syntax::ast::Ident,
+    syntax::ast::Symbol,
 };
 
 use super::{MonoType, TypeVar, Typed};
@@ -13,7 +12,7 @@ use super::{MonoType, TypeVar, Typed};
 /// A key-value pair representing a property type in a record.
 #[derive(Debug, Clone, Eq, PartialEq, Hash)]
 pub struct Property {
-    pub k: Ident,
+    pub k: Symbol,
     pub v: MonoType,
 }
 
@@ -24,8 +23,8 @@ impl fmt::Display for Property {
 }
 
 impl Substitutable for Property {
-    fn try_apply(&self, s: &mut Substitution, cache: &mut Cache) -> Option<Self> {
-        self.v.try_apply(s, cache).map(|v| Property {
+    fn try_apply(&self, s: &mut Substitution) -> Option<Self> {
+        self.v.try_apply(s).map(|v| Property {
             k: self.k.clone(),
             v,
         })
@@ -97,7 +96,7 @@ impl Unify<&Self> for RecordType {
     // they must have the same property name otherwise they cannot unify.
     //
     // self represents the expected type.
-    fn unify(&self, with: &Self, ctx: &mut Context) {
+    fn unify(&self, with: &Self, ctx: &mut Unifier) {
         match (self, with) {
             (Self::Empty, Self::Empty) => (),
             (
@@ -222,12 +221,12 @@ impl Typed for RecordType {
 }
 
 impl Substitutable for RecordType {
-    fn try_apply(&self, s: &mut Substitution, cache: &mut Cache) -> Option<Self> {
+    fn try_apply(&self, s: &mut Substitution) -> Option<Self> {
         match self {
             Self::Empty => None,
             Self::Extension { head, tail } => {
-                let h = head.try_apply(s, cache);
-                let t = tail.try_apply(s, cache);
+                let h = head.try_apply(s);
+                let t = tail.try_apply(s);
 
                 merge(h, || head.clone(), t, || tail.clone())
                     .map(|(head, tail)| Self::Extension { head, tail })

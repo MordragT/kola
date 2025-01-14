@@ -53,7 +53,7 @@ impl fmt::Display for Op {
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Token<'src> {
-    Ident(&'src str),
+    Symbol(&'src str),
     Op(Op),
     Open(Delimiter),
     Close(Delimiter),
@@ -88,7 +88,7 @@ pub enum Token<'src> {
 impl<'src> fmt::Display for Token<'src> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Ident(s) => write!(f, "{s}"),
+            Self::Symbol(s) => write!(f, "{s}"),
             Self::Op(op) => write!(f, "{op}"),
             Self::Open(Delimiter::Paren) => write!(f, "("),
             Self::Open(Delimiter::Bracket) => write!(f, "["),

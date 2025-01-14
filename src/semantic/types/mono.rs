@@ -1,11 +1,7 @@
 use std::fmt;
 
-use crate::{
-    semantic::{
-        error::{InferError, InferReport},
-        Cache, Constraints, Context, Kind, Substitutable, Substitution, Unify,
-    },
-    syntax::Span,
+use crate::semantic::{
+    error::InferError, Constraints, Kind, Substitutable, Substitution, Unifier, Unify,
 };
 
 use super::{BuiltinType, FunctionType, PolyType, RecordType, TypeVar, Typed};
@@ -113,18 +109,18 @@ impl MonoType {
 }
 
 impl Substitutable for MonoType {
-    fn try_apply(&self, s: &mut Substitution, cache: &mut Cache) -> Option<Self> {
+    fn try_apply(&self, s: &mut Substitution) -> Option<Self> {
         match self {
             Self::Builtin(_) => None,
-            Self::Func(f) => f.try_apply(s, cache).map(Into::into),
-            Self::Record(r) => r.try_apply(s, cache).map(Into::into),
-            Self::Var(tv) => tv.try_apply(s, cache),
+            Self::Func(f) => f.try_apply(s).map(Into::into),
+            Self::Record(r) => r.try_apply(s).map(Into::into),
+            Self::Var(tv) => tv.try_apply(s),
         }
     }
 }
 
 impl Unify<&Self> for MonoType {
-    fn unify(&self, with: &Self, ctx: &mut Context) {
+    fn unify(&self, with: &Self, ctx: &mut Unifier) {
         // dbg!(&ctx);
 
         // dbg!(&self);
