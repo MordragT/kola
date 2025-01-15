@@ -6,15 +6,19 @@ use super::{error::SemanticError, types::*, Substitutable, Substitution};
 /// Unify algorithm in J performs mutation, in W it does not.
 /// Builds up constraints (Substitutions) within the context so that lhs and rhs unify.
 /// Most general unifier, builds up a substitution S such that S(lhs) is congruent to S(rhs).
-pub trait Unifiable<Rhs = Self>: UnifyWith<Rhs> {
+pub trait Unifiable<Rhs = Self> {
     /// Performs unification on the type with another type.
     /// If successful, results in a solution to the unification problem,
     /// in the form of a substitution. If there is no solution to the
     /// unification problem then unification fails and an error is reported.
-    fn try_unify(&self, rhs: &Rhs, s: &mut Substitution) -> Result<(), Errors<SemanticError>> {
+    fn try_unify(&self, rhs: &Rhs, s: &mut Substitution) -> Result<(), Errors<SemanticError>>;
+}
+
+impl Unifiable for BuiltinType {
+    fn try_unify(&self, rhs: &Self, s: &mut Substitution) -> Result<(), Errors<SemanticError>> {
         let mut unifier = Unifier::new(s);
-        self.unify_with(rhs, &mut unifier);
-        if !unifier.errors.is_empty() {
+        unifier.unify_builtin(self, rhs);
+        if unifier.errors.has_errors() {
             Err(unifier.errors)
         } else {
             Ok(())
@@ -22,46 +26,63 @@ pub trait Unifiable<Rhs = Self>: UnifyWith<Rhs> {
     }
 }
 
-impl<Rhs, Lhs: UnifyWith<Rhs>> Unifiable<Rhs> for Lhs {}
-
-// Dispatch unification to the unifier
-trait UnifyWith<Rhs = Self> {
-    fn unify_with(&self, rhs: &Rhs, unifier: &mut Unifier);
-}
-
-impl UnifyWith for BuiltinType {
-    fn unify_with(&self, rhs: &Self, unifier: &mut Unifier) {
-        unifier.unify_builtin(self, rhs);
-    }
-}
-
-impl UnifyWith for FuncType {
-    fn unify_with(&self, rhs: &Self, unifier: &mut Unifier) {
+impl Unifiable for FuncType {
+    fn try_unify(&self, rhs: &Self, s: &mut Substitution) -> Result<(), Errors<SemanticError>> {
+        let mut unifier = Unifier::new(s);
         unifier.unify_func(self, rhs);
+        if unifier.errors.has_errors() {
+            Err(unifier.errors)
+        } else {
+            Ok(())
+        }
     }
 }
 
-impl UnifyWith for MonoType {
-    fn unify_with(&self, rhs: &Self, unifier: &mut Unifier) {
+impl Unifiable for MonoType {
+    fn try_unify(&self, rhs: &Self, s: &mut Substitution) -> Result<(), Errors<SemanticError>> {
+        let mut unifier = Unifier::new(s);
         unifier.unify_mono(self, rhs);
+        if unifier.errors.has_errors() {
+            Err(unifier.errors)
+        } else {
+            Ok(())
+        }
     }
 }
 
-impl UnifyWith for RecordType {
-    fn unify_with(&self, rhs: &Self, unifier: &mut Unifier) {
+impl Unifiable for RecordType {
+    fn try_unify(&self, rhs: &Self, s: &mut Substitution) -> Result<(), Errors<SemanticError>> {
+        let mut unifier = Unifier::new(s);
         unifier.unify_record(self, rhs);
+        if unifier.errors.has_errors() {
+            Err(unifier.errors)
+        } else {
+            Ok(())
+        }
     }
 }
 
-impl UnifyWith for TypeVar {
-    fn unify_with(&self, rhs: &Self, unifier: &mut Unifier) {
+impl Unifiable for TypeVar {
+    fn try_unify(&self, rhs: &Self, s: &mut Substitution) -> Result<(), Errors<SemanticError>> {
+        let mut unifier = Unifier::new(s);
         unifier.unify_var(self, rhs);
+        if unifier.errors.has_errors() {
+            Err(unifier.errors)
+        } else {
+            Ok(())
+        }
     }
 }
 
-impl UnifyWith<MonoType> for TypeVar {
-    fn unify_with(&self, rhs: &MonoType, unifier: &mut Unifier) {
+impl Unifiable<MonoType> for TypeVar {
+    fn try_unify(&self, rhs: &MonoType, s: &mut Substitution) -> Result<(), Errors<SemanticError>> {
+        let mut unifier = Unifier::new(s);
         unifier.bind_var(self, rhs);
+        if unifier.errors.has_errors() {
+            Err(unifier.errors)
+        } else {
+            Ok(())
+        }
     }
 }
 

@@ -36,6 +36,10 @@ impl<T> Errors<T> {
         Self { errors }
     }
 
+    pub fn into_vec(self) -> Vec<T> {
+        self.errors
+    }
+
     /// The number of errors in the error list
     pub fn len(&self) -> usize {
         self.errors.len()

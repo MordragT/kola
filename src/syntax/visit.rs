@@ -79,6 +79,262 @@ impl Visitable for ast::IdentExpr {
     }
 }
 
+impl Visitable for ast::LiteralExpr {
+    fn visit_by<V>(&self, visitor: &mut V) -> ControlFlow<V::BreakValue>
+    where
+        V: Visitor,
+    {
+        visitor.visit_literal(self)
+    }
+
+    fn visit_mut_by<V>(&mut self, visitor: &mut V) -> ControlFlow<V::BreakValue>
+    where
+        V: VisitorMut,
+    {
+        visitor.visit_literal_mut(self)
+    }
+}
+
+impl Visitable for ast::ListExpr {
+    fn visit_by<V>(&self, visitor: &mut V) -> ControlFlow<V::BreakValue>
+    where
+        V: Visitor,
+    {
+        visitor.visit_list(self)
+    }
+
+    fn visit_mut_by<V>(&mut self, visitor: &mut V) -> ControlFlow<V::BreakValue>
+    where
+        V: VisitorMut,
+    {
+        visitor.visit_list_mut(self)
+    }
+}
+
+impl Visitable for ast::Property {
+    fn visit_by<V>(&self, visitor: &mut V) -> ControlFlow<V::BreakValue>
+    where
+        V: Visitor,
+    {
+        visitor.visit_property(self)
+    }
+
+    fn visit_mut_by<V>(&mut self, visitor: &mut V) -> ControlFlow<V::BreakValue>
+    where
+        V: VisitorMut,
+    {
+        visitor.visit_property_mut(self)
+    }
+}
+
+impl Visitable for ast::RecordExpr {
+    fn visit_by<V>(&self, visitor: &mut V) -> ControlFlow<V::BreakValue>
+    where
+        V: Visitor,
+    {
+        visitor.visit_record(self)
+    }
+
+    fn visit_mut_by<V>(&mut self, visitor: &mut V) -> ControlFlow<V::BreakValue>
+    where
+        V: VisitorMut,
+    {
+        visitor.visit_record_mut(self)
+    }
+}
+
+impl Visitable for ast::RecordSelectExpr {
+    fn visit_by<V>(&self, visitor: &mut V) -> ControlFlow<V::BreakValue>
+    where
+        V: Visitor,
+    {
+        visitor.visit_record_select(self)
+    }
+
+    fn visit_mut_by<V>(&mut self, visitor: &mut V) -> ControlFlow<V::BreakValue>
+    where
+        V: VisitorMut,
+    {
+        visitor.visit_record_select_mut(self)
+    }
+}
+
+impl Visitable for ast::RecordExtendExpr {
+    fn visit_by<V>(&self, visitor: &mut V) -> ControlFlow<V::BreakValue>
+    where
+        V: Visitor,
+    {
+        visitor.visit_record_extend(self)
+    }
+
+    fn visit_mut_by<V>(&mut self, visitor: &mut V) -> ControlFlow<V::BreakValue>
+    where
+        V: VisitorMut,
+    {
+        visitor.visit_record_extend_mut(self)
+    }
+}
+
+impl Visitable for ast::RecordRestrictExpr {
+    fn visit_by<V>(&self, visitor: &mut V) -> ControlFlow<V::BreakValue>
+    where
+        V: Visitor,
+    {
+        visitor.visit_record_restrict(self)
+    }
+
+    fn visit_mut_by<V>(&mut self, visitor: &mut V) -> ControlFlow<V::BreakValue>
+    where
+        V: VisitorMut,
+    {
+        visitor.visit_record_restrict_mut(self)
+    }
+}
+
+impl Visitable for ast::RecordUpdateExpr {
+    fn visit_by<V>(&self, visitor: &mut V) -> ControlFlow<V::BreakValue>
+    where
+        V: Visitor,
+    {
+        visitor.visit_record_update(self)
+    }
+
+    fn visit_mut_by<V>(&mut self, visitor: &mut V) -> ControlFlow<V::BreakValue>
+    where
+        V: VisitorMut,
+    {
+        visitor.visit_record_update_mut(self)
+    }
+}
+
+impl Visitable for ast::UnaryOp {
+    fn visit_by<V>(&self, visitor: &mut V) -> ControlFlow<V::BreakValue>
+    where
+        V: Visitor,
+    {
+        visitor.visit_unary_op(self)
+    }
+
+    fn visit_mut_by<V>(&mut self, visitor: &mut V) -> ControlFlow<V::BreakValue>
+    where
+        V: VisitorMut,
+    {
+        visitor.visit_unary_op_mut(self)
+    }
+}
+
+impl Visitable for ast::UnaryExpr {
+    fn visit_by<V>(&self, visitor: &mut V) -> ControlFlow<V::BreakValue>
+    where
+        V: Visitor,
+    {
+        visitor.visit_unary(self)
+    }
+
+    fn visit_mut_by<V>(&mut self, visitor: &mut V) -> ControlFlow<V::BreakValue>
+    where
+        V: VisitorMut,
+    {
+        visitor.visit_unary_mut(self)
+    }
+}
+
+impl Visitable for ast::BinaryOp {
+    fn visit_by<V>(&self, visitor: &mut V) -> ControlFlow<V::BreakValue>
+    where
+        V: Visitor,
+    {
+        visitor.visit_binary_op(self)
+    }
+
+    fn visit_mut_by<V>(&mut self, visitor: &mut V) -> ControlFlow<V::BreakValue>
+    where
+        V: VisitorMut,
+    {
+        visitor.visit_binary_op_mut(self)
+    }
+}
+
+impl Visitable for ast::BinaryExpr {
+    fn visit_by<V>(&self, visitor: &mut V) -> ControlFlow<V::BreakValue>
+    where
+        V: Visitor,
+    {
+        visitor.visit_binary(self)
+    }
+
+    fn visit_mut_by<V>(&mut self, visitor: &mut V) -> ControlFlow<V::BreakValue>
+    where
+        V: VisitorMut,
+    {
+        visitor.visit_binary_mut(self)
+    }
+}
+
+impl Visitable for ast::LetExpr {
+    fn visit_by<V>(&self, visitor: &mut V) -> ControlFlow<V::BreakValue>
+    where
+        V: Visitor,
+    {
+        visitor.visit_let(self)
+    }
+
+    fn visit_mut_by<V>(&mut self, visitor: &mut V) -> ControlFlow<V::BreakValue>
+    where
+        V: VisitorMut,
+    {
+        visitor.visit_let_mut(self)
+    }
+}
+
+impl Visitable for ast::IfExpr {
+    fn visit_by<V>(&self, visitor: &mut V) -> ControlFlow<V::BreakValue>
+    where
+        V: Visitor,
+    {
+        visitor.visit_if(self)
+    }
+
+    fn visit_mut_by<V>(&mut self, visitor: &mut V) -> ControlFlow<V::BreakValue>
+    where
+        V: VisitorMut,
+    {
+        visitor.visit_if_mut(self)
+    }
+}
+
+impl Visitable for ast::CaseExpr {
+    fn visit_by<V>(&self, visitor: &mut V) -> ControlFlow<V::BreakValue>
+    where
+        V: Visitor,
+    {
+        visitor.visit_case(self)
+    }
+
+    fn visit_mut_by<V>(&mut self, visitor: &mut V) -> ControlFlow<V::BreakValue>
+    where
+        V: VisitorMut,
+    {
+        visitor.visit_case_mut(self)
+    }
+}
+
+impl Visitable for ast::CallExpr {
+    fn visit_by<V>(&self, visitor: &mut V) -> ControlFlow<V::BreakValue>
+    where
+        V: Visitor,
+    {
+        visitor.visit_call(self)
+    }
+
+    fn visit_mut_by<V>(&mut self, visitor: &mut V) -> ControlFlow<V::BreakValue>
+    where
+        V: VisitorMut,
+    {
+        visitor.visit_call_mut(self)
+    }
+}
+
 // TODO more Visitable implementations
 
 impl Visitable for ast::Expr {

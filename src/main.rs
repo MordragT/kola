@@ -1,5 +1,5 @@
 use kola::{
-    semantic::Inferer,
+    semantic::{error::SemanticReport, Inferable, Substitution},
     source::Source,
     syntax::{try_parse, try_tokenize},
 };
@@ -47,8 +47,10 @@ fn main() -> miette::Result<()> {
 
             println!("{ast:?}");
 
-            let mut inferer = Inferer::new(&source);
-            inferer.infer(&mut ast)?;
+            let mut s = Substitution::empty();
+            ast.infer(&mut s).map_err(|(errors, span)| {
+                SemanticReport::new(errors.into_vec(), span, source.named_source())
+            })?;
 
             println!("{ast:?}");
         }
