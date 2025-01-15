@@ -41,15 +41,6 @@ impl<T> Node<T> {
     pub fn ty_mut(&mut self) -> &mut MonoType {
         &mut self.ty
     }
-
-    // pub fn map<F, U>(self, f: F) -> Node<T, U>
-    // where
-    //     F: FnOnce(M) -> U,
-    // {
-    //     let Node { inner, meta } = self;
-    //     let meta = f(meta);
-    //     Node { inner, meta }
-    // }
 }
 
 impl<T> Deref for Node<T> {

@@ -6,19 +6,19 @@ use thiserror::Error;
 
 use super::Source;
 
-pub type SyntaxResult<T> = Result<T, SyntaxErrors>;
+pub type SyntaxResult<T> = Result<T, SyntaxReport>;
 
 #[derive(Error, Debug, Diagnostic)]
 #[error("Parsing failed with the following errors:")]
 #[diagnostic()]
-pub struct SyntaxErrors {
+pub struct SyntaxReport {
     #[source_code]
     pub src: NamedSource<Arc<str>>,
     #[related]
     pub related: Vec<SyntaxError>,
 }
 
-impl SyntaxErrors {
+impl SyntaxReport {
     pub fn from_rich<T>(src: &Source, errs: Vec<Rich<'_, T>>) -> Self
     where
         T: Display,

@@ -1,6 +1,6 @@
 use crate::semantic::{Substitutable, Substitution};
 
-use super::{MonoType, TypeVar};
+use super::{MonoType, TypeVar, Typed};
 
 /// Polytype
 /// Types that contains variable bound by zero or more forall
@@ -24,10 +24,10 @@ impl PolyType {
         &self.vars
     }
 
-    // pub fn free_type_vars(&self, buf: &mut Vec<TypeVar>) {
-    //     self.ty.type_vars(buf);
-    //     buf.retain(|tv| !self.vars.contains(tv));
-    // }
+    pub fn free_vars(&self, buf: &mut Vec<TypeVar>) {
+        self.ty.extend_type_vars(buf);
+        buf.retain(|tv| !self.vars.contains(tv));
+    }
 
     /// The procedure inst(σ) specializes the polytype σ by copying the term
     /// and replacing the bound type variables consistently by new monotype variables.

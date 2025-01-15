@@ -1,5 +1,5 @@
 use chumsky::{input::Input, span::SimpleSpan, Parser};
-use error::{SyntaxErrors, SyntaxResult};
+use error::{SyntaxReport, SyntaxResult};
 
 use crate::source::Source;
 
@@ -20,7 +20,7 @@ pub fn try_tokenize(src: &Source) -> SyntaxResult<Vec<Spanned<token::Token<'_>>>
     lexer
         .parse(input)
         .into_result()
-        .map_err(|errs| SyntaxErrors::from_rich(src, errs))
+        .map_err(|errs| SyntaxReport::from_rich(src, errs))
 }
 
 pub fn try_parse(src: &Source, tokens: Vec<Spanned<token::Token<'_>>>) -> SyntaxResult<ast::Expr> {
@@ -29,5 +29,5 @@ pub fn try_parse(src: &Source, tokens: Vec<Spanned<token::Token<'_>>>) -> Syntax
     parser
         .parse(input)
         .into_result()
-        .map_err(|errs| SyntaxErrors::from_rich(src, errs))
+        .map_err(|errs| SyntaxReport::from_rich(src, errs))
 }

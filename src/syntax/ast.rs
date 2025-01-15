@@ -6,6 +6,7 @@ use super::{node::Node, Span};
 
 pub type Symbol = EcoString;
 
+// TODO Label more descriptive ?
 #[derive(Clone, Debug, PartialEq, Eq, Hash)]
 pub struct Name {
     pub name: Symbol,

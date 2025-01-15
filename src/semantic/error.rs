@@ -11,7 +11,7 @@ use super::{
 };
 
 #[derive(Debug, Clone, Error, Diagnostic, PartialEq, Eq)]
-pub enum InferError {
+pub enum SemanticError {
     #[error("Unbound: {0}")]
     Unbound(Symbol),
     #[error("Occurs: {0}")]
@@ -26,7 +26,7 @@ pub enum InferError {
         label: Symbol,
         expected: MonoType,
         actual: MonoType,
-        cause: Vec<InferError>,
+        cause: Vec<SemanticError>,
     },
     #[error("Cannot Constrain: {expected:?} {actual}")]
     CannotConstrain { expected: Kind, actual: MonoType },
@@ -36,25 +36,25 @@ pub enum InferError {
     MissingLabel(Symbol),
 }
 
-impl InferError {
-    pub fn with(self, span: Span, source: NamedSource<Arc<str>>) -> InferReport {
-        InferReport::new(vec![self], span, source)
+impl SemanticError {
+    pub fn with(self, span: Span, source: NamedSource<Arc<str>>) -> SemanticReport {
+        SemanticReport::new(vec![self], span, source)
     }
 }
 
 #[derive(Debug, Clone, Error, Diagnostic, PartialEq, Eq)]
 #[error("Inference failed with:")]
-pub struct InferReport {
+pub struct SemanticReport {
     #[source_code]
     pub src: NamedSource<Arc<str>>,
     #[label("This here")]
     pub span: SourceSpan,
     #[related]
-    pub related: Vec<InferError>,
+    pub related: Vec<SemanticError>,
 }
 
-impl InferReport {
-    pub fn new(related: Vec<InferError>, span: Span, source: NamedSource<Arc<str>>) -> Self {
+impl SemanticReport {
+    pub fn new(related: Vec<SemanticError>, span: Span, source: NamedSource<Arc<str>>) -> Self {
         Self {
             span: SourceSpan::from(span.into_range()),
             related,

@@ -1,6 +1,6 @@
 use std::{borrow::Cow, collections::HashMap, ops::ControlFlow};
 
-use crate::syntax::visit::{VisitMut, Visitable};
+use crate::syntax::visit::{Visitable, VisitorMut};
 
 use super::types::{MonoType, TypeVar};
 
@@ -67,7 +67,7 @@ impl Substitution {
     }
 }
 
-impl VisitMut for Substitution {
+impl VisitorMut for Substitution {
     type BreakValue = !;
 
     fn visit_ty_mut(&mut self, ty: &mut MonoType) -> ControlFlow<Self::BreakValue> {

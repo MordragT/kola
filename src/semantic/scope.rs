@@ -1,7 +1,7 @@
 use crate::syntax::ast::Symbol;
 
 use super::{
-    error::InferError,
+    error::SemanticError,
     types::{PolyType, TypeVar},
 };
 
@@ -32,8 +32,8 @@ impl Scopes {
         self.scopes.iter().rev().find_map(|s| s.get(ident))
     }
 
-    pub fn try_get(&self, ident: &Symbol) -> Result<&PolyType, InferError> {
-        self.get(ident).ok_or(InferError::Unbound(ident.clone()))
+    pub fn try_get(&self, ident: &Symbol) -> Result<&PolyType, SemanticError> {
+        self.get(ident).ok_or(SemanticError::Unbound(ident.clone()))
     }
 
     pub fn insert(&mut self, ident: Symbol, ty: PolyType) {

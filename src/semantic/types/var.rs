@@ -3,11 +3,9 @@ use std::{
     sync::atomic::{AtomicU32, Ordering},
 };
 
-use crate::semantic::{
-    error::InferError, Constraints, Substitutable, Substitution, Unifier, Unify,
-};
+use crate::semantic::{Substitutable, Substitution};
 
-use super::{Kind, MonoType, Typed};
+use super::{MonoType, Typed};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct TypeVar {
@@ -69,47 +67,4 @@ impl TypeVar {
     }
 }
 
-impl Typed for TypeVar {
-    fn constrain(&self, with: Kind, constraints: &mut Constraints) -> Result<(), InferError> {
-        constraints
-            .entry(*self)
-            .and_modify(|constraint| constraint.push(with))
-            .or_insert_with(|| vec![with]);
-        Ok(())
-    }
-
-    fn contains(&self, tv: TypeVar) -> bool {
-        *self == tv
-    }
-
-    fn type_vars(&self, vars: &mut Vec<TypeVar>) {
-        vars.push(*self)
-    }
-}
-
-impl Unify<&Self> for TypeVar {
-    fn unify(&self, with: &Self, ctx: &mut Unifier) {
-        if self != with {
-            // ctx.error(InferError::CannotUnify {
-            //     expected: self.into(),
-            //     actual: with.into(),
-            // })
-
-            // in former apply path compression via cache is already implemented
-            // so this should not become essentially an inefficient linked list
-            ctx.substitution.insert(*self, MonoType::Var(*with));
-        }
-    }
-}
-
-impl Unify<&MonoType> for TypeVar {
-    fn unify(&self, with: &MonoType, ctx: &mut Unifier) {
-        if let MonoType::Var(with) = with {
-            self.unify(with, ctx);
-        } else if with.contains(*self) {
-            ctx.error(InferError::Occurs(*self));
-        } else {
-            ctx.substitution.insert(*self, with.clone());
-        }
-    }
-}
+impl Typed for TypeVar {}

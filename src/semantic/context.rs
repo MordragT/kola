@@ -5,16 +5,16 @@ use miette::NamedSource;
 use crate::{source::Source, syntax::Span};
 
 use super::{
-    error::{InferError, InferReport},
+    error::{SemanticError, SemanticReport},
     Constraints, Scopes, Substitution,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Context {
-    pub scopes: Scopes,
     pub substitution: Substitution,
+    pub scopes: Scopes,
     pub constraints: Constraints,
-    pub errors: Vec<InferError>,
+    pub errors: Vec<SemanticError>,
     pub source: Source,
 }
 
@@ -40,14 +40,14 @@ impl Context {
         self.source.named_source()
     }
 
-    pub fn error(&mut self, err: InferError) {
+    pub fn error(&mut self, err: SemanticError) {
         self.errors.push(err)
     }
 
-    pub fn report_with(&mut self, span: Span) -> InferReport {
+    pub fn report_with(&mut self, span: Span) -> SemanticReport {
         let related = std::mem::take(&mut self.errors);
 
-        InferReport::new(related, span, self.named_source())
+        SemanticReport::new(related, span, self.named_source())
     }
 
     pub fn has_errors(&self) -> bool {
@@ -57,7 +57,7 @@ impl Context {
     pub fn branch_errors<F, T, E>(&mut self, f: F, context: E) -> T
     where
         F: FnOnce(&mut Self) -> T,
-        E: FnOnce(Vec<InferError>) -> InferError,
+        E: FnOnce(Vec<SemanticError>) -> SemanticError,
     {
         let former = std::mem::take(&mut self.errors);
         let result = f(self);
