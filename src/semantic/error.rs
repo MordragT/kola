@@ -1,14 +1,18 @@
-use std::sync::Arc;
-
-use miette::{Diagnostic, NamedSource, SourceSpan};
+use miette::{Diagnostic, SourceSpan};
 use thiserror::Error;
 
-use crate::syntax::{ast::Symbol, Span};
+use crate::{
+    errors::Errors,
+    source::Source,
+    syntax::{ast::Symbol, Span},
+};
 
 use super::{
     types::{MonoType, TypeVar},
     Kind,
 };
+
+pub type SemanticErrors = Errors<SemanticError>;
 
 #[derive(Debug, Clone, Error, Diagnostic, PartialEq, Eq)]
 pub enum SemanticError {
@@ -37,8 +41,9 @@ pub enum SemanticError {
 }
 
 impl SemanticError {
-    pub fn with(self, span: Span, source: NamedSource<Arc<str>>) -> SemanticReport {
-        SemanticReport::new(vec![self], span, source)
+    pub fn with(self, span: Span, source: Source) -> SemanticReport {
+        let related = Errors::from(vec![self]);
+        SemanticReport::new(source, span, related)
     }
 }
 
@@ -46,19 +51,19 @@ impl SemanticError {
 #[error("Inference failed with:")]
 pub struct SemanticReport {
     #[source_code]
-    pub src: NamedSource<Arc<str>>,
+    pub src: Source,
     #[label("This here")]
     pub span: SourceSpan,
     #[related]
-    pub related: Vec<SemanticError>,
+    pub related: SemanticErrors,
 }
 
 impl SemanticReport {
-    pub fn new(related: Vec<SemanticError>, span: Span, source: NamedSource<Arc<str>>) -> Self {
+    pub fn new(source: Source, span: Span, related: SemanticErrors) -> Self {
         Self {
+            src: source,
             span: SourceSpan::from(span.into_range()),
             related,
-            src: source,
         }
     }
 }

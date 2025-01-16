@@ -36,10 +36,6 @@ impl<T> Errors<T> {
         Self { errors }
     }
 
-    pub fn into_vec(self) -> Vec<T> {
-        self.errors
-    }
-
     /// The number of errors in the error list
     pub fn len(&self) -> usize {
         self.errors.len()
@@ -57,6 +53,10 @@ impl<T> Errors<T> {
     /// Pops and error off the error list
     pub fn pop(&mut self) -> Option<T> {
         self.errors.pop()
+    }
+
+    pub fn append(&mut self, other: &mut Self) {
+        self.errors.append(&mut other.errors);
     }
 
     pub fn iter(&self) -> slice::Iter<T> {

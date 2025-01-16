@@ -3,14 +3,14 @@
 //! https://github.com/nwoeanhinnogaehr/algorithmw-rust/
 
 pub use constrain::*;
-pub use context::*;
+// pub use context::*;
 pub use infer::*;
 pub use scope::*;
 pub use substitute::*;
 pub use unify::*;
 
 mod constrain;
-mod context;
+// mod context;
 pub mod error;
 mod infer;
 mod scope;

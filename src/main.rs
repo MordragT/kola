@@ -1,7 +1,7 @@
 use kola::{
     semantic::{error::SemanticReport, Inferable, Substitution},
     source::Source,
-    syntax::{try_parse, try_tokenize},
+    syntax::{ast, error::SyntaxReport, parse, tokenize, ParseResult, TokenizeResult},
 };
 use miette::IntoDiagnostic;
 use std::{fs, path::PathBuf};
@@ -24,37 +24,50 @@ fn main() -> miette::Result<()> {
 
     match cli.command {
         Cmd::Parse { path } => {
-            let path = path.canonicalize().into_diagnostic()?;
-            let name = path.file_name().unwrap().to_string_lossy();
+            let source = Source::from_path(path).into_diagnostic()?;
 
-            let source = fs::read_to_string(&path).into_diagnostic()?;
-            let source = Source::new(name, source);
-
-            let tokens = try_tokenize(&source)?;
-            let ast = try_parse(&source, tokens)?;
+            let ast = try_parse(source)?;
 
             println!("{ast:?}")
         }
         Cmd::Analyze { path } => {
-            let path = path.canonicalize().into_diagnostic()?;
-            let name = path.file_name().unwrap().to_string_lossy();
+            let source = Source::from_path(path).into_diagnostic()?;
 
-            let source = fs::read_to_string(&path).into_diagnostic()?;
-            let source = Source::new(name, source);
-
-            let tokens = try_tokenize(&source)?;
-            let mut ast = try_parse(&source, tokens)?;
+            let mut ast = try_parse(source.clone())?;
 
             println!("{ast:?}");
 
             let mut s = Substitution::empty();
-            ast.infer(&mut s).map_err(|(errors, span)| {
-                SemanticReport::new(errors.into_vec(), span, source.named_source())
-            })?;
+            ast.infer(&mut s)
+                .map_err(|(errors, span)| SemanticReport::new(source, span, errors))?;
 
             println!("{ast:?}");
         }
     }
 
     Ok(())
+}
+
+fn try_parse(source: Source) -> Result<ast::Expr, SyntaxReport> {
+    let TokenizeResult { tokens, mut errors } = tokenize(source.as_str());
+
+    let ast = tokens.and_then(|tokens| {
+        println!("{tokens:?}");
+        let ParseResult {
+            ast,
+            errors: mut parse_errors,
+        } = parse(tokens, source.end_of_input());
+
+        errors.append(&mut parse_errors);
+        ast
+    });
+
+    if errors.has_errors() {
+        if let Some(ast) = ast {
+            println!("{ast:?}")
+        }
+        Err(SyntaxReport::new(source, errors))
+    } else {
+        Ok(ast.unwrap())
+    }
 }
