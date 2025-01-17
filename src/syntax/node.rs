@@ -1,13 +1,9 @@
-use std::{
-    fmt,
-    ops::{Deref, DerefMut},
-};
-
 use serde::{Deserialize, Serialize};
+use std::ops::{Deref, DerefMut};
 
 use crate::{semantic::types::MonoType, syntax::Span};
 
-use super::print::{JoinIn, NotateIn, Printable};
+use super::print::prelude::*;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Node<T> {
@@ -86,7 +82,7 @@ impl<T> Printable for Node<T>
 where
     T: Printable,
 {
-    fn notate<'a>(&'a self, arena: &'a super::print::Arena<'a>) -> super::print::Notation<'a> {
+    fn notate<'a>(&'a self, arena: &'a Bump) -> super::print::Notation<'a> {
         let Self { inner, span, ty } = self;
 
         let head = span.notate_in(arena).then(arena.notate(":"), arena);
@@ -106,7 +102,7 @@ where
             arena.break_line(),
             inner,
             arena.break_line(),
-            arena.notate(":"),
+            arena.notate(": "),
             ty,
         ]
         .join_in(arena)

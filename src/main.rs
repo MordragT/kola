@@ -2,7 +2,11 @@ use kola::{
     semantic::{error::SemanticReport, Inferable, Substitution},
     source::Source,
     syntax::{
-        ast, error::SyntaxReport, parse, print::Printable, tokenize, ParseResult, TokenizeResult,
+        ast,
+        error::SyntaxReport,
+        parse,
+        print::{PrintOptions, Printable},
+        tokenize, ParseResult, TokenizeResult,
     },
 };
 use miette::IntoDiagnostic;
@@ -25,38 +29,31 @@ pub enum Cmd {
 fn main() -> miette::Result<()> {
     let cli: Cli = clap::Parser::parse();
 
+    let options = PrintOptions::default();
+
     match cli.command {
         Cmd::Parse { path } => {
             let source = Source::from_path(path).into_diagnostic()?;
 
             let ast = try_parse(source)?;
 
-            println!(
-                "{}{}",
-                "Abstract Syntax Tree".bold().bright_white(),
-                ast.render()
-            );
+            println!("{}", "Abstract Syntax Tree".bold().bright_white());
+            println!("{}", ast.render(options));
         }
         Cmd::Analyze { path } => {
             let source = Source::from_path(path).into_diagnostic()?;
 
             let mut ast = try_parse(source.clone())?;
 
-            println!(
-                "{}{}",
-                "Abstract Syntax Tree".bold().bright_white(),
-                ast.render()
-            );
+            println!("{}", "Untyped Abstract Syntax Tree".bold().bright_white());
+            println!("{}\n", ast.render(options));
 
             let mut s = Substitution::empty();
             ast.infer(&mut s)
                 .map_err(|(errors, span)| SemanticReport::new(source, span, errors))?;
 
-            println!(
-                "{}{}",
-                "Abstract Syntax Tree".bold().bright_white(),
-                ast.render()
-            );
+            println!("{}", "Typed Abstract Syntax Tree".bold().bright_white());
+            println!("{}\n", ast.render(options));
         }
     }
 
@@ -64,10 +61,13 @@ fn main() -> miette::Result<()> {
 }
 
 fn try_parse(source: Source) -> Result<ast::Expr, SyntaxReport> {
+    let options = PrintOptions::default();
+
     let TokenizeResult { tokens, mut errors } = tokenize(source.as_str());
 
     let ast = tokens.and_then(|tokens| {
-        println!("{}{}", "Tokens".bold().bright_white(), tokens.render());
+        println!("{}", "Tokens".bold().bright_white());
+        println!("{}", tokens.render(options));
 
         let ParseResult {
             ast,
@@ -80,11 +80,8 @@ fn try_parse(source: Source) -> Result<ast::Expr, SyntaxReport> {
 
     if errors.has_errors() {
         if let Some(ast) = ast {
-            println!(
-                "{}{}",
-                "Abstract Syntax Tree".bold().bright_white(),
-                ast.render()
-            );
+            println!("{}", "Abstract Syntax Tree".bold().bright_white());
+            println!("{}", ast.render(options));
         }
         Err(SyntaxReport::new(source, errors))
     } else {

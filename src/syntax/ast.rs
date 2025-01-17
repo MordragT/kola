@@ -6,11 +6,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::semantic::types::MonoType;
 
-use super::{
-    node::Node,
-    print::{Arena, JoinIn, NotateIn, Notation, OrNot, Printable},
-    Span,
-};
+use super::{node::Node, print::prelude::*, Span};
 
 pub type Symbol = EcoString;
 
@@ -22,7 +18,7 @@ pub struct Name {
 }
 
 impl Printable for Name {
-    fn notate<'a>(&'a self, arena: &'a Arena<'a>) -> Notation<'a> {
+    fn notate<'a>(&'a self, arena: &'a Bump) -> Notation<'a> {
         let Self { name, span } = self;
 
         let head = span.notate(arena).then(arena.notate(":"), arena);
@@ -57,7 +53,7 @@ pub enum Literal {
 }
 
 impl Printable for Literal {
-    fn notate<'a>(&'a self, arena: &'a Arena<'a>) -> Notation<'a> {
+    fn notate<'a>(&'a self, arena: &'a Bump) -> Notation<'a> {
         let kind = format_args!("{}", "Literal".purple()).notate_in(arena);
 
         let lit = match self {
@@ -82,10 +78,10 @@ pub struct List {
 }
 
 impl Printable for List {
-    fn notate<'a>(&'a self, arena: &'a Arena<'a>) -> Notation<'a> {
+    fn notate<'a>(&'a self, arena: &'a Bump) -> Notation<'a> {
         let kind = arena.notate_with("List", Style::new().blue());
 
-        let values = arena.process(&self.values);
+        let values = self.values.transform_in(arena);
 
         let single = values
             .iter()
@@ -113,7 +109,7 @@ pub struct Property {
 }
 
 impl Printable for Property {
-    fn notate<'a>(&'a self, arena: &'a Arena<'a>) -> Notation<'a> {
+    fn notate<'a>(&'a self, arena: &'a Bump) -> Notation<'a> {
         let Self { key, value, span } = self;
 
         let head = span.notate_in(arena).then(arena.notate(":"), arena);
@@ -162,10 +158,10 @@ pub struct Record {
 }
 
 impl Printable for Record {
-    fn notate<'a>(&'a self, arena: &'a Arena<'a>) -> Notation<'a> {
+    fn notate<'a>(&'a self, arena: &'a Bump) -> Notation<'a> {
         let head = format_args!("{}", "Record".blue()).notate_in(arena);
 
-        let fields = arena.process(&self.fields);
+        let fields = self.fields.transform_in(arena);
 
         let single = fields
             .iter()
@@ -198,7 +194,7 @@ pub struct RecordSelect {
 }
 
 impl Printable for RecordSelect {
-    fn notate<'a>(&'a self, arena: &'a Arena<'a>) -> Notation<'a> {
+    fn notate<'a>(&'a self, arena: &'a Bump) -> Notation<'a> {
         let Self { source, field } = self;
 
         let head = format_args!("{}", "RecordSelect".blue()).notate_in(arena);
@@ -243,7 +239,7 @@ pub struct RecordExtend {
 }
 
 impl Printable for RecordExtend {
-    fn notate<'a>(&'a self, arena: &'a Arena<'a>) -> Notation<'a> {
+    fn notate<'a>(&'a self, arena: &'a Bump) -> Notation<'a> {
         let Self {
             source,
             field,
@@ -294,7 +290,7 @@ pub struct RecordRestrict {
 }
 
 impl Printable for RecordRestrict {
-    fn notate<'a>(&'a self, arena: &'a Arena<'a>) -> Notation<'a> {
+    fn notate<'a>(&'a self, arena: &'a Bump) -> Notation<'a> {
         let Self { source, field } = self;
 
         let head = format_args!("{}", "RecordRestrict".blue()).notate_in(arena);
@@ -336,7 +332,7 @@ pub struct RecordUpdate {
 }
 
 impl Printable for RecordUpdate {
-    fn notate<'a>(&'a self, arena: &'a Arena<'a>) -> Notation<'a> {
+    fn notate<'a>(&'a self, arena: &'a Bump) -> Notation<'a> {
         let Self {
             source,
             field,
@@ -395,7 +391,7 @@ impl fmt::Display for UnaryOpKind {
 }
 
 impl Printable for UnaryOpKind {
-    fn notate<'a>(&'a self, arena: &'a Arena<'a>) -> Notation<'a> {
+    fn notate<'a>(&'a self, arena: &'a Bump) -> Notation<'a> {
         self.notate_in(arena)
     }
 }
@@ -409,7 +405,7 @@ pub struct Unary {
 }
 
 impl Printable for Unary {
-    fn notate<'a>(&'a self, arena: &'a Arena<'a>) -> Notation<'a> {
+    fn notate<'a>(&'a self, arena: &'a Bump) -> Notation<'a> {
         let Self { op, target } = self;
 
         let head = format_args!("{}", "Unary".blue()).notate_in(arena);
@@ -472,7 +468,7 @@ impl fmt::Display for BinaryOpKind {
 }
 
 impl Printable for BinaryOpKind {
-    fn notate<'a>(&'a self, arena: &'a Arena<'a>) -> Notation<'a> {
+    fn notate<'a>(&'a self, arena: &'a Bump) -> Notation<'a> {
         self.notate_in(arena)
     }
 }
@@ -487,7 +483,7 @@ pub struct Binary {
 }
 
 impl Printable for Binary {
-    fn notate<'a>(&'a self, arena: &'a Arena<'a>) -> Notation<'a> {
+    fn notate<'a>(&'a self, arena: &'a Bump) -> Notation<'a> {
         let Self { op, left, right } = self;
 
         let head = format_args!("{}", "Binary".blue()).notate_in(arena);
@@ -523,7 +519,7 @@ pub struct Let {
 }
 
 impl Printable for Let {
-    fn notate<'a>(&'a self, arena: &'a Arena<'a>) -> Notation<'a> {
+    fn notate<'a>(&'a self, arena: &'a Bump) -> Notation<'a> {
         let Self {
             name,
             value,
@@ -574,7 +570,7 @@ pub struct If {
 }
 
 impl Printable for If {
-    fn notate<'a>(&'a self, arena: &'a Arena<'a>) -> Notation<'a> {
+    fn notate<'a>(&'a self, arena: &'a Bump) -> Notation<'a> {
         let Self {
             predicate,
             then,
@@ -623,7 +619,7 @@ pub struct PatError {
 }
 
 impl Printable for PatError {
-    fn notate<'a>(&'a self, arena: &'a Arena<'a>) -> Notation<'a> {
+    fn notate<'a>(&'a self, arena: &'a Bump) -> Notation<'a> {
         let Self { span } = self;
 
         let head = span.notate_in(arena).then(arena.notate(":"), arena);
@@ -643,7 +639,7 @@ pub struct Wildcard {
 }
 
 impl Printable for Wildcard {
-    fn notate<'a>(&'a self, arena: &'a Arena<'a>) -> Notation<'a> {
+    fn notate<'a>(&'a self, arena: &'a Bump) -> Notation<'a> {
         let Self { span, ty } = self;
 
         let head = span.notate_in(arena).then(arena.notate(":"), arena);
@@ -694,7 +690,7 @@ pub struct PropertyPat {
 }
 
 impl Printable for PropertyPat {
-    fn notate<'a>(&'a self, arena: &'a Arena<'a>) -> Notation<'a> {
+    fn notate<'a>(&'a self, arena: &'a Bump) -> Notation<'a> {
         let Self { key, value, span } = self;
 
         let head = span.notate_in(arena).then(arena.notate(":"), arena);
@@ -744,10 +740,10 @@ pub struct RecordPatRepr {
 }
 
 impl Printable for RecordPatRepr {
-    fn notate<'a>(&'a self, arena: &'a Arena<'a>) -> Notation<'a> {
+    fn notate<'a>(&'a self, arena: &'a Bump) -> Notation<'a> {
         let head = format_args!("{}", "RecordPat".blue()).notate_in(arena);
 
-        let fields = arena.process(&self.fields);
+        let fields = self.fields.transform_in(arena);
 
         let single = fields
             .iter()
@@ -782,7 +778,7 @@ pub enum Pat {
 }
 
 impl Printable for Pat {
-    fn notate<'a>(&'a self, arena: &'a Arena<'a>) -> Notation<'a> {
+    fn notate<'a>(&'a self, arena: &'a Bump) -> Notation<'a> {
         match self {
             Self::Error(e) => e.notate(arena),
             Self::Wildcard(w) => w.notate(arena),
@@ -939,7 +935,7 @@ pub struct Branch {
 }
 
 impl Printable for Branch {
-    fn notate<'a>(&'a self, arena: &'a Arena<'a>) -> Notation<'a> {
+    fn notate<'a>(&'a self, arena: &'a Bump) -> Notation<'a> {
         let Self { pat, matches, span } = self;
 
         let head = span.notate_in(arena).then(arena.notate(":"), arena);
@@ -982,13 +978,13 @@ pub struct Case {
 }
 
 impl Printable for Case {
-    fn notate<'a>(&'a self, arena: &'a Arena<'a>) -> Notation<'a> {
+    fn notate<'a>(&'a self, arena: &'a Bump) -> Notation<'a> {
         let Self { source, branches } = self;
 
         let head = format_args!("{}", "Case".blue()).notate_in(arena);
 
         let source = source.notate_in(arena);
-        let branches = arena.process(branches);
+        let branches = branches.transform_in(arena);
 
         let single = [
             arena.notate(" source = "),
@@ -1022,7 +1018,7 @@ pub struct Func {
 }
 
 impl Printable for Func {
-    fn notate<'a>(&'a self, arena: &'a Arena<'a>) -> Notation<'a> {
+    fn notate<'a>(&'a self, arena: &'a Bump) -> Notation<'a> {
         let Self { param, body } = self;
 
         let head = format_args!("{}", "Func".blue()).notate_in(arena);
@@ -1062,7 +1058,7 @@ pub struct Call {
 }
 
 impl Printable for Call {
-    fn notate<'a>(&'a self, arena: &'a Arena<'a>) -> Notation<'a> {
+    fn notate<'a>(&'a self, arena: &'a Bump) -> Notation<'a> {
         let Self { func, arg } = self;
 
         let head = format_args!("{}", "Call".blue()).notate_in(arena);
@@ -1101,7 +1097,7 @@ pub struct ExprError {
 }
 
 impl Printable for ExprError {
-    fn notate<'a>(&'a self, arena: &'a Arena<'a>) -> Notation<'a> {
+    fn notate<'a>(&'a self, arena: &'a Bump) -> Notation<'a> {
         let Self { span } = self;
 
         let head = span.notate_in(arena).then(arena.notate(":"), arena);
@@ -1135,7 +1131,7 @@ pub enum Expr {
 }
 
 impl Printable for Expr {
-    fn notate<'a>(&'a self, arena: &'a Arena<'a>) -> Notation<'a> {
+    fn notate<'a>(&'a self, arena: &'a Bump) -> Notation<'a> {
         match self {
             Self::Error(e) => e.notate(arena),
             Self::Literal(l) => l.notate(arena),
