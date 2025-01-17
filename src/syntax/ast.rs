@@ -21,10 +21,10 @@ impl Printable for Name {
     fn notate<'a>(&'a self, arena: &'a Bump) -> Notation<'a> {
         let Self { name, span } = self;
 
-        let head = span.notate(arena).then(arena.notate(":"), arena);
+        let head = span.notate(arena);
 
-        let kind = format_args!("{}", "Name".yellow()).notate_in(arena);
-        let name = format_args!("\"{}\"", name).notate_in(arena);
+        let kind = format_args!("{}", "Name".cyan()).notate_in(arena);
+        let name = format_args!("\"{}\"", name.yellow()).notate_in(arena);
 
         let single = [
             arena.notate(" "),
@@ -57,10 +57,10 @@ impl Printable for Literal {
         let kind = format_args!("{}", "Literal".purple()).notate_in(arena);
 
         let lit = match self {
-            Self::Bool(b) => format_args!("\"{b}\"").notate_in(arena),
-            Self::Num(n) => format_args!("\"{n}\"").notate_in(arena),
-            Self::Char(c) => format_args!("\"{c}\"").notate_in(arena),
-            Self::Str(s) => format_args!("\"{s}\"").notate_in(arena),
+            Self::Bool(b) => format_args!("\"{}\"", b.yellow()).notate_in(arena),
+            Self::Num(n) => format_args!("\"{}\"", n.yellow()).notate_in(arena),
+            Self::Char(c) => format_args!("\"{}\"", c.yellow()).notate_in(arena),
+            Self::Str(s) => format_args!("\"{}\"", s.yellow()).notate_in(arena),
         };
 
         let single = arena.notate(" ").then(lit.clone(), arena);
@@ -112,7 +112,7 @@ impl Printable for Property {
     fn notate<'a>(&'a self, arena: &'a Bump) -> Notation<'a> {
         let Self { key, value, span } = self;
 
-        let head = span.notate_in(arena).then(arena.notate(":"), arena);
+        let head = span.notate_in(arena);
 
         let kind = format_args!("{}", "Property".blue()).notate_in(arena);
         let key = key.notate(arena);
@@ -622,7 +622,7 @@ impl Printable for PatError {
     fn notate<'a>(&'a self, arena: &'a Bump) -> Notation<'a> {
         let Self { span } = self;
 
-        let head = span.notate_in(arena).then(arena.notate(":"), arena);
+        let head = span.notate_in(arena);
         let kind = format_args!("{}", "PatError".red()).notate_in(arena);
 
         let single = arena.notate(" ").then(kind.clone(), arena);
@@ -642,15 +642,15 @@ impl Printable for Wildcard {
     fn notate<'a>(&'a self, arena: &'a Bump) -> Notation<'a> {
         let Self { span, ty } = self;
 
-        let head = span.notate_in(arena).then(arena.notate(":"), arena);
+        let head = span.notate_in(arena);
 
         let kind = format_args!("{}", "Wildcard".blue()).notate_in(arena);
-        let ty = ty.notate_in(arena);
+        let ty = ty.notate_with_in(Style::new().green(), arena);
 
         let single = [
             arena.notate(" "),
             kind.clone(),
-            arena.notate(": "),
+            arena.notate(" : "),
             ty.clone().flatten(arena),
         ]
         .join_in(arena);
@@ -659,7 +659,7 @@ impl Printable for Wildcard {
             arena.break_line(),
             kind,
             arena.break_line(),
-            arena.notate(":"),
+            arena.notate(": "),
             ty,
         ]
         .join_in(arena)
@@ -693,7 +693,7 @@ impl Printable for PropertyPat {
     fn notate<'a>(&'a self, arena: &'a Bump) -> Notation<'a> {
         let Self { key, value, span } = self;
 
-        let head = span.notate_in(arena).then(arena.notate(":"), arena);
+        let head = span.notate_in(arena);
 
         let kind = format_args!("{}", "PropertyPat".blue()).notate_in(arena);
         let key = key.notate(arena);
@@ -938,7 +938,7 @@ impl Printable for Branch {
     fn notate<'a>(&'a self, arena: &'a Bump) -> Notation<'a> {
         let Self { pat, matches, span } = self;
 
-        let head = span.notate_in(arena).then(arena.notate(":"), arena);
+        let head = span.notate_in(arena);
 
         let kind = format_args!("{}", "Branch".blue()).notate_in(arena);
         let pat = pat.notate(arena);
@@ -1100,7 +1100,7 @@ impl Printable for ExprError {
     fn notate<'a>(&'a self, arena: &'a Bump) -> Notation<'a> {
         let Self { span } = self;
 
-        let head = span.notate_in(arena).then(arena.notate(":"), arena);
+        let head = span.notate_in(arena);
         let kind = format_args!("{}", "ExprError".red()).notate_in(arena);
 
         let single = arena.notate(" ").then(kind.clone(), arena);

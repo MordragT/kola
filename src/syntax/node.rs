@@ -1,3 +1,4 @@
+use owo_colors::Style;
 use serde::{Deserialize, Serialize};
 use std::ops::{Deref, DerefMut};
 
@@ -85,15 +86,15 @@ where
     fn notate<'a>(&'a self, arena: &'a Bump) -> super::print::Notation<'a> {
         let Self { inner, span, ty } = self;
 
-        let head = span.notate_in(arena).then(arena.notate(":"), arena);
+        let head = span.notate_in(arena);
 
         let inner = inner.notate(arena);
-        let ty = ty.notate_in(arena);
+        let ty = ty.notate_with_in(Style::new().green(), arena);
 
         let single = [
             arena.notate(" "),
             inner.clone().flatten(arena),
-            arena.notate(": "),
+            arena.notate(" : "),
             ty.clone().flatten(arena),
         ]
         .join_in(arena);

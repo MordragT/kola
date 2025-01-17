@@ -1,4 +1,4 @@
-use std::{fs, io, path::Path, sync::Arc};
+use std::{fmt, fs, io, path::Path, sync::Arc};
 
 use miette::SourceCode;
 
@@ -66,5 +66,11 @@ impl SourceCode for Source {
         );
 
         Ok(Box::new(contents))
+    }
+}
+
+impl fmt::Display for Source {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.write_str(&self.source)
     }
 }

@@ -18,10 +18,6 @@ use super::{
 pub trait Printable {
     fn notate<'a>(&'a self, arena: &'a Bump) -> Notation<'a>;
 
-    fn notate_flat<'a>(&'a self, arena: &'a Bump) -> Notation<'a> {
-        self.notate(arena).flatten(arena)
-    }
-
     fn render(&self, options: PrintOptions) -> std::string::String {
         let arena = Bump::new();
 

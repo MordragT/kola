@@ -2,6 +2,7 @@ use bumpalo::{
     collections::{String, Vec},
     Bump,
 };
+use owo_colors::{OwoColorize, Style};
 use std::fmt::{self, Write};
 
 pub use notation::{Arena, Notation};
@@ -80,26 +81,15 @@ pub trait NotateIn {
         s.write_fmt(format_args!("{self}")).unwrap();
         arena.notate(s.into_bump_str())
     }
+
+    fn notate_with_in<'a>(&self, style: Style, arena: &'a Bump) -> Notation<'a>
+    where
+        Self: fmt::Display,
+    {
+        let mut s = String::new_in(arena);
+        s.write_fmt(format_args!("{}", self.style(style))).unwrap();
+        arena.notate(s.into_bump_str())
+    }
 }
 
 impl<T> NotateIn for T where T: fmt::Display {}
-
-// /// Concatenate a vector of printable items into a single notation.
-// pub fn join_into<T, I>(&'a self, items: I) -> Notation<'a>
-// where
-//     I: IntoIterator<Item = &'a T> + 'a,
-//     T: Printable + 'a,
-// {
-//     self.join_slice(self.process(items))
-// }
-
-// pub fn process<T, I>(&'a self, items: I) -> &'a [Notation<'a>]
-// where
-//     I: IntoIterator<Item = &'a T> + 'a,
-//     T: Printable + 'a,
-// {
-//     let mut buf = Vec::new_in(self.0);
-//     buf.extend(items.into_iter().map(|item| item.notate(self)));
-
-//     buf.into_bump_slice()
-// }

@@ -11,7 +11,7 @@ use kola::{
 };
 use miette::IntoDiagnostic;
 use owo_colors::OwoColorize;
-use std::{fs, path::PathBuf};
+use std::path::PathBuf;
 
 #[derive(Debug, clap::Parser)]
 #[command(author, version, about, long_about = None)]
@@ -35,6 +35,9 @@ fn main() -> miette::Result<()> {
         Cmd::Parse { path } => {
             let source = Source::from_path(path).into_diagnostic()?;
 
+            println!("{}", "Source".bold().bright_white());
+            println!("{source}\n");
+
             let ast = try_parse(source)?;
 
             println!("{}", "Abstract Syntax Tree".bold().bright_white());
@@ -42,6 +45,9 @@ fn main() -> miette::Result<()> {
         }
         Cmd::Analyze { path } => {
             let source = Source::from_path(path).into_diagnostic()?;
+
+            println!("{}", "Source".bold().bright_white());
+            println!("{source}\n");
 
             let mut ast = try_parse(source.clone())?;
 
@@ -80,7 +86,7 @@ fn try_parse(source: Source) -> Result<ast::Expr, SyntaxReport> {
 
     if errors.has_errors() {
         if let Some(ast) = ast {
-            println!("{}", "Abstract Syntax Tree".bold().bright_white());
+            println!("{}", "Erroneous Abstract Syntax Tree".bold().bright_white());
             println!("{}", ast.render(options));
         }
         Err(SyntaxReport::new(source, errors))
