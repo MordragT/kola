@@ -22,10 +22,10 @@ pub trait Printable {
         let arena = Bump::new();
 
         let notation = self.notate(&arena);
-        let mut printer = Printer::new(&notation, 100, &arena);
+        let mut printer = Printer::new(&notation, options, &arena);
 
         let mut output = std::string::String::new();
-        printer.print(options, &mut output, &arena).unwrap();
+        printer.print(&mut output, &arena).unwrap();
 
         return output;
     }

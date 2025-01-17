@@ -8,11 +8,16 @@ use super::notation::{Notation, NotationRepr};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct PrintOptions {
     pub indentation: &'static str,
+    /// Maximum line width that we'll try to stay within
+    pub width: u32,
 }
 
 impl Default for PrintOptions {
     fn default() -> Self {
-        Self { indentation: "  " }
+        Self {
+            indentation: "  ",
+            width: 100,
+        }
     }
 }
 
@@ -23,6 +28,11 @@ impl PrintOptions {
 
     pub fn with_indentation(mut self, indentation: &'static str) -> Self {
         self.indentation = indentation;
+        self
+    }
+
+    pub fn with_width(mut self, width: u32) -> Self {
+        self.width = width;
         self
     }
 }
@@ -64,8 +74,7 @@ impl<'a> Chunk<'a> {
 }
 
 pub struct Printer<'a> {
-    /// Maximum line width that we'll try to stay within
-    width: u32,
+    options: PrintOptions,
     /// Current column position
     pos: u32,
     /// A stack of chunks to print. The _top_ of the stack is the
@@ -75,24 +84,19 @@ pub struct Printer<'a> {
 }
 
 impl<'a> Printer<'a> {
-    pub fn new(notation: &'a Notation<'a>, width: u32, arena: &'a Bump) -> Self {
+    pub fn new(notation: &'a Notation<'a>, options: PrintOptions, arena: &'a Bump) -> Self {
         let chunk = Chunk::new(notation);
         let mut chunks = Vec::new_in(arena);
         chunks.push(chunk);
 
         Self {
-            width,
+            options,
             pos: 0,
             chunks,
         }
     }
 
-    pub fn print(
-        &mut self,
-        options: PrintOptions,
-        output: &mut impl fmt::Write,
-        arena: &'a Bump,
-    ) -> fmt::Result {
+    pub fn print(&mut self, output: &mut impl fmt::Write, arena: &'a Bump) -> fmt::Result {
         use NotationRepr::*;
 
         while let Some(chunk) = self.chunks.pop() {
@@ -101,7 +105,7 @@ impl<'a> Printer<'a> {
                 Linebreak => {
                     output.write_char('\n')?;
                     for _ in 0..chunk.indent {
-                        output.write_str(&options.indentation)?;
+                        output.write_str(&self.options.indentation)?;
                     }
                     self.pos = chunk.indent;
                 }
@@ -140,7 +144,7 @@ impl<'a> Printer<'a> {
         let mut stack = bumpalo::vec![in arena; chunk];
         let mut spilled = &self.chunks as &[_];
 
-        let mut rem = match self.width.checked_sub(self.pos) {
+        let mut rem = match self.options.width.checked_sub(self.pos) {
             Some(r) => r,
             None => return false,
         };

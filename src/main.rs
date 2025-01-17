@@ -29,7 +29,7 @@ pub enum Cmd {
 fn main() -> miette::Result<()> {
     let cli: Cli = clap::Parser::parse();
 
-    let options = PrintOptions::default();
+    let options = PrintOptions::default().with_width(80);
 
     match cli.command {
         Cmd::Parse { path } => {
