@@ -1,5 +1,7 @@
 use std::fmt;
 
+use serde::{Deserialize, Serialize};
+
 use crate::{
     semantic::{merge, Substitutable, Substitution},
     syntax::ast::Symbol,
@@ -8,7 +10,7 @@ use crate::{
 use super::{MonoType, Typed};
 
 /// A key-value pair representing a property type in a record.
-#[derive(Debug, Clone, Eq, PartialEq, Hash)]
+#[derive(Debug, Clone, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub struct Property {
     pub k: Symbol,
     pub v: MonoType,
@@ -49,7 +51,7 @@ derive that:
 /// A record may extend what is referred to as a *record
 /// variable*. A record variable is a type variable that
 /// represents an unknown record type.
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum RecordType {
     /// A record that has no properties.
     Empty,

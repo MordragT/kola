@@ -3,11 +3,13 @@ use std::{
     sync::atomic::{AtomicU32, Ordering},
 };
 
+use serde::{Deserialize, Serialize};
+
 use crate::semantic::{Substitutable, Substitution};
 
 use super::{MonoType, Typed};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct TypeVar {
     id: u32,
     level: u32,

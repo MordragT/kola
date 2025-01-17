@@ -11,8 +11,7 @@ use super::Source;
 pub type SyntaxErrors = Errors<SyntaxError>;
 
 #[derive(Error, Debug, Diagnostic)]
-#[error("Parsing failed with the following errors:")]
-#[diagnostic()]
+#[error("Reporting Syntax Errors:")]
 pub struct SyntaxReport {
     #[source_code]
     pub src: Source,
@@ -40,10 +39,10 @@ impl SyntaxReport {
 }
 
 #[derive(Error, Debug, Diagnostic)]
-#[error("{msg}")]
-#[diagnostic(code(tyd_syntax::parser), url(docsrs), help("Please read the Book"))]
+#[diagnostic(code(syntax), url(docsrs), help("Please read the Book"))]
+#[error("{reason}")]
 pub struct SyntaxError {
-    pub msg: String,
+    pub reason: String,
     #[label("This here")]
     pub span: SourceSpan,
     #[label(collection, "Related to this")]
@@ -56,7 +55,7 @@ where
 {
     fn from(e: Rich<'src, T>) -> Self {
         let span = SourceSpan::from(e.span().into_range());
-        let msg = e.to_string();
+        let reason = e.to_string();
         let trace = e
             .contexts()
             .map(|(label, span)| {
@@ -64,6 +63,10 @@ where
             })
             .collect();
 
-        Self { span, msg, trace }
+        Self {
+            span,
+            reason,
+            trace,
+        }
     }
 }

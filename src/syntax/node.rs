@@ -1,8 +1,15 @@
-use std::ops::{Deref, DerefMut};
+use std::{
+    fmt,
+    ops::{Deref, DerefMut},
+};
+
+use serde::{Deserialize, Serialize};
 
 use crate::{semantic::types::MonoType, syntax::Span};
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+use super::print::{JoinIn, NotateIn, Printable};
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Node<T> {
     inner: Box<T>,
     pub span: Span,
@@ -75,26 +82,36 @@ where
     }
 }
 
-// impl<T, M> Substitutable for Node<T, M>
-// where
-//     T: Clone,
-//     M: Substitutable,
-// {
-//     fn apply(mut self, s: &mut Substitution, cache: &mut Cache) -> Self {
-//         self.meta = self.meta.apply(s, cache);
-//         self
-//     }
+impl<T> Printable for Node<T>
+where
+    T: Printable,
+{
+    fn notate<'a>(&'a self, arena: &'a super::print::Arena<'a>) -> super::print::Notation<'a> {
+        let Self { inner, span, ty } = self;
 
-//     fn apply_mut(&mut self, s: &mut Substitution, cache: &mut Cache) {
-//         self.meta.apply_mut(s, cache);
-//     }
+        let head = span.notate_in(arena).then(arena.notate(":"), arena);
 
-//     // TODO visit child nodes
+        let inner = inner.notate(arena);
+        let ty = ty.notate_in(arena);
 
-//     fn try_apply(&self, s: &mut Substitution, cache: &mut Cache) -> Option<Self> {
-//         self.meta.try_apply(s, cache).map(|meta| Self {
-//             meta,
-//             inner: self.inner.clone(),
-//         })
-//     }
-// }
+        let single = [
+            arena.notate(" "),
+            inner.clone().flatten(arena),
+            arena.notate(": "),
+            ty.clone().flatten(arena),
+        ]
+        .join_in(arena);
+
+        let multi = [
+            arena.break_line(),
+            inner,
+            arena.break_line(),
+            arena.notate(":"),
+            ty,
+        ]
+        .join_in(arena)
+        .indent(arena);
+
+        head.then(single.or(multi, arena), arena)
+    }
+}

@@ -1,3 +1,5 @@
+use serde::{Deserialize, Serialize};
+
 use crate::semantic::{Substitutable, Substitution};
 
 use super::{MonoType, TypeVar, Typed};
@@ -6,7 +8,7 @@ use super::{MonoType, TypeVar, Typed};
 /// Types that contains variable bound by zero or more forall
 /// Polymorphic types (e.g. `∀α. α → α`, `∀α. ∀β. α → β`)
 /// https://en.wikipedia.org/wiki/Hindley%e2%80%93Milner_type_system#Polytypes
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct PolyType {
     pub(super) vars: Vec<TypeVar>,
     pub(super) ty: MonoType,

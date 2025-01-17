@@ -1,5 +1,6 @@
 use chumsky::{input::Input, span::SimpleSpan, Parser};
 use error::{SyntaxError, SyntaxErrors};
+use token::Tokens;
 
 use crate::source::Source;
 
@@ -8,13 +9,12 @@ pub mod error;
 pub mod lexer;
 pub mod node;
 pub mod parser;
+pub mod print;
 pub mod token;
 pub mod visit;
 
 pub type Span = SimpleSpan<usize>;
 pub type Spanned<T> = (T, Span);
-
-pub type Tokens<'a> = Vec<Spanned<token::Token<'a>>>;
 
 pub struct TokenizeResult<'a> {
     pub tokens: Option<Tokens<'a>>,

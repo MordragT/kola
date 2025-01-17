@@ -155,7 +155,10 @@ pub fn expr_parser<'tokens, 'src: 'tokens>(
     recursive(|expr| {
         let name = name_parser();
         let ident = ident_parser();
-        let literal = literal_parser().to_expr();
+        let literal = literal_parser()
+            .to_expr()
+            .labelled("LiteralExpr")
+            .as_context();
 
         let list = nested_parser(
             expr.clone()
@@ -166,7 +169,9 @@ pub fn expr_parser<'tokens, 'src: 'tokens>(
                 .to_expr_node(),
             Delimiter::Bracket,
             |span| ast::Expr::Error(ast::ExprError { span }),
-        );
+        )
+        .labelled("ListExpr")
+        .as_context();
 
         // record operations
 
@@ -246,7 +251,9 @@ pub fn expr_parser<'tokens, 'src: 'tokens>(
 
         let record_expr = nested_parser(record_op.or(instantiate), Delimiter::Brace, |span| {
             ast::Expr::Error(ast::ExprError { span })
-        });
+        })
+        .labelled("RecordExpr")
+        .as_context();
 
         let let_ = just(Token::Let)
             .ignore_then(name.clone())
@@ -260,6 +267,8 @@ pub fn expr_parser<'tokens, 'src: 'tokens>(
                 inside,
             })
             .to_expr_node()
+            .labelled("LetExpr")
+            .as_context()
             .boxed();
 
         let if_ = just(Token::If)
@@ -274,6 +283,8 @@ pub fn expr_parser<'tokens, 'src: 'tokens>(
                 or,
             })
             .to_expr_node()
+            .labelled("IfExpr")
+            .as_context()
             .boxed();
 
         let branch = pat_parser()
@@ -295,6 +306,8 @@ pub fn expr_parser<'tokens, 'src: 'tokens>(
             .then(branches)
             .map(|(source, branches)| ast::Case { source, branches })
             .to_expr_node()
+            .labelled("CaseExpr")
+            .as_context()
             .boxed();
 
         let func = just(Token::Backslash)
@@ -303,6 +316,8 @@ pub fn expr_parser<'tokens, 'src: 'tokens>(
             .then(expr.clone())
             .map(|(param, body)| ast::Func { param, body })
             .to_expr_node()
+            .labelled("FuncExpr")
+            .as_context()
             .boxed();
 
         let call = nested_parser(
@@ -314,10 +329,12 @@ pub fn expr_parser<'tokens, 'src: 'tokens>(
             Delimiter::Paren,
             |span| ast::Expr::Error(ast::ExprError { span }),
         )
+        .labelled("CallExpr")
+        .as_context()
         .boxed();
 
         let atom = choice((
-            ident.clone().to_expr(),
+            ident.clone().to_expr().labelled("IdentExpr").as_context(),
             literal,
             list,
             record_expr,

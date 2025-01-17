@@ -1,5 +1,32 @@
 use std::fmt;
 
+use owo_colors::OwoColorize;
+
+use super::Spanned;
+
+pub type Tokens<'a> = Vec<Spanned<Token<'a>>>;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum TokenKind {
+    Symbol,
+    Operator,
+    Literal,
+    Keyword,
+    Control,
+}
+
+impl fmt::Display for TokenKind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Symbol => write!(f, "{}", "Symbol".yellow()),
+            Self::Operator => write!(f, "{}", "Operator".green()),
+            Self::Literal => write!(f, "{}", "Literal".purple()),
+            Self::Keyword => write!(f, "{}", "Keyword".red()),
+            Self::Control => write!(f, "{}", "Control".blue()),
+        }
+    }
+}
+
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
 pub enum Delimiter {
     Paren,
@@ -55,8 +82,6 @@ impl fmt::Display for Op {
 pub enum Token<'src> {
     Symbol(&'src str),
     Op(Op),
-    Open(Delimiter),
-    Close(Delimiter),
     // Literals
     Num(f64),
     Bool(bool),
@@ -73,6 +98,8 @@ pub enum Token<'src> {
     Import,
     Export,
     // Control
+    Open(Delimiter),
+    Close(Delimiter),
     Dot,
     Colon,
     Comma,
@@ -90,12 +117,6 @@ impl<'src> fmt::Display for Token<'src> {
         match self {
             Self::Symbol(s) => write!(f, "{s}"),
             Self::Op(op) => write!(f, "{op}"),
-            Self::Open(Delimiter::Paren) => write!(f, "("),
-            Self::Open(Delimiter::Bracket) => write!(f, "["),
-            Self::Open(Delimiter::Brace) => write!(f, "{{"),
-            Self::Close(Delimiter::Paren) => write!(f, ")"),
-            Self::Close(Delimiter::Bracket) => write!(f, "]"),
-            Self::Close(Delimiter::Brace) => write!(f, "}}"),
             Self::Num(n) => write!(f, "{n}"),
             Self::Bool(b) => write!(f, "{b}"),
             Self::Char(c) => write!(f, "{c}"),
@@ -109,6 +130,12 @@ impl<'src> fmt::Display for Token<'src> {
             Self::Of => write!(f, "of"),
             Self::Import => write!(f, "import"),
             Self::Export => write!(f, "export"),
+            Self::Open(Delimiter::Paren) => write!(f, "("),
+            Self::Open(Delimiter::Bracket) => write!(f, "["),
+            Self::Open(Delimiter::Brace) => write!(f, "{{"),
+            Self::Close(Delimiter::Paren) => write!(f, ")"),
+            Self::Close(Delimiter::Bracket) => write!(f, "]"),
+            Self::Close(Delimiter::Brace) => write!(f, "}}"),
             Self::Dot => write!(f, "."),
             Self::Colon => write!(f, ":"),
             Self::Comma => write!(f, ","),
@@ -119,6 +146,37 @@ impl<'src> fmt::Display for Token<'src> {
             Self::Arrow => write!(f, "->"),
             Self::DoubleArrow => write!(f, "=>"),
             Self::Wildcard => write!(f, "_"),
+        }
+    }
+}
+
+impl<'src> Token<'src> {
+    pub fn kind(&self) -> TokenKind {
+        match self {
+            Self::Symbol(_) => TokenKind::Symbol,
+            Self::Op(_) => TokenKind::Operator,
+            Self::Num(_) | Self::Bool(_) | Self::Char(_) | Self::Str(_) => TokenKind::Literal,
+            Self::Let
+            | Self::In
+            | Self::If
+            | Self::Then
+            | Self::Else
+            | Self::Case
+            | Self::Of
+            | Self::Import
+            | Self::Export => TokenKind::Keyword,
+            Self::Open(_)
+            | Self::Close(_)
+            | Self::Dot
+            | Self::Colon
+            | Self::Comma
+            | Self::Tilde
+            | Self::Assign
+            | Self::Pipe
+            | Self::Backslash
+            | Self::Arrow
+            | Self::DoubleArrow
+            | Self::Wildcard => TokenKind::Control,
         }
     }
 }

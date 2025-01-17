@@ -1,9 +1,12 @@
 use kola::{
     semantic::{error::SemanticReport, Inferable, Substitution},
     source::Source,
-    syntax::{ast, error::SyntaxReport, parse, tokenize, ParseResult, TokenizeResult},
+    syntax::{
+        ast, error::SyntaxReport, parse, print::Printable, tokenize, ParseResult, TokenizeResult,
+    },
 };
 use miette::IntoDiagnostic;
+use owo_colors::OwoColorize;
 use std::{fs, path::PathBuf};
 
 #[derive(Debug, clap::Parser)]
@@ -28,20 +31,32 @@ fn main() -> miette::Result<()> {
 
             let ast = try_parse(source)?;
 
-            println!("{ast:?}")
+            println!(
+                "{}{}",
+                "Abstract Syntax Tree".bold().bright_white(),
+                ast.render()
+            );
         }
         Cmd::Analyze { path } => {
             let source = Source::from_path(path).into_diagnostic()?;
 
             let mut ast = try_parse(source.clone())?;
 
-            println!("{ast:?}");
+            println!(
+                "{}{}",
+                "Abstract Syntax Tree".bold().bright_white(),
+                ast.render()
+            );
 
             let mut s = Substitution::empty();
             ast.infer(&mut s)
                 .map_err(|(errors, span)| SemanticReport::new(source, span, errors))?;
 
-            println!("{ast:?}");
+            println!(
+                "{}{}",
+                "Abstract Syntax Tree".bold().bright_white(),
+                ast.render()
+            );
         }
     }
 
@@ -52,7 +67,8 @@ fn try_parse(source: Source) -> Result<ast::Expr, SyntaxReport> {
     let TokenizeResult { tokens, mut errors } = tokenize(source.as_str());
 
     let ast = tokens.and_then(|tokens| {
-        println!("{tokens:?}");
+        println!("{}{}", "Tokens".bold().bright_white(), tokens.render());
+
         let ParseResult {
             ast,
             errors: mut parse_errors,
@@ -64,7 +80,11 @@ fn try_parse(source: Source) -> Result<ast::Expr, SyntaxReport> {
 
     if errors.has_errors() {
         if let Some(ast) = ast {
-            println!("{ast:?}")
+            println!(
+                "{}{}",
+                "Abstract Syntax Tree".bold().bright_white(),
+                ast.render()
+            );
         }
         Err(SyntaxReport::new(source, errors))
     } else {

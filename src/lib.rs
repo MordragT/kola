@@ -1,6 +1,7 @@
 #![feature(assert_matches)]
 #![feature(let_chains)]
 #![feature(never_type)]
+#![feature(allocator_api)]
 
 pub mod errors;
 pub mod semantic;

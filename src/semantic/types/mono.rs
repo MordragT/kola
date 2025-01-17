@@ -1,5 +1,7 @@
 use std::fmt;
 
+use serde::{Deserialize, Serialize};
+
 use crate::semantic::{Substitutable, Substitution};
 
 use super::{BuiltinType, FuncType, PolyType, RecordType, TypeVar, Typed};
@@ -8,7 +10,7 @@ use super::{BuiltinType, FuncType, PolyType, RecordType, TypeVar, Typed};
 /// Non-polymorphic types (e.g. `α → β`, `int → bool`)
 /// https://en.wikipedia.org/wiki/Hindley%e2%80%93Milner_type_system#Monotypes
 /// τ ::= α | gn τ1 .. τn
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum MonoType {
     Builtin(BuiltinType),
     Func(Box<FuncType>),
