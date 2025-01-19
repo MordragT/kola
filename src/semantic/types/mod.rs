@@ -9,6 +9,8 @@ pub use record::*;
 pub use var::*;
 pub use visit::*;
 
+use super::{error::SemanticError, Substitution};
+
 mod builtin;
 mod collection;
 mod func;
@@ -18,7 +20,21 @@ mod record;
 mod var;
 mod visit;
 
+/// Represents a constraint on a type variable to a specific kind (*i.e.*, a type class).
+/// kind preserving unification (see Extensible Records with Scoped Labels)
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum Kind {
+    Addable,
+    Comparable,
+    Equatable,
+    Stringable,
+    // Logical ??
+    Record,
+}
+
 pub trait Typed: TypeVisitable {
+    fn constrain(&self, with: Kind, s: &mut Substitution) -> Result<(), SemanticError>;
+
     /// occurs check
     fn contains(&self, var: &TypeVar) -> bool {
         struct Occured;

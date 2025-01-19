@@ -1,362 +1,398 @@
-use std::ops::ControlFlow;
-
 use crate::{
     errors::Errors,
-    syntax::{
-        ast,
-        visit::{Visitable, Visitor},
-        Span, Spanned,
-    },
+    syntax::{ast, Span, Spanned},
 };
 
 use super::{
     error::SemanticError,
-    types::{MonoType, PolyType, TypeVar},
+    types::{Kind, MonoType, PolyType, TypeVar, Typed},
     Scopes, Substitutable, Substitution, Unifiable,
 };
 
+// https://blog.stimsina.com/post/implementing-a-hindley-milner-type-system-part-2
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum Constraint {
+    Kind {
+        expected: Kind,
+        actual: MonoType,
+        span: Span,
+    },
+    Ty {
+        expected: MonoType,
+        actual: MonoType,
+        span: Span,
+    },
+}
+
 type Error = Spanned<Errors<SemanticError>>;
 
-pub trait Inferable: Visitable + Sized {
-    fn infer(&mut self, s: &mut Substitution) -> Result<(), Error> {
-        let mut inferer = Inferer::new(s);
-        match self.visit_by(&mut inferer) {
-            ControlFlow::Continue(()) => {
-                inferer.substitution.apply(self);
-                Ok(())
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct Constraints(Vec<Constraint>);
+
+impl Constraints {
+    pub fn new() -> Self {
+        Self(Vec::new())
+    }
+
+    pub fn constrain(&mut self, expected: MonoType, actual: MonoType, span: Span) {
+        let c = Constraint::Ty {
+            expected,
+            actual,
+            span,
+        };
+        self.0.push(c);
+    }
+
+    pub fn constrain_kind(&mut self, expected: Kind, actual: MonoType, span: Span) {
+        let c = Constraint::Kind {
+            expected,
+            actual,
+            span,
+        };
+        self.0.push(c);
+    }
+
+    // TODO error handling do not propagate but keep trace of errors
+    pub fn solve(self, s: &mut Substitution) -> Result<(), Error> {
+        for c in self.0 {
+            match c {
+                Constraint::Kind {
+                    expected,
+                    actual,
+                    span,
+                } => {
+                    dbg!(&expected, &actual, &actual.apply_cow(s));
+                    actual
+                        .apply_cow(s)
+                        .constrain(expected, s)
+                        .map_err(|e| e.with(span))?
+                }
+                Constraint::Ty {
+                    expected,
+                    actual,
+                    span,
+                } => expected
+                    .try_unify(&actual, s)
+                    .map_err(|errs| (errs, span))?,
             }
-            ControlFlow::Break(e) => Err(e),
         }
+
+        Ok(())
     }
 }
 
-impl<T: Visitable + Sized> Inferable for T {}
+pub trait Infer {
+    fn infer(&self, cons: &mut Constraints, scopes: &mut Scopes) -> Result<MonoType, Error>;
 
-struct Inferer<'s> {
-    substitution: &'s mut Substitution,
-    scopes: Scopes,
-}
+    fn solve(&self, s: &mut Substitution) -> Result<(), Error> {
+        let mut cons = Constraints::new();
+        let mut scopes = Scopes::new();
 
-impl<'s> Inferer<'s> {
-    fn new(substitution: &'s mut Substitution) -> Self {
-        Self {
-            substitution,
-            scopes: Scopes::new(),
-        }
-    }
+        self.infer(&mut cons, &mut scopes)?;
 
-    fn branch<F, T>(&mut self, f: F) -> T
-    where
-        F: FnOnce(&mut Self) -> T,
-    {
-        self.scopes.enter();
-        let result = f(self);
-        self.scopes.exit();
-        result
-    }
-
-    fn unify_at<L, R>(&mut self, lhs: &L, rhs: &R, span: Span) -> ControlFlow<Error>
-    where
-        L: Unifiable<R>,
-    {
-        match lhs.try_unify(rhs, &mut self.substitution) {
-            Err(e) => ControlFlow::Break((e, span)),
-            Ok(()) => ControlFlow::Continue(()),
-        }
-    }
-
-    fn type_of<'a>(&self, expr: &'a ast::Expr) -> ControlFlow<Error, &'a MonoType> {
-        match expr.ty() {
-            Err(e) => ControlFlow::Break((Errors::new(), e.span)),
-            Ok(t) => ControlFlow::Continue(t),
-        }
-    }
-
-    fn lookup(&self, ident: &ast::IdentExpr) -> ControlFlow<Error, &PolyType> {
-        match self.scopes.try_get(ident) {
-            Err(e) => ControlFlow::Break((Errors::from(vec![e]), ident.span)),
-            Ok(pt) => ControlFlow::Continue(pt),
-        }
+        cons.solve(s)
     }
 }
 
-impl Visitor for Inferer<'_> {
-    type BreakValue = Error;
-
-    // Unit rule
-    // -----------------------
-    // Γ ⊢ () : unit
-    fn visit_literal(&mut self, literal: &ast::LiteralExpr) -> ControlFlow<Self::BreakValue> {
-        let actual = match literal.inner() {
+// Unit rule
+// -----------------------
+// Γ ⊢ () : unit
+impl Infer for ast::LiteralExpr {
+    fn infer(&self, cons: &mut Constraints, _scopes: &mut Scopes) -> Result<MonoType, Error> {
+        let actual = match self.inner() {
             &ast::Literal::Bool(_) => MonoType::BOOL,
             &ast::Literal::Char(_) => MonoType::CHAR,
             &ast::Literal::Num(_) => MonoType::NUM,
             &ast::Literal::Str(_) => MonoType::STR,
         };
 
-        self.unify_at(literal.ty(), &actual, literal.span)?;
-        ControlFlow::Continue(())
+        self.constrain(&actual, cons);
+        Ok(actual)
     }
+}
 
-    // Var rule to infer variable 'x'
-    // x : σ ∈ Γ   τ = inst(σ)
-    // -----------------------
-    // Γ ⊢ x : τ
-    fn visit_ident(&mut self, ident: &ast::IdentExpr) -> ControlFlow<Self::BreakValue> {
-        let t = self.lookup(ident)?.instantiate();
+// Var rule to infer variable 'x'
+// x : σ ∈ Γ   τ = inst(σ)
+// -----------------------
+// Γ ⊢ x : τ
+impl Infer for ast::IdentExpr {
+    fn infer(&self, cons: &mut Constraints, scopes: &mut Scopes) -> Result<MonoType, Error> {
+        let t = scopes
+            .try_lookup(self)
+            .map_err(|e| e.with(self.span))?
+            .instantiate();
 
-        self.unify_at(ident.ty(), &t, ident.span)?;
-        ControlFlow::Continue(())
+        self.constrain(&t, cons);
+        Ok(t)
     }
+}
 
-    fn visit_list(&mut self, list: &ast::ListExpr) -> ControlFlow<Self::BreakValue> {
-        // if let Some((first, rest)) = self.0.values.split_first() {
-        //     let t0 = first.infer_with(ctx)?;
-        //     todo!()
-        // } else {
-        //     todo!()
-        // }
+impl Infer for ast::ListExpr {
+    fn infer(&self, cons: &mut Constraints, scopes: &mut Scopes) -> Result<MonoType, Error> {
         todo!()
     }
+}
 
-    fn visit_record(&mut self, record: &ast::RecordExpr) -> ControlFlow<Self::BreakValue> {
+impl Infer for ast::RecordExpr {
+    fn infer(&self, cons: &mut Constraints, scopes: &mut Scopes) -> Result<MonoType, Error> {
         todo!()
     }
+}
 
-    // ∀rα. {l :: α | r} → α
-    fn visit_record_select(
-        &mut self,
-        record_select: &ast::RecordSelectExpr,
-    ) -> ControlFlow<Self::BreakValue> {
+// ∀rα. {l :: α | r} → α
+impl Infer for ast::RecordSelect {
+    fn infer(&self, cons: &mut Constraints, scopes: &mut Scopes) -> Result<MonoType, Error> {
         todo!()
     }
+}
 
-    // ∀rα. α → {r} → {l :: α | r}
-    fn visit_record_extend(
-        &mut self,
-        record_extend: &ast::RecordExtendExpr,
-    ) -> ControlFlow<Self::BreakValue> {
+// ∀rα. α → {r} → {l :: α | r}
+impl Infer for ast::RecordExtend {
+    fn infer(&self, cons: &mut Constraints, scopes: &mut Scopes) -> Result<MonoType, Error> {
         todo!()
     }
+}
 
-    // ∀rα. {l :: α | r} → {r}
-    fn visit_record_restrict(
-        &mut self,
-        record_restrict: &ast::RecordRestrictExpr,
-    ) -> ControlFlow<Self::BreakValue> {
+// ∀rα. {l :: α | r} → {r}
+impl Infer for ast::RecordRestrict {
+    fn infer(&self, cons: &mut Constraints, scopes: &mut Scopes) -> Result<MonoType, Error> {
         todo!()
     }
+}
 
-    fn visit_record_update(
-        &mut self,
-        record_update: &ast::RecordUpdateExpr,
-    ) -> ControlFlow<Self::BreakValue> {
+impl Infer for ast::RecordUpdate {
+    fn infer(&self, cons: &mut Constraints, scopes: &mut Scopes) -> Result<MonoType, Error> {
         todo!()
     }
+}
 
-    // Abstraction rule
-    // τ = newvar()
-    // Γ, x : τ ⊢ e : τ'
-    // ___________________
-    // Γ ⊢ \x -> e : t -> t'
-    fn visit_unary_op(&mut self, unary_op: &ast::UnaryOp) -> ControlFlow<Self::BreakValue> {
-        let t = match unary_op.inner() {
+// Abstraction rule
+// τ = newvar()
+// Γ, x : τ ⊢ e : τ'
+// ___________________
+// Γ ⊢ \x -> e : t -> t'
+impl Infer for ast::UnaryOp {
+    fn infer(&self, cons: &mut Constraints, _scopes: &mut Scopes) -> Result<MonoType, Error> {
+        let t = match self.inner() {
             &ast::UnaryOpKind::Neg => MonoType::NUM,
             &ast::UnaryOpKind::Not => MonoType::BOOL,
         };
 
-        self.unify_at(unary_op.ty(), &MonoType::func(t.clone(), t), unary_op.span)?;
-        ControlFlow::Continue(())
+        let func = MonoType::func(t.clone(), t);
+
+        self.constrain(&func, cons);
+        Ok(func)
     }
+}
 
-    // Application rule
-    // Γ ⊢ f : τ0
-    // Γ ⊢ x : τ1
-    // τ' = newvar()
-    // unify(τ0, τ1 -> τ')
-    // --------------------
-    // Γ ⊢ f x : τ'
-    fn visit_unary(&mut self, unary: &ast::UnaryExpr) -> ControlFlow<Self::BreakValue> {
-        self.visit_unary_op(&unary.op)?;
-        self.visit_expr(&unary.target)?;
+// Application rule
+// Γ ⊢ f : τ0
+// Γ ⊢ x : τ1
+// τ' = newvar()
+// unify(τ0, τ1 -> τ')
+// --------------------
+// Γ ⊢ f x : τ'
+impl Infer for ast::UnaryExpr {
+    fn infer(&self, cons: &mut Constraints, scopes: &mut Scopes) -> Result<MonoType, Error> {
+        let t0 = self.op.infer(cons, scopes)?;
+        let t1 = self.target.infer(cons, scopes)?;
 
-        // We use this as needle for later t_prime unification where this must be a function therefore apply
-        let t0 = unary.op.ty().apply_cow(&mut self.substitution);
-        let t1 = self.type_of(&unary.target)?;
+        let t_prime = MonoType::variable();
 
-        self.unify_at(
-            t0.as_ref(),
-            &MonoType::func(t1.clone(), MonoType::variable()),
-            unary.span,
-        )?;
+        cons.constrain(t0, MonoType::func(t1, t_prime.clone()), self.span);
 
-        let t_prime = &t0.as_func().unwrap().ret;
-
-        self.unify_at(unary.ty(), t_prime, unary.span)?;
-        ControlFlow::Continue(())
+        self.constrain(&t_prime, cons);
+        Ok(t_prime)
     }
+}
 
-    fn visit_binary_op(&mut self, binary_op: &ast::BinaryOp) -> ControlFlow<Self::BreakValue> {
-        let t = MonoType::variable();
-        let t_prime = match binary_op.inner() {
-            &ast::BinaryOpKind::Add => MonoType::NUM,
-            &ast::BinaryOpKind::Sub => MonoType::NUM,
-            &ast::BinaryOpKind::Mul => MonoType::NUM,
-            &ast::BinaryOpKind::Div => MonoType::NUM,
-            &ast::BinaryOpKind::Rem => MonoType::NUM,
+impl Infer for ast::BinaryOp {
+    fn infer(&self, cons: &mut Constraints, _scopes: &mut Scopes) -> Result<MonoType, Error> {
+        let (t, t_prime) = match self.inner() {
+            ast::BinaryOpKind::Add => {
+                let t = MonoType::variable();
+                cons.constrain_kind(Kind::Addable, t.clone(), self.span);
+                (t, MonoType::NUM)
+            }
+            ast::BinaryOpKind::Sub
+            | ast::BinaryOpKind::Mul
+            | ast::BinaryOpKind::Div
+            | ast::BinaryOpKind::Rem => (MonoType::NUM, MonoType::NUM),
             // Comparison
-            &ast::BinaryOpKind::Less => MonoType::BOOL,
-            &ast::BinaryOpKind::Greater => MonoType::BOOL,
-            &ast::BinaryOpKind::LessEq => MonoType::BOOL,
-            &ast::BinaryOpKind::GreaterEq => MonoType::BOOL,
+            ast::BinaryOpKind::Less
+            | ast::BinaryOpKind::Greater
+            | ast::BinaryOpKind::LessEq
+            | ast::BinaryOpKind::GreaterEq => {
+                let t = MonoType::variable();
+                cons.constrain_kind(Kind::Comparable, t.clone(), self.span);
+                (t, MonoType::BOOL)
+            }
             // Logical
-            &ast::BinaryOpKind::And => MonoType::BOOL,
-            &ast::BinaryOpKind::Or => MonoType::BOOL,
-            &ast::BinaryOpKind::Xor => MonoType::BOOL,
+            ast::BinaryOpKind::And | ast::BinaryOpKind::Or | ast::BinaryOpKind::Xor => {
+                (MonoType::BOOL, MonoType::BOOL)
+            }
             // Equality
-            &ast::BinaryOpKind::Eq => MonoType::BOOL,
-            &ast::BinaryOpKind::NotEq => MonoType::BOOL,
+            ast::BinaryOpKind::Eq | ast::BinaryOpKind::NotEq => {
+                let t = MonoType::variable();
+                cons.constrain_kind(Kind::Equatable, t.clone(), self.span);
+                (t, MonoType::BOOL)
+            }
         };
 
         let func = MonoType::func(t.clone(), MonoType::func(t, t_prime));
 
-        self.unify_at(binary_op.ty(), &func, binary_op.span)?;
-        ControlFlow::Continue(())
+        self.constrain(&func, cons);
+        Ok(func)
     }
+}
 
-    // Application rule
-    // Γ ⊢ f : τ0
-    // Γ ⊢ x : τ1
-    // τ' = newvar()
-    // unify(τ0, τ1 -> τ')
-    // --------------------
-    // Γ ⊢ f x : τ'
-    fn visit_binary(&mut self, binary: &ast::BinaryExpr) -> ControlFlow<Self::BreakValue> {
-        self.visit_binary_op(&binary.op)?;
-        self.visit_expr(&binary.left)?;
-        self.visit_expr(&binary.right)?;
+// Application rule
+// Γ ⊢ f : τ0
+// Γ ⊢ x : τ1
+// τ' = newvar()
+// unify(τ0, τ1 -> τ')
+// --------------------
+// Γ ⊢ f x : τ'
+impl Infer for ast::BinaryExpr {
+    fn infer(&self, cons: &mut Constraints, scopes: &mut Scopes) -> Result<MonoType, Error> {
+        let t0 = self.op.infer(cons, scopes)?;
+        let lhs = self.left.infer(cons, scopes)?;
+        let rhs = self.right.infer(cons, scopes)?;
+        let t_prime = MonoType::variable();
 
-        // We use this as needle for later t_prime unification where this must be a function therefore apply
-        let t0 = binary.op.ty().apply_cow(&mut self.substitution);
-        let lhs = self.type_of(&binary.left)?;
-        let rhs = self.type_of(&binary.right)?;
+        let func = MonoType::func(lhs, MonoType::func(rhs, t_prime.clone()));
+        cons.constrain(t0, func, self.span);
 
-        let func = MonoType::func(
-            lhs.clone(),
-            MonoType::func(rhs.clone(), MonoType::variable()),
-        );
-        self.unify_at(t0.as_ref(), &func, binary.span)?;
-
-        let t_prime = &t0.as_func().unwrap().ret.as_func().unwrap().ret;
-
-        self.unify_at(binary.ty(), t_prime, binary.span)?;
-        ControlFlow::Continue(())
+        self.constrain(&t_prime, cons);
+        Ok(t_prime)
     }
+}
 
-    // Generalization
-    // Γ'(τ) quantifies all monotype variables not bound in Γ
+// Generalization
+// Γ'(τ) quantifies all monotype variables not bound in Γ
 
-    // Let rule
-    // Γ ⊢ e0 : τ
-    // Γ, x : Γ'(τ) ⊢ e1 : τ'
-    // --------------------
-    // Γ ⊢ let x = e0 in e1 : τ'
-    fn visit_let(&mut self, let_: &ast::LetExpr) -> ControlFlow<Self::BreakValue> {
-        TypeVar::branch(|| self.visit_expr(&let_.value))?;
+// Let rule
+// Γ ⊢ e0 : τ
+// Γ, x : Γ'(τ) ⊢ e1 : τ'
+// --------------------
+// Γ ⊢ let x = e0 in e1 : τ'
+impl Infer for ast::LetExpr {
+    fn infer(&self, cons: &mut Constraints, scopes: &mut Scopes) -> Result<MonoType, Error> {
+        let t = TypeVar::branch(|| self.value.infer(cons, scopes))?;
 
-        let t = self.type_of(&let_.value)?.apply_cow(&mut self.substitution); // TODO is this correct ? Do I need to substitute before generalization
+        scopes.enter();
 
-        self.branch(|ctx| {
-            let pty = t.generalize(&ctx.scopes.bound_vars());
-            ctx.scopes.insert(let_.name.name.clone(), pty);
-            ctx.visit_expr(&let_.inside)
-        })?;
+        let pty = t.generalize(&scopes.bound_vars());
+        scopes.insert(self.name.name.clone(), pty);
 
-        let t_prime = self.type_of(&let_.inside)?;
+        let t_prime = self.inside.infer(cons, scopes)?;
 
-        self.unify_at(let_.ty(), t_prime, let_.span)?;
-        ControlFlow::Continue(())
+        scopes.exit();
+
+        self.constrain(&t_prime, cons);
+        Ok(t_prime)
     }
+}
 
-    // If
-    // Γ ⊢ predicate : Bool
-    // Γ ⊢ e0 : τ
-    // Γ ⊢ e1 : τ
-    // --------------------------
-    // Γ ⊢ if predicate then e0 else e1 : τ
-    fn visit_if(&mut self, if_: &ast::IfExpr) -> ControlFlow<Self::BreakValue> {
-        self.visit_expr(&if_.predicate)?;
+// If
+// Γ ⊢ predicate : Bool
+// Γ ⊢ e0 : τ
+// Γ ⊢ e1 : τ
+// --------------------------
+// Γ ⊢ if predicate then e0 else e1 : τ
+impl Infer for ast::IfExpr {
+    fn infer(&self, cons: &mut Constraints, scopes: &mut Scopes) -> Result<MonoType, Error> {
+        let t0 = self.predicate.infer(cons, scopes)?;
 
-        let t0 = self.type_of(&if_.predicate)?;
-        self.unify_at(t0, &MonoType::BOOL, if_.span)?;
+        cons.constrain(MonoType::BOOL, t0, self.span);
 
-        self.visit_expr(&if_.then)?;
-        self.visit_expr(&if_.or)?;
+        let then = self.then.infer(cons, scopes)?;
+        let or = self.or.infer(cons, scopes)?;
 
-        let then = self.type_of(&if_.then)?;
-        let or = self.type_of(&if_.or)?;
+        cons.constrain(then.clone(), or, self.span);
 
-        self.unify_at(then, or, if_.span)?;
-
-        self.unify_at(if_.ty(), then, if_.span)?;
-        ControlFlow::Continue(())
+        self.constrain(&then, cons);
+        Ok(then)
     }
+}
 
-    fn visit_case(&mut self, case: &ast::CaseExpr) -> ControlFlow<Self::BreakValue> {
+impl Infer for ast::CaseExpr {
+    fn infer(&self, cons: &mut Constraints, scopes: &mut Scopes) -> Result<MonoType, Error> {
         todo!()
     }
+}
 
-    // Abstraction rule
-    // τ = newvar()
-    // Γ, x : τ ⊢ e : τ'
-    // ___________________
-    // Γ ⊢ \x -> e : t -> t'
-    fn visit_func(&mut self, func: &ast::FuncExpr) -> ControlFlow<Self::BreakValue> {
+// Abstraction rule
+// τ = newvar()
+// Γ, x : τ ⊢ e : τ'
+// ___________________
+// Γ ⊢ \x -> e : t -> t'
+impl Infer for ast::FuncExpr {
+    fn infer(&self, cons: &mut Constraints, scopes: &mut Scopes) -> Result<MonoType, Error> {
         let t = MonoType::variable();
-        self.branch(|ctx| {
-            ctx.scopes
-                .insert(func.param.inner().clone(), PolyType::from(t.clone()));
-            ctx.visit_expr(&func.body)
-        })?;
 
-        let t_prime = self.type_of(&func.body)?;
+        scopes.enter();
 
-        self.unify_at(func.ty(), &MonoType::func(t, t_prime.clone()), func.span)?;
-        ControlFlow::Continue(())
+        scopes.insert(self.param.inner().clone(), PolyType::from(t.clone()));
+        let t_prime = self.body.infer(cons, scopes)?;
+
+        scopes.exit();
+
+        let func = MonoType::func(t, t_prime);
+
+        self.constrain(&func, cons);
+        Ok(func)
     }
+}
 
-    // Application rule
-    // Γ ⊢ f : τ0
-    // Γ ⊢ x : τ1
-    // τ' = newvar()
-    // unify(τ0, τ1 -> τ')
-    // --------------------
-    // Γ ⊢ f x : τ'
-    fn visit_call(&mut self, call: &ast::CallExpr) -> ControlFlow<Self::BreakValue> {
-        self.visit_ident(&call.func)?;
-        self.visit_expr(&call.arg)?;
+// Application rule
+// Γ ⊢ f : τ0
+// Γ ⊢ x : τ1
+// τ' = newvar()
+// unify(τ0, τ1 -> τ')
+// --------------------
+// Γ ⊢ f x : τ'
+impl Infer for ast::CallExpr {
+    fn infer(&self, cons: &mut Constraints, scopes: &mut Scopes) -> Result<MonoType, Error> {
+        let t0 = self.func.infer(cons, scopes)?;
+        let t1 = self.arg.infer(cons, scopes)?;
+        let t_prime = MonoType::variable();
 
-        // We use this as needle for later t_prime unification where this must be a function therefore apply
-        let t0 = call.func.ty().apply_cow(&mut self.substitution);
-        let t1 = self.type_of(&call.arg)?;
+        cons.constrain(t0, MonoType::func(t1, t_prime.clone()), self.span);
 
-        self.unify_at(
-            t0.as_ref(),
-            &MonoType::func(t1.clone(), MonoType::variable()),
-            call.span,
-        )?;
+        self.constrain(&t_prime, cons);
+        Ok(t_prime)
+    }
+}
 
-        let t_prime = &t0.as_func().unwrap().ret;
-
-        self.unify_at(call.ty(), t_prime, call.span)?;
-        ControlFlow::Continue(())
+impl Infer for ast::Expr {
+    fn infer(&self, cons: &mut Constraints, scopes: &mut Scopes) -> Result<MonoType, Error> {
+        match self {
+            Self::Error(e) => Err((Errors::new(), e.span)),
+            Self::Literal(l) => l.infer(cons, scopes),
+            Self::Ident(i) => i.infer(cons, scopes),
+            Self::List(l) => l.infer(cons, scopes),
+            Self::Record(r) => r.infer(cons, scopes),
+            Self::RecordSelect(r) => r.infer(cons, scopes),
+            Self::RecordExtend(r) => r.infer(cons, scopes),
+            Self::RecordRestrict(r) => r.infer(cons, scopes),
+            Self::RecordUpdate(r) => r.infer(cons, scopes),
+            Self::Unary(u) => u.infer(cons, scopes),
+            Self::Binary(b) => b.infer(cons, scopes),
+            Self::Let(l) => l.infer(cons, scopes),
+            Self::If(i) => i.infer(cons, scopes),
+            Self::Case(c) => c.infer(cons, scopes),
+            Self::Func(f) => f.infer(cons, scopes),
+            Self::Call(c) => c.infer(cons, scopes),
+        }
     }
 }
 
 #[cfg(test)]
 mod tests {
     use crate::{
-        semantic::{error::SemanticError, types::MonoType, Inferable, Substitution},
+        semantic::{error::SemanticError, types::MonoType, Infer, Substitution},
         syntax::{ast::*, node::Node, Span},
     };
 
@@ -369,7 +405,8 @@ mod tests {
         let mut s = Substitution::empty();
 
         let mut lit = node(Literal::Num(10.0));
-        lit.infer(&mut s).unwrap();
+        lit.solve(&mut s).unwrap();
+        s.apply(&mut lit);
 
         assert_eq!(lit.ty(), &MonoType::NUM);
     }
@@ -383,18 +420,19 @@ mod tests {
             target: node(Literal::Num(10.0)).into(),
         });
 
-        unary.infer(&mut s).unwrap();
+        unary.solve(&mut s).unwrap();
+        s.apply(&mut unary);
 
         assert_eq!(unary.ty(), &MonoType::NUM);
 
         s.clear();
 
-        let mut unary = node(Unary {
+        let unary = node(Unary {
             op: node(UnaryOpKind::Not),
             target: node(Literal::Num(10.0)).into(),
         });
 
-        let (errors, _) = unary.infer(&mut s).unwrap_err();
+        let (errors, _) = unary.solve(&mut s).unwrap_err();
 
         assert_eq!(
             errors[0],
@@ -409,13 +447,13 @@ mod tests {
     fn binary() {
         let mut s = Substitution::empty();
 
-        let mut binary = node(Binary {
+        let binary = node(Binary {
             op: node(BinaryOpKind::Eq),
             left: node(Literal::Bool(true)).into(),
             right: node(Literal::Num(10.0)).into(),
         });
 
-        let (errors, _) = binary.infer(&mut s).unwrap_err();
+        let (errors, _) = binary.solve(&mut s).unwrap_err();
 
         assert_eq!(
             errors[0],
@@ -439,7 +477,8 @@ mod tests {
             inside: node(Symbol::from("x")).into(),
         });
 
-        let_.infer(&mut s).unwrap();
+        let_.solve(&mut s).unwrap();
+        s.apply(&mut let_);
 
         assert_eq!(let_.ty(), &MonoType::NUM)
     }
@@ -454,19 +493,20 @@ mod tests {
             or: node(Literal::Num(10.0)).into(),
         });
 
-        if_.infer(&mut s).unwrap();
+        if_.solve(&mut s).unwrap();
+        s.apply(&mut if_);
 
         assert_eq!(if_.ty(), &MonoType::NUM);
 
         s.clear();
 
-        let mut if_ = node(If {
+        let if_ = node(If {
             predicate: node(Literal::Bool(true)).into(),
             then: node(Literal::Num(5.0)).into(),
             or: node(Literal::Char('x')).into(),
         });
 
-        let (errors, _) = if_.infer(&mut s).unwrap_err();
+        let (errors, _) = if_.solve(&mut s).unwrap_err();
 
         assert_eq!(
             errors[0],

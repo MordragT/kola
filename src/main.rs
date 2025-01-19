@@ -1,5 +1,5 @@
 use kola::{
-    semantic::{error::SemanticReport, Inferable, Substitution},
+    semantic::{error::SemanticReport, Infer, Substitution},
     source::Source,
     syntax::{
         ast,
@@ -55,8 +55,12 @@ fn main() -> miette::Result<()> {
             println!("{}\n", ast.render(options));
 
             let mut s = Substitution::empty();
-            ast.infer(&mut s)
+            ast.solve(&mut s)
                 .map_err(|(errors, span)| SemanticReport::new(source, span, errors))?;
+            s.apply(&mut ast);
+
+            println!("{}", "Substitution Table".bold().bright_white());
+            println!("{s}");
 
             println!("{}", "Typed Abstract Syntax Tree".bold().bright_white());
             println!("{}\n", ast.render(options));

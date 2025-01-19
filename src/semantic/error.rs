@@ -4,13 +4,10 @@ use thiserror::Error;
 use crate::{
     errors::Errors,
     source::Source,
-    syntax::{ast::Symbol, Span},
+    syntax::{ast::Symbol, Span, Spanned},
 };
 
-use super::{
-    types::{MonoType, TypeVar},
-    Kind,
-};
+use super::types::{Kind, MonoType, TypeVar};
 
 pub type SemanticErrors = Errors<SemanticError>;
 
@@ -41,9 +38,9 @@ pub enum SemanticError {
 }
 
 impl SemanticError {
-    pub fn with(self, span: Span, source: Source) -> SemanticReport {
+    pub fn with(self, span: Span) -> Spanned<SemanticErrors> {
         let related = Errors::from(vec![self]);
-        SemanticReport::new(source, span, related)
+        (related, span)
     }
 }
 

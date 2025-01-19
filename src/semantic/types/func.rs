@@ -2,9 +2,9 @@ use std::fmt;
 
 use serde::{Deserialize, Serialize};
 
-use crate::semantic::{merge, Substitutable, Substitution};
+use crate::semantic::{error::SemanticError, merge, Substitutable, Substitution};
 
-use super::{MonoType, Typed};
+use super::{Kind, MonoType, Typed};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct FuncType {
@@ -24,7 +24,14 @@ impl fmt::Display for FuncType {
     }
 }
 
-impl Typed for FuncType {}
+impl Typed for FuncType {
+    fn constrain(&self, with: Kind, _s: &mut Substitution) -> Result<(), SemanticError> {
+        Err(SemanticError::CannotConstrain {
+            expected: with,
+            actual: self.clone().into(),
+        })
+    }
+}
 
 impl Substitutable for FuncType {
     fn try_apply(&self, s: &mut Substitution) -> Option<Self> {

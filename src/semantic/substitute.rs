@@ -1,8 +1,15 @@
-use std::{borrow::Cow, collections::HashMap, ops::ControlFlow};
+use std::{
+    borrow::Cow,
+    collections::{hash_map::Entry, HashMap},
+    fmt,
+    ops::ControlFlow,
+};
+
+use owo_colors::OwoColorize;
 
 use crate::syntax::visit::{Visitable, VisitorMut};
 
-use super::types::{MonoType, TypeVar};
+use super::types::{Kind, MonoType, TypeVar};
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Substitution {
@@ -21,6 +28,17 @@ pub struct Substitution {
     /// Rather than updating the actual mappings,
     /// this cache maintains these compressed mappings.
     cache: HashMap<TypeVar, MonoType>,
+    cons: HashMap<TypeVar, Vec<Kind>>,
+}
+
+impl fmt::Display for Substitution {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        for (var, ty) in &self.table {
+            writeln!(f, "{var}\t{}", ty.green())?;
+        }
+
+        Ok(())
+    }
 }
 
 impl Substitution {
@@ -28,11 +46,16 @@ impl Substitution {
         Self {
             table,
             cache: HashMap::new(),
+            cons: HashMap::new(),
         }
     }
 
     pub fn empty() -> Self {
         Self::default()
+    }
+
+    pub fn constraints_entry(&mut self, var: &TypeVar) -> Entry<TypeVar, Vec<Kind>> {
+        self.cons.entry(*var)
     }
 
     pub fn get(&self, tv: &TypeVar) -> Option<&MonoType> {

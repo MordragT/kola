@@ -5,9 +5,9 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 
-use crate::semantic::{Substitutable, Substitution};
+use crate::semantic::{error::SemanticError, Substitutable, Substitution};
 
-use super::{MonoType, Typed};
+use super::{Kind, MonoType, Typed};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct TypeVar {
@@ -69,4 +69,11 @@ impl TypeVar {
     }
 }
 
-impl Typed for TypeVar {}
+impl Typed for TypeVar {
+    fn constrain(&self, with: Kind, s: &mut Substitution) -> Result<(), SemanticError> {
+        s.constraints_entry(self)
+            .and_modify(|constraint| constraint.push(with))
+            .or_insert_with(|| vec![with]);
+        Ok(())
+    }
+}

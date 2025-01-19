@@ -103,7 +103,20 @@ impl MonoType {
     }
 }
 
-impl Typed for MonoType {}
+impl Typed for MonoType {
+    fn constrain(
+        &self,
+        with: super::Kind,
+        s: &mut Substitution,
+    ) -> Result<(), crate::semantic::error::SemanticError> {
+        match self {
+            Self::Builtin(b) => b.constrain(with, s),
+            Self::Func(func) => func.constrain(with, s),
+            Self::Record(r) => r.constrain(with, s),
+            Self::Var(tv) => tv.constrain(with, s),
+        }
+    }
+}
 
 impl Substitutable for MonoType {
     fn try_apply(&self, s: &mut Substitution) -> Option<Self> {
@@ -119,7 +132,7 @@ impl Substitutable for MonoType {
 impl fmt::Display for MonoType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Builtin(tc) => tc.fmt(f),
+            Self::Builtin(b) => b.fmt(f),
             Self::Func(func) => func.fmt(f),
             Self::Record(r) => r.fmt(f),
             Self::Var(tv) => tv.fmt(f),

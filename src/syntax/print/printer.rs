@@ -1,7 +1,6 @@
 use std::fmt;
 
 use bumpalo::{collections::Vec, Bump};
-use owo_colors::OwoColorize;
 
 use super::notation::{Notation, NotationRepr};
 
@@ -102,7 +101,11 @@ impl<'a> Printer<'a> {
         while let Some(chunk) = self.chunks.pop() {
             match chunk.notation.inner.as_ref() {
                 Empty => (),
-                Linebreak => {
+                Char(c) => {
+                    output.write_char(*c)?;
+                    self.pos += 1;
+                }
+                Newline => {
                     output.write_char('\n')?;
                     for _ in 0..chunk.indent {
                         output.write_str(&self.options.indentation)?;
@@ -110,14 +113,14 @@ impl<'a> Printer<'a> {
                     self.pos = chunk.indent;
                 }
                 Text(t) => {
-                    output.write_fmt(format_args!("{}", t.inner.style(t.style)))?;
+                    output.write_str(t.inner)?;
                     self.pos += t.width;
                 }
                 Flat(n) => self.chunks.push(chunk.with_notation(n).flatten()),
                 Indent(n) => self.chunks.push(chunk.with_notation(n).indent()),
                 Dedent(n) => self.chunks.push(chunk.with_notation(n).dedent()),
                 // reverse so that items are in correct order
-                Join(ns) => self
+                Concat(ns) => self
                     .chunks
                     .extend(ns.into_iter().rev().map(|n| chunk.with_notation(n))),
                 Group(a, b) => {
@@ -157,7 +160,11 @@ impl<'a> Printer<'a> {
         }) {
             match chunk.notation.inner.as_ref() {
                 Empty => (),
-                Linebreak => return true,
+                Char(_) => match rem.checked_sub(1) {
+                    Some(r) => rem = r,
+                    None => return false,
+                },
+                Newline => return true,
                 Text(t) => match rem.checked_sub(t.width) {
                     Some(r) => rem = r,
                     None => return false,
@@ -165,10 +172,10 @@ impl<'a> Printer<'a> {
                 Flat(n) => stack.push(chunk.with_notation(n).flatten()),
                 Indent(n) => stack.push(chunk.with_notation(n).indent()),
                 Dedent(n) => stack.push(chunk.with_notation(n).dedent()),
-                Join(ns) => stack.extend(ns.into_iter().map(|n| chunk.with_notation(n))),
+                Concat(ns) => stack.extend(ns.into_iter().rev().map(|n| chunk.with_notation(n))),
                 Group(a, b) => {
-                    stack.push(chunk.with_notation(a));
                     stack.push(chunk.with_notation(b));
+                    stack.push(chunk.with_notation(a));
                 }
                 Choice(a, b) => {
                     if chunk.flat {

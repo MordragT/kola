@@ -2,7 +2,10 @@ use owo_colors::Style;
 use serde::{Deserialize, Serialize};
 use std::ops::{Deref, DerefMut};
 
-use crate::{semantic::types::MonoType, syntax::Span};
+use crate::{
+    semantic::{types::MonoType, Constraints},
+    syntax::Span,
+};
 
 use super::print::prelude::*;
 
@@ -45,6 +48,10 @@ impl<T> Node<T> {
     pub fn ty_mut(&mut self) -> &mut MonoType {
         &mut self.ty
     }
+
+    pub fn constrain(&self, with: &MonoType, cons: &mut Constraints) {
+        cons.constrain(self.ty.clone(), with.clone(), self.span);
+    }
 }
 
 impl<T> Deref for Node<T> {
@@ -86,10 +93,10 @@ where
     fn notate<'a>(&'a self, arena: &'a Bump) -> super::print::Notation<'a> {
         let Self { inner, span, ty } = self;
 
-        let head = span.notate_in(arena);
+        let head = span.display_in(arena);
 
         let inner = inner.notate(arena);
-        let ty = ty.notate_with_in(Style::new().green(), arena);
+        let ty = ty.display_with_in(Style::new().green(), arena);
 
         let single = [
             arena.notate(" "),
@@ -97,16 +104,16 @@ where
             arena.notate(" : "),
             ty.clone().flatten(arena),
         ]
-        .join_in(arena);
+        .concat_in(arena);
 
         let multi = [
-            arena.break_line(),
+            arena.newline(),
             inner,
-            arena.break_line(),
+            arena.newline(),
             arena.notate(": "),
             ty,
         ]
-        .join_in(arena)
+        .concat_in(arena)
         .indent(arena);
 
         head.then(single.or(multi, arena), arena)

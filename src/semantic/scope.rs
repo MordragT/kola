@@ -28,12 +28,13 @@ impl Scopes {
         self.scopes.push(Scope::new())
     }
 
-    pub fn get(&self, ident: &Symbol) -> Option<&PolyType> {
-        self.scopes.iter().rev().find_map(|s| s.get(ident))
+    pub fn lookup(&self, ident: &Symbol) -> Option<&PolyType> {
+        self.scopes.iter().rev().find_map(|s| s.lookup(ident))
     }
 
-    pub fn try_get(&self, ident: &Symbol) -> Result<&PolyType, SemanticError> {
-        self.get(ident).ok_or(SemanticError::Unbound(ident.clone()))
+    pub fn try_lookup(&self, ident: &Symbol) -> Result<&PolyType, SemanticError> {
+        self.lookup(ident)
+            .ok_or(SemanticError::Unbound(ident.clone()))
     }
 
     pub fn insert(&mut self, ident: Symbol, ty: PolyType) {
@@ -81,7 +82,7 @@ impl Scope {
         Self::default()
     }
 
-    pub fn get(&self, ident: &Symbol) -> Option<&PolyType> {
+    pub fn lookup(&self, ident: &Symbol) -> Option<&PolyType> {
         self.bindings
             .iter()
             .find_map(|(i, t)| if i == ident { Some(t) } else { None })

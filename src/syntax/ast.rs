@@ -23,19 +23,17 @@ impl Printable for Name {
 
         let head = span.notate(arena);
 
-        let kind = format_args!("{}", "Name".cyan()).notate_in(arena);
-        let name = format_args!("\"{}\"", name.yellow()).notate_in(arena);
+        let kind = "Name".cyan().display_in(arena);
+        let name = name
+            .yellow()
+            .display_in(arena)
+            .enclose_by(arena.just('"'), arena);
 
-        let single = [
-            arena.notate(" "),
-            kind.clone(),
-            arena.notate(" "),
-            name.clone(),
-        ]
-        .join_in(arena);
+        let single =
+            [arena.just(' '), kind.clone(), arena.just(' '), name.clone()].concat_in(arena);
 
-        let multi = [arena.break_line(), kind, arena.break_line(), name]
-            .join_in(arena)
+        let multi = [arena.newline(), kind, arena.newline(), name]
+            .concat_in(arena)
             .indent(arena);
 
         head.then(single.or(multi, arena), arena)
@@ -54,17 +52,18 @@ pub enum Literal {
 
 impl Printable for Literal {
     fn notate<'a>(&'a self, arena: &'a Bump) -> Notation<'a> {
-        let kind = format_args!("{}", "Literal".purple()).notate_in(arena);
+        let kind = "Literal".purple().display_in(arena);
 
         let lit = match self {
-            Self::Bool(b) => format_args!("\"{}\"", b.yellow()).notate_in(arena),
-            Self::Num(n) => format_args!("\"{}\"", n.yellow()).notate_in(arena),
-            Self::Char(c) => format_args!("\"{}\"", c.yellow()).notate_in(arena),
-            Self::Str(s) => format_args!("\"{}\"", s.yellow()).notate_in(arena),
-        };
+            Self::Bool(b) => b.yellow().display_in(arena),
+            Self::Num(n) => n.yellow().display_in(arena),
+            Self::Char(c) => c.yellow().display_in(arena),
+            Self::Str(s) => s.yellow().display_in(arena),
+        }
+        .enclose_by(arena.just('"'), arena);
 
-        let single = arena.notate(" ").then(lit.clone(), arena);
-        let multi = arena.break_line().then(lit, arena);
+        let single = arena.just(' ').then(lit.clone(), arena);
+        let multi = arena.newline().then(lit, arena);
 
         kind.then(single.or(multi, arena), arena)
     }
@@ -79,20 +78,16 @@ pub struct List {
 
 impl Printable for List {
     fn notate<'a>(&'a self, arena: &'a Bump) -> Notation<'a> {
-        let kind = arena.notate_with("List", Style::new().blue());
+        let kind = "List".blue().display_in(arena);
 
-        let values = self.values.transform_in(arena);
+        let values = self.values.gather(arena);
 
-        let single = values
-            .iter()
-            .cloned()
-            .map(|expr| arena.notate(" ").then(expr.flatten(arena), arena))
-            .join_in(arena);
+        let single = values.clone().concat_map(
+            |expr| arena.just(' ').then(expr.flatten(arena), arena),
+            arena,
+        );
         let multi = values
-            .iter()
-            .cloned()
-            .map(|expr| arena.break_line().then(expr, arena))
-            .join_in(arena)
+            .concat_map(|expr| arena.newline().then(expr, arena), arena)
             .indent(arena);
 
         kind.then(single.or(multi, arena), arena)
@@ -112,33 +107,33 @@ impl Printable for Property {
     fn notate<'a>(&'a self, arena: &'a Bump) -> Notation<'a> {
         let Self { key, value, span } = self;
 
-        let head = span.notate_in(arena);
+        let head = span.display_in(arena);
 
-        let kind = format_args!("{}", "Property".blue()).notate_in(arena);
+        let kind = "Property".blue().display_in(arena);
         let key = key.notate(arena);
         let value = value.notate(arena);
 
         let single = [
-            arena.notate(" "),
+            arena.just(' '),
             kind.clone(),
             arena.notate(" key = "),
             key.clone().flatten(arena),
             arena.notate(", value = "),
             value.clone().flatten(arena),
         ]
-        .join_in(arena);
+        .concat_in(arena);
 
         let multi = [
-            arena.break_line(),
+            arena.newline(),
             kind,
-            arena.break_line(),
+            arena.newline(),
             arena.notate("key = "),
             key,
-            arena.break_line(),
+            arena.newline(),
             arena.notate("value = "),
             value,
         ]
-        .join_in(arena)
+        .concat_in(arena)
         .indent(arena);
 
         head.then(single.or(multi, arena), arena)
@@ -159,20 +154,15 @@ pub struct Record {
 
 impl Printable for Record {
     fn notate<'a>(&'a self, arena: &'a Bump) -> Notation<'a> {
-        let head = format_args!("{}", "Record".blue()).notate_in(arena);
+        let head = "Record".blue().display_in(arena);
 
-        let fields = self.fields.transform_in(arena);
+        let fields = self.fields.gather(arena);
 
-        let single = fields
-            .iter()
-            .cloned()
-            .map(|field| arena.notate(" ").then(field.flatten(arena), arena))
-            .join_in(arena);
-        let multi = fields
-            .iter()
-            .cloned()
-            .map(|field| arena.break_line().then(field, arena))
-            .join_in(arena);
+        let single = fields.clone().concat_map(
+            |field| arena.just(' ').then(field.flatten(arena), arena),
+            arena,
+        );
+        let multi = fields.concat_map(|field| arena.newline().then(field, arena), arena);
 
         head.then(single.or(multi, arena), arena)
     }
@@ -197,7 +187,7 @@ impl Printable for RecordSelect {
     fn notate<'a>(&'a self, arena: &'a Bump) -> Notation<'a> {
         let Self { source, field } = self;
 
-        let head = format_args!("{}", "RecordSelect".blue()).notate_in(arena);
+        let head = "RecordSelect".blue().display_in(arena);
 
         let source = source.notate(arena);
         let field = field.notate(arena);
@@ -208,17 +198,17 @@ impl Printable for RecordSelect {
             arena.notate(", field = "),
             field.clone().flatten(arena),
         ]
-        .join_in(arena);
+        .concat_in(arena);
 
         let multi = [
-            arena.break_line(),
+            arena.newline(),
             arena.notate("source = "),
             source,
-            arena.break_line(),
+            arena.newline(),
             arena.notate("field = "),
             field,
         ]
-        .join_in(arena)
+        .concat_in(arena)
         .indent(arena);
 
         head.then(single.or(multi, arena), arena)
@@ -246,7 +236,7 @@ impl Printable for RecordExtend {
             value,
         } = self;
 
-        let head = format_args!("{}", "RecordExtend".blue()).notate_in(arena);
+        let head = "RecordExtend".blue().display_in(arena);
 
         let source = source.notate(arena);
         let field = field.notate(arena);
@@ -260,20 +250,20 @@ impl Printable for RecordExtend {
             arena.notate(", value = "),
             value.clone().flatten(arena),
         ]
-        .join_in(arena);
+        .concat_in(arena);
 
         let multi = [
-            arena.break_line(),
+            arena.newline(),
             arena.notate("source = "),
             source,
-            arena.break_line(),
+            arena.newline(),
             arena.notate("field = "),
             field,
-            arena.break_line(),
+            arena.newline(),
             arena.notate("value = "),
             value,
         ]
-        .join_in(arena)
+        .concat_in(arena)
         .indent(arena);
 
         head.then(single.or(multi, arena), arena)
@@ -293,7 +283,7 @@ impl Printable for RecordRestrict {
     fn notate<'a>(&'a self, arena: &'a Bump) -> Notation<'a> {
         let Self { source, field } = self;
 
-        let head = format_args!("{}", "RecordRestrict".blue()).notate_in(arena);
+        let head = "RecordRestrict".blue().display_in(arena);
 
         let source = source.notate(arena);
         let field = field.notate(arena);
@@ -304,17 +294,17 @@ impl Printable for RecordRestrict {
             arena.notate(", field = "),
             field.clone().flatten(arena),
         ]
-        .join_in(arena);
+        .concat_in(arena);
 
         let multi = [
-            arena.break_line(),
+            arena.newline(),
             arena.notate("source = "),
             source,
-            arena.break_line(),
+            arena.newline(),
             arena.notate("field = "),
             field,
         ]
-        .join_in(arena)
+        .concat_in(arena)
         .indent(arena);
 
         head.then(single.or(multi, arena), arena)
@@ -339,7 +329,7 @@ impl Printable for RecordUpdate {
             value,
         } = self;
 
-        let head = format_args!("{}", "RecordUpdate".blue()).notate_in(arena);
+        let head = "RecordUpdate".blue().display_in(arena);
 
         let source = source.notate(arena);
         let field = field.notate(arena);
@@ -353,20 +343,20 @@ impl Printable for RecordUpdate {
             arena.notate(", value = "),
             value.clone().flatten(arena),
         ]
-        .join_in(arena);
+        .concat_in(arena);
 
         let multi = [
-            arena.break_line(),
+            arena.newline(),
             arena.notate("source = "),
             source,
-            arena.break_line(),
+            arena.newline(),
             arena.notate("field = "),
             field,
-            arena.break_line(),
+            arena.newline(),
             arena.notate("value = "),
             value,
         ]
-        .join_in(arena)
+        .concat_in(arena)
         .indent(arena);
 
         head.then(single.or(multi, arena), arena)
@@ -392,7 +382,7 @@ impl fmt::Display for UnaryOpKind {
 
 impl Printable for UnaryOpKind {
     fn notate<'a>(&'a self, arena: &'a Bump) -> Notation<'a> {
-        self.notate_in(arena)
+        self.display_in(arena)
     }
 }
 
@@ -408,15 +398,15 @@ impl Printable for Unary {
     fn notate<'a>(&'a self, arena: &'a Bump) -> Notation<'a> {
         let Self { op, target } = self;
 
-        let head = format_args!("{}", "Unary".blue()).notate_in(arena);
+        let head = "Unary".blue().display_in(arena);
 
         let body = [
-            arena.break_line(),
+            arena.newline(),
             op.notate(arena),
-            arena.break_line(),
+            arena.newline(),
             target.notate(arena),
         ]
-        .join_in(arena)
+        .concat_in(arena)
         .indent(arena);
 
         head.then(body, arena)
@@ -469,7 +459,7 @@ impl fmt::Display for BinaryOpKind {
 
 impl Printable for BinaryOpKind {
     fn notate<'a>(&'a self, arena: &'a Bump) -> Notation<'a> {
-        self.notate_in(arena)
+        self.display_in(arena)
     }
 }
 
@@ -486,17 +476,17 @@ impl Printable for Binary {
     fn notate<'a>(&'a self, arena: &'a Bump) -> Notation<'a> {
         let Self { op, left, right } = self;
 
-        let head = format_args!("{}", "Binary".blue()).notate_in(arena);
+        let head = "Binary".blue().display_in(arena);
 
         let body = [
-            arena.break_line(),
+            arena.newline(),
             left.notate(arena),
-            arena.break_line(),
+            arena.newline(),
             op.notate(arena),
-            arena.break_line(),
+            arena.newline(),
             right.notate(arena),
         ]
-        .join_in(arena)
+        .concat_in(arena)
         .indent(arena);
 
         head.then(body, arena)
@@ -526,7 +516,7 @@ impl Printable for Let {
             inside,
         } = self;
 
-        let head = format_args!("{}", "Let".blue()).notate_in(arena);
+        let head = "Let".blue().display_in(arena);
 
         let name = name.notate(arena);
         let value = value.notate(arena);
@@ -540,20 +530,20 @@ impl Printable for Let {
             arena.notate(", inside = "),
             inside.clone().flatten(arena),
         ]
-        .join_in(arena);
+        .concat_in(arena);
 
         let multi = [
-            arena.break_line(),
+            arena.newline(),
             arena.notate("name = "),
             name,
-            arena.break_line(),
+            arena.newline(),
             arena.notate("value = "),
             value,
-            arena.break_line(),
+            arena.newline(),
             arena.notate("inside = "),
             inside,
         ]
-        .join_in(arena)
+        .concat_in(arena)
         .indent(arena);
 
         head.then(single.or(multi, arena), arena)
@@ -577,7 +567,7 @@ impl Printable for If {
             or,
         } = self;
 
-        let head = format_args!("{}", "Let".blue()).notate_in(arena);
+        let head = "Let".blue().display_in(arena);
 
         let predicate = predicate.notate(arena);
         let then = then.notate(arena);
@@ -591,20 +581,20 @@ impl Printable for If {
             arena.notate(", or = "),
             or.clone().flatten(arena),
         ]
-        .join_in(arena);
+        .concat_in(arena);
 
         let multi = [
-            arena.break_line(),
+            arena.newline(),
             arena.notate("predicate = "),
             predicate,
-            arena.break_line(),
+            arena.newline(),
             arena.notate("then = "),
             then,
-            arena.break_line(),
+            arena.newline(),
             arena.notate("or = "),
             or,
         ]
-        .join_in(arena)
+        .concat_in(arena)
         .indent(arena);
 
         head.then(single.or(multi, arena), arena)
@@ -622,11 +612,11 @@ impl Printable for PatError {
     fn notate<'a>(&'a self, arena: &'a Bump) -> Notation<'a> {
         let Self { span } = self;
 
-        let head = span.notate_in(arena);
-        let kind = format_args!("{}", "PatError".red()).notate_in(arena);
+        let head = span.display_in(arena);
+        let kind = "PatError".red().display_in(arena);
 
         let single = arena.notate(" ").then(kind.clone(), arena);
-        let multi = arena.break_line().then(kind, arena).indent(arena);
+        let multi = arena.newline().then(kind, arena).indent(arena);
 
         head.then(single.or(multi, arena), arena)
     }
@@ -642,10 +632,10 @@ impl Printable for Wildcard {
     fn notate<'a>(&'a self, arena: &'a Bump) -> Notation<'a> {
         let Self { span, ty } = self;
 
-        let head = span.notate_in(arena);
+        let head = span.display_in(arena);
 
-        let kind = format_args!("{}", "Wildcard".blue()).notate_in(arena);
-        let ty = ty.notate_with_in(Style::new().green(), arena);
+        let kind = "Wildcard".blue().display_in(arena);
+        let ty = ty.display_with_in(Style::new().green(), arena);
 
         let single = [
             arena.notate(" "),
@@ -653,16 +643,16 @@ impl Printable for Wildcard {
             arena.notate(" : "),
             ty.clone().flatten(arena),
         ]
-        .join_in(arena);
+        .concat_in(arena);
 
         let multi = [
-            arena.break_line(),
+            arena.newline(),
             kind,
-            arena.break_line(),
+            arena.newline(),
             arena.notate(": "),
             ty,
         ]
-        .join_in(arena)
+        .concat_in(arena)
         .indent(arena);
 
         head.then(single.or(multi, arena), arena)
@@ -693,9 +683,9 @@ impl Printable for PropertyPat {
     fn notate<'a>(&'a self, arena: &'a Bump) -> Notation<'a> {
         let Self { key, value, span } = self;
 
-        let head = span.notate_in(arena);
+        let head = span.display_in(arena);
 
-        let kind = format_args!("{}", "PropertyPat".blue()).notate_in(arena);
+        let kind = "PropertyPat".blue().display_in(arena);
         let key = key.notate(arena);
         let value = value.as_ref().map(|v| v.notate(arena));
 
@@ -709,19 +699,19 @@ impl Printable for PropertyPat {
                 .map(|v| arena.notate(", value = ").then(v, arena))
                 .or_not(arena),
         ]
-        .join_in(arena);
+        .concat_in(arena);
 
         let multi = [
-            arena.break_line(),
+            arena.newline(),
             kind,
-            arena.break_line(),
+            arena.newline(),
             arena.notate("key = "),
             key,
             value
-                .map(|v| [arena.break_line(), arena.notate("value = "), v].join_in(arena))
+                .map(|v| [arena.newline(), arena.notate("value = "), v].concat_in(arena))
                 .or_not(arena),
         ]
-        .join_in(arena)
+        .concat_in(arena)
         .indent(arena);
 
         head.then(single.or(multi, arena), arena)
@@ -741,20 +731,15 @@ pub struct RecordPatRepr {
 
 impl Printable for RecordPatRepr {
     fn notate<'a>(&'a self, arena: &'a Bump) -> Notation<'a> {
-        let head = format_args!("{}", "RecordPat".blue()).notate_in(arena);
+        let head = "RecordPat".blue().display_in(arena);
 
-        let fields = self.fields.transform_in(arena);
+        let fields = self.fields.gather(arena);
 
-        let single = fields
-            .iter()
-            .cloned()
-            .map(|field| arena.notate(" ").then(field.flatten(arena), arena))
-            .join_in(arena);
-        let multi = fields
-            .iter()
-            .cloned()
-            .map(|field| arena.break_line().then(field, arena))
-            .join_in(arena);
+        let single = fields.clone().concat_map(
+            |field| arena.notate(" ").then(field.flatten(arena), arena),
+            arena,
+        );
+        let multi = fields.concat_map(|field| arena.newline().then(field, arena), arena);
 
         head.then(single.or(multi, arena), arena)
     }
@@ -938,9 +923,9 @@ impl Printable for Branch {
     fn notate<'a>(&'a self, arena: &'a Bump) -> Notation<'a> {
         let Self { pat, matches, span } = self;
 
-        let head = span.notate_in(arena);
+        let head = span.display_in(arena);
 
-        let kind = format_args!("{}", "Branch".blue()).notate_in(arena);
+        let kind = "Branch".blue().display_in(arena);
         let pat = pat.notate(arena);
         let matches = matches.notate(arena);
 
@@ -952,19 +937,19 @@ impl Printable for Branch {
             arena.notate(", matches = "),
             matches.clone().flatten(arena),
         ]
-        .join_in(arena);
+        .concat_in(arena);
 
         let multi = [
-            arena.break_line(),
+            arena.newline(),
             kind,
-            arena.break_line(),
+            arena.newline(),
             arena.notate("pat = "),
             pat,
-            arena.break_line(),
+            arena.newline(),
             arena.notate("matches = "),
             matches,
         ]
-        .join_in(arena)
+        .concat_in(arena)
         .indent(arena);
 
         head.then(single.or(multi, arena), arena)
@@ -981,28 +966,28 @@ impl Printable for Case {
     fn notate<'a>(&'a self, arena: &'a Bump) -> Notation<'a> {
         let Self { source, branches } = self;
 
-        let head = format_args!("{}", "Case".blue()).notate_in(arena);
+        let head = "Case".blue().display_in(arena);
 
-        let source = source.notate_in(arena);
-        let branches = branches.transform_in(arena);
+        let source = source.display_in(arena);
+        let branches = branches.gather(arena).concat_in(arena);
 
         let single = [
             arena.notate(" source = "),
             source.clone().flatten(arena),
             arena.notate(", branches = "),
-            arena.join_slice(branches).flatten(arena),
+            branches.clone().flatten(arena),
         ]
-        .join_in(arena);
+        .concat_in(arena);
 
         let multi = [
-            arena.break_line(),
+            arena.newline(),
             arena.notate("source = "),
             source.clone(),
-            arena.break_line(),
+            arena.newline(),
             arena.notate("branches = "),
-            arena.join_slice(branches),
+            branches,
         ]
-        .join_in(arena)
+        .concat_in(arena)
         .indent(arena);
 
         head.then(single.or(multi, arena), arena)
@@ -1021,7 +1006,7 @@ impl Printable for Func {
     fn notate<'a>(&'a self, arena: &'a Bump) -> Notation<'a> {
         let Self { param, body } = self;
 
-        let head = format_args!("{}", "Func".blue()).notate_in(arena);
+        let head = "Func".blue().display_in(arena);
 
         let param = param.notate(arena);
         let body = body.notate(arena);
@@ -1032,17 +1017,17 @@ impl Printable for Func {
             arena.notate(", body = "),
             body.clone().flatten(arena),
         ]
-        .join_in(arena);
+        .concat_in(arena);
 
         let multi = [
-            arena.break_line(),
+            arena.newline(),
             arena.notate("param = "),
             param,
-            arena.break_line(),
+            arena.newline(),
             arena.notate("body = "),
             body,
         ]
-        .join_in(arena)
+        .concat_in(arena)
         .indent(arena);
 
         head.then(single.or(multi, arena), arena)
@@ -1061,7 +1046,7 @@ impl Printable for Call {
     fn notate<'a>(&'a self, arena: &'a Bump) -> Notation<'a> {
         let Self { func, arg } = self;
 
-        let head = format_args!("{}", "Call".blue()).notate_in(arena);
+        let head = "Call".blue().display_in(arena);
 
         let func = func.notate(arena);
         let arg = arg.notate(arena);
@@ -1072,17 +1057,17 @@ impl Printable for Call {
             arena.notate(", arg = "),
             arg.clone().flatten(arena),
         ]
-        .join_in(arena);
+        .concat_in(arena);
 
         let multi = [
-            arena.break_line(),
+            arena.newline(),
             arena.notate("func = "),
             func,
-            arena.break_line(),
+            arena.newline(),
             arena.notate("arg = "),
             arg,
         ]
-        .join_in(arena)
+        .concat_in(arena)
         .indent(arena);
 
         head.then(single.or(multi, arena), arena)
@@ -1100,11 +1085,11 @@ impl Printable for ExprError {
     fn notate<'a>(&'a self, arena: &'a Bump) -> Notation<'a> {
         let Self { span } = self;
 
-        let head = span.notate_in(arena);
-        let kind = format_args!("{}", "ExprError".red()).notate_in(arena);
+        let head = span.display_in(arena);
+        let kind = "ExprError".red().display_in(arena);
 
         let single = arena.notate(" ").then(kind.clone(), arena);
-        let multi = arena.break_line().then(kind, arena).indent(arena);
+        let multi = arena.newline().then(kind, arena).indent(arena);
 
         head.then(single.or(multi, arena), arena)
     }

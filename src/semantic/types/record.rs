@@ -3,11 +3,11 @@ use std::fmt;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    semantic::{merge, Substitutable, Substitution},
+    semantic::{error::SemanticError, merge, Substitutable, Substitution},
     syntax::ast::Symbol,
 };
 
-use super::{MonoType, Typed};
+use super::{Kind, MonoType, Typed};
 
 /// A key-value pair representing a property type in a record.
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Serialize, Deserialize)]
@@ -73,7 +73,11 @@ impl fmt::Display for RecordType {
     }
 }
 
-impl Typed for RecordType {}
+impl Typed for RecordType {
+    fn constrain(&self, with: Kind, s: &mut Substitution) -> Result<(), SemanticError> {
+        todo!()
+    }
+}
 
 impl Substitutable for RecordType {
     fn try_apply(&self, s: &mut Substitution) -> Option<Self> {
