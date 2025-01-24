@@ -19,7 +19,7 @@ pub trait TypeVisitor: Sized {
         walk_mono(self, mono)
     }
 
-    fn visit_record(&mut self, record: &super::RecordType) -> ControlFlow<Self::BreakValue> {
+    fn visit_record(&mut self, record: &super::RowType) -> ControlFlow<Self::BreakValue> {
         walk_record(self, record)
     }
 
@@ -53,10 +53,7 @@ pub trait TypeVisitorMut: Sized {
         walk_mono_mut(self, mono)
     }
 
-    fn visit_record_mut(
-        &mut self,
-        record: &mut super::RecordType,
-    ) -> ControlFlow<Self::BreakValue> {
+    fn visit_record_mut(&mut self, record: &mut super::RowType) -> ControlFlow<Self::BreakValue> {
         walk_record_mut(self, record)
     }
 
@@ -210,7 +207,7 @@ where
     match mono {
         super::MonoType::Builtin(b) => visitor.visit_builtin(b),
         super::MonoType::Func(f) => visitor.visit_func(f),
-        super::MonoType::Record(r) => visitor.visit_record(r),
+        super::MonoType::Row(r) => visitor.visit_record(r),
         super::MonoType::Var(v) => visitor.visit_var(v),
     }
 }
@@ -222,14 +219,14 @@ where
     match mono {
         super::MonoType::Builtin(b) => visitor.visit_builtin_mut(b),
         super::MonoType::Func(f) => visitor.visit_func_mut(f),
-        super::MonoType::Record(r) => visitor.visit_record_mut(r),
+        super::MonoType::Row(r) => visitor.visit_record_mut(r),
         super::MonoType::Var(v) => visitor.visit_var_mut(v),
     }
 }
 
 // Record Type
 
-impl TypeVisitable for super::RecordType {
+impl TypeVisitable for super::RowType {
     fn visit_type_by<V>(&self, visitor: &mut V) -> ControlFlow<V::BreakValue>
     where
         V: TypeVisitor,
@@ -245,13 +242,13 @@ impl TypeVisitable for super::RecordType {
     }
 }
 
-pub fn walk_record<V>(visitor: &mut V, record: &super::RecordType) -> ControlFlow<V::BreakValue>
+pub fn walk_record<V>(visitor: &mut V, record: &super::RowType) -> ControlFlow<V::BreakValue>
 where
     V: TypeVisitor,
 {
     match record {
-        super::RecordType::Empty => ControlFlow::Continue(()),
-        super::RecordType::Extension { head, tail } => {
+        super::RowType::Empty => ControlFlow::Continue(()),
+        super::RowType::Extension { head, tail } => {
             visitor.visit_property(head)?;
             visitor.visit_mono(tail)?;
             ControlFlow::Continue(())
@@ -261,14 +258,14 @@ where
 
 pub fn walk_record_mut<V>(
     visitor: &mut V,
-    record: &mut super::RecordType,
+    record: &mut super::RowType,
 ) -> ControlFlow<V::BreakValue>
 where
     V: TypeVisitorMut,
 {
     match record {
-        super::RecordType::Empty => ControlFlow::Continue(()),
-        super::RecordType::Extension { head, tail } => {
+        super::RowType::Empty => ControlFlow::Continue(()),
+        super::RowType::Extension { head, tail } => {
             visitor.visit_property_mut(head)?;
             visitor.visit_mono_mut(tail)?;
             ControlFlow::Continue(())

@@ -58,6 +58,7 @@ pub fn lexer<'src>() -> impl Parser<'src, &'src str, Vec<Spanned<Token<'src>>>, 
         just("xor").to(Op::Xor),
         just("==").to(Op::Eq),
         just("!=").to(Op::NotEq),
+        just('&').to(Op::Merge),
     ))
     .map(Token::Op);
 

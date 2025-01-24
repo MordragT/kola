@@ -5,7 +5,7 @@ use std::{
 
 use serde::{Deserialize, Serialize};
 
-use crate::semantic::{error::SemanticError, Substitutable, Substitution};
+use crate::semantic::{error::SemanticError, KindEnv, Substitutable, Substitution};
 
 use super::{Kind, MonoType, Typed};
 
@@ -70,8 +70,8 @@ impl TypeVar {
 }
 
 impl Typed for TypeVar {
-    fn constrain(&self, with: Kind, s: &mut Substitution) -> Result<(), SemanticError> {
-        s.constraints_entry(self)
+    fn constrain(&self, with: Kind, env: &mut KindEnv) -> Result<(), SemanticError> {
+        env.entry(*self)
             .and_modify(|constraint| constraint.push(with))
             .or_insert_with(|| vec![with]);
         Ok(())

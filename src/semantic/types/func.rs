@@ -2,7 +2,7 @@ use std::fmt;
 
 use serde::{Deserialize, Serialize};
 
-use crate::semantic::{error::SemanticError, merge, Substitutable, Substitution};
+use crate::semantic::{error::SemanticError, merge, KindEnv, Substitutable, Substitution};
 
 use super::{Kind, MonoType, Typed};
 
@@ -25,7 +25,7 @@ impl fmt::Display for FuncType {
 }
 
 impl Typed for FuncType {
-    fn constrain(&self, with: Kind, _s: &mut Substitution) -> Result<(), SemanticError> {
+    fn constrain(&self, with: Kind, _env: &mut KindEnv) -> Result<(), SemanticError> {
         Err(SemanticError::CannotConstrain {
             expected: with,
             actual: self.clone().into(),

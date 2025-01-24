@@ -5,18 +5,18 @@ pub use collection::*;
 pub use func::*;
 pub use mono::*;
 pub use poly::*;
-pub use record::*;
+pub use row::*;
 pub use var::*;
 pub use visit::*;
 
-use super::{error::SemanticError, Substitution};
+use super::{error::SemanticError, KindEnv, Substitution};
 
 mod builtin;
 mod collection;
 mod func;
 mod mono;
 mod poly;
-mod record;
+mod row;
 mod var;
 mod visit;
 
@@ -30,10 +30,12 @@ pub enum Kind {
     Stringable,
     // Logical ??
     Record,
+    Effect,
+    Handler,
 }
 
 pub trait Typed: TypeVisitable {
-    fn constrain(&self, with: Kind, s: &mut Substitution) -> Result<(), SemanticError>;
+    fn constrain(&self, with: Kind, env: &mut KindEnv) -> Result<(), SemanticError>;
 
     /// occurs check
     fn contains(&self, var: &TypeVar) -> bool {

@@ -3,8 +3,8 @@ use std::fmt;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    semantic::{error::SemanticError, merge, Substitutable, Substitution},
-    syntax::ast::Symbol,
+    semantic::{error::SemanticError, merge, KindEnv, Substitutable, Substitution},
+    syntax::tree::Symbol,
 };
 
 use super::{Kind, MonoType, Typed};
@@ -52,7 +52,7 @@ derive that:
 /// variable*. A record variable is a type variable that
 /// represents an unknown record type.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub enum RecordType {
+pub enum RowType {
     /// A record that has no properties.
     Empty,
     /// Extension of a record.
@@ -64,7 +64,7 @@ pub enum RecordType {
     },
 }
 
-impl fmt::Display for RecordType {
+impl fmt::Display for RowType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Empty => write!(f, "{{}}"),
@@ -73,13 +73,19 @@ impl fmt::Display for RecordType {
     }
 }
 
-impl Typed for RecordType {
-    fn constrain(&self, with: Kind, s: &mut Substitution) -> Result<(), SemanticError> {
-        todo!()
+impl Typed for RowType {
+    fn constrain(&self, with: Kind, _env: &mut KindEnv) -> Result<(), SemanticError> {
+        match with {
+            Kind::Record => Ok(()),
+            _ => Err(SemanticError::CannotConstrain {
+                expected: with,
+                actual: self.clone().into(),
+            }),
+        }
     }
 }
 
-impl Substitutable for RecordType {
+impl Substitutable for RowType {
     fn try_apply(&self, s: &mut Substitution) -> Option<Self> {
         match self {
             Self::Empty => None,

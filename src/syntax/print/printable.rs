@@ -15,13 +15,13 @@ use super::{
     DisplayIn,
 };
 
-pub trait Printable {
-    fn notate<'a>(&'a self, arena: &'a Bump) -> Notation<'a>;
+pub trait Printable<With> {
+    fn notate<'a>(&'a self, with: &'a With, arena: &'a Bump) -> Notation<'a>;
 
-    fn render(&self, options: PrintOptions) -> std::string::String {
+    fn render(&self, with: &With, options: PrintOptions) -> std::string::String {
         let arena = Bump::new();
 
-        let notation = self.notate(&arena);
+        let notation = self.notate(with, &arena);
         let mut printer = Printer::new(&notation, options, &arena);
 
         let mut output = std::string::String::new();
@@ -31,46 +31,34 @@ pub trait Printable {
     }
 }
 
-impl Printable for EcoString {
-    fn notate<'a>(&'a self, arena: &'a Bump) -> Notation<'a> {
+impl<T> Printable<T> for EcoString {
+    fn notate<'a>(&'a self, _with: &'a T, arena: &'a Bump) -> Notation<'a> {
         self.display_in(arena)
     }
 }
 
-impl Printable for Tokens<'_> {
-    fn notate<'a>(&'a self, arena: &'a Bump) -> Notation<'a> {
+impl Printable<()> for Tokens<'_> {
+    fn notate<'a>(&'a self, with: &'a (), arena: &'a Bump) -> Notation<'a> {
         let items = self
             .iter()
-            .flat_map(|t| [t.notate(arena), arena.newline()])
+            .flat_map(|t| [t.notate(with, arena), arena.newline()])
             .collect_in::<Vec<_>>(arena);
 
         arena.concat(items.into_bump_slice())
     }
 }
 
-impl Printable for Span {
-    fn notate<'a>(&'a self, arena: &'a Bump) -> Notation<'a> {
+impl<T> Printable<T> for Span {
+    fn notate<'a>(&'a self, _with: &T, arena: &'a Bump) -> Notation<'a> {
         self.display_in(arena)
     }
 }
 
-impl Printable for Spanned<Token<'_>> {
-    fn notate<'a>(&'a self, arena: &'a Bump) -> Notation<'a> {
+impl Printable<()> for Spanned<Token<'_>> {
+    fn notate<'a>(&'a self, _with: &'a (), arena: &'a Bump) -> Notation<'a> {
         let (token, span) = self;
         let kind = token.kind();
 
         format_args!("\"{token}\"\t\t({kind}, {span})").display_in(arena)
     }
 }
-
-// impl<T> Printable for Option<T>
-// where
-//     T: Printable,
-// {
-//     fn notate<'a>(&'a self, arena: &'a Bump) -> Notation<'a> {
-//         match self {
-//             Some(t) => t.notate(arena),
-//             None => arena.empty(),
-//         }
-//     }
-// }

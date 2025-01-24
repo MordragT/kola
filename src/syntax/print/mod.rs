@@ -27,17 +27,17 @@ pub trait OrNot<'a> {
     fn or_not(self, arena: &'a Bump) -> Notation<'a>;
 }
 
-impl<'a, T> OrNot<'a> for Option<&'a T>
-where
-    T: Printable,
-{
-    fn or_not(self, arena: &'a Bump) -> Notation<'a> {
-        match self {
-            Some(t) => t.notate(arena),
-            None => arena.empty(),
-        }
-    }
-}
+// impl<'a, T> OrNot<'a> for Option<&'a T>
+// where
+//     T: Printable,
+// {
+//     fn or_not(self, arena: &'a Bump) -> Notation<'a> {
+//         match self {
+//             Some(t) => t.notate(arena),
+//             None => arena.empty(),
+//         }
+//     }
+// }
 
 impl<'a> OrNot<'a> for Option<Notation<'a>> {
     fn or_not(self, arena: &'a Bump) -> Notation<'a> {
@@ -115,17 +115,19 @@ where
     }
 }
 
-pub trait Gather<'a> {
-    fn gather(self, arena: &'a Bump) -> Vec<'a, Notation<'a>>;
+pub trait Gather<'a, W> {
+    fn gather(self, with: &'a W, arena: &'a Bump) -> Vec<'a, Notation<'a>>;
 }
 
-impl<'a, I, T> Gather<'a> for I
+impl<'a, I, T, W> Gather<'a, W> for I
 where
-    T: Printable + 'a,
+    T: Printable<W> + 'a,
     I: IntoIterator<Item = &'a T>,
 {
-    fn gather(self, arena: &'a Bump) -> Vec<'a, Notation<'a>> {
-        self.into_iter().map(|p| p.notate(arena)).collect_in(arena)
+    fn gather(self, with: &'a W, arena: &'a Bump) -> Vec<'a, Notation<'a>> {
+        self.into_iter()
+            .map(|p| p.notate(with, arena))
+            .collect_in(arena)
     }
 }
 

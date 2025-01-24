@@ -2,7 +2,7 @@ use std::fmt;
 
 use serde::{Deserialize, Serialize};
 
-use crate::semantic::{error::SemanticError, Substitution};
+use crate::semantic::{error::SemanticError, KindEnv};
 
 use super::{Kind, Typed};
 
@@ -26,7 +26,7 @@ impl fmt::Display for BuiltinType {
 }
 
 impl Typed for BuiltinType {
-    fn constrain(&self, with: Kind, _s: &mut Substitution) -> Result<(), SemanticError> {
+    fn constrain(&self, with: Kind, _env: &mut KindEnv) -> Result<(), SemanticError> {
         match self {
             BuiltinType::Bool => match with {
                 Kind::Equatable | Kind::Stringable => Ok(()),

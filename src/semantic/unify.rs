@@ -50,7 +50,7 @@ impl Unifiable for MonoType {
     }
 }
 
-impl Unifiable for RecordType {
+impl Unifiable for RowType {
     fn try_unify(&self, rhs: &Self, s: &mut Substitution) -> Result<(), Errors<SemanticError>> {
         let mut unifier = Unifier::new(s);
         unifier.unify_record(self, rhs);
@@ -132,7 +132,7 @@ impl<'s> Unifier<'s> {
         match (lhs, rhs) {
             (MonoType::Builtin(l), MonoType::Builtin(r)) => self.unify_builtin(l, r),
             (MonoType::Func(l), MonoType::Func(r)) => self.unify_func(l, r),
-            (MonoType::Record(l), MonoType::Record(r)) => self.unify_record(l, r),
+            (MonoType::Row(l), MonoType::Row(r)) => self.unify_record(l, r),
             (MonoType::Var(var), with) => self.bind_var(var, with),
             (with, MonoType::Var(var)) => self.bind_var(var, with),
             (l, r) => {
@@ -166,15 +166,15 @@ impl<'s> Unifier<'s> {
     // they must have the same property name otherwise they cannot unify.
     //
     // self represents the expected type.
-    fn unify_record(&mut self, lhs: &RecordType, rhs: &RecordType) {
+    fn unify_record(&mut self, lhs: &RowType, rhs: &RowType) {
         match (lhs, rhs) {
-            (RecordType::Empty, RecordType::Empty) => (),
+            (RowType::Empty, RowType::Empty) => (),
             (
-                RecordType::Extension {
+                RowType::Extension {
                     head: Property { k: a, v: t },
                     tail: MonoType::Var(l),
                 },
-                RecordType::Extension {
+                RowType::Extension {
                     head: Property { k: b, v: u },
                     tail: MonoType::Var(r),
                 },
@@ -190,11 +190,11 @@ impl<'s> Unifier<'s> {
                 );
             }
             (
-                RecordType::Extension {
+                RowType::Extension {
                     head: Property { k: a, .. },
                     tail: MonoType::Var(l),
                 },
-                RecordType::Extension {
+                RowType::Extension {
                     head: Property { k: b, .. },
                     tail: MonoType::Var(r),
                 },
@@ -203,11 +203,11 @@ impl<'s> Unifier<'s> {
                 actual: MonoType::from(rhs.clone()),
             }),
             (
-                RecordType::Extension {
+                RowType::Extension {
                     head: Property { k: a, v: t },
                     tail: l,
                 },
-                RecordType::Extension {
+                RowType::Extension {
                     head: Property { k: b, v: u },
                     tail: r,
                 },
@@ -216,24 +216,24 @@ impl<'s> Unifier<'s> {
                 self.unify_mono(l, r);
             }
             (
-                RecordType::Extension {
+                RowType::Extension {
                     head: Property { k: a, v: t },
                     tail: l,
                 },
-                RecordType::Extension {
+                RowType::Extension {
                     head: Property { k: b, v: u },
                     tail: r,
                 },
             ) if a != b => {
                 let var = TypeVar::new();
-                let exp = MonoType::from(RecordType::Extension {
+                let exp = MonoType::from(RowType::Extension {
                     head: Property {
                         k: a.clone(),
                         v: t.clone(),
                     },
                     tail: MonoType::Var(var),
                 });
-                let act = MonoType::from(RecordType::Extension {
+                let act = MonoType::from(RowType::Extension {
                     head: Property {
                         k: b.clone(),
                         v: u.clone(),
@@ -245,16 +245,16 @@ impl<'s> Unifier<'s> {
             }
             // If we are expecting {a: u | r} but find {}, label `a` is missing.
             (
-                RecordType::Extension {
+                RowType::Extension {
                     head: Property { k: a, .. },
                     ..
                 },
-                RecordType::Empty,
+                RowType::Empty,
             ) => self.errors.push(SemanticError::MissingLabel(a.clone())),
             // If we are expecting {} but find {a: u | r}, label `a` is extra.
             (
-                RecordType::Empty,
-                RecordType::Extension {
+                RowType::Empty,
+                RowType::Extension {
                     head: Property { k: a, .. },
                     ..
                 },

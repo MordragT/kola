@@ -1,12 +1,11 @@
 use kola::{
-    semantic::{error::SemanticReport, Infer, Substitution},
+    semantic::{error::SemanticReport, Inferer, Substitution},
     source::Source,
     syntax::{
-        ast,
         error::SyntaxReport,
         parse,
         print::{PrintOptions, Printable},
-        tokenize, ParseResult, TokenizeResult,
+        tokenize, tree, ParseResult, TokenizeResult,
     },
 };
 use miette::IntoDiagnostic;
@@ -38,10 +37,10 @@ fn main() -> miette::Result<()> {
             println!("{}", "Source".bold().bright_white());
             println!("{source}\n");
 
-            let ast = try_parse(source)?;
+            let syntax_tree = try_parse(source)?;
 
             println!("{}", "Abstract Syntax Tree".bold().bright_white());
-            println!("{}", ast.render(options));
+            println!("{}", syntax_tree.render(&(), options));
         }
         Cmd::Analyze { path } => {
             let source = Source::from_path(path).into_diagnostic()?;
@@ -49,38 +48,44 @@ fn main() -> miette::Result<()> {
             println!("{}", "Source".bold().bright_white());
             println!("{source}\n");
 
-            let mut ast = try_parse(source.clone())?;
+            let syntax_tree = try_parse(source.clone())?;
 
             println!("{}", "Untyped Abstract Syntax Tree".bold().bright_white());
-            println!("{}\n", ast.render(options));
+            println!("{}\n", syntax_tree.render(&(), options));
 
-            let mut s = Substitution::empty();
-            ast.solve(&mut s)
+            let inferer = Inferer::new(&syntax_tree);
+            let semantic_tree = inferer
+                .solve()
                 .map_err(|(errors, span)| SemanticReport::new(source, span, errors))?;
-            s.apply(&mut ast);
 
-            println!("{}", "Substitution Table".bold().bright_white());
-            println!("{s}");
+            // let mut s = Substitution::empty();
+            // syntax_tree
+            //     .solve(&mut s)
+            //     .map_err(|(errors, span)| SemanticReport::new(source, span, errors))?;
+            // s.apply(&mut syntax_tree);
+
+            // println!("{}", "Substitution Table".bold().bright_white());
+            // println!("{s}");
 
             println!("{}", "Typed Abstract Syntax Tree".bold().bright_white());
-            println!("{}\n", ast.render(options));
+            println!("{}\n", semantic_tree.render(&(), options));
         }
     }
 
     Ok(())
 }
 
-fn try_parse(source: Source) -> Result<ast::Expr, SyntaxReport> {
+fn try_parse(source: Source) -> Result<tree::SyntaxTree, SyntaxReport> {
     let options = PrintOptions::default();
 
     let TokenizeResult { tokens, mut errors } = tokenize(source.as_str());
 
-    let ast = tokens.and_then(|tokens| {
+    let syntax_tree = tokens.and_then(|tokens| {
         println!("{}", "Tokens".bold().bright_white());
-        println!("{}", tokens.render(options));
+        println!("{}", tokens.render(&(), options));
 
         let ParseResult {
-            ast,
+            tree: ast,
             errors: mut parse_errors,
         } = parse(tokens, source.end_of_input());
 
@@ -89,12 +94,12 @@ fn try_parse(source: Source) -> Result<ast::Expr, SyntaxReport> {
     });
 
     if errors.has_errors() {
-        if let Some(ast) = ast {
+        if let Some(syntax_tree) = syntax_tree {
             println!("{}", "Erroneous Abstract Syntax Tree".bold().bright_white());
-            println!("{}", ast.render(options));
+            println!("{}", syntax_tree.render(&(), options));
         }
         Err(SyntaxReport::new(source, errors))
     } else {
-        Ok(ast.unwrap())
+        Ok(syntax_tree.unwrap())
     }
 }

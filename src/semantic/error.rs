@@ -4,7 +4,7 @@ use thiserror::Error;
 use crate::{
     errors::Errors,
     source::Source,
-    syntax::{ast::Symbol, Span, Spanned},
+    syntax::{tree::Symbol, Span, Spanned},
 };
 
 use super::types::{Kind, MonoType, TypeVar};

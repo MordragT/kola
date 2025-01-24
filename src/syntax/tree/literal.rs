@@ -1,0 +1,43 @@
+use owo_colors::OwoColorize;
+use serde::{Deserialize, Serialize};
+
+use super::{Node, Symbol, Tree};
+use crate::syntax::print::prelude::*;
+
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+pub enum Literal {
+    Bool(bool),
+    Num(f64),
+    Char(char),
+    Str(Symbol),
+}
+
+impl<M> Printable<Tree<M>> for Literal {
+    fn notate<'a>(&'a self, _with: &'a Tree<M>, arena: &'a Bump) -> Notation<'a> {
+        let kind = "Literal".purple().display_in(arena);
+
+        let lit = match self {
+            Self::Bool(b) => b.yellow().display_in(arena),
+            Self::Num(n) => n.yellow().display_in(arena),
+            Self::Char(c) => c.yellow().display_in(arena),
+            Self::Str(s) => s.yellow().display_in(arena),
+        }
+        .enclose_by(arena.just('"'), arena);
+
+        let single = arena.just(' ').then(lit.clone(), arena);
+        let multi = arena.newline().then(lit, arena);
+
+        kind.then(single.or(multi, arena), arena)
+    }
+}
+
+impl TryFrom<Node> for Literal {
+    type Error = ();
+
+    fn try_from(value: Node) -> Result<Self, Self::Error> {
+        match value {
+            Node::Literal(l) => Ok(l),
+            _ => Err(()),
+        }
+    }
+}

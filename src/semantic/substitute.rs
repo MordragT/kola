@@ -1,15 +1,10 @@
-use std::{
-    borrow::Cow,
-    collections::{hash_map::Entry, HashMap},
-    fmt,
-    ops::ControlFlow,
-};
+use std::{borrow::Cow, collections::HashMap, fmt, ops::ControlFlow};
 
 use owo_colors::OwoColorize;
 
-use crate::syntax::visit::{Visitable, VisitorMut};
+// use crate::syntax::visit::{Visitable, VisitorMut};
 
-use super::types::{Kind, MonoType, TypeVar};
+use super::types::{MonoType, TypeVar};
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Substitution {
@@ -28,7 +23,6 @@ pub struct Substitution {
     /// Rather than updating the actual mappings,
     /// this cache maintains these compressed mappings.
     cache: HashMap<TypeVar, MonoType>,
-    cons: HashMap<TypeVar, Vec<Kind>>,
 }
 
 impl fmt::Display for Substitution {
@@ -46,16 +40,11 @@ impl Substitution {
         Self {
             table,
             cache: HashMap::new(),
-            cons: HashMap::new(),
         }
     }
 
     pub fn empty() -> Self {
         Self::default()
-    }
-
-    pub fn constraints_entry(&mut self, var: &TypeVar) -> Entry<TypeVar, Vec<Kind>> {
-        self.cons.entry(*var)
     }
 
     pub fn get(&self, tv: &TypeVar) -> Option<&MonoType> {
@@ -77,12 +66,12 @@ impl Substitution {
             .or_insert_with(|| ty.clone());
     }
 
-    pub fn apply<N>(&mut self, node: &mut N)
-    where
-        N: Visitable,
-    {
-        node.visit_mut_by(self);
-    }
+    // pub fn apply<N>(&mut self, node: &mut N)
+    // where
+    //     N: Visitable,
+    // {
+    //     node.visit_mut_by(self);
+    // }
 
     pub fn clear(&mut self) {
         self.table.clear();
@@ -90,14 +79,14 @@ impl Substitution {
     }
 }
 
-impl VisitorMut for Substitution {
-    type BreakValue = !;
+// impl VisitorMut for Substitution {
+//     type BreakValue = !;
 
-    fn visit_ty_mut(&mut self, ty: &mut MonoType) -> ControlFlow<Self::BreakValue> {
-        ty.apply_mut(self);
-        ControlFlow::Continue(())
-    }
-}
+//     fn visit_ty_mut(&mut self, ty: &mut MonoType) -> ControlFlow<Self::BreakValue> {
+//         ty.apply_mut(self);
+//         ControlFlow::Continue(())
+//     }
+// }
 
 /// A type is `Substitutable` if a substitution can be applied to it.
 pub trait Substitutable: Sized {
@@ -128,6 +117,26 @@ pub trait Substitutable: Sized {
     /// Should return `None` if there was nothing to apply
     /// which allows for optimizations.
     fn try_apply(&self, s: &mut Substitution) -> Option<Self>;
+}
+
+impl<T> Substitutable for Vec<T>
+where
+    T: Substitutable,
+{
+    fn apply(self, s: &mut Substitution) -> Self {
+        self.into_iter().map(|t| t.apply(s)).collect()
+    }
+
+    fn apply_mut(&mut self, s: &mut Substitution) {
+        for t in self {
+            t.apply_mut(s);
+        }
+    }
+
+    fn try_apply(&self, s: &mut Substitution) -> Option<Self> {
+        // divide and conquer merge ?
+        todo!()
+    }
 }
 
 pub fn merge<A, B, DA, DB>(

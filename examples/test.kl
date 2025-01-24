@@ -2,7 +2,22 @@
 #    (sg true)
 
 #let id = \a => a in
-#    (id true)
+#    {
+#        a = (id true),
+#        b = (id (id 10)),
+#    }
 
-let xx = \a => \b => a < b in
-    (xx "test")
+#let Y = \f =>
+#    let g = \x => (f (x x)) in
+#    (g g)
+#in
+#let fact = \f => \n => if n == 0 then 1 else n * (f n - 1) in
+#((Y fact) 5)
+
+#let r = { a = 10, b = 20 } in
+#    #{ r | -a }
+#    #{ r | a = "test" }
+#    { r | +c = 20 | +d = 30 }
+
+let f = \a => \b => a + b in
+    ((f 10) 5)

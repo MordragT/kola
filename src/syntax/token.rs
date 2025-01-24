@@ -54,6 +54,8 @@ pub enum Op {
     // Equality
     Eq,
     NotEq,
+    // Record
+    Merge,
 }
 
 impl fmt::Display for Op {
@@ -74,6 +76,7 @@ impl fmt::Display for Op {
             Self::Xor => write!(f, "xor"),
             Self::Eq => write!(f, "=="),
             Self::NotEq => write!(f, "!="),
+            Self::Merge => write!(f, "&"),
         }
     }
 }

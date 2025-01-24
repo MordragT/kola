@@ -2,7 +2,7 @@ use std::ops::ControlFlow;
 
 use crate::semantic::types::MonoType;
 
-use super::ast;
+use super::tree;
 
 // double dispatch
 pub trait Visitable {
@@ -31,7 +31,7 @@ impl Visitable for MonoType {
     }
 }
 
-impl Visitable for ast::Name {
+impl Visitable for tree::Name {
     fn visit_by<V>(&self, visitor: &mut V) -> ControlFlow<V::BreakValue>
     where
         V: Visitor,
@@ -47,7 +47,7 @@ impl Visitable for ast::Name {
     }
 }
 
-impl Visitable for ast::ExprError {
+impl Visitable for tree::ExprError {
     fn visit_by<V>(&self, visitor: &mut V) -> ControlFlow<V::BreakValue>
     where
         V: Visitor,
@@ -63,7 +63,7 @@ impl Visitable for ast::ExprError {
     }
 }
 
-impl Visitable for ast::IdentExpr {
+impl Visitable for tree::Ident {
     fn visit_by<V>(&self, visitor: &mut V) -> ControlFlow<V::BreakValue>
     where
         V: Visitor,
@@ -79,7 +79,7 @@ impl Visitable for ast::IdentExpr {
     }
 }
 
-impl Visitable for ast::LiteralExpr {
+impl Visitable for tree::Literal {
     fn visit_by<V>(&self, visitor: &mut V) -> ControlFlow<V::BreakValue>
     where
         V: Visitor,
@@ -95,7 +95,7 @@ impl Visitable for ast::LiteralExpr {
     }
 }
 
-impl Visitable for ast::ListExpr {
+impl Visitable for tree::List {
     fn visit_by<V>(&self, visitor: &mut V) -> ControlFlow<V::BreakValue>
     where
         V: Visitor,
@@ -111,7 +111,7 @@ impl Visitable for ast::ListExpr {
     }
 }
 
-impl Visitable for ast::Property {
+impl Visitable for tree::Property {
     fn visit_by<V>(&self, visitor: &mut V) -> ControlFlow<V::BreakValue>
     where
         V: Visitor,
@@ -127,7 +127,7 @@ impl Visitable for ast::Property {
     }
 }
 
-impl Visitable for ast::RecordExpr {
+impl Visitable for tree::Record {
     fn visit_by<V>(&self, visitor: &mut V) -> ControlFlow<V::BreakValue>
     where
         V: Visitor,
@@ -143,7 +143,7 @@ impl Visitable for ast::RecordExpr {
     }
 }
 
-impl Visitable for ast::RecordSelectExpr {
+impl Visitable for tree::RecordSelect {
     fn visit_by<V>(&self, visitor: &mut V) -> ControlFlow<V::BreakValue>
     where
         V: Visitor,
@@ -159,7 +159,7 @@ impl Visitable for ast::RecordSelectExpr {
     }
 }
 
-impl Visitable for ast::RecordExtendExpr {
+impl Visitable for tree::RecordExtend {
     fn visit_by<V>(&self, visitor: &mut V) -> ControlFlow<V::BreakValue>
     where
         V: Visitor,
@@ -175,7 +175,7 @@ impl Visitable for ast::RecordExtendExpr {
     }
 }
 
-impl Visitable for ast::RecordRestrictExpr {
+impl Visitable for tree::RecordRestrict {
     fn visit_by<V>(&self, visitor: &mut V) -> ControlFlow<V::BreakValue>
     where
         V: Visitor,
@@ -191,7 +191,7 @@ impl Visitable for ast::RecordRestrictExpr {
     }
 }
 
-impl Visitable for ast::RecordUpdateExpr {
+impl Visitable for tree::RecordUpdate {
     fn visit_by<V>(&self, visitor: &mut V) -> ControlFlow<V::BreakValue>
     where
         V: Visitor,
@@ -207,7 +207,7 @@ impl Visitable for ast::RecordUpdateExpr {
     }
 }
 
-impl Visitable for ast::UnaryOp {
+impl Visitable for tree::UnaryOp {
     fn visit_by<V>(&self, visitor: &mut V) -> ControlFlow<V::BreakValue>
     where
         V: Visitor,
@@ -223,7 +223,7 @@ impl Visitable for ast::UnaryOp {
     }
 }
 
-impl Visitable for ast::UnaryExpr {
+impl Visitable for tree::Unary {
     fn visit_by<V>(&self, visitor: &mut V) -> ControlFlow<V::BreakValue>
     where
         V: Visitor,
@@ -239,7 +239,7 @@ impl Visitable for ast::UnaryExpr {
     }
 }
 
-impl Visitable for ast::BinaryOp {
+impl Visitable for tree::BinaryOp {
     fn visit_by<V>(&self, visitor: &mut V) -> ControlFlow<V::BreakValue>
     where
         V: Visitor,
@@ -255,7 +255,7 @@ impl Visitable for ast::BinaryOp {
     }
 }
 
-impl Visitable for ast::BinaryExpr {
+impl Visitable for tree::Binary {
     fn visit_by<V>(&self, visitor: &mut V) -> ControlFlow<V::BreakValue>
     where
         V: Visitor,
@@ -271,7 +271,7 @@ impl Visitable for ast::BinaryExpr {
     }
 }
 
-impl Visitable for ast::LetExpr {
+impl Visitable for tree::Let {
     fn visit_by<V>(&self, visitor: &mut V) -> ControlFlow<V::BreakValue>
     where
         V: Visitor,
@@ -287,7 +287,7 @@ impl Visitable for ast::LetExpr {
     }
 }
 
-impl Visitable for ast::IfExpr {
+impl Visitable for tree::If {
     fn visit_by<V>(&self, visitor: &mut V) -> ControlFlow<V::BreakValue>
     where
         V: Visitor,
@@ -303,7 +303,7 @@ impl Visitable for ast::IfExpr {
     }
 }
 
-impl Visitable for ast::CaseExpr {
+impl Visitable for tree::Case {
     fn visit_by<V>(&self, visitor: &mut V) -> ControlFlow<V::BreakValue>
     where
         V: Visitor,
@@ -319,7 +319,7 @@ impl Visitable for ast::CaseExpr {
     }
 }
 
-impl Visitable for ast::CallExpr {
+impl Visitable for tree::Call {
     fn visit_by<V>(&self, visitor: &mut V) -> ControlFlow<V::BreakValue>
     where
         V: Visitor,
@@ -337,7 +337,7 @@ impl Visitable for ast::CallExpr {
 
 // TODO more Visitable implementations
 
-impl Visitable for ast::Expr {
+impl Visitable for tree::Expr {
     fn visit_by<V>(&self, visitor: &mut V) -> ControlFlow<V::BreakValue>
     where
         V: Visitor,
@@ -360,107 +360,107 @@ pub trait Visitor: Sized {
         walk_ty(self, ty)
     }
 
-    fn visit_name(&mut self, name: &ast::Name) -> ControlFlow<Self::BreakValue> {
+    fn visit_name(&mut self, name: &tree::Name) -> ControlFlow<Self::BreakValue> {
         walk_name(self, name)
     }
 
-    fn visit_error(&mut self, error: &ast::ExprError) -> ControlFlow<Self::BreakValue> {
+    fn visit_error(&mut self, error: &tree::ExprError) -> ControlFlow<Self::BreakValue> {
         walk_error(self, error)
     }
 
-    fn visit_ident(&mut self, ident: &ast::IdentExpr) -> ControlFlow<Self::BreakValue> {
+    fn visit_ident(&mut self, ident: &tree::Ident) -> ControlFlow<Self::BreakValue> {
         walk_ident(self, ident)
     }
 
-    fn visit_literal(&mut self, literal: &ast::LiteralExpr) -> ControlFlow<Self::BreakValue> {
+    fn visit_literal(&mut self, literal: &tree::Literal) -> ControlFlow<Self::BreakValue> {
         walk_literal(self, literal)
     }
 
-    fn visit_list(&mut self, list: &ast::ListExpr) -> ControlFlow<Self::BreakValue> {
+    fn visit_list(&mut self, list: &tree::List) -> ControlFlow<Self::BreakValue> {
         walk_list(self, list)
     }
 
-    fn visit_property(&mut self, property: &ast::Property) -> ControlFlow<Self::BreakValue> {
+    fn visit_property(&mut self, property: &tree::Property) -> ControlFlow<Self::BreakValue> {
         walk_property(self, property)
     }
 
-    fn visit_record(&mut self, record: &ast::RecordExpr) -> ControlFlow<Self::BreakValue> {
+    fn visit_record(&mut self, record: &tree::Record) -> ControlFlow<Self::BreakValue> {
         walk_record(self, record)
     }
 
     fn visit_record_select(
         &mut self,
-        record_select: &ast::RecordSelectExpr,
+        select: &tree::RecordSelect,
     ) -> ControlFlow<Self::BreakValue> {
-        walk_record_select(self, record_select)
+        walk_record_select(self, select)
     }
 
     fn visit_record_extend(
         &mut self,
-        record_extend: &ast::RecordExtendExpr,
+        extend: &tree::RecordExtend,
     ) -> ControlFlow<Self::BreakValue> {
-        walk_record_extend(self, record_extend)
+        walk_record_extend(self, extend)
     }
 
     fn visit_record_restrict(
         &mut self,
-        record_restrict: &ast::RecordRestrictExpr,
+        restrict: &tree::RecordRestrict,
     ) -> ControlFlow<Self::BreakValue> {
-        walk_record_restrict(self, record_restrict)
+        walk_record_restrict(self, restrict)
     }
 
     fn visit_record_update(
         &mut self,
-        record_update: &ast::RecordUpdateExpr,
+        update: &tree::RecordUpdate,
     ) -> ControlFlow<Self::BreakValue> {
-        walk_record_update(self, record_update)
+        walk_record_update(self, update)
     }
 
-    fn visit_unary_op(&mut self, unary_op: &ast::UnaryOp) -> ControlFlow<Self::BreakValue> {
+    fn visit_unary_op(&mut self, unary_op: &tree::UnaryOp) -> ControlFlow<Self::BreakValue> {
         walk_unary_op(self, unary_op)
     }
 
-    fn visit_unary(&mut self, unary: &ast::UnaryExpr) -> ControlFlow<Self::BreakValue> {
+    fn visit_unary(&mut self, unary: &tree::Unary) -> ControlFlow<Self::BreakValue> {
         walk_unary(self, unary)
     }
 
-    fn visit_binary_op(&mut self, binary_op: &ast::BinaryOp) -> ControlFlow<Self::BreakValue> {
+    fn visit_binary_op(&mut self, binary_op: &tree::BinaryOp) -> ControlFlow<Self::BreakValue> {
         walk_binary_op(self, binary_op)
     }
 
-    fn visit_binary(&mut self, binary: &ast::BinaryExpr) -> ControlFlow<Self::BreakValue> {
+    fn visit_binary(&mut self, binary: &tree::Binary) -> ControlFlow<Self::BreakValue> {
         walk_binary(self, binary)
     }
 
-    fn visit_let(&mut self, let_: &ast::LetExpr) -> ControlFlow<Self::BreakValue> {
+    fn visit_let(&mut self, let_: &tree::Let) -> ControlFlow<Self::BreakValue> {
         walk_let(self, let_)
     }
 
-    fn visit_if(&mut self, if_: &ast::IfExpr) -> ControlFlow<Self::BreakValue> {
+    fn visit_if(&mut self, if_: &tree::If) -> ControlFlow<Self::BreakValue> {
         walk_if(self, if_)
     }
 
-    fn visit_pat(&mut self, pat: &ast::Pat) -> ControlFlow<Self::BreakValue> {
+    fn visit_pat(&mut self, pat: &tree::Pat) -> ControlFlow<Self::BreakValue> {
         walk_pat(self, pat)
     }
 
-    fn visit_branch(&mut self, branch: &ast::Branch) -> ControlFlow<Self::BreakValue> {
+    fn visit_branch(&mut self, branch: &tree::Branch) -> ControlFlow<Self::BreakValue> {
         walk_branch(self, branch)
     }
 
-    fn visit_case(&mut self, case: &ast::CaseExpr) -> ControlFlow<Self::BreakValue> {
+    fn visit_case(&mut self, case: &tree::Case) -> ControlFlow<Self::BreakValue> {
         walk_case(self, case)
     }
 
-    fn visit_func(&mut self, func: &ast::FuncExpr) -> ControlFlow<Self::BreakValue> {
+    fn visit_func(&mut self, func: &tree::Func) -> ControlFlow<Self::BreakValue> {
         walk_func(self, func)
     }
 
-    fn visit_call(&mut self, call: &ast::CallExpr) -> ControlFlow<Self::BreakValue> {
+    fn visit_call(&mut self, call: &tree::Call) -> ControlFlow<Self::BreakValue> {
         walk_call(self, call)
     }
 
-    fn visit_expr(&mut self, expr: &ast::Expr) -> ControlFlow<Self::BreakValue> {
+    fn visit_expr(&mut self, expr: &tree::Expr) -> ControlFlow<Self::BreakValue> {
         walk_expr(self, expr)
     }
 }
@@ -472,21 +472,21 @@ where
     ControlFlow::Continue(())
 }
 
-pub fn walk_name<V>(_visitor: &mut V, _name: &ast::Name) -> ControlFlow<V::BreakValue>
+pub fn walk_name<V>(_visitor: &mut V, _name: &tree::Name) -> ControlFlow<V::BreakValue>
 where
     V: Visitor,
 {
     ControlFlow::Continue(())
 }
 
-pub fn walk_error<V>(_visitor: &mut V, _error: &ast::ExprError) -> ControlFlow<V::BreakValue>
+pub fn walk_error<V>(_visitor: &mut V, _error: &tree::ExprError) -> ControlFlow<V::BreakValue>
 where
     V: Visitor,
 {
     ControlFlow::Continue(())
 }
 
-pub fn walk_ident<V>(visitor: &mut V, ident: &ast::IdentExpr) -> ControlFlow<V::BreakValue>
+pub fn walk_ident<V>(visitor: &mut V, ident: &tree::Ident) -> ControlFlow<V::BreakValue>
 where
     V: Visitor,
 {
@@ -494,7 +494,7 @@ where
     ControlFlow::Continue(())
 }
 
-pub fn walk_literal<V>(visitor: &mut V, literal: &ast::LiteralExpr) -> ControlFlow<V::BreakValue>
+pub fn walk_literal<V>(visitor: &mut V, literal: &tree::Literal) -> ControlFlow<V::BreakValue>
 where
     V: Visitor,
 {
@@ -502,7 +502,7 @@ where
     ControlFlow::Continue(())
 }
 
-pub fn walk_list<V>(visitor: &mut V, list: &ast::ListExpr) -> ControlFlow<V::BreakValue>
+pub fn walk_list<V>(visitor: &mut V, list: &tree::List) -> ControlFlow<V::BreakValue>
 where
     V: Visitor,
 {
@@ -513,7 +513,7 @@ where
     ControlFlow::Continue(())
 }
 
-pub fn walk_property<V>(visitor: &mut V, property: &ast::Property) -> ControlFlow<V::BreakValue>
+pub fn walk_property<V>(visitor: &mut V, property: &tree::Property) -> ControlFlow<V::BreakValue>
 where
     V: Visitor,
 {
@@ -522,7 +522,7 @@ where
     ControlFlow::Continue(())
 }
 
-pub fn walk_record<V>(visitor: &mut V, record: &ast::RecordExpr) -> ControlFlow<V::BreakValue>
+pub fn walk_record<V>(visitor: &mut V, record: &tree::Record) -> ControlFlow<V::BreakValue>
 where
     V: Visitor,
 {
@@ -535,59 +535,59 @@ where
 
 pub fn walk_record_select<V>(
     visitor: &mut V,
-    record_select: &ast::RecordSelectExpr,
+    select: &tree::RecordSelect,
 ) -> ControlFlow<V::BreakValue>
 where
     V: Visitor,
 {
-    visitor.visit_expr(&record_select.source)?;
-    visitor.visit_name(&record_select.field)?;
-    visitor.visit_ty(record_select.ty())?;
+    visitor.visit_expr(&select.source)?;
+    visitor.visit_name(&select.field)?;
+    visitor.visit_ty(select.ty())?;
     ControlFlow::Continue(())
 }
 
 pub fn walk_record_extend<V>(
     visitor: &mut V,
-    record_extend: &ast::RecordExtendExpr,
+    extend: &tree::RecordExtend,
 ) -> ControlFlow<V::BreakValue>
 where
     V: Visitor,
 {
-    visitor.visit_expr(&record_extend.source)?;
-    visitor.visit_name(&record_extend.field)?;
-    visitor.visit_expr(&record_extend.value)?;
-    visitor.visit_ty(record_extend.ty())?;
+    visitor.visit_expr(&extend.source)?;
+    visitor.visit_name(&extend.field)?;
+    visitor.visit_expr(&extend.value)?;
+    visitor.visit_ty(extend.ty())?;
     ControlFlow::Continue(())
 }
 
 pub fn walk_record_restrict<V>(
     visitor: &mut V,
-    record_restrict: &ast::RecordRestrictExpr,
+    restrict: &tree::RecordRestrict,
 ) -> ControlFlow<V::BreakValue>
 where
     V: Visitor,
 {
-    visitor.visit_expr(&record_restrict.source)?;
-    visitor.visit_name(&record_restrict.field)?;
-    visitor.visit_ty(record_restrict.ty())?;
+    visitor.visit_expr(&restrict.source)?;
+    visitor.visit_name(&restrict.field)?;
+    visitor.visit_ty(restrict.ty())?;
     ControlFlow::Continue(())
 }
 
 pub fn walk_record_update<V>(
     visitor: &mut V,
-    record_update: &ast::RecordUpdateExpr,
+    update: &tree::RecordUpdate,
 ) -> ControlFlow<V::BreakValue>
 where
     V: Visitor,
 {
-    visitor.visit_expr(&record_update.source)?;
-    visitor.visit_name(&record_update.field)?;
-    visitor.visit_expr(&record_update.value)?;
-    visitor.visit_ty(record_update.ty())?;
+    visitor.visit_expr(&update.source)?;
+    visitor.visit_name(&update.field)?;
+    visitor.visit_expr(&update.value)?;
+    visitor.visit_ty(update.ty())?;
     ControlFlow::Continue(())
 }
 
-pub fn walk_unary_op<V>(visitor: &mut V, unary_op: &ast::UnaryOp) -> ControlFlow<V::BreakValue>
+pub fn walk_unary_op<V>(visitor: &mut V, unary_op: &tree::UnaryOp) -> ControlFlow<V::BreakValue>
 where
     V: Visitor,
 {
@@ -595,7 +595,7 @@ where
     ControlFlow::Continue(())
 }
 
-pub fn walk_unary<V>(visitor: &mut V, unary: &ast::UnaryExpr) -> ControlFlow<V::BreakValue>
+pub fn walk_unary<V>(visitor: &mut V, unary: &tree::Unary) -> ControlFlow<V::BreakValue>
 where
     V: Visitor,
 {
@@ -605,7 +605,7 @@ where
     ControlFlow::Continue(())
 }
 
-pub fn walk_binary_op<V>(visitor: &mut V, binary_op: &ast::BinaryOp) -> ControlFlow<V::BreakValue>
+pub fn walk_binary_op<V>(visitor: &mut V, binary_op: &tree::BinaryOp) -> ControlFlow<V::BreakValue>
 where
     V: Visitor,
 {
@@ -613,7 +613,7 @@ where
     ControlFlow::Continue(())
 }
 
-pub fn walk_binary<V>(visitor: &mut V, binary: &ast::BinaryExpr) -> ControlFlow<V::BreakValue>
+pub fn walk_binary<V>(visitor: &mut V, binary: &tree::Binary) -> ControlFlow<V::BreakValue>
 where
     V: Visitor,
 {
@@ -624,7 +624,7 @@ where
     ControlFlow::Continue(())
 }
 
-pub fn walk_let<V>(visitor: &mut V, let_: &ast::LetExpr) -> ControlFlow<V::BreakValue>
+pub fn walk_let<V>(visitor: &mut V, let_: &tree::Let) -> ControlFlow<V::BreakValue>
 where
     V: Visitor,
 {
@@ -635,7 +635,7 @@ where
     ControlFlow::Continue(())
 }
 
-pub fn walk_if<V>(visitor: &mut V, if_: &ast::IfExpr) -> ControlFlow<V::BreakValue>
+pub fn walk_if<V>(visitor: &mut V, if_: &tree::If) -> ControlFlow<V::BreakValue>
 where
     V: Visitor,
 {
@@ -646,14 +646,14 @@ where
     ControlFlow::Continue(())
 }
 
-pub fn walk_pat<V>(visitor: &mut V, pat: &ast::Pat) -> ControlFlow<V::BreakValue>
+pub fn walk_pat<V>(visitor: &mut V, pat: &tree::Pat) -> ControlFlow<V::BreakValue>
 where
     V: Visitor,
 {
     todo!()
 }
 
-pub fn walk_branch<V>(visitor: &mut V, branch: &ast::Branch) -> ControlFlow<V::BreakValue>
+pub fn walk_branch<V>(visitor: &mut V, branch: &tree::Branch) -> ControlFlow<V::BreakValue>
 where
     V: Visitor,
 {
@@ -662,7 +662,7 @@ where
     ControlFlow::Continue(())
 }
 
-pub fn walk_case<V>(visitor: &mut V, case: &ast::CaseExpr) -> ControlFlow<V::BreakValue>
+pub fn walk_case<V>(visitor: &mut V, case: &tree::Case) -> ControlFlow<V::BreakValue>
 where
     V: Visitor,
 {
@@ -674,7 +674,7 @@ where
     ControlFlow::Continue(())
 }
 
-pub fn walk_func<V>(visitor: &mut V, func: &ast::FuncExpr) -> ControlFlow<V::BreakValue>
+pub fn walk_func<V>(visitor: &mut V, func: &tree::Func) -> ControlFlow<V::BreakValue>
 where
     V: Visitor,
 {
@@ -684,37 +684,37 @@ where
     ControlFlow::Continue(())
 }
 
-pub fn walk_call<V>(visitor: &mut V, call: &ast::CallExpr) -> ControlFlow<V::BreakValue>
+pub fn walk_call<V>(visitor: &mut V, call: &tree::Call) -> ControlFlow<V::BreakValue>
 where
     V: Visitor,
 {
-    visitor.visit_ident(&call.func)?;
+    visitor.visit_expr(&call.func)?;
     visitor.visit_expr(&call.arg)?;
     visitor.visit_ty(call.ty())?;
     ControlFlow::Continue(())
 }
 
-pub fn walk_expr<V>(visitor: &mut V, expr: &ast::Expr) -> ControlFlow<V::BreakValue>
+pub fn walk_expr<V>(visitor: &mut V, expr: &tree::Expr) -> ControlFlow<V::BreakValue>
 where
     V: Visitor,
 {
     match expr {
-        ast::Expr::Error(e) => visitor.visit_error(e),
-        ast::Expr::Literal(l) => visitor.visit_literal(l),
-        ast::Expr::Ident(i) => visitor.visit_ident(i),
-        ast::Expr::List(l) => visitor.visit_list(l),
-        ast::Expr::Record(r) => visitor.visit_record(r),
-        ast::Expr::RecordSelect(r) => visitor.visit_record_select(r),
-        ast::Expr::RecordExtend(r) => visitor.visit_record_extend(r),
-        ast::Expr::RecordRestrict(r) => visitor.visit_record_restrict(r),
-        ast::Expr::RecordUpdate(r) => visitor.visit_record_update(r),
-        ast::Expr::Unary(u) => visitor.visit_unary(u),
-        ast::Expr::Binary(b) => visitor.visit_binary(b),
-        ast::Expr::Let(l) => visitor.visit_let(l),
-        ast::Expr::If(i) => visitor.visit_if(i),
-        ast::Expr::Case(c) => visitor.visit_case(c),
-        ast::Expr::Func(f) => visitor.visit_func(f),
-        ast::Expr::Call(c) => visitor.visit_call(c),
+        tree::Expr::Error(e) => visitor.visit_error(e),
+        tree::Expr::Literal(l) => visitor.visit_literal(l),
+        tree::Expr::Ident(i) => visitor.visit_ident(i),
+        tree::Expr::List(l) => visitor.visit_list(l),
+        tree::Expr::Record(r) => visitor.visit_record(r),
+        tree::Expr::RecordSelect(r) => visitor.visit_record_select(r),
+        tree::Expr::RecordExtend(r) => visitor.visit_record_extend(r),
+        tree::Expr::RecordRestrict(r) => visitor.visit_record_restrict(r),
+        tree::Expr::RecordUpdate(r) => visitor.visit_record_update(r),
+        tree::Expr::Unary(u) => visitor.visit_unary(u),
+        tree::Expr::Binary(b) => visitor.visit_binary(b),
+        tree::Expr::Let(l) => visitor.visit_let(l),
+        tree::Expr::If(i) => visitor.visit_if(i),
+        tree::Expr::Case(c) => visitor.visit_case(c),
+        tree::Expr::Func(f) => visitor.visit_func(f),
+        tree::Expr::Call(c) => visitor.visit_call(c),
     }
 }
 
@@ -725,116 +725,116 @@ pub trait VisitorMut: Sized {
         walk_ty_mut(self, ty)
     }
 
-    fn visit_name_mut(&mut self, name: &mut ast::Name) -> ControlFlow<Self::BreakValue> {
+    fn visit_name_mut(&mut self, name: &mut tree::Name) -> ControlFlow<Self::BreakValue> {
         walk_name_mut(self, name)
     }
 
-    fn visit_error_mut(&mut self, error: &mut ast::ExprError) -> ControlFlow<Self::BreakValue> {
+    fn visit_error_mut(&mut self, error: &mut tree::ExprError) -> ControlFlow<Self::BreakValue> {
         walk_error_mut(self, error)
     }
 
-    fn visit_ident_mut(&mut self, ident: &mut ast::IdentExpr) -> ControlFlow<Self::BreakValue> {
+    fn visit_ident_mut(&mut self, ident: &mut tree::Ident) -> ControlFlow<Self::BreakValue> {
         walk_ident_mut(self, ident)
     }
 
-    fn visit_literal_mut(
-        &mut self,
-        literal: &mut ast::LiteralExpr,
-    ) -> ControlFlow<Self::BreakValue> {
+    fn visit_literal_mut(&mut self, literal: &mut tree::Literal) -> ControlFlow<Self::BreakValue> {
         walk_literal_mut(self, literal)
     }
 
-    fn visit_list_mut(&mut self, list: &mut ast::ListExpr) -> ControlFlow<Self::BreakValue> {
+    fn visit_list_mut(&mut self, list: &mut tree::List) -> ControlFlow<Self::BreakValue> {
         walk_list_mut(self, list)
     }
 
     fn visit_property_mut(
         &mut self,
-        property: &mut ast::Property,
+        property: &mut tree::Property,
     ) -> ControlFlow<Self::BreakValue> {
         walk_property_mut(self, property)
     }
 
-    fn visit_record_mut(&mut self, record: &mut ast::RecordExpr) -> ControlFlow<Self::BreakValue> {
+    fn visit_record_mut(&mut self, record: &mut tree::Record) -> ControlFlow<Self::BreakValue> {
         walk_record_mut(self, record)
     }
 
     fn visit_record_select_mut(
         &mut self,
-        record_select: &mut ast::RecordSelectExpr,
+        select: &mut tree::RecordSelect,
     ) -> ControlFlow<Self::BreakValue> {
-        walk_record_select_mut(self, record_select)
+        walk_record_select_mut(self, select)
     }
 
     fn visit_record_extend_mut(
         &mut self,
-        record_extend: &mut ast::RecordExtendExpr,
+        extend: &mut tree::RecordExtend,
     ) -> ControlFlow<Self::BreakValue> {
-        walk_record_extend_mut(self, record_extend)
+        walk_record_extend_mut(self, extend)
     }
 
     fn visit_record_restrict_mut(
         &mut self,
-        record_restrict: &mut ast::RecordRestrictExpr,
+        restrict: &mut tree::RecordRestrict,
     ) -> ControlFlow<Self::BreakValue> {
-        walk_record_restrict_mut(self, record_restrict)
+        walk_record_restrict_mut(self, restrict)
     }
 
     fn visit_record_update_mut(
         &mut self,
-        record_update: &mut ast::RecordUpdateExpr,
+        update: &mut tree::RecordUpdate,
     ) -> ControlFlow<Self::BreakValue> {
-        walk_record_update_mut(self, record_update)
+        walk_record_update_mut(self, update)
     }
 
-    fn visit_unary_op_mut(&mut self, unary_op: &mut ast::UnaryOp) -> ControlFlow<Self::BreakValue> {
+    fn visit_unary_op_mut(
+        &mut self,
+        unary_op: &mut tree::UnaryOp,
+    ) -> ControlFlow<Self::BreakValue> {
         walk_unary_op_mut(self, unary_op)
     }
 
-    fn visit_unary_mut(&mut self, unary: &mut ast::UnaryExpr) -> ControlFlow<Self::BreakValue> {
+    fn visit_unary_mut(&mut self, unary: &mut tree::Unary) -> ControlFlow<Self::BreakValue> {
         walk_unary_mut(self, unary)
     }
 
     fn visit_binary_op_mut(
         &mut self,
-        binary_op: &mut ast::BinaryOp,
+        binary_op: &mut tree::BinaryOp,
     ) -> ControlFlow<Self::BreakValue> {
         walk_binary_op_mut(self, binary_op)
     }
 
-    fn visit_binary_mut(&mut self, binary: &mut ast::BinaryExpr) -> ControlFlow<Self::BreakValue> {
+    fn visit_binary_mut(&mut self, binary: &mut tree::Binary) -> ControlFlow<Self::BreakValue> {
         walk_binary_mut(self, binary)
     }
 
-    fn visit_let_mut(&mut self, let_: &mut ast::LetExpr) -> ControlFlow<Self::BreakValue> {
+    fn visit_let_mut(&mut self, let_: &mut tree::Let) -> ControlFlow<Self::BreakValue> {
         walk_let_mut(self, let_)
     }
 
-    fn visit_if_mut(&mut self, if_: &mut ast::IfExpr) -> ControlFlow<Self::BreakValue> {
+    fn visit_if_mut(&mut self, if_: &mut tree::If) -> ControlFlow<Self::BreakValue> {
         walk_if_mut(self, if_)
     }
 
-    fn visit_pat_mut(&mut self, pat: &mut ast::Pat) -> ControlFlow<Self::BreakValue> {
+    fn visit_pat_mut(&mut self, pat: &mut tree::Pat) -> ControlFlow<Self::BreakValue> {
         walk_pat_mut(self, pat)
     }
 
-    fn visit_branch_mut(&mut self, branch: &mut ast::Branch) -> ControlFlow<Self::BreakValue> {
+    fn visit_branch_mut(&mut self, branch: &mut tree::Branch) -> ControlFlow<Self::BreakValue> {
         walk_branch_mut(self, branch)
     }
 
-    fn visit_case_mut(&mut self, case: &mut ast::CaseExpr) -> ControlFlow<Self::BreakValue> {
+    fn visit_case_mut(&mut self, case: &mut tree::Case) -> ControlFlow<Self::BreakValue> {
         walk_case_mut(self, case)
     }
 
-    fn visit_func_mut(&mut self, func: &mut ast::FuncExpr) -> ControlFlow<Self::BreakValue> {
+    fn visit_func_mut(&mut self, func: &mut tree::Func) -> ControlFlow<Self::BreakValue> {
         walk_func_mut(self, func)
     }
 
-    fn visit_call_mut(&mut self, call: &mut ast::CallExpr) -> ControlFlow<Self::BreakValue> {
+    fn visit_call_mut(&mut self, call: &mut tree::Call) -> ControlFlow<Self::BreakValue> {
         walk_call_mut(self, call)
     }
 
-    fn visit_expr_mut(&mut self, expr: &mut ast::Expr) -> ControlFlow<Self::BreakValue> {
+    fn visit_expr_mut(&mut self, expr: &mut tree::Expr) -> ControlFlow<Self::BreakValue> {
         walk_expr_mut(self, expr)
     }
 }
@@ -846,7 +846,7 @@ where
     ControlFlow::Continue(())
 }
 
-pub fn walk_name_mut<V>(_visitor: &mut V, _name: &mut ast::Name) -> ControlFlow<V::BreakValue>
+pub fn walk_name_mut<V>(_visitor: &mut V, _name: &mut tree::Name) -> ControlFlow<V::BreakValue>
 where
     V: VisitorMut,
 {
@@ -855,7 +855,7 @@ where
 
 pub fn walk_error_mut<V>(
     _visitor: &mut V,
-    _error: &mut ast::ExprError,
+    _error: &mut tree::ExprError,
 ) -> ControlFlow<V::BreakValue>
 where
     V: VisitorMut,
@@ -863,7 +863,7 @@ where
     ControlFlow::Continue(())
 }
 
-pub fn walk_ident_mut<V>(visitor: &mut V, ident: &mut ast::IdentExpr) -> ControlFlow<V::BreakValue>
+pub fn walk_ident_mut<V>(visitor: &mut V, ident: &mut tree::Ident) -> ControlFlow<V::BreakValue>
 where
     V: VisitorMut,
 {
@@ -873,7 +873,7 @@ where
 
 pub fn walk_literal_mut<V>(
     visitor: &mut V,
-    literal: &mut ast::LiteralExpr,
+    literal: &mut tree::Literal,
 ) -> ControlFlow<V::BreakValue>
 where
     V: VisitorMut,
@@ -882,7 +882,7 @@ where
     ControlFlow::Continue(())
 }
 
-pub fn walk_list_mut<V>(visitor: &mut V, list: &mut ast::ListExpr) -> ControlFlow<V::BreakValue>
+pub fn walk_list_mut<V>(visitor: &mut V, list: &mut tree::List) -> ControlFlow<V::BreakValue>
 where
     V: VisitorMut,
 {
@@ -895,7 +895,7 @@ where
 
 pub fn walk_property_mut<V>(
     visitor: &mut V,
-    property: &mut ast::Property,
+    property: &mut tree::Property,
 ) -> ControlFlow<V::BreakValue>
 where
     V: VisitorMut,
@@ -905,10 +905,7 @@ where
     ControlFlow::Continue(())
 }
 
-pub fn walk_record_mut<V>(
-    visitor: &mut V,
-    record: &mut ast::RecordExpr,
-) -> ControlFlow<V::BreakValue>
+pub fn walk_record_mut<V>(visitor: &mut V, record: &mut tree::Record) -> ControlFlow<V::BreakValue>
 where
     V: VisitorMut,
 {
@@ -921,61 +918,61 @@ where
 
 pub fn walk_record_select_mut<V>(
     visitor: &mut V,
-    record_select: &mut ast::RecordSelectExpr,
+    select: &mut tree::RecordSelect,
 ) -> ControlFlow<V::BreakValue>
 where
     V: VisitorMut,
 {
-    visitor.visit_expr_mut(&mut record_select.source)?;
-    visitor.visit_name_mut(&mut record_select.field)?;
-    visitor.visit_ty_mut(record_select.ty_mut())?;
+    visitor.visit_expr_mut(&mut select.source)?;
+    visitor.visit_name_mut(&mut select.field)?;
+    visitor.visit_ty_mut(select.ty_mut())?;
     ControlFlow::Continue(())
 }
 
 pub fn walk_record_extend_mut<V>(
     visitor: &mut V,
-    record_extend: &mut ast::RecordExtendExpr,
+    extend: &mut tree::RecordExtend,
 ) -> ControlFlow<V::BreakValue>
 where
     V: VisitorMut,
 {
-    visitor.visit_expr_mut(&mut record_extend.source)?;
-    visitor.visit_name_mut(&mut record_extend.field)?;
-    visitor.visit_expr_mut(&mut record_extend.value)?;
-    visitor.visit_ty_mut(record_extend.ty_mut())?;
+    visitor.visit_expr_mut(&mut extend.source)?;
+    visitor.visit_name_mut(&mut extend.field)?;
+    visitor.visit_expr_mut(&mut extend.value)?;
+    visitor.visit_ty_mut(extend.ty_mut())?;
     ControlFlow::Continue(())
 }
 
 pub fn walk_record_restrict_mut<V>(
     visitor: &mut V,
-    record_restrict: &mut ast::RecordRestrictExpr,
+    restrict: &mut tree::RecordRestrict,
 ) -> ControlFlow<V::BreakValue>
 where
     V: VisitorMut,
 {
-    visitor.visit_expr_mut(&mut record_restrict.source)?;
-    visitor.visit_name_mut(&mut record_restrict.field)?;
-    visitor.visit_ty_mut(record_restrict.ty_mut())?;
+    visitor.visit_expr_mut(&mut restrict.source)?;
+    visitor.visit_name_mut(&mut restrict.field)?;
+    visitor.visit_ty_mut(restrict.ty_mut())?;
     ControlFlow::Continue(())
 }
 
 pub fn walk_record_update_mut<V>(
     visitor: &mut V,
-    record_update: &mut ast::RecordUpdateExpr,
+    update: &mut tree::RecordUpdate,
 ) -> ControlFlow<V::BreakValue>
 where
     V: VisitorMut,
 {
-    visitor.visit_expr_mut(&mut record_update.source)?;
-    visitor.visit_name_mut(&mut record_update.field)?;
-    visitor.visit_expr_mut(&mut record_update.value)?;
-    visitor.visit_ty_mut(record_update.ty_mut())?;
+    visitor.visit_expr_mut(&mut update.source)?;
+    visitor.visit_name_mut(&mut update.field)?;
+    visitor.visit_expr_mut(&mut update.value)?;
+    visitor.visit_ty_mut(update.ty_mut())?;
     ControlFlow::Continue(())
 }
 
 pub fn walk_unary_op_mut<V>(
     visitor: &mut V,
-    unary_op: &mut ast::UnaryOp,
+    unary_op: &mut tree::UnaryOp,
 ) -> ControlFlow<V::BreakValue>
 where
     V: VisitorMut,
@@ -984,7 +981,7 @@ where
     ControlFlow::Continue(())
 }
 
-pub fn walk_unary_mut<V>(visitor: &mut V, unary: &mut ast::UnaryExpr) -> ControlFlow<V::BreakValue>
+pub fn walk_unary_mut<V>(visitor: &mut V, unary: &mut tree::Unary) -> ControlFlow<V::BreakValue>
 where
     V: VisitorMut,
 {
@@ -996,7 +993,7 @@ where
 
 pub fn walk_binary_op_mut<V>(
     visitor: &mut V,
-    binary_op: &mut ast::BinaryOp,
+    binary_op: &mut tree::BinaryOp,
 ) -> ControlFlow<V::BreakValue>
 where
     V: VisitorMut,
@@ -1005,10 +1002,7 @@ where
     ControlFlow::Continue(())
 }
 
-pub fn walk_binary_mut<V>(
-    visitor: &mut V,
-    binary: &mut ast::BinaryExpr,
-) -> ControlFlow<V::BreakValue>
+pub fn walk_binary_mut<V>(visitor: &mut V, binary: &mut tree::Binary) -> ControlFlow<V::BreakValue>
 where
     V: VisitorMut,
 {
@@ -1019,7 +1013,7 @@ where
     ControlFlow::Continue(())
 }
 
-pub fn walk_let_mut<V>(visitor: &mut V, let_: &mut ast::LetExpr) -> ControlFlow<V::BreakValue>
+pub fn walk_let_mut<V>(visitor: &mut V, let_: &mut tree::Let) -> ControlFlow<V::BreakValue>
 where
     V: VisitorMut,
 {
@@ -1030,7 +1024,7 @@ where
     ControlFlow::Continue(())
 }
 
-pub fn walk_if_mut<V>(visitor: &mut V, if_: &mut ast::IfExpr) -> ControlFlow<V::BreakValue>
+pub fn walk_if_mut<V>(visitor: &mut V, if_: &mut tree::If) -> ControlFlow<V::BreakValue>
 where
     V: VisitorMut,
 {
@@ -1041,14 +1035,14 @@ where
     ControlFlow::Continue(())
 }
 
-pub fn walk_pat_mut<V>(visitor: &mut V, pat: &mut ast::Pat) -> ControlFlow<V::BreakValue>
+pub fn walk_pat_mut<V>(visitor: &mut V, pat: &mut tree::Pat) -> ControlFlow<V::BreakValue>
 where
     V: VisitorMut,
 {
     todo!()
 }
 
-pub fn walk_branch_mut<V>(visitor: &mut V, branch: &mut ast::Branch) -> ControlFlow<V::BreakValue>
+pub fn walk_branch_mut<V>(visitor: &mut V, branch: &mut tree::Branch) -> ControlFlow<V::BreakValue>
 where
     V: VisitorMut,
 {
@@ -1057,7 +1051,7 @@ where
     ControlFlow::Continue(())
 }
 
-pub fn walk_case_mut<V>(visitor: &mut V, case: &mut ast::CaseExpr) -> ControlFlow<V::BreakValue>
+pub fn walk_case_mut<V>(visitor: &mut V, case: &mut tree::Case) -> ControlFlow<V::BreakValue>
 where
     V: VisitorMut,
 {
@@ -1069,7 +1063,7 @@ where
     ControlFlow::Continue(())
 }
 
-pub fn walk_func_mut<V>(visitor: &mut V, func: &mut ast::FuncExpr) -> ControlFlow<V::BreakValue>
+pub fn walk_func_mut<V>(visitor: &mut V, func: &mut tree::Func) -> ControlFlow<V::BreakValue>
 where
     V: VisitorMut,
 {
@@ -1079,36 +1073,36 @@ where
     ControlFlow::Continue(())
 }
 
-pub fn walk_call_mut<V>(visitor: &mut V, call: &mut ast::CallExpr) -> ControlFlow<V::BreakValue>
+pub fn walk_call_mut<V>(visitor: &mut V, call: &mut tree::Call) -> ControlFlow<V::BreakValue>
 where
     V: VisitorMut,
 {
-    visitor.visit_ident_mut(&mut call.func)?;
+    visitor.visit_expr_mut(&mut call.func)?;
     visitor.visit_expr_mut(&mut call.arg)?;
     visitor.visit_ty_mut(call.ty_mut())?;
     ControlFlow::Continue(())
 }
 
-pub fn walk_expr_mut<V>(visitor: &mut V, expr: &mut ast::Expr) -> ControlFlow<V::BreakValue>
+pub fn walk_expr_mut<V>(visitor: &mut V, expr: &mut tree::Expr) -> ControlFlow<V::BreakValue>
 where
     V: VisitorMut,
 {
     match expr {
-        ast::Expr::Error(e) => visitor.visit_error_mut(e),
-        ast::Expr::Literal(l) => visitor.visit_literal_mut(l),
-        ast::Expr::Ident(i) => visitor.visit_ident_mut(i),
-        ast::Expr::List(l) => visitor.visit_list_mut(l),
-        ast::Expr::Record(r) => visitor.visit_record_mut(r),
-        ast::Expr::RecordSelect(r) => visitor.visit_record_select_mut(r),
-        ast::Expr::RecordExtend(r) => visitor.visit_record_extend_mut(r),
-        ast::Expr::RecordRestrict(r) => visitor.visit_record_restrict_mut(r),
-        ast::Expr::RecordUpdate(r) => visitor.visit_record_update_mut(r),
-        ast::Expr::Unary(u) => visitor.visit_unary_mut(u),
-        ast::Expr::Binary(b) => visitor.visit_binary_mut(b),
-        ast::Expr::Let(l) => visitor.visit_let_mut(l),
-        ast::Expr::If(i) => visitor.visit_if_mut(i),
-        ast::Expr::Case(c) => visitor.visit_case_mut(c),
-        ast::Expr::Func(f) => visitor.visit_func_mut(f),
-        ast::Expr::Call(c) => visitor.visit_call_mut(c),
+        tree::Expr::Error(e) => visitor.visit_error_mut(e),
+        tree::Expr::Literal(l) => visitor.visit_literal_mut(l),
+        tree::Expr::Ident(i) => visitor.visit_ident_mut(i),
+        tree::Expr::List(l) => visitor.visit_list_mut(l),
+        tree::Expr::Record(r) => visitor.visit_record_mut(r),
+        tree::Expr::RecordSelect(r) => visitor.visit_record_select_mut(r),
+        tree::Expr::RecordExtend(r) => visitor.visit_record_extend_mut(r),
+        tree::Expr::RecordRestrict(r) => visitor.visit_record_restrict_mut(r),
+        tree::Expr::RecordUpdate(r) => visitor.visit_record_update_mut(r),
+        tree::Expr::Unary(u) => visitor.visit_unary_mut(u),
+        tree::Expr::Binary(b) => visitor.visit_binary_mut(b),
+        tree::Expr::Let(l) => visitor.visit_let_mut(l),
+        tree::Expr::If(i) => visitor.visit_if_mut(i),
+        tree::Expr::Case(c) => visitor.visit_case_mut(c),
+        tree::Expr::Func(f) => visitor.visit_func_mut(f),
+        tree::Expr::Call(c) => visitor.visit_call_mut(c),
     }
 }

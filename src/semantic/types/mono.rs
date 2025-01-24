@@ -2,9 +2,9 @@ use std::fmt;
 
 use serde::{Deserialize, Serialize};
 
-use crate::semantic::{Substitutable, Substitution};
+use crate::semantic::{KindEnv, Substitutable, Substitution};
 
-use super::{BuiltinType, FuncType, PolyType, RecordType, TypeVar, Typed};
+use super::{BuiltinType, FuncType, PolyType, Property, RowType, TypeVar, Typed};
 
 /// MonoType
 /// Non-polymorphic types (e.g. `α → β`, `int → bool`)
@@ -14,7 +14,7 @@ use super::{BuiltinType, FuncType, PolyType, RecordType, TypeVar, Typed};
 pub enum MonoType {
     Builtin(BuiltinType),
     Func(Box<FuncType>),
-    Record(Box<RecordType>),
+    Row(Box<RowType>),
     Var(TypeVar),
 }
 
@@ -32,6 +32,14 @@ impl MonoType {
 
     pub fn func(arg: Self, ret: Self) -> Self {
         Self::Func(Box::new(FuncType::new(arg, ret)))
+    }
+
+    pub fn row(head: Property, tail: Self) -> Self {
+        Self::Row(Box::new(RowType::Extension { head, tail }))
+    }
+
+    pub fn empty_row() -> Self {
+        Self::Row(Box::new(RowType::Empty))
     }
 }
 
@@ -107,13 +115,13 @@ impl Typed for MonoType {
     fn constrain(
         &self,
         with: super::Kind,
-        s: &mut Substitution,
+        env: &mut KindEnv,
     ) -> Result<(), crate::semantic::error::SemanticError> {
         match self {
-            Self::Builtin(b) => b.constrain(with, s),
-            Self::Func(func) => func.constrain(with, s),
-            Self::Record(r) => r.constrain(with, s),
-            Self::Var(tv) => tv.constrain(with, s),
+            Self::Builtin(b) => b.constrain(with, env),
+            Self::Func(func) => func.constrain(with, env),
+            Self::Row(r) => r.constrain(with, env),
+            Self::Var(tv) => tv.constrain(with, env),
         }
     }
 }
@@ -123,7 +131,7 @@ impl Substitutable for MonoType {
         match self {
             Self::Builtin(_) => None,
             Self::Func(f) => f.try_apply(s).map(Into::into),
-            Self::Record(r) => r.try_apply(s).map(Into::into),
+            Self::Row(r) => r.try_apply(s).map(Into::into),
             Self::Var(tv) => tv.try_apply(s),
         }
     }
@@ -134,7 +142,7 @@ impl fmt::Display for MonoType {
         match self {
             Self::Builtin(b) => b.fmt(f),
             Self::Func(func) => func.fmt(f),
-            Self::Record(r) => r.fmt(f),
+            Self::Row(r) => r.fmt(f),
             Self::Var(tv) => tv.fmt(f),
         }
     }
@@ -158,9 +166,9 @@ impl From<FuncType> for MonoType {
     }
 }
 
-impl From<RecordType> for MonoType {
-    fn from(value: RecordType) -> Self {
-        Self::Record(Box::new(value))
+impl From<RowType> for MonoType {
+    fn from(value: RowType) -> Self {
+        Self::Row(Box::new(value))
     }
 }
 
