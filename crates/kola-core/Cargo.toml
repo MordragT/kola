@@ -1,0 +1,20 @@
+[package]
+name = "kola-core"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+thiserror.workspace = true
+miette.workspace = true
+owo-colors.workspace = true
+ecow.workspace = true
+serde.workspace = true
+serde_json = "1.0"
+chumsky = { version = "=1.0.0-alpha.8", features = [
+    # "label",
+    "nightly",
+    "unstable",
+    "serde",
+] }
+indexmap = "2.7.1"
+kola-tree = { path = "../kola-tree" }

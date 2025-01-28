@@ -1,0 +1,8 @@
+[package]
+name = "kola-print"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+bumpalo = { version = "3", features = ["allocator_api", "collections"] }
+owo-colors.workspace = true
