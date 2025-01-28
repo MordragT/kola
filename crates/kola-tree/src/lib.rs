@@ -15,13 +15,6 @@ mod tree;
 
 pub type Symbol = ecow::EcoString;
 
-// pub trait TryAsMut<T> {
-//     fn try_as_mut(&mut self) -> Option<&mut T>;
-// }
-
-// pub trait TryAsRef<T> {
-//     fn try_as_ref(&self) -> Option<&T>;
-// }
 pub trait Phase: 'static + Debug + Copy {
     type Name: Debug + Clone;
     type Ident: Debug + Clone;
@@ -52,36 +45,4 @@ pub trait Phase: 'static + Debug + Copy {
     type Call: Debug + Clone;
     type ExprError: Debug + Clone;
     type Expr: Debug + Clone;
-}
-
-impl Phase for () {
-    type Name = ();
-    type Ident = ();
-    type Literal = ();
-    type List = ();
-    type Property = ();
-    type Record = ();
-    type RecordSelect = ();
-    type RecordExtend = ();
-    type RecordRestrict = ();
-    type RecordUpdate = ();
-    type UnaryOp = ();
-    type Unary = ();
-    type BinaryOp = ();
-    type Binary = ();
-    type Let = ();
-    type PatError = ();
-    type Wildcard = ();
-    type LiteralPat = ();
-    type IdentPat = ();
-    type PropertyPat = ();
-    type RecordPat = ();
-    type Pat = ();
-    type Branch = ();
-    type Case = ();
-    type If = ();
-    type Func = ();
-    type Call = ();
-    type ExprError = ();
-    type Expr = ();
 }

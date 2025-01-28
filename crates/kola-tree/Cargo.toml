@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-kola-print = { path = "../kola-print" }
+kola-print.workspace = true
 ecow.workspace = true
 serde.workspace = true
 owo-colors.workspace = true

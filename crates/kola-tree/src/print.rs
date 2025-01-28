@@ -88,7 +88,7 @@ impl TreePrinter {
 
 impl Printable<()> for TreePrinter {
     fn notate<'a>(&'a self, _with: &'a (), arena: &'a Bump) -> Notation<'a> {
-        let root = self.tree.root();
+        let root = self.tree.root_id();
         self.decorate(root, arena)
     }
 }

@@ -1,21 +1,16 @@
-use bumpalo::collections::CollectIn;
-use kola_print::prelude::*;
+use std::path::PathBuf;
 
-use kola_core::{
-    semantic::{Inferer, error::SemanticReport},
-    source::Source,
-    syntax::{
-        ParseResult, SpanMetadata, Spanned, SyntaxPhase, TokenizeResult, error::SyntaxReport,
-        parse, token::Token, tokenize,
-    },
-};
-use kola_tree::{
-    Meta, Tree,
-    print::{MetaDecorator, TreePrinter},
-};
+use bumpalo::collections::CollectIn;
 use miette::IntoDiagnostic;
 use owo_colors::OwoColorize;
-use std::path::PathBuf;
+
+use kola_print::prelude::*;
+use kola_semantic::{Inferer, error::SemanticReport};
+use kola_syntax::prelude::*;
+use kola_tree::{
+    Tree,
+    print::{MetaDecorator, TreePrinter},
+};
 
 #[derive(Debug, clap::Parser)]
 #[command(author, version, about, long_about = None)]

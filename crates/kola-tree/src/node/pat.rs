@@ -503,28 +503,6 @@ impl TryFrom<Node> for Pat {
 }
 
 impl Pat {
-    // pub fn ty(&self) -> Result<&MonoType, PatError> {
-    //     let ty = match self {
-    //         Self::Error(e) => return Err(*e),
-    //         Self::Wildcard(w) => w.ty(),
-    //         Self::Literal(l) => l.ty(),
-    //         Self::Ident(i) => i.ty(),
-    //         Self::Record(r) => r.ty(),
-    //     };
-    //     Ok(ty)
-    // }
-
-    // pub fn ty_mut(&mut self) -> Result<&mut MonoType, PatError> {
-    //     let ty = match self {
-    //         Self::Error(e) => return Err(*e),
-    //         Self::Wildcard(w) => w.ty_mut(),
-    //         Self::Literal(l) => l.ty_mut(),
-    //         Self::Ident(i) => i.ty_mut(),
-    //         Self::Record(r) => r.ty_mut(),
-    //     };
-    //     Ok(ty)
-    // }
-
     pub fn as_error(&self) -> Option<&PatError> {
         match self {
             Self::Error(e) => Some(e),

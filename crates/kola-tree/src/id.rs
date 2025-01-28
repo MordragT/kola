@@ -38,13 +38,6 @@ impl<T> NodeId<T> {
         tree.node(self)
     }
 
-    // pub fn get_mut(self, tree: &mut Tree) -> &mut T
-    // where
-    //     T: InnerNode,
-    // {
-    //     tree.node_mut(self)
-    // }
-
     pub fn meta<P>(self, metadata: &impl MetaContainer<P>) -> &T::Meta
     where
         P: Phase,
