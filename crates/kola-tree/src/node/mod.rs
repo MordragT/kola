@@ -12,8 +12,6 @@ pub use pat::*;
 pub use record::*;
 pub use unary::*;
 
-use crate::NodeKind;
-
 mod binary;
 mod bind;
 mod call;
@@ -27,6 +25,8 @@ mod name;
 mod pat;
 mod record;
 mod unary;
+
+use crate::kind::NodeKind;
 
 pub trait InnerNode: Into<Node> {
     fn to_inner_ref(node: &Node) -> Option<&Self>;

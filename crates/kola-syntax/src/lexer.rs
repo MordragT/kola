@@ -1,8 +1,8 @@
 use chumsky::prelude::*;
 
 use crate::{
-    Span, Spanned,
     error::{SyntaxError, SyntaxErrors},
+    span::{Span, Spanned},
     token::{Delimiter, Op, Token, Tokens},
 };
 

@@ -1,5 +1,5 @@
 use chumsky::prelude::*;
-use kola_tree::{self as tree, Attached, Meta, Node, NodeId, TreeBuilder};
+use kola_tree::prelude::*;
 
 use crate::{Span, SyntaxPhase, token::Token};
 
@@ -29,13 +29,13 @@ impl StateRepr {
         id
     }
 
-    pub fn insert_expr<T>(&mut self, node: T, meta: Span) -> NodeId<tree::Expr>
+    pub fn insert_expr<T>(&mut self, node: T, meta: Span) -> NodeId<node::Expr>
     where
         T: Into<Node> + Attached<SyntaxPhase, Meta = Span>,
-        tree::Expr: From<NodeId<T>>,
+        node::Expr: From<NodeId<T>>,
     {
         let id = self.insert(node, meta.clone());
-        let expr = tree::Expr::from(id);
+        let expr = node::Expr::from(id);
         self.insert(expr, meta)
     }
 }

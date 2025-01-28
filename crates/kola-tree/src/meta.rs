@@ -1,8 +1,6 @@
 use std::{fmt::Debug, marker::PhantomData, ops::Deref, rc::Rc};
 
-use crate::NodeId;
-
-use super::Phase;
+use crate::{Phase, id::NodeId, node};
 
 #[derive(Debug, Clone)]
 pub struct Metadata<P, C = MetaVec<P>>
@@ -84,35 +82,35 @@ pub trait Attached<P: Phase> {
 
 #[derive(Clone, Debug)]
 pub enum Meta<P: Phase> {
-    Name(<super::Name as Attached<P>>::Meta),
-    Ident(<super::Ident as Attached<P>>::Meta),
-    Literal(<super::Literal as Attached<P>>::Meta),
-    List(<super::List as Attached<P>>::Meta),
-    Property(<super::Property as Attached<P>>::Meta),
-    Record(<super::Record as Attached<P>>::Meta),
-    RecordSelect(<super::RecordSelect as Attached<P>>::Meta),
-    RecordExtend(<super::RecordExtend as Attached<P>>::Meta),
-    RecordRestrict(<super::RecordRestrict as Attached<P>>::Meta),
-    RecordUpdate(<super::RecordUpdate as Attached<P>>::Meta),
-    UnaryOp(<super::UnaryOp as Attached<P>>::Meta),
-    Unary(<super::Unary as Attached<P>>::Meta),
-    BinaryOp(<super::BinaryOp as Attached<P>>::Meta),
-    Binary(<super::Binary as Attached<P>>::Meta),
-    Let(<super::Let as Attached<P>>::Meta),
-    PatError(<super::PatError as Attached<P>>::Meta),
-    Wildcard(<super::Wildcard as Attached<P>>::Meta),
-    LiteralPat(<super::LiteralPat as Attached<P>>::Meta),
-    IdentPat(<super::IdentPat as Attached<P>>::Meta),
-    PropertyPat(<super::PropertyPat as Attached<P>>::Meta),
-    RecordPat(<super::RecordPat as Attached<P>>::Meta),
-    Pat(<super::Pat as Attached<P>>::Meta),
-    Branch(<super::Branch as Attached<P>>::Meta),
-    Case(<super::Case as Attached<P>>::Meta),
-    If(<super::If as Attached<P>>::Meta),
-    Func(<super::Func as Attached<P>>::Meta),
-    Call(<super::Call as Attached<P>>::Meta),
-    ExprError(<super::ExprError as Attached<P>>::Meta),
-    Expr(<super::Expr as Attached<P>>::Meta),
+    Name(<node::Name as Attached<P>>::Meta),
+    Ident(<node::Ident as Attached<P>>::Meta),
+    Literal(<node::Literal as Attached<P>>::Meta),
+    List(<node::List as Attached<P>>::Meta),
+    Property(<node::Property as Attached<P>>::Meta),
+    Record(<node::Record as Attached<P>>::Meta),
+    RecordSelect(<node::RecordSelect as Attached<P>>::Meta),
+    RecordExtend(<node::RecordExtend as Attached<P>>::Meta),
+    RecordRestrict(<node::RecordRestrict as Attached<P>>::Meta),
+    RecordUpdate(<node::RecordUpdate as Attached<P>>::Meta),
+    UnaryOp(<node::UnaryOp as Attached<P>>::Meta),
+    Unary(<node::Unary as Attached<P>>::Meta),
+    BinaryOp(<node::BinaryOp as Attached<P>>::Meta),
+    Binary(<node::Binary as Attached<P>>::Meta),
+    Let(<node::Let as Attached<P>>::Meta),
+    PatError(<node::PatError as Attached<P>>::Meta),
+    Wildcard(<node::Wildcard as Attached<P>>::Meta),
+    LiteralPat(<node::LiteralPat as Attached<P>>::Meta),
+    IdentPat(<node::IdentPat as Attached<P>>::Meta),
+    PropertyPat(<node::PropertyPat as Attached<P>>::Meta),
+    RecordPat(<node::RecordPat as Attached<P>>::Meta),
+    Pat(<node::Pat as Attached<P>>::Meta),
+    Branch(<node::Branch as Attached<P>>::Meta),
+    Case(<node::Case as Attached<P>>::Meta),
+    If(<node::If as Attached<P>>::Meta),
+    Func(<node::Func as Attached<P>>::Meta),
+    Call(<node::Call as Attached<P>>::Meta),
+    ExprError(<node::ExprError as Attached<P>>::Meta),
+    Expr(<node::Expr as Attached<P>>::Meta),
 }
 
 impl<P, M> Meta<P>

@@ -6,11 +6,11 @@ mod ext;
 mod state;
 
 use chumsky::prelude::*;
-use kola_tree::{MetaContainer, Tree};
+use kola_tree::prelude::*;
 
 use crate::{
-    Span, SpanMetadata,
     error::{SyntaxError, SyntaxErrors},
+    span::{Span, SpanMetadata},
     token::Tokens,
 };
 

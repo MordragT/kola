@@ -2,8 +2,13 @@ use kola_print::prelude::*;
 use owo_colors::OwoColorize;
 use serde::{Deserialize, Serialize};
 
-use super::{InnerNode, Literal, Name};
-use crate::{Attached, Meta, Node, NodeId, Phase, Symbol, print::TreePrinter};
+use super::{InnerNode, Literal, Name, Node};
+use crate::{
+    Phase, Symbol,
+    id::NodeId,
+    meta::{Attached, Meta},
+    print::TreePrinter,
+};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PatError;

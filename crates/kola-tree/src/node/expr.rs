@@ -3,10 +3,15 @@ use owo_colors::OwoColorize;
 use serde::{Deserialize, Serialize};
 
 use super::{
-    Binary, Call, Case, Func, Ident, If, InnerNode, Let, List, Literal, Record, RecordExtend,
+    Binary, Call, Case, Func, Ident, If, InnerNode, Let, List, Literal, Node, Record, RecordExtend,
     RecordRestrict, RecordSelect, RecordUpdate, Unary,
 };
-use crate::{Attached, Meta, Node, NodeId, Phase, print::TreePrinter};
+use crate::{
+    Phase,
+    id::NodeId,
+    meta::{Attached, Meta},
+    print::TreePrinter,
+};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ExprError;

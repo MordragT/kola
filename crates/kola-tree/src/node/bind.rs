@@ -2,8 +2,13 @@ use kola_print::prelude::*;
 use owo_colors::OwoColorize;
 use serde::{Deserialize, Serialize};
 
-use super::{Expr, InnerNode, Name};
-use crate::{Attached, Meta, Node, NodeId, Phase, print::TreePrinter};
+use super::{Expr, InnerNode, Name, Node};
+use crate::{
+    Phase,
+    id::NodeId,
+    meta::{Attached, Meta},
+    print::TreePrinter,
+};
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Let {

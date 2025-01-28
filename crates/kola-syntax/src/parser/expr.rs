@@ -1,12 +1,11 @@
 use chumsky::{input::ValueInput, prelude::*};
-use kola_tree::{self as tree, Attached, InnerNode, NodeId};
+use kola_tree::prelude::*;
 
+use super::{Extra, ParserExt, State};
 use crate::{
     Span, SyntaxPhase,
     token::{Delimiter, Op, Token},
 };
-
-use super::{Extra, ParserExt, State};
 
 /*
 %token symbol bool str num char
@@ -44,50 +43,50 @@ Callable := Symbol
 CallExpr := '(' Callable Expr ')'
 */
 
-pub fn name_parser<'src, I>() -> impl Parser<'src, I, NodeId<tree::Name>, Extra<'src>> + Clone
+pub fn name_parser<'src, I>() -> impl Parser<'src, I, NodeId<node::Name>, Extra<'src>> + Clone
 where
     I: ValueInput<'src, Token = Token<'src>, Span = Span>,
 {
-    select! { Token::Symbol(s) => tree::Symbol::from(s) }
-        .map(tree::Name)
+    select! { Token::Symbol(s) => Symbol::from(s) }
+        .map(node::Name)
         .to_node()
         .boxed()
 }
 
-pub fn ident_parser<'src, I>() -> impl Parser<'src, I, tree::Ident, Extra<'src>> + Clone
+pub fn ident_parser<'src, I>() -> impl Parser<'src, I, node::Ident, Extra<'src>> + Clone
 where
     I: ValueInput<'src, Token = Token<'src>, Span = Span>,
 {
-    select! { Token::Symbol(s) => tree::Symbol::from(s) }.map(tree::Ident)
+    select! { Token::Symbol(s) => Symbol::from(s) }.map(node::Ident)
 }
 
-pub fn literal_parser<'src, I>() -> impl Parser<'src, I, tree::Literal, Extra<'src>> + Sized
+pub fn literal_parser<'src, I>() -> impl Parser<'src, I, node::Literal, Extra<'src>> + Sized
 where
     I: ValueInput<'src, Token = Token<'src>, Span = Span>,
 {
     select! {
-        Token::Num(n) => tree::Literal::Num(n),
-        Token::Bool(b) => tree::Literal::Bool(b),
-        Token::Char(c) => tree::Literal::Char(c),
-        Token::Str(s) => tree::Literal::Str(tree::Symbol::from(s))
+        Token::Num(n) => node::Literal::Num(n),
+        Token::Bool(b) => node::Literal::Bool(b),
+        Token::Char(c) => node::Literal::Char(c),
+        Token::Str(s) => node::Literal::Str(Symbol::from(s))
     }
 }
 
-pub fn pat_parser<'src, I>() -> impl Parser<'src, I, NodeId<tree::Pat>, Extra<'src>> + Clone
+pub fn pat_parser<'src, I>() -> impl Parser<'src, I, NodeId<node::Pat>, Extra<'src>> + Clone
 where
     I: ValueInput<'src, Token = Token<'src>, Span = Span>,
 {
     recursive(|pat| {
-        let ident = select! { Token::Symbol(s) => tree::Symbol::from(s) }
-            .map(tree::IdentPat)
+        let ident = select! { Token::Symbol(s) => Symbol::from(s) }
+            .map(node::IdentPat)
             .to_pat()
             .to_node();
-        let wildcard = just(Token::Wildcard).to(tree::Wildcard).to_pat().to_node();
-        let literal = literal_parser().map(tree::LiteralPat).to_pat().to_node();
+        let wildcard = just(Token::Wildcard).to(node::Wildcard).to_pat().to_node();
+        let literal = literal_parser().map(node::LiteralPat).to_pat().to_node();
 
         let property = name_parser()
             .then(just(Token::Colon).ignore_then(pat.clone()).or_not())
-            .map(|(key, value)| tree::PropertyPat { key, value })
+            .map(|(key, value)| node::PropertyPat { key, value })
             .to_node();
 
         let record = nested_parser(
@@ -95,11 +94,11 @@ where
                 .separated_by(just(Token::Comma))
                 .allow_trailing()
                 .collect()
-                .map(|fields| tree::RecordPat { fields })
+                .map(|fields| node::RecordPat { fields })
                 .to_pat()
                 .to_node(),
             Delimiter::Brace,
-            |span| tree::Pat::Error(tree::PatError),
+            |span| node::Pat::Error(node::PatError),
         );
 
         choice((ident, wildcard, literal, record)).boxed()
@@ -107,7 +106,7 @@ where
     .boxed()
 }
 
-pub fn expr_parser<'src, I>() -> impl Parser<'src, I, NodeId<tree::Expr>, Extra<'src>> + Clone
+pub fn expr_parser<'src, I>() -> impl Parser<'src, I, NodeId<node::Expr>, Extra<'src>> + Clone
 where
     I: ValueInput<'src, Token = Token<'src>, Span = Span>,
 {
@@ -124,10 +123,10 @@ where
                 .separated_by(just(Token::Comma))
                 .allow_trailing()
                 .collect()
-                .map(|values| tree::List { values })
+                .map(|values| node::List { values })
                 .to_expr(),
             Delimiter::Bracket,
-            |span| tree::Expr::Error(tree::ExprError),
+            |span| node::Expr::Error(node::ExprError),
         )
         .labelled("ListExpr")
         .as_context();
@@ -138,20 +137,20 @@ where
             .clone()
             .then_ignore(just(Token::Assign))
             .then(expr.clone())
-            .map(|(key, value)| tree::Property { key, value })
+            .map(|(key, value)| node::Property { key, value })
             .to_node();
         let instantiate = property
             .separated_by(just(Token::Comma))
             .allow_trailing()
             .collect()
-            .map(|fields| tree::Record { fields })
+            .map(|fields| node::Record { fields })
             .to_expr()
             .boxed();
 
         enum RecordOp {
-            Extend(NodeId<tree::Name>, NodeId<tree::Expr>),
-            Restrict(NodeId<tree::Name>),
-            Update(NodeId<tree::Name>, NodeId<tree::Expr>),
+            Extend(NodeId<node::Name>, NodeId<node::Expr>),
+            Restrict(NodeId<node::Name>),
+            Update(NodeId<node::Name>, NodeId<node::Expr>),
         }
 
         let extend = just(Token::Op(Op::Add))
@@ -186,7 +185,7 @@ where
 
                 match op {
                     RecordOp::Extend(field, value) => tree.insert_expr(
-                        tree::RecordExtend {
+                        node::RecordExtend {
                             source,
                             field,
                             value,
@@ -194,10 +193,10 @@ where
                         span,
                     ),
                     RecordOp::Restrict(field) => {
-                        tree.insert_expr(tree::RecordRestrict { source, field }, span)
+                        tree.insert_expr(node::RecordRestrict { source, field }, span)
                     }
                     RecordOp::Update(field, value) => tree.insert_expr(
-                        tree::RecordUpdate {
+                        node::RecordUpdate {
                             source,
                             field,
                             value,
@@ -209,7 +208,7 @@ where
             .boxed();
 
         let record_expr = nested_parser(record_op.or(instantiate), Delimiter::Brace, |span| {
-            tree::Expr::Error(tree::ExprError)
+            node::Expr::Error(node::ExprError)
         })
         .labelled("RecordExpr")
         .as_context();
@@ -220,7 +219,7 @@ where
             .then(expr.clone())
             .then_ignore(just(Token::In))
             .then(expr.clone())
-            .map(|((name, value), inside)| tree::Let {
+            .map(|((name, value), inside)| node::Let {
                 name,
                 value,
                 inside,
@@ -236,7 +235,7 @@ where
             .then(expr.clone())
             .then_ignore(just(Token::Else))
             .then(expr.clone())
-            .map(|((predicate, then), or)| tree::If {
+            .map(|((predicate, then), or)| node::If {
                 predicate,
                 then,
                 or,
@@ -249,7 +248,7 @@ where
         let branch = pat_parser()
             .then_ignore(just(Token::DoubleArrow))
             .then(expr.clone())
-            .map(|(pat, matches)| tree::Branch { pat, matches })
+            .map(|(pat, matches)| node::Branch { pat, matches })
             .to_node();
         let branches = branch
             .separated_by(just(Token::Comma))
@@ -260,7 +259,7 @@ where
             .ignore_then(ident.clone().to_node())
             .then_ignore(just(Token::Of))
             .then(branches)
-            .map(|(source, branches)| tree::Case { source, branches })
+            .map(|(source, branches)| node::Case { source, branches })
             .to_expr()
             .labelled("CaseExpr")
             .as_context()
@@ -270,7 +269,7 @@ where
             .ignore_then(ident.clone().to_node())
             .then_ignore(just(Token::DoubleArrow))
             .then(expr.clone())
-            .map(|(param, body)| tree::Func { param, body })
+            .map(|(param, body)| node::Func { param, body })
             .to_expr()
             .labelled("FuncExpr")
             .as_context()
@@ -287,10 +286,10 @@ where
             nested_parser(
                 callable
                     .then(expr.clone())
-                    .map(|(func, arg)| tree::Call { func, arg })
+                    .map(|(func, arg)| node::Call { func, arg })
                     .to_expr(),
                 Delimiter::Paren,
-                |span| tree::Expr::Error(tree::ExprError),
+                |span| node::Expr::Error(node::ExprError),
             )
             .boxed()
         })
@@ -317,28 +316,28 @@ where
                 |source, field, e| {
                     let span = e.span();
                     let tree: &mut State = e.state();
-                    tree.insert_expr(tree::RecordSelect { source, field }, span)
+                    tree.insert_expr(node::RecordSelect { source, field }, span)
                 },
             )
             .boxed();
 
         let unary_op = just(Token::Op(Op::Sub))
-            .to(tree::UnaryOp::Neg)
-            .or(just(Token::Op(Op::Not)).to(tree::UnaryOp::Neg))
+            .to(node::UnaryOp::Neg)
+            .or(just(Token::Op(Op::Not)).to(node::UnaryOp::Neg))
             .to_node();
         let unary = unary_op
             .repeated()
             .foldr_with(select, |op, target, e| {
                 let span = e.span();
                 let tree: &mut State = e.state();
-                tree.insert_expr(tree::Unary { op, target }, span)
+                tree.insert_expr(node::Unary { op, target }, span)
             })
             .boxed();
 
         let op = choice((
-            just(Token::Op(Op::Mul)).to(tree::BinaryOp::Mul),
-            just(Token::Op(Op::Div)).to(tree::BinaryOp::Div),
-            just(Token::Op(Op::Rem)).to(tree::BinaryOp::Rem),
+            just(Token::Op(Op::Mul)).to(node::BinaryOp::Mul),
+            just(Token::Op(Op::Div)).to(node::BinaryOp::Div),
+            just(Token::Op(Op::Rem)).to(node::BinaryOp::Rem),
         ))
         .to_node();
         let product = unary
@@ -346,30 +345,30 @@ where
             .foldl_with(op.then(unary).repeated(), |left, (op, right), e| {
                 let span = e.span();
                 let tree: &mut State = e.state();
-                tree.insert_expr(tree::Binary { op, left, right }, span)
+                tree.insert_expr(node::Binary { op, left, right }, span)
             })
             .boxed();
 
         let op = just(Token::Op(Op::Add))
-            .to(tree::BinaryOp::Add)
-            .or(just(Token::Op(Op::Sub)).to(tree::BinaryOp::Sub))
+            .to(node::BinaryOp::Add)
+            .or(just(Token::Op(Op::Sub)).to(node::BinaryOp::Sub))
             .to_node();
         let sum = product
             .clone()
             .foldl_with(op.then(product).repeated(), |left, (op, right), e| {
                 let span = e.span();
                 let tree: &mut State = e.state();
-                tree.insert_expr(tree::Binary { op, left, right }, span)
+                tree.insert_expr(node::Binary { op, left, right }, span)
             })
             .boxed();
 
         let op = choice((
-            just(Token::Op(Op::Less)).to(tree::BinaryOp::Less),
-            just(Token::Op(Op::LessEq)).to(tree::BinaryOp::LessEq),
-            just(Token::Op(Op::Greater)).to(tree::BinaryOp::Greater),
-            just(Token::Op(Op::GreaterEq)).to(tree::BinaryOp::GreaterEq),
-            just(Token::Op(Op::Eq)).to(tree::BinaryOp::Eq),
-            just(Token::Op(Op::NotEq)).to(tree::BinaryOp::NotEq),
+            just(Token::Op(Op::Less)).to(node::BinaryOp::Less),
+            just(Token::Op(Op::LessEq)).to(node::BinaryOp::LessEq),
+            just(Token::Op(Op::Greater)).to(node::BinaryOp::Greater),
+            just(Token::Op(Op::GreaterEq)).to(node::BinaryOp::GreaterEq),
+            just(Token::Op(Op::Eq)).to(node::BinaryOp::Eq),
+            just(Token::Op(Op::NotEq)).to(node::BinaryOp::NotEq),
         ))
         .to_node();
         let comparison = sum
@@ -377,14 +376,14 @@ where
             .foldl_with(op.then(sum).repeated(), |left, (op, right), e| {
                 let span = e.span();
                 let tree: &mut State = e.state();
-                tree.insert_expr(tree::Binary { op, left, right }, span)
+                tree.insert_expr(node::Binary { op, left, right }, span)
             })
             .boxed();
 
         let op = choice((
-            just(Token::Op(Op::And)).to(tree::BinaryOp::And),
-            just(Token::Op(Op::Or)).to(tree::BinaryOp::Or),
-            just(Token::Op(Op::Xor)).to(tree::BinaryOp::Xor),
+            just(Token::Op(Op::And)).to(node::BinaryOp::And),
+            just(Token::Op(Op::Or)).to(node::BinaryOp::Or),
+            just(Token::Op(Op::Xor)).to(node::BinaryOp::Xor),
         ))
         .to_node();
         let logical = comparison
@@ -392,7 +391,7 @@ where
             .foldl_with(op.then(comparison).repeated(), |left, (op, right), e| {
                 let span = e.span();
                 let tree: &mut State = e.state();
-                tree.insert_expr(tree::Binary { op, left, right }, span)
+                tree.insert_expr(node::Binary { op, left, right }, span)
             })
             .boxed();
 
@@ -479,7 +478,7 @@ where
 //         let input = tokens.as_slice().spanned((src.len()..src.len()).into());
 //         let expr = expr_parser().parse(input).into_result().unwrap();
 
-//         let tree::Case {
+//         let node::Case {
 //             source,
 //             mut branches,
 //         } = expr.into_case().unwrap().into_inner();
@@ -489,13 +488,13 @@ where
 //         let branch = branches.pop().unwrap();
 //         assert!(branch.pat.is_wildcard());
 //         let matches = branch.matches.into_literal().unwrap().into_inner();
-//         assert_eq!(matches, tree::Literal::Bool(false));
+//         assert_eq!(matches, node::Literal::Bool(false));
 
 //         let branch = branches.pop().unwrap();
 //         let pat = branch.pat.into_literal().unwrap().into_inner();
-//         assert_eq!(pat, tree::Literal::Num(1.0));
+//         assert_eq!(pat, node::Literal::Num(1.0));
 //         let matches = branch.matches.into_literal().unwrap().into_inner();
-//         assert_eq!(matches, tree::Literal::Bool(true));
+//         assert_eq!(matches, node::Literal::Bool(true));
 
 //         assert!(branches.is_empty());
 //     }
@@ -508,12 +507,12 @@ where
 //         let input = tokens.as_slice().spanned((src.len()..src.len()).into());
 //         let expr = expr_parser().parse(input).into_result().unwrap();
 
-//         let tree::Func { param, body } = expr.into_func().unwrap().into_inner();
+//         let node::Func { param, body } = expr.into_func().unwrap().into_inner();
 
 //         assert_eq!(param.inner(), "name");
 
 //         let body = body.into_binary().unwrap();
-//         assert_eq!(body.kind(), tree::BinaryOpKind::Add);
+//         assert_eq!(body.kind(), node::BinaryOpKind::Add);
 //     }
 
 //     #[test]
@@ -528,23 +527,23 @@ where
 //         // _ = 0
 //         let eq = expr.into_binary().unwrap().into_inner();
 
-//         assert_eq!(eq.kind(), tree::BinaryOpKind::Eq);
+//         assert_eq!(eq.kind(), node::BinaryOpKind::Eq);
 
 //         // _ + 30
 //         let sum = eq.left.into_binary().unwrap().into_inner();
-//         assert_eq!(sum.kind(), tree::BinaryOpKind::Add);
+//         assert_eq!(sum.kind(), node::BinaryOpKind::Add);
 
 //         // (_) + (_)
 //         let sum = sum.left.into_binary().unwrap().into_inner();
-//         assert_eq!(sum.kind(), tree::BinaryOpKind::Add);
+//         assert_eq!(sum.kind(), node::BinaryOpKind::Add);
 
 //         // (-4 * 10)
 //         let mul = sum.left.into_binary().unwrap().into_inner();
-//         assert_eq!(mul.kind(), tree::BinaryOpKind::Mul);
+//         assert_eq!(mul.kind(), node::BinaryOpKind::Mul);
 
 //         // (40 / 4)
 //         let div = sum.right.into_binary().unwrap().into_inner();
-//         assert_eq!(div.kind(), tree::BinaryOpKind::Div);
+//         assert_eq!(div.kind(), node::BinaryOpKind::Div);
 //     }
 
 //     #[test]
@@ -555,7 +554,7 @@ where
 //         let input = tokens.as_slice().spanned((src.len()..src.len()).into());
 //         let expr = expr_parser().parse(input).into_result().unwrap();
 
-//         let tree::If {
+//         let node::If {
 //             predicate,
 //             then,
 //             or,
@@ -563,7 +562,7 @@ where
 
 //         assert_eq!(predicate.into_ident().unwrap().inner(), "y");
 
-//         let tree::RecordSelect { source, field } = then.into_record_select().unwrap().into_inner();
+//         let node::RecordSelect { source, field } = then.into_record_select().unwrap().into_inner();
 
 //         assert_eq!(field.name, "x");
 
@@ -571,12 +570,12 @@ where
 //         let x = record.get("x").unwrap();
 //         assert_eq!(
 //             x.value().as_literal().unwrap().inner(),
-//             &tree::Literal::Num(10.0)
+//             &node::Literal::Num(10.0)
 //         );
 
 //         assert_eq!(
 //             or.into_literal().unwrap().into_inner(),
-//             tree::Literal::Num(0.0)
+//             node::Literal::Num(0.0)
 //         );
 //     }
 
@@ -588,10 +587,10 @@ where
 //         let input = tokens.as_slice().spanned((src.len()..src.len()).into());
 //         let expr = expr_parser().parse(input).into_result().unwrap();
 
-//         let tree::RecordSelect { source, field } = expr.into_record_select().unwrap().into_inner();
+//         let node::RecordSelect { source, field } = expr.into_record_select().unwrap().into_inner();
 //         assert_eq!(field.name, "z");
 
-//         let tree::RecordSelect { source, field } =
+//         let node::RecordSelect { source, field } =
 //             source.into_record_select().unwrap().into_inner();
 //         assert_eq!(field.name, "y");
 
@@ -607,7 +606,7 @@ where
 //         let input = tokens.as_slice().spanned((src.len()..src.len()).into());
 //         let expr = expr_parser().parse(input).into_result().unwrap();
 
-//         let tree::RecordExtend {
+//         let node::RecordExtend {
 //             source,
 //             field,
 //             value,
@@ -618,7 +617,7 @@ where
 //         assert_eq!(source.inner(), "y");
 
 //         let value = value.into_literal().unwrap().into_inner();
-//         assert_eq!(value, tree::Literal::Num(10.0));
+//         assert_eq!(value, node::Literal::Num(10.0));
 //     }
 
 //     #[test]
@@ -634,13 +633,13 @@ where
 //         let x = record.get("x").unwrap();
 //         assert_eq!(
 //             x.value().as_literal().unwrap().inner(),
-//             &tree::Literal::Num(10.0)
+//             &node::Literal::Num(10.0)
 //         );
 
 //         let y = record.get("y").unwrap();
 //         assert_eq!(
 //             y.value().as_literal().unwrap().inner(),
-//             &tree::Literal::Num(20.0)
+//             &node::Literal::Num(20.0)
 //         );
 //     }
 // }

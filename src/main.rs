@@ -7,10 +7,7 @@ use owo_colors::OwoColorize;
 use kola_print::prelude::*;
 use kola_semantic::{Inferer, error::SemanticReport};
 use kola_syntax::prelude::*;
-use kola_tree::{
-    Tree,
-    print::{MetaDecorator, TreePrinter},
-};
+use kola_tree::prelude::*;
 
 #[derive(Debug, clap::Parser)]
 #[command(author, version, about, long_about = None)]
@@ -54,18 +51,7 @@ fn main() -> miette::Result<()> {
             // println!("{}", "Untyped Abstract Syntax Tree".bold().bright_white());
             // println!("{}\n", syntax_tree.render(&(), options));
 
-            let spanned = MetaDecorator::new(spans.clone(), |notation, meta, arena| {
-                let span = meta.inner_ref();
-
-                let head = span.display_in(arena);
-
-                let single = arena.just(' ').then(notation.clone().flatten(arena), arena);
-                let multi = arena.newline().then(notation, arena);
-
-                head.then(single.or(multi, arena), arena)
-            });
-
-            let printer = TreePrinter::new(&tree).add_decorator(spanned);
+            let printer = TreePrinter::new(&tree).with(SpanDecorator(spans.clone()));
             println!("{}", printer.render(&(), &arena, options));
 
             let inferer = Inferer::new(&tree, spans);
@@ -132,20 +118,9 @@ fn try_parse(source: Source, arena: &Bump) -> Result<(Tree, SpanMetadata), Synta
     });
 
     if errors.has_errors() {
-        if let Some((tree, meta)) = result {
+        if let Some((tree, spans)) = result {
             println!("{}", "Erroneous Abstract Syntax Tree".bold().bright_white());
-            let spanned = MetaDecorator::new(meta.clone(), |notation, meta, arena| {
-                let span = meta.inner_ref();
-
-                let head = span.display_in(arena);
-
-                let single = arena.just(' ').then(notation.clone().flatten(arena), arena);
-                let multi = arena.newline().then(notation, arena);
-
-                head.then(single.or(multi, arena), arena)
-            });
-
-            let printer = TreePrinter::new(&tree).add_decorator(spanned);
+            let printer = TreePrinter::new(&tree).with(SpanDecorator(spans));
             println!("{}", printer.render(&(), arena, options));
         }
         Err(SyntaxReport::new(source, errors))

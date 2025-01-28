@@ -4,9 +4,12 @@ use kola_print::prelude::*;
 use owo_colors::OwoColorize;
 use serde::{Deserialize, Serialize};
 
-use crate::{Attached, Meta, Node, Phase, Symbol, print::TreePrinter};
-
-use super::InnerNode;
+use super::{InnerNode, Node};
+use crate::{
+    Phase, Symbol,
+    meta::{Attached, Meta},
+    print::TreePrinter,
+};
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Name(pub Symbol);

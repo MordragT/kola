@@ -2,8 +2,13 @@ use kola_print::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::marker::PhantomData;
 
-use super::{Attached, Phase, Tree};
-use crate::{InnerNode, MetaContainer, print::TreePrinter};
+use crate::{
+    Phase,
+    meta::{Attached, MetaContainer},
+    node::InnerNode,
+    print::TreePrinter,
+    tree::Tree,
+};
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct NodeId<T> {

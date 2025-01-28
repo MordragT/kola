@@ -1,24 +1,22 @@
-use chumsky::span::SimpleSpan;
-use kola_tree::{Metadata, Phase};
+use kola_tree::Phase;
+use span::Span;
 
 pub mod error;
 pub mod lexer;
 pub mod parser;
 pub mod source;
+pub mod span;
 pub mod token;
 
 pub mod prelude {
+    pub use crate::SyntaxPhase;
     pub use crate::error::{SyntaxError, SyntaxErrors, SyntaxReport};
     pub use crate::lexer::{TokenizeResult, tokenize};
     pub use crate::parser::{ParseResult, parse};
     pub use crate::source::Source;
+    pub use crate::span::*;
     pub use crate::token::{Token, TokenKind, Tokens};
-    pub use crate::{Span, SpanMetadata, Spanned, SyntaxPhase};
 }
-
-pub type Span = SimpleSpan<usize>;
-pub type Spanned<T> = (T, Span);
-pub type SpanMetadata = Metadata<SyntaxPhase>;
 
 #[derive(Clone, Copy, Debug)]
 pub struct SyntaxPhase;

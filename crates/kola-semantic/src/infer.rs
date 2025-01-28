@@ -1,5 +1,5 @@
 use kola_syntax::prelude::*;
-use kola_tree::{self as tree, Attached, Meta, MetaContainer, NodeId, NodeKind, Phase, Tree};
+use kola_tree::prelude::*;
 use kola_utils::Errors;
 
 use crate::{
@@ -196,12 +196,12 @@ impl Inferer {
     // Unit rule
     // -----------------------
     // Γ ⊢ () : unit
-    fn infer_literal(&mut self, id: NodeId<tree::Literal>, tree: &Tree) -> Result<MonoType, Error> {
+    fn infer_literal(&mut self, id: NodeId<node::Literal>, tree: &Tree) -> Result<MonoType, Error> {
         let actual = match id.get(tree) {
-            &tree::Literal::Bool(_) => MonoType::BOOL,
-            &tree::Literal::Char(_) => MonoType::CHAR,
-            &tree::Literal::Num(_) => MonoType::NUM,
-            &tree::Literal::Str(_) => MonoType::STR,
+            &node::Literal::Bool(_) => MonoType::BOOL,
+            &node::Literal::Char(_) => MonoType::CHAR,
+            &node::Literal::Num(_) => MonoType::NUM,
+            &node::Literal::Str(_) => MonoType::STR,
         };
 
         self.update_type(id, &actual);
@@ -212,7 +212,7 @@ impl Inferer {
     // x : σ ∈ Γ   τ = inst(σ)
     // -----------------------
     // ∆;Γ ⊢ x : τ
-    fn infer_ident(&mut self, id: NodeId<tree::Ident>, tree: &Tree) -> Result<MonoType, Error> {
+    fn infer_ident(&mut self, id: NodeId<node::Ident>, tree: &Tree) -> Result<MonoType, Error> {
         let t = self
             .t_env
             .try_lookup(id.get(tree))
@@ -223,13 +223,13 @@ impl Inferer {
         Ok(t)
     }
 
-    fn infer_list(&mut self, id: NodeId<tree::List>, tree: &Tree) -> Result<MonoType, Error> {
+    fn infer_list(&mut self, id: NodeId<node::List>, tree: &Tree) -> Result<MonoType, Error> {
         todo!()
     }
 
     fn infer_property(
         &mut self,
-        id: NodeId<tree::Property>,
+        id: NodeId<node::Property>,
         tree: &Tree,
     ) -> Result<Property, Error> {
         let property = id.get(tree);
@@ -244,7 +244,7 @@ impl Inferer {
     // ∆;Γ ⊢ R : { l0 : t0, ..., ln : tn | {} }
     // -----------------------
     // ∆;Γ ⊢ R : { { l1 : t1, ..., ln : tn } | +l0 : τ0 | {} }
-    fn infer_record(&mut self, id: NodeId<tree::Record>, tree: &Tree) -> Result<MonoType, Error> {
+    fn infer_record(&mut self, id: NodeId<node::Record>, tree: &Tree) -> Result<MonoType, Error> {
         let mut r = MonoType::empty_row();
 
         for &field in &id.get(tree).fields {
@@ -267,7 +267,7 @@ impl Inferer {
     // and if not possible fallback to original behaviour
     fn infer_record_select(
         &mut self,
-        id: NodeId<tree::RecordSelect>,
+        id: NodeId<node::RecordSelect>,
         tree: &Tree,
     ) -> Result<MonoType, Error> {
         let select = id.get(tree);
@@ -299,7 +299,7 @@ impl Inferer {
     // old: ∀rα. α → {r} → {l :: α | r}
     fn infer_record_extend(
         &mut self,
-        id: NodeId<tree::RecordExtend>,
+        id: NodeId<node::RecordExtend>,
         tree: &Tree,
     ) -> Result<MonoType, Error> {
         let extend = id.get(tree);
@@ -322,8 +322,8 @@ impl Inferer {
 
     fn partial_restrict(
         &mut self,
-        source: NodeId<tree::Expr>,
-        field: NodeId<tree::Name>,
+        source: NodeId<node::Expr>,
+        field: NodeId<node::Name>,
         span: Span,
         tree: &Tree,
     ) -> Result<MonoType, Error> {
@@ -351,7 +351,7 @@ impl Inferer {
     // ∀rα. {l :: α | r} → {r}
     fn infer_record_restrict(
         &mut self,
-        id: NodeId<tree::RecordRestrict>,
+        id: NodeId<node::RecordRestrict>,
         tree: &Tree,
     ) -> Result<MonoType, Error> {
         let restrict = id.get(tree);
@@ -370,7 +370,7 @@ impl Inferer {
     // ∆;Γ ⊢ { r | l = v } : { r | -l | +l : τ2 }
     fn infer_record_update(
         &mut self,
-        id: NodeId<tree::RecordUpdate>,
+        id: NodeId<node::RecordUpdate>,
         tree: &Tree,
     ) -> Result<MonoType, Error> {
         let update = id.get(tree);
@@ -396,12 +396,12 @@ impl Inferer {
     // Γ ⊢ \x -> e : τ -> τ'
     fn infer_unary_op(
         &mut self,
-        id: NodeId<tree::UnaryOp>,
+        id: NodeId<node::UnaryOp>,
         tree: &Tree,
     ) -> Result<MonoType, Error> {
         let t = match id.get(tree) {
-            &tree::UnaryOp::Neg => MonoType::NUM,
-            &tree::UnaryOp::Not => MonoType::BOOL,
+            &node::UnaryOp::Neg => MonoType::NUM,
+            &node::UnaryOp::Not => MonoType::BOOL,
         };
 
         let func = MonoType::func(t.clone(), t);
@@ -417,7 +417,7 @@ impl Inferer {
     // unify(τ0, τ1 -> τ')
     // --------------------
     // Γ ⊢ f x : τ'
-    fn infer_unary(&mut self, id: NodeId<tree::Unary>, tree: &Tree) -> Result<MonoType, Error> {
+    fn infer_unary(&mut self, id: NodeId<node::Unary>, tree: &Tree) -> Result<MonoType, Error> {
         let unary = id.get(tree);
         let span = self.span(id);
 
@@ -435,43 +435,43 @@ impl Inferer {
 
     fn infer_binary_op(
         &mut self,
-        id: NodeId<tree::BinaryOp>,
+        id: NodeId<node::BinaryOp>,
         tree: &Tree,
     ) -> Result<MonoType, Error> {
         let op = id.get(tree);
         let span = self.span(id);
 
         let (t, t_prime) = match op {
-            tree::BinaryOp::Add => {
+            node::BinaryOp::Add => {
                 let t = MonoType::variable();
                 self.cons.constrain_kind(Kind::Addable, t.clone(), span);
                 (t, MonoType::NUM)
             }
-            tree::BinaryOp::Sub
-            | tree::BinaryOp::Mul
-            | tree::BinaryOp::Div
-            | tree::BinaryOp::Rem => (MonoType::NUM, MonoType::NUM),
+            node::BinaryOp::Sub
+            | node::BinaryOp::Mul
+            | node::BinaryOp::Div
+            | node::BinaryOp::Rem => (MonoType::NUM, MonoType::NUM),
             // Comparison
-            tree::BinaryOp::Less
-            | tree::BinaryOp::Greater
-            | tree::BinaryOp::LessEq
-            | tree::BinaryOp::GreaterEq => {
+            node::BinaryOp::Less
+            | node::BinaryOp::Greater
+            | node::BinaryOp::LessEq
+            | node::BinaryOp::GreaterEq => {
                 let t = MonoType::variable();
                 self.cons.constrain_kind(Kind::Comparable, t.clone(), span);
                 (t, MonoType::BOOL)
             }
             // Logical
-            tree::BinaryOp::And | tree::BinaryOp::Or | tree::BinaryOp::Xor => {
+            node::BinaryOp::And | node::BinaryOp::Or | node::BinaryOp::Xor => {
                 (MonoType::BOOL, MonoType::BOOL)
             }
             // Equality
-            tree::BinaryOp::Eq | tree::BinaryOp::NotEq => {
+            node::BinaryOp::Eq | node::BinaryOp::NotEq => {
                 let t = MonoType::variable();
                 self.cons.constrain_kind(Kind::Equatable, t.clone(), span);
                 (t, MonoType::BOOL)
             }
             // Record
-            tree::BinaryOp::Merge => {
+            node::BinaryOp::Merge => {
                 todo!();
             }
         };
@@ -489,7 +489,7 @@ impl Inferer {
     // unify(τ0, τ1 -> τ')
     // --------------------
     // Γ ⊢ f x : τ'
-    fn infer_binary(&mut self, id: NodeId<tree::Binary>, tree: &Tree) -> Result<MonoType, Error> {
+    fn infer_binary(&mut self, id: NodeId<node::Binary>, tree: &Tree) -> Result<MonoType, Error> {
         let binary = id.get(tree);
         let span = self.span(id);
 
@@ -514,7 +514,7 @@ impl Inferer {
     // Γ, x : Γ'(τ) ⊢ e1 : τ'
     // --------------------
     // Γ ⊢ let x = e0 in e1 : τ'
-    fn infer_let(&mut self, id: NodeId<tree::Let>, tree: &Tree) -> Result<MonoType, Error> {
+    fn infer_let(&mut self, id: NodeId<node::Let>, tree: &Tree) -> Result<MonoType, Error> {
         let let_ = id.get(tree);
 
         let t = TypeVar::branch(|| self.infer_expr(let_.value, tree))?;
@@ -538,7 +538,7 @@ impl Inferer {
     // Γ ⊢ e1 : τ
     // --------------------------
     // Γ ⊢ if predicate then e0 else e1 : τ
-    fn infer_if(&mut self, id: NodeId<tree::If>, tree: &Tree) -> Result<MonoType, Error> {
+    fn infer_if(&mut self, id: NodeId<node::If>, tree: &Tree) -> Result<MonoType, Error> {
         let if_ = id.get(tree);
         let span = self.span(id);
 
@@ -555,7 +555,7 @@ impl Inferer {
         Ok(then)
     }
 
-    fn infer_case(&mut self, id: NodeId<tree::Case>, tree: &Tree) -> Result<MonoType, Error> {
+    fn infer_case(&mut self, id: NodeId<node::Case>, tree: &Tree) -> Result<MonoType, Error> {
         todo!()
     }
 
@@ -564,7 +564,7 @@ impl Inferer {
     // Γ, x : τ ⊢ e : τ'
     // ___________________
     // Γ ⊢ \x -> e : t -> t'
-    fn infer_func(&mut self, id: NodeId<tree::Func>, tree: &Tree) -> Result<MonoType, Error> {
+    fn infer_func(&mut self, id: NodeId<node::Func>, tree: &Tree) -> Result<MonoType, Error> {
         let func = id.get(tree);
         let t = MonoType::variable();
 
@@ -589,7 +589,7 @@ impl Inferer {
     // unify(τ0, τ1 -> τ')
     // --------------------
     // Γ ⊢ f x : τ'
-    fn infer_call(&mut self, id: NodeId<tree::Call>, tree: &Tree) -> Result<MonoType, Error> {
+    fn infer_call(&mut self, id: NodeId<node::Call>, tree: &Tree) -> Result<MonoType, Error> {
         let call = id.get(tree);
         let span = self.span(id);
 
@@ -604,24 +604,24 @@ impl Inferer {
         Ok(t_prime)
     }
 
-    fn infer_expr(&mut self, id: NodeId<tree::Expr>, tree: &Tree) -> Result<MonoType, Error> {
+    fn infer_expr(&mut self, id: NodeId<node::Expr>, tree: &Tree) -> Result<MonoType, Error> {
         let t = match *id.get(tree) {
-            tree::Expr::Error(e) => Err((Errors::new(), self.span(id))),
-            tree::Expr::Literal(l) => self.infer_literal(l, tree),
-            tree::Expr::Ident(i) => self.infer_ident(i, tree),
-            tree::Expr::List(l) => self.infer_list(l, tree),
-            tree::Expr::Record(r) => self.infer_record(r, tree),
-            tree::Expr::RecordSelect(r) => self.infer_record_select(r, tree),
-            tree::Expr::RecordExtend(r) => self.infer_record_extend(r, tree),
-            tree::Expr::RecordRestrict(r) => self.infer_record_restrict(r, tree),
-            tree::Expr::RecordUpdate(r) => self.infer_record_update(r, tree),
-            tree::Expr::Unary(u) => self.infer_unary(u, tree),
-            tree::Expr::Binary(b) => self.infer_binary(b, tree),
-            tree::Expr::Let(l) => self.infer_let(l, tree),
-            tree::Expr::If(i) => self.infer_if(i, tree),
-            tree::Expr::Case(c) => self.infer_case(c, tree),
-            tree::Expr::Func(f) => self.infer_func(f, tree),
-            tree::Expr::Call(c) => self.infer_call(c, tree),
+            node::Expr::Error(e) => Err((Errors::new(), self.span(id))),
+            node::Expr::Literal(l) => self.infer_literal(l, tree),
+            node::Expr::Ident(i) => self.infer_ident(i, tree),
+            node::Expr::List(l) => self.infer_list(l, tree),
+            node::Expr::Record(r) => self.infer_record(r, tree),
+            node::Expr::RecordSelect(r) => self.infer_record_select(r, tree),
+            node::Expr::RecordExtend(r) => self.infer_record_extend(r, tree),
+            node::Expr::RecordRestrict(r) => self.infer_record_restrict(r, tree),
+            node::Expr::RecordUpdate(r) => self.infer_record_update(r, tree),
+            node::Expr::Unary(u) => self.infer_unary(u, tree),
+            node::Expr::Binary(b) => self.infer_binary(b, tree),
+            node::Expr::Let(l) => self.infer_let(l, tree),
+            node::Expr::If(i) => self.infer_if(i, tree),
+            node::Expr::Case(c) => self.infer_case(c, tree),
+            node::Expr::Func(f) => self.infer_func(f, tree),
+            node::Expr::Call(c) => self.infer_call(c, tree),
         }?;
 
         self.update_type(id, &t);
@@ -654,7 +654,7 @@ impl Inferer {
 // mod tests {
 //     use crate::{
 //         semantic::{error::SemanticError, types::MonoType, Infer, Substitution},
-//         syntax::{tree::*, Span},
+//         syntax::{node::*, Span},
 //     };
 
 //     fn node<T>(t: T) -> Node<T> {

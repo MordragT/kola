@@ -1,5 +1,5 @@
 use chumsky::{input::ValueInput, prelude::*};
-use kola_tree::{self as tree, Attached, InnerNode, NodeId};
+use kola_tree::prelude::*;
 
 use super::{Extra, State};
 use crate::{Span, SyntaxPhase, token::Token};
@@ -21,18 +21,18 @@ where
     }
 
     #[inline]
-    fn to_expr(self) -> impl Parser<'src, I, NodeId<tree::Expr>, Extra<'src>>
+    fn to_expr(self) -> impl Parser<'src, I, NodeId<node::Expr>, Extra<'src>>
     where
         T: InnerNode + Attached<SyntaxPhase, Meta = Span>,
-        tree::Expr: From<NodeId<T>>,
+        node::Expr: From<NodeId<T>>,
     {
-        self.to_node().map(tree::Expr::from).to_node()
+        self.to_node().map(node::Expr::from).to_node()
     }
 
     #[inline]
-    fn to_pat(self) -> impl Parser<'src, I, tree::Pat, Extra<'src>>
+    fn to_pat(self) -> impl Parser<'src, I, node::Pat, Extra<'src>>
     where
-        T: Into<tree::Pat>,
+        T: Into<node::Pat>,
     {
         self.map(Into::into)
     }

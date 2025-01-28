@@ -1,6 +1,6 @@
 use kola_print::prelude::*;
 
-use crate::{InnerNode, Meta, MetaContainer, NodeId, Phase, Tree, meta::Metadata};
+use crate::{id::NodeId, node::InnerNode, tree::Tree};
 
 // This is somewhat hacky I use NodeId<()> and then only the Metadata get function
 // so that there is no type safety for the NodeId and what Node I get,
@@ -13,45 +13,6 @@ pub trait Decorator {
         with: NodeId<()>,
         arena: &'a Bump,
     ) -> Notation<'a>;
-}
-
-type MetaCallback<P> = Box<dyn for<'a> Fn(Notation<'a>, &'a Meta<P>, &'a Bump) -> Notation<'a>>;
-
-pub struct MetaDecorator<P: Phase, C: MetaContainer<P>> {
-    pub metadata: Metadata<P, C>,
-    pub callback: MetaCallback<P>,
-}
-
-impl<'d, P, C> MetaDecorator<P, C>
-where
-    P: Phase,
-    C: MetaContainer<P>,
-{
-    pub fn new(
-        metadata: Metadata<P, C>,
-        callback: impl for<'a> Fn(Notation<'a>, &'a Meta<P>, &'a Bump) -> Notation<'a> + 'static,
-    ) -> Self {
-        Self {
-            metadata,
-            callback: Box::new(callback),
-        }
-    }
-}
-
-impl<P, M> Decorator for MetaDecorator<P, M>
-where
-    P: Phase,
-    M: MetaContainer<P>,
-{
-    fn decorate<'a>(
-        &'a self,
-        notation: Notation<'a>,
-        with: NodeId<()>,
-        arena: &'a Bump,
-    ) -> Notation<'a> {
-        let meta = self.metadata.get(with);
-        (self.callback)(notation, meta, arena)
-    }
 }
 
 pub struct TreePrinter {
@@ -67,7 +28,7 @@ impl TreePrinter {
         }
     }
 
-    pub fn add_decorator(mut self, decorator: impl Decorator + 'static) -> Self {
+    pub fn with(mut self, decorator: impl Decorator + 'static) -> Self {
         self.decorators.push(Box::new(decorator));
         self
     }

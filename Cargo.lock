@@ -318,6 +318,7 @@ version = "0.1.0"
 dependencies = [
  "chumsky",
  "ecow",
+ "kola-print",
  "kola-tree",
  "kola-utils",
  "miette",

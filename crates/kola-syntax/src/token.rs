@@ -2,7 +2,7 @@ use std::fmt;
 
 use owo_colors::OwoColorize;
 
-use super::Spanned;
+use super::span::Spanned;
 
 pub type Tokens<'a> = Vec<Spanned<Token<'a>>>;
 

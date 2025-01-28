@@ -1,8 +1,12 @@
 use std::rc::Rc;
 
-use crate::{InnerNode, NodeKind};
-
-use super::{Expr, Meta, Node, NodeId, Phase};
+use crate::{
+    Phase,
+    id::NodeId,
+    kind::NodeKind,
+    meta::Meta,
+    node::{Expr, InnerNode, Node},
+};
 
 #[derive(Debug)]
 pub struct TreeBuilder {
@@ -56,7 +60,7 @@ impl Tree {
         T::to_inner_ref(node).unwrap()
     }
 
-    pub fn root_id(&self) -> NodeId<super::Expr> {
+    pub fn root_id(&self) -> NodeId<Expr> {
         self.root
     }
 

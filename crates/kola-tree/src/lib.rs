@@ -1,17 +1,21 @@
 use std::fmt::Debug;
 
-pub use id::NodeId;
-pub use kind::NodeKind;
-pub use meta::{Attached, Meta, MetaContainer, MetaVec, Metadata};
-pub use node::*;
-pub use tree::{Tree, TreeBuilder};
-
-mod id;
-mod kind;
-mod meta;
-mod node;
+pub mod id;
+pub mod kind;
+pub mod meta;
+pub mod node;
 pub mod print;
-mod tree;
+pub mod tree;
+
+pub mod prelude {
+    pub use crate::id::NodeId;
+    pub use crate::kind::NodeKind;
+    pub use crate::meta::{Attached, Meta, MetaContainer, MetaVec, Metadata};
+    pub use crate::node::{self, InnerNode, Node};
+    pub use crate::print::{Decorator, TreePrinter};
+    pub use crate::tree::{Tree, TreeBuilder};
+    pub use crate::{Phase, Symbol};
+}
 
 pub type Symbol = ecow::EcoString;
 
