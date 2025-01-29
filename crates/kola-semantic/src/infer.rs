@@ -14,10 +14,6 @@ use crate::{
 
 // https://blog.stimsina.com/post/implementing-a-hindley-milner-type-system-part-2
 
-// Type and Kind Environments:
-// Type environments map term variables to their types and kind environments map type variables to
-// their kinds
-
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Constraint {
     Kind {
@@ -92,8 +88,6 @@ impl Constraints {
 
 // TODO τ for normal types
 // r for record types ?
-
-// TODO use Kind Environment in Inference rules
 
 pub struct Inferer {
     subs: Substitution,

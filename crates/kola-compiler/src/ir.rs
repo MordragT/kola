@@ -20,45 +20,107 @@ https://en.wikipedia.org/wiki/A-normal_form
 https://matt.might.net/articles/a-normalization/
 */
 
-use std::ops::Deref;
+use std::marker::PhantomData;
 
-use kola_syntax::span::Span;
+pub use kola_tree::node::Literal;
 
-pub use kola_tree::{Symbol, node::Literal};
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct Node<T> {
-    pub inner: Box<T>,
-    pub span: Span,
+#[derive(Debug, Clone)]
+pub struct IrBuilder {
+    instructions: Vec<Instr>,
 }
 
-impl<T> Deref for Node<T> {
-    type Target = T;
-
-    fn deref(&self) -> &Self::Target {
-        &self.inner
-    }
-}
-
-impl<T> Node<T> {
-    pub fn new(inner: T, span: Span) -> Self {
+impl IrBuilder {
+    pub fn new() -> Self {
         Self {
-            inner: Box::new(inner),
-            span,
+            instructions: Vec::new(),
         }
     }
+
+    // TODO return InstrId ?
+    pub fn push<T>(&mut self, instr: T) -> InstrId<T>
+    where
+        T: Into<Instr>,
+    {
+        let id = self.instructions.len() as u32;
+
+        let instr = instr.into();
+        self.instructions.push(instr);
+
+        InstrId { id, t: PhantomData }
+    }
 }
+
+#[derive(Debug, Clone)]
+pub struct Ir {
+    instructions: Vec<Instr>,
+}
+
+#[derive(Debug, Clone)]
+pub enum Instr {
+    Symbol(Symbol),
+    Literal(Literal),
+    Func(Func),
+    Atomic(Atomic),
+    Call(Call),
+    If(If),
+    Complex(Complex),
+}
+
+impl From<Symbol> for Instr {
+    fn from(value: Symbol) -> Self {
+        Self::Symbol(value)
+    }
+}
+
+impl From<Literal> for Instr {
+    fn from(value: Literal) -> Self {
+        Self::Literal(value)
+    }
+}
+
+impl From<Func> for Instr {
+    fn from(value: Func) -> Self {
+        Self::Func(value)
+    }
+}
+
+impl From<Atomic> for Instr {
+    fn from(value: Atomic) -> Self {
+        Self::Atomic(value)
+    }
+}
+
+impl From<Call> for Instr {
+    fn from(value: Call) -> Self {
+        Self::Call(value)
+    }
+}
+
+impl From<If> for Instr {
+    fn from(value: If) -> Self {
+        Self::If(value)
+    }
+}
+
+impl From<Complex> for Instr {
+    fn from(value: Complex) -> Self {
+        Self::Complex(value)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct InstrId<T> {
+    id: u32,
+    t: PhantomData<T>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct Symbol(pub u32);
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Func {
-    pub param: Symbol,
-    pub body: Expr,
-}
-
-impl Func {
-    pub fn new(param: Symbol, body: Expr) -> Self {
-        Self { param, body }
-    }
+    pub param: InstrId<Symbol>,
+    pub body: InstrId<Expr>,
 }
 
 /// An expression is atomic if:
@@ -68,77 +130,44 @@ impl Func {
 /// - it never produces an error
 #[derive(Debug, Clone, PartialEq)]
 pub enum Atomic {
-    Literal(Node<Literal>),
-    Ident(Node<Symbol>),
-    Func(Node<Func>),
+    Literal(InstrId<Literal>),
+    Symbol(InstrId<Symbol>),
+    Func(InstrId<Func>),
     // Unary
     // Binary (atleast for some)
 }
 
-impl Atomic {
-    pub fn literal(l: Literal, span: Span) -> Self {
-        Self::Literal(Node::new(l, span))
-    }
-
-    pub fn ident(i: Symbol, span: Span) -> Self {
-        Self::Ident(Node::new(i, span))
-    }
-
-    pub fn func(param: Symbol, body: Expr, span: Span) -> Self {
-        let f = Func::new(param, body);
-        Self::Func(Node::new(f, span))
-    }
-}
-
 #[derive(Debug, Clone, PartialEq)]
 pub struct Call {
-    pub func: Atomic,
-    pub arg: Atomic,
+    pub func: InstrId<Atomic>,
+    pub arg: InstrId<Atomic>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct If {
-    predicate: Atomic,
-    then: Expr,
-    or: Expr,
+    predicate: InstrId<Atomic>,
+    then: InstrId<Expr>,
+    or: InstrId<Expr>,
 }
 
 /// An expression is complex if it is not atomic
 /// Complex expressions must be in tail position
 #[derive(Debug, Clone, PartialEq)]
 pub enum Complex {
-    Call(Node<Call>),
-    If(Node<If>),
+    Call(InstrId<Call>),
+    If(InstrId<If>),
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Let {
-    pub name: Symbol,
-    pub value: Complex,
-    pub inside: Expr,
+    pub name: InstrId<Symbol>,
+    pub value: InstrId<Complex>,
+    pub inside: InstrId<Expr>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum Expr {
-    Atomic(Atomic),
-    Complex(Complex),
-    Let(Node<Let>),
-}
-
-impl From<Atomic> for Expr {
-    fn from(value: Atomic) -> Self {
-        Self::Atomic(value)
-    }
-}
-
-impl From<Complex> for Expr {
-    fn from(value: Complex) -> Self {
-        Self::Complex(value)
-    }
-}
-
-impl From<Node<Let>> for Expr {
-    fn from(value: Node<Let>) -> Self {
-        Self::Let(value)
-    }
+    Atomic(InstrId<Atomic>),
+    Complex(InstrId<Complex>),
+    Let(InstrId<Let>),
 }

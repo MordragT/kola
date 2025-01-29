@@ -1,132 +1,88 @@
-use super::ir;
+use kola_tree::prelude::*;
+use std::collections::HashMap;
 
-// pub trait Normalize {
-//     type Node;
+use crate::{
+    CompilePhase,
+    ir::{self, Instr, IrBuilder},
+};
 
-//     fn normalize(&self) -> ir::Node<Self::Node>;
-// }
-
-// impl Normalize for ast::LiteralExpr {
-//     type Node = ir::Literal;
-
-//     fn normalize(&self) -> ir::Node<Self::Node> {
-//         ir::Node::new(self.inner().clone(), self.span)
-//     }
-// }
-
-// impl Normalize for ast::IdentExpr {
-//     type Node = ir::Symbol;
-
-//     fn normalize(&self) -> ir::Node<Self::Node> {
-//         ir::Node::new(self.inner().clone(), self.span)
-//     }
-// }
-
-// impl Normalize for ast::ListExpr {
-//     type Node = ir::Complex;
-
-//     fn normalize(&self) -> ir::Node<Self::Node> {
-//         todo!()
-//     }
-// }
-
-// impl Normalize for ast::RecordExpr {
-//     type Node = ir::Complex;
-
-//     fn normalize(&self) -> ir::Node<Self::Node> {
-//         todo!()
-//     }
-// }
-
-// impl Normalize for ast::RecordSelectExpr {
-//     type Node = ir::Complex;
-
-//     fn normalize(&self) -> ir::Node<Self::Node> {
-//         todo!()
-//     }
-// }
-
-// impl Normalize for ast::RecordExtendExpr {
-//     type Node = ir::Complex;
-
-//     fn normalize(&self) -> ir::Node<Self::Node> {
-//         todo!()
-//     }
-// }
-
-// impl Normalize for ast::RecordRestrictExpr {
-//     type Node = ir::Complex;
-
-//     fn normalize(&self) -> ir::Node<Self::Node> {
-//         todo!()
-//     }
-// }
-
-// impl Normalize for ast::RecordUpdateExpr {
-//     type Node = ir::Complex;
-
-//     fn normalize(&self) -> ir::Node<Self::Node> {
-//         todo!()
-//     }
-// }
-
-// impl Normalize for ast::UnaryExpr {
-//     type Node = ir::Complex;
-
-//     fn normalize(&self) -> ir::Node<Self::Node> {
-//         todo!()
-//     }
-// }
-
-// impl Normalize for ast::BinaryExpr {
-//     type Node = ir::Complex;
-
-//     fn normalize(&self) -> ir::Node<Self::Node> {
-//         todo!()
-//     }
-// }
-
-// impl Normalize for ast::LetExpr {
-//     type Node = ir::Let;
-
-//     fn normalize(&self) -> ir::Node<Self::Node> {
-//         let value = self.value.normalize();
-//         let inside = self.inside.normalize();
-//     }
-// }
-
-// impl Normalize for ast::Expr {
-//     type Node = ir::Complex;
-
-//     fn normalize(&self) -> ir::Node<Self::Node> {
-//         todo!()
-//     }
-// }
-
-/*
-*/
-
-// Idea state machine over the input and output types of the cont to be created
-pub type Cont<I, O> = Box<dyn FnOnce(I) -> O>;
-
-struct Normalizer {
-    atomics: Vec<ir::Atomic>,
+pub struct Normalizer {
+    builder: IrBuilder,
+    cache: Vec<Meta<CompilePhase>>,
+    symbols: HashMap<Symbol, ir::Symbol>,
 }
 
-// impl Normalizer {
-//     fn normalize_expr(&mut self, expr: &tree::Expr) -> ir::Expr {
-//         todo!()
-//     }
+impl Normalizer {
+    pub fn new() -> Self {
+        Self {
+            builder: IrBuilder::new(),
+            cache: Vec::new(),
+            symbols: HashMap::new(),
+        }
+    }
 
-//     fn normalize_if(&mut self, if_: &tree::IfExpr) -> ir::Complex {
-//         todo!()
-//     }
+    fn fresh_symbol(&mut self, symbol: &Symbol) -> ir::Symbol {
+        let next = self.symbols.len() as u32;
 
-//     fn normalize_literal(&mut self, literal: &tree::LiteralExpr) {
-//         self.atomics
-//             .push(ir::Atomic::literal(literal.inner().clone(), literal.span))
-//     }
-// }
+        *self
+            .symbols
+            .entry(symbol.clone())
+            .or_insert(ir::Symbol(next))
+    }
 
-// If I use a flat list to represent all nodes in the ast
-// then child nodes will always be in front of parent nodes
+    pub fn normalize(mut self, tree: &Tree) -> ir::Ir {
+        for node in tree.iter_nodes() {
+            match node {
+                Node::Name(n) => {
+                    let symbol = self.fresh_symbol(&n.0);
+                    let id = self.builder.push(symbol);
+                    self.cache.push(Meta::Name(id));
+                }
+                Node::Ident(i) => {
+                    let symbol = self.fresh_symbol(&i.0);
+                    let id = self.builder.push(symbol);
+                    self.cache.push(Meta::Ident(id));
+                }
+                Node::Literal(l) => {
+                    let id = self.builder.push(l.clone());
+                    self.cache.push(Meta::Literal(id));
+                }
+                Node::List(_) => todo!(),
+                Node::Property(_) => todo!(),
+                Node::Record(_) => todo!(),
+                Node::RecordSelect(_) => todo!(),
+                Node::RecordExtend(_) => todo!(),
+                Node::RecordRestrict(_) => todo!(),
+                Node::RecordUpdate(_) => todo!(),
+                Node::UnaryOp(_) => todo!(),
+                Node::Unary(_) => todo!(),
+                Node::BinaryOp(_) => todo!(),
+                Node::Binary(_) => todo!(),
+                Node::Let(node::Let {
+                    name,
+                    value,
+                    inside,
+                }) => {
+                    let symbol = *self.cache.meta(*name);
+                    todo!()
+                }
+                Node::PatError(_) => todo!(),
+                Node::Wildcard(_) => todo!(),
+                Node::LiteralPat(_) => todo!(),
+                Node::IdentPat(_) => todo!(),
+                Node::PropertyPat(_) => todo!(),
+                Node::RecordPat(_) => todo!(),
+                Node::Pat(_) => todo!(),
+                Node::Branch(_) => todo!(),
+                Node::Case(_) => todo!(),
+                Node::If(_) => todo!(),
+                Node::Func(_) => todo!(),
+                Node::Call(_) => todo!(),
+                Node::ExprError(_) => todo!(),
+                Node::Expr(_) => todo!(),
+            }
+        }
+
+        todo!()
+    }
+}
