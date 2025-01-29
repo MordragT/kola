@@ -8,6 +8,12 @@ use crate::{
     node::{Expr, InnerNode, Node},
 };
 
+pub trait NodeContainer {
+    fn node<T>(&self, id: NodeId<T>) -> &T
+    where
+        T: InnerNode;
+}
+
 #[derive(Debug)]
 pub struct TreeBuilder {
     nodes: Vec<Node>,
@@ -19,9 +25,34 @@ impl Default for TreeBuilder {
     }
 }
 
+impl NodeContainer for TreeBuilder {
+    fn node<T>(&self, id: NodeId<T>) -> &T
+    where
+        T: InnerNode,
+    {
+        let node = &self.nodes[id.as_usize()];
+        T::to_inner_ref(node).unwrap()
+    }
+}
+
 impl TreeBuilder {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    pub fn node_mut<T>(&mut self, id: NodeId<T>) -> &mut T
+    where
+        T: InnerNode,
+    {
+        let node = &mut self.nodes[id.as_usize()];
+        T::to_inner_mut(node).unwrap()
+    }
+
+    pub fn update_node<T>(&mut self, id: NodeId<T>, node: T) -> T
+    where
+        T: InnerNode,
+    {
+        std::mem::replace(self.node_mut(id), node)
     }
 
     pub fn insert<P, T>(&mut self, node: T) -> NodeId<T>
@@ -51,15 +82,17 @@ pub struct Tree {
     root: NodeId<Expr>,
 }
 
-impl Tree {
-    pub fn node<T>(&self, id: NodeId<T>) -> &T
+impl NodeContainer for Tree {
+    fn node<T>(&self, id: NodeId<T>) -> &T
     where
         T: InnerNode,
     {
         let node = &self.nodes[id.as_usize()];
         T::to_inner_ref(node).unwrap()
     }
+}
 
+impl Tree {
     pub fn root_id(&self) -> NodeId<Expr> {
         self.root
     }

@@ -8,6 +8,7 @@ use crate::{
     id::NodeId,
     meta::{Attached, Meta},
     print::TreePrinter,
+    tree::NodeContainer,
 };
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -15,6 +16,20 @@ pub struct Let {
     pub name: NodeId<Name>,
     pub value: NodeId<Expr>,
     pub inside: NodeId<Expr>,
+}
+
+impl Let {
+    pub fn name<'a>(&self, tree: &'a impl NodeContainer) -> &'a Name {
+        self.name.get(tree)
+    }
+
+    pub fn value<'a>(&self, tree: &'a impl NodeContainer) -> &'a Expr {
+        self.value.get(tree)
+    }
+
+    pub fn inside<'a>(&self, tree: &'a impl NodeContainer) -> &'a Expr {
+        self.inside.get(tree)
+    }
 }
 
 impl InnerNode for Let {

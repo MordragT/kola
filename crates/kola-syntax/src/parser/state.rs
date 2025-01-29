@@ -6,6 +6,7 @@ use crate::{Span, SyntaxPhase, token::Token};
 pub type State = extra::SimpleState<StateRepr>;
 pub type Extra<'src> = extra::Full<Rich<'src, Token<'src>, Span>, State, ()>;
 
+#[derive(Debug)]
 pub struct StateRepr {
     pub builder: TreeBuilder,
     pub meta: Vec<Meta<SyntaxPhase>>,

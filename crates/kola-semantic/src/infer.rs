@@ -215,7 +215,7 @@ impl Inferer {
     fn infer_ident(&mut self, id: NodeId<node::Ident>, tree: &Tree) -> Result<MonoType, Error> {
         let t = self
             .t_env
-            .try_lookup(id.get(tree))
+            .try_lookup(&id.get(tree).0)
             .map_err(|e| e.with(self.span(id)))?
             .instantiate();
 

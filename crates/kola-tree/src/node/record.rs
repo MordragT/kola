@@ -8,12 +8,23 @@ use crate::{
     id::NodeId,
     meta::{Attached, Meta},
     print::TreePrinter,
+    tree::NodeContainer,
 };
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Property {
     pub key: NodeId<Name>,
     pub value: NodeId<Expr>,
+}
+
+impl Property {
+    pub fn key<'a>(&self, tree: &'a impl NodeContainer) -> &'a Name {
+        self.key.get(tree)
+    }
+
+    pub fn value<'a>(&self, tree: &'a impl NodeContainer) -> &'a Expr {
+        self.value.get(tree)
+    }
 }
 
 impl InnerNode for Property {
@@ -103,6 +114,19 @@ pub struct Record {
     pub fields: Vec<NodeId<Property>>,
 }
 
+impl Record {
+    pub fn get<'a>(
+        &self,
+        name: impl AsRef<str>,
+        tree: &'a impl NodeContainer,
+    ) -> Option<&'a Property> {
+        self.fields.iter().find_map(|p| {
+            let p = p.get(tree);
+            (p.key.get(tree) == name.as_ref()).then_some(p)
+        })
+    }
+}
+
 impl InnerNode for Record {
     fn to_inner_ref(node: &Node) -> Option<&Self> {
         match node {
@@ -168,18 +192,26 @@ impl TryFrom<Node> for Record {
     }
 }
 
-// impl Record {
-//     pub fn get(&self, name: impl AsRef<str>) -> Option<&Property> {
-//         self.fields.iter().find(|p| &p.key.name == name.as_ref())
-//     }
-// }
-
 // { y | +x = 10 }
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct RecordExtend {
     pub source: NodeId<Expr>,
     pub field: NodeId<Name>,
     pub value: NodeId<Expr>,
+}
+
+impl RecordExtend {
+    pub fn source<'a>(&self, tree: &'a impl NodeContainer) -> &'a Expr {
+        self.source.get(tree)
+    }
+
+    pub fn field<'a>(&self, tree: &'a impl NodeContainer) -> &'a Name {
+        self.field.get(tree)
+    }
+
+    pub fn value<'a>(&self, tree: &'a impl NodeContainer) -> &'a Expr {
+        self.value.get(tree)
+    }
 }
 
 impl InnerNode for RecordExtend {
@@ -280,6 +312,16 @@ pub struct RecordRestrict {
     pub field: NodeId<Name>,
 }
 
+impl RecordRestrict {
+    pub fn source<'a>(&self, tree: &'a impl NodeContainer) -> &'a Expr {
+        self.source.get(tree)
+    }
+
+    pub fn field<'a>(&self, tree: &'a impl NodeContainer) -> &'a Name {
+        self.field.get(tree)
+    }
+}
+
 impl InnerNode for RecordRestrict {
     fn to_inner_ref(node: &Node) -> Option<&Self> {
         match node {
@@ -366,6 +408,16 @@ impl TryFrom<Node> for RecordRestrict {
 pub struct RecordSelect {
     pub source: NodeId<Expr>,
     pub field: NodeId<Name>,
+}
+
+impl RecordSelect {
+    pub fn source<'a>(&self, tree: &'a impl NodeContainer) -> &'a Expr {
+        self.source.get(tree)
+    }
+
+    pub fn field<'a>(&self, tree: &'a impl NodeContainer) -> &'a Name {
+        self.field.get(tree)
+    }
 }
 
 impl InnerNode for RecordSelect {
@@ -455,6 +507,20 @@ pub struct RecordUpdate {
     pub source: NodeId<Expr>,
     pub field: NodeId<Name>,
     pub value: NodeId<Expr>,
+}
+
+impl RecordUpdate {
+    pub fn source<'a>(&self, tree: &'a impl NodeContainer) -> &'a Expr {
+        self.source.get(tree)
+    }
+
+    pub fn field<'a>(&self, tree: &'a impl NodeContainer) -> &'a Name {
+        self.field.get(tree)
+    }
+
+    pub fn value<'a>(&self, tree: &'a impl NodeContainer) -> &'a Expr {
+        self.value.get(tree)
+    }
 }
 
 impl InnerNode for RecordUpdate {

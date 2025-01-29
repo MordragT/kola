@@ -10,6 +10,7 @@ use crate::{
     id::NodeId,
     meta::{Attached, Meta},
     print::TreePrinter,
+    tree::NodeContainer,
 };
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -86,6 +87,16 @@ impl TryFrom<Node> for UnaryOp {
 pub struct Unary {
     pub op: NodeId<UnaryOp>,
     pub target: NodeId<Expr>,
+}
+
+impl Unary {
+    pub fn op(&self, tree: &impl NodeContainer) -> UnaryOp {
+        *self.op.get(tree)
+    }
+
+    pub fn target<'a>(&self, tree: &'a impl NodeContainer) -> &'a Expr {
+        self.target.get(tree)
+    }
 }
 
 impl InnerNode for Unary {

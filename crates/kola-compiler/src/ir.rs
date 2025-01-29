@@ -22,9 +22,9 @@ https://matt.might.net/articles/a-normalization/
 
 use std::ops::Deref;
 
-use kola_syntax::Span;
+use kola_syntax::span::Span;
 
-pub use kola_tree::{Literal, Symbol};
+pub use kola_tree::{Symbol, node::Literal};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Node<T> {

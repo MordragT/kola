@@ -8,12 +8,23 @@ use crate::{
     id::NodeId,
     meta::{Attached, Meta},
     print::TreePrinter,
+    tree::NodeContainer,
 };
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Func {
     pub param: NodeId<Ident>,
     pub body: NodeId<Expr>,
+}
+
+impl Func {
+    pub fn param<'a>(&self, tree: &'a impl NodeContainer) -> &'a Ident {
+        self.param.get(tree)
+    }
+
+    pub fn body<'a>(&self, tree: &'a impl NodeContainer) -> &'a Expr {
+        self.body.get(tree)
+    }
 }
 
 impl InnerNode for Func {

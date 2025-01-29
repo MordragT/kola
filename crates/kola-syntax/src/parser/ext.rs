@@ -15,8 +15,8 @@ where
     {
         self.map_with(|node, e| {
             let span = e.span();
-            let tree: &mut State = e.state();
-            tree.insert(node, span)
+            let state: &mut State = e.state();
+            state.insert(node, span)
         })
     }
 
@@ -26,7 +26,11 @@ where
         T: InnerNode + Attached<SyntaxPhase, Meta = Span>,
         node::Expr: From<NodeId<T>>,
     {
-        self.to_node().map(node::Expr::from).to_node()
+        self.map_with(|node, e| {
+            let span = e.span();
+            let state: &mut State = e.state();
+            state.insert_expr(node, span)
+        })
     }
 
     #[inline]

@@ -10,6 +10,7 @@ use crate::{
     id::NodeId,
     meta::{Attached, Meta},
     print::TreePrinter,
+    tree::NodeContainer,
 };
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -117,6 +118,20 @@ pub struct Binary {
     pub op: NodeId<BinaryOp>,
     pub left: NodeId<Expr>,
     pub right: NodeId<Expr>,
+}
+
+impl Binary {
+    pub fn op(&self, tree: &impl NodeContainer) -> BinaryOp {
+        *self.op.get(tree)
+    }
+
+    pub fn left<'a>(&self, tree: &'a impl NodeContainer) -> &'a Expr {
+        self.left.get(tree)
+    }
+
+    pub fn right<'a>(&self, tree: &'a impl NodeContainer) -> &'a Expr {
+        self.right.get(tree)
+    }
 }
 
 impl InnerNode for Binary {

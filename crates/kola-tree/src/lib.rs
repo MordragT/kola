@@ -1,5 +1,3 @@
-use std::fmt::Debug;
-
 pub mod id;
 pub mod kind;
 pub mod meta;
@@ -13,9 +11,11 @@ pub mod prelude {
     pub use crate::meta::{Attached, Meta, MetaContainer, MetaVec, Metadata};
     pub use crate::node::{self, InnerNode, Node};
     pub use crate::print::{Decorator, TreePrinter};
-    pub use crate::tree::{Tree, TreeBuilder};
+    pub use crate::tree::{NodeContainer, Tree, TreeBuilder};
     pub use crate::{Phase, Symbol};
 }
+
+use std::fmt::Debug;
 
 pub type Symbol = ecow::EcoString;
 

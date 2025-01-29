@@ -436,210 +436,220 @@ where
         .boxed()
 }
 
-// #[cfg(test)]
-// mod tests {
-//     use chumsky::{input::Input, Parser};
+#[cfg(test)]
+mod tests {
+    use chumsky::prelude::*;
 
-//     use crate::syntax::{lexer::lexer, tree};
+    use kola_tree::prelude::*;
 
-//     use super::{expr_parser, pat_parser};
+    use super::{expr_parser, pat_parser};
+    use crate::{lexer::lexer, parser::try_parse_with};
 
-//     #[test]
-//     fn pat() {
-//         let src = "{ a: x, b: { y }, c: _, d }";
-//         let tokens = lexer().parse(src).into_result().unwrap();
+    #[test]
+    fn pat() {
+        let src = "{ a: x, b: { y }, c: _, d }";
+        let tokens = lexer().parse(src).into_result().unwrap();
+        let eoi = (src.len()..src.len()).into();
+        let input = tokens.as_slice().map(eoi, |(t, s)| (t, s));
 
-//         let input = tokens.as_slice().spanned((src.len()..src.len()).into());
-//         let pat = pat_parser().parse(input).into_result().unwrap();
+        let (pat, tree, _spans) = try_parse_with(input, pat_parser()).unwrap();
 
-//         let record = pat.into_record().unwrap();
+        let record = pat.get(&tree).as_record().unwrap();
 
-//         let a = record.get("a").unwrap();
-//         assert!(a.value().is_some());
-//         assert_eq!(a.value().unwrap().as_ident().unwrap().inner(), "x");
+        let a = record.get("a", &tree).unwrap();
+        assert!(a.value.is_some());
+        assert_eq!(a.value(&tree).unwrap().as_ident().unwrap(), "x");
 
-//         let b = record.get("b").unwrap();
-//         assert!(b.value().is_some());
-//         let b = b.value().unwrap().as_record().unwrap();
-//         assert!(b.get("y").unwrap().value.is_none());
+        let b = record.get("b", &tree).unwrap();
+        assert!(b.value.is_some());
+        let b = b.value(&tree).unwrap().as_record().unwrap();
+        assert!(b.get("y", &tree).unwrap().value.is_none());
 
-//         let c = record.get("c").unwrap();
-//         assert!(c.value().unwrap().is_wildcard());
+        let c = record.get("c", &tree).unwrap();
+        assert!(c.value(&tree).unwrap().is_wildcard());
 
-//         let d = record.get("d").unwrap();
-//         assert_eq!(d.value(), None);
-//     }
+        let d = record.get("d", &tree).unwrap();
+        assert_eq!(d.value(&tree), None);
+    }
 
-//     #[test]
-//     fn case_expr() {
-//         let src = "case x of 1 => true, _ => false";
-//         let tokens = lexer().parse(src).into_result().unwrap();
+    #[test]
+    fn case_expr() {
+        let src = "case x of 1 => true, _ => false";
+        let tokens = lexer().parse(src).into_result().unwrap();
+        let eoi = (src.len()..src.len()).into();
+        let input = tokens.as_slice().map(eoi, |(t, s)| (t, s));
 
-//         let input = tokens.as_slice().spanned((src.len()..src.len()).into());
-//         let expr = expr_parser().parse(input).into_result().unwrap();
+        let (expr, tree, _spans) = try_parse_with(input, expr_parser()).unwrap();
 
-//         let node::Case {
-//             source,
-//             mut branches,
-//         } = expr.into_case().unwrap().into_inner();
+        let node::Case { source, branches } = expr.get(&tree).as_case().unwrap().get(&tree);
 
-//         assert_eq!(source.inner(), "x");
+        assert_eq!(source.get(&tree), "x");
 
-//         let branch = branches.pop().unwrap();
-//         assert!(branch.pat.is_wildcard());
-//         let matches = branch.matches.into_literal().unwrap().into_inner();
-//         assert_eq!(matches, node::Literal::Bool(false));
+        let mut branches = branches.iter().rev();
 
-//         let branch = branches.pop().unwrap();
-//         let pat = branch.pat.into_literal().unwrap().into_inner();
-//         assert_eq!(pat, node::Literal::Num(1.0));
-//         let matches = branch.matches.into_literal().unwrap().into_inner();
-//         assert_eq!(matches, node::Literal::Bool(true));
+        let branch = branches.next().unwrap().get(&tree);
+        assert!(branch.pat(&tree).is_wildcard());
+        let matches = branch.matches(&tree).as_literal().unwrap().get(&tree);
+        assert_eq!(matches, &node::Literal::Bool(false));
 
-//         assert!(branches.is_empty());
-//     }
+        let branch = branches.next().unwrap().get(&tree);
+        let pat = &branch.pat(&tree).as_literal().unwrap().0;
+        assert_eq!(pat, &node::Literal::Num(1.0));
+        let matches = branch.matches(&tree).as_literal().unwrap().get(&tree);
+        assert_eq!(matches, &node::Literal::Bool(true));
 
-//     #[test]
-//     fn func_expr() {
-//         let src = "\\name => \"Hello\" + name";
-//         let tokens = lexer().parse(src).into_result().unwrap();
+        assert_eq!(branches.len(), 0);
+    }
 
-//         let input = tokens.as_slice().spanned((src.len()..src.len()).into());
-//         let expr = expr_parser().parse(input).into_result().unwrap();
+    #[test]
+    fn func_expr() {
+        let src = "\\name => \"Hello\" + name";
+        let tokens = lexer().parse(src).into_result().unwrap();
+        let eoi = (src.len()..src.len()).into();
+        let input = tokens.as_slice().map(eoi, |(t, s)| (t, s));
 
-//         let node::Func { param, body } = expr.into_func().unwrap().into_inner();
+        let (expr, tree, _spans) = try_parse_with(input, expr_parser()).unwrap();
 
-//         assert_eq!(param.inner(), "name");
+        let node::Func { param, body } = expr.get(&tree).as_func().unwrap().get(&tree);
 
-//         let body = body.into_binary().unwrap();
-//         assert_eq!(body.kind(), node::BinaryOpKind::Add);
-//     }
+        assert_eq!(param.get(&tree), "name");
 
-//     #[test]
-//     fn arithmetic_expr() {
-//         // ((-4 * 10) + (40 / 4)) + 30 = 0
-//         let src = "-4 * 10 + 40 / 4 + 30 == 0";
-//         let tokens = lexer().parse(src).into_result().unwrap();
+        let body = body.get(&tree).as_binary().unwrap().get(&tree);
+        assert_eq!(body.op(&tree), node::BinaryOp::Add);
+    }
 
-//         let input = tokens.as_slice().spanned((src.len()..src.len()).into());
-//         let expr = expr_parser().parse(input).into_result().unwrap();
+    #[test]
+    fn arithmetic_expr() {
+        // ((-4 * 10) + (40 / 4)) + 30 = 0
+        let src = "-4 * 10 + 40 / 4 + 30 == 0";
+        let tokens = lexer().parse(src).into_result().unwrap();
+        let eoi = (src.len()..src.len()).into();
+        let input = tokens.as_slice().map(eoi, |(t, s)| (t, s));
 
-//         // _ = 0
-//         let eq = expr.into_binary().unwrap().into_inner();
+        let (expr, tree, _spans) = try_parse_with(input, expr_parser()).unwrap();
 
-//         assert_eq!(eq.kind(), node::BinaryOpKind::Eq);
+        // _ = 0
+        let eq = expr.get(&tree).as_binary().unwrap().get(&tree);
 
-//         // _ + 30
-//         let sum = eq.left.into_binary().unwrap().into_inner();
-//         assert_eq!(sum.kind(), node::BinaryOpKind::Add);
+        assert_eq!(eq.op(&tree), node::BinaryOp::Eq);
 
-//         // (_) + (_)
-//         let sum = sum.left.into_binary().unwrap().into_inner();
-//         assert_eq!(sum.kind(), node::BinaryOpKind::Add);
+        // _ + 30
+        let sum = eq.left(&tree).as_binary().unwrap().get(&tree);
+        assert_eq!(sum.op(&tree), node::BinaryOp::Add);
 
-//         // (-4 * 10)
-//         let mul = sum.left.into_binary().unwrap().into_inner();
-//         assert_eq!(mul.kind(), node::BinaryOpKind::Mul);
+        // (_) + (_)
+        let sum = sum.left(&tree).as_binary().unwrap().get(&tree);
+        assert_eq!(sum.op(&tree), node::BinaryOp::Add);
 
-//         // (40 / 4)
-//         let div = sum.right.into_binary().unwrap().into_inner();
-//         assert_eq!(div.kind(), node::BinaryOpKind::Div);
-//     }
+        // (-4 * 10)
+        let mul = sum.left(&tree).as_binary().unwrap().get(&tree);
+        assert_eq!(mul.op(&tree), node::BinaryOp::Mul);
 
-//     #[test]
-//     fn if_expr() {
-//         let src = "if y then { x = 10 }.x else 0";
-//         let tokens = lexer().parse(src).into_result().unwrap();
+        // (40 / 4)
+        let div = sum.right(&tree).as_binary().unwrap().get(&tree);
+        assert_eq!(div.op(&tree), node::BinaryOp::Div);
+    }
 
-//         let input = tokens.as_slice().spanned((src.len()..src.len()).into());
-//         let expr = expr_parser().parse(input).into_result().unwrap();
+    #[test]
+    fn if_expr() {
+        let src = "if y then { x = 10 }.x else 0";
+        let tokens = lexer().parse(src).into_result().unwrap();
+        let eoi = (src.len()..src.len()).into();
+        let input = tokens.as_slice().map(eoi, |(t, s)| (t, s));
 
-//         let node::If {
-//             predicate,
-//             then,
-//             or,
-//         } = expr.into_if().unwrap().into_inner();
+        let (expr, tree, _spans) = try_parse_with(input, expr_parser()).unwrap();
 
-//         assert_eq!(predicate.into_ident().unwrap().inner(), "y");
+        let node::If {
+            predicate,
+            then,
+            or,
+        } = expr.get(&tree).as_if().unwrap().get(&tree);
 
-//         let node::RecordSelect { source, field } = then.into_record_select().unwrap().into_inner();
+        assert_eq!(predicate.get(&tree).as_ident().unwrap().get(&tree), "y");
 
-//         assert_eq!(field.name, "x");
+        let node::RecordSelect { source, field } =
+            then.get(&tree).as_record_select().unwrap().get(&tree);
 
-//         let record = source.into_record().unwrap();
-//         let x = record.get("x").unwrap();
-//         assert_eq!(
-//             x.value().as_literal().unwrap().inner(),
-//             &node::Literal::Num(10.0)
-//         );
+        assert_eq!(field.get(&tree), "x");
 
-//         assert_eq!(
-//             or.into_literal().unwrap().into_inner(),
-//             node::Literal::Num(0.0)
-//         );
-//     }
+        let record = source.get(&tree).as_record().unwrap().get(&tree);
+        let x = record.get("x", &tree).unwrap();
+        assert_eq!(
+            x.value(&tree).as_literal().unwrap().get(&tree),
+            &node::Literal::Num(10.0)
+        );
 
-//     #[test]
-//     fn record_select() {
-//         let src = "x.y.z";
-//         let tokens = lexer().parse(src).into_result().unwrap();
+        assert_eq!(
+            or.get(&tree).as_literal().unwrap().get(&tree),
+            &node::Literal::Num(0.0)
+        );
+    }
 
-//         let input = tokens.as_slice().spanned((src.len()..src.len()).into());
-//         let expr = expr_parser().parse(input).into_result().unwrap();
+    #[test]
+    fn record_select() {
+        let src = "x.y.z";
+        let tokens = lexer().parse(src).into_result().unwrap();
+        let eoi = (src.len()..src.len()).into();
+        let input = tokens.as_slice().map(eoi, |(t, s)| (t, s));
 
-//         let node::RecordSelect { source, field } = expr.into_record_select().unwrap().into_inner();
-//         assert_eq!(field.name, "z");
+        let (expr, tree, _spans) = try_parse_with(input, expr_parser()).unwrap();
 
-//         let node::RecordSelect { source, field } =
-//             source.into_record_select().unwrap().into_inner();
-//         assert_eq!(field.name, "y");
+        let node::RecordSelect { source, field } =
+            expr.get(&tree).as_record_select().unwrap().get(&tree);
+        assert_eq!(field.get(&tree), "z");
 
-//         let ident = source.into_ident().unwrap();
-//         assert_eq!(ident.inner(), "x");
-//     }
+        let node::RecordSelect { source, field } =
+            source.get(&tree).as_record_select().unwrap().get(&tree);
+        assert_eq!(field.get(&tree), "y");
 
-//     #[test]
-//     fn record_extension() {
-//         let src = "{ y | +x = 10 }";
-//         let tokens = lexer().parse(src).into_result().unwrap();
+        let ident = source.get(&tree).as_ident().unwrap().get(&tree);
+        assert_eq!(ident, "x");
+    }
 
-//         let input = tokens.as_slice().spanned((src.len()..src.len()).into());
-//         let expr = expr_parser().parse(input).into_result().unwrap();
+    #[test]
+    fn record_extension() {
+        let src = "{ y | +x = 10 }";
+        let tokens = lexer().parse(src).into_result().unwrap();
+        let eoi = (src.len()..src.len()).into();
+        let input = tokens.as_slice().map(eoi, |(t, s)| (t, s));
 
-//         let node::RecordExtend {
-//             source,
-//             field,
-//             value,
-//         } = expr.into_record_extend().unwrap().into_inner();
-//         assert_eq!(field.name, "x");
+        let (expr, tree, _spans) = try_parse_with(input, expr_parser()).unwrap();
 
-//         let source = source.into_ident().unwrap();
-//         assert_eq!(source.inner(), "y");
+        let node::RecordExtend {
+            source,
+            field,
+            value,
+        } = expr.get(&tree).as_record_extend().unwrap().get(&tree);
+        assert_eq!(field.get(&tree), "x");
 
-//         let value = value.into_literal().unwrap().into_inner();
-//         assert_eq!(value, node::Literal::Num(10.0));
-//     }
+        let source = source.get(&tree).as_ident().unwrap().get(&tree);
+        assert_eq!(source, "y");
 
-//     #[test]
-//     fn record() {
-//         let src = "{ x = 10, y = 20 }";
-//         let tokens = lexer().parse(src).into_result().unwrap();
+        let value = value.get(&tree).as_literal().unwrap().get(&tree);
+        assert_eq!(value, &node::Literal::Num(10.0));
+    }
 
-//         let input = tokens.as_slice().spanned((src.len()..src.len()).into());
-//         let expr = expr_parser().parse(input).into_result().unwrap();
+    #[test]
+    fn record() {
+        let src = "{ x = 10, y = 20 }";
+        let tokens = lexer().parse(src).into_result().unwrap();
+        let eoi = (src.len()..src.len()).into();
+        let input = tokens.as_slice().map(eoi, |(t, s)| (t, s));
 
-//         let record = expr.into_record().unwrap();
+        let (expr, tree, _spans) = try_parse_with(input, expr_parser()).unwrap();
 
-//         let x = record.get("x").unwrap();
-//         assert_eq!(
-//             x.value().as_literal().unwrap().inner(),
-//             &node::Literal::Num(10.0)
-//         );
+        let record = expr.get(&tree).as_record().unwrap().get(&tree);
 
-//         let y = record.get("y").unwrap();
-//         assert_eq!(
-//             y.value().as_literal().unwrap().inner(),
-//             &node::Literal::Num(20.0)
-//         );
-//     }
-// }
+        let x = record.get("x", &tree).unwrap();
+        assert_eq!(
+            x.value(&tree).as_literal().unwrap().get(&tree),
+            &node::Literal::Num(10.0)
+        );
+
+        let y = record.get("y", &tree).unwrap();
+        assert_eq!(
+            y.value(&tree).as_literal().unwrap().get(&tree),
+            &node::Literal::Num(20.0)
+        );
+    }
+}

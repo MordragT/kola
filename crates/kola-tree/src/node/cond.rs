@@ -8,6 +8,7 @@ use crate::{
     id::NodeId,
     meta::{Attached, Meta},
     print::TreePrinter,
+    tree::NodeContainer,
 };
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -15,6 +16,20 @@ pub struct If {
     pub predicate: NodeId<Expr>,
     pub then: NodeId<Expr>,
     pub or: NodeId<Expr>,
+}
+
+impl If {
+    pub fn predicate<'a>(&self, tree: &'a impl NodeContainer) -> &'a Expr {
+        self.predicate.get(tree)
+    }
+
+    pub fn then<'a>(&self, tree: &'a impl NodeContainer) -> &'a Expr {
+        self.then.get(tree)
+    }
+
+    pub fn or<'a>(&self, tree: &'a impl NodeContainer) -> &'a Expr {
+        self.or.get(tree)
+    }
 }
 
 impl InnerNode for If {
@@ -103,6 +118,16 @@ pub struct Branch {
     pub matches: NodeId<Expr>,
 }
 
+impl Branch {
+    pub fn pat<'a>(&self, tree: &'a impl NodeContainer) -> &'a Pat {
+        self.pat.get(tree)
+    }
+
+    pub fn matches<'a>(&self, tree: &'a impl NodeContainer) -> &'a Expr {
+        self.matches.get(tree)
+    }
+}
+
 impl InnerNode for Branch {
     fn to_inner_ref(node: &Node) -> Option<&Self> {
         match node {
@@ -188,6 +213,12 @@ impl TryFrom<Node> for Branch {
 pub struct Case {
     pub source: NodeId<Ident>,
     pub branches: Vec<NodeId<Branch>>,
+}
+
+impl Case {
+    pub fn source<'a>(&self, tree: &'a impl NodeContainer) -> &'a Ident {
+        self.source.get(tree)
+    }
 }
 
 impl InnerNode for Case {

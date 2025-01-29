@@ -1,6 +1,10 @@
 use kola_print::prelude::*;
 
-use crate::{id::NodeId, node::InnerNode, tree::Tree};
+use crate::{
+    id::NodeId,
+    node::InnerNode,
+    tree::{NodeContainer, Tree},
+};
 
 // This is somewhat hacky I use NodeId<()> and then only the Metadata get function
 // so that there is no type safety for the NodeId and what Node I get,

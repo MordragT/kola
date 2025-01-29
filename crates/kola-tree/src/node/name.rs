@@ -1,5 +1,3 @@
-use std::ops::Deref;
-
 use kola_print::prelude::*;
 use owo_colors::OwoColorize;
 use serde::{Deserialize, Serialize};
@@ -20,11 +18,23 @@ impl Name {
     }
 }
 
-impl Deref for Name {
-    type Target = Symbol;
+// impl Deref for Name {
+//     type Target = Symbol;
 
-    fn deref(&self) -> &Self::Target {
-        &self.0
+//     fn deref(&self) -> &Self::Target {
+//         &self.0
+//     }
+// }
+
+impl PartialEq<Symbol> for Name {
+    fn eq(&self, other: &Symbol) -> bool {
+        &self.0 == other
+    }
+}
+
+impl PartialEq<str> for Name {
+    fn eq(&self, other: &str) -> bool {
+        self.as_str() == other
     }
 }
 

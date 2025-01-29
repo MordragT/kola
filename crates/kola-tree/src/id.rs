@@ -7,7 +7,7 @@ use crate::{
     meta::{Attached, MetaContainer},
     node::InnerNode,
     print::TreePrinter,
-    tree::Tree,
+    tree::NodeContainer,
 };
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
@@ -36,7 +36,7 @@ impl<T> NodeId<T> {
         self.id as usize
     }
 
-    pub fn get(self, tree: &Tree) -> &T
+    pub fn get(self, tree: &impl NodeContainer) -> &T
     where
         T: InnerNode,
     {

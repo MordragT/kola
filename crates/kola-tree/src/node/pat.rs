@@ -8,6 +8,7 @@ use crate::{
     id::NodeId,
     meta::{Attached, Meta},
     print::TreePrinter,
+    tree::NodeContainer,
 };
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -200,6 +201,18 @@ impl TryFrom<Node> for LiteralPat {
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct IdentPat(pub Symbol);
 
+impl PartialEq<Symbol> for IdentPat {
+    fn eq(&self, other: &Symbol) -> bool {
+        &self.0 == other
+    }
+}
+
+impl PartialEq<str> for IdentPat {
+    fn eq(&self, other: &str) -> bool {
+        self.0.as_str() == other
+    }
+}
+
 impl InnerNode for IdentPat {
     fn to_inner_ref(node: &Node) -> Option<&Self> {
         match node {
@@ -270,6 +283,12 @@ impl TryFrom<Node> for IdentPat {
 pub struct PropertyPat {
     pub key: NodeId<Name>,
     pub value: Option<NodeId<Pat>>,
+}
+
+impl PropertyPat {
+    pub fn value<'a>(&self, tree: &'a impl NodeContainer) -> Option<&'a Pat> {
+        self.value.map(|id| id.get(tree))
+    }
 }
 
 impl InnerNode for PropertyPat {
@@ -355,15 +374,22 @@ impl TryFrom<Node> for PropertyPat {
     }
 }
 
-// impl PropertyPat {
-//     pub fn value(&self) -> Option<&Pat> {
-//         self.value.as_ref()
-//     }
-// }
-
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct RecordPat {
     pub fields: Vec<NodeId<PropertyPat>>,
+}
+
+impl RecordPat {
+    pub fn get<'a>(
+        &self,
+        name: impl AsRef<str>,
+        tree: &'a impl NodeContainer,
+    ) -> Option<&'a PropertyPat> {
+        self.fields.iter().find_map(|p| {
+            let p = p.get(tree);
+            (p.key.get(tree) == name.as_ref()).then_some(p)
+        })
+    }
 }
 
 impl InnerNode for RecordPat {
@@ -430,12 +456,6 @@ impl TryFrom<Node> for RecordPat {
         }
     }
 }
-
-// impl RecordPat {
-//     pub fn get(&self, name: impl AsRef<str>) -> Option<&PropertyPat> {
-//         self.fields.iter().find(|p| &p.key.name == name.as_ref())
-//     }
-// }
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub enum Pat {
