@@ -24,7 +24,7 @@ impl StateRepr {
     where
         T: Into<Node> + Attached<SyntaxPhase, Meta = Span>,
     {
-        let id = self.builder.insert::<SyntaxPhase, _>(node);
+        let id = self.builder.insert(node);
         self.meta.push(T::into_meta(meta));
 
         id

@@ -1,7 +1,9 @@
+use kola_tree::meta::Meta;
 use owo_colors::OwoColorize;
 use std::{borrow::Cow, collections::HashMap, fmt};
 
 use super::types::{MonoType, TypeVar};
+use crate::SemanticPhase;
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Substitution {
@@ -63,27 +65,11 @@ impl Substitution {
             .or_insert_with(|| ty.clone());
     }
 
-    // pub fn apply<N>(&mut self, node: &mut N)
-    // where
-    //     N: Visitable,
-    // {
-    //     node.visit_mut_by(self);
-    // }
-
     pub fn clear(&mut self) {
         self.table.clear();
         self.cache.clear();
     }
 }
-
-// impl VisitorMut for Substitution {
-//     type BreakValue = !;
-
-//     fn visit_ty_mut(&mut self, ty: &mut MonoType) -> ControlFlow<Self::BreakValue> {
-//         ty.apply_mut(self);
-//         ControlFlow::Continue(())
-//     }
-// }
 
 /// A type is `Substitutable` if a substitution can be applied to it.
 pub trait Substitutable: Sized {
@@ -118,21 +104,68 @@ pub trait Substitutable: Sized {
 
 impl<T> Substitutable for Vec<T>
 where
-    T: Substitutable,
+    T: Substitutable + Clone,
 {
-    fn apply(self, s: &mut Substitution) -> Self {
-        self.into_iter().map(|t| t.apply(s)).collect()
-    }
+    fn try_apply(&self, s: &mut Substitution) -> Option<Self> {
+        // I think this is only allocated if used but unsure
+        let mut collector = Vec::new();
+        let mut rem = self.as_slice();
 
-    fn apply_mut(&mut self, s: &mut Substitution) {
-        for t in self {
-            t.apply_mut(s);
+        while let Some((end, el)) = rem
+            .iter()
+            .enumerate()
+            .find_map(|(i, el)| el.try_apply(s).map(|el| (i, el)))
+        {
+            collector.extend_from_slice(&self[0..end]);
+            collector.push(el);
+
+            rem = rem.get(end + 1..).unwrap_or(&[]);
+        }
+
+        if !collector.is_empty() {
+            collector.extend_from_slice(rem);
+            assert_eq!(collector.len(), self.len());
+            Some(collector)
+        } else {
+            None
         }
     }
+}
 
+impl Substitutable for Meta<SemanticPhase> {
     fn try_apply(&self, s: &mut Substitution) -> Option<Self> {
-        // divide and conquer merge ?
-        todo!()
+        match self {
+            Meta::Name(())
+            | Meta::Property(())
+            | Meta::PatError(())
+            | Meta::Branch(())
+            | Meta::ExprError(()) => None,
+
+            Meta::Ident(t) => t.try_apply(s).map(Meta::Ident),
+            Meta::Literal(t) => t.try_apply(s).map(Meta::Literal),
+            Meta::List(t) => t.try_apply(s).map(Meta::List),
+            Meta::Record(t) => t.try_apply(s).map(Meta::Record),
+            Meta::RecordSelect(t) => t.try_apply(s).map(Meta::RecordSelect),
+            Meta::RecordExtend(t) => t.try_apply(s).map(Meta::RecordExtend),
+            Meta::RecordRestrict(t) => t.try_apply(s).map(Meta::RecordRestrict),
+            Meta::RecordUpdate(t) => t.try_apply(s).map(Meta::RecordUpdate),
+            Meta::UnaryOp(t) => t.try_apply(s).map(Meta::UnaryOp),
+            Meta::Unary(t) => t.try_apply(s).map(Meta::Unary),
+            Meta::BinaryOp(t) => t.try_apply(s).map(Meta::BinaryOp),
+            Meta::Binary(t) => t.try_apply(s).map(Meta::Binary),
+            Meta::Let(t) => t.try_apply(s).map(Meta::Let),
+            Meta::Wildcard(t) => t.try_apply(s).map(Meta::Wildcard),
+            Meta::LiteralPat(t) => t.try_apply(s).map(Meta::LiteralPat),
+            Meta::IdentPat(t) => t.try_apply(s).map(Meta::IdentPat),
+            Meta::PropertyPat(t) => t.try_apply(s).map(Meta::PropertyPat),
+            Meta::RecordPat(t) => t.try_apply(s).map(Meta::RecordPat),
+            Meta::Pat(t) => t.try_apply(s).map(Meta::Pat),
+            Meta::Case(t) => t.try_apply(s).map(Meta::Case),
+            Meta::If(t) => t.try_apply(s).map(Meta::If),
+            Meta::Func(t) => t.try_apply(s).map(Meta::Func),
+            Meta::Call(t) => t.try_apply(s).map(Meta::Call),
+            Meta::Expr(t) => t.try_apply(s).map(Meta::Expr),
+        }
     }
 }
 

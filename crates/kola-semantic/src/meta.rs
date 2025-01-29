@@ -1,5 +1,6 @@
 use kola_print::prelude::*;
 use kola_tree::prelude::*;
+use owo_colors::OwoColorize;
 
 use crate::SemanticPhase;
 
@@ -49,6 +50,7 @@ impl Decorator for TypeDecorator {
             | Meta::Call(t)
             | Meta::Expr(t) => t,
         }
+        .green()
         .display_in(arena);
 
         let single = [

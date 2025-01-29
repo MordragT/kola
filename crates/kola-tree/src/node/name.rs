@@ -38,6 +38,24 @@ impl PartialEq<str> for Name {
     }
 }
 
+impl From<Symbol> for Name {
+    fn from(value: Symbol) -> Self {
+        Self(value)
+    }
+}
+
+impl<'a> From<&'a str> for Name {
+    fn from(value: &'a str) -> Self {
+        Self(Symbol::from(value))
+    }
+}
+
+impl From<String> for Name {
+    fn from(value: String) -> Self {
+        Self(Symbol::from(value))
+    }
+}
+
 impl InnerNode for Name {
     fn to_inner_ref(node: &Node) -> Option<&Self> {
         match node {

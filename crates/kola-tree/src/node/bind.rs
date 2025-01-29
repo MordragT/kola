@@ -8,7 +8,7 @@ use crate::{
     id::NodeId,
     meta::{Attached, Meta},
     print::TreePrinter,
-    tree::NodeContainer,
+    tree::{NodeContainer, TreeBuilder},
 };
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -19,6 +19,23 @@ pub struct Let {
 }
 
 impl Let {
+    pub fn new_in(
+        name: Name,
+        value: Expr,
+        inside: Expr,
+        builder: &mut TreeBuilder,
+    ) -> NodeId<Self> {
+        let name = builder.insert(name);
+        let value = builder.insert(value);
+        let inside = builder.insert(inside);
+
+        builder.insert(Self {
+            name,
+            value,
+            inside,
+        })
+    }
+
     pub fn name<'a>(&self, tree: &'a impl NodeContainer) -> &'a Name {
         self.name.get(tree)
     }

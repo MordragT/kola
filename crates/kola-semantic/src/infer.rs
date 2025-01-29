@@ -575,7 +575,7 @@ impl Inferer {
 
     fn infer_expr(&mut self, id: NodeId<node::Expr>, tree: &Tree) -> Result<MonoType, Error> {
         let t = match *id.get(tree) {
-            node::Expr::Error(e) => Err((Errors::new(), self.span(id))),
+            node::Expr::Error(_) => Err((Errors::new(), self.span(id))),
             node::Expr::Literal(l) => self.infer_literal(l, tree),
             node::Expr::Ident(i) => self.infer_ident(i, tree),
             node::Expr::List(l) => self.infer_list(l, tree),
@@ -607,143 +607,204 @@ impl Inferer {
             t_env: _,
             mut k_env,
             spans: _,
-            types,
+            mut types,
         } = self;
 
         cons.solve(&mut subs, &mut k_env)?;
-
-        // TODO apply subs to types
-        // meta.apply_mut(&mut subs);
+        types.apply_mut(&mut subs);
 
         Ok(types.into_metadata())
     }
 }
 
-// #[cfg(test)]
-// mod tests {
-//     use crate::{
-//         semantic::{error::SemanticError, types::MonoType, Infer, Substitution},
-//         syntax::{node::*, Span},
-//     };
+#[cfg(test)]
+mod tests {
+    // use crate::{
+    //     semantic::{Infer, Substitution, error::SemanticError, types::MonoType},
+    //     syntax::{Span, node::*},
+    // };
 
-//     fn node<T>(t: T) -> Node<T> {
-//         Node::new(t, Span::new(0, 0))
-//     }
+    // fn node<T>(t: T) -> Node<T> {
+    //     Node::new(t, Span::new(0, 0))
+    // }
 
-//     #[test]
-//     fn literal() {
-//         let mut s = Substitution::empty();
+    use kola_syntax::span::{Span, SpanMetadata};
+    use kola_tree::prelude::*;
 
-//         let mut lit = node(Literal::Num(10.0));
-//         lit.solve(&mut s).unwrap();
-//         s.apply(&mut lit);
+    use super::Inferer;
+    use crate::{error::SemanticError, types::*};
 
-//         assert_eq!(lit.ty(), &MonoType::NUM);
-//     }
+    fn mocked_spans(tree: &Tree) -> SpanMetadata {
+        let span = Span::new(0, 0);
 
-//     #[test]
-//     fn unary() {
-//         let mut s = Substitution::empty();
+        tree.metadata_with(|kind| match kind {
+            NodeKind::Name => Meta::Name(span),
+            NodeKind::Ident => Meta::Ident(span),
+            NodeKind::Literal => Meta::Literal(span),
+            NodeKind::List => Meta::List(span),
+            NodeKind::Property => Meta::Property(span),
+            NodeKind::Record => Meta::Record(span),
+            NodeKind::RecordSelect => Meta::RecordSelect(span),
+            NodeKind::RecordExtend => Meta::RecordExtend(span),
+            NodeKind::RecordRestrict => Meta::RecordRestrict(span),
+            NodeKind::RecordUpdate => Meta::RecordUpdate(span),
+            NodeKind::UnaryOp => Meta::UnaryOp(span),
+            NodeKind::Unary => Meta::Unary(span),
+            NodeKind::BinaryOp => Meta::BinaryOp(span),
+            NodeKind::Binary => Meta::Binary(span),
+            NodeKind::Let => Meta::Let(span),
+            NodeKind::PatError => Meta::PatError(span),
+            NodeKind::Wildcard => Meta::Wildcard(span),
+            NodeKind::LiteralPat => Meta::LiteralPat(span),
+            NodeKind::IdentPat => Meta::IdentPat(span),
+            NodeKind::PropertyPat => Meta::PropertyPat(span),
+            NodeKind::RecordPat => Meta::RecordPat(span),
+            NodeKind::Pat => Meta::Pat(span),
+            NodeKind::Branch => Meta::Branch(span),
+            NodeKind::Case => Meta::Case(span),
+            NodeKind::If => Meta::If(span),
+            NodeKind::Func => Meta::Func(span),
+            NodeKind::Call => Meta::Call(span),
+            NodeKind::ExprError => Meta::ExprError(span),
+            NodeKind::Expr => Meta::Expr(span),
+        })
+        .into_metadata()
+    }
 
-//         let mut unary = node(Unary {
-//             op: node(UnaryOpKind::Neg),
-//             target: node(Literal::Num(10.0)).into(),
-//         });
+    #[test]
+    fn literal() {
+        let mut builder = TreeBuilder::new();
+        let lit = builder.insert(node::Literal::Num(10.0));
+        let root = builder.insert(node::Expr::Literal(lit));
+        let tree = builder.finish(root);
 
-//         unary.solve(&mut s).unwrap();
-//         s.apply(&mut unary);
+        let types = Inferer::new(&tree, mocked_spans(&tree))
+            .solve(&tree)
+            .unwrap();
 
-//         assert_eq!(unary.ty(), &MonoType::NUM);
+        assert_eq!(types.meta(lit), &MonoType::NUM);
+    }
 
-//         s.clear();
+    #[test]
+    fn unary() {
+        let mut builder = TreeBuilder::new();
 
-//         let unary = node(Unary {
-//             op: node(UnaryOpKind::Not),
-//             target: node(Literal::Num(10.0)).into(),
-//         });
+        let target = builder.insert(node::Literal::Num(10.0));
+        let unary = node::Unary::new_in(node::UnaryOp::Neg, target.into(), &mut builder);
+        let root = builder.insert(node::Expr::Unary(unary));
 
-//         let (errors, _) = unary.solve(&mut s).unwrap_err();
+        let tree = builder.finish(root);
 
-//         assert_eq!(
-//             errors[0],
-//             SemanticError::CannotUnify {
-//                 expected: MonoType::BOOL,
-//                 actual: MonoType::NUM
-//             }
-//         );
-//     }
+        let types = Inferer::new(&tree, mocked_spans(&tree))
+            .solve(&tree)
+            .unwrap();
 
-//     #[test]
-//     fn binary() {
-//         let mut s = Substitution::empty();
+        assert_eq!(types.meta(unary), &MonoType::NUM);
+    }
 
-//         let binary = node(Binary {
-//             op: node(BinaryOpKind::Eq),
-//             left: node(Literal::Bool(true)).into(),
-//             right: node(Literal::Num(10.0)).into(),
-//         });
+    #[test]
+    fn unary_err() {
+        let mut builder = TreeBuilder::new();
 
-//         let (errors, _) = binary.solve(&mut s).unwrap_err();
+        let target = builder.insert(node::Literal::Num(10.0));
+        let unary = node::Unary::new_in(node::UnaryOp::Not, target.into(), &mut builder);
+        let root = builder.insert(node::Expr::Unary(unary));
 
-//         assert_eq!(
-//             errors[0],
-//             SemanticError::CannotUnify {
-//                 expected: MonoType::BOOL,
-//                 actual: MonoType::NUM
-//             }
-//         );
-//     }
+        let tree = builder.finish(root);
 
-//     #[test]
-//     fn let_() {
-//         let mut s = Substitution::empty();
+        let (errors, _) = Inferer::new(&tree, mocked_spans(&tree))
+            .solve(&tree)
+            .unwrap_err();
 
-//         let mut let_ = node(Let {
-//             name: Name {
-//                 name: "x".into(),
-//                 span: Span::new(0, 0),
-//             },
-//             value: node(Literal::Num(10.0)).into(),
-//             inside: node(Symbol::from("x")).into(),
-//         });
+        assert_eq!(errors[0], SemanticError::CannotUnify {
+            expected: MonoType::BOOL,
+            actual: MonoType::NUM
+        });
+    }
 
-//         let_.solve(&mut s).unwrap();
-//         s.apply(&mut let_);
+    #[test]
+    fn binary_err() {
+        let mut builder = TreeBuilder::new();
 
-//         assert_eq!(let_.ty(), &MonoType::NUM)
-//     }
+        let left = builder.insert(node::Literal::Bool(true));
+        let right = builder.insert(node::Literal::Num(10.0));
+        let binary =
+            node::Binary::new_in(node::BinaryOp::Eq, left.into(), right.into(), &mut builder);
+        let root = builder.insert(node::Expr::Binary(binary));
 
-//     #[test]
-//     fn if_() {
-//         let mut s = Substitution::empty();
+        let tree = builder.finish(root);
 
-//         let mut if_ = node(If {
-//             predicate: node(Literal::Bool(true)).into(),
-//             then: node(Literal::Num(5.0)).into(),
-//             or: node(Literal::Num(10.0)).into(),
-//         });
+        let (errors, _) = Inferer::new(&tree, mocked_spans(&tree))
+            .solve(&tree)
+            .unwrap_err();
 
-//         if_.solve(&mut s).unwrap();
-//         s.apply(&mut if_);
+        assert_eq!(errors[0], SemanticError::CannotUnify {
+            expected: MonoType::BOOL,
+            actual: MonoType::NUM
+        });
+    }
 
-//         assert_eq!(if_.ty(), &MonoType::NUM);
+    #[test]
+    fn let_() {
+        let mut builder = TreeBuilder::new();
 
-//         s.clear();
+        let value = builder.insert(node::Literal::Num(10.0));
+        let inside = builder.insert(node::Ident::from("x"));
+        let let_ = node::Let::new_in(
+            node::Name::from("x"),
+            value.into(),
+            inside.into(),
+            &mut builder,
+        );
+        let root = builder.insert(node::Expr::Let(let_));
 
-//         let if_ = node(If {
-//             predicate: node(Literal::Bool(true)).into(),
-//             then: node(Literal::Num(5.0)).into(),
-//             or: node(Literal::Char('x')).into(),
-//         });
+        let tree = builder.finish(root);
 
-//         let (errors, _) = if_.solve(&mut s).unwrap_err();
+        let types = Inferer::new(&tree, mocked_spans(&tree))
+            .solve(&tree)
+            .unwrap();
 
-//         assert_eq!(
-//             errors[0],
-//             SemanticError::CannotUnify {
-//                 expected: MonoType::NUM,
-//                 actual: MonoType::CHAR,
-//             }
-//         );
-//     }
-// }
+        assert_eq!(types.meta(let_), &MonoType::NUM);
+    }
+
+    #[test]
+    fn if_() {
+        let mut builder = TreeBuilder::new();
+
+        let predicate = builder.insert(node::Literal::Bool(true));
+        let then = builder.insert(node::Literal::Num(5.0));
+        let or = builder.insert(node::Literal::Num(10.0));
+        let if_ = node::If::new_in(predicate.into(), then.into(), or.into(), &mut builder);
+        let root = builder.insert(node::Expr::If(if_));
+
+        let tree = builder.finish(root);
+
+        let types = Inferer::new(&tree, mocked_spans(&tree))
+            .solve(&tree)
+            .unwrap();
+
+        assert_eq!(types.meta(if_), &MonoType::NUM);
+    }
+
+    #[test]
+    fn if_err() {
+        let mut builder = TreeBuilder::new();
+
+        let predicate = builder.insert(node::Literal::Bool(true));
+        let then = builder.insert(node::Literal::Num(5.0));
+        let or = builder.insert(node::Literal::Char('x'));
+        let if_ = node::If::new_in(predicate.into(), then.into(), or.into(), &mut builder);
+        let root = builder.insert(node::Expr::If(if_));
+
+        let tree = builder.finish(root);
+
+        let (errors, _) = Inferer::new(&tree, mocked_spans(&tree))
+            .solve(&tree)
+            .unwrap_err();
+
+        assert_eq!(errors[0], SemanticError::CannotUnify {
+            expected: MonoType::NUM,
+            actual: MonoType::CHAR,
+        });
+    }
+}

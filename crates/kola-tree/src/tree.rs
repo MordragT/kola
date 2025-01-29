@@ -55,7 +55,7 @@ impl TreeBuilder {
         std::mem::replace(self.node_mut(id), node)
     }
 
-    pub fn insert<P, T>(&mut self, node: T) -> NodeId<T>
+    pub fn insert<T>(&mut self, node: T) -> NodeId<T>
     where
         T: Into<Node>,
     {

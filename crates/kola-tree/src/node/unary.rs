@@ -10,7 +10,7 @@ use crate::{
     id::NodeId,
     meta::{Attached, Meta},
     print::TreePrinter,
-    tree::NodeContainer,
+    tree::{NodeContainer, TreeBuilder},
 };
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -90,6 +90,13 @@ pub struct Unary {
 }
 
 impl Unary {
+    pub fn new_in(op: UnaryOp, target: Expr, builder: &mut TreeBuilder) -> NodeId<Self> {
+        let op = builder.insert(op);
+        let target = builder.insert(target);
+
+        builder.insert(Self { op, target })
+    }
+
     pub fn op(&self, tree: &impl NodeContainer) -> UnaryOp {
         *self.op.get(tree)
     }

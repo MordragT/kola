@@ -8,7 +8,7 @@ use crate::{
     id::NodeId,
     meta::{Attached, Meta},
     print::TreePrinter,
-    tree::NodeContainer,
+    tree::{NodeContainer, TreeBuilder},
 };
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
@@ -19,6 +19,23 @@ pub struct If {
 }
 
 impl If {
+    pub fn new_in(
+        predicate: Expr,
+        then: Expr,
+        or: Expr,
+        builder: &mut TreeBuilder,
+    ) -> NodeId<Self> {
+        let predicate = builder.insert(predicate);
+        let then = builder.insert(then);
+        let or = builder.insert(or);
+
+        builder.insert(Self {
+            predicate,
+            then,
+            or,
+        })
+    }
+
     pub fn predicate<'a>(&self, tree: &'a impl NodeContainer) -> &'a Expr {
         self.predicate.get(tree)
     }

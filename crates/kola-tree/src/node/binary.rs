@@ -10,7 +10,7 @@ use crate::{
     id::NodeId,
     meta::{Attached, Meta},
     print::TreePrinter,
-    tree::NodeContainer,
+    tree::{NodeContainer, TreeBuilder},
 };
 
 #[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
@@ -121,6 +121,19 @@ pub struct Binary {
 }
 
 impl Binary {
+    pub fn new_in(
+        op: BinaryOp,
+        left: Expr,
+        right: Expr,
+        builder: &mut TreeBuilder,
+    ) -> NodeId<Self> {
+        let op = builder.insert(op);
+        let left = builder.insert(left);
+        let right = builder.insert(right);
+
+        builder.insert(Self { op, left, right })
+    }
+
     pub fn op(&self, tree: &impl NodeContainer) -> BinaryOp {
         *self.op.get(tree)
     }
