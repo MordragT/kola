@@ -16,8 +16,9 @@ mod row;
 mod var;
 mod visit;
 
-use super::{KindEnv, error::SemanticError};
 use std::ops::ControlFlow;
+
+use super::{env::KindEnv, error::SemanticError};
 
 /// Represents a constraint on a type variable to a specific kind (*i.e.*, a type class).
 /// kind preserving unification (see Extensible Records with Scoped Labels)

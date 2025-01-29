@@ -1,10 +1,8 @@
+use serde::{Deserialize, Serialize};
 use std::fmt;
 
-use serde::{Deserialize, Serialize};
-
-use crate::{KindEnv, error::SemanticError};
-
 use super::{Kind, Typed};
+use crate::{env::KindEnv, error::SemanticError};
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum BuiltinType {

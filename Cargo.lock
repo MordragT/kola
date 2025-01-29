@@ -303,6 +303,7 @@ name = "kola-semantic"
 version = "0.1.0"
 dependencies = [
  "indexmap",
+ "kola-print",
  "kola-syntax",
  "kola-tree",
  "kola-utils",

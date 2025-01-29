@@ -1,10 +1,12 @@
+use serde::{Deserialize, Serialize};
 use std::fmt;
 
-use serde::{Deserialize, Serialize};
-
-use crate::{KindEnv, Substitutable, Substitution, error::SemanticError, merge};
-
 use super::{Kind, MonoType, Typed};
+use crate::{
+    env::KindEnv,
+    error::SemanticError,
+    substitute::{Substitutable, Substitution, merge},
+};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct FuncType {

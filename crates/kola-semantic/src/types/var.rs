@@ -5,7 +5,11 @@ use std::{
 };
 
 use super::{Kind, MonoType, Typed};
-use crate::{KindEnv, Substitutable, Substitution, error::SemanticError};
+use crate::{
+    env::KindEnv,
+    error::SemanticError,
+    substitute::{Substitutable, Substitution},
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct TypeVar {

@@ -8,6 +8,7 @@ pub type Span = SimpleSpan<usize>;
 pub type Spanned<T> = (T, Span);
 pub type SpanMetadata = Metadata<SyntaxPhase>;
 
+#[derive(Debug, Clone)]
 pub struct SpanDecorator(pub SpanMetadata);
 
 impl Decorator for SpanDecorator {

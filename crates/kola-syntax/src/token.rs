@@ -1,8 +1,30 @@
+use bumpalo::collections::CollectIn;
+use kola_print::prelude::*;
+use owo_colors::OwoColorize;
 use std::fmt;
 
-use owo_colors::OwoColorize;
-
 use super::span::Spanned;
+
+pub struct TokenPrinter<'a>(pub &'a Tokens<'a>);
+
+impl<'t> Printable<()> for TokenPrinter<'t> {
+    fn notate<'a>(&'a self, _with: &'a (), arena: &'a Bump) -> Notation<'a> {
+        let tokens = self
+            .0
+            .iter()
+            .flat_map(|(token, span)| {
+                let kind = token.kind();
+
+                [
+                    format_args!("\"{token}\"\t\t({kind}, {span})").display_in(arena),
+                    arena.newline(),
+                ]
+            })
+            .collect_in::<bumpalo::collections::Vec<_>>(arena);
+
+        arena.concat(tokens.into_bump_slice())
+    }
+}
 
 pub type Tokens<'a> = Vec<Spanned<Token<'a>>>;
 

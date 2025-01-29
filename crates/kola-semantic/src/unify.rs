@@ -1,6 +1,10 @@
 use kola_utils::Errors;
 
-use super::{Substitutable, Substitution, error::SemanticError, types::*};
+use crate::{
+    error::SemanticError,
+    substitute::{Substitutable, Substitution},
+    types::*,
+};
 
 /// Principal Type: Most general type that can be inferred for a given expression
 /// Unify algorithm in J performs mutation, in W it does not.

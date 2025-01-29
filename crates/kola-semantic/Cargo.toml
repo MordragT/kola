@@ -11,4 +11,5 @@ serde.workspace = true
 kola-tree.workspace = true
 kola-syntax.workspace = true
 kola-utils.workspace = true
+kola-print.workspace = true
 indexmap = "2.7.1"

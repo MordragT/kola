@@ -3,7 +3,11 @@ use serde::{Deserialize, Serialize};
 use std::fmt;
 
 use super::{Kind, MonoType, Typed};
-use crate::{KindEnv, Substitutable, Substitution, error::SemanticError, merge};
+use crate::{
+    env::KindEnv,
+    error::SemanticError,
+    substitute::{Substitutable, Substitution, merge},
+};
 
 /// A key-value pair representing a property type in a record.
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Serialize, Deserialize)]

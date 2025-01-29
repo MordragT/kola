@@ -2,7 +2,11 @@ use serde::{Deserialize, Serialize};
 use std::fmt;
 
 use super::{BuiltinType, FuncType, PolyType, Property, RowType, TypeVar, Typed};
-use crate::{KindEnv, Substitutable, Substitution, error::SemanticError};
+use crate::{
+    env::KindEnv,
+    error::SemanticError,
+    substitute::{Substitutable, Substitution},
+};
 
 /// MonoType
 /// Non-polymorphic types (e.g. `α → β`, `int → bool`)

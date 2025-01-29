@@ -3,9 +3,13 @@ use kola_tree::prelude::*;
 use kola_utils::Errors;
 
 use crate::{
-    KindEnv, Substitutable, Substitution, TypeEnv, Unifiable,
+    SemanticPhase,
+    env::{KindEnv, TypeEnv},
     error::SemanticError,
+    meta::TypeMetadata,
+    substitute::{Substitutable, Substitution},
     types::{Kind, MonoType, PolyType, Property, TypeVar, Typed},
+    unify::Unifiable,
 };
 
 // https://blog.stimsina.com/post/implementing-a-hindley-milner-type-system-part-2
@@ -83,41 +87,6 @@ impl Constraints {
     }
 }
 
-#[derive(Clone, Copy, Debug)]
-pub struct InferPhase;
-
-impl Phase for InferPhase {
-    type Name = ();
-    type Ident = Option<MonoType>;
-    type Literal = Option<MonoType>;
-    type List = Option<MonoType>;
-    type Property = ();
-    type Record = Option<MonoType>;
-    type RecordSelect = Option<MonoType>;
-    type RecordExtend = Option<MonoType>;
-    type RecordRestrict = Option<MonoType>;
-    type RecordUpdate = Option<MonoType>;
-    type UnaryOp = Option<MonoType>;
-    type Unary = Option<MonoType>;
-    type BinaryOp = Option<MonoType>;
-    type Binary = Option<MonoType>;
-    type Let = Option<MonoType>;
-    type PatError = ();
-    type Wildcard = Option<MonoType>;
-    type LiteralPat = Option<MonoType>;
-    type IdentPat = Option<MonoType>;
-    type PropertyPat = Option<MonoType>;
-    type RecordPat = Option<MonoType>;
-    type Pat = Option<MonoType>;
-    type Branch = ();
-    type Case = Option<MonoType>;
-    type If = Option<MonoType>;
-    type Func = Option<MonoType>;
-    type Call = Option<MonoType>;
-    type ExprError = ();
-    type Expr = Option<MonoType>;
-}
-
 // ∆ = Kind Environment
 // Γ = Type Environment
 
@@ -132,41 +101,41 @@ pub struct Inferer {
     t_env: TypeEnv,
     k_env: KindEnv,
     spans: SpanMetadata,
-    types: Vec<Meta<InferPhase>>,
+    types: Vec<Meta<SemanticPhase>>,
 }
 
 impl Inferer {
     pub fn new(tree: &Tree, spans: SpanMetadata) -> Self {
         let types = tree.metadata_with(|kind| match kind {
             NodeKind::Name => Meta::Name(()),
-            NodeKind::Ident => Meta::Ident(None),
-            NodeKind::Literal => Meta::Literal(None),
-            NodeKind::List => Meta::List(None),
+            NodeKind::Ident => Meta::Ident(MonoType::variable()),
+            NodeKind::Literal => Meta::Literal(MonoType::variable()),
+            NodeKind::List => Meta::List(MonoType::variable()),
             NodeKind::Property => Meta::Property(()),
-            NodeKind::Record => Meta::Record(None),
-            NodeKind::RecordSelect => Meta::RecordSelect(None),
-            NodeKind::RecordExtend => Meta::RecordExtend(None),
-            NodeKind::RecordRestrict => Meta::RecordRestrict(None),
-            NodeKind::RecordUpdate => Meta::RecordUpdate(None),
-            NodeKind::UnaryOp => Meta::UnaryOp(None),
-            NodeKind::Unary => Meta::Unary(None),
-            NodeKind::BinaryOp => Meta::BinaryOp(None),
-            NodeKind::Binary => Meta::Binary(None),
-            NodeKind::Let => Meta::Let(None),
+            NodeKind::Record => Meta::Record(MonoType::variable()),
+            NodeKind::RecordSelect => Meta::RecordSelect(MonoType::variable()),
+            NodeKind::RecordExtend => Meta::RecordExtend(MonoType::variable()),
+            NodeKind::RecordRestrict => Meta::RecordRestrict(MonoType::variable()),
+            NodeKind::RecordUpdate => Meta::RecordUpdate(MonoType::variable()),
+            NodeKind::UnaryOp => Meta::UnaryOp(MonoType::variable()),
+            NodeKind::Unary => Meta::Unary(MonoType::variable()),
+            NodeKind::BinaryOp => Meta::BinaryOp(MonoType::variable()),
+            NodeKind::Binary => Meta::Binary(MonoType::variable()),
+            NodeKind::Let => Meta::Let(MonoType::variable()),
             NodeKind::PatError => Meta::PatError(()),
-            NodeKind::Wildcard => Meta::Wildcard(None),
-            NodeKind::LiteralPat => Meta::LiteralPat(None),
-            NodeKind::IdentPat => Meta::IdentPat(None),
-            NodeKind::PropertyPat => Meta::PropertyPat(None),
-            NodeKind::RecordPat => Meta::RecordPat(None),
-            NodeKind::Pat => Meta::Pat(None),
+            NodeKind::Wildcard => Meta::Wildcard(MonoType::variable()),
+            NodeKind::LiteralPat => Meta::LiteralPat(MonoType::variable()),
+            NodeKind::IdentPat => Meta::IdentPat(MonoType::variable()),
+            NodeKind::PropertyPat => Meta::PropertyPat(MonoType::variable()),
+            NodeKind::RecordPat => Meta::RecordPat(MonoType::variable()),
+            NodeKind::Pat => Meta::Pat(MonoType::variable()),
             NodeKind::Branch => Meta::Branch(()),
-            NodeKind::Case => Meta::Case(None),
-            NodeKind::If => Meta::If(None),
-            NodeKind::Func => Meta::Func(None),
-            NodeKind::Call => Meta::Call(None),
+            NodeKind::Case => Meta::Case(MonoType::variable()),
+            NodeKind::If => Meta::If(MonoType::variable()),
+            NodeKind::Func => Meta::Func(MonoType::variable()),
+            NodeKind::Call => Meta::Call(MonoType::variable()),
             NodeKind::ExprError => Meta::ExprError(()),
-            NodeKind::Expr => Meta::Expr(None),
+            NodeKind::Expr => Meta::Expr(MonoType::variable()),
         });
 
         Self {
@@ -179,11 +148,11 @@ impl Inferer {
         }
     }
 
-    fn update_type<T>(&mut self, id: NodeId<T>, t: &MonoType) -> Option<MonoType>
+    fn update_type<T>(&mut self, id: NodeId<T>, t: &MonoType) -> MonoType
     where
-        T: Attached<InferPhase, Meta = Option<MonoType>>,
+        T: Attached<SemanticPhase, Meta = MonoType>,
     {
-        self.types.update_meta(id, Some(t.clone()))
+        self.types.update_meta(id, t.clone())
     }
 
     fn span<T>(&self, id: NodeId<T>) -> Span
@@ -628,7 +597,7 @@ impl Inferer {
         Ok(t)
     }
 
-    pub fn solve(mut self, tree: &Tree) -> Result<Vec<Meta<InferPhase>>, Error> {
+    pub fn solve(mut self, tree: &Tree) -> Result<TypeMetadata, Error> {
         let root = tree.root_id();
         self.infer_expr(root, tree)?;
 
@@ -643,10 +612,10 @@ impl Inferer {
 
         cons.solve(&mut subs, &mut k_env)?;
 
-        // TODO apply subs to tree
+        // TODO apply subs to types
         // meta.apply_mut(&mut subs);
 
-        Ok(types)
+        Ok(types.into_metadata())
     }
 }
 

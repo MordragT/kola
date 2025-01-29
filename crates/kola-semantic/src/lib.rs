@@ -4,18 +4,23 @@
 //! https://github.com/miguel-nascimento/algorithm-j-rs/
 //! https://github.com/nwoeanhinnogaehr/algorithmw-rust/
 
-pub use env::*;
-pub use infer::*;
-pub use substitute::*;
-pub use unify::*;
-
+pub mod env;
 pub mod error;
+pub mod infer;
+pub mod meta;
+pub mod substitute;
 pub mod types;
+pub mod unify;
 
-mod env;
-mod infer;
-mod substitute;
-mod unify;
+pub mod prelude {
+    pub use crate::env::{KindEnv, TypeEnv};
+    pub use crate::error::{SemanticError, SemanticErrors, SemanticReport};
+    pub use crate::infer::{Constraint, Constraints, Inferer};
+    pub use crate::meta::{TypeDecorator, TypeMetadata};
+    pub use crate::substitute::{Substitutable, Substitution};
+    pub use crate::types::*;
+    pub use crate::unify::Unifiable;
+}
 
 use kola_tree::Phase;
 use types::MonoType;
@@ -51,6 +56,6 @@ impl Phase for SemanticPhase {
     type If = MonoType;
     type Func = MonoType;
     type Call = MonoType;
-    type ExprError = MonoType;
+    type ExprError = ();
     type Expr = MonoType;
 }

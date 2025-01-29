@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 
 use super::{MonoType, TypeVar, Typed};
-use crate::{Substitutable, Substitution};
+use crate::substitute::{Substitutable, Substitution};
 
 /// Polytype
 /// Types that contains variable bound by zero or more forall
