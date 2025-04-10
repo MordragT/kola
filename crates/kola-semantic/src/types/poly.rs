@@ -25,9 +25,15 @@ impl PolyType {
         &self.vars
     }
 
-    pub fn free_vars(&self, buf: &mut Vec<TypeVar>) {
+    pub fn extend_free_vars(&self, buf: &mut Vec<TypeVar>) {
         self.ty.extend_type_vars(buf);
         buf.retain(|tv| !self.vars.contains(tv));
+    }
+
+    pub fn free_vars(&self) -> Vec<TypeVar> {
+        let mut vars = Vec::new();
+        self.extend_free_vars(&mut vars);
+        vars
     }
 
     /// The procedure inst(σ) specializes the polytype σ by copying the term

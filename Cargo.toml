@@ -30,3 +30,4 @@ kola-print.workspace = true
 kola-tree.workspace = true
 kola-syntax.workspace = true
 kola-semantic.workspace = true
+kola-compiler.workspace = true

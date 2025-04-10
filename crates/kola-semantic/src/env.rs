@@ -1,5 +1,5 @@
 use indexmap::IndexMap;
-use kola_tree::Symbol;
+use kola_tree::node::Symbol;
 
 use crate::{
     error::SemanticError,

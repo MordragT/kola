@@ -1,4 +1,4 @@
-use kola_tree::Symbol;
+use kola_tree::node::Symbol;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 

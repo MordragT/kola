@@ -2,9 +2,9 @@ use kola_print::prelude::*;
 use owo_colors::OwoColorize;
 use serde::{Deserialize, Serialize};
 
-use super::{InnerNode, Literal, Name, Node};
+use super::{InnerNode, Literal, Name, Node, Symbol};
 use crate::{
-    Phase, Symbol,
+    Phase,
     id::NodeId,
     meta::{Attached, Meta},
     print::TreePrinter,

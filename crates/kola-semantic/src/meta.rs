@@ -17,8 +17,8 @@ impl Decorator for TypeDecorator {
         arena: &'a Bump,
     ) -> Notation<'a> {
         let ty = match self.0.get(with) {
-            Meta::Name(())
-            | Meta::Property(())
+            Meta::Name(_)
+            | Meta::Property(_)
             | Meta::PatError(())
             | Meta::Branch(())
             | Meta::ExprError(()) => {

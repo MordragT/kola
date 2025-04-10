@@ -19,5 +19,12 @@
 #    #{ r | a = "test" }
 #    { r | +c = 20 | +d = 30 }
 
-let f = \a => \b => a + b in
-    ((f 10) 5)
+
+#let f = \a => \b => a + b in
+#    ((f 10) 5)
+
+let x =
+    let y =
+        let z = 10 in z
+    in y
+in x

@@ -101,10 +101,14 @@ impl Tree {
         self.nodes.iter()
     }
 
-    pub fn metadata_with<P>(&self, f: impl Fn(NodeKind) -> Meta<P>) -> Vec<Meta<P>>
+    pub fn metadata_with<P>(&self, f: impl Fn(&Node) -> Meta<P>) -> Vec<Meta<P>>
     where
         P: Phase,
     {
-        self.nodes.iter().map(Node::kind).map(f).collect::<Vec<_>>()
+        self.nodes.iter().map(f).collect::<Vec<_>>()
     }
+
+    // pub(crate) fn get<T>(&self, id: NodeId<T>) -> &Node {
+    //     &self.nodes[id.as_usize()]
+    // }
 }

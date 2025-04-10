@@ -100,36 +100,41 @@ pub struct Inferer {
 
 impl Inferer {
     pub fn new(tree: &Tree, spans: SpanMetadata) -> Self {
-        let types = tree.metadata_with(|kind| match kind {
-            NodeKind::Name => Meta::Name(()),
-            NodeKind::Ident => Meta::Ident(MonoType::variable()),
-            NodeKind::Literal => Meta::Literal(MonoType::variable()),
-            NodeKind::List => Meta::List(MonoType::variable()),
-            NodeKind::Property => Meta::Property(()),
-            NodeKind::Record => Meta::Record(MonoType::variable()),
-            NodeKind::RecordSelect => Meta::RecordSelect(MonoType::variable()),
-            NodeKind::RecordExtend => Meta::RecordExtend(MonoType::variable()),
-            NodeKind::RecordRestrict => Meta::RecordRestrict(MonoType::variable()),
-            NodeKind::RecordUpdate => Meta::RecordUpdate(MonoType::variable()),
-            NodeKind::UnaryOp => Meta::UnaryOp(MonoType::variable()),
-            NodeKind::Unary => Meta::Unary(MonoType::variable()),
-            NodeKind::BinaryOp => Meta::BinaryOp(MonoType::variable()),
-            NodeKind::Binary => Meta::Binary(MonoType::variable()),
-            NodeKind::Let => Meta::Let(MonoType::variable()),
-            NodeKind::PatError => Meta::PatError(()),
-            NodeKind::Wildcard => Meta::Wildcard(MonoType::variable()),
-            NodeKind::LiteralPat => Meta::LiteralPat(MonoType::variable()),
-            NodeKind::IdentPat => Meta::IdentPat(MonoType::variable()),
-            NodeKind::PropertyPat => Meta::PropertyPat(MonoType::variable()),
-            NodeKind::RecordPat => Meta::RecordPat(MonoType::variable()),
-            NodeKind::Pat => Meta::Pat(MonoType::variable()),
-            NodeKind::Branch => Meta::Branch(()),
-            NodeKind::Case => Meta::Case(MonoType::variable()),
-            NodeKind::If => Meta::If(MonoType::variable()),
-            NodeKind::Func => Meta::Func(MonoType::variable()),
-            NodeKind::Call => Meta::Call(MonoType::variable()),
-            NodeKind::ExprError => Meta::ExprError(()),
-            NodeKind::Expr => Meta::Expr(MonoType::variable()),
+        // TODO init names with actual cloned names
+
+        let types = tree.metadata_with(|node| match node {
+            Node::Name(n) => Meta::Name(n.0.clone()),
+            Node::Ident(_) => Meta::Ident(MonoType::variable()),
+            Node::Literal(_) => Meta::Literal(MonoType::variable()),
+            Node::List(_) => Meta::List(MonoType::variable()),
+            Node::Property(_) => Meta::Property(Property {
+                k: Default::default(),
+                v: MonoType::variable(),
+            }),
+            Node::Record(_) => Meta::Record(MonoType::variable()),
+            Node::RecordSelect(_) => Meta::RecordSelect(MonoType::variable()),
+            Node::RecordExtend(_) => Meta::RecordExtend(MonoType::variable()),
+            Node::RecordRestrict(_) => Meta::RecordRestrict(MonoType::variable()),
+            Node::RecordUpdate(_) => Meta::RecordUpdate(MonoType::variable()),
+            Node::UnaryOp(_) => Meta::UnaryOp(MonoType::variable()),
+            Node::Unary(_) => Meta::Unary(MonoType::variable()),
+            Node::BinaryOp(_) => Meta::BinaryOp(MonoType::variable()),
+            Node::Binary(_) => Meta::Binary(MonoType::variable()),
+            Node::Let(_) => Meta::Let(MonoType::variable()),
+            Node::PatError(_) => Meta::PatError(()),
+            Node::Wildcard(_) => Meta::Wildcard(MonoType::variable()),
+            Node::LiteralPat(_) => Meta::LiteralPat(MonoType::variable()),
+            Node::IdentPat(_) => Meta::IdentPat(MonoType::variable()),
+            Node::PropertyPat(_) => Meta::PropertyPat(MonoType::variable()),
+            Node::RecordPat(_) => Meta::RecordPat(MonoType::variable()),
+            Node::Pat(_) => Meta::Pat(MonoType::variable()),
+            Node::Branch(_) => Meta::Branch(()),
+            Node::Case(_) => Meta::Case(MonoType::variable()),
+            Node::If(_) => Meta::If(MonoType::variable()),
+            Node::Func(_) => Meta::Func(MonoType::variable()),
+            Node::Call(_) => Meta::Call(MonoType::variable()),
+            Node::ExprError(_) => Meta::ExprError(()),
+            Node::Expr(_) => Meta::Expr(MonoType::variable()),
         });
 
         Self {
@@ -142,11 +147,29 @@ impl Inferer {
         }
     }
 
-    fn update_type<T>(&mut self, id: NodeId<T>, t: &MonoType) -> MonoType
+    pub fn solve(mut self, tree: &Tree) -> Result<TypeMetadata, Error> {
+        self.visit_level_order(tree)?;
+
+        let Self {
+            mut subs,
+            cons,
+            t_env: _,
+            mut k_env,
+            spans: _,
+            mut types,
+        } = self;
+
+        cons.solve(&mut subs, &mut k_env)?;
+        types.apply_mut(&mut subs);
+
+        Ok(types.into_metadata())
+    }
+
+    fn update_type<T>(&mut self, id: NodeId<T>, t: T::Meta) -> T::Meta
     where
-        T: Attached<SemanticPhase, Meta = MonoType>,
+        T: Attached<SemanticPhase>,
     {
-        self.types.update_meta(id, t.clone())
+        self.types.update_meta(id, t)
     }
 
     fn span<T>(&self, id: NodeId<T>) -> Span
@@ -156,67 +179,181 @@ impl Inferer {
         *self.spans.meta(id)
     }
 
+    fn partial_restrict(
+        &mut self,
+        source: NodeId<node::Expr>,
+        field: NodeId<node::Name>,
+        span: Span,
+    ) -> Result<MonoType, Error> {
+        let t = self.types.meta(source);
+
+        self.cons.constrain_kind(Kind::Record, t.clone(), span);
+
+        let t_prime = MonoType::variable();
+
+        let head = Property {
+            k: self.types.meta(field).clone(),
+            v: MonoType::variable(),
+        };
+
+        self.cons
+            .constrain(MonoType::row(head, t_prime.clone()), t.clone(), span);
+
+        Ok(t_prime)
+    }
+}
+
+impl Visitor for Inferer {
+    // Generalization
+    // Γ'(τ) quantifies all monotype variables not bound in Γ
+
+    // Let rule
+    // Γ ⊢ e0 : τ
+    // Γ, x : Γ'(τ) ⊢ e1 : τ'
+    // --------------------
+    // Γ ⊢ let x = e0 in e1 : τ'
+    fn walk_let(
+        &mut self,
+        id: NodeId<node::Let>,
+        tree: &Tree,
+        _stack: &mut EventStack,
+    ) -> Result<(), Self::Error> {
+        let &node::Let {
+            name,
+            value,
+            inside,
+        } = id.get(tree);
+
+        // TODO unsure if name is already populated by init inside self.types
+        // otherwise implement traverse function for name
+
+        let name = self.types.meta(name).clone();
+
+        TypeVar::enter();
+        self.visit_expr(value, tree)?;
+        TypeVar::exit();
+
+        // due to explicit traversal this is known
+        let t = self.types.meta(value).clone();
+
+        self.t_env.enter();
+        {
+            let pt = t.generalize(&self.t_env.bound_vars());
+            self.t_env.insert(name, pt);
+
+            self.visit_expr(inside, tree)?;
+        }
+        self.t_env.exit();
+
+        let t_prime = self.types.meta(inside).clone();
+        self.update_type(id, t_prime);
+
+        Ok(())
+    }
+
+    // Abstraction rule
+    // τ = newvar()
+    // Γ, x : τ ⊢ e : τ'
+    // ___________________
+    // Γ ⊢ \x -> e : t -> t'
+    fn walk_func(
+        &mut self,
+        id: NodeId<node::Func>,
+        tree: &Tree,
+        _stack: &mut EventStack,
+    ) -> Result<(), Self::Error> {
+        let func = id.get(tree);
+        let t = MonoType::variable();
+
+        // let name = self.types.meta(func.param).clone();
+        let name = func.param.get(tree).0.clone();
+
+        self.t_env.enter();
+        {
+            self.t_env.insert(name, PolyType::from(t.clone()));
+            self.visit_expr(func.body, tree)?;
+        }
+        self.t_env.exit();
+
+        let t_prime = self.types.meta(func.body).clone();
+        let func = MonoType::func(t, t_prime);
+
+        self.update_type(id, func);
+        Ok(())
+    }
+}
+
+impl Handler for Inferer {
+    type Error = Error;
+
     // Unit rule
     // -----------------------
     // Γ ⊢ () : unit
-    fn infer_literal(&mut self, id: NodeId<node::Literal>, tree: &Tree) -> Result<MonoType, Error> {
-        let actual = match id.get(tree) {
+    fn handle_literal(
+        &mut self,
+        literal: &node::Literal,
+        id: NodeId<node::Literal>,
+    ) -> Result<(), Self::Error> {
+        let actual = match literal {
             &node::Literal::Bool(_) => MonoType::BOOL,
             &node::Literal::Char(_) => MonoType::CHAR,
             &node::Literal::Num(_) => MonoType::NUM,
             &node::Literal::Str(_) => MonoType::STR,
         };
 
-        self.update_type(id, &actual);
-        Ok(actual)
+        self.update_type(id, actual);
+        Ok(())
     }
 
     // Var rule to infer variable 'x'
     // x : σ ∈ Γ   τ = inst(σ)
     // -----------------------
     // ∆;Γ ⊢ x : τ
-    fn infer_ident(&mut self, id: NodeId<node::Ident>, tree: &Tree) -> Result<MonoType, Error> {
+    fn handle_ident(
+        &mut self,
+        ident: &node::Ident,
+        id: NodeId<node::Ident>,
+    ) -> Result<(), Self::Error> {
         let t = self
             .t_env
-            .try_lookup(&id.get(tree).0)
+            .try_lookup(&ident.0)
             .map_err(|e| e.with(self.span(id)))?
             .instantiate();
 
-        self.update_type(id, &t);
-        Ok(t)
+        self.update_type(id, t);
+        Ok(())
     }
 
-    fn infer_list(&mut self, id: NodeId<node::List>, tree: &Tree) -> Result<MonoType, Error> {
-        todo!()
-    }
-
-    fn infer_property(
+    fn handle_property(
         &mut self,
+        property: &node::Property,
         id: NodeId<node::Property>,
-        tree: &Tree,
-    ) -> Result<Property, Error> {
-        let property = id.get(tree);
+    ) -> Result<(), Self::Error> {
+        let k = self.types.meta(property.key).clone();
+        let v = self.types.meta(property.value).clone();
 
-        let k = property.key.get(tree).0.clone();
-        let v = self.infer_expr(property.value, tree)?;
-
-        Ok(Property { k, v })
+        self.update_type(id, Property { k, v });
+        Ok(())
     }
 
     // Rule for Record Instantiation via Induction
     // ∆;Γ ⊢ R : { l0 : t0, ..., ln : tn | {} }
     // -----------------------
     // ∆;Γ ⊢ R : { { l1 : t1, ..., ln : tn } | +l0 : τ0 | {} }
-    fn infer_record(&mut self, id: NodeId<node::Record>, tree: &Tree) -> Result<MonoType, Error> {
+    fn handle_record(
+        &mut self,
+        record: &node::Record,
+        id: NodeId<node::Record>,
+    ) -> Result<(), Self::Error> {
         let mut r = MonoType::empty_row();
 
-        for &field in &id.get(tree).fields {
-            let head = self.infer_property(field, tree)?;
+        for &field in &record.fields {
+            let head = self.types.meta(field).clone();
             r = MonoType::row(head, r);
         }
 
-        self.update_type(id, &r);
-        Ok(r)
+        self.update_type(id, r);
+        Ok(())
     }
 
     // Rule for Record Selection of 'r' with label 'l'
@@ -228,29 +365,28 @@ impl Inferer {
     // old: ∀rα. {l :: α | r} → α
     // TODO check if feasible to just iterate over record to get the selected type
     // and if not possible fallback to original behaviour
-    fn infer_record_select(
+    fn handle_record_select(
         &mut self,
+        select: &node::RecordSelect,
         id: NodeId<node::RecordSelect>,
-        tree: &Tree,
-    ) -> Result<MonoType, Error> {
-        let select = id.get(tree);
+    ) -> Result<(), Self::Error> {
         let span = self.span(id);
 
-        let t0 = self.infer_expr(select.source, tree)?;
+        let t0 = self.types.meta(select.source);
 
         self.cons.constrain_kind(Kind::Record, t0.clone(), span);
 
         let t_prime = MonoType::variable();
 
         let head = Property {
-            k: select.field.get(tree).0.clone(),
+            k: self.types.meta(select.field).clone(),
             v: t_prime.clone(),
         };
         self.cons
-            .constrain(MonoType::row(head, MonoType::variable()), t0, span);
+            .constrain(MonoType::row(head, MonoType::variable()), t0.clone(), span);
 
-        self.update_type(id, &t_prime);
-        Ok(t_prime)
+        self.update_type(id, t_prime);
+        Ok(())
     }
 
     // Rule for Record Extension of 'r' with label 'l' and Value 'v'
@@ -260,51 +396,26 @@ impl Inferer {
     // ∆;Γ ⊢ { r | +l = v } : { τ1 | +l : τ0 }
 
     // old: ∀rα. α → {r} → {l :: α | r}
-    fn infer_record_extend(
+    fn handle_record_extend(
         &mut self,
+        extend: &node::RecordExtend,
         id: NodeId<node::RecordExtend>,
-        tree: &Tree,
-    ) -> Result<MonoType, Error> {
-        let extend = id.get(tree);
+    ) -> Result<(), Self::Error> {
         let span = self.span(id);
 
-        let t0 = self.infer_expr(extend.value, tree)?;
-        let t1 = self.infer_expr(extend.source, tree)?;
+        let t0 = self.types.meta(extend.value);
+        let t1 = self.types.meta(extend.source);
 
         self.cons.constrain_kind(Kind::Record, t1.clone(), span);
 
         let head = Property {
-            k: extend.field.get(tree).0.clone(),
-            v: t0,
+            k: self.types.meta(extend.field).clone(),
+            v: t0.clone(),
         };
-        let row = MonoType::row(head, t1);
+        let row = MonoType::row(head, t1.clone());
 
-        self.update_type(id, &row);
-        Ok(row)
-    }
-
-    fn partial_restrict(
-        &mut self,
-        source: NodeId<node::Expr>,
-        field: NodeId<node::Name>,
-        span: Span,
-        tree: &Tree,
-    ) -> Result<MonoType, Error> {
-        let t = self.infer_expr(source, tree)?;
-
-        self.cons.constrain_kind(Kind::Record, t.clone(), span);
-
-        let t_prime = MonoType::variable();
-
-        let head = Property {
-            k: field.get(tree).0.clone(),
-            v: MonoType::variable(),
-        };
-
-        self.cons
-            .constrain(MonoType::row(head, t_prime.clone()), t, span);
-
-        Ok(t_prime)
+        self.update_type(id, row);
+        Ok(())
     }
 
     // Rule for Record Restriction of 'r' with label 'l'
@@ -312,18 +423,17 @@ impl Inferer {
     // -----------------------
     // ∆;Γ ⊢ { r | -l } : τ0
     // ∀rα. {l :: α | r} → {r}
-    fn infer_record_restrict(
+    fn handle_record_restrict(
         &mut self,
+        restrict: &node::RecordRestrict,
         id: NodeId<node::RecordRestrict>,
-        tree: &Tree,
-    ) -> Result<MonoType, Error> {
-        let restrict = id.get(tree);
+    ) -> Result<(), Self::Error> {
         let span = self.span(id);
 
-        let t_prime = self.partial_restrict(restrict.source, restrict.field, span, tree)?;
+        let t_prime = self.partial_restrict(restrict.source, restrict.field, span)?;
 
-        self.update_type(id, &t_prime);
-        Ok(t_prime)
+        self.update_type(id, t_prime);
+        Ok(())
     }
 
     // Rule for Record Update of 'r' with label 'l' and value 'v'
@@ -331,25 +441,24 @@ impl Inferer {
     // ∆;Γ ⊢ v : τ2
     // -----------------------
     // ∆;Γ ⊢ { r | l = v } : { r | -l | +l : τ2 }
-    fn infer_record_update(
+    fn handle_record_update(
         &mut self,
+        update: &node::RecordUpdate,
         id: NodeId<node::RecordUpdate>,
-        tree: &Tree,
-    ) -> Result<MonoType, Error> {
-        let update = id.get(tree);
+    ) -> Result<(), Self::Error> {
         let span = self.span(id);
 
-        let t0 = self.partial_restrict(update.source, update.field, span, tree)?;
-        let t2 = self.infer_expr(update.value, tree)?;
+        let t0 = self.partial_restrict(update.source, update.field, span)?;
+        let t2 = self.types.meta(update.value).clone();
 
         let head = Property {
-            k: update.field.get(tree).0.clone(),
+            k: self.types.meta(update.field).clone(),
             v: t2,
         };
         let row = MonoType::row(head, t0);
 
-        self.update_type(id, &row);
-        Ok(row)
+        self.update_type(id, row);
+        Ok(())
     }
 
     // Abstraction rule
@@ -357,20 +466,20 @@ impl Inferer {
     // Γ, x : τ ⊢ e : τ'
     // ___________________
     // Γ ⊢ \x -> e : τ -> τ'
-    fn infer_unary_op(
+    fn handle_unary_op(
         &mut self,
+        unary_op: &node::UnaryOp,
         id: NodeId<node::UnaryOp>,
-        tree: &Tree,
-    ) -> Result<MonoType, Error> {
-        let t = match id.get(tree) {
+    ) -> Result<(), Self::Error> {
+        let t = match unary_op {
             &node::UnaryOp::Neg => MonoType::NUM,
             &node::UnaryOp::Not => MonoType::BOOL,
         };
 
         let func = MonoType::func(t.clone(), t);
 
-        self.update_type(id, &func);
-        Ok(func)
+        self.update_type(id, func);
+        Ok(())
     }
 
     // Application rule
@@ -380,31 +489,33 @@ impl Inferer {
     // unify(τ0, τ1 -> τ')
     // --------------------
     // Γ ⊢ f x : τ'
-    fn infer_unary(&mut self, id: NodeId<node::Unary>, tree: &Tree) -> Result<MonoType, Error> {
-        let unary = id.get(tree);
+    fn handle_unary(
+        &mut self,
+        unary: &node::Unary,
+        id: NodeId<node::Unary>,
+    ) -> Result<(), Self::Error> {
         let span = self.span(id);
 
-        let t0 = self.infer_unary_op(unary.op, tree)?;
-        let t1 = self.infer_expr(unary.target, tree)?;
+        let t0 = self.types.meta(unary.op).clone();
+        let t1 = self.types.meta(unary.target).clone();
 
         let t_prime = MonoType::variable();
 
         self.cons
             .constrain(t0, MonoType::func(t1, t_prime.clone()), span);
 
-        self.update_type(id, &t_prime);
-        Ok(t_prime)
+        self.update_type(id, t_prime);
+        Ok(())
     }
 
-    fn infer_binary_op(
+    fn handle_binary_op(
         &mut self,
+        binary_op: &node::BinaryOp,
         id: NodeId<node::BinaryOp>,
-        tree: &Tree,
-    ) -> Result<MonoType, Error> {
-        let op = id.get(tree);
+    ) -> Result<(), Self::Error> {
         let span = self.span(id);
 
-        let (t, t_prime) = match op {
+        let (t, t_prime) = match binary_op {
             node::BinaryOp::Add => {
                 let t = MonoType::variable();
                 self.cons.constrain_kind(Kind::Addable, t.clone(), span);
@@ -441,8 +552,8 @@ impl Inferer {
 
         let func = MonoType::func(t.clone(), MonoType::func(t, t_prime));
 
-        self.update_type(id, &func);
-        Ok(func)
+        self.update_type(id, func);
+        Ok(())
     }
 
     // Application rule
@@ -452,47 +563,29 @@ impl Inferer {
     // unify(τ0, τ1 -> τ')
     // --------------------
     // Γ ⊢ f x : τ'
-    fn infer_binary(&mut self, id: NodeId<node::Binary>, tree: &Tree) -> Result<MonoType, Error> {
-        let binary = id.get(tree);
+    fn handle_binary(
+        &mut self,
+        binary: &node::Binary,
+        id: NodeId<node::Binary>,
+    ) -> Result<(), Self::Error> {
         let span = self.span(id);
 
-        let t0 = self.infer_binary_op(binary.op, tree)?;
-        let lhs = self.infer_expr(binary.left, tree)?;
-        let rhs = self.infer_expr(binary.right, tree)?;
+        let t0 = self.types.meta(binary.op).clone();
+        let lhs = self.types.meta(binary.left).clone();
+        let rhs = self.types.meta(binary.right).clone();
 
         let t_prime = MonoType::variable();
 
         let func = MonoType::func(lhs, MonoType::func(rhs, t_prime.clone()));
         self.cons.constrain(t0, func, span);
 
-        self.update_type(id, &t_prime);
-        Ok(t_prime)
+        self.update_type(id, t_prime);
+        Ok(())
     }
 
-    // Generalization
-    // Γ'(τ) quantifies all monotype variables not bound in Γ
-
-    // Let rule
-    // Γ ⊢ e0 : τ
-    // Γ, x : Γ'(τ) ⊢ e1 : τ'
-    // --------------------
-    // Γ ⊢ let x = e0 in e1 : τ'
-    fn infer_let(&mut self, id: NodeId<node::Let>, tree: &Tree) -> Result<MonoType, Error> {
-        let let_ = id.get(tree);
-
-        let t = TypeVar::branch(|| self.infer_expr(let_.value, tree))?;
-
-        self.t_env.enter();
-
-        let pty = t.generalize(&self.t_env.bound_vars());
-        self.t_env.insert(let_.name.get(tree).0.clone(), pty);
-
-        let t_prime = self.infer_expr(let_.inside, tree)?;
-
-        self.t_env.exit();
-
-        self.update_type(id, &t_prime);
-        Ok(t_prime)
+    fn handle_let(&mut self, _let_: &node::Let, _id: NodeId<node::Let>) -> Result<(), Self::Error> {
+        // handled by lower level walk_let
+        Ok(())
     }
 
     // If
@@ -501,48 +594,37 @@ impl Inferer {
     // Γ ⊢ e1 : τ
     // --------------------------
     // Γ ⊢ if predicate then e0 else e1 : τ
-    fn infer_if(&mut self, id: NodeId<node::If>, tree: &Tree) -> Result<MonoType, Error> {
-        let if_ = id.get(tree);
+    fn handle_if(&mut self, if_: &node::If, id: NodeId<node::If>) -> Result<(), Self::Error> {
         let span = self.span(id);
 
-        let t0 = self.infer_expr(if_.predicate, tree)?;
+        let t0 = self.types.meta(if_.predicate).clone();
 
         self.cons.constrain(MonoType::BOOL, t0, span);
 
-        let then = self.infer_expr(if_.then, tree)?;
-        let or = self.infer_expr(if_.or, tree)?;
+        let then = self.types.meta(if_.then).clone();
+        let or = self.types.meta(if_.or).clone();
 
         self.cons.constrain(then.clone(), or, span);
 
-        self.update_type(id, &then);
-        Ok(then)
+        self.update_type(id, then);
+        Ok(())
     }
 
-    fn infer_case(&mut self, id: NodeId<node::Case>, tree: &Tree) -> Result<MonoType, Error> {
+    fn handle_case(
+        &mut self,
+        _case: &node::Case,
+        _id: NodeId<node::Case>,
+    ) -> Result<(), Self::Error> {
         todo!()
     }
 
-    // Abstraction rule
-    // τ = newvar()
-    // Γ, x : τ ⊢ e : τ'
-    // ___________________
-    // Γ ⊢ \x -> e : t -> t'
-    fn infer_func(&mut self, id: NodeId<node::Func>, tree: &Tree) -> Result<MonoType, Error> {
-        let func = id.get(tree);
-        let t = MonoType::variable();
-
-        self.t_env.enter();
-
-        self.t_env
-            .insert(func.param.get(tree).0.clone(), PolyType::from(t.clone()));
-        let t_prime = self.infer_expr(func.body, tree)?;
-
-        self.t_env.exit();
-
-        let func = MonoType::func(t, t_prime);
-
-        self.update_type(id, &func);
-        Ok(func)
+    fn handle_func(
+        &mut self,
+        _func: &node::Func,
+        _id: NodeId<node::Func>,
+    ) -> Result<(), Self::Error> {
+        // handled by lower level walk_func
+        Ok(())
     }
 
     // Application rule
@@ -552,76 +634,56 @@ impl Inferer {
     // unify(τ0, τ1 -> τ')
     // --------------------
     // Γ ⊢ f x : τ'
-    fn infer_call(&mut self, id: NodeId<node::Call>, tree: &Tree) -> Result<MonoType, Error> {
-        let call = id.get(tree);
+    fn handle_call(
+        &mut self,
+        call: &node::Call,
+        id: NodeId<node::Call>,
+    ) -> Result<(), Self::Error> {
         let span = self.span(id);
 
-        let t0 = self.infer_expr(call.func, tree)?;
-        let t1 = self.infer_expr(call.arg, tree)?;
+        let t0 = self.types.meta(call.func).clone();
+        let t1 = self.types.meta(call.arg).clone();
         let t_prime = MonoType::variable();
 
         self.cons
             .constrain(t0, MonoType::func(t1, t_prime.clone()), span);
 
-        self.update_type(id, &t_prime);
-        Ok(t_prime)
+        self.update_type(id, t_prime);
+        Ok(())
     }
 
-    fn infer_expr(&mut self, id: NodeId<node::Expr>, tree: &Tree) -> Result<MonoType, Error> {
-        let t = match *id.get(tree) {
-            node::Expr::Error(_) => Err((Errors::new(), self.span(id))),
-            node::Expr::Literal(l) => self.infer_literal(l, tree),
-            node::Expr::Ident(i) => self.infer_ident(i, tree),
-            node::Expr::List(l) => self.infer_list(l, tree),
-            node::Expr::Record(r) => self.infer_record(r, tree),
-            node::Expr::RecordSelect(r) => self.infer_record_select(r, tree),
-            node::Expr::RecordExtend(r) => self.infer_record_extend(r, tree),
-            node::Expr::RecordRestrict(r) => self.infer_record_restrict(r, tree),
-            node::Expr::RecordUpdate(r) => self.infer_record_update(r, tree),
-            node::Expr::Unary(u) => self.infer_unary(u, tree),
-            node::Expr::Binary(b) => self.infer_binary(b, tree),
-            node::Expr::Let(l) => self.infer_let(l, tree),
-            node::Expr::If(i) => self.infer_if(i, tree),
-            node::Expr::Case(c) => self.infer_case(c, tree),
-            node::Expr::Func(f) => self.infer_func(f, tree),
-            node::Expr::Call(c) => self.infer_call(c, tree),
-        }?;
+    fn handle_expr(
+        &mut self,
+        expr: &node::Expr,
+        id: NodeId<node::Expr>,
+    ) -> Result<(), Self::Error> {
+        let t = match *expr {
+            node::Expr::Error(_) => return Err((Errors::new(), self.span(id))),
+            node::Expr::Literal(id) => self.types.meta(id),
+            node::Expr::Ident(id) => self.types.meta(id),
+            node::Expr::List(id) => self.types.meta(id),
+            node::Expr::Record(id) => self.types.meta(id),
+            node::Expr::RecordSelect(id) => self.types.meta(id),
+            node::Expr::RecordExtend(id) => self.types.meta(id),
+            node::Expr::RecordRestrict(id) => self.types.meta(id),
+            node::Expr::RecordUpdate(id) => self.types.meta(id),
+            node::Expr::Unary(id) => self.types.meta(id),
+            node::Expr::Binary(id) => self.types.meta(id),
+            node::Expr::Let(id) => self.types.meta(id),
+            node::Expr::If(id) => self.types.meta(id),
+            node::Expr::Case(id) => self.types.meta(id),
+            node::Expr::Func(id) => self.types.meta(id),
+            node::Expr::Call(id) => self.types.meta(id),
+        }
+        .clone();
 
-        self.update_type(id, &t);
-        Ok(t)
-    }
-
-    pub fn solve(mut self, tree: &Tree) -> Result<TypeMetadata, Error> {
-        let root = tree.root_id();
-        self.infer_expr(root, tree)?;
-
-        let Self {
-            mut subs,
-            cons,
-            t_env: _,
-            mut k_env,
-            spans: _,
-            mut types,
-        } = self;
-
-        cons.solve(&mut subs, &mut k_env)?;
-        types.apply_mut(&mut subs);
-
-        Ok(types.into_metadata())
+        self.update_type(id, t);
+        Ok(())
     }
 }
 
 #[cfg(test)]
 mod tests {
-    // use crate::{
-    //     semantic::{Infer, Substitution, error::SemanticError, types::MonoType},
-    //     syntax::{Span, node::*},
-    // };
-
-    // fn node<T>(t: T) -> Node<T> {
-    //     Node::new(t, Span::new(0, 0))
-    // }
-
     use kola_syntax::span::{Span, SpanMetadata};
     use kola_tree::prelude::*;
 
@@ -632,35 +694,35 @@ mod tests {
         let span = Span::new(0, 0);
 
         tree.metadata_with(|kind| match kind {
-            NodeKind::Name => Meta::Name(span),
-            NodeKind::Ident => Meta::Ident(span),
-            NodeKind::Literal => Meta::Literal(span),
-            NodeKind::List => Meta::List(span),
-            NodeKind::Property => Meta::Property(span),
-            NodeKind::Record => Meta::Record(span),
-            NodeKind::RecordSelect => Meta::RecordSelect(span),
-            NodeKind::RecordExtend => Meta::RecordExtend(span),
-            NodeKind::RecordRestrict => Meta::RecordRestrict(span),
-            NodeKind::RecordUpdate => Meta::RecordUpdate(span),
-            NodeKind::UnaryOp => Meta::UnaryOp(span),
-            NodeKind::Unary => Meta::Unary(span),
-            NodeKind::BinaryOp => Meta::BinaryOp(span),
-            NodeKind::Binary => Meta::Binary(span),
-            NodeKind::Let => Meta::Let(span),
-            NodeKind::PatError => Meta::PatError(span),
-            NodeKind::Wildcard => Meta::Wildcard(span),
-            NodeKind::LiteralPat => Meta::LiteralPat(span),
-            NodeKind::IdentPat => Meta::IdentPat(span),
-            NodeKind::PropertyPat => Meta::PropertyPat(span),
-            NodeKind::RecordPat => Meta::RecordPat(span),
-            NodeKind::Pat => Meta::Pat(span),
-            NodeKind::Branch => Meta::Branch(span),
-            NodeKind::Case => Meta::Case(span),
-            NodeKind::If => Meta::If(span),
-            NodeKind::Func => Meta::Func(span),
-            NodeKind::Call => Meta::Call(span),
-            NodeKind::ExprError => Meta::ExprError(span),
-            NodeKind::Expr => Meta::Expr(span),
+            Node::Name(_) => Meta::Name(span),
+            Node::Ident(_) => Meta::Ident(span),
+            Node::Literal(_) => Meta::Literal(span),
+            Node::List(_) => Meta::List(span),
+            Node::Property(_) => Meta::Property(span),
+            Node::Record(_) => Meta::Record(span),
+            Node::RecordSelect(_) => Meta::RecordSelect(span),
+            Node::RecordExtend(_) => Meta::RecordExtend(span),
+            Node::RecordRestrict(_) => Meta::RecordRestrict(span),
+            Node::RecordUpdate(_) => Meta::RecordUpdate(span),
+            Node::UnaryOp(_) => Meta::UnaryOp(span),
+            Node::Unary(_) => Meta::Unary(span),
+            Node::BinaryOp(_) => Meta::BinaryOp(span),
+            Node::Binary(_) => Meta::Binary(span),
+            Node::Let(_) => Meta::Let(span),
+            Node::PatError(_) => Meta::PatError(span),
+            Node::Wildcard(_) => Meta::Wildcard(span),
+            Node::LiteralPat(_) => Meta::LiteralPat(span),
+            Node::IdentPat(_) => Meta::IdentPat(span),
+            Node::PropertyPat(_) => Meta::PropertyPat(span),
+            Node::RecordPat(_) => Meta::RecordPat(span),
+            Node::Pat(_) => Meta::Pat(span),
+            Node::Branch(_) => Meta::Branch(span),
+            Node::Case(_) => Meta::Case(span),
+            Node::If(_) => Meta::If(span),
+            Node::Func(_) => Meta::Func(span),
+            Node::Call(_) => Meta::Call(span),
+            Node::ExprError(_) => Meta::ExprError(span),
+            Node::Expr(_) => Meta::Expr(span),
         })
         .into_metadata()
     }

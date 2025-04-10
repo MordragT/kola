@@ -1,5 +1,5 @@
 use kola_syntax::prelude::*;
-use kola_tree::Symbol;
+use kola_tree::node::Symbol;
 use kola_utils::Errors;
 use miette::{Diagnostic, SourceSpan};
 use thiserror::Error;

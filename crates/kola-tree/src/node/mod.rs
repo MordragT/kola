@@ -29,9 +29,11 @@ mod unary;
 use crate::kind::NodeKind;
 
 pub trait InnerNode: Into<Node> {
-    fn to_inner_ref(node: &Node) -> Option<&Self>;
-    fn to_inner_mut(node: &mut Node) -> Option<&mut Self>;
+    fn to_inner_ref(node: &Node) -> Option<&Self>; // try_to_ref ?
+    fn to_inner_mut(node: &mut Node) -> Option<&mut Self>; // try_to_mut ?
 }
+
+pub type Symbol = ecow::EcoString;
 
 #[derive(Clone, Debug, PartialEq)]
 pub enum Node {

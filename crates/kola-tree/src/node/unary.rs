@@ -86,7 +86,7 @@ impl TryFrom<Node> for UnaryOp {
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Unary {
     pub op: NodeId<UnaryOp>,
-    pub target: NodeId<Expr>,
+    pub target: NodeId<Expr>, // TODO rename target to arg or something better
 }
 
 impl Unary {

@@ -23,6 +23,37 @@
 
 - Useful for interaction with 'effectful' configurations like getting Secrets or generating files for build systems
 
+- when only plain data formats are used, then information is lost
+- by using platforms a tight integration can be achieved
+  - TODO is this desirable ?
+
+### Mixins like KCL ?
+
+- instead of recursive records like in Nickel maybe some sort of
+- Record Constructor which can derive fields from other fields.
+- but instead of a function which is opaque
+- this record constructor allows to override configurations,
+- while being confident that the changes propagate
+- or maybe ocaml like objects:
+
+```
+let isIp = \ip: Str => ...
+
+let Machine = schema { ip: Str } => {
+  ip,
+  cmd = "ssh -p 8070 user@" + ip
+} where ip |> isIp
+
+schema Machine =
+  
+
+schema Machine { ip : Str }
+  where ip |> isIp,
+  with cmd = "ssh -p 8070 user@" + ip,
+in
+  ...
+
+```
 
 ### Separation of Concerns
 
@@ -180,23 +211,3 @@ https://en.wikipedia.org/wiki/CEK_Machine
 ## References
 
 - [Hindley Milner](https://www.lesswrong.com/posts/vTS8K4NBSi9iyCrPo/a-reckless-introduction-to-hindley-milner-type-inference)
-
-
-
-
-```
-package (input_a, input_b) {
-
-  {
-    name,
-    a: input_a.xyz
-    inputs [input_a, input_b]
-
-  }
-}
-
-
-{
-  
-}
-```

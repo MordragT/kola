@@ -54,6 +54,7 @@ pub trait MetaContainer<P: Phase>: Sized {
         std::mem::replace(self.meta_mut(id), meta)
     }
 
+    // TODO better implement From trait
     fn into_metadata(self) -> Metadata<P, Self> {
         Metadata {
             container: Rc::new(self),

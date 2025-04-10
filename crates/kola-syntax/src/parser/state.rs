@@ -6,7 +6,7 @@ use crate::{Span, SyntaxPhase, token::Token};
 pub type State = extra::SimpleState<StateRepr>;
 pub type Extra<'src> = extra::Full<Rich<'src, Token<'src>, Span>, State, ()>;
 
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub struct StateRepr {
     pub builder: TreeBuilder,
     pub meta: Vec<Meta<SyntaxPhase>>,
@@ -14,10 +14,7 @@ pub struct StateRepr {
 
 impl StateRepr {
     pub fn new() -> Self {
-        Self {
-            builder: TreeBuilder::new(),
-            meta: Vec::new(),
-        }
+        Self::default()
     }
 
     pub fn insert<T>(&mut self, node: T, meta: Span) -> NodeId<T>

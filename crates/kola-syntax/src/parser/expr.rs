@@ -47,7 +47,7 @@ pub fn name_parser<'src, I>() -> impl Parser<'src, I, NodeId<node::Name>, Extra<
 where
     I: ValueInput<'src, Token = Token<'src>, Span = Span>,
 {
-    select! { Token::Symbol(s) => Symbol::from(s) }
+    select! { Token::Symbol(s) => node::Symbol::from(s) }
         .map(node::Name)
         .to_node()
         .boxed()
@@ -57,7 +57,7 @@ pub fn ident_parser<'src, I>() -> impl Parser<'src, I, node::Ident, Extra<'src>>
 where
     I: ValueInput<'src, Token = Token<'src>, Span = Span>,
 {
-    select! { Token::Symbol(s) => Symbol::from(s) }.map(node::Ident)
+    select! { Token::Symbol(s) => node::Symbol::from(s) }.map(node::Ident)
 }
 
 pub fn literal_parser<'src, I>() -> impl Parser<'src, I, node::Literal, Extra<'src>> + Sized
@@ -68,16 +68,18 @@ where
         Token::Num(n) => node::Literal::Num(n),
         Token::Bool(b) => node::Literal::Bool(b),
         Token::Char(c) => node::Literal::Char(c),
-        Token::Str(s) => node::Literal::Str(Symbol::from(s))
+        Token::Str(s) => node::Literal::Str(node::Symbol::from(s))
     }
 }
+
+// pub fn type_parser<'src, I>() -> impl Parser<'src, I, node::
 
 pub fn pat_parser<'src, I>() -> impl Parser<'src, I, NodeId<node::Pat>, Extra<'src>> + Clone
 where
     I: ValueInput<'src, Token = Token<'src>, Span = Span>,
 {
     recursive(|pat| {
-        let ident = select! { Token::Symbol(s) => Symbol::from(s) }
+        let ident = select! { Token::Symbol(s) => node::Symbol::from(s) }
             .map(node::IdentPat)
             .to_pat()
             .to_node();

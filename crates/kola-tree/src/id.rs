@@ -1,6 +1,6 @@
 use kola_print::prelude::*;
 use serde::{Deserialize, Serialize};
-use std::marker::PhantomData;
+use std::{hash::Hash, marker::PhantomData};
 
 use crate::{
     Phase,
@@ -10,7 +10,7 @@ use crate::{
     tree::NodeContainer,
 };
 
-#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize)]
 pub struct NodeId<T> {
     id: u32,
     t: PhantomData<T>,
@@ -27,8 +27,41 @@ impl<T> Clone for NodeId<T> {
 
 impl<T> Copy for NodeId<T> {}
 
+impl<T> PartialEq for NodeId<T> {
+    fn eq(&self, other: &Self) -> bool {
+        self.id.eq(&other.id)
+    }
+}
+
+impl<T> Eq for NodeId<T> {}
+
+impl<T> PartialOrd for NodeId<T> {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        self.id.partial_cmp(&other.id)
+    }
+}
+
+impl<T> Ord for NodeId<T> {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.id.cmp(&other.id)
+    }
+}
+
+impl<T> Hash for NodeId<T> {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.id.hash(state);
+    }
+}
+
 impl<T> NodeId<T> {
-    pub(super) fn new(id: u32) -> Self {
+    pub(crate) fn from_usize(id: usize) -> Self {
+        Self {
+            id: id as u32,
+            t: PhantomData,
+        }
+    }
+
+    pub(crate) fn new(id: u32) -> Self {
         Self { id, t: PhantomData }
     }
 

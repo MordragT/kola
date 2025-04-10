@@ -22,40 +22,39 @@ pub mod prelude {
     pub use crate::unify::Unifiable;
 }
 
-use kola_tree::Phase;
-use types::MonoType;
+use kola_tree::{Phase, node::Symbol};
 
 #[derive(Clone, Copy, Debug)]
 pub struct SemanticPhase;
 
 impl Phase for SemanticPhase {
-    type Name = ();
-    type Ident = MonoType;
-    type Literal = MonoType;
-    type List = MonoType;
-    type Property = ();
-    type Record = MonoType;
-    type RecordSelect = MonoType;
-    type RecordExtend = MonoType;
-    type RecordRestrict = MonoType;
-    type RecordUpdate = MonoType;
-    type UnaryOp = MonoType;
-    type Unary = MonoType;
-    type BinaryOp = MonoType;
-    type Binary = MonoType;
-    type Let = MonoType;
+    type Name = Symbol;
+    type Ident = types::MonoType;
+    type Literal = types::MonoType;
+    type List = types::MonoType;
+    type Property = types::Property;
+    type Record = types::MonoType;
+    type RecordSelect = types::MonoType;
+    type RecordExtend = types::MonoType;
+    type RecordRestrict = types::MonoType;
+    type RecordUpdate = types::MonoType;
+    type UnaryOp = types::MonoType;
+    type Unary = types::MonoType;
+    type BinaryOp = types::MonoType;
+    type Binary = types::MonoType;
+    type Let = types::MonoType;
     type PatError = ();
-    type Wildcard = MonoType;
-    type LiteralPat = MonoType;
-    type IdentPat = MonoType;
-    type PropertyPat = MonoType;
-    type RecordPat = MonoType;
-    type Pat = MonoType;
+    type Wildcard = types::MonoType;
+    type LiteralPat = types::MonoType;
+    type IdentPat = types::MonoType;
+    type PropertyPat = types::MonoType;
+    type RecordPat = types::MonoType;
+    type Pat = types::MonoType;
     type Branch = ();
-    type Case = MonoType;
-    type If = MonoType;
-    type Func = MonoType;
-    type Call = MonoType;
+    type Case = types::MonoType;
+    type If = types::MonoType;
+    type Func = types::MonoType;
+    type Call = types::MonoType;
     type ExprError = ();
-    type Expr = MonoType;
+    type Expr = types::MonoType;
 }

@@ -1,23 +1,25 @@
+pub mod handle;
 pub mod id;
 pub mod kind;
 pub mod meta;
 pub mod node;
 pub mod print;
 pub mod tree;
+pub mod visit;
 
 pub mod prelude {
+    pub use crate::Phase;
+    pub use crate::handle::Handler;
     pub use crate::id::NodeId;
     pub use crate::kind::NodeKind;
     pub use crate::meta::{Attached, Meta, MetaContainer, MetaVec, Metadata};
     pub use crate::node::{self, InnerNode, Node};
     pub use crate::print::{Decorator, TreePrinter};
     pub use crate::tree::{NodeContainer, Tree, TreeBuilder};
-    pub use crate::{Phase, Symbol};
+    pub use crate::visit::{Event, EventStack, Visitor};
 }
 
 use std::fmt::Debug;
-
-pub type Symbol = ecow::EcoString;
 
 pub trait Phase: 'static + Debug + Copy {
     type Name: Debug + Clone;

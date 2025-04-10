@@ -28,11 +28,6 @@ static LEVEL: AtomicU32 = AtomicU32::new(0);
 static GENERATOR: AtomicU32 = AtomicU32::new(0);
 
 impl TypeVar {
-    // pub fn unchecked_new(id: u32) -> Self {
-    //     let level = Self::load_level();
-    //     Self { id, level }
-    // }
-
     pub fn new() -> Self {
         let id = GENERATOR.fetch_add(1, Ordering::Relaxed);
         let level = Self::load_level();
@@ -49,6 +44,14 @@ impl TypeVar {
 
     pub fn load_level() -> u32 {
         LEVEL.load(Ordering::Relaxed)
+    }
+
+    pub fn enter() {
+        LEVEL.fetch_add(1, Ordering::Relaxed);
+    }
+
+    pub fn exit() {
+        LEVEL.fetch_sub(1, Ordering::Relaxed);
     }
 
     pub fn branch<F, T>(mut f: F) -> T

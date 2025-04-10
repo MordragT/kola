@@ -3,7 +3,7 @@ use owo_colors::OwoColorize;
 use std::{borrow::Cow, collections::HashMap, fmt};
 
 use super::types::{MonoType, TypeVar};
-use crate::SemanticPhase;
+use crate::{SemanticPhase, types::Property};
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Substitution {
@@ -135,11 +135,12 @@ where
 impl Substitutable for Meta<SemanticPhase> {
     fn try_apply(&self, s: &mut Substitution) -> Option<Self> {
         match self {
-            Meta::Name(())
-            | Meta::Property(())
-            | Meta::PatError(())
-            | Meta::Branch(())
-            | Meta::ExprError(()) => None,
+            Meta::Name(_) | Meta::PatError(()) | Meta::Branch(()) | Meta::ExprError(()) => None,
+
+            Meta::Property(Property { k, v }) => v
+                .try_apply(s)
+                .map(|v| Property { k: k.clone(), v })
+                .map(Meta::Property),
 
             Meta::Ident(t) => t.try_apply(s).map(Meta::Ident),
             Meta::Literal(t) => t.try_apply(s).map(Meta::Literal),
