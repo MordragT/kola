@@ -2,14 +2,8 @@ use kola_print::prelude::*;
 use owo_colors::OwoColorize;
 use serde::{Deserialize, Serialize};
 
-use super::{Expr, InnerNode, Node};
-use crate::{
-    Phase,
-    id::NodeId,
-    meta::{Attached, Meta},
-    print::TreePrinter,
-    tree::NodeContainer,
-};
+use super::Expr;
+use crate::{id::NodeId, print::TreePrinter, tree::NodeContainer};
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Call {
@@ -24,44 +18,6 @@ impl Call {
 
     pub fn arg<'a>(&self, tree: &'a impl NodeContainer) -> &'a Expr {
         self.arg.get(tree)
-    }
-}
-
-impl InnerNode for Call {
-    fn to_inner_ref(node: &Node) -> Option<&Self> {
-        match node {
-            Node::Call(c) => Some(c),
-            _ => None,
-        }
-    }
-
-    fn to_inner_mut(node: &mut Node) -> Option<&mut Self> {
-        match node {
-            Node::Call(c) => Some(c),
-            _ => None,
-        }
-    }
-}
-
-impl<P: Phase> Attached<P> for Call {
-    type Meta = P::Call;
-
-    fn into_meta(attached: Self::Meta) -> Meta<P> {
-        Meta::Call(attached)
-    }
-
-    fn to_attached_ref(meta: &Meta<P>) -> Option<&Self::Meta> {
-        match meta {
-            Meta::Call(m) => Some(m),
-            _ => None,
-        }
-    }
-
-    fn to_attached_mut(meta: &mut Meta<P>) -> Option<&mut Self::Meta> {
-        match meta {
-            Meta::Call(m) => Some(m),
-            _ => None,
-        }
     }
 }
 
@@ -94,16 +50,5 @@ impl Printable<TreePrinter> for Call {
         .indent(arena);
 
         head.then(single.or(multi, arena), arena)
-    }
-}
-
-impl TryFrom<Node> for Call {
-    type Error = ();
-
-    fn try_from(value: Node) -> Result<Self, Self::Error> {
-        match value {
-            Node::Call(c) => Ok(c),
-            _ => Err(()),
-        }
     }
 }

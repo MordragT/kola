@@ -19,21 +19,23 @@ impl StateRepr {
 
     pub fn insert<T>(&mut self, node: T, meta: Span) -> NodeId<T>
     where
-        T: Into<Node> + Attached<SyntaxPhase, Meta = Span>,
+        Node: From<T>,
+        T: MetaCast<SyntaxPhase, Meta = Span>,
     {
         let id = self.builder.insert(node);
-        self.meta.push(T::into_meta(meta));
+        self.meta.push(T::upcast(meta));
 
         id
     }
 
     pub fn insert_expr<T>(&mut self, node: T, meta: Span) -> NodeId<node::Expr>
     where
-        T: Into<Node> + Attached<SyntaxPhase, Meta = Span>,
+        Node: From<T>,
+        T: MetaCast<SyntaxPhase, Meta = Span>,
         node::Expr: From<NodeId<T>>,
     {
         let id = self.insert(node, meta.clone());
         let expr = node::Expr::from(id);
-        self.insert(expr, meta)
+        self.insert::<node::Expr>(expr, meta)
     }
 }

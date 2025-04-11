@@ -1,11 +1,12 @@
 use kola_print::prelude::*;
+use kola_utils::TryAsRef;
 use serde::{Deserialize, Serialize};
 use std::{hash::Hash, marker::PhantomData};
 
 use crate::{
     Phase,
-    meta::{Attached, MetaContainer},
-    node::InnerNode,
+    meta::{MetaCast, MetaContainer},
+    node::Node,
     print::TreePrinter,
     tree::NodeContainer,
 };
@@ -71,7 +72,7 @@ impl<T> NodeId<T> {
 
     pub fn get(self, tree: &impl NodeContainer) -> &T
     where
-        T: InnerNode,
+        Node: TryAsRef<T>,
     {
         tree.node(self)
     }
@@ -79,7 +80,7 @@ impl<T> NodeId<T> {
     pub fn meta<P>(self, metadata: &impl MetaContainer<P>) -> &T::Meta
     where
         P: Phase,
-        T: Attached<P>,
+        T: MetaCast<P>,
     {
         metadata.meta(self)
     }
@@ -87,7 +88,7 @@ impl<T> NodeId<T> {
     pub fn meta_mut<P, M>(self, metadata: &mut impl MetaContainer<P>) -> &mut T::Meta
     where
         P: Phase,
-        T: Attached<P>,
+        T: MetaCast<P>,
     {
         metadata.meta_mut(self)
     }
@@ -102,7 +103,8 @@ impl<T> NodeId<T> {
 
 impl<T> Printable<TreePrinter> for NodeId<T>
 where
-    T: InnerNode + Printable<TreePrinter>,
+    Node: TryAsRef<T>,
+    T: Printable<TreePrinter>,
 {
     fn notate<'a>(&'a self, with: &'a TreePrinter, arena: &'a Bump) -> Notation<'a> {
         with.decorate(*self, arena)

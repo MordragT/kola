@@ -408,7 +408,8 @@ pub fn nested_parser<'src, I, T>(
     fallback: impl Fn(Span) -> T + Clone + 'src,
 ) -> impl Parser<'src, I, NodeId<T>, Extra<'src>> + Clone
 where
-    T: InnerNode + Attached<SyntaxPhase, Meta = Span> + 'src,
+    Node: From<T>,
+    T: MetaCast<SyntaxPhase, Meta = Span> + 'src,
     I: ValueInput<'src, Token = Token<'src>, Span = Span>,
 {
     parser

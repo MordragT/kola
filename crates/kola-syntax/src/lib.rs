@@ -1,4 +1,4 @@
-use kola_tree::Phase;
+use kola_tree::UniformPhase;
 use span::Span;
 
 pub mod error;
@@ -21,34 +21,6 @@ pub mod prelude {
 #[derive(Clone, Copy, Debug)]
 pub struct SyntaxPhase;
 
-impl Phase for SyntaxPhase {
-    type Name = Span;
-    type Ident = Span;
-    type Literal = Span;
-    type List = Span;
-    type Property = Span;
-    type Record = Span;
-    type RecordSelect = Span;
-    type RecordExtend = Span;
-    type RecordRestrict = Span;
-    type RecordUpdate = Span;
-    type UnaryOp = Span;
-    type Unary = Span;
-    type BinaryOp = Span;
-    type Binary = Span;
-    type Let = Span;
-    type PatError = Span;
-    type Wildcard = Span;
-    type LiteralPat = Span;
-    type IdentPat = Span;
-    type PropertyPat = Span;
-    type RecordPat = Span;
-    type Pat = Span;
-    type Branch = Span;
-    type Case = Span;
-    type If = Span;
-    type Func = Span;
-    type Call = Span;
-    type ExprError = Span;
-    type Expr = Span;
+impl UniformPhase for SyntaxPhase {
+    type Meta = Span;
 }

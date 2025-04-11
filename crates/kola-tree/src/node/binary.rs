@@ -4,11 +4,9 @@ use kola_print::prelude::*;
 use owo_colors::OwoColorize;
 use serde::{Deserialize, Serialize};
 
-use super::{Expr, InnerNode, Node};
+use super::Expr;
 use crate::{
-    Phase,
     id::NodeId,
-    meta::{Attached, Meta},
     print::TreePrinter,
     tree::{NodeContainer, TreeBuilder},
 };
@@ -36,44 +34,6 @@ pub enum BinaryOp {
     Merge,
 }
 
-impl InnerNode for BinaryOp {
-    fn to_inner_ref(node: &Node) -> Option<&Self> {
-        match node {
-            Node::BinaryOp(o) => Some(o),
-            _ => None,
-        }
-    }
-
-    fn to_inner_mut(node: &mut Node) -> Option<&mut Self> {
-        match node {
-            Node::BinaryOp(o) => Some(o),
-            _ => None,
-        }
-    }
-}
-
-impl<P: Phase> Attached<P> for BinaryOp {
-    type Meta = P::BinaryOp;
-
-    fn into_meta(attached: Self::Meta) -> Meta<P> {
-        Meta::BinaryOp(attached)
-    }
-
-    fn to_attached_ref(meta: &Meta<P>) -> Option<&Self::Meta> {
-        match meta {
-            Meta::BinaryOp(m) => Some(m),
-            _ => None,
-        }
-    }
-
-    fn to_attached_mut(meta: &mut Meta<P>) -> Option<&mut Self::Meta> {
-        match meta {
-            Meta::BinaryOp(m) => Some(m),
-            _ => None,
-        }
-    }
-}
-
 impl fmt::Display for BinaryOp {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
@@ -99,17 +59,6 @@ impl fmt::Display for BinaryOp {
 impl Printable<TreePrinter> for BinaryOp {
     fn notate<'a>(&'a self, _with: &'a TreePrinter, arena: &'a Bump) -> Notation<'a> {
         self.display_in(arena)
-    }
-}
-
-impl TryFrom<Node> for BinaryOp {
-    type Error = ();
-
-    fn try_from(value: Node) -> Result<Self, Self::Error> {
-        match value {
-            Node::BinaryOp(b) => Ok(b),
-            _ => Err(()),
-        }
     }
 }
 
@@ -147,44 +96,6 @@ impl Binary {
     }
 }
 
-impl InnerNode for Binary {
-    fn to_inner_ref(node: &Node) -> Option<&Self> {
-        match node {
-            Node::Binary(b) => Some(b),
-            _ => None,
-        }
-    }
-
-    fn to_inner_mut(node: &mut Node) -> Option<&mut Self> {
-        match node {
-            Node::Binary(b) => Some(b),
-            _ => None,
-        }
-    }
-}
-
-impl<P: Phase> Attached<P> for Binary {
-    type Meta = P::Binary;
-
-    fn into_meta(attached: Self::Meta) -> Meta<P> {
-        Meta::Binary(attached)
-    }
-
-    fn to_attached_ref(meta: &Meta<P>) -> Option<&Self::Meta> {
-        match meta {
-            Meta::Binary(m) => Some(m),
-            _ => None,
-        }
-    }
-
-    fn to_attached_mut(meta: &mut Meta<P>) -> Option<&mut Self::Meta> {
-        match meta {
-            Meta::Binary(m) => Some(m),
-            _ => None,
-        }
-    }
-}
-
 impl Printable<TreePrinter> for Binary {
     fn notate<'a>(&'a self, with: &'a TreePrinter, arena: &'a Bump) -> Notation<'a> {
         let Self { op, left, right } = self;
@@ -217,16 +128,5 @@ impl Printable<TreePrinter> for Binary {
         .indent(arena);
 
         head.then(single.or(multi, arena), arena)
-    }
-}
-
-impl TryFrom<Node> for Binary {
-    type Error = ();
-
-    fn try_from(value: Node) -> Result<Self, Self::Error> {
-        match value {
-            Node::Binary(b) => Ok(b),
-            _ => Err(()),
-        }
     }
 }

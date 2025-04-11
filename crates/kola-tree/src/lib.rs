@@ -12,8 +12,8 @@ pub mod prelude {
     pub use crate::handle::Handler;
     pub use crate::id::NodeId;
     pub use crate::kind::NodeKind;
-    pub use crate::meta::{Attached, Meta, MetaContainer, MetaVec, Metadata};
-    pub use crate::node::{self, InnerNode, Node};
+    pub use crate::meta::{Meta, MetaCast, MetaContainer, MetaVec, Metadata};
+    pub use crate::node::{self, Node};
     pub use crate::print::{Decorator, TreePrinter};
     pub use crate::tree::{NodeContainer, Tree, TreeBuilder};
     pub use crate::visit::{Event, EventStack, Visitor};
@@ -51,4 +51,40 @@ pub trait Phase: 'static + Debug + Copy {
     type Call: Debug + Clone;
     type ExprError: Debug + Clone;
     type Expr: Debug + Clone;
+}
+
+pub trait UniformPhase: 'static + Debug + Copy {
+    type Meta: Debug + Clone;
+}
+
+impl<T: UniformPhase> Phase for T {
+    type Name = T::Meta;
+    type Ident = T::Meta;
+    type Literal = T::Meta;
+    type List = T::Meta;
+    type Property = T::Meta;
+    type Record = T::Meta;
+    type RecordSelect = T::Meta;
+    type RecordExtend = T::Meta;
+    type RecordRestrict = T::Meta;
+    type RecordUpdate = T::Meta;
+    type UnaryOp = T::Meta;
+    type Unary = T::Meta;
+    type BinaryOp = T::Meta;
+    type Binary = T::Meta;
+    type Let = T::Meta;
+    type PatError = T::Meta;
+    type Wildcard = T::Meta;
+    type LiteralPat = T::Meta;
+    type IdentPat = T::Meta;
+    type PropertyPat = T::Meta;
+    type RecordPat = T::Meta;
+    type Pat = T::Meta;
+    type Branch = T::Meta;
+    type Case = T::Meta;
+    type If = T::Meta;
+    type Func = T::Meta;
+    type Call = T::Meta;
+    type ExprError = T::Meta;
+    type Expr = T::Meta;
 }

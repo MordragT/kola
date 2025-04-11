@@ -33,23 +33,23 @@ pub trait MetaContainer<P: Phase>: Sized {
 
     fn meta<T>(&self, id: NodeId<T>) -> &T::Meta
     where
-        T: Attached<P>,
+        T: MetaCast<P>,
     {
         let meta = self.get(id);
-        T::to_attached_ref(meta).unwrap()
+        T::try_downcast_ref(meta).unwrap()
     }
 
     fn meta_mut<T>(&mut self, id: NodeId<T>) -> &mut T::Meta
     where
-        T: Attached<P>,
+        T: MetaCast<P>,
     {
         let meta = self.get_mut(id);
-        T::to_attached_mut(meta).unwrap()
+        T::try_downcast_mut(meta).unwrap()
     }
 
     fn update_meta<T>(&mut self, id: NodeId<T>, meta: T::Meta) -> T::Meta
     where
-        T: Attached<P>,
+        T: MetaCast<P>,
     {
         std::mem::replace(self.meta_mut(id), meta)
     }
@@ -73,45 +73,141 @@ impl<P: Phase> MetaContainer<P> for MetaVec<P> {
     }
 }
 
-pub trait Attached<P: Phase> {
+pub trait MetaCast<P: Phase> {
     type Meta;
 
-    fn into_meta(attached: Self::Meta) -> Meta<P>;
-    fn to_attached_ref(meta: &Meta<P>) -> Option<&Self::Meta>;
-    fn to_attached_mut(meta: &mut Meta<P>) -> Option<&mut Self::Meta>;
+    fn upcast(attached: Self::Meta) -> Meta<P>;
+    fn try_downcast_ref(meta: &Meta<P>) -> Option<&Self::Meta>;
+    fn try_downcast_mut(meta: &mut Meta<P>) -> Option<&mut Self::Meta>;
 }
+
+macro_rules! impl_meta_cast {
+    ($($node:ident),*) => {
+        $(
+            impl<P: Phase> MetaCast<P> for node::$node {
+                type Meta = P::$node;
+
+                fn upcast(this: Self::Meta) -> Meta<P> {
+                    Meta::$node(this)
+                }
+
+                fn try_downcast_ref(meta: &Meta<P>) -> Option<&Self::Meta> {
+                    match meta {
+                        Meta::$node(val) => Some(val),
+                        _ => None,
+                    }
+                }
+
+                fn try_downcast_mut(meta: &mut Meta<P>) -> Option<&mut Self::Meta> {
+                    match meta {
+                        Meta::$node(val) => Some(val),
+                        _ => None,
+                    }
+                }
+            }
+        )*
+    };
+}
+
+impl_meta_cast!(
+    Name,
+    Ident,
+    Literal,
+    List,
+    Property,
+    Record,
+    RecordSelect,
+    RecordExtend,
+    RecordRestrict,
+    RecordUpdate,
+    UnaryOp,
+    Unary,
+    BinaryOp,
+    Binary,
+    Let,
+    PatError,
+    Wildcard,
+    LiteralPat,
+    IdentPat,
+    PropertyPat,
+    RecordPat,
+    Pat,
+    Branch,
+    Case,
+    If,
+    Func,
+    Call,
+    ExprError,
+    Expr
+);
 
 #[derive(Clone, Debug)]
 pub enum Meta<P: Phase> {
-    Name(<node::Name as Attached<P>>::Meta),
-    Ident(<node::Ident as Attached<P>>::Meta),
-    Literal(<node::Literal as Attached<P>>::Meta),
-    List(<node::List as Attached<P>>::Meta),
-    Property(<node::Property as Attached<P>>::Meta),
-    Record(<node::Record as Attached<P>>::Meta),
-    RecordSelect(<node::RecordSelect as Attached<P>>::Meta),
-    RecordExtend(<node::RecordExtend as Attached<P>>::Meta),
-    RecordRestrict(<node::RecordRestrict as Attached<P>>::Meta),
-    RecordUpdate(<node::RecordUpdate as Attached<P>>::Meta),
-    UnaryOp(<node::UnaryOp as Attached<P>>::Meta),
-    Unary(<node::Unary as Attached<P>>::Meta),
-    BinaryOp(<node::BinaryOp as Attached<P>>::Meta),
-    Binary(<node::Binary as Attached<P>>::Meta),
-    Let(<node::Let as Attached<P>>::Meta),
-    PatError(<node::PatError as Attached<P>>::Meta),
-    Wildcard(<node::Wildcard as Attached<P>>::Meta),
-    LiteralPat(<node::LiteralPat as Attached<P>>::Meta),
-    IdentPat(<node::IdentPat as Attached<P>>::Meta),
-    PropertyPat(<node::PropertyPat as Attached<P>>::Meta),
-    RecordPat(<node::RecordPat as Attached<P>>::Meta),
-    Pat(<node::Pat as Attached<P>>::Meta),
-    Branch(<node::Branch as Attached<P>>::Meta),
-    Case(<node::Case as Attached<P>>::Meta),
-    If(<node::If as Attached<P>>::Meta),
-    Func(<node::Func as Attached<P>>::Meta),
-    Call(<node::Call as Attached<P>>::Meta),
-    ExprError(<node::ExprError as Attached<P>>::Meta),
-    Expr(<node::Expr as Attached<P>>::Meta),
+    Name(<node::Name as MetaCast<P>>::Meta),
+    Ident(<node::Ident as MetaCast<P>>::Meta),
+    Literal(<node::Literal as MetaCast<P>>::Meta),
+    List(<node::List as MetaCast<P>>::Meta),
+    Property(<node::Property as MetaCast<P>>::Meta),
+    Record(<node::Record as MetaCast<P>>::Meta),
+    RecordSelect(<node::RecordSelect as MetaCast<P>>::Meta),
+    RecordExtend(<node::RecordExtend as MetaCast<P>>::Meta),
+    RecordRestrict(<node::RecordRestrict as MetaCast<P>>::Meta),
+    RecordUpdate(<node::RecordUpdate as MetaCast<P>>::Meta),
+    UnaryOp(<node::UnaryOp as MetaCast<P>>::Meta),
+    Unary(<node::Unary as MetaCast<P>>::Meta),
+    BinaryOp(<node::BinaryOp as MetaCast<P>>::Meta),
+    Binary(<node::Binary as MetaCast<P>>::Meta),
+    Let(<node::Let as MetaCast<P>>::Meta),
+    PatError(<node::PatError as MetaCast<P>>::Meta),
+    Wildcard(<node::Wildcard as MetaCast<P>>::Meta),
+    LiteralPat(<node::LiteralPat as MetaCast<P>>::Meta),
+    IdentPat(<node::IdentPat as MetaCast<P>>::Meta),
+    PropertyPat(<node::PropertyPat as MetaCast<P>>::Meta),
+    RecordPat(<node::RecordPat as MetaCast<P>>::Meta),
+    Pat(<node::Pat as MetaCast<P>>::Meta),
+    Branch(<node::Branch as MetaCast<P>>::Meta),
+    Case(<node::Case as MetaCast<P>>::Meta),
+    If(<node::If as MetaCast<P>>::Meta),
+    Func(<node::Func as MetaCast<P>>::Meta),
+    Call(<node::Call as MetaCast<P>>::Meta),
+    ExprError(<node::ExprError as MetaCast<P>>::Meta),
+    Expr(<node::Expr as MetaCast<P>>::Meta),
+}
+
+macro_rules! inner {
+    ($enum: ident) => {
+        match $enum {
+            Self::Name(m) => m,
+            Self::Ident(m) => m,
+            Self::Literal(m) => m,
+            Self::List(m) => m,
+            Self::Property(m) => m,
+            Self::Record(m) => m,
+            Self::RecordSelect(m) => m,
+            Self::RecordExtend(m) => m,
+            Self::RecordRestrict(m) => m,
+            Self::RecordUpdate(m) => m,
+            Self::UnaryOp(m) => m,
+            Self::Unary(m) => m,
+            Self::BinaryOp(m) => m,
+            Self::Binary(m) => m,
+            Self::Let(m) => m,
+            Self::PatError(m) => m,
+            Self::Wildcard(m) => m,
+            Self::LiteralPat(m) => m,
+            Self::IdentPat(m) => m,
+            Self::PropertyPat(m) => m,
+            Self::RecordPat(m) => m,
+            Self::Pat(m) => m,
+            Self::Branch(m) => m,
+            Self::Case(m) => m,
+            Self::If(m) => m,
+            Self::Func(m) => m,
+            Self::Call(m) => m,
+            Self::ExprError(m) => m,
+            Self::Expr(m) => m,
+        }
+    };
 }
 
 impl<P, M> Meta<P>
@@ -150,70 +246,28 @@ where
         >,
 {
     pub fn inner_ref(&self) -> &M {
-        match self {
-            Self::Name(m) => m,
-            Self::Ident(m) => m,
-            Self::Literal(m) => m,
-            Self::List(m) => m,
-            Self::Property(m) => m,
-            Self::Record(m) => m,
-            Self::RecordSelect(m) => m,
-            Self::RecordExtend(m) => m,
-            Self::RecordRestrict(m) => m,
-            Self::RecordUpdate(m) => m,
-            Self::UnaryOp(m) => m,
-            Self::Unary(m) => m,
-            Self::BinaryOp(m) => m,
-            Self::Binary(m) => m,
-            Self::Let(m) => m,
-            Self::PatError(m) => m,
-            Self::Wildcard(m) => m,
-            Self::LiteralPat(m) => m,
-            Self::IdentPat(m) => m,
-            Self::PropertyPat(m) => m,
-            Self::RecordPat(m) => m,
-            Self::Pat(m) => m,
-            Self::Branch(m) => m,
-            Self::Case(m) => m,
-            Self::If(m) => m,
-            Self::Func(m) => m,
-            Self::Call(m) => m,
-            Self::ExprError(m) => m,
-            Self::Expr(m) => m,
-        }
+        inner!(self)
     }
 
     pub fn inner_mut(&mut self) -> &mut M {
-        match self {
-            Self::Name(m) => m,
-            Self::Ident(m) => m,
-            Self::Literal(m) => m,
-            Self::List(m) => m,
-            Self::Property(m) => m,
-            Self::Record(m) => m,
-            Self::RecordSelect(m) => m,
-            Self::RecordExtend(m) => m,
-            Self::RecordRestrict(m) => m,
-            Self::RecordUpdate(m) => m,
-            Self::UnaryOp(m) => m,
-            Self::Unary(m) => m,
-            Self::BinaryOp(m) => m,
-            Self::Binary(m) => m,
-            Self::Let(m) => m,
-            Self::PatError(m) => m,
-            Self::Wildcard(m) => m,
-            Self::LiteralPat(m) => m,
-            Self::IdentPat(m) => m,
-            Self::PropertyPat(m) => m,
-            Self::RecordPat(m) => m,
-            Self::Pat(m) => m,
-            Self::Branch(m) => m,
-            Self::Case(m) => m,
-            Self::If(m) => m,
-            Self::Func(m) => m,
-            Self::Call(m) => m,
-            Self::ExprError(m) => m,
-            Self::Expr(m) => m,
-        }
+        inner!(self)
+    }
+
+    pub fn inner_copied(&self) -> M
+    where
+        M: Copy,
+    {
+        *inner!(self)
+    }
+
+    pub fn inner_cloned(&self) -> M
+    where
+        M: Clone,
+    {
+        inner!(self).clone()
+    }
+
+    pub fn into_inner(self) -> M {
+        inner!(self)
     }
 }

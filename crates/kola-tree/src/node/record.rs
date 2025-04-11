@@ -2,14 +2,8 @@ use kola_print::prelude::*;
 use owo_colors::OwoColorize;
 use serde::{Deserialize, Serialize};
 
-use super::{Expr, InnerNode, Name, Node};
-use crate::{
-    Phase,
-    id::NodeId,
-    meta::{Attached, Meta},
-    print::TreePrinter,
-    tree::NodeContainer,
-};
+use super::{Expr, Name};
+use crate::{id::NodeId, print::TreePrinter, tree::NodeContainer};
 
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Property {
@@ -24,44 +18,6 @@ impl Property {
 
     pub fn value<'a>(&self, tree: &'a impl NodeContainer) -> &'a Expr {
         self.value.get(tree)
-    }
-}
-
-impl InnerNode for Property {
-    fn to_inner_ref(node: &Node) -> Option<&Self> {
-        match node {
-            Node::Property(p) => Some(p),
-            _ => None,
-        }
-    }
-
-    fn to_inner_mut(node: &mut Node) -> Option<&mut Self> {
-        match node {
-            Node::Property(p) => Some(p),
-            _ => None,
-        }
-    }
-}
-
-impl<P: Phase> Attached<P> for Property {
-    type Meta = P::Property;
-
-    fn into_meta(attached: Self::Meta) -> Meta<P> {
-        Meta::Property(attached)
-    }
-
-    fn to_attached_ref(meta: &Meta<P>) -> Option<&Self::Meta> {
-        match meta {
-            Meta::Property(m) => Some(m),
-            _ => None,
-        }
-    }
-
-    fn to_attached_mut(meta: &mut Meta<P>) -> Option<&mut Self::Meta> {
-        match meta {
-            Meta::Property(m) => Some(m),
-            _ => None,
-        }
     }
 }
 
@@ -97,17 +53,6 @@ impl Printable<TreePrinter> for Property {
     }
 }
 
-impl TryFrom<Node> for Property {
-    type Error = ();
-
-    fn try_from(value: Node) -> Result<Self, Self::Error> {
-        match value {
-            Node::Property(p) => Ok(p),
-            _ => Err(()),
-        }
-    }
-}
-
 // { x = 10, y = 20 }
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct Record {
@@ -127,44 +72,6 @@ impl Record {
     }
 }
 
-impl InnerNode for Record {
-    fn to_inner_ref(node: &Node) -> Option<&Self> {
-        match node {
-            Node::Record(r) => Some(r),
-            _ => None,
-        }
-    }
-
-    fn to_inner_mut(node: &mut Node) -> Option<&mut Self> {
-        match node {
-            Node::Record(r) => Some(r),
-            _ => None,
-        }
-    }
-}
-
-impl<P: Phase> Attached<P> for Record {
-    type Meta = P::Record;
-
-    fn into_meta(attached: Self::Meta) -> Meta<P> {
-        Meta::Record(attached)
-    }
-
-    fn to_attached_ref(meta: &Meta<P>) -> Option<&Self::Meta> {
-        match meta {
-            Meta::Record(m) => Some(m),
-            _ => None,
-        }
-    }
-
-    fn to_attached_mut(meta: &mut Meta<P>) -> Option<&mut Self::Meta> {
-        match meta {
-            Meta::Record(m) => Some(m),
-            _ => None,
-        }
-    }
-}
-
 impl Printable<TreePrinter> for Record {
     fn notate<'a>(&'a self, with: &'a TreePrinter, arena: &'a Bump) -> Notation<'a> {
         let head = "Record".blue().display_in(arena);
@@ -178,17 +85,6 @@ impl Printable<TreePrinter> for Record {
         let multi = fields.concat_map(|field| arena.newline().then(field, arena), arena);
 
         head.then(single.or(multi, arena), arena)
-    }
-}
-
-impl TryFrom<Node> for Record {
-    type Error = ();
-
-    fn try_from(value: Node) -> Result<Self, Self::Error> {
-        match value {
-            Node::Record(r) => Ok(r),
-            _ => Err(()),
-        }
     }
 }
 
@@ -211,44 +107,6 @@ impl RecordExtend {
 
     pub fn value<'a>(&self, tree: &'a impl NodeContainer) -> &'a Expr {
         self.value.get(tree)
-    }
-}
-
-impl InnerNode for RecordExtend {
-    fn to_inner_ref(node: &Node) -> Option<&Self> {
-        match node {
-            Node::RecordExtend(r) => Some(r),
-            _ => None,
-        }
-    }
-
-    fn to_inner_mut(node: &mut Node) -> Option<&mut Self> {
-        match node {
-            Node::RecordExtend(r) => Some(r),
-            _ => None,
-        }
-    }
-}
-
-impl<P: Phase> Attached<P> for RecordExtend {
-    type Meta = P::RecordExtend;
-
-    fn into_meta(attached: Self::Meta) -> Meta<P> {
-        Meta::RecordExtend(attached)
-    }
-
-    fn to_attached_ref(meta: &Meta<P>) -> Option<&Self::Meta> {
-        match meta {
-            Meta::RecordExtend(m) => Some(m),
-            _ => None,
-        }
-    }
-
-    fn to_attached_mut(meta: &mut Meta<P>) -> Option<&mut Self::Meta> {
-        match meta {
-            Meta::RecordExtend(m) => Some(m),
-            _ => None,
-        }
     }
 }
 
@@ -294,17 +152,6 @@ impl Printable<TreePrinter> for RecordExtend {
     }
 }
 
-impl TryFrom<Node> for RecordExtend {
-    type Error = ();
-
-    fn try_from(value: Node) -> Result<Self, Self::Error> {
-        match value {
-            Node::RecordExtend(r) => Ok(r),
-            _ => Err(()),
-        }
-    }
-}
-
 // { y | -x }
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct RecordRestrict {
@@ -319,44 +166,6 @@ impl RecordRestrict {
 
     pub fn field<'a>(&self, tree: &'a impl NodeContainer) -> &'a Name {
         self.field.get(tree)
-    }
-}
-
-impl InnerNode for RecordRestrict {
-    fn to_inner_ref(node: &Node) -> Option<&Self> {
-        match node {
-            Node::RecordRestrict(r) => Some(r),
-            _ => None,
-        }
-    }
-
-    fn to_inner_mut(node: &mut Node) -> Option<&mut Self> {
-        match node {
-            Node::RecordRestrict(r) => Some(r),
-            _ => None,
-        }
-    }
-}
-
-impl<P: Phase> Attached<P> for RecordRestrict {
-    type Meta = P::RecordRestrict;
-
-    fn into_meta(attached: Self::Meta) -> Meta<P> {
-        Meta::RecordRestrict(attached)
-    }
-
-    fn to_attached_ref(meta: &Meta<P>) -> Option<&Self::Meta> {
-        match meta {
-            Meta::RecordRestrict(m) => Some(m),
-            _ => None,
-        }
-    }
-
-    fn to_attached_mut(meta: &mut Meta<P>) -> Option<&mut Self::Meta> {
-        match meta {
-            Meta::RecordRestrict(m) => Some(m),
-            _ => None,
-        }
     }
 }
 
@@ -392,17 +201,6 @@ impl Printable<TreePrinter> for RecordRestrict {
     }
 }
 
-impl TryFrom<Node> for RecordRestrict {
-    type Error = ();
-
-    fn try_from(value: Node) -> Result<Self, Self::Error> {
-        match value {
-            Node::RecordRestrict(r) => Ok(r),
-            _ => Err(()),
-        }
-    }
-}
-
 // x.y.z
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct RecordSelect {
@@ -417,44 +215,6 @@ impl RecordSelect {
 
     pub fn field<'a>(&self, tree: &'a impl NodeContainer) -> &'a Name {
         self.field.get(tree)
-    }
-}
-
-impl InnerNode for RecordSelect {
-    fn to_inner_ref(node: &Node) -> Option<&Self> {
-        match node {
-            Node::RecordSelect(s) => Some(s),
-            _ => None,
-        }
-    }
-
-    fn to_inner_mut(node: &mut Node) -> Option<&mut Self> {
-        match node {
-            Node::RecordSelect(s) => Some(s),
-            _ => None,
-        }
-    }
-}
-
-impl<P: Phase> Attached<P> for RecordSelect {
-    type Meta = P::RecordSelect;
-
-    fn into_meta(attached: Self::Meta) -> Meta<P> {
-        Meta::RecordSelect(attached)
-    }
-
-    fn to_attached_ref(meta: &Meta<P>) -> Option<&Self::Meta> {
-        match meta {
-            Meta::RecordSelect(m) => Some(m),
-            _ => None,
-        }
-    }
-
-    fn to_attached_mut(meta: &mut Meta<P>) -> Option<&mut Self::Meta> {
-        match meta {
-            Meta::RecordSelect(m) => Some(m),
-            _ => None,
-        }
     }
 }
 
@@ -490,17 +250,6 @@ impl Printable<TreePrinter> for RecordSelect {
     }
 }
 
-impl TryFrom<Node> for RecordSelect {
-    type Error = ();
-
-    fn try_from(value: Node) -> Result<Self, Self::Error> {
-        match value {
-            Node::RecordSelect(r) => Ok(r),
-            _ => Err(()),
-        }
-    }
-}
-
 // { y | x = 10 }
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct RecordUpdate {
@@ -520,44 +269,6 @@ impl RecordUpdate {
 
     pub fn value<'a>(&self, tree: &'a impl NodeContainer) -> &'a Expr {
         self.value.get(tree)
-    }
-}
-
-impl InnerNode for RecordUpdate {
-    fn to_inner_ref(node: &Node) -> Option<&Self> {
-        match node {
-            Node::RecordUpdate(u) => Some(u),
-            _ => None,
-        }
-    }
-
-    fn to_inner_mut(node: &mut Node) -> Option<&mut Self> {
-        match node {
-            Node::RecordUpdate(u) => Some(u),
-            _ => None,
-        }
-    }
-}
-
-impl<P: Phase> Attached<P> for RecordUpdate {
-    type Meta = P::RecordUpdate;
-
-    fn into_meta(attached: Self::Meta) -> Meta<P> {
-        Meta::RecordUpdate(attached)
-    }
-
-    fn to_attached_ref(meta: &Meta<P>) -> Option<&Self::Meta> {
-        match meta {
-            Meta::RecordUpdate(m) => Some(m),
-            _ => None,
-        }
-    }
-
-    fn to_attached_mut(meta: &mut Meta<P>) -> Option<&mut Self::Meta> {
-        match meta {
-            Meta::RecordUpdate(m) => Some(m),
-            _ => None,
-        }
     }
 }
 
@@ -600,16 +311,5 @@ impl Printable<TreePrinter> for RecordUpdate {
         .indent(arena);
 
         head.then(single.or(multi, arena), arena)
-    }
-}
-
-impl TryFrom<Node> for RecordUpdate {
-    type Error = ();
-
-    fn try_from(value: Node) -> Result<Self, Self::Error> {
-        match value {
-            Node::RecordUpdate(r) => Ok(r),
-            _ => Err(()),
-        }
     }
 }

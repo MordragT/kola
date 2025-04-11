@@ -1,17 +1,14 @@
+use derive_more::From;
 use kola_print::prelude::*;
+use kola_utils::as_variant;
 use owo_colors::OwoColorize;
 use serde::{Deserialize, Serialize};
 
 use super::{
-    Binary, Call, Case, Func, Ident, If, InnerNode, Let, List, Literal, Node, Record, RecordExtend,
-    RecordRestrict, RecordSelect, RecordUpdate, Unary,
+    Binary, Call, Case, Func, Ident, If, Let, List, Literal, Record, RecordExtend, RecordRestrict,
+    RecordSelect, RecordUpdate, Unary,
 };
-use crate::{
-    Phase,
-    id::NodeId,
-    meta::{Attached, Meta},
-    print::TreePrinter,
-};
+use crate::{id::NodeId, print::TreePrinter};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct ExprError;
@@ -22,29 +19,7 @@ impl Printable<TreePrinter> for ExprError {
     }
 }
 
-impl<P: Phase> Attached<P> for ExprError {
-    type Meta = P::ExprError;
-
-    fn into_meta(attached: Self::Meta) -> Meta<P> {
-        Meta::ExprError(attached)
-    }
-
-    fn to_attached_ref(meta: &Meta<P>) -> Option<&Self::Meta> {
-        match meta {
-            Meta::ExprError(m) => Some(m),
-            _ => None,
-        }
-    }
-
-    fn to_attached_mut(meta: &mut Meta<P>) -> Option<&mut Self::Meta> {
-        match meta {
-            Meta::ExprError(m) => Some(m),
-            _ => None,
-        }
-    }
-}
-
-#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize, From)]
 pub enum Expr {
     Error(ExprError),
     Literal(NodeId<Literal>),
@@ -62,44 +37,6 @@ pub enum Expr {
     Case(NodeId<Case>),
     Func(NodeId<Func>),
     Call(NodeId<Call>),
-}
-
-impl InnerNode for Expr {
-    fn to_inner_ref(node: &Node) -> Option<&Self> {
-        match node {
-            Node::Expr(e) => Some(e),
-            _ => None,
-        }
-    }
-
-    fn to_inner_mut(node: &mut Node) -> Option<&mut Self> {
-        match node {
-            Node::Expr(e) => Some(e),
-            _ => None,
-        }
-    }
-}
-
-impl<P: Phase> Attached<P> for Expr {
-    type Meta = P::Expr;
-
-    fn into_meta(attached: Self::Meta) -> Meta<P> {
-        Meta::Expr(attached)
-    }
-
-    fn to_attached_ref(meta: &Meta<P>) -> Option<&Self::Meta> {
-        match meta {
-            Meta::Expr(m) => Some(m),
-            _ => None,
-        }
-    }
-
-    fn to_attached_mut(meta: &mut Meta<P>) -> Option<&mut Self::Meta> {
-        match meta {
-            Meta::Expr(m) => Some(m),
-            _ => None,
-        }
-    }
 }
 
 impl Printable<TreePrinter> for Expr {
@@ -125,317 +62,216 @@ impl Printable<TreePrinter> for Expr {
     }
 }
 
-impl TryFrom<Node> for Expr {
-    type Error = ();
-
-    fn try_from(value: Node) -> Result<Self, ()> {
-        match value {
-            Node::Expr(e) => Ok(e),
-            _ => Err(()),
-        }
-    }
-}
-
 // TODO Function Call
 
 impl Expr {
     pub fn as_error(&self) -> Option<&ExprError> {
-        match self {
-            Self::Error(e) => Some(e),
-            _ => None,
-        }
+        as_variant!(self, Self::Error)
     }
 
     pub fn as_literal(&self) -> Option<&NodeId<Literal>> {
-        match self {
-            Self::Literal(l) => Some(l),
-            _ => None,
-        }
+        as_variant!(self, Self::Literal)
     }
 
     pub fn as_ident(&self) -> Option<&NodeId<Ident>> {
-        match self {
-            Self::Ident(i) => Some(i),
-            _ => None,
-        }
+        as_variant!(self, Self::Ident)
     }
 
     pub fn as_list(&self) -> Option<&NodeId<List>> {
-        match self {
-            Self::List(l) => Some(l),
-            _ => None,
-        }
+        as_variant!(self, Self::List)
     }
 
     pub fn as_record(&self) -> Option<&NodeId<Record>> {
-        match self {
-            Self::Record(r) => Some(r),
-            _ => None,
-        }
+        as_variant!(self, Self::Record)
     }
 
     pub fn as_record_select(&self) -> Option<&NodeId<RecordSelect>> {
-        match self {
-            Self::RecordSelect(s) => Some(s),
-            _ => None,
-        }
+        as_variant!(self, Self::RecordSelect)
     }
 
     pub fn as_record_extend(&self) -> Option<&NodeId<RecordExtend>> {
-        match self {
-            Self::RecordExtend(e) => Some(e),
-            _ => None,
-        }
+        as_variant!(self, Self::RecordExtend)
     }
 
     pub fn as_record_update(&self) -> Option<&NodeId<RecordUpdate>> {
-        match self {
-            Self::RecordUpdate(u) => Some(u),
-            _ => None,
-        }
+        as_variant!(self, Self::RecordUpdate)
     }
 
     pub fn as_unary(&self) -> Option<&NodeId<Unary>> {
-        match self {
-            Self::Unary(u) => Some(u),
-            _ => None,
-        }
+        as_variant!(self, Self::Unary)
     }
 
     pub fn as_binary(&self) -> Option<&NodeId<Binary>> {
-        match self {
-            Self::Binary(b) => Some(b),
-            _ => None,
-        }
+        as_variant!(self, Self::Binary)
     }
 
     pub fn as_let(&self) -> Option<&NodeId<Let>> {
-        match self {
-            Self::Let(l) => Some(l),
-            _ => None,
-        }
+        as_variant!(self, Self::Let)
     }
 
     pub fn as_if(&self) -> Option<&NodeId<If>> {
-        match self {
-            Self::If(i) => Some(i),
-            _ => None,
-        }
+        as_variant!(self, Self::If)
     }
 
     pub fn as_case(&self) -> Option<&NodeId<Case>> {
-        match self {
-            Self::Case(c) => Some(c),
-            _ => None,
-        }
+        as_variant!(self, Self::Case)
     }
 
     pub fn as_func(&self) -> Option<&NodeId<Func>> {
-        match self {
-            Self::Func(f) => Some(f),
-            _ => None,
-        }
+        as_variant!(self, Self::Func)
     }
 
     pub fn as_call(&self) -> Option<&NodeId<Call>> {
-        match self {
-            Self::Call(c) => Some(c),
-            _ => None,
-        }
+        as_variant!(self, Self::Call)
     }
 
     pub fn into_error(self) -> Option<ExprError> {
-        match self {
-            Self::Error(e) => Some(e),
-            _ => None,
-        }
+        as_variant!(self, Self::Error)
     }
 
     pub fn into_literal(self) -> Option<NodeId<Literal>> {
-        match self {
-            Self::Literal(l) => Some(l),
-            _ => None,
-        }
+        as_variant!(self, Self::Literal)
     }
 
     pub fn into_ident(self) -> Option<NodeId<Ident>> {
-        match self {
-            Self::Ident(i) => Some(i),
-            _ => None,
-        }
+        as_variant!(self, Self::Ident)
     }
 
     pub fn into_list(self) -> Option<NodeId<List>> {
-        match self {
-            Self::List(l) => Some(l),
-            _ => None,
-        }
+        as_variant!(self, Self::List)
     }
 
     pub fn into_record(self) -> Option<NodeId<Record>> {
-        match self {
-            Self::Record(r) => Some(r),
-            _ => None,
-        }
+        as_variant!(self, Self::Record)
     }
 
     pub fn into_record_select(self) -> Option<NodeId<RecordSelect>> {
-        match self {
-            Self::RecordSelect(s) => Some(s),
-            _ => None,
-        }
+        as_variant!(self, Self::RecordSelect)
     }
 
     pub fn into_record_extend(self) -> Option<NodeId<RecordExtend>> {
-        match self {
-            Self::RecordExtend(e) => Some(e),
-            _ => None,
-        }
+        as_variant!(self, Self::RecordExtend)
     }
 
     pub fn into_record_update(self) -> Option<NodeId<RecordUpdate>> {
-        match self {
-            Self::RecordUpdate(u) => Some(u),
-            _ => None,
-        }
+        as_variant!(self, Self::RecordUpdate)
     }
 
     pub fn into_unary(self) -> Option<NodeId<Unary>> {
-        match self {
-            Self::Unary(u) => Some(u),
-            _ => None,
-        }
+        as_variant!(self, Self::Unary)
     }
 
     pub fn into_binary(self) -> Option<NodeId<Binary>> {
-        match self {
-            Self::Binary(b) => Some(b),
-            _ => None,
-        }
+        as_variant!(self, Self::Binary)
     }
 
     pub fn into_let(self) -> Option<NodeId<Let>> {
-        match self {
-            Self::Let(l) => Some(l),
-            _ => None,
-        }
+        as_variant!(self, Self::Let)
     }
 
     pub fn into_if(self) -> Option<NodeId<If>> {
-        match self {
-            Self::If(i) => Some(i),
-            _ => None,
-        }
+        as_variant!(self, Self::If)
     }
 
     pub fn into_case(self) -> Option<NodeId<Case>> {
-        match self {
-            Self::Case(c) => Some(c),
-            _ => None,
-        }
+        as_variant!(self, Self::Case)
     }
 
     pub fn into_func(self) -> Option<NodeId<Func>> {
-        match self {
-            Self::Func(f) => Some(f),
-            _ => None,
-        }
+        as_variant!(self, Self::Func)
     }
 
     pub fn into_call(self) -> Option<NodeId<Call>> {
-        match self {
-            Self::Call(c) => Some(c),
-            _ => None,
-        }
+        as_variant!(self, Self::Call)
     }
 }
 
-impl From<NodeId<Ident>> for Expr {
-    fn from(value: NodeId<Ident>) -> Self {
-        Self::Ident(value)
-    }
-}
+// impl From<NodeId<Ident>> for Expr {
+//     fn from(value: NodeId<Ident>) -> Self {
+//         Self::Ident(value)
+//     }
+// }
 
-impl From<NodeId<Literal>> for Expr {
-    fn from(value: NodeId<Literal>) -> Self {
-        Self::Literal(value)
-    }
-}
+// impl From<NodeId<Literal>> for Expr {
+//     fn from(value: NodeId<Literal>) -> Self {
+//         Self::Literal(value)
+//     }
+// }
 
-impl From<NodeId<List>> for Expr {
-    fn from(value: NodeId<List>) -> Self {
-        Self::List(value)
-    }
-}
+// impl From<NodeId<List>> for Expr {
+//     fn from(value: NodeId<List>) -> Self {
+//         Self::List(value)
+//     }
+// }
 
-impl From<NodeId<Record>> for Expr {
-    fn from(value: NodeId<Record>) -> Self {
-        Self::Record(value)
-    }
-}
+// impl From<NodeId<Record>> for Expr {
+//     fn from(value: NodeId<Record>) -> Self {
+//         Self::Record(value)
+//     }
+// }
 
-impl From<NodeId<RecordSelect>> for Expr {
-    fn from(value: NodeId<RecordSelect>) -> Self {
-        Self::RecordSelect(value)
-    }
-}
+// impl From<NodeId<RecordSelect>> for Expr {
+//     fn from(value: NodeId<RecordSelect>) -> Self {
+//         Self::RecordSelect(value)
+//     }
+// }
 
-impl From<NodeId<RecordExtend>> for Expr {
-    fn from(value: NodeId<RecordExtend>) -> Self {
-        Self::RecordExtend(value)
-    }
-}
+// impl From<NodeId<RecordExtend>> for Expr {
+//     fn from(value: NodeId<RecordExtend>) -> Self {
+//         Self::RecordExtend(value)
+//     }
+// }
 
-impl From<NodeId<RecordRestrict>> for Expr {
-    fn from(value: NodeId<RecordRestrict>) -> Self {
-        Self::RecordRestrict(value)
-    }
-}
+// impl From<NodeId<RecordRestrict>> for Expr {
+//     fn from(value: NodeId<RecordRestrict>) -> Self {
+//         Self::RecordRestrict(value)
+//     }
+// }
 
-impl From<NodeId<RecordUpdate>> for Expr {
-    fn from(value: NodeId<RecordUpdate>) -> Self {
-        Self::RecordUpdate(value)
-    }
-}
+// impl From<NodeId<RecordUpdate>> for Expr {
+//     fn from(value: NodeId<RecordUpdate>) -> Self {
+//         Self::RecordUpdate(value)
+//     }
+// }
 
-impl From<NodeId<Unary>> for Expr {
-    fn from(value: NodeId<Unary>) -> Self {
-        Self::Unary(value)
-    }
-}
+// impl From<NodeId<Unary>> for Expr {
+//     fn from(value: NodeId<Unary>) -> Self {
+//         Self::Unary(value)
+//     }
+// }
 
-impl From<NodeId<Binary>> for Expr {
-    fn from(value: NodeId<Binary>) -> Self {
-        Self::Binary(value)
-    }
-}
+// impl From<NodeId<Binary>> for Expr {
+//     fn from(value: NodeId<Binary>) -> Self {
+//         Self::Binary(value)
+//     }
+// }
 
-impl From<NodeId<Let>> for Expr {
-    fn from(value: NodeId<Let>) -> Self {
-        Self::Let(value)
-    }
-}
+// impl From<NodeId<Let>> for Expr {
+//     fn from(value: NodeId<Let>) -> Self {
+//         Self::Let(value)
+//     }
+// }
 
-impl From<NodeId<If>> for Expr {
-    fn from(value: NodeId<If>) -> Self {
-        Self::If(value)
-    }
-}
+// impl From<NodeId<If>> for Expr {
+//     fn from(value: NodeId<If>) -> Self {
+//         Self::If(value)
+//     }
+// }
 
-impl From<NodeId<Case>> for Expr {
-    fn from(value: NodeId<Case>) -> Self {
-        Self::Case(value)
-    }
-}
+// impl From<NodeId<Case>> for Expr {
+//     fn from(value: NodeId<Case>) -> Self {
+//         Self::Case(value)
+//     }
+// }
 
-impl From<NodeId<Func>> for Expr {
-    fn from(value: NodeId<Func>) -> Self {
-        Self::Func(value)
-    }
-}
+// impl From<NodeId<Func>> for Expr {
+//     fn from(value: NodeId<Func>) -> Self {
+//         Self::Func(value)
+//     }
+// }
 
-impl From<NodeId<Call>> for Expr {
-    fn from(value: NodeId<Call>) -> Self {
-        Self::Call(value)
-    }
-}
+// impl From<NodeId<Call>> for Expr {
+//     fn from(value: NodeId<Call>) -> Self {
+//         Self::Call(value)
+//     }
+// }

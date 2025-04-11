@@ -1,8 +1,9 @@
 use kola_print::prelude::*;
+use kola_utils::TryAsRef;
 
 use crate::{
     id::NodeId,
-    node::InnerNode,
+    node::Node,
     tree::{NodeContainer, Tree},
 };
 
@@ -39,7 +40,8 @@ impl TreePrinter {
 
     pub fn decorate<'a, T>(&'a self, id: NodeId<T>, arena: &'a Bump) -> Notation<'a>
     where
-        T: InnerNode + Printable<Self> + 'a,
+        Node: TryAsRef<T>,
+        T: Printable<Self> + 'a,
     {
         let mut notation = self.tree.node::<T>(id).notate(&self, arena);
 

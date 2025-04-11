@@ -1,17 +1,18 @@
 use std::rc::Rc;
 
+use kola_utils::{TryAsMut, TryAsRef};
+
 use crate::{
     Phase,
     id::NodeId,
-    kind::NodeKind,
     meta::Meta,
-    node::{Expr, InnerNode, Node},
+    node::{Expr, Node},
 };
 
 pub trait NodeContainer {
     fn node<T>(&self, id: NodeId<T>) -> &T
     where
-        T: InnerNode;
+        Node: TryAsRef<T>;
 }
 
 #[derive(Debug)]
@@ -28,10 +29,10 @@ impl Default for TreeBuilder {
 impl NodeContainer for TreeBuilder {
     fn node<T>(&self, id: NodeId<T>) -> &T
     where
-        T: InnerNode,
+        Node: TryAsRef<T>,
     {
         let node = &self.nodes[id.as_usize()];
-        T::to_inner_ref(node).unwrap()
+        node.try_as_ref().unwrap()
     }
 }
 
@@ -42,22 +43,22 @@ impl TreeBuilder {
 
     pub fn node_mut<T>(&mut self, id: NodeId<T>) -> &mut T
     where
-        T: InnerNode,
+        Node: TryAsMut<T>,
     {
         let node = &mut self.nodes[id.as_usize()];
-        T::to_inner_mut(node).unwrap()
+        node.try_as_mut().unwrap()
     }
 
     pub fn update_node<T>(&mut self, id: NodeId<T>, node: T) -> T
     where
-        T: InnerNode,
+        Node: TryAsMut<T>,
     {
         std::mem::replace(self.node_mut(id), node)
     }
 
     pub fn insert<T>(&mut self, node: T) -> NodeId<T>
     where
-        T: Into<Node>,
+        Node: From<T>,
     {
         let id = self.nodes.len() as u32;
 
@@ -85,10 +86,10 @@ pub struct Tree {
 impl NodeContainer for Tree {
     fn node<T>(&self, id: NodeId<T>) -> &T
     where
-        T: InnerNode,
+        Node: TryAsRef<T>,
     {
         let node = &self.nodes[id.as_usize()];
-        T::to_inner_ref(node).unwrap()
+        node.try_as_ref().unwrap()
     }
 }
 

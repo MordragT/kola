@@ -2,17 +2,18 @@
 members = ["crates/*"]
 
 [workspace.dependencies]
-ecow = { version = "0.2.3", features = ["serde"] }
-serde = { version = "1.0", features = ["derive"] }
-thiserror = "2.0"
-owo-colors = "4.1"
-miette = "7.4.0"
 kola-print = { path = "crates/kola-print" }
 kola-tree = { path = "crates/kola-tree" }
 kola-syntax = { path = "crates/kola-syntax" }
 kola-utils = { path = "crates/kola-utils" }
 kola-semantic = { path = "crates/kola-semantic" }
 kola-compiler = { path = "crates/kola-compiler" }
+ecow = { version = "0.2.3", features = ["serde"] }
+serde = { version = "1.0", features = ["derive"] }
+derive_more = { version = "2.0", features = ["from", "try_into"] }
+thiserror = "2.0"
+owo-colors = "4.1"
+miette = "7.4.0"
 
 
 [package]

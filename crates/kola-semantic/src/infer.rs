@@ -167,14 +167,14 @@ impl Inferer {
 
     fn update_type<T>(&mut self, id: NodeId<T>, t: T::Meta) -> T::Meta
     where
-        T: Attached<SemanticPhase>,
+        T: MetaCast<SemanticPhase>,
     {
         self.types.update_meta(id, t)
     }
 
     fn span<T>(&self, id: NodeId<T>) -> Span
     where
-        T: Attached<SyntaxPhase, Meta = Span>,
+        T: MetaCast<SyntaxPhase, Meta = Span>,
     {
         *self.spans.meta(id)
     }
@@ -254,7 +254,7 @@ impl Visitor for Inferer {
     // Abstraction rule
     // τ = newvar()
     // Γ, x : τ ⊢ e : τ'
-    // ___________________
+    // --------------------
     // Γ ⊢ \x -> e : t -> t'
     fn walk_func(
         &mut self,

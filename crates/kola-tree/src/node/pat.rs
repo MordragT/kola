@@ -1,15 +1,10 @@
+use derive_more::From;
 use kola_print::prelude::*;
 use owo_colors::OwoColorize;
 use serde::{Deserialize, Serialize};
 
-use super::{InnerNode, Literal, Name, Node, Symbol};
-use crate::{
-    Phase,
-    id::NodeId,
-    meta::{Attached, Meta},
-    print::TreePrinter,
-    tree::NodeContainer,
-};
+use super::{Literal, Name, Symbol};
+use crate::{id::NodeId, print::TreePrinter, tree::NodeContainer};
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct PatError;
@@ -20,95 +15,8 @@ impl Printable<TreePrinter> for PatError {
     }
 }
 
-impl InnerNode for PatError {
-    fn to_inner_ref(node: &Node) -> Option<&Self> {
-        match node {
-            Node::PatError(e) => Some(e),
-            _ => None,
-        }
-    }
-
-    fn to_inner_mut(node: &mut Node) -> Option<&mut Self> {
-        match node {
-            Node::PatError(e) => Some(e),
-            _ => None,
-        }
-    }
-}
-
-impl<P: Phase> Attached<P> for PatError {
-    type Meta = P::PatError;
-
-    fn into_meta(attached: Self::Meta) -> Meta<P> {
-        Meta::PatError(attached)
-    }
-
-    fn to_attached_ref(meta: &Meta<P>) -> Option<&Self::Meta> {
-        match meta {
-            Meta::PatError(m) => Some(m),
-            _ => None,
-        }
-    }
-
-    fn to_attached_mut(meta: &mut Meta<P>) -> Option<&mut Self::Meta> {
-        match meta {
-            Meta::PatError(m) => Some(m),
-            _ => None,
-        }
-    }
-}
-
-impl TryFrom<Node> for PatError {
-    type Error = ();
-
-    fn try_from(value: Node) -> Result<Self, Self::Error> {
-        match value {
-            Node::PatError(e) => Ok(e),
-            _ => Err(()),
-        }
-    }
-}
-
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct Wildcard;
-
-impl InnerNode for Wildcard {
-    fn to_inner_ref(node: &Node) -> Option<&Self> {
-        match node {
-            Node::Wildcard(w) => Some(w),
-            _ => None,
-        }
-    }
-
-    fn to_inner_mut(node: &mut Node) -> Option<&mut Self> {
-        match node {
-            Node::Wildcard(w) => Some(w),
-            _ => None,
-        }
-    }
-}
-
-impl<P: Phase> Attached<P> for Wildcard {
-    type Meta = P::Wildcard;
-
-    fn into_meta(attached: Self::Meta) -> Meta<P> {
-        Meta::Wildcard(attached)
-    }
-
-    fn to_attached_ref(meta: &Meta<P>) -> Option<&Self::Meta> {
-        match meta {
-            Meta::Wildcard(m) => Some(m),
-            _ => None,
-        }
-    }
-
-    fn to_attached_mut(meta: &mut Meta<P>) -> Option<&mut Self::Meta> {
-        match meta {
-            Meta::Wildcard(m) => Some(m),
-            _ => None,
-        }
-    }
-}
 
 impl Printable<TreePrinter> for Wildcard {
     fn notate<'a>(&'a self, _with: &'a TreePrinter, arena: &'a Bump) -> Notation<'a> {
@@ -116,57 +24,8 @@ impl Printable<TreePrinter> for Wildcard {
     }
 }
 
-impl TryFrom<Node> for Wildcard {
-    type Error = ();
-
-    fn try_from(value: Node) -> Result<Self, Self::Error> {
-        match value {
-            Node::Wildcard(w) => Ok(w),
-            _ => Err(()),
-        }
-    }
-}
-
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct LiteralPat(pub Literal);
-
-impl InnerNode for LiteralPat {
-    fn to_inner_ref(node: &Node) -> Option<&Self> {
-        match node {
-            Node::LiteralPat(l) => Some(l),
-            _ => None,
-        }
-    }
-
-    fn to_inner_mut(node: &mut Node) -> Option<&mut Self> {
-        match node {
-            Node::LiteralPat(l) => Some(l),
-            _ => None,
-        }
-    }
-}
-
-impl<P: Phase> Attached<P> for LiteralPat {
-    type Meta = P::LiteralPat;
-
-    fn into_meta(attached: Self::Meta) -> Meta<P> {
-        Meta::LiteralPat(attached)
-    }
-
-    fn to_attached_ref(meta: &Meta<P>) -> Option<&Self::Meta> {
-        match meta {
-            Meta::LiteralPat(m) => Some(m),
-            _ => None,
-        }
-    }
-
-    fn to_attached_mut(meta: &mut Meta<P>) -> Option<&mut Self::Meta> {
-        match meta {
-            Meta::LiteralPat(m) => Some(m),
-            _ => None,
-        }
-    }
-}
 
 impl Printable<TreePrinter> for LiteralPat {
     fn notate<'a>(&'a self, _with: &'a TreePrinter, arena: &'a Bump) -> Notation<'a> {
@@ -187,17 +46,6 @@ impl Printable<TreePrinter> for LiteralPat {
     }
 }
 
-impl TryFrom<Node> for LiteralPat {
-    type Error = ();
-
-    fn try_from(value: Node) -> Result<Self, Self::Error> {
-        match value {
-            Node::LiteralPat(l) => Ok(l),
-            _ => Err(()),
-        }
-    }
-}
-
 #[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
 pub struct IdentPat(pub Symbol);
 
@@ -210,44 +58,6 @@ impl PartialEq<Symbol> for IdentPat {
 impl PartialEq<str> for IdentPat {
     fn eq(&self, other: &str) -> bool {
         self.0.as_str() == other
-    }
-}
-
-impl InnerNode for IdentPat {
-    fn to_inner_ref(node: &Node) -> Option<&Self> {
-        match node {
-            Node::IdentPat(i) => Some(i),
-            _ => None,
-        }
-    }
-
-    fn to_inner_mut(node: &mut Node) -> Option<&mut Self> {
-        match node {
-            Node::IdentPat(i) => Some(i),
-            _ => None,
-        }
-    }
-}
-
-impl<P: Phase> Attached<P> for IdentPat {
-    type Meta = P::IdentPat;
-
-    fn into_meta(attached: Self::Meta) -> Meta<P> {
-        Meta::IdentPat(attached)
-    }
-
-    fn to_attached_ref(meta: &Meta<P>) -> Option<&Self::Meta> {
-        match meta {
-            Meta::IdentPat(m) => Some(m),
-            _ => None,
-        }
-    }
-
-    fn to_attached_mut(meta: &mut Meta<P>) -> Option<&mut Self::Meta> {
-        match meta {
-            Meta::IdentPat(m) => Some(m),
-            _ => None,
-        }
     }
 }
 
@@ -268,17 +78,6 @@ impl Printable<TreePrinter> for IdentPat {
     }
 }
 
-impl TryFrom<Node> for IdentPat {
-    type Error = ();
-
-    fn try_from(value: Node) -> Result<Self, Self::Error> {
-        match value {
-            Node::IdentPat(i) => Ok(i),
-            _ => Err(()),
-        }
-    }
-}
-
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct PropertyPat {
     pub key: NodeId<Name>,
@@ -288,44 +87,6 @@ pub struct PropertyPat {
 impl PropertyPat {
     pub fn value<'a>(&self, tree: &'a impl NodeContainer) -> Option<&'a Pat> {
         self.value.map(|id| id.get(tree))
-    }
-}
-
-impl InnerNode for PropertyPat {
-    fn to_inner_ref(node: &Node) -> Option<&Self> {
-        match node {
-            Node::PropertyPat(p) => Some(p),
-            _ => None,
-        }
-    }
-
-    fn to_inner_mut(node: &mut Node) -> Option<&mut Self> {
-        match node {
-            Node::PropertyPat(p) => Some(p),
-            _ => None,
-        }
-    }
-}
-
-impl<P: Phase> Attached<P> for PropertyPat {
-    type Meta = P::PropertyPat;
-
-    fn into_meta(attached: Self::Meta) -> Meta<P> {
-        Meta::PropertyPat(attached)
-    }
-
-    fn to_attached_ref(meta: &Meta<P>) -> Option<&Self::Meta> {
-        match meta {
-            Meta::PropertyPat(m) => Some(m),
-            _ => None,
-        }
-    }
-
-    fn to_attached_mut(meta: &mut Meta<P>) -> Option<&mut Self::Meta> {
-        match meta {
-            Meta::PropertyPat(m) => Some(m),
-            _ => None,
-        }
     }
 }
 
@@ -363,17 +124,6 @@ impl Printable<TreePrinter> for PropertyPat {
     }
 }
 
-impl TryFrom<Node> for PropertyPat {
-    type Error = ();
-
-    fn try_from(value: Node) -> Result<Self, Self::Error> {
-        match value {
-            Node::PropertyPat(p) => Ok(p),
-            _ => Err(()),
-        }
-    }
-}
-
 #[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
 pub struct RecordPat {
     pub fields: Vec<NodeId<PropertyPat>>,
@@ -389,44 +139,6 @@ impl RecordPat {
             let p = p.get(tree);
             (p.key.get(tree) == name.as_ref()).then_some(p)
         })
-    }
-}
-
-impl InnerNode for RecordPat {
-    fn to_inner_ref(node: &Node) -> Option<&Self> {
-        match node {
-            Node::RecordPat(r) => Some(r),
-            _ => None,
-        }
-    }
-
-    fn to_inner_mut(node: &mut Node) -> Option<&mut Self> {
-        match node {
-            Node::RecordPat(r) => Some(r),
-            _ => None,
-        }
-    }
-}
-
-impl<P: Phase> Attached<P> for RecordPat {
-    type Meta = P::RecordPat;
-
-    fn into_meta(attached: Self::Meta) -> Meta<P> {
-        Meta::RecordPat(attached)
-    }
-
-    fn to_attached_ref(meta: &Meta<P>) -> Option<&Self::Meta> {
-        match meta {
-            Meta::RecordPat(m) => Some(m),
-            _ => None,
-        }
-    }
-
-    fn to_attached_mut(meta: &mut Meta<P>) -> Option<&mut Self::Meta> {
-        match meta {
-            Meta::RecordPat(m) => Some(m),
-            _ => None,
-        }
     }
 }
 
@@ -446,62 +158,13 @@ impl Printable<TreePrinter> for RecordPat {
     }
 }
 
-impl TryFrom<Node> for RecordPat {
-    type Error = ();
-
-    fn try_from(value: Node) -> Result<Self, Self::Error> {
-        match value {
-            Node::RecordPat(r) => Ok(r),
-            _ => Err(()),
-        }
-    }
-}
-
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, From)]
 pub enum Pat {
     Error(PatError),
     Wildcard(Wildcard),
     Literal(LiteralPat),
     Ident(IdentPat),
     Record(RecordPat),
-}
-
-impl InnerNode for Pat {
-    fn to_inner_ref(node: &Node) -> Option<&Self> {
-        match node {
-            Node::Pat(p) => Some(p),
-            _ => None,
-        }
-    }
-
-    fn to_inner_mut(node: &mut Node) -> Option<&mut Self> {
-        match node {
-            Node::Pat(p) => Some(p),
-            _ => None,
-        }
-    }
-}
-
-impl<P: Phase> Attached<P> for Pat {
-    type Meta = P::Pat;
-
-    fn into_meta(attached: Self::Meta) -> Meta<P> {
-        Meta::Pat(attached)
-    }
-
-    fn to_attached_ref(meta: &Meta<P>) -> Option<&Self::Meta> {
-        match meta {
-            Meta::Pat(m) => Some(m),
-            _ => None,
-        }
-    }
-
-    fn to_attached_mut(meta: &mut Meta<P>) -> Option<&mut Self::Meta> {
-        match meta {
-            Meta::Pat(m) => Some(m),
-            _ => None,
-        }
-    }
 }
 
 impl Printable<TreePrinter> for Pat {
@@ -512,17 +175,6 @@ impl Printable<TreePrinter> for Pat {
             Self::Literal(l) => l.notate(with, arena),
             Self::Ident(i) => i.notate(with, arena),
             Self::Record(r) => r.notate(with, arena),
-        }
-    }
-}
-
-impl TryFrom<Node> for Pat {
-    type Error = ();
-
-    fn try_from(value: Node) -> Result<Self, ()> {
-        match value {
-            Node::Pat(p) => Ok(p),
-            _ => Err(()),
         }
     }
 }
@@ -616,29 +268,5 @@ impl Pat {
             Self::Record(r) => Some(r),
             _ => None,
         }
-    }
-}
-
-impl From<Wildcard> for Pat {
-    fn from(value: Wildcard) -> Self {
-        Self::Wildcard(value)
-    }
-}
-
-impl From<LiteralPat> for Pat {
-    fn from(value: LiteralPat) -> Self {
-        Self::Literal(value)
-    }
-}
-
-impl From<IdentPat> for Pat {
-    fn from(value: IdentPat) -> Self {
-        Self::Ident(value)
-    }
-}
-
-impl From<RecordPat> for Pat {
-    fn from(value: RecordPat) -> Self {
-        Self::Record(value)
     }
 }

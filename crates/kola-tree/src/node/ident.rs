@@ -2,12 +2,8 @@ use kola_print::prelude::*;
 use owo_colors::OwoColorize;
 use serde::{Deserialize, Serialize};
 
-use super::{InnerNode, Node, Symbol};
-use crate::{
-    Phase,
-    meta::{Attached, Meta},
-    print::TreePrinter,
-};
+use super::Symbol;
+use crate::print::TreePrinter;
 
 #[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct Ident(pub Symbol);
@@ -56,44 +52,6 @@ impl From<String> for Ident {
     }
 }
 
-impl InnerNode for Ident {
-    fn to_inner_ref(node: &Node) -> Option<&Self> {
-        match node {
-            Node::Ident(i) => Some(i),
-            _ => None,
-        }
-    }
-
-    fn to_inner_mut(node: &mut Node) -> Option<&mut Self> {
-        match node {
-            Node::Ident(i) => Some(i),
-            _ => None,
-        }
-    }
-}
-
-impl<P: Phase> Attached<P> for Ident {
-    type Meta = P::Ident;
-
-    fn into_meta(attached: Self::Meta) -> Meta<P> {
-        Meta::Ident(attached)
-    }
-
-    fn to_attached_ref(meta: &Meta<P>) -> Option<&Self::Meta> {
-        match meta {
-            Meta::Ident(m) => Some(m),
-            _ => None,
-        }
-    }
-
-    fn to_attached_mut(meta: &mut Meta<P>) -> Option<&mut Self::Meta> {
-        match meta {
-            Meta::Ident(m) => Some(m),
-            _ => None,
-        }
-    }
-}
-
 impl Printable<TreePrinter> for Ident {
     fn notate<'a>(&'a self, _with: &'a TreePrinter, arena: &'a Bump) -> Notation<'a> {
         let head = "Ident".cyan().display_in(arena);
@@ -108,16 +66,5 @@ impl Printable<TreePrinter> for Ident {
         let multi = [arena.newline(), ident].concat_in(arena).indent(arena);
 
         head.then(single.or(multi, arena), arena)
-    }
-}
-
-impl TryFrom<Node> for Ident {
-    type Error = ();
-
-    fn try_from(value: Node) -> Result<Self, Self::Error> {
-        match value {
-            Node::Ident(i) => Ok(i),
-            _ => Err(()),
-        }
     }
 }

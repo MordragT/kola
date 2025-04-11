@@ -11,7 +11,8 @@ where
     #[inline]
     fn to_node(self) -> impl Parser<'src, I, NodeId<T>, Extra<'src>>
     where
-        T: InnerNode + Attached<SyntaxPhase, Meta = Span>,
+        Node: From<T>,
+        T: MetaCast<SyntaxPhase, Meta = Span>,
     {
         self.map_with(|node, e| {
             let span = e.span();
@@ -23,7 +24,8 @@ where
     #[inline]
     fn to_expr(self) -> impl Parser<'src, I, NodeId<node::Expr>, Extra<'src>>
     where
-        T: InnerNode + Attached<SyntaxPhase, Meta = Span>,
+        Node: From<T>,
+        T: MetaCast<SyntaxPhase, Meta = Span>,
         node::Expr: From<NodeId<T>>,
     {
         self.map_with(|node, e| {
