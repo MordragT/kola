@@ -9,7 +9,7 @@ use crate::{
     tree::{NodeContainer, TreeBuilder},
 };
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct If {
     pub predicate: NodeId<Expr>,
     pub then: NodeId<Expr>,
@@ -89,7 +89,7 @@ impl Printable<TreePrinter> for If {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct Branch {
     pub pat: NodeId<Pat>,
     pub matches: NodeId<Expr>,
@@ -137,7 +137,7 @@ impl Printable<TreePrinter> for Branch {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct Case {
     pub source: NodeId<Ident>,
     pub branches: Vec<NodeId<Branch>>,

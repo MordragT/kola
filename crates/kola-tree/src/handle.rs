@@ -43,6 +43,14 @@ pub trait Handler: Sized {
             Call(call) => self.handle_call(call, NodeId::from_usize(id)),
             ExprError(error) => self.handle_expr_error(error, NodeId::from_usize(id)),
             Expr(expr) => self.handle_expr(expr, NodeId::from_usize(id)),
+            TypeError(error) => self.handle_type_error(error, NodeId::from_usize(id)),
+            TypeIdent(name) => self.handle_type_ident(name, NodeId::from_usize(id)),
+            PropertyType(property) => self.handle_property_type(property, NodeId::from_usize(id)),
+            RecordType(record) => self.handle_record_type(record, NodeId::from_usize(id)),
+            FuncType(func) => self.handle_func_type(func, NodeId::from_usize(id)),
+            MonoType(mono) => self.handle_mono_type(mono, NodeId::from_usize(id)),
+            PolyType(poly) => self.handle_poly_type(poly, NodeId::from_usize(id)),
+            TypeAlias(alias) => self.handle_type_alias(alias, NodeId::from_usize(id)),
         }
     }
 
@@ -262,6 +270,70 @@ pub trait Handler: Sized {
         &mut self,
         _expr: &node::Expr,
         _id: NodeId<node::Expr>,
+    ) -> Result<(), Self::Error> {
+        Ok(())
+    }
+
+    fn handle_type_error(
+        &mut self,
+        _error: &node::TypeError,
+        _id: NodeId<node::TypeError>,
+    ) -> Result<(), Self::Error> {
+        Ok(())
+    }
+
+    fn handle_type_ident(
+        &mut self,
+        _name: &node::TypeIdent,
+        _id: NodeId<node::TypeIdent>,
+    ) -> Result<(), Self::Error> {
+        Ok(())
+    }
+
+    fn handle_property_type(
+        &mut self,
+        _property: &node::PropertyType,
+        _id: NodeId<node::PropertyType>,
+    ) -> Result<(), Self::Error> {
+        Ok(())
+    }
+
+    fn handle_record_type(
+        &mut self,
+        _record: &node::RecordType,
+        _id: NodeId<node::RecordType>,
+    ) -> Result<(), Self::Error> {
+        Ok(())
+    }
+
+    fn handle_func_type(
+        &mut self,
+        _func: &node::FuncType,
+        _id: NodeId<node::FuncType>,
+    ) -> Result<(), Self::Error> {
+        Ok(())
+    }
+
+    fn handle_mono_type(
+        &mut self,
+        _mono: &node::MonoType,
+        _id: NodeId<node::MonoType>,
+    ) -> Result<(), Self::Error> {
+        Ok(())
+    }
+
+    fn handle_poly_type(
+        &mut self,
+        _poly: &node::PolyType,
+        _id: NodeId<node::PolyType>,
+    ) -> Result<(), Self::Error> {
+        Ok(())
+    }
+
+    fn handle_type_alias(
+        &mut self,
+        _alias: &node::TypeAlias,
+        _id: NodeId<node::TypeAlias>,
     ) -> Result<(), Self::Error> {
         Ok(())
     }

@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use super::{Expr, Name};
 use crate::{id::NodeId, print::TreePrinter, tree::NodeContainer};
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct Property {
     pub key: NodeId<Name>,
     pub value: NodeId<Expr>,
@@ -54,7 +54,7 @@ impl Printable<TreePrinter> for Property {
 }
 
 // { x = 10, y = 20 }
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct Record {
     pub fields: Vec<NodeId<Property>>,
 }
@@ -89,7 +89,7 @@ impl Printable<TreePrinter> for Record {
 }
 
 // { y | +x = 10 }
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct RecordExtend {
     pub source: NodeId<Expr>,
     pub field: NodeId<Name>,
@@ -153,7 +153,7 @@ impl Printable<TreePrinter> for RecordExtend {
 }
 
 // { y | -x }
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct RecordRestrict {
     pub source: NodeId<Expr>,
     pub field: NodeId<Name>,
@@ -202,7 +202,7 @@ impl Printable<TreePrinter> for RecordRestrict {
 }
 
 // x.y.z
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct RecordSelect {
     pub source: NodeId<Expr>,
     pub field: NodeId<Name>,
@@ -251,7 +251,7 @@ impl Printable<TreePrinter> for RecordSelect {
 }
 
 // { y | x = 10 }
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct RecordUpdate {
     pub source: NodeId<Expr>,
     pub field: NodeId<Name>,

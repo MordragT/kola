@@ -1,3 +1,4 @@
+use derive_more::From;
 use kola_print::prelude::*;
 use owo_colors::OwoColorize;
 use serde::{Deserialize, Serialize};
@@ -5,7 +6,8 @@ use serde::{Deserialize, Serialize};
 use super::Symbol;
 use crate::print::TreePrinter;
 
-#[derive(Clone, Debug, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, From, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[from(forward)]
 pub struct Ident(pub Symbol);
 
 impl Ident {
@@ -13,14 +15,6 @@ impl Ident {
         self.0.as_str()
     }
 }
-
-// impl Deref for Ident {
-//     type Target = Symbol;
-
-//     fn deref(&self) -> &Self::Target {
-//         &self.0
-//     }
-// }
 
 impl PartialEq<Symbol> for Ident {
     fn eq(&self, other: &Symbol) -> bool {
@@ -31,24 +25,6 @@ impl PartialEq<Symbol> for Ident {
 impl PartialEq<str> for Ident {
     fn eq(&self, other: &str) -> bool {
         self.0.as_str() == other
-    }
-}
-
-impl From<Symbol> for Ident {
-    fn from(value: Symbol) -> Self {
-        Self(value)
-    }
-}
-
-impl<'a> From<&'a str> for Ident {
-    fn from(value: &'a str) -> Self {
-        Self(Symbol::from(value))
-    }
-}
-
-impl From<String> for Ident {
-    fn from(value: String) -> Self {
-        Self(Symbol::from(value))
     }
 }
 

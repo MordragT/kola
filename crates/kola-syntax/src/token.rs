@@ -120,6 +120,7 @@ pub enum Token<'src> {
     Else,
     Case,
     Of,
+    Forall,
     Import,
     Export,
     // Control
@@ -153,6 +154,7 @@ impl<'src> fmt::Display for Token<'src> {
             Self::Else => write!(f, "else"),
             Self::Case => write!(f, "case"),
             Self::Of => write!(f, "of"),
+            Self::Forall => write!(f, "forall"),
             Self::Import => write!(f, "import"),
             Self::Export => write!(f, "export"),
             Self::Open(Delimiter::Paren) => write!(f, "("),
@@ -188,6 +190,7 @@ impl<'src> Token<'src> {
             | Self::Else
             | Self::Case
             | Self::Of
+            | Self::Forall
             | Self::Import
             | Self::Export => TokenKind::Keyword,
             Self::Open(_)

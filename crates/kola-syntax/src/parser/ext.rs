@@ -22,25 +22,37 @@ where
     }
 
     #[inline]
-    fn to_expr(self) -> impl Parser<'src, I, NodeId<node::Expr>, Extra<'src>>
+    fn map_to_node<F, U>(self, f: F) -> impl Parser<'src, I, NodeId<U>, Extra<'src>>
     where
-        Node: From<T>,
-        T: MetaCast<SyntaxPhase, Meta = Span>,
-        node::Expr: From<NodeId<T>>,
+        F: Fn(T) -> U,
+        U: MetaCast<SyntaxPhase, Meta = Span>,
+        Node: From<U>,
     {
-        self.map_with(|node, e| {
-            let span = e.span();
-            let state: &mut State = e.state();
-            state.insert_expr(node, span)
-        })
+        self.map(f).to_node()
     }
 
     #[inline]
-    fn to_pat(self) -> impl Parser<'src, I, node::Pat, Extra<'src>>
+    fn to_expr(self) -> impl Parser<'src, I, NodeId<node::Expr>, Extra<'src>>
     where
-        T: Into<node::Pat>,
+        node::Expr: From<T>,
     {
-        self.map(Into::into)
+        self.map(node::Expr::from).to_node()
+    }
+
+    #[inline]
+    fn to_pat(self) -> impl Parser<'src, I, NodeId<node::Pat>, Extra<'src>>
+    where
+        node::Pat: From<T>,
+    {
+        self.map(node::Pat::from).to_node()
+    }
+
+    #[inline]
+    fn to_mono_type(self) -> impl Parser<'src, I, NodeId<node::MonoType>, Extra<'src>>
+    where
+        node::MonoType: From<T>,
+    {
+        self.map(node::MonoType::from).to_node()
     }
 }
 

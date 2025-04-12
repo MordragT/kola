@@ -114,7 +114,7 @@ pub trait Visitor: Handler {
     ) -> Result<(), Self::Error> {
         let list = id.get(tree);
 
-        for id in &list.values {
+        for id in &list.0 {
             stack.push_branch(*id);
         }
 
@@ -426,8 +426,7 @@ pub trait Visitor: Handler {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::kind::NodeKind;
-    use crate::node;
+    use crate::node::{self, NodeKind};
     use crate::tree::TreeBuilder;
 
     #[derive(Debug, Clone, Default)]

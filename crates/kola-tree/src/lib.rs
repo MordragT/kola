@@ -1,6 +1,5 @@
 pub mod handle;
 pub mod id;
-pub mod kind;
 pub mod meta;
 pub mod node;
 pub mod print;
@@ -11,9 +10,8 @@ pub mod prelude {
     pub use crate::Phase;
     pub use crate::handle::Handler;
     pub use crate::id::NodeId;
-    pub use crate::kind::NodeKind;
     pub use crate::meta::{Meta, MetaCast, MetaContainer, MetaVec, Metadata};
-    pub use crate::node::{self, Node};
+    pub use crate::node::{self, Node, NodeKind};
     pub use crate::print::{Decorator, TreePrinter};
     pub use crate::tree::{NodeContainer, Tree, TreeBuilder};
     pub use crate::visit::{Event, EventStack, Visitor};
@@ -51,6 +49,14 @@ pub trait Phase: 'static + Debug + Copy {
     type Call: Debug + Clone;
     type ExprError: Debug + Clone;
     type Expr: Debug + Clone;
+    type TypeError: Debug + Clone;
+    type TypeIdent: Debug + Clone;
+    type PropertyType: Debug + Clone;
+    type RecordType: Debug + Clone;
+    type FuncType: Debug + Clone;
+    type MonoType: Debug + Clone;
+    type PolyType: Debug + Clone;
+    type TypeAlias: Debug + Clone;
 }
 
 pub trait UniformPhase: 'static + Debug + Copy {
@@ -87,4 +93,12 @@ impl<T: UniformPhase> Phase for T {
     type Call = T::Meta;
     type ExprError = T::Meta;
     type Expr = T::Meta;
+    type TypeError = T::Meta;
+    type TypeIdent = T::Meta;
+    type PropertyType = T::Meta;
+    type RecordType = T::Meta;
+    type FuncType = T::Meta;
+    type MonoType = T::Meta;
+    type PolyType = T::Meta;
+    type TypeAlias = T::Meta;
 }

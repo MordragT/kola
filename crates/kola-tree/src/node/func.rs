@@ -5,7 +5,7 @@ use serde::{Deserialize, Serialize};
 use super::{Expr, Ident};
 use crate::{id::NodeId, print::TreePrinter, tree::NodeContainer};
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct Func {
     pub param: NodeId<Ident>,
     pub body: NodeId<Expr>,

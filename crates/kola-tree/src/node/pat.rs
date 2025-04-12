@@ -1,12 +1,13 @@
 use derive_more::From;
 use kola_print::prelude::*;
+use kola_utils::as_variant;
 use owo_colors::OwoColorize;
 use serde::{Deserialize, Serialize};
 
 use super::{Literal, Name, Symbol};
 use crate::{id::NodeId, print::TreePrinter, tree::NodeContainer};
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct PatError;
 
 impl Printable<TreePrinter> for PatError {
@@ -15,7 +16,7 @@ impl Printable<TreePrinter> for PatError {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct Wildcard;
 
 impl Printable<TreePrinter> for Wildcard {
@@ -24,7 +25,7 @@ impl Printable<TreePrinter> for Wildcard {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, From, Clone, PartialEq, PartialOrd, Serialize, Deserialize)]
 pub struct LiteralPat(pub Literal);
 
 impl Printable<TreePrinter> for LiteralPat {
@@ -46,7 +47,8 @@ impl Printable<TreePrinter> for LiteralPat {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, From, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[from(forward)]
 pub struct IdentPat(pub Symbol);
 
 impl PartialEq<Symbol> for IdentPat {
@@ -78,7 +80,7 @@ impl Printable<TreePrinter> for IdentPat {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct PropertyPat {
     pub key: NodeId<Name>,
     pub value: Option<NodeId<Pat>>,
@@ -124,7 +126,7 @@ impl Printable<TreePrinter> for PropertyPat {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct RecordPat {
     pub fields: Vec<NodeId<PropertyPat>>,
 }
@@ -158,13 +160,13 @@ impl Printable<TreePrinter> for RecordPat {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize, From)]
+#[derive(Debug, From, Clone, Copy, PartialEq, PartialOrd, Serialize, Deserialize)]
 pub enum Pat {
-    Error(PatError),
-    Wildcard(Wildcard),
-    Literal(LiteralPat),
-    Ident(IdentPat),
-    Record(RecordPat),
+    Error(NodeId<PatError>),
+    Wildcard(NodeId<Wildcard>),
+    Literal(NodeId<LiteralPat>),
+    Ident(NodeId<IdentPat>),
+    Record(NodeId<RecordPat>),
 }
 
 impl Printable<TreePrinter> for Pat {
@@ -180,93 +182,53 @@ impl Printable<TreePrinter> for Pat {
 }
 
 impl Pat {
-    pub fn as_error(&self) -> Option<&PatError> {
-        match self {
-            Self::Error(e) => Some(e),
-            _ => None,
-        }
+    #[inline]
+    pub fn to_error(self) -> Option<NodeId<PatError>> {
+        as_variant!(self, Self::Error)
     }
 
-    pub fn as_wildcard(&self) -> Option<&Wildcard> {
-        match self {
-            Self::Wildcard(w) => Some(w),
-            _ => None,
-        }
+    #[inline]
+    pub fn to_wildcard(self) -> Option<NodeId<Wildcard>> {
+        as_variant!(self, Self::Wildcard)
     }
 
-    pub fn as_literal(&self) -> Option<&LiteralPat> {
-        match self {
-            Self::Literal(l) => Some(l),
-            _ => None,
-        }
+    #[inline]
+    pub fn to_literal(self) -> Option<NodeId<LiteralPat>> {
+        as_variant!(self, Self::Literal)
     }
 
-    pub fn as_ident(&self) -> Option<&IdentPat> {
-        match self {
-            Self::Ident(i) => Some(i),
-            _ => None,
-        }
+    #[inline]
+    pub fn to_ident(self) -> Option<NodeId<IdentPat>> {
+        as_variant!(self, Self::Ident)
     }
 
-    pub fn as_record(&self) -> Option<&RecordPat> {
-        match self {
-            Self::Record(r) => Some(r),
-            _ => None,
-        }
+    #[inline]
+    pub fn to_record(self) -> Option<NodeId<RecordPat>> {
+        as_variant!(self, Self::Record)
     }
 
-    pub fn is_error(&self) -> bool {
-        self.as_error().is_some()
+    #[inline]
+    pub fn is_error(self) -> bool {
+        matches!(self, Self::Error(_))
     }
 
-    pub fn is_wildcard(&self) -> bool {
-        self.as_wildcard().is_some()
+    #[inline]
+    pub fn is_wildcard(self) -> bool {
+        matches!(self, Self::Wildcard(_))
     }
 
-    pub fn is_literal(&self) -> bool {
-        self.as_literal().is_some()
+    #[inline]
+    pub fn is_literal(self) -> bool {
+        matches!(self, Self::Literal(_))
     }
 
-    pub fn is_ident(&self) -> bool {
-        self.as_ident().is_some()
+    #[inline]
+    pub fn is_ident(self) -> bool {
+        matches!(self, Self::Ident(_))
     }
 
-    pub fn is_record(&self) -> bool {
-        self.as_record().is_some()
-    }
-
-    pub fn into_error(self) -> Option<PatError> {
-        match self {
-            Self::Error(e) => Some(e),
-            _ => None,
-        }
-    }
-
-    pub fn into_wildcard(self) -> Option<Wildcard> {
-        match self {
-            Self::Wildcard(w) => Some(w),
-            _ => None,
-        }
-    }
-
-    pub fn into_literal(self) -> Option<LiteralPat> {
-        match self {
-            Self::Literal(l) => Some(l),
-            _ => None,
-        }
-    }
-
-    pub fn into_ident(self) -> Option<IdentPat> {
-        match self {
-            Self::Ident(i) => Some(i),
-            _ => None,
-        }
-    }
-
-    pub fn into_record(self) -> Option<RecordPat> {
-        match self {
-            Self::Record(r) => Some(r),
-            _ => None,
-        }
+    #[inline]
+    pub fn is_record(self) -> bool {
+        matches!(self, Self::Record(_))
     }
 }

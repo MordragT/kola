@@ -8,7 +8,7 @@ thiserror.workspace = true
 miette.workspace = true
 owo-colors.workspace = true
 ecow.workspace = true
-chumsky = { version = "=1.0.0-alpha.8", features = [
+chumsky = { version = "0.10", features = [
     # "label",
     "nightly",
     "unstable",

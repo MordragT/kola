@@ -138,7 +138,15 @@ impl_meta_cast!(
     Func,
     Call,
     ExprError,
-    Expr
+    Expr,
+    TypeError,
+    TypeIdent,
+    PropertyType,
+    RecordType,
+    FuncType,
+    MonoType,
+    PolyType,
+    TypeAlias
 );
 
 #[derive(Clone, Debug)]
@@ -172,6 +180,14 @@ pub enum Meta<P: Phase> {
     Call(<node::Call as MetaCast<P>>::Meta),
     ExprError(<node::ExprError as MetaCast<P>>::Meta),
     Expr(<node::Expr as MetaCast<P>>::Meta),
+    TypeError(<node::TypeError as MetaCast<P>>::Meta),
+    TypeIdent(<node::TypeIdent as MetaCast<P>>::Meta),
+    PropertyType(<node::PropertyType as MetaCast<P>>::Meta),
+    RecordType(<node::RecordType as MetaCast<P>>::Meta),
+    FuncType(<node::FuncType as MetaCast<P>>::Meta),
+    MonoType(<node::MonoType as MetaCast<P>>::Meta),
+    PolyType(<node::PolyType as MetaCast<P>>::Meta),
+    TypeAlias(<node::TypeAlias as MetaCast<P>>::Meta),
 }
 
 macro_rules! inner {
@@ -206,6 +222,14 @@ macro_rules! inner {
             Self::Call(m) => m,
             Self::ExprError(m) => m,
             Self::Expr(m) => m,
+            Self::TypeError(m) => m,
+            Self::TypeIdent(m) => m,
+            Self::PropertyType(m) => m,
+            Self::RecordType(m) => m,
+            Self::FuncType(m) => m,
+            Self::MonoType(m) => m,
+            Self::PolyType(m) => m,
+            Self::TypeAlias(m) => m,
         }
     };
 }
@@ -243,6 +267,14 @@ where
             Call = M,
             ExprError = M,
             Expr = M,
+            TypeError = M,
+            TypeIdent = M,
+            PropertyType = M,
+            RecordType = M,
+            FuncType = M,
+            MonoType = M,
+            PolyType = M,
+            TypeAlias = M,
         >,
 {
     pub fn inner_ref(&self) -> &M {

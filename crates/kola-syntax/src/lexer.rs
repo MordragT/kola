@@ -59,29 +59,44 @@ pub fn lexer<'src>() -> impl Parser<'src, &'src str, Vec<Spanned<Token<'src>>>, 
         .then_ignore(just('"'))
         .map(Token::Str);
 
-    let op = choice((
+    // Lexer prioritizes the first defined token when ambiguous
+    // therefore longer tokens must be defined before shorter ones
+
+    // Multi-character operators
+    let multi_op = choice((
+        just("<=").to(Op::LessEq),
+        just(">=").to(Op::GreaterEq),
+        just("==").to(Op::Eq),
+        just("!=").to(Op::NotEq),
+        // Keywords that are operators
+        just("and").to(Op::And),
+        just("or").to(Op::Or),
+        just("xor").to(Op::Xor),
+    ))
+    .map(Token::Op);
+
+    // Single-character operators
+    let single_op = choice((
         just('+').to(Op::Add),
         just('-').to(Op::Sub),
         just('*').to(Op::Mul),
         just('/').to(Op::Div),
         just('%').to(Op::Rem),
-        just("<=").to(Op::LessEq),
         just('<').to(Op::Less),
-        just(">=").to(Op::GreaterEq),
         just('>').to(Op::Greater),
         just('!').to(Op::Not),
-        just("and").to(Op::And),
-        just("or").to(Op::Or),
-        just("xor").to(Op::Xor),
-        just("==").to(Op::Eq),
-        just("!=").to(Op::NotEq),
         just('&').to(Op::Merge),
     ))
     .map(Token::Op);
 
-    let ctrl = choice((
+    // Multi-character control tokens
+    let multi_ctrl = choice((
         just("->").to(Token::Arrow),
         just("=>").to(Token::DoubleArrow),
+    ));
+
+    // Single-character control tokens
+    let single_ctrl = choice((
         just('.').to(Token::Dot),
         just(':').to(Token::Colon),
         just(',').to(Token::Comma),
@@ -92,6 +107,7 @@ pub fn lexer<'src>() -> impl Parser<'src, &'src str, Vec<Spanned<Token<'src>>>, 
         just('_').to(Token::Wildcard),
     ));
 
+    // Delimiters group
     let delim = choice((
         just('(').to(Token::Open(Delimiter::Paren)),
         just(')').to(Token::Close(Delimiter::Paren)),
@@ -101,6 +117,7 @@ pub fn lexer<'src>() -> impl Parser<'src, &'src str, Vec<Spanned<Token<'src>>>, 
         just('}').to(Token::Close(Delimiter::Brace)),
     ));
 
+    // Keywords and identifiers
     let word = text::ident().map(|ident| match ident {
         "let" => Token::Let,
         "in" => Token::In,
@@ -111,12 +128,23 @@ pub fn lexer<'src>() -> impl Parser<'src, &'src str, Vec<Spanned<Token<'src>>>, 
         "of" => Token::Of,
         "import" => Token::Import,
         "export" => Token::Export,
+        "forall" => Token::Forall,
         "true" => Token::Bool(true),
         "false" => Token::Bool(false),
         _ => Token::Symbol(ident),
     });
 
-    let token = choice((num, character, string, op, ctrl, delim, word));
+    let token = choice((
+        num,
+        character,
+        string,
+        multi_op,
+        multi_ctrl,
+        single_op,
+        single_ctrl,
+        delim,
+        word,
+    ));
 
     let comment = just('#')
         .then(any().and_is(just('\n').not()).repeated())

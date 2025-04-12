@@ -41,7 +41,11 @@ impl Source {
     }
 
     pub fn end_of_input(&self) -> Span {
-        Span::new(self.len(), self.len())
+        Span {
+            start: self.len(),
+            end: self.len(),
+            context: (),
+        }
     }
 }
 

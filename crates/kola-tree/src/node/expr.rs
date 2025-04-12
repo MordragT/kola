@@ -10,7 +10,7 @@ use super::{
 };
 use crate::{id::NodeId, print::TreePrinter};
 
-#[derive(Clone, Copy, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct ExprError;
 
 impl Printable<TreePrinter> for ExprError {
@@ -19,9 +19,11 @@ impl Printable<TreePrinter> for ExprError {
     }
 }
 
-#[derive(Clone, Copy, Debug, PartialEq, Serialize, Deserialize, From)]
+#[derive(
+    Debug, From, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+)]
 pub enum Expr {
-    Error(ExprError),
+    Error(NodeId<ExprError>),
     Literal(NodeId<Literal>),
     Ident(NodeId<Ident>),
     List(NodeId<List>),
@@ -42,7 +44,7 @@ pub enum Expr {
 impl Printable<TreePrinter> for Expr {
     fn notate<'a>(&'a self, with: &'a TreePrinter, arena: &'a Bump) -> Notation<'a> {
         match self {
-            Self::Error(e) => e.notate(with, arena),
+            Self::Error(e) => e.get(&with.tree).notate(with, arena),
             Self::Literal(l) => l.get(&with.tree).notate(with, arena),
             Self::Ident(i) => i.get(&with.tree).notate(with, arena),
             Self::List(l) => l.get(&with.tree).notate(with, arena),
@@ -62,216 +64,154 @@ impl Printable<TreePrinter> for Expr {
     }
 }
 
-// TODO Function Call
-
 impl Expr {
-    pub fn as_error(&self) -> Option<&ExprError> {
+    #[inline]
+    pub fn to_error(self) -> Option<NodeId<ExprError>> {
         as_variant!(self, Self::Error)
     }
 
-    pub fn as_literal(&self) -> Option<&NodeId<Literal>> {
+    #[inline]
+    pub fn to_literal(self) -> Option<NodeId<Literal>> {
         as_variant!(self, Self::Literal)
     }
 
-    pub fn as_ident(&self) -> Option<&NodeId<Ident>> {
+    #[inline]
+    pub fn to_ident(self) -> Option<NodeId<Ident>> {
         as_variant!(self, Self::Ident)
     }
 
-    pub fn as_list(&self) -> Option<&NodeId<List>> {
+    #[inline]
+    pub fn to_list(self) -> Option<NodeId<List>> {
         as_variant!(self, Self::List)
     }
 
-    pub fn as_record(&self) -> Option<&NodeId<Record>> {
+    #[inline]
+    pub fn to_record(self) -> Option<NodeId<Record>> {
         as_variant!(self, Self::Record)
     }
 
-    pub fn as_record_select(&self) -> Option<&NodeId<RecordSelect>> {
+    #[inline]
+    pub fn to_record_select(self) -> Option<NodeId<RecordSelect>> {
         as_variant!(self, Self::RecordSelect)
     }
 
-    pub fn as_record_extend(&self) -> Option<&NodeId<RecordExtend>> {
+    #[inline]
+    pub fn to_record_extend(self) -> Option<NodeId<RecordExtend>> {
         as_variant!(self, Self::RecordExtend)
     }
 
-    pub fn as_record_update(&self) -> Option<&NodeId<RecordUpdate>> {
+    #[inline]
+    pub fn to_record_update(self) -> Option<NodeId<RecordUpdate>> {
         as_variant!(self, Self::RecordUpdate)
     }
 
-    pub fn as_unary(&self) -> Option<&NodeId<Unary>> {
+    #[inline]
+    pub fn to_unary(self) -> Option<NodeId<Unary>> {
         as_variant!(self, Self::Unary)
     }
 
-    pub fn as_binary(&self) -> Option<&NodeId<Binary>> {
+    #[inline]
+    pub fn to_binary(self) -> Option<NodeId<Binary>> {
         as_variant!(self, Self::Binary)
     }
 
-    pub fn as_let(&self) -> Option<&NodeId<Let>> {
+    #[inline]
+    pub fn to_let(self) -> Option<NodeId<Let>> {
         as_variant!(self, Self::Let)
     }
 
-    pub fn as_if(&self) -> Option<&NodeId<If>> {
+    #[inline]
+    pub fn to_if(self) -> Option<NodeId<If>> {
         as_variant!(self, Self::If)
     }
 
-    pub fn as_case(&self) -> Option<&NodeId<Case>> {
+    #[inline]
+    pub fn to_case(self) -> Option<NodeId<Case>> {
         as_variant!(self, Self::Case)
     }
 
-    pub fn as_func(&self) -> Option<&NodeId<Func>> {
+    #[inline]
+    pub fn to_func(self) -> Option<NodeId<Func>> {
         as_variant!(self, Self::Func)
     }
 
-    pub fn as_call(&self) -> Option<&NodeId<Call>> {
+    #[inline]
+    pub fn to_call(self) -> Option<NodeId<Call>> {
         as_variant!(self, Self::Call)
     }
 
-    pub fn into_error(self) -> Option<ExprError> {
-        as_variant!(self, Self::Error)
+    #[inline]
+    pub fn is_error(self) -> bool {
+        matches!(self, Self::Error(_))
     }
 
-    pub fn into_literal(self) -> Option<NodeId<Literal>> {
-        as_variant!(self, Self::Literal)
+    #[inline]
+    pub fn is_literal(self) -> bool {
+        matches!(self, Self::Literal(_))
     }
 
-    pub fn into_ident(self) -> Option<NodeId<Ident>> {
-        as_variant!(self, Self::Ident)
+    #[inline]
+    pub fn is_ident(self) -> bool {
+        matches!(self, Self::Ident(_))
     }
 
-    pub fn into_list(self) -> Option<NodeId<List>> {
-        as_variant!(self, Self::List)
+    #[inline]
+    pub fn is_list(self) -> bool {
+        matches!(self, Self::List(_))
     }
 
-    pub fn into_record(self) -> Option<NodeId<Record>> {
-        as_variant!(self, Self::Record)
+    #[inline]
+    pub fn is_record(self) -> bool {
+        matches!(self, Self::Record(_))
     }
 
-    pub fn into_record_select(self) -> Option<NodeId<RecordSelect>> {
-        as_variant!(self, Self::RecordSelect)
+    #[inline]
+    pub fn is_record_select(self) -> bool {
+        matches!(self, Self::RecordSelect(_))
     }
 
-    pub fn into_record_extend(self) -> Option<NodeId<RecordExtend>> {
-        as_variant!(self, Self::RecordExtend)
+    #[inline]
+    pub fn is_record_extend(self) -> bool {
+        matches!(self, Self::RecordExtend(_))
     }
 
-    pub fn into_record_update(self) -> Option<NodeId<RecordUpdate>> {
-        as_variant!(self, Self::RecordUpdate)
+    #[inline]
+    pub fn is_record_update(self) -> bool {
+        matches!(self, Self::RecordUpdate(_))
     }
 
-    pub fn into_unary(self) -> Option<NodeId<Unary>> {
-        as_variant!(self, Self::Unary)
+    #[inline]
+    pub fn is_unary(self) -> bool {
+        matches!(self, Self::Unary(_))
     }
 
-    pub fn into_binary(self) -> Option<NodeId<Binary>> {
-        as_variant!(self, Self::Binary)
+    #[inline]
+    pub fn is_binary(self) -> bool {
+        matches!(self, Self::Binary(_))
     }
 
-    pub fn into_let(self) -> Option<NodeId<Let>> {
-        as_variant!(self, Self::Let)
+    #[inline]
+    pub fn is_let(self) -> bool {
+        matches!(self, Self::Let(_))
     }
 
-    pub fn into_if(self) -> Option<NodeId<If>> {
-        as_variant!(self, Self::If)
+    #[inline]
+    pub fn is_if(self) -> bool {
+        matches!(self, Self::If(_))
     }
 
-    pub fn into_case(self) -> Option<NodeId<Case>> {
-        as_variant!(self, Self::Case)
+    #[inline]
+    pub fn is_case(self) -> bool {
+        matches!(self, Self::Case(_))
     }
 
-    pub fn into_func(self) -> Option<NodeId<Func>> {
-        as_variant!(self, Self::Func)
+    #[inline]
+    pub fn is_func(self) -> bool {
+        matches!(self, Self::Func(_))
     }
 
-    pub fn into_call(self) -> Option<NodeId<Call>> {
-        as_variant!(self, Self::Call)
+    #[inline]
+    pub fn is_call(self) -> bool {
+        matches!(self, Self::Call(_))
     }
 }
-
-// impl From<NodeId<Ident>> for Expr {
-//     fn from(value: NodeId<Ident>) -> Self {
-//         Self::Ident(value)
-//     }
-// }
-
-// impl From<NodeId<Literal>> for Expr {
-//     fn from(value: NodeId<Literal>) -> Self {
-//         Self::Literal(value)
-//     }
-// }
-
-// impl From<NodeId<List>> for Expr {
-//     fn from(value: NodeId<List>) -> Self {
-//         Self::List(value)
-//     }
-// }
-
-// impl From<NodeId<Record>> for Expr {
-//     fn from(value: NodeId<Record>) -> Self {
-//         Self::Record(value)
-//     }
-// }
-
-// impl From<NodeId<RecordSelect>> for Expr {
-//     fn from(value: NodeId<RecordSelect>) -> Self {
-//         Self::RecordSelect(value)
-//     }
-// }
-
-// impl From<NodeId<RecordExtend>> for Expr {
-//     fn from(value: NodeId<RecordExtend>) -> Self {
-//         Self::RecordExtend(value)
-//     }
-// }
-
-// impl From<NodeId<RecordRestrict>> for Expr {
-//     fn from(value: NodeId<RecordRestrict>) -> Self {
-//         Self::RecordRestrict(value)
-//     }
-// }
-
-// impl From<NodeId<RecordUpdate>> for Expr {
-//     fn from(value: NodeId<RecordUpdate>) -> Self {
-//         Self::RecordUpdate(value)
-//     }
-// }
-
-// impl From<NodeId<Unary>> for Expr {
-//     fn from(value: NodeId<Unary>) -> Self {
-//         Self::Unary(value)
-//     }
-// }
-
-// impl From<NodeId<Binary>> for Expr {
-//     fn from(value: NodeId<Binary>) -> Self {
-//         Self::Binary(value)
-//     }
-// }
-
-// impl From<NodeId<Let>> for Expr {
-//     fn from(value: NodeId<Let>) -> Self {
-//         Self::Let(value)
-//     }
-// }
-
-// impl From<NodeId<If>> for Expr {
-//     fn from(value: NodeId<If>) -> Self {
-//         Self::If(value)
-//     }
-// }
-
-// impl From<NodeId<Case>> for Expr {
-//     fn from(value: NodeId<Case>) -> Self {
-//         Self::Case(value)
-//     }
-// }
-
-// impl From<NodeId<Func>> for Expr {
-//     fn from(value: NodeId<Func>) -> Self {
-//         Self::Func(value)
-//     }
-// }
-
-// impl From<NodeId<Call>> for Expr {
-//     fn from(value: NodeId<Call>) -> Self {
-//         Self::Call(value)
-//     }
-// }

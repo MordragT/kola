@@ -1,3 +1,4 @@
+use derive_more::From;
 use kola_print::prelude::*;
 use owo_colors::OwoColorize;
 use serde::{Deserialize, Serialize};
@@ -5,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use super::Symbol;
 use crate::print::TreePrinter;
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, From, Clone, PartialEq, PartialOrd, Serialize, Deserialize)]
 pub enum Literal {
     Bool(bool),
     Num(f64),

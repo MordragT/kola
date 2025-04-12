@@ -28,14 +28,14 @@ impl StateRepr {
         id
     }
 
-    pub fn insert_expr<T>(&mut self, node: T, meta: Span) -> NodeId<node::Expr>
+    pub fn insert_as<U, T>(&mut self, node: T, meta: Span) -> NodeId<U>
     where
-        Node: From<T>,
+        Node: From<T> + From<U>,
         T: MetaCast<SyntaxPhase, Meta = Span>,
-        node::Expr: From<NodeId<T>>,
+        U: From<NodeId<T>> + MetaCast<SyntaxPhase, Meta = Span>,
     {
         let id = self.insert(node, meta.clone());
-        let expr = node::Expr::from(id);
-        self.insert::<node::Expr>(expr, meta)
+        let u = U::from(id);
+        self.insert(u, meta)
     }
 }

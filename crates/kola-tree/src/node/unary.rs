@@ -11,7 +11,7 @@ use crate::{
     tree::{NodeContainer, TreeBuilder},
 };
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub enum UnaryOp {
     Neg,
     Not,
@@ -32,7 +32,7 @@ impl Printable<TreePrinter> for UnaryOp {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct Unary {
     pub op: NodeId<UnaryOp>,
     pub target: NodeId<Expr>, // TODO rename target to arg or something better

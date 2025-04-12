@@ -1,7 +1,8 @@
 pub use ext::ParserExt;
 pub use state::{Extra, State, StateRepr};
 
-pub mod expr;
+pub mod rules;
+
 mod ext;
 mod state;
 
@@ -23,7 +24,7 @@ pub struct ParseResult {
 
 pub fn parse(tokens: Tokens<'_>, eoi: Span) -> ParseResult {
     let input = tokens.as_slice().map(eoi, |(t, s)| (t, s));
-    let parser = expr::expr_parser();
+    let parser = rules::expr_parser();
 
     let mut state = State::from(StateRepr::new());
 

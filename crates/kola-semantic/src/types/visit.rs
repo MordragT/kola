@@ -131,8 +131,8 @@ pub fn walk_func<V>(visitor: &mut V, func: &super::FuncType) -> ControlFlow<V::B
 where
     V: TypeVisitor,
 {
-    visitor.visit_mono(&func.arg)?;
-    visitor.visit_mono(&func.ret)?;
+    visitor.visit_mono(&func.input)?;
+    visitor.visit_mono(&func.output)?;
     ControlFlow::Continue(())
 }
 
@@ -140,8 +140,8 @@ pub fn walk_func_mut<V>(visitor: &mut V, func: &mut super::FuncType) -> ControlF
 where
     V: TypeVisitorMut,
 {
-    visitor.visit_mono_mut(&mut func.arg)?;
-    visitor.visit_mono_mut(&mut func.ret)?;
+    visitor.visit_mono_mut(&mut func.input)?;
+    visitor.visit_mono_mut(&mut func.output)?;
     ControlFlow::Continue(())
 }
 

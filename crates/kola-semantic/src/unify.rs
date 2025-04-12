@@ -126,9 +126,9 @@ impl<'s> Unifier<'s> {
     }
 
     fn unify_func(&mut self, lhs: &FuncType, rhs: &FuncType) {
-        self.unify_mono(&lhs.arg, &rhs.arg);
-        let l = lhs.ret.apply_cow(self.substitution);
-        let r = rhs.ret.apply_cow(self.substitution);
+        self.unify_mono(&lhs.input, &rhs.input);
+        let l = lhs.output.apply_cow(self.substitution);
+        let r = rhs.output.apply_cow(self.substitution);
         self.unify_mono(&l, &r);
     }
 

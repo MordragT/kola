@@ -11,7 +11,7 @@ use crate::{
     tree::{NodeContainer, TreeBuilder},
 };
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub enum BinaryOp {
     Add,
     Sub,
@@ -62,7 +62,7 @@ impl Printable<TreePrinter> for BinaryOp {
     }
 }
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct Binary {
     pub op: NodeId<BinaryOp>,
     pub left: NodeId<Expr>,

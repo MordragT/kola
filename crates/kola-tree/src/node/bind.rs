@@ -9,7 +9,7 @@ use crate::{
     tree::{NodeContainer, TreeBuilder},
 };
 
-#[derive(Clone, Debug, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct Let {
     pub name: NodeId<Name>,
     pub value: NodeId<Expr>,

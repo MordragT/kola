@@ -10,19 +10,19 @@ use crate::{
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct FuncType {
-    pub arg: MonoType,
-    pub ret: MonoType,
+    pub input: MonoType,
+    pub output: MonoType,
 }
 
 impl FuncType {
-    pub fn new(arg: MonoType, ret: MonoType) -> Self {
-        Self { arg, ret }
+    pub fn new(input: MonoType, output: MonoType) -> Self {
+        Self { input, output }
     }
 }
 
 impl fmt::Display for FuncType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{} -> {}", self.arg, self.ret)
+        write!(f, "{} -> {}", self.input, self.output)
     }
 }
 
@@ -37,10 +37,10 @@ impl Typed for FuncType {
 
 impl Substitutable for FuncType {
     fn try_apply(&self, s: &mut Substitution) -> Option<Self> {
-        let arg = self.arg.try_apply(s);
-        let ret = self.ret.try_apply(s);
+        let input = self.input.try_apply(s);
+        let output = self.output.try_apply(s);
 
-        merge(arg, || self.arg.clone(), ret, || self.ret.clone())
-            .map(|(arg, ret)| FuncType { arg, ret })
+        merge(input, || self.input.clone(), output, || self.output.clone())
+            .map(|(input, output)| FuncType { input, output })
     }
 }

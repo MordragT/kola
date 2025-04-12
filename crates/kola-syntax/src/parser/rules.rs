@@ -43,6 +43,13 @@ Callable := Symbol
 CallExpr := '(' Callable Expr ')'
 */
 
+pub fn module_parser<'src, I>() -> impl Parser<'src, I, NodeId<node::Module>, Extra<'src>> + Clone
+where
+    I: ValueInput<'src, Token = Token<'src>, Span = Span>,
+{
+    todo()
+}
+
 pub fn name_parser<'src, I>() -> impl Parser<'src, I, NodeId<node::Name>, Extra<'src>> + Clone
 where
     I: ValueInput<'src, Token = Token<'src>, Span = Span>,
@@ -51,13 +58,6 @@ where
         .map(node::Name)
         .to_node()
         .boxed()
-}
-
-pub fn ident_parser<'src, I>() -> impl Parser<'src, I, node::Ident, Extra<'src>> + Clone
-where
-    I: ValueInput<'src, Token = Token<'src>, Span = Span>,
-{
-    select! { Token::Symbol(s) => node::Symbol::from(s) }.map(node::Ident)
 }
 
 pub fn literal_parser<'src, I>() -> impl Parser<'src, I, node::Literal, Extra<'src>> + Sized
@@ -72,35 +72,30 @@ where
     }
 }
 
-// pub fn type_parser<'src, I>() -> impl Parser<'src, I, node::
-
 pub fn pat_parser<'src, I>() -> impl Parser<'src, I, NodeId<node::Pat>, Extra<'src>> + Clone
 where
     I: ValueInput<'src, Token = Token<'src>, Span = Span>,
 {
     recursive(|pat| {
         let ident = select! { Token::Symbol(s) => node::Symbol::from(s) }
-            .map(node::IdentPat)
-            .to_pat()
-            .to_node();
-        let wildcard = just(Token::Wildcard).to(node::Wildcard).to_pat().to_node();
-        let literal = literal_parser().map(node::LiteralPat).to_pat().to_node();
+            .map_to_node(node::IdentPat)
+            .to_pat();
+        let wildcard = just(Token::Wildcard).to(node::Wildcard).to_node().to_pat();
+        let literal = literal_parser().map_to_node(node::LiteralPat).to_pat();
 
         let property = name_parser()
             .then(just(Token::Colon).ignore_then(pat.clone()).or_not())
-            .map(|(key, value)| node::PropertyPat { key, value })
-            .to_node();
+            .map_to_node(|(key, value)| node::PropertyPat { key, value });
 
         let record = nested_parser(
             property
                 .separated_by(just(Token::Comma))
                 .allow_trailing()
                 .collect()
-                .map(|fields| node::RecordPat { fields })
-                .to_pat()
-                .to_node(),
+                .map_to_node(|fields| node::RecordPat { fields })
+                .to_pat(),
             Delimiter::Brace,
-            |span| node::Pat::Error(node::PatError),
+            |_span| node::PatError,
         );
 
         choice((ident, wildcard, literal, record)).boxed()
@@ -113,9 +108,13 @@ where
     I: ValueInput<'src, Token = Token<'src>, Span = Span>,
 {
     recursive(|expr| {
+        let ident = select! { Token::Symbol(s) => node::Symbol::from(s) }
+            .map_to_node(node::Ident)
+            .boxed();
+
         let name = name_parser();
-        let ident = ident_parser();
         let literal = literal_parser()
+            .to_node()
             .to_expr()
             .labelled("LiteralExpr")
             .as_context();
@@ -125,10 +124,10 @@ where
                 .separated_by(just(Token::Comma))
                 .allow_trailing()
                 .collect()
-                .map(|values| node::List { values })
+                .map_to_node(node::List)
                 .to_expr(),
             Delimiter::Bracket,
-            |span| node::Expr::Error(node::ExprError),
+            |_span| node::ExprError,
         )
         .labelled("ListExpr")
         .as_context();
@@ -145,7 +144,7 @@ where
             .separated_by(just(Token::Comma))
             .allow_trailing()
             .collect()
-            .map(|fields| node::Record { fields })
+            .map_to_node(|fields| node::Record { fields })
             .to_expr()
             .boxed();
 
@@ -186,7 +185,7 @@ where
                 let tree: &mut State = e.state();
 
                 match op {
-                    RecordOp::Extend(field, value) => tree.insert_expr(
+                    RecordOp::Extend(field, value) => tree.insert_as::<node::Expr, _>(
                         node::RecordExtend {
                             source,
                             field,
@@ -194,10 +193,9 @@ where
                         },
                         span,
                     ),
-                    RecordOp::Restrict(field) => {
-                        tree.insert_expr(node::RecordRestrict { source, field }, span)
-                    }
-                    RecordOp::Update(field, value) => tree.insert_expr(
+                    RecordOp::Restrict(field) => tree
+                        .insert_as::<node::Expr, _>(node::RecordRestrict { source, field }, span),
+                    RecordOp::Update(field, value) => tree.insert_as::<node::Expr, _>(
                         node::RecordUpdate {
                             source,
                             field,
@@ -209,8 +207,8 @@ where
             })
             .boxed();
 
-        let record_expr = nested_parser(record_op.or(instantiate), Delimiter::Brace, |span| {
-            node::Expr::Error(node::ExprError)
+        let record_expr = nested_parser(record_op.or(instantiate), Delimiter::Brace, |_span| {
+            node::ExprError
         })
         .labelled("RecordExpr")
         .as_context();
@@ -221,7 +219,7 @@ where
             .then(expr.clone())
             .then_ignore(just(Token::In))
             .then(expr.clone())
-            .map(|((name, value), inside)| node::Let {
+            .map_to_node(|((name, value), inside)| node::Let {
                 name,
                 value,
                 inside,
@@ -237,7 +235,7 @@ where
             .then(expr.clone())
             .then_ignore(just(Token::Else))
             .then(expr.clone())
-            .map(|((predicate, then), or)| node::If {
+            .map_to_node(|((predicate, then), or)| node::If {
                 predicate,
                 then,
                 or,
@@ -258,20 +256,20 @@ where
             .at_least(1)
             .collect();
         let case = just(Token::Case)
-            .ignore_then(ident.clone().to_node())
+            .ignore_then(ident.clone())
             .then_ignore(just(Token::Of))
             .then(branches)
-            .map(|(source, branches)| node::Case { source, branches })
+            .map_to_node(|(source, branches)| node::Case { source, branches })
             .to_expr()
             .labelled("CaseExpr")
             .as_context()
             .boxed();
 
         let func = just(Token::Backslash)
-            .ignore_then(ident.clone().to_node())
+            .ignore_then(ident.clone())
             .then_ignore(just(Token::DoubleArrow))
             .then(expr.clone())
-            .map(|(param, body)| node::Func { param, body })
+            .map_to_node(|(param, body)| node::Func { param, body })
             .to_expr()
             .labelled("FuncExpr")
             .as_context()
@@ -288,10 +286,10 @@ where
             nested_parser(
                 callable
                     .then(expr.clone())
-                    .map(|(func, arg)| node::Call { func, arg })
+                    .map_to_node(|(func, arg)| node::Call { func, arg })
                     .to_expr(),
                 Delimiter::Paren,
-                |span| node::Expr::Error(node::ExprError),
+                |_span| node::ExprError,
             )
             .boxed()
         })
@@ -318,7 +316,7 @@ where
                 |source, field, e| {
                     let span = e.span();
                     let tree: &mut State = e.state();
-                    tree.insert_expr(node::RecordSelect { source, field }, span)
+                    tree.insert_as::<node::Expr, _>(node::RecordSelect { source, field }, span)
                 },
             )
             .boxed();
@@ -332,7 +330,7 @@ where
             .foldr_with(select, |op, target, e| {
                 let span = e.span();
                 let tree: &mut State = e.state();
-                tree.insert_expr(node::Unary { op, target }, span)
+                tree.insert_as::<node::Expr, _>(node::Unary { op, target }, span)
             })
             .boxed();
 
@@ -347,7 +345,7 @@ where
             .foldl_with(op.then(unary).repeated(), |left, (op, right), e| {
                 let span = e.span();
                 let tree: &mut State = e.state();
-                tree.insert_expr(node::Binary { op, left, right }, span)
+                tree.insert_as::<node::Expr, _>(node::Binary { op, left, right }, span)
             })
             .boxed();
 
@@ -360,7 +358,7 @@ where
             .foldl_with(op.then(product).repeated(), |left, (op, right), e| {
                 let span = e.span();
                 let tree: &mut State = e.state();
-                tree.insert_expr(node::Binary { op, left, right }, span)
+                tree.insert_as::<node::Expr, _>(node::Binary { op, left, right }, span)
             })
             .boxed();
 
@@ -378,7 +376,7 @@ where
             .foldl_with(op.then(sum).repeated(), |left, (op, right), e| {
                 let span = e.span();
                 let tree: &mut State = e.state();
-                tree.insert_expr(node::Binary { op, left, right }, span)
+                tree.insert_as::<node::Expr, _>(node::Binary { op, left, right }, span)
             })
             .boxed();
 
@@ -393,7 +391,7 @@ where
             .foldl_with(op.then(comparison).repeated(), |left, (op, right), e| {
                 let span = e.span();
                 let tree: &mut State = e.state();
-                tree.insert_expr(node::Binary { op, left, right }, span)
+                tree.insert_as::<node::Expr, _>(node::Binary { op, left, right }, span)
             })
             .boxed();
 
@@ -401,15 +399,91 @@ where
     })
     .boxed()
 }
+pub fn mono_type_parser<'src, I>()
+-> impl Parser<'src, I, NodeId<node::MonoType>, Extra<'src>> + Clone
+where
+    I: ValueInput<'src, Token = Token<'src>, Span = Span>,
+{
+    recursive(|ty| {
+        let type_ident = select! { Token::Symbol(s) => node::TypeIdent::from(s) }
+            .to_node()
+            .to_mono_type();
 
-pub fn nested_parser<'src, I, T>(
+        let property = name_parser()
+            .then_ignore(just(Token::Colon))
+            .then(ty.clone())
+            .map_to_node(|(name, ty)| node::PropertyType { name, ty });
+
+        let record = nested_parser(
+            property
+                .separated_by(just(Token::Comma))
+                .allow_trailing()
+                .collect()
+                .map_to_node(node::RecordType)
+                .to_mono_type(),
+            Delimiter::Brace,
+            |_span| node::TypeError,
+        );
+
+        let atom = type_ident.or(record);
+
+        let func = atom
+            .foldl_with(
+                just(Token::Arrow).ignore_then(ty).repeated(),
+                |input, output, e| {
+                    let span = e.span();
+                    let tree: &mut State = e.state();
+
+                    tree.insert_as::<node::MonoType, _>(node::FuncType { input, output }, span)
+                },
+            )
+            .boxed();
+
+        func
+    })
+}
+
+pub fn poly_type_parser<'src, I>()
+-> impl Parser<'src, I, NodeId<node::PolyType>, Extra<'src>> + Clone
+where
+    I: ValueInput<'src, Token = Token<'src>, Span = Span>,
+{
+    let type_ident = select! { Token::Symbol(s) => node::TypeIdent::from(s) }.to_node();
+
+    just(Token::Forall)
+        .ignore_then(type_ident.repeated().at_least(1).collect())
+        .then_ignore(just(Token::Dot))
+        .or_not()
+        .then(mono_type_parser())
+        .map_to_node(|(vars, ty)| node::PolyType {
+            vars: vars.unwrap_or_default(),
+            ty,
+        })
+        .boxed()
+}
+
+pub fn type_alias_parser<'src, I>()
+-> impl Parser<'src, I, NodeId<node::TypeAlias>, Extra<'src>> + Clone
+where
+    I: ValueInput<'src, Token = Token<'src>, Span = Span>,
+{
+    select! { Token::Symbol(s) => node::TypeIdent::from(s) }
+        .to_node()
+        .then_ignore(just(Token::Colon))
+        .then(poly_type_parser())
+        .map_to_node(|(alias, ty)| node::TypeAlias { alias, ty })
+        .boxed()
+}
+
+pub fn nested_parser<'src, I, T, U>(
     parser: impl Parser<'src, I, NodeId<T>, Extra<'src>> + 'src,
     delim: Delimiter,
-    fallback: impl Fn(Span) -> T + Clone + 'src,
+    fallback: impl Fn(Span) -> U + Clone + 'src,
 ) -> impl Parser<'src, I, NodeId<T>, Extra<'src>> + Clone
 where
-    Node: From<T>,
-    T: MetaCast<SyntaxPhase, Meta = Span> + 'src,
+    Node: From<T> + From<U>,
+    T: From<NodeId<U>> + MetaCast<SyntaxPhase, Meta = Span> + 'src,
+    U: MetaCast<SyntaxPhase, Meta = Span> + 'src,
     I: ValueInput<'src, Token = Token<'src>, Span = Span>,
 {
     parser
@@ -434,6 +508,8 @@ where
                 ],
                 fallback,
             )
+            .to_node()
+            .map(T::from)
             .to_node(),
         ))
         .boxed()
@@ -445,7 +521,7 @@ mod tests {
 
     use kola_tree::prelude::*;
 
-    use super::{expr_parser, pat_parser};
+    use super::{expr_parser, mono_type_parser, pat_parser, poly_type_parser, type_alias_parser};
     use crate::{lexer::lexer, parser::try_parse_with};
 
     #[test]
@@ -457,15 +533,15 @@ mod tests {
 
         let (pat, tree, _spans) = try_parse_with(input, pat_parser()).unwrap();
 
-        let record = pat.get(&tree).as_record().unwrap();
+        let record = pat.get(&tree).to_record().unwrap().get(&tree);
 
         let a = record.get("a", &tree).unwrap();
         assert!(a.value.is_some());
-        assert_eq!(a.value(&tree).unwrap().as_ident().unwrap(), "x");
+        assert_eq!(a.value(&tree).unwrap().to_ident().unwrap().get(&tree), "x");
 
         let b = record.get("b", &tree).unwrap();
         assert!(b.value.is_some());
-        let b = b.value(&tree).unwrap().as_record().unwrap();
+        let b = b.value(&tree).unwrap().to_record().unwrap().get(&tree);
         assert!(b.get("y", &tree).unwrap().value.is_none());
 
         let c = record.get("c", &tree).unwrap();
@@ -484,7 +560,7 @@ mod tests {
 
         let (expr, tree, _spans) = try_parse_with(input, expr_parser()).unwrap();
 
-        let node::Case { source, branches } = expr.get(&tree).as_case().unwrap().get(&tree);
+        let node::Case { source, branches } = expr.get(&tree).to_case().unwrap().get(&tree);
 
         assert_eq!(source.get(&tree), "x");
 
@@ -492,13 +568,13 @@ mod tests {
 
         let branch = branches.next().unwrap().get(&tree);
         assert!(branch.pat(&tree).is_wildcard());
-        let matches = branch.matches(&tree).as_literal().unwrap().get(&tree);
+        let matches = branch.matches(&tree).to_literal().unwrap().get(&tree);
         assert_eq!(matches, &node::Literal::Bool(false));
 
         let branch = branches.next().unwrap().get(&tree);
-        let pat = &branch.pat(&tree).as_literal().unwrap().0;
+        let pat = &branch.pat(&tree).to_literal().unwrap().get(&tree).0;
         assert_eq!(pat, &node::Literal::Num(1.0));
-        let matches = branch.matches(&tree).as_literal().unwrap().get(&tree);
+        let matches = branch.matches(&tree).to_literal().unwrap().get(&tree);
         assert_eq!(matches, &node::Literal::Bool(true));
 
         assert_eq!(branches.len(), 0);
@@ -513,11 +589,11 @@ mod tests {
 
         let (expr, tree, _spans) = try_parse_with(input, expr_parser()).unwrap();
 
-        let node::Func { param, body } = expr.get(&tree).as_func().unwrap().get(&tree);
+        let node::Func { param, body } = expr.get(&tree).to_func().unwrap().get(&tree);
 
         assert_eq!(param.get(&tree), "name");
 
-        let body = body.get(&tree).as_binary().unwrap().get(&tree);
+        let body = body.get(&tree).to_binary().unwrap().get(&tree);
         assert_eq!(body.op(&tree), node::BinaryOp::Add);
     }
 
@@ -532,24 +608,24 @@ mod tests {
         let (expr, tree, _spans) = try_parse_with(input, expr_parser()).unwrap();
 
         // _ = 0
-        let eq = expr.get(&tree).as_binary().unwrap().get(&tree);
+        let eq = expr.get(&tree).to_binary().unwrap().get(&tree);
 
         assert_eq!(eq.op(&tree), node::BinaryOp::Eq);
 
         // _ + 30
-        let sum = eq.left(&tree).as_binary().unwrap().get(&tree);
+        let sum = eq.left(&tree).to_binary().unwrap().get(&tree);
         assert_eq!(sum.op(&tree), node::BinaryOp::Add);
 
         // (_) + (_)
-        let sum = sum.left(&tree).as_binary().unwrap().get(&tree);
+        let sum = sum.left(&tree).to_binary().unwrap().get(&tree);
         assert_eq!(sum.op(&tree), node::BinaryOp::Add);
 
         // (-4 * 10)
-        let mul = sum.left(&tree).as_binary().unwrap().get(&tree);
+        let mul = sum.left(&tree).to_binary().unwrap().get(&tree);
         assert_eq!(mul.op(&tree), node::BinaryOp::Mul);
 
         // (40 / 4)
-        let div = sum.right(&tree).as_binary().unwrap().get(&tree);
+        let div = sum.right(&tree).to_binary().unwrap().get(&tree);
         assert_eq!(div.op(&tree), node::BinaryOp::Div);
     }
 
@@ -566,24 +642,24 @@ mod tests {
             predicate,
             then,
             or,
-        } = expr.get(&tree).as_if().unwrap().get(&tree);
+        } = expr.get(&tree).to_if().unwrap().get(&tree);
 
-        assert_eq!(predicate.get(&tree).as_ident().unwrap().get(&tree), "y");
+        assert_eq!(predicate.get(&tree).to_ident().unwrap().get(&tree), "y");
 
         let node::RecordSelect { source, field } =
-            then.get(&tree).as_record_select().unwrap().get(&tree);
+            then.get(&tree).to_record_select().unwrap().get(&tree);
 
         assert_eq!(field.get(&tree), "x");
 
-        let record = source.get(&tree).as_record().unwrap().get(&tree);
+        let record = source.get(&tree).to_record().unwrap().get(&tree);
         let x = record.get("x", &tree).unwrap();
         assert_eq!(
-            x.value(&tree).as_literal().unwrap().get(&tree),
+            x.value(&tree).to_literal().unwrap().get(&tree),
             &node::Literal::Num(10.0)
         );
 
         assert_eq!(
-            or.get(&tree).as_literal().unwrap().get(&tree),
+            or.get(&tree).to_literal().unwrap().get(&tree),
             &node::Literal::Num(0.0)
         );
     }
@@ -598,14 +674,14 @@ mod tests {
         let (expr, tree, _spans) = try_parse_with(input, expr_parser()).unwrap();
 
         let node::RecordSelect { source, field } =
-            expr.get(&tree).as_record_select().unwrap().get(&tree);
+            expr.get(&tree).to_record_select().unwrap().get(&tree);
         assert_eq!(field.get(&tree), "z");
 
         let node::RecordSelect { source, field } =
-            source.get(&tree).as_record_select().unwrap().get(&tree);
+            source.get(&tree).to_record_select().unwrap().get(&tree);
         assert_eq!(field.get(&tree), "y");
 
-        let ident = source.get(&tree).as_ident().unwrap().get(&tree);
+        let ident = source.get(&tree).to_ident().unwrap().get(&tree);
         assert_eq!(ident, "x");
     }
 
@@ -622,13 +698,13 @@ mod tests {
             source,
             field,
             value,
-        } = expr.get(&tree).as_record_extend().unwrap().get(&tree);
+        } = expr.get(&tree).to_record_extend().unwrap().get(&tree);
         assert_eq!(field.get(&tree), "x");
 
-        let source = source.get(&tree).as_ident().unwrap().get(&tree);
+        let source = source.get(&tree).to_ident().unwrap().get(&tree);
         assert_eq!(source, "y");
 
-        let value = value.get(&tree).as_literal().unwrap().get(&tree);
+        let value = value.get(&tree).to_literal().unwrap().get(&tree);
         assert_eq!(value, &node::Literal::Num(10.0));
     }
 
@@ -641,18 +717,99 @@ mod tests {
 
         let (expr, tree, _spans) = try_parse_with(input, expr_parser()).unwrap();
 
-        let record = expr.get(&tree).as_record().unwrap().get(&tree);
+        let record = expr.get(&tree).to_record().unwrap().get(&tree);
 
         let x = record.get("x", &tree).unwrap();
         assert_eq!(
-            x.value(&tree).as_literal().unwrap().get(&tree),
+            x.value(&tree).to_literal().unwrap().get(&tree),
             &node::Literal::Num(10.0)
         );
 
         let y = record.get("y", &tree).unwrap();
         assert_eq!(
-            y.value(&tree).as_literal().unwrap().get(&tree),
+            y.value(&tree).to_literal().unwrap().get(&tree),
             &node::Literal::Num(20.0)
         );
+    }
+
+    #[test]
+    fn mono_type() {
+        let src = "Num -> { a : Num, b : Num -> Num } -> Str";
+        let tokens = lexer().parse(src).into_result().unwrap();
+        let eoi = (src.len()..src.len()).into();
+        let input = tokens.as_slice().map(eoi, |(t, s)| (t, s));
+
+        let (ty, tree, _spans) = try_parse_with(input, mono_type_parser()).unwrap();
+
+        // Num -> (...)
+        let node::FuncType { input, output } = ty.get(&tree).to_func_type().unwrap().get(&tree);
+        assert_eq!(input.get(&tree).to_type_ident().unwrap().get(&tree), "Num");
+
+        // { a: Num, ... } -> ...
+        let node::FuncType { input, output } = output.get(&tree).to_func_type().unwrap().get(&tree);
+
+        let input = &input.get(&tree).to_record_type().unwrap().get(&tree).0;
+        assert_eq!(input.len(), 2);
+
+        let a = input[0].get(&tree);
+        assert_eq!(a.name.get(&tree), "a");
+        assert_eq!(a.ty.get(&tree).to_type_ident().unwrap().get(&tree), "Num");
+
+        let b = input[1].get(&tree);
+        assert_eq!(b.name.get(&tree), "b");
+        assert!(b.ty.get(&tree).is_func_type());
+
+        assert_eq!(output.get(&tree).to_type_ident().unwrap().get(&tree), "Str");
+    }
+
+    #[test]
+    fn poly_type() {
+        let src = "forall a b . { left : a, right : Num -> b }";
+        let tokens = lexer().parse(src).into_result().unwrap();
+        let eoi = (src.len()..src.len()).into();
+        let input = tokens.as_slice().map(eoi, |(t, s)| (t, s));
+
+        let (pty, tree, _spans) = try_parse_with(input, poly_type_parser()).unwrap();
+
+        let node::PolyType { vars, ty } = pty.get(&tree);
+
+        assert_eq!(vars.len(), 2);
+        assert_eq!(vars[0].get(&tree), "a");
+        assert_eq!(vars[1].get(&tree), "b");
+
+        let record_type = &ty.get(&tree).to_record_type().unwrap().get(&tree).0;
+        assert_eq!(record_type.len(), 2);
+
+        let left = record_type[0].get(&tree);
+        assert_eq!(left.name.get(&tree), "left");
+        assert_eq!(left.ty.get(&tree).to_type_ident().unwrap().get(&tree), "a");
+
+        let right = record_type[1].get(&tree);
+        assert_eq!(right.name.get(&tree), "right");
+
+        let node::FuncType { input, output } =
+            right.ty.get(&tree).to_func_type().unwrap().get(&tree);
+        assert_eq!(input.get(&tree).to_type_ident().unwrap().get(&tree), "Num");
+        assert_eq!(output.get(&tree).to_type_ident().unwrap().get(&tree), "b");
+    }
+
+    #[test]
+    fn type_alias() {
+        let src = "Person : forall a . { id : a, name : Str, age : Num }";
+        let tokens = lexer().parse(src).into_result().unwrap();
+        let eoi = (src.len()..src.len()).into();
+        let input = tokens.as_slice().map(eoi, |(t, s)| (t, s));
+
+        let (alias, tree, _spans) = try_parse_with(input, type_alias_parser()).unwrap();
+
+        let node::TypeAlias { alias, ty } = alias.get(&tree);
+        assert_eq!(alias.get(&tree), "Person");
+
+        let node::PolyType { vars, ty } = ty.get(&tree);
+        assert_eq!(vars.len(), 1);
+        assert_eq!(vars[0].get(&tree), "a");
+
+        let record_type = &ty.get(&tree).to_record_type().unwrap().get(&tree).0;
+        assert_eq!(record_type.len(), 3);
     }
 }

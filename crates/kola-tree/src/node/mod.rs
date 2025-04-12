@@ -10,6 +10,7 @@ pub use literal::*;
 pub use name::*;
 pub use pat::*;
 pub use record::*;
+pub use ty::*;
 pub use unary::*;
 
 mod binary;
@@ -24,13 +25,54 @@ mod literal;
 mod name;
 mod pat;
 mod record;
+mod ty;
 mod unary;
 
-use crate::kind::NodeKind;
 use derive_more::{From, TryInto};
 use kola_utils::impl_try_as;
 
 pub type Symbol = ecow::EcoString;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum NodeKind {
+    Name,
+    Ident,
+    Literal,
+    List,
+    Property,
+    Record,
+    RecordSelect,
+    RecordExtend,
+    RecordRestrict,
+    RecordUpdate,
+    UnaryOp,
+    Unary,
+    BinaryOp,
+    Binary,
+    Let,
+    PatError,
+    Wildcard,
+    LiteralPat,
+    IdentPat,
+    PropertyPat,
+    RecordPat,
+    Pat,
+    Branch,
+    Case,
+    If,
+    Func,
+    Call,
+    ExprError,
+    Expr,
+    TypeError,
+    TypeIdent,
+    PropertyType,
+    RecordType,
+    FuncType,
+    MonoType,
+    PolyType,
+    TypeAlias,
+}
 
 #[derive(Clone, Debug, PartialEq, From, TryInto)]
 pub enum Node {
@@ -63,6 +105,14 @@ pub enum Node {
     Call(Call),
     ExprError(ExprError),
     Expr(Expr),
+    TypeError(TypeError),
+    TypeIdent(TypeIdent),
+    PropertyType(PropertyType),
+    RecordType(RecordType),
+    FuncType(FuncType),
+    MonoType(MonoType),
+    PolyType(PolyType),
+    TypeAlias(TypeAlias),
 }
 
 impl_try_as!(
@@ -95,7 +145,15 @@ impl_try_as!(
     Func(Func),
     Call(Call),
     ExprError(ExprError),
-    Expr(Expr)
+    Expr(Expr),
+    TypeError(TypeError),
+    TypeIdent(TypeIdent),
+    PropertyType(PropertyType),
+    RecordType(RecordType),
+    FuncType(FuncType),
+    MonoType(MonoType),
+    PolyType(PolyType),
+    TypeAlias(TypeAlias)
 );
 
 impl Node {
@@ -130,6 +188,14 @@ impl Node {
             Self::Call(_) => NodeKind::Call,
             Self::ExprError(_) => NodeKind::ExprError,
             Self::Expr(_) => NodeKind::Expr,
+            Self::TypeError(_) => NodeKind::TypeError,
+            Self::TypeIdent(_) => NodeKind::TypeIdent,
+            Self::PropertyType(_) => NodeKind::PropertyType,
+            Self::RecordType(_) => NodeKind::RecordType,
+            Self::FuncType(_) => NodeKind::FuncType,
+            Self::MonoType(_) => NodeKind::MonoType,
+            Self::PolyType(_) => NodeKind::PolyType,
+            Self::TypeAlias(_) => NodeKind::TypeAlias,
         }
     }
 }
