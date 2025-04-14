@@ -113,6 +113,8 @@ pub enum Token<'src> {
     Char(char),
     Str(&'src str),
     // Keywords
+    Fn,
+    Functor,
     Let,
     In,
     If,
@@ -147,6 +149,8 @@ impl<'src> fmt::Display for Token<'src> {
             Self::Bool(b) => write!(f, "{b}"),
             Self::Char(c) => write!(f, "{c}"),
             Self::Str(s) => write!(f, "{s}"),
+            Self::Fn => write!(f, "fn"),
+            Self::Functor => write!(f, "functor"),
             Self::Let => write!(f, "let"),
             Self::In => write!(f, "in"),
             Self::If => write!(f, "if"),
@@ -183,7 +187,9 @@ impl<'src> Token<'src> {
             Self::Symbol(_) => TokenKind::Symbol,
             Self::Op(_) => TokenKind::Operator,
             Self::Num(_) | Self::Bool(_) | Self::Char(_) | Self::Str(_) => TokenKind::Literal,
-            Self::Let
+            Self::Fn
+            | Self::Functor
+            | Self::Let
             | Self::In
             | Self::If
             | Self::Then

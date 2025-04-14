@@ -10,3 +10,4 @@ ecow.workspace = true
 serde.workspace = true
 owo-colors.workspace = true
 derive_more.workspace = true
+paste = "1.0"

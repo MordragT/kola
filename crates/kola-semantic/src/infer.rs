@@ -214,11 +214,11 @@ impl Visitor for Inferer {
     // Γ ⊢ let x = e0 in e1 : τ'
     fn walk_let(
         &mut self,
-        id: NodeId<node::Let>,
+        id: NodeId<node::LetExpr>,
         tree: &Tree,
         _stack: &mut EventStack,
     ) -> Result<(), Self::Error> {
-        let &node::Let {
+        let &node::LetExpr {
             name,
             value,
             inside,
@@ -258,7 +258,7 @@ impl Visitor for Inferer {
     // Γ ⊢ \x -> e : t -> t'
     fn walk_func(
         &mut self,
-        id: NodeId<node::Func>,
+        id: NodeId<node::LambdaExpr>,
         tree: &Tree,
         _stack: &mut EventStack,
     ) -> Result<(), Self::Error> {
@@ -291,14 +291,14 @@ impl Handler for Inferer {
     // Γ ⊢ () : unit
     fn handle_literal(
         &mut self,
-        literal: &node::Literal,
-        id: NodeId<node::Literal>,
+        literal: &node::LiteralExpr,
+        id: NodeId<node::LiteralExpr>,
     ) -> Result<(), Self::Error> {
         let actual = match literal {
-            &node::Literal::Bool(_) => MonoType::BOOL,
-            &node::Literal::Char(_) => MonoType::CHAR,
-            &node::Literal::Num(_) => MonoType::NUM,
-            &node::Literal::Str(_) => MonoType::STR,
+            &node::LiteralExpr::Bool(_) => MonoType::BOOL,
+            &node::LiteralExpr::Char(_) => MonoType::CHAR,
+            &node::LiteralExpr::Num(_) => MonoType::NUM,
+            &node::LiteralExpr::Str(_) => MonoType::STR,
         };
 
         self.update_type(id, actual);
@@ -326,10 +326,10 @@ impl Handler for Inferer {
 
     fn handle_property(
         &mut self,
-        property: &node::Property,
-        id: NodeId<node::Property>,
+        property: &node::RecordField,
+        id: NodeId<node::RecordField>,
     ) -> Result<(), Self::Error> {
-        let k = self.types.meta(property.key).clone();
+        let k = self.types.meta(property.field).clone();
         let v = self.types.meta(property.value).clone();
 
         self.update_type(id, Property { k, v });
@@ -342,8 +342,8 @@ impl Handler for Inferer {
     // ∆;Γ ⊢ R : { { l1 : t1, ..., ln : tn } | +l0 : τ0 | {} }
     fn handle_record(
         &mut self,
-        record: &node::Record,
-        id: NodeId<node::Record>,
+        record: &node::RecordExpr,
+        id: NodeId<node::RecordExpr>,
     ) -> Result<(), Self::Error> {
         let mut r = MonoType::empty_row();
 
@@ -398,8 +398,8 @@ impl Handler for Inferer {
     // old: ∀rα. α → {r} → {l :: α | r}
     fn handle_record_extend(
         &mut self,
-        extend: &node::RecordExtend,
-        id: NodeId<node::RecordExtend>,
+        extend: &node::RecordExtendExpr,
+        id: NodeId<node::RecordExtendExpr>,
     ) -> Result<(), Self::Error> {
         let span = self.span(id);
 
@@ -425,8 +425,8 @@ impl Handler for Inferer {
     // ∀rα. {l :: α | r} → {r}
     fn handle_record_restrict(
         &mut self,
-        restrict: &node::RecordRestrict,
-        id: NodeId<node::RecordRestrict>,
+        restrict: &node::RecordRestrictExpr,
+        id: NodeId<node::RecordRestrictExpr>,
     ) -> Result<(), Self::Error> {
         let span = self.span(id);
 
@@ -443,8 +443,8 @@ impl Handler for Inferer {
     // ∆;Γ ⊢ { r | l = v } : { r | -l | +l : τ2 }
     fn handle_record_update(
         &mut self,
-        update: &node::RecordUpdate,
-        id: NodeId<node::RecordUpdate>,
+        update: &node::RecordUpdateExpr,
+        id: NodeId<node::RecordUpdateExpr>,
     ) -> Result<(), Self::Error> {
         let span = self.span(id);
 
@@ -491,13 +491,13 @@ impl Handler for Inferer {
     // Γ ⊢ f x : τ'
     fn handle_unary(
         &mut self,
-        unary: &node::Unary,
-        id: NodeId<node::Unary>,
+        unary: &node::UnaryExpr,
+        id: NodeId<node::UnaryExpr>,
     ) -> Result<(), Self::Error> {
         let span = self.span(id);
 
         let t0 = self.types.meta(unary.op).clone();
-        let t1 = self.types.meta(unary.target).clone();
+        let t1 = self.types.meta(unary.operand).clone();
 
         let t_prime = MonoType::variable();
 
@@ -565,8 +565,8 @@ impl Handler for Inferer {
     // Γ ⊢ f x : τ'
     fn handle_binary(
         &mut self,
-        binary: &node::Binary,
-        id: NodeId<node::Binary>,
+        binary: &node::BinaryExpr,
+        id: NodeId<node::BinaryExpr>,
     ) -> Result<(), Self::Error> {
         let span = self.span(id);
 
@@ -583,7 +583,11 @@ impl Handler for Inferer {
         Ok(())
     }
 
-    fn handle_let(&mut self, _let_: &node::Let, _id: NodeId<node::Let>) -> Result<(), Self::Error> {
+    fn handle_let(
+        &mut self,
+        _let_: &node::LetExpr,
+        _id: NodeId<node::LetExpr>,
+    ) -> Result<(), Self::Error> {
         // handled by lower level walk_let
         Ok(())
     }
@@ -594,7 +598,11 @@ impl Handler for Inferer {
     // Γ ⊢ e1 : τ
     // --------------------------
     // Γ ⊢ if predicate then e0 else e1 : τ
-    fn handle_if(&mut self, if_: &node::If, id: NodeId<node::If>) -> Result<(), Self::Error> {
+    fn handle_if(
+        &mut self,
+        if_: &node::IfExpr,
+        id: NodeId<node::IfExpr>,
+    ) -> Result<(), Self::Error> {
         let span = self.span(id);
 
         let t0 = self.types.meta(if_.predicate).clone();
@@ -612,16 +620,16 @@ impl Handler for Inferer {
 
     fn handle_case(
         &mut self,
-        _case: &node::Case,
-        _id: NodeId<node::Case>,
+        _case: &node::CaseExpr,
+        _id: NodeId<node::CaseExpr>,
     ) -> Result<(), Self::Error> {
         todo!()
     }
 
     fn handle_func(
         &mut self,
-        _func: &node::Func,
-        _id: NodeId<node::Func>,
+        _func: &node::LambdaExpr,
+        _id: NodeId<node::LambdaExpr>,
     ) -> Result<(), Self::Error> {
         // handled by lower level walk_func
         Ok(())
@@ -636,8 +644,8 @@ impl Handler for Inferer {
     // Γ ⊢ f x : τ'
     fn handle_call(
         &mut self,
-        call: &node::Call,
-        id: NodeId<node::Call>,
+        call: &node::CallExpr,
+        id: NodeId<node::CallExpr>,
     ) -> Result<(), Self::Error> {
         let span = self.span(id);
 
@@ -672,7 +680,7 @@ impl Handler for Inferer {
             node::Expr::Let(id) => self.types.meta(id),
             node::Expr::If(id) => self.types.meta(id),
             node::Expr::Case(id) => self.types.meta(id),
-            node::Expr::Func(id) => self.types.meta(id),
+            node::Expr::Lambda(id) => self.types.meta(id),
             node::Expr::Call(id) => self.types.meta(id),
         }
         .clone();
@@ -730,7 +738,7 @@ mod tests {
     #[test]
     fn literal() {
         let mut builder = TreeBuilder::new();
-        let lit = builder.insert(node::Literal::Num(10.0));
+        let lit = builder.insert(node::LiteralExpr::Num(10.0));
         let root = builder.insert(node::Expr::Literal(lit));
         let tree = builder.finish(root);
 
@@ -745,8 +753,8 @@ mod tests {
     fn unary() {
         let mut builder = TreeBuilder::new();
 
-        let target = builder.insert(node::Literal::Num(10.0));
-        let unary = node::Unary::new_in(node::UnaryOp::Neg, target.into(), &mut builder);
+        let target = builder.insert(node::LiteralExpr::Num(10.0));
+        let unary = node::UnaryExpr::new_in(node::UnaryOp::Neg, target.into(), &mut builder);
         let root = builder.insert(node::Expr::Unary(unary));
 
         let tree = builder.finish(root);
@@ -762,8 +770,8 @@ mod tests {
     fn unary_err() {
         let mut builder = TreeBuilder::new();
 
-        let target = builder.insert(node::Literal::Num(10.0));
-        let unary = node::Unary::new_in(node::UnaryOp::Not, target.into(), &mut builder);
+        let target = builder.insert(node::LiteralExpr::Num(10.0));
+        let unary = node::UnaryExpr::new_in(node::UnaryOp::Not, target.into(), &mut builder);
         let root = builder.insert(node::Expr::Unary(unary));
 
         let tree = builder.finish(root);
@@ -782,10 +790,10 @@ mod tests {
     fn binary_err() {
         let mut builder = TreeBuilder::new();
 
-        let left = builder.insert(node::Literal::Bool(true));
-        let right = builder.insert(node::Literal::Num(10.0));
+        let left = builder.insert(node::LiteralExpr::Bool(true));
+        let right = builder.insert(node::LiteralExpr::Num(10.0));
         let binary =
-            node::Binary::new_in(node::BinaryOp::Eq, left.into(), right.into(), &mut builder);
+            node::BinaryExpr::new_in(node::BinaryOp::Eq, left.into(), right.into(), &mut builder);
         let root = builder.insert(node::Expr::Binary(binary));
 
         let tree = builder.finish(root);
@@ -804,9 +812,9 @@ mod tests {
     fn let_() {
         let mut builder = TreeBuilder::new();
 
-        let value = builder.insert(node::Literal::Num(10.0));
+        let value = builder.insert(node::LiteralExpr::Num(10.0));
         let inside = builder.insert(node::Ident::from("x"));
-        let let_ = node::Let::new_in(
+        let let_ = node::LetExpr::new_in(
             node::Name::from("x"),
             value.into(),
             inside.into(),
@@ -827,10 +835,10 @@ mod tests {
     fn if_() {
         let mut builder = TreeBuilder::new();
 
-        let predicate = builder.insert(node::Literal::Bool(true));
-        let then = builder.insert(node::Literal::Num(5.0));
-        let or = builder.insert(node::Literal::Num(10.0));
-        let if_ = node::If::new_in(predicate.into(), then.into(), or.into(), &mut builder);
+        let predicate = builder.insert(node::LiteralExpr::Bool(true));
+        let then = builder.insert(node::LiteralExpr::Num(5.0));
+        let or = builder.insert(node::LiteralExpr::Num(10.0));
+        let if_ = node::IfExpr::new_in(predicate.into(), then.into(), or.into(), &mut builder);
         let root = builder.insert(node::Expr::If(if_));
 
         let tree = builder.finish(root);
@@ -846,10 +854,10 @@ mod tests {
     fn if_err() {
         let mut builder = TreeBuilder::new();
 
-        let predicate = builder.insert(node::Literal::Bool(true));
-        let then = builder.insert(node::Literal::Num(5.0));
-        let or = builder.insert(node::Literal::Char('x'));
-        let if_ = node::If::new_in(predicate.into(), then.into(), or.into(), &mut builder);
+        let predicate = builder.insert(node::LiteralExpr::Bool(true));
+        let then = builder.insert(node::LiteralExpr::Num(5.0));
+        let or = builder.insert(node::LiteralExpr::Char('x'));
+        let if_ = node::IfExpr::new_in(predicate.into(), then.into(), or.into(), &mut builder);
         let root = builder.insert(node::Expr::If(if_));
 
         let tree = builder.finish(root);

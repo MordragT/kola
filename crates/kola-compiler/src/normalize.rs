@@ -109,7 +109,7 @@ impl Normalizer {
 
             List(id) => todo!(),
             Record(id) => {
-                let node::Record { fields } = id.get(tree);
+                let node::RecordExpr { fields } = id.get(tree);
 
                 todo!()
             }
@@ -122,7 +122,7 @@ impl Normalizer {
             // normalize(let x = e1 in e2, hole, ctx) =
             // normalize(e1,x,normalize(e2,hole,ctx))
             Let(id) => {
-                let node::Let {
+                let node::LetExpr {
                     name,
                     value,
                     inside,
@@ -141,8 +141,8 @@ impl Normalizer {
             Case(id) => todo!(),
             // normalize(\x => e, hole, ctx) =
             // let f = \x => normalize_with(e) in ctx[hole:=f]
-            Func(id) => {
-                let node::Func { param, body } = id.get(tree);
+            Lambda(id) => {
+                let node::LambdaExpr { param, body } = id.get(tree);
 
                 let bind = self.symbols.next();
                 let atom = self.builder.push(ir::Atom::from(bind));
@@ -163,7 +163,7 @@ impl Normalizer {
             // normalize((e0 e1), hole, ctx) =
             // normalize(e1,x, normalize(e0,f, let hole = (f x) in ctx))
             Call(id) => {
-                let node::Call { func, arg } = id.get(tree);
+                let node::CallExpr { func, arg } = id.get(tree);
 
                 let f = self.symbols.next();
                 let f_atom = self.builder.push(ir::Atom::from(f));

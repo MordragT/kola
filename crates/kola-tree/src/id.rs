@@ -4,8 +4,7 @@ use serde::{Deserialize, Serialize};
 use std::{hash::Hash, marker::PhantomData};
 
 use crate::{
-    Phase,
-    meta::{MetaCast, MetaContainer},
+    meta::{MetaCast, MetaContainer, Phase},
     node::Node,
     print::TreePrinter,
     tree::NodeContainer,

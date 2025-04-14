@@ -191,13 +191,13 @@ impl Printable<Ir> for Atom {
     }
 }
 
-impl From<node::Literal> for Atom {
-    fn from(value: node::Literal) -> Self {
+impl From<node::LiteralExpr> for Atom {
+    fn from(value: node::LiteralExpr) -> Self {
         match value {
-            node::Literal::Bool(b) => Self::Bool(b),
-            node::Literal::Char(c) => Self::Char(c),
-            node::Literal::Num(n) => Self::Num(n),
-            node::Literal::Str(s) => Self::Str(s),
+            node::LiteralExpr::Bool(b) => Self::Bool(b),
+            node::LiteralExpr::Char(c) => Self::Char(c),
+            node::LiteralExpr::Num(n) => Self::Num(n),
+            node::LiteralExpr::Str(s) => Self::Str(s),
         }
     }
 }

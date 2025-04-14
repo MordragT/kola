@@ -119,6 +119,8 @@ pub fn lexer<'src>() -> impl Parser<'src, &'src str, Vec<Spanned<Token<'src>>>, 
 
     // Keywords and identifiers
     let word = text::ident().map(|ident| match ident {
+        "fn" => Token::Fn,
+        "functor" => Token::Functor,
         "let" => Token::Let,
         "in" => Token::In,
         "if" => Token::If,

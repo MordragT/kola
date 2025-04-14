@@ -1,201 +1,156 @@
-pub use binary::*;
-pub use bind::*;
-pub use call::*;
-pub use cond::*;
-pub use expr::*;
-pub use func::*;
-pub use ident::*;
-pub use list::*;
-pub use literal::*;
-pub use name::*;
-pub use pat::*;
-pub use record::*;
-pub use ty::*;
-pub use unary::*;
-
-mod binary;
-mod bind;
-mod call;
-mod cond;
-mod expr;
-mod func;
-mod ident;
-mod list;
-mod literal;
-mod name;
-mod pat;
-mod record;
-mod ty;
-mod unary;
+use crate::{id::NodeId, print::TreePrinter};
 
 use derive_more::{From, TryInto};
+use kola_print::prelude::*;
 use kola_utils::impl_try_as;
+use owo_colors::OwoColorize;
+use paste::paste;
+use serde::{Deserialize, Serialize};
+
+mod expr;
+mod module;
+mod pat;
+mod ty;
+
+pub use expr::*;
+pub use module::*;
+pub use pat::*;
+pub use ty::*;
 
 pub type Symbol = ecow::EcoString;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum NodeKind {
-    Name,
-    Ident,
-    Literal,
-    List,
-    Property,
-    Record,
-    RecordSelect,
-    RecordExtend,
-    RecordRestrict,
-    RecordUpdate,
-    UnaryOp,
-    Unary,
-    BinaryOp,
-    Binary,
-    Let,
-    PatError,
-    Wildcard,
-    LiteralPat,
-    IdentPat,
-    PropertyPat,
-    RecordPat,
-    Pat,
-    Branch,
-    Case,
-    If,
-    Func,
-    Call,
-    ExprError,
-    Expr,
-    TypeError,
-    TypeIdent,
-    PropertyType,
-    RecordType,
-    FuncType,
-    MonoType,
-    PolyType,
-    TypeAlias,
+#[derive(Debug, From, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[from(forward)]
+pub struct Name(pub Symbol);
+
+impl Name {
+    pub fn as_str(&self) -> &str {
+        self.0.as_str()
+    }
 }
 
-#[derive(Clone, Debug, PartialEq, From, TryInto)]
-pub enum Node {
-    Name(Name),
-    Ident(Ident),
-    Literal(Literal),
-    List(List),
-    Property(Property),
-    Record(Record),
-    RecordSelect(RecordSelect),
-    RecordExtend(RecordExtend),
-    RecordRestrict(RecordRestrict),
-    RecordUpdate(RecordUpdate),
-    UnaryOp(UnaryOp),
-    Unary(Unary),
-    BinaryOp(BinaryOp),
-    Binary(Binary),
-    Let(Let),
-    PatError(PatError),
-    Wildcard(Wildcard),
-    LiteralPat(LiteralPat),
-    IdentPat(IdentPat),
-    PropertyPat(PropertyPat),
-    RecordPat(RecordPat),
-    Pat(Pat),
-    Branch(Branch),
-    Case(Case),
-    If(If),
-    Func(Func),
-    Call(Call),
-    ExprError(ExprError),
-    Expr(Expr),
-    TypeError(TypeError),
-    TypeIdent(TypeIdent),
-    PropertyType(PropertyType),
-    RecordType(RecordType),
-    FuncType(FuncType),
-    MonoType(MonoType),
-    PolyType(PolyType),
-    TypeAlias(TypeAlias),
+impl PartialEq<Symbol> for Name {
+    fn eq(&self, other: &Symbol) -> bool {
+        &self.0 == other
+    }
 }
 
-impl_try_as!(
-    Node,
-    Name(Name),
-    Ident(Ident),
-    Literal(Literal),
-    List(List),
-    Property(Property),
-    Record(Record),
-    RecordSelect(RecordSelect),
-    RecordExtend(RecordExtend),
-    RecordRestrict(RecordRestrict),
-    RecordUpdate(RecordUpdate),
-    UnaryOp(UnaryOp),
-    Unary(Unary),
-    BinaryOp(BinaryOp),
-    Binary(Binary),
-    Let(Let),
-    PatError(PatError),
-    Wildcard(Wildcard),
-    LiteralPat(LiteralPat),
-    IdentPat(IdentPat),
-    PropertyPat(PropertyPat),
-    RecordPat(RecordPat),
-    Pat(Pat),
-    Branch(Branch),
-    Case(Case),
-    If(If),
-    Func(Func),
-    Call(Call),
-    ExprError(ExprError),
-    Expr(Expr),
-    TypeError(TypeError),
-    TypeIdent(TypeIdent),
-    PropertyType(PropertyType),
-    RecordType(RecordType),
-    FuncType(FuncType),
-    MonoType(MonoType),
-    PolyType(PolyType),
-    TypeAlias(TypeAlias)
-);
+impl PartialEq<str> for Name {
+    fn eq(&self, other: &str) -> bool {
+        self.as_str() == other
+    }
+}
 
-impl Node {
-    pub fn kind(&self) -> NodeKind {
-        match self {
-            Self::Name(_) => NodeKind::Name,
-            Self::Ident(_) => NodeKind::Ident,
-            Self::Literal(_) => NodeKind::Literal,
-            Self::List(_) => NodeKind::List,
-            Self::Property(_) => NodeKind::Property,
-            Self::Record(_) => NodeKind::Record,
-            Self::RecordSelect(_) => NodeKind::RecordSelect,
-            Self::RecordExtend(_) => NodeKind::RecordExtend,
-            Self::RecordRestrict(_) => NodeKind::RecordRestrict,
-            Self::RecordUpdate(_) => NodeKind::RecordUpdate,
-            Self::UnaryOp(_) => NodeKind::UnaryOp,
-            Self::Unary(_) => NodeKind::Unary,
-            Self::BinaryOp(_) => NodeKind::BinaryOp,
-            Self::Binary(_) => NodeKind::Binary,
-            Self::Let(_) => NodeKind::Let,
-            Self::PatError(_) => NodeKind::PatError,
-            Self::Wildcard(_) => NodeKind::Wildcard,
-            Self::LiteralPat(_) => NodeKind::LiteralPat,
-            Self::IdentPat(_) => NodeKind::IdentPat,
-            Self::PropertyPat(_) => NodeKind::PropertyPat,
-            Self::RecordPat(_) => NodeKind::RecordPat,
-            Self::Pat(_) => NodeKind::Pat,
-            Self::Branch(_) => NodeKind::Branch,
-            Self::Case(_) => NodeKind::Case,
-            Self::If(_) => NodeKind::If,
-            Self::Func(_) => NodeKind::Func,
-            Self::Call(_) => NodeKind::Call,
-            Self::ExprError(_) => NodeKind::ExprError,
-            Self::Expr(_) => NodeKind::Expr,
-            Self::TypeError(_) => NodeKind::TypeError,
-            Self::TypeIdent(_) => NodeKind::TypeIdent,
-            Self::PropertyType(_) => NodeKind::PropertyType,
-            Self::RecordType(_) => NodeKind::RecordType,
-            Self::FuncType(_) => NodeKind::FuncType,
-            Self::MonoType(_) => NodeKind::MonoType,
-            Self::PolyType(_) => NodeKind::PolyType,
-            Self::TypeAlias(_) => NodeKind::TypeAlias,
+impl Printable<TreePrinter> for Name {
+    fn notate<'a>(&'a self, _with: &'a TreePrinter, arena: &'a Bump) -> Notation<'a> {
+        let head = "Name".cyan().display_in(arena);
+
+        let name = self
+            .0
+            .yellow()
+            .display_in(arena)
+            .enclose_by(arena.just('"'), arena);
+
+        let single = [arena.just(' '), name.clone()].concat_in(arena);
+        let multi = [arena.newline(), name].concat_in(arena).indent(arena);
+
+        head.then(single.or(multi, arena), arena)
+    }
+}
+
+macro_rules! define_nodes {
+    ($($variant:ident),* $(,)?) => {
+        #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+        pub enum NodeKind {
+            $($variant),*
+        }
+
+        #[derive(Clone, Debug, PartialEq, From, TryInto)]
+        pub enum Node {
+            $($variant($variant)),*
+        }
+
+        impl Node {
+            pub fn kind(&self) -> NodeKind {
+                match self {
+                    $(Self::$variant(_) => NodeKind::$variant,)*
+                }
+            }
+        }
+
+        impl_try_as!(
+            Node,
+            $($variant($variant)),*
+        );
+
+        pub trait Handler {
+            type Error;
+
+            paste! {
+                fn handle_node(&mut self, node: &Node, id: usize) -> Result<(), Self::Error> {
+                    match node {
+                        $(Node::$variant(v) => self.[<handle_ $variant:snake>](v, NodeId::from_usize(id)),)*
+                    }
+                }
+
+                $(
+                    fn [<handle_ $variant:snake>](&mut self, [<_ $variant:snake>]: &$variant, _id: NodeId<$variant>) -> Result<(), Self::Error> {
+                        Ok(())
+                    }
+                )*
+            }
         }
     }
 }
+
+define_nodes!(
+    Name,
+    // Patterns
+    AnyPat,
+    LiteralPat,
+    IdentPat,
+    RecordFieldPat,
+    RecordPat,
+    PatError,
+    Pat,
+    // Expressions
+    LiteralExpr,
+    PathExpr,
+    ListExpr,
+    RecordField,
+    RecordExpr,
+    RecordExtendExpr,
+    RecordRestrictExpr,
+    RecordUpdateOp,
+    RecordUpdateExpr,
+    UnaryOp,
+    UnaryExpr,
+    BinaryOp,
+    BinaryExpr,
+    LetExpr,
+    CaseBranch,
+    CaseExpr,
+    IfExpr,
+    LambdaExpr,
+    CallExpr,
+    ExprError,
+    Expr,
+    // Types
+    TypeError,
+    TypePath,
+    RecordFieldType,
+    RecordType,
+    FuncType,
+    TypeApplication,
+    TypeExpr,
+    Type,
+    TypeBind,
+    // Modules
+    ValueBind,
+    ModuleBind,
+    ModuleTypeBind,
+    Bind,
+    Module,
+    Spec,
+    ModuleType
+);

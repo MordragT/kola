@@ -1,7 +1,11 @@
 pub use event::*;
 pub use id::*;
 
-use crate::{handle::Handler, id::NodeId, node, tree::Tree};
+use crate::{
+    id::NodeId,
+    node::{self, Handler},
+    tree::Tree,
+};
 
 mod event;
 mod id;
@@ -123,11 +127,11 @@ pub trait Visitor: Handler {
 
     fn walk_property(
         &mut self,
-        id: NodeId<node::Property>,
+        id: NodeId<node::RecordField>,
         tree: &Tree,
         stack: &mut EventStack,
     ) -> Result<(), Self::Error> {
-        let node::Property { key, value } = id.get(tree);
+        let node::RecordField { field: key, value } = id.get(tree);
 
         stack.push_leaf(*key);
         stack.push_branch(*value);
@@ -137,7 +141,7 @@ pub trait Visitor: Handler {
 
     fn walk_record(
         &mut self,
-        id: NodeId<node::Record>,
+        id: NodeId<node::RecordExpr>,
         tree: &Tree,
         stack: &mut EventStack,
     ) -> Result<(), Self::Error> {
@@ -165,11 +169,11 @@ pub trait Visitor: Handler {
 
     fn walk_record_extend(
         &mut self,
-        id: NodeId<node::RecordExtend>,
+        id: NodeId<node::RecordExtendExpr>,
         tree: &Tree,
         stack: &mut EventStack,
     ) -> Result<(), Self::Error> {
-        let node::RecordExtend {
+        let node::RecordExtendExpr {
             source,
             field,
             value,
@@ -184,11 +188,11 @@ pub trait Visitor: Handler {
 
     fn walk_record_restrict(
         &mut self,
-        id: NodeId<node::RecordRestrict>,
+        id: NodeId<node::RecordRestrictExpr>,
         tree: &Tree,
         stack: &mut EventStack,
     ) -> Result<(), Self::Error> {
-        let node::RecordRestrict { source, field } = id.get(tree);
+        let node::RecordRestrictExpr { source, field } = id.get(tree);
 
         stack.push_branch(*source);
         stack.push_leaf(*field);
@@ -198,11 +202,11 @@ pub trait Visitor: Handler {
 
     fn walk_record_update(
         &mut self,
-        id: NodeId<node::RecordUpdate>,
+        id: NodeId<node::RecordUpdateExpr>,
         tree: &Tree,
         stack: &mut EventStack,
     ) -> Result<(), Self::Error> {
-        let node::RecordUpdate {
+        let node::RecordUpdateExpr {
             source,
             field,
             value,
@@ -217,11 +221,14 @@ pub trait Visitor: Handler {
 
     fn walk_unary(
         &mut self,
-        id: NodeId<node::Unary>,
+        id: NodeId<node::UnaryExpr>,
         tree: &Tree,
         stack: &mut EventStack,
     ) -> Result<(), Self::Error> {
-        let node::Unary { op, target } = id.get(tree);
+        let node::UnaryExpr {
+            op,
+            operand: target,
+        } = id.get(tree);
 
         stack.push_leaf(*op);
         stack.push_branch(*target);
@@ -231,11 +238,11 @@ pub trait Visitor: Handler {
 
     fn walk_binary(
         &mut self,
-        id: NodeId<node::Binary>,
+        id: NodeId<node::BinaryExpr>,
         tree: &Tree,
         stack: &mut EventStack,
     ) -> Result<(), Self::Error> {
-        let node::Binary { op, left, right } = id.get(tree);
+        let node::BinaryExpr { op, left, right } = id.get(tree);
 
         stack.push_leaf(*op);
         stack.push_branch(*left);
@@ -246,11 +253,11 @@ pub trait Visitor: Handler {
 
     fn walk_let(
         &mut self,
-        id: NodeId<node::Let>,
+        id: NodeId<node::LetExpr>,
         tree: &Tree,
         stack: &mut EventStack,
     ) -> Result<(), Self::Error> {
-        let node::Let {
+        let node::LetExpr {
             name,
             value,
             inside,
@@ -265,11 +272,11 @@ pub trait Visitor: Handler {
 
     fn walk_if(
         &mut self,
-        id: NodeId<node::If>,
+        id: NodeId<node::IfExpr>,
         tree: &Tree,
         stack: &mut EventStack,
     ) -> Result<(), Self::Error> {
-        let node::If {
+        let node::IfExpr {
             predicate,
             then,
             or,
@@ -284,11 +291,14 @@ pub trait Visitor: Handler {
 
     fn walk_property_pat(
         &mut self,
-        id: NodeId<node::PropertyPat>,
+        id: NodeId<node::RecordFieldPat>,
         tree: &Tree,
         stack: &mut EventStack,
     ) -> Result<(), Self::Error> {
-        let node::PropertyPat { key, value } = id.get(tree);
+        let node::RecordFieldPat {
+            field: key,
+            pat: value,
+        } = id.get(tree);
 
         stack.push_leaf(*key);
         if let Some(value) = value {
@@ -325,7 +335,7 @@ pub trait Visitor: Handler {
 
         match pat {
             Error(e) => todo!(),
-            Wildcard(w) => todo!(),
+            Any(w) => todo!(),
             Literal(l) => todo!(),
             Ident(i) => todo!(),
             Record(r) => todo!(),
@@ -336,11 +346,11 @@ pub trait Visitor: Handler {
 
     fn walk_branch(
         &mut self,
-        id: NodeId<node::Branch>,
+        id: NodeId<node::CaseBranch>,
         tree: &Tree,
         stack: &mut EventStack,
     ) -> Result<(), Self::Error> {
-        let node::Branch { pat, matches } = id.get(tree);
+        let node::CaseBranch { pat, matches } = id.get(tree);
 
         stack.push_branch(*pat);
         stack.push_branch(*matches);
@@ -350,11 +360,11 @@ pub trait Visitor: Handler {
 
     fn walk_case(
         &mut self,
-        id: NodeId<node::Case>,
+        id: NodeId<node::CaseExpr>,
         tree: &Tree,
         stack: &mut EventStack,
     ) -> Result<(), Self::Error> {
-        let node::Case { source, branches } = id.get(tree);
+        let node::CaseExpr { source, branches } = id.get(tree);
 
         stack.push_leaf(*source);
         for id in branches {
@@ -366,11 +376,11 @@ pub trait Visitor: Handler {
 
     fn walk_func(
         &mut self,
-        id: NodeId<node::Func>,
+        id: NodeId<node::LambdaExpr>,
         tree: &Tree,
         stack: &mut EventStack,
     ) -> Result<(), Self::Error> {
-        let node::Func { param, body } = id.get(tree);
+        let node::LambdaExpr { param, body } = id.get(tree);
 
         stack.push_leaf(*param);
         stack.push_branch(*body);
@@ -380,11 +390,11 @@ pub trait Visitor: Handler {
 
     fn walk_call(
         &mut self,
-        id: NodeId<node::Call>,
+        id: NodeId<node::CallExpr>,
         tree: &Tree,
         stack: &mut EventStack,
     ) -> Result<(), Self::Error> {
-        let node::Call { func, arg } = id.get(tree);
+        let node::CallExpr { func, arg } = id.get(tree);
 
         stack.push_branch(*func);
         stack.push_branch(*arg);
@@ -415,7 +425,7 @@ pub trait Visitor: Handler {
             Let(id) => stack.push_branch(*id),
             If(id) => stack.push_branch(*id),
             Case(id) => stack.push_branch(*id),
-            Func(id) => stack.push_branch(*id),
+            Lambda(id) => stack.push_branch(*id),
             Call(id) => stack.push_branch(*id),
         }
 
@@ -450,8 +460,8 @@ mod tests {
 
         fn handle_unary(
             &mut self,
-            _unary: &node::Unary,
-            _id: NodeId<node::Unary>,
+            _unary: &node::UnaryExpr,
+            _id: NodeId<node::UnaryExpr>,
         ) -> Result<(), Self::Error> {
             self.flow.push(NodeKind::Unary);
             Ok(())
@@ -459,8 +469,8 @@ mod tests {
 
         fn handle_literal(
             &mut self,
-            _literal: &node::Literal,
-            _id: NodeId<node::Literal>,
+            _literal: &node::LiteralExpr,
+            _id: NodeId<node::LiteralExpr>,
         ) -> Result<(), Self::Error> {
             self.flow.push(NodeKind::Literal);
             Ok(())
@@ -471,8 +481,8 @@ mod tests {
     fn visitor() {
         let mut builder = TreeBuilder::new();
 
-        let target = builder.insert(node::Literal::Num(10.0));
-        let unary = node::Unary::new_in(node::UnaryOp::Neg, target.into(), &mut builder);
+        let target = builder.insert(node::LiteralExpr::Num(10.0));
+        let unary = node::UnaryExpr::new_in(node::UnaryOp::Neg, target.into(), &mut builder);
         let root = builder.insert(node::Expr::Unary(unary));
 
         // -10

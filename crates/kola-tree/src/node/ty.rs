@@ -2,69 +2,76 @@ use derive_more::From;
 use kola_utils::as_variant;
 use serde::{Deserialize, Serialize};
 
-use super::{Name, Symbol};
+use super::Name;
 use crate::id::NodeId;
+
+/*
+type Option = forall a . [ Some : a, None ]
+type OptionResult  = forall a e . [ Option a | +Error : e ]
+type AlwaysSome = forall a . [ Option a | -None ]
+
+type Person = { name : Str }
+type Member = { Person | +id : Num }
+type Id = { Member | -id }
+*/
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct TypeError;
 
 #[derive(Debug, From, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
-#[from(forward)]
-pub struct TypeIdent(pub Symbol);
-
-impl TypeIdent {
-    pub fn as_str(&self) -> &str {
-        self.0.as_str()
-    }
-}
-
-impl PartialEq<Symbol> for TypeIdent {
-    fn eq(&self, other: &Symbol) -> bool {
-        &self.0 == other
-    }
-}
-
-impl PartialEq<str> for TypeIdent {
-    fn eq(&self, other: &str) -> bool {
-        self.as_str() == other
-    }
-}
+pub struct TypePath(pub Vec<NodeId<Name>>);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
-pub struct PropertyType {
+pub struct RecordFieldType {
     pub name: NodeId<Name>,
-    pub ty: NodeId<MonoType>,
+    pub ty: NodeId<TypeExpr>,
 }
 
-// TODO maybe resemble the type def in kola-semantic
 #[derive(Debug, From, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
-pub struct RecordType(pub Vec<NodeId<PropertyType>>);
+pub struct RecordType(pub Vec<NodeId<RecordFieldType>>);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+pub struct VariantCaseType {
+    pub name: NodeId<Name>,
+    pub ty: Option<NodeId<TypeExpr>>,
+}
+
+#[derive(Debug, From, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+pub struct VariantType(pub Vec<NodeId<VariantCaseType>>);
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct FuncType {
-    pub input: NodeId<MonoType>,
-    pub output: NodeId<MonoType>,
+    pub input: NodeId<TypeExpr>,
+    pub output: NodeId<TypeExpr>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+pub struct TypeApplication {
+    pub constructor: NodeId<TypeExpr>,
+    pub arg: NodeId<TypeExpr>,
 }
 
 #[derive(
     Debug, From, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
 )]
-pub enum MonoType {
+pub enum TypeExpr {
     Error(NodeId<TypeError>),
-    Ident(NodeId<TypeIdent>),
+    Path(NodeId<TypePath>),
     Record(NodeId<RecordType>),
+    Variant(NodeId<VariantType>),
     Func(NodeId<FuncType>),
+    Application(NodeId<TypeApplication>),
 }
 
-impl MonoType {
+impl TypeExpr {
     #[inline]
     pub fn to_error(self) -> Option<NodeId<TypeError>> {
         as_variant!(self, Self::Error)
     }
 
     #[inline]
-    pub fn to_type_ident(self) -> Option<NodeId<TypeIdent>> {
-        as_variant!(self, Self::Ident)
+    pub fn to_type_path(self) -> Option<NodeId<TypePath>> {
+        as_variant!(self, Self::Path)
     }
 
     #[inline]
@@ -73,8 +80,18 @@ impl MonoType {
     }
 
     #[inline]
+    pub fn to_variant_type(self) -> Option<NodeId<VariantType>> {
+        as_variant!(self, Self::Variant)
+    }
+
+    #[inline]
     pub fn to_func_type(self) -> Option<NodeId<FuncType>> {
         as_variant!(self, Self::Func)
+    }
+
+    #[inline]
+    pub fn to_type_application(self) -> Option<NodeId<TypeApplication>> {
+        as_variant!(self, Self::Application)
     }
 
     #[inline]
@@ -83,8 +100,8 @@ impl MonoType {
     }
 
     #[inline]
-    pub fn is_type_ident(self) -> bool {
-        matches!(self, Self::Ident(_))
+    pub fn is_type_path(self) -> bool {
+        matches!(self, Self::Path(_))
     }
 
     #[inline]
@@ -93,21 +110,29 @@ impl MonoType {
     }
 
     #[inline]
+    pub fn is_variant_type(self) -> bool {
+        matches!(self, Self::Variant(_))
+    }
+
+    #[inline]
     pub fn is_func_type(self) -> bool {
         matches!(self, Self::Func(_))
+    }
+
+    #[inline]
+    pub fn is_type_application(self) -> bool {
+        matches!(self, Self::Application(_))
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
-pub struct PolyType {
-    pub vars: Vec<NodeId<TypeIdent>>,
-    pub ty: NodeId<MonoType>,
+pub struct Type {
+    pub vars: Vec<NodeId<Name>>,
+    pub ty: NodeId<TypeExpr>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
-pub struct TypeAlias {
-    pub alias: NodeId<TypeIdent>,
-    pub ty: NodeId<PolyType>,
+pub struct TypeBind {
+    pub name: NodeId<Name>,
+    pub ty: NodeId<Type>,
 }
-
-// TODO implement derives for all nodes better

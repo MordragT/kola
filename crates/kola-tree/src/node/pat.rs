@@ -4,7 +4,7 @@ use kola_utils::as_variant;
 use owo_colors::OwoColorize;
 use serde::{Deserialize, Serialize};
 
-use super::{Literal, Name, Symbol};
+use super::{LiteralExpr, Name, Symbol};
 use crate::{id::NodeId, print::TreePrinter, tree::NodeContainer};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
@@ -17,26 +17,26 @@ impl Printable<TreePrinter> for PatError {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
-pub struct Wildcard;
+pub struct AnyPat;
 
-impl Printable<TreePrinter> for Wildcard {
+impl Printable<TreePrinter> for AnyPat {
     fn notate<'a>(&'a self, _with: &'a TreePrinter, arena: &'a Bump) -> Notation<'a> {
-        "Wildcard".blue().display_in(arena)
+        "AnyPat".blue().display_in(arena)
     }
 }
 
 #[derive(Debug, From, Clone, PartialEq, PartialOrd, Serialize, Deserialize)]
-pub struct LiteralPat(pub Literal);
+pub struct LiteralPat(pub LiteralExpr);
 
 impl Printable<TreePrinter> for LiteralPat {
     fn notate<'a>(&'a self, _with: &'a TreePrinter, arena: &'a Bump) -> Notation<'a> {
         let kind = "LiteralPat".purple().display_in(arena);
 
         let lit = match &self.0 {
-            Literal::Bool(b) => b.yellow().display_in(arena),
-            Literal::Num(n) => n.yellow().display_in(arena),
-            Literal::Char(c) => c.yellow().display_in(arena),
-            Literal::Str(s) => s.yellow().display_in(arena),
+            LiteralExpr::Bool(b) => b.yellow().display_in(arena),
+            LiteralExpr::Num(n) => n.yellow().display_in(arena),
+            LiteralExpr::Char(c) => c.yellow().display_in(arena),
+            LiteralExpr::Str(s) => s.yellow().display_in(arena),
         }
         .enclose_by(arena.just('"'), arena);
 
@@ -81,31 +81,34 @@ impl Printable<TreePrinter> for IdentPat {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
-pub struct PropertyPat {
-    pub key: NodeId<Name>,
-    pub value: Option<NodeId<Pat>>,
+pub struct RecordFieldPat {
+    pub field: NodeId<Name>,
+    pub pat: Option<NodeId<Pat>>,
 }
 
-impl PropertyPat {
-    pub fn value<'a>(&self, tree: &'a impl NodeContainer) -> Option<&'a Pat> {
-        self.value.map(|id| id.get(tree))
+impl RecordFieldPat {
+    pub fn field(self, tree: &impl NodeContainer) -> &Name {
+        self.field.get(tree)
+    }
+
+    pub fn value(self, tree: &impl NodeContainer) -> Option<Pat> {
+        self.pat.map(|id| id.get(tree)).copied()
     }
 }
 
-impl Printable<TreePrinter> for PropertyPat {
+impl Printable<TreePrinter> for RecordFieldPat {
     fn notate<'a>(&'a self, with: &'a TreePrinter, arena: &'a Bump) -> Notation<'a> {
-        let Self { key, value } = self;
+        let Self { field, pat } = self;
 
         let head = "PropertyPat".blue().display_in(arena);
 
-        let key = key.notate(with, arena);
-        let value = value.as_ref().map(|v| v.notate(with, arena));
+        let field = field.notate(with, arena);
+        let pat = pat.as_ref().map(|v| v.notate(with, arena));
 
         let single = [
             arena.notate(" key = "),
-            key.clone().flatten(arena),
-            value
-                .clone()
+            field.clone().flatten(arena),
+            pat.clone()
                 .map(|v| arena.notate(", value = ").then(v, arena))
                 .or_not(arena),
         ]
@@ -114,9 +117,8 @@ impl Printable<TreePrinter> for PropertyPat {
         let multi = [
             arena.newline(),
             arena.notate("key = "),
-            key,
-            value
-                .map(|v| [arena.newline(), arena.notate("value = "), v].concat_in(arena))
+            field,
+            pat.map(|v| [arena.newline(), arena.notate("value = "), v].concat_in(arena))
                 .or_not(arena),
         ]
         .concat_in(arena)
@@ -126,20 +128,16 @@ impl Printable<TreePrinter> for PropertyPat {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
-pub struct RecordPat {
-    pub fields: Vec<NodeId<PropertyPat>>,
-}
+#[derive(Debug, From, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+pub struct RecordPat(pub Vec<NodeId<RecordFieldPat>>);
 
 impl RecordPat {
-    pub fn get<'a>(
-        &self,
-        name: impl AsRef<str>,
-        tree: &'a impl NodeContainer,
-    ) -> Option<&'a PropertyPat> {
-        self.fields.iter().find_map(|p| {
-            let p = p.get(tree);
-            (p.key.get(tree) == name.as_ref()).then_some(p)
+    pub fn get(&self, name: impl AsRef<str>, tree: &impl NodeContainer) -> Option<RecordFieldPat> {
+        self.0.iter().find_map(|id| {
+            let field = id.get(tree);
+            (field.field(tree) == name.as_ref())
+                .then_some(field)
+                .copied()
         })
     }
 }
@@ -148,7 +146,7 @@ impl Printable<TreePrinter> for RecordPat {
     fn notate<'a>(&'a self, with: &'a TreePrinter, arena: &'a Bump) -> Notation<'a> {
         let head = "RecordPat".blue().display_in(arena);
 
-        let fields = self.fields.gather(with, arena);
+        let fields = self.0.gather(with, arena);
 
         let single = fields.clone().concat_map(
             |field| arena.notate(" ").then(field.flatten(arena), arena),
@@ -163,7 +161,7 @@ impl Printable<TreePrinter> for RecordPat {
 #[derive(Debug, From, Clone, Copy, PartialEq, PartialOrd, Serialize, Deserialize)]
 pub enum Pat {
     Error(NodeId<PatError>),
-    Wildcard(NodeId<Wildcard>),
+    Any(NodeId<AnyPat>),
     Literal(NodeId<LiteralPat>),
     Ident(NodeId<IdentPat>),
     Record(NodeId<RecordPat>),
@@ -173,7 +171,7 @@ impl Printable<TreePrinter> for Pat {
     fn notate<'a>(&'a self, with: &'a TreePrinter, arena: &'a Bump) -> Notation<'a> {
         match self {
             Self::Error(e) => e.notate(with, arena),
-            Self::Wildcard(w) => w.notate(with, arena),
+            Self::Any(w) => w.notate(with, arena),
             Self::Literal(l) => l.notate(with, arena),
             Self::Ident(i) => i.notate(with, arena),
             Self::Record(r) => r.notate(with, arena),
@@ -188,8 +186,8 @@ impl Pat {
     }
 
     #[inline]
-    pub fn to_wildcard(self) -> Option<NodeId<Wildcard>> {
-        as_variant!(self, Self::Wildcard)
+    pub fn to_wildcard(self) -> Option<NodeId<AnyPat>> {
+        as_variant!(self, Self::Any)
     }
 
     #[inline]
@@ -214,7 +212,7 @@ impl Pat {
 
     #[inline]
     pub fn is_wildcard(self) -> bool {
-        matches!(self, Self::Wildcard(_))
+        matches!(self, Self::Any(_))
     }
 
     #[inline]

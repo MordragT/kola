@@ -3,9 +3,8 @@ use std::rc::Rc;
 use kola_utils::{TryAsMut, TryAsRef};
 
 use crate::{
-    Phase,
     id::NodeId,
-    meta::Meta,
+    meta::{Meta, Phase},
     node::{Expr, Node},
 };
 

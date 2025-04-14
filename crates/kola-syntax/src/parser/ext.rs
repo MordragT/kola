@@ -48,11 +48,11 @@ where
     }
 
     #[inline]
-    fn to_mono_type(self) -> impl Parser<'src, I, NodeId<node::MonoType>, Extra<'src>>
+    fn to_mono_type(self) -> impl Parser<'src, I, NodeId<node::TypeExpr>, Extra<'src>>
     where
-        node::MonoType: From<T>,
+        node::TypeExpr: From<T>,
     {
-        self.map(node::MonoType::from).to_node()
+        self.map(node::TypeExpr::from).to_node()
     }
 }
 

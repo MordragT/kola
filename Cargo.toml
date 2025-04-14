@@ -10,7 +10,7 @@ kola-semantic = { path = "crates/kola-semantic" }
 kola-compiler = { path = "crates/kola-compiler" }
 ecow = { version = "0.2.3", features = ["serde"] }
 serde = { version = "1.0", features = ["derive"] }
-derive_more = { version = "2.0", features = ["from", "try_into"] }
+derive_more = { version = "2.0", features = ["from", "try_into", "display"] }
 thiserror = "2.0"
 owo-colors = "4.1"
 miette = "7.4.0"
