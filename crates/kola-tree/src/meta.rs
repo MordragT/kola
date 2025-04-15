@@ -176,6 +176,8 @@ define!(
     IdentPat,
     RecordFieldPat,
     RecordPat,
+    VariantCasePat,
+    VariantPat,
     PatError,
     Pat,
     // Expressions
@@ -205,6 +207,8 @@ define!(
     TypePath,
     RecordFieldType,
     RecordType,
+    VariantCaseType,
+    VariantType,
     FuncType,
     TypeApplication,
     TypeExpr,

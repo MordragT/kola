@@ -17,3 +17,4 @@ chumsky = { version = "0.10", features = [
 kola-tree.workspace = true
 kola-utils.workspace = true
 kola-print.workspace = true
+derive_more.workspace = true

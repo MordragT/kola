@@ -3,7 +3,7 @@ use kola_utils::as_variant;
 use serde::{Deserialize, Serialize};
 
 use super::Name;
-use crate::id::NodeId;
+use crate::{id::NodeId, tree::NodeContainer};
 
 /*
 type Option = forall a . [ Some : a, None ]
@@ -13,6 +13,8 @@ type AlwaysSome = forall a . [ Option a | -None ]
 type Person = { name : Str }
 type Member = { Person | +id : Num }
 type Id = { Member | -id }
+
+map : forall a b . (a -> b) -> List a -> List b
 */
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
@@ -20,6 +22,12 @@ pub struct TypeError;
 
 #[derive(Debug, From, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct TypePath(pub Vec<NodeId<Name>>);
+
+impl TypePath {
+    pub fn get<'a>(&self, index: usize, tree: &'a impl NodeContainer) -> &'a Name {
+        self.0[index].get(tree)
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct RecordFieldType {
@@ -30,6 +38,13 @@ pub struct RecordFieldType {
 #[derive(Debug, From, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct RecordType(pub Vec<NodeId<RecordFieldType>>);
 
+impl RecordType {
+    pub fn get(&self, index: usize, tree: &impl NodeContainer) -> RecordFieldType {
+        *self.0[index].get(tree)
+    }
+}
+
+// TODO better name it Tag ??
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct VariantCaseType {
     pub name: NodeId<Name>,
@@ -39,6 +54,13 @@ pub struct VariantCaseType {
 #[derive(Debug, From, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct VariantType(pub Vec<NodeId<VariantCaseType>>);
 
+impl VariantType {
+    pub fn get(&self, index: usize, tree: &impl NodeContainer) -> VariantCaseType {
+        *self.0[index].get(tree)
+    }
+}
+
+// TODO this needs to be disambiguated with parentheses if a function should be one argument
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct FuncType {
     pub input: NodeId<TypeExpr>,

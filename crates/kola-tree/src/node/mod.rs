@@ -111,6 +111,8 @@ define_nodes!(
     IdentPat,
     RecordFieldPat,
     RecordPat,
+    VariantCasePat,
+    VariantPat,
     PatError,
     Pat,
     // Expressions
@@ -140,6 +142,8 @@ define_nodes!(
     TypePath,
     RecordFieldType,
     RecordType,
+    VariantCaseType,
+    VariantType,
     FuncType,
     TypeApplication,
     TypeExpr,

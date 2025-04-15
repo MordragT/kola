@@ -7,6 +7,8 @@ pub enum BranchId {
     // Patterns
     RecordFieldPat(NodeId<node::RecordFieldPat>),
     RecordPat(NodeId<node::RecordPat>),
+    VariantCasePat(NodeId<node::VariantCasePat>),
+    VariantPat(NodeId<node::VariantPat>),
     Pat(NodeId<node::Pat>),
     // Expr
     Path(NodeId<node::PathExpr>),
@@ -29,6 +31,8 @@ pub enum BranchId {
     TypePath(NodeId<node::TypePath>),
     RecordFieldType(NodeId<node::RecordFieldType>),
     RecordType(NodeId<node::RecordType>),
+    VariantCaseType(NodeId<node::VariantCaseType>),
+    VariantType(NodeId<node::VariantType>),
     FuncType(NodeId<node::FuncType>),
     TypeApplication(NodeId<node::TypeApplication>),
     TypeExpr(NodeId<node::TypeExpr>),

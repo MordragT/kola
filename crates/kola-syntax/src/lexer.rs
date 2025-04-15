@@ -64,6 +64,11 @@ pub fn lexer<'src>() -> impl Parser<'src, &'src str, Vec<Spanned<Token<'src>>>, 
 
     // Multi-character operators
     let multi_op = choice((
+        just("+=").to(Op::AddAssign),
+        just("-=").to(Op::SubAssign),
+        just("*=").to(Op::MulAssign),
+        just("/=").to(Op::DivAssign),
+        just("%=").to(Op::RemAssign),
         just("<=").to(Op::LessEq),
         just(">=").to(Op::GreaterEq),
         just("==").to(Op::Eq),
@@ -77,6 +82,7 @@ pub fn lexer<'src>() -> impl Parser<'src, &'src str, Vec<Spanned<Token<'src>>>, 
 
     // Single-character operators
     let single_op = choice((
+        just('=').to(Op::Assign),
         just('+').to(Op::Add),
         just('-').to(Op::Sub),
         just('*').to(Op::Mul),
@@ -103,8 +109,7 @@ pub fn lexer<'src>() -> impl Parser<'src, &'src str, Vec<Spanned<Token<'src>>>, 
         just('~').to(Token::Tilde),
         just('|').to(Token::Pipe),
         just('\\').to(Token::Backslash),
-        just('=').to(Token::Assign),
-        just('_').to(Token::Wildcard),
+        just('_').to(Token::Underscore),
     ));
 
     // Delimiters group
@@ -119,6 +124,7 @@ pub fn lexer<'src>() -> impl Parser<'src, &'src str, Vec<Spanned<Token<'src>>>, 
 
     // Keywords and identifiers
     let word = text::ident().map(|ident| match ident {
+        "type" => Token::Type,
         "fn" => Token::Fn,
         "functor" => Token::Functor,
         "let" => Token::Let,

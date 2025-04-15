@@ -1,6 +1,6 @@
 use bumpalo::collections::CollectIn;
+use derive_more::Display;
 use kola_print::prelude::*;
-use owo_colors::OwoColorize;
 use std::fmt;
 
 use super::span::Spanned;
@@ -28,7 +28,7 @@ impl<'t> Printable<()> for TokenPrinter<'t> {
 
 pub type Tokens<'a> = Vec<Spanned<Token<'a>>>;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Display, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum TokenKind {
     Symbol,
     Operator,
@@ -37,70 +37,76 @@ pub enum TokenKind {
     Control,
 }
 
-impl fmt::Display for TokenKind {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Symbol => write!(f, "{}", "Symbol".yellow()),
-            Self::Operator => write!(f, "{}", "Operator".green()),
-            Self::Literal => write!(f, "{}", "Literal".purple()),
-            Self::Keyword => write!(f, "{}", "Keyword".red()),
-            Self::Control => write!(f, "{}", "Control".blue()),
-        }
-    }
-}
-
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Delimiter {
     Paren,
     Bracket,
     Brace,
 }
 
-#[derive(Copy, Clone, Debug, PartialEq, Eq, Hash)]
+/*
+Maybe also
+<< bitwise left shift
+>> bitwise right shift
+^ xor
+//=     flored divison
+//
+**=     Exponent
+**
+
+~ unary bitwise inversion ?
+*/
+
+#[derive(Debug, Display, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Op {
+    #[display("=")]
+    Assign,
+    #[display("+")]
     Add,
+    #[display("+=")]
+    AddAssign,
+    #[display("-")]
     Sub,
+    #[display("-=")]
+    SubAssign,
+    #[display("*")]
     Mul,
+    #[display("*=")]
+    MulAssign,
+    #[display("/")]
     Div,
+    #[display("/=")]
+    DivAssign,
+    #[display("%")]
     Rem,
+    #[display("%=")]
+    RemAssign,
     // Comparison
+    #[display("<")]
     Less,
+    #[display(">")]
     Greater,
+    #[display("<=")]
     LessEq,
+    #[display(">=")]
     GreaterEq,
     // Logical
+    #[display("!")]
     Not,
+    #[display("and")]
     And,
+    #[display("or")]
     Or,
+    #[display("xor")]
     Xor,
     // Equality
+    #[display("==")]
     Eq,
+    #[display("!=")]
     NotEq,
     // Record
+    #[display("&")]
     Merge,
-}
-
-impl fmt::Display for Op {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Add => write!(f, "+"),
-            Self::Sub => write!(f, "-"),
-            Self::Mul => write!(f, "*"),
-            Self::Div => write!(f, "/"),
-            Self::Rem => write!(f, "%"),
-            Self::Less => write!(f, "<"),
-            Self::Greater => write!(f, ">"),
-            Self::LessEq => write!(f, "<="),
-            Self::GreaterEq => write!(f, ">="),
-            Self::Not => write!(f, "!"),
-            Self::And => write!(f, "and"),
-            Self::Or => write!(f, "or"),
-            Self::Xor => write!(f, "xor"),
-            Self::Eq => write!(f, "=="),
-            Self::NotEq => write!(f, "!="),
-            Self::Merge => write!(f, "&"),
-        }
-    }
 }
 
 #[derive(Clone, Debug, PartialEq)]
@@ -113,6 +119,7 @@ pub enum Token<'src> {
     Char(char),
     Str(&'src str),
     // Keywords
+    Type,
     Fn,
     Functor,
     Let,
@@ -132,10 +139,9 @@ pub enum Token<'src> {
     Colon,
     Comma,
     Tilde,
-    Assign,
     Pipe,
     Backslash,
-    Wildcard,
+    Underscore,
     Arrow,
     DoubleArrow,
 }
@@ -149,6 +155,8 @@ impl<'src> fmt::Display for Token<'src> {
             Self::Bool(b) => write!(f, "{b}"),
             Self::Char(c) => write!(f, "{c}"),
             Self::Str(s) => write!(f, "{s}"),
+            // Keywords
+            Self::Type => write!(f, "type"),
             Self::Fn => write!(f, "fn"),
             Self::Functor => write!(f, "functor"),
             Self::Let => write!(f, "let"),
@@ -161,6 +169,7 @@ impl<'src> fmt::Display for Token<'src> {
             Self::Forall => write!(f, "forall"),
             Self::Import => write!(f, "import"),
             Self::Export => write!(f, "export"),
+            // Control
             Self::Open(Delimiter::Paren) => write!(f, "("),
             Self::Open(Delimiter::Bracket) => write!(f, "["),
             Self::Open(Delimiter::Brace) => write!(f, "{{"),
@@ -171,12 +180,11 @@ impl<'src> fmt::Display for Token<'src> {
             Self::Colon => write!(f, ":"),
             Self::Comma => write!(f, ","),
             Self::Tilde => write!(f, "~"),
-            Self::Assign => write!(f, "="),
             Self::Pipe => write!(f, "|"),
             Self::Backslash => write!(f, "\\"),
             Self::Arrow => write!(f, "->"),
             Self::DoubleArrow => write!(f, "=>"),
-            Self::Wildcard => write!(f, "_"),
+            Self::Underscore => write!(f, "_"),
         }
     }
 }
@@ -187,7 +195,8 @@ impl<'src> Token<'src> {
             Self::Symbol(_) => TokenKind::Symbol,
             Self::Op(_) => TokenKind::Operator,
             Self::Num(_) | Self::Bool(_) | Self::Char(_) | Self::Str(_) => TokenKind::Literal,
-            Self::Fn
+            Self::Type
+            | Self::Fn
             | Self::Functor
             | Self::Let
             | Self::In
@@ -205,12 +214,11 @@ impl<'src> Token<'src> {
             | Self::Colon
             | Self::Comma
             | Self::Tilde
-            | Self::Assign
             | Self::Pipe
             | Self::Backslash
             | Self::Arrow
             | Self::DoubleArrow
-            | Self::Wildcard => TokenKind::Control,
+            | Self::Underscore => TokenKind::Control,
         }
     }
 }

@@ -64,6 +64,12 @@ impl Printable<TreePrinter> for PathExpr {
     }
 }
 
+impl PathExpr {
+    pub fn get<'a>(&self, index: usize, tree: &'a impl NodeContainer) -> &'a Name {
+        self.0[index].get(tree)
+    }
+}
+
 #[derive(Debug, From, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct ListExpr(pub Vec<NodeId<Expr>>);
 
@@ -743,13 +749,13 @@ impl Printable<TreePrinter> for CaseBranch {
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct CaseExpr {
-    pub source: NodeId<Name>,
+    pub source: NodeId<Expr>,
     pub branches: Vec<NodeId<CaseBranch>>,
 }
 
 impl CaseExpr {
-    pub fn source<'a>(&self, tree: &'a impl NodeContainer) -> &'a Name {
-        self.source.get(tree)
+    pub fn source(&self, tree: &impl NodeContainer) -> Expr {
+        *self.source.get(tree)
     }
 }
 

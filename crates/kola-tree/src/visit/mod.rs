@@ -53,66 +53,104 @@ pub trait Visitor: Handler {
     ) -> Result<(), Self::Error> {
         match event {
             Event::Enter(id) => match id {
-                BranchId::List(id) => self.walk_list(id, tree, stack),
-                BranchId::Property(id) => self.walk_property(id, tree, stack),
-                BranchId::Record(id) => self.walk_record(id, tree, stack),
-                BranchId::RecordSelect(id) => self.walk_record_select(id, tree, stack),
-                BranchId::RecordExtend(id) => self.walk_record_extend(id, tree, stack),
-                BranchId::RecordRestrict(id) => self.walk_record_restrict(id, tree, stack),
-                BranchId::RecordUpdate(id) => self.walk_record_update(id, tree, stack),
-                BranchId::Unary(id) => self.walk_unary(id, tree, stack),
-                BranchId::Binary(id) => self.walk_binary(id, tree, stack),
-                BranchId::Let(id) => self.walk_let(id, tree, stack),
-                BranchId::PropertyPat(id) => self.walk_property_pat(id, tree, stack),
+                BranchId::List(id) => self.walk_list_expr(id, tree, stack),
+                BranchId::RecordField(id) => self.walk_record_field(id, tree, stack),
+                BranchId::Record(id) => self.walk_record_expr(id, tree, stack),
+                BranchId::RecordExtend(id) => self.walk_record_extend_expr(id, tree, stack),
+                BranchId::RecordRestrict(id) => self.walk_record_restrict_expr(id, tree, stack),
+                BranchId::RecordUpdate(id) => self.walk_record_update_expr(id, tree, stack),
+                BranchId::Unary(id) => self.walk_unary_expr(id, tree, stack),
+                BranchId::Binary(id) => self.walk_binary_expr(id, tree, stack),
+                BranchId::Let(id) => self.walk_let_expr(id, tree, stack),
+                BranchId::RecordFieldPat(id) => self.walk_record_field_pat(id, tree, stack),
                 BranchId::RecordPat(id) => self.walk_record_pat(id, tree, stack),
+                BranchId::VariantCasePat(id) => self.walk_variant_case_pat(id, tree, stack),
+                BranchId::VariantPat(id) => self.walk_variant_pat(id, tree, stack),
                 BranchId::Pat(id) => self.walk_pat(id, tree, stack),
-                BranchId::Branch(id) => self.walk_branch(id, tree, stack),
-                BranchId::Case(id) => self.walk_case(id, tree, stack),
-                BranchId::If(id) => self.walk_if(id, tree, stack),
-                BranchId::Func(id) => self.walk_func(id, tree, stack),
-                BranchId::Call(id) => self.walk_call(id, tree, stack),
+                BranchId::CaseBranch(id) => self.walk_case_branch(id, tree, stack),
+                BranchId::Case(id) => self.walk_case_expr(id, tree, stack),
+                BranchId::If(id) => self.walk_if_expr(id, tree, stack),
+                BranchId::Lambda(id) => self.walk_lambda_expr(id, tree, stack),
+                BranchId::Call(id) => self.walk_call_expr(id, tree, stack),
                 BranchId::Expr(id) => self.walk_expr(id, tree, stack),
+                BranchId::TypePath(id) => self.walk_type_path(id, tree, stack),
+                BranchId::RecordFieldType(id) => self.walk_record_field_type(id, tree, stack),
+                BranchId::RecordType(id) => self.walk_record_type(id, tree, stack),
+                BranchId::VariantCaseType(id) => self.walk_variant_case_type(id, tree, stack),
+                BranchId::VariantType(id) => self.walk_variant_type(id, tree, stack),
+                BranchId::FuncType(id) => self.walk_func_type(id, tree, stack),
+                BranchId::TypeApplication(id) => self.walk_type_application(id, tree, stack),
+                BranchId::TypeExpr(id) => self.walk_type_expr(id, tree, stack),
+                BranchId::Type(id) => self.walk_type(id, tree, stack),
+                BranchId::TypeBind(id) => self.walk_type_bind(id, tree, stack),
+                BranchId::ValueBind(id) => self.walk_value_bind(id, tree, stack),
+                BranchId::ModuleBind(id) => self.walk_module_bind(id, tree, stack),
+                BranchId::ModuleTypeBind(id) => self.walk_module_type_bind(id, tree, stack),
+                BranchId::Bind(id) => self.walk_bind(id, tree, stack),
+                BranchId::Module(id) => self.walk_module(id, tree, stack),
+                BranchId::Spec(id) => self.walk_spec(id, tree, stack),
+                BranchId::ModuleType(id) => self.walk_module_type(id, tree, stack),
+                BranchId::Path(id) => self.walk_path_expr(id, tree, stack),
             },
             Event::Exit(id) => match id {
-                BranchId::List(id) => self.handle_list(id.get(tree), id),
-                BranchId::Property(id) => self.handle_property(id.get(tree), id),
-                BranchId::Record(id) => self.handle_record(id.get(tree), id),
-                BranchId::RecordSelect(id) => self.handle_record_select(id.get(tree), id),
-                BranchId::RecordExtend(id) => self.handle_record_extend(id.get(tree), id),
-                BranchId::RecordRestrict(id) => self.handle_record_restrict(id.get(tree), id),
-                BranchId::RecordUpdate(id) => self.handle_record_update(id.get(tree), id),
-                BranchId::Unary(id) => self.handle_unary(id.get(tree), id),
-                BranchId::Binary(id) => self.handle_binary(id.get(tree), id),
-                BranchId::Let(id) => self.handle_let(id.get(tree), id),
-                BranchId::PropertyPat(id) => self.handle_property_pat(id.get(tree), id),
+                BranchId::List(id) => self.handle_list_expr(id.get(tree), id),
+                BranchId::RecordField(id) => self.handle_record_field(id.get(tree), id),
+                BranchId::Record(id) => self.handle_record_expr(id.get(tree), id),
+                BranchId::RecordExtend(id) => self.handle_record_extend_expr(id.get(tree), id),
+                BranchId::RecordRestrict(id) => self.handle_record_restrict_expr(id.get(tree), id),
+                BranchId::RecordUpdate(id) => self.handle_record_update_expr(id.get(tree), id),
+                BranchId::Unary(id) => self.handle_unary_expr(id.get(tree), id),
+                BranchId::Binary(id) => self.handle_binary_expr(id.get(tree), id),
+                BranchId::Let(id) => self.handle_let_expr(id.get(tree), id),
+                BranchId::RecordFieldPat(id) => self.handle_record_field_pat(id.get(tree), id),
                 BranchId::RecordPat(id) => self.handle_record_pat(id.get(tree), id),
+                BranchId::VariantCasePat(id) => self.handle_variant_case_pat(id.get(tree), id),
+                BranchId::VariantPat(id) => self.handle_variant_pat(id.get(tree), id),
                 BranchId::Pat(id) => self.handle_pat(id.get(tree), id),
-                BranchId::Branch(id) => self.handle_branch(id.get(tree), id),
-                BranchId::Case(id) => self.handle_case(id.get(tree), id),
-                BranchId::If(id) => self.handle_if(id.get(tree), id),
-                BranchId::Func(id) => self.handle_func(id.get(tree), id),
-                BranchId::Call(id) => self.handle_call(id.get(tree), id),
+                BranchId::CaseBranch(id) => self.handle_case_branch(id.get(tree), id),
+                BranchId::Case(id) => self.handle_case_expr(id.get(tree), id),
+                BranchId::If(id) => self.handle_if_expr(id.get(tree), id),
+                BranchId::Lambda(id) => self.handle_lambda_expr(id.get(tree), id),
+                BranchId::Call(id) => self.handle_call_expr(id.get(tree), id),
                 BranchId::Expr(id) => self.handle_expr(id.get(tree), id),
+                BranchId::TypePath(id) => self.handle_type_path(id.get(tree), id),
+                BranchId::RecordFieldType(id) => self.handle_record_field_type(id.get(tree), id),
+                BranchId::RecordType(id) => self.handle_record_type(id.get(tree), id),
+                BranchId::VariantCaseType(id) => self.handle_variant_case_type(id.get(tree), id),
+                BranchId::VariantType(id) => self.handle_variant_type(id.get(tree), id),
+                BranchId::FuncType(id) => self.handle_func_type(id.get(tree), id),
+                BranchId::TypeApplication(id) => self.handle_type_application(id.get(tree), id),
+                BranchId::TypeExpr(id) => self.handle_type_expr(id.get(tree), id),
+                BranchId::Type(id) => self.handle_type(id.get(tree), id),
+                BranchId::TypeBind(id) => self.handle_type_bind(id.get(tree), id),
+                BranchId::ValueBind(id) => self.handle_value_bind(id.get(tree), id),
+                BranchId::ModuleBind(id) => self.handle_module_bind(id.get(tree), id),
+                BranchId::ModuleTypeBind(id) => self.handle_module_type_bind(id.get(tree), id),
+                BranchId::Bind(id) => self.handle_bind(id.get(tree), id),
+                BranchId::Module(id) => self.handle_module(id.get(tree), id),
+                BranchId::Spec(id) => self.handle_spec(id.get(tree), id),
+                BranchId::ModuleType(id) => self.handle_module_type(id.get(tree), id),
+                BranchId::Path(id) => self.handle_path_expr(id.get(tree), id),
             },
             Event::Visit(id) => match id {
                 LeafId::Name(id) => self.handle_name(id.get(tree), id),
-                LeafId::Ident(id) => self.handle_ident(id.get(tree), id),
-                LeafId::Literal(id) => self.handle_literal(id.get(tree), id),
-                LeafId::UnaryOp(id) => self.handle_unary_op(id.get(tree), id),
-                LeafId::BinaryOp(id) => self.handle_binary_op(id.get(tree), id),
-                LeafId::PatError(id) => self.handle_pat_error(id.get(tree), id),
-                LeafId::Wildcard(id) => self.handle_wildcard(id.get(tree), id),
+                LeafId::AnyPat(id) => self.handle_any_pat(id.get(tree), id),
                 LeafId::LiteralPat(id) => self.handle_literal_pat(id.get(tree), id),
                 LeafId::IdentPat(id) => self.handle_ident_pat(id.get(tree), id),
-                LeafId::ExprError(id) => todo!(),
-                // LeafNode::ExprError(id) => self.visit_expr_error(id.get(tree), id),
+                LeafId::Literal(id) => self.handle_literal_expr(id.get(tree), id),
+                LeafId::UnaryOp(id) => self.handle_unary_op(id.get(tree), id),
+                LeafId::BinaryOp(id) => self.handle_binary_op(id.get(tree), id),
+                LeafId::RecordUpdateOp(id) => self.handle_record_update_op(id.get(tree), id),
+                LeafId::PatError(id) => self.handle_pat_error(id.get(tree), id),
+                LeafId::ExprError(id) => self.handle_expr_error(id.get(tree), id),
+                LeafId::TypeError(id) => self.handle_type_error(id.get(tree), id),
             },
         }
     }
 
-    fn walk_list(
+    fn walk_list_expr(
         &mut self,
-        id: NodeId<node::List>,
+        id: NodeId<node::ListExpr>,
         tree: &Tree,
         stack: &mut EventStack,
     ) -> Result<(), Self::Error> {
@@ -125,21 +163,36 @@ pub trait Visitor: Handler {
         Ok(())
     }
 
-    fn walk_property(
+    fn walk_path_expr(
+        &mut self,
+        id: NodeId<node::PathExpr>,
+        tree: &Tree,
+        stack: &mut EventStack,
+    ) -> Result<(), Self::Error> {
+        let path = id.get(tree);
+
+        for id in &path.0 {
+            stack.push_leaf(*id);
+        }
+
+        Ok(())
+    }
+
+    fn walk_record_field(
         &mut self,
         id: NodeId<node::RecordField>,
         tree: &Tree,
         stack: &mut EventStack,
     ) -> Result<(), Self::Error> {
-        let node::RecordField { field: key, value } = id.get(tree);
+        let node::RecordField { field, value } = id.get(tree);
 
-        stack.push_leaf(*key);
+        stack.push_leaf(*field);
         stack.push_branch(*value);
 
         Ok(())
     }
 
-    fn walk_record(
+    fn walk_record_expr(
         &mut self,
         id: NodeId<node::RecordExpr>,
         tree: &Tree,
@@ -147,27 +200,14 @@ pub trait Visitor: Handler {
     ) -> Result<(), Self::Error> {
         let record = id.get(tree);
 
-        for id in &record.fields {
+        for id in &record.0 {
             stack.push_branch(*id);
         }
 
         Ok(())
     }
 
-    fn walk_record_select(
-        &mut self,
-        id: NodeId<node::RecordSelect>,
-        tree: &Tree,
-        stack: &mut EventStack,
-    ) -> Result<(), Self::Error> {
-        let node::RecordSelect { source, field } = id.get(tree);
-
-        stack.push_branch(*source);
-        stack.push_leaf(*field);
-        Ok(())
-    }
-
-    fn walk_record_extend(
+    fn walk_record_extend_expr(
         &mut self,
         id: NodeId<node::RecordExtendExpr>,
         tree: &Tree,
@@ -186,7 +226,7 @@ pub trait Visitor: Handler {
         Ok(())
     }
 
-    fn walk_record_restrict(
+    fn walk_record_restrict_expr(
         &mut self,
         id: NodeId<node::RecordRestrictExpr>,
         tree: &Tree,
@@ -200,7 +240,7 @@ pub trait Visitor: Handler {
         Ok(())
     }
 
-    fn walk_record_update(
+    fn walk_record_update_expr(
         &mut self,
         id: NodeId<node::RecordUpdateExpr>,
         tree: &Tree,
@@ -209,34 +249,33 @@ pub trait Visitor: Handler {
         let node::RecordUpdateExpr {
             source,
             field,
+            op,
             value,
         } = id.get(tree);
 
         stack.push_branch(*source);
         stack.push_leaf(*field);
+        stack.push_leaf(*op);
         stack.push_branch(*value);
 
         Ok(())
     }
 
-    fn walk_unary(
+    fn walk_unary_expr(
         &mut self,
         id: NodeId<node::UnaryExpr>,
         tree: &Tree,
         stack: &mut EventStack,
     ) -> Result<(), Self::Error> {
-        let node::UnaryExpr {
-            op,
-            operand: target,
-        } = id.get(tree);
+        let node::UnaryExpr { op, operand } = id.get(tree);
 
         stack.push_leaf(*op);
-        stack.push_branch(*target);
+        stack.push_branch(*operand);
 
         Ok(())
     }
 
-    fn walk_binary(
+    fn walk_binary_expr(
         &mut self,
         id: NodeId<node::BinaryExpr>,
         tree: &Tree,
@@ -251,7 +290,7 @@ pub trait Visitor: Handler {
         Ok(())
     }
 
-    fn walk_let(
+    fn walk_let_expr(
         &mut self,
         id: NodeId<node::LetExpr>,
         tree: &Tree,
@@ -270,7 +309,7 @@ pub trait Visitor: Handler {
         Ok(())
     }
 
-    fn walk_if(
+    fn walk_if_expr(
         &mut self,
         id: NodeId<node::IfExpr>,
         tree: &Tree,
@@ -289,19 +328,16 @@ pub trait Visitor: Handler {
         Ok(())
     }
 
-    fn walk_property_pat(
+    fn walk_record_field_pat(
         &mut self,
         id: NodeId<node::RecordFieldPat>,
         tree: &Tree,
         stack: &mut EventStack,
     ) -> Result<(), Self::Error> {
-        let node::RecordFieldPat {
-            field: key,
-            pat: value,
-        } = id.get(tree);
+        let node::RecordFieldPat { field, pat } = id.get(tree);
 
-        stack.push_leaf(*key);
-        if let Some(value) = value {
+        stack.push_leaf(*field);
+        if let Some(value) = pat {
             stack.push_branch(*value);
         }
 
@@ -316,7 +352,38 @@ pub trait Visitor: Handler {
     ) -> Result<(), Self::Error> {
         let record_pat = id.get(tree);
 
-        for id in &record_pat.fields {
+        for id in &record_pat.0 {
+            stack.push_branch(*id);
+        }
+
+        Ok(())
+    }
+
+    fn walk_variant_case_pat(
+        &mut self,
+        id: NodeId<node::VariantCasePat>,
+        tree: &Tree,
+        stack: &mut EventStack,
+    ) -> Result<(), Self::Error> {
+        let node::VariantCasePat { case, pat } = id.get(tree);
+
+        stack.push_leaf(*case);
+        if let Some(value) = pat {
+            stack.push_branch(*value);
+        }
+
+        Ok(())
+    }
+
+    fn walk_variant_pat(
+        &mut self,
+        id: NodeId<node::VariantPat>,
+        tree: &Tree,
+        stack: &mut EventStack,
+    ) -> Result<(), Self::Error> {
+        let variant_pat = id.get(tree);
+
+        for id in &variant_pat.0 {
             stack.push_branch(*id);
         }
 
@@ -331,20 +398,19 @@ pub trait Visitor: Handler {
     ) -> Result<(), Self::Error> {
         use node::Pat::*;
 
-        let pat = id.get(tree);
-
-        match pat {
-            Error(e) => todo!(),
-            Any(w) => todo!(),
-            Literal(l) => todo!(),
-            Ident(i) => todo!(),
-            Record(r) => todo!(),
+        match *id.get(tree) {
+            Error(id) => stack.push_leaf(id),
+            Any(id) => stack.push_leaf(id),
+            Literal(id) => stack.push_leaf(id),
+            Ident(id) => stack.push_leaf(id),
+            Record(id) => stack.push_branch(id),
+            Variant(id) => stack.push_branch(id),
         }
 
         Ok(())
     }
 
-    fn walk_branch(
+    fn walk_case_branch(
         &mut self,
         id: NodeId<node::CaseBranch>,
         tree: &Tree,
@@ -358,7 +424,7 @@ pub trait Visitor: Handler {
         Ok(())
     }
 
-    fn walk_case(
+    fn walk_case_expr(
         &mut self,
         id: NodeId<node::CaseExpr>,
         tree: &Tree,
@@ -366,7 +432,7 @@ pub trait Visitor: Handler {
     ) -> Result<(), Self::Error> {
         let node::CaseExpr { source, branches } = id.get(tree);
 
-        stack.push_leaf(*source);
+        stack.push_branch(*source);
         for id in branches {
             stack.push_branch(*id);
         }
@@ -374,7 +440,7 @@ pub trait Visitor: Handler {
         Ok(())
     }
 
-    fn walk_func(
+    fn walk_lambda_expr(
         &mut self,
         id: NodeId<node::LambdaExpr>,
         tree: &Tree,
@@ -388,7 +454,7 @@ pub trait Visitor: Handler {
         Ok(())
     }
 
-    fn walk_call(
+    fn walk_call_expr(
         &mut self,
         id: NodeId<node::CallExpr>,
         tree: &Tree,
@@ -410,23 +476,289 @@ pub trait Visitor: Handler {
     ) -> Result<(), Self::Error> {
         use node::Expr::*;
 
-        match id.get(tree) {
-            Error(e) => todo!(),
-            Literal(id) => stack.push_leaf(*id),
-            Ident(id) => stack.push_leaf(*id),
-            List(id) => stack.push_branch(*id),
-            Record(id) => stack.push_branch(*id),
-            RecordSelect(id) => stack.push_branch(*id),
-            RecordExtend(id) => stack.push_branch(*id),
-            RecordRestrict(id) => stack.push_branch(*id),
-            RecordUpdate(id) => stack.push_branch(*id),
-            Unary(id) => stack.push_branch(*id),
-            Binary(id) => stack.push_branch(*id),
-            Let(id) => stack.push_branch(*id),
-            If(id) => stack.push_branch(*id),
-            Case(id) => stack.push_branch(*id),
-            Lambda(id) => stack.push_branch(*id),
-            Call(id) => stack.push_branch(*id),
+        match *id.get(tree) {
+            Error(id) => stack.push_leaf(id),
+            Literal(id) => stack.push_leaf(id),
+            Path(id) => stack.push_branch(id),
+            List(id) => stack.push_branch(id),
+            Record(id) => stack.push_branch(id),
+            RecordExtend(id) => stack.push_branch(id),
+            RecordRestrict(id) => stack.push_branch(id),
+            RecordUpdate(id) => stack.push_branch(id),
+            Unary(id) => stack.push_branch(id),
+            Binary(id) => stack.push_branch(id),
+            Let(id) => stack.push_branch(id),
+            If(id) => stack.push_branch(id),
+            Case(id) => stack.push_branch(id),
+            Lambda(id) => stack.push_branch(id),
+            Call(id) => stack.push_branch(id),
+        }
+
+        Ok(())
+    }
+
+    // Type-related walking functions
+    fn walk_type_path(
+        &mut self,
+        id: NodeId<node::TypePath>,
+        tree: &Tree,
+        stack: &mut EventStack,
+    ) -> Result<(), Self::Error> {
+        let type_path = id.get(tree);
+
+        for id in &type_path.0 {
+            stack.push_leaf(*id);
+        }
+
+        Ok(())
+    }
+
+    fn walk_record_field_type(
+        &mut self,
+        id: NodeId<node::RecordFieldType>,
+        tree: &Tree,
+        stack: &mut EventStack,
+    ) -> Result<(), Self::Error> {
+        let node::RecordFieldType { name, ty } = id.get(tree);
+
+        stack.push_leaf(*name);
+        stack.push_branch(*ty);
+
+        Ok(())
+    }
+
+    fn walk_record_type(
+        &mut self,
+        id: NodeId<node::RecordType>,
+        tree: &Tree,
+        stack: &mut EventStack,
+    ) -> Result<(), Self::Error> {
+        let record_type = id.get(tree);
+
+        for id in &record_type.0 {
+            stack.push_branch(*id);
+        }
+
+        Ok(())
+    }
+
+    fn walk_variant_case_type(
+        &mut self,
+        id: NodeId<node::VariantCaseType>,
+        tree: &Tree,
+        stack: &mut EventStack,
+    ) -> Result<(), Self::Error> {
+        let node::VariantCaseType { name, ty } = id.get(tree);
+
+        stack.push_leaf(*name);
+        if let Some(ty) = ty {
+            stack.push_branch(*ty);
+        }
+
+        Ok(())
+    }
+
+    fn walk_variant_type(
+        &mut self,
+        id: NodeId<node::VariantType>,
+        tree: &Tree,
+        stack: &mut EventStack,
+    ) -> Result<(), Self::Error> {
+        let variant_type = id.get(tree);
+
+        for id in &variant_type.0 {
+            stack.push_branch(*id);
+        }
+
+        Ok(())
+    }
+
+    fn walk_func_type(
+        &mut self,
+        id: NodeId<node::FuncType>,
+        tree: &Tree,
+        stack: &mut EventStack,
+    ) -> Result<(), Self::Error> {
+        let node::FuncType { input, output } = id.get(tree);
+
+        stack.push_branch(*input);
+        stack.push_branch(*output);
+
+        Ok(())
+    }
+
+    fn walk_type_application(
+        &mut self,
+        id: NodeId<node::TypeApplication>,
+        tree: &Tree,
+        stack: &mut EventStack,
+    ) -> Result<(), Self::Error> {
+        let node::TypeApplication { constructor, arg } = id.get(tree);
+
+        stack.push_branch(*constructor);
+        stack.push_branch(*arg);
+
+        Ok(())
+    }
+
+    fn walk_type_expr(
+        &mut self,
+        id: NodeId<node::TypeExpr>,
+        tree: &Tree,
+        stack: &mut EventStack,
+    ) -> Result<(), Self::Error> {
+        use node::TypeExpr::*;
+
+        match *id.get(tree) {
+            Error(id) => stack.push_leaf(id),
+            Path(id) => stack.push_branch(id),
+            Record(id) => stack.push_branch(id),
+            Variant(id) => stack.push_branch(id),
+            Func(id) => stack.push_branch(id),
+            Application(id) => stack.push_branch(id),
+        }
+
+        Ok(())
+    }
+
+    fn walk_type(
+        &mut self,
+        id: NodeId<node::Type>,
+        tree: &Tree,
+        stack: &mut EventStack,
+    ) -> Result<(), Self::Error> {
+        let node::Type { vars, ty } = id.get(tree);
+
+        for var in vars {
+            stack.push_leaf(*var);
+        }
+        stack.push_branch(*ty);
+
+        Ok(())
+    }
+
+    fn walk_type_bind(
+        &mut self,
+        id: NodeId<node::TypeBind>,
+        tree: &Tree,
+        stack: &mut EventStack,
+    ) -> Result<(), Self::Error> {
+        let node::TypeBind { name, ty } = id.get(tree);
+
+        stack.push_leaf(*name);
+        stack.push_branch(*ty);
+
+        Ok(())
+    }
+
+    // Module-related walking functions
+    fn walk_value_bind(
+        &mut self,
+        id: NodeId<node::ValueBind>,
+        tree: &Tree,
+        stack: &mut EventStack,
+    ) -> Result<(), Self::Error> {
+        let node::ValueBind { name, ty, value } = id.get(tree);
+
+        stack.push_leaf(*name);
+        if let Some(ty) = ty {
+            stack.push_branch(*ty);
+        }
+        stack.push_branch(*value);
+
+        Ok(())
+    }
+
+    fn walk_module_bind(
+        &mut self,
+        id: NodeId<node::ModuleBind>,
+        tree: &Tree,
+        stack: &mut EventStack,
+    ) -> Result<(), Self::Error> {
+        let node::ModuleBind { name, ty, value } = id.get(tree);
+
+        stack.push_leaf(*name);
+        if let Some(ty) = ty {
+            stack.push_branch(*ty);
+        }
+        stack.push_branch(*value);
+
+        Ok(())
+    }
+
+    fn walk_module_type_bind(
+        &mut self,
+        id: NodeId<node::ModuleTypeBind>,
+        tree: &Tree,
+        stack: &mut EventStack,
+    ) -> Result<(), Self::Error> {
+        let node::ModuleTypeBind { name, ty } = id.get(tree);
+
+        stack.push_leaf(*name);
+        stack.push_branch(*ty);
+
+        Ok(())
+    }
+
+    fn walk_bind(
+        &mut self,
+        id: NodeId<node::Bind>,
+        tree: &Tree,
+        stack: &mut EventStack,
+    ) -> Result<(), Self::Error> {
+        use node::Bind::*;
+
+        match *id.get(tree) {
+            Value(id) => stack.push_branch(id),
+            Type(id) => stack.push_branch(id),
+            Module(id) => stack.push_branch(id),
+            ModuleType(id) => stack.push_branch(id),
+        }
+
+        Ok(())
+    }
+
+    fn walk_module(
+        &mut self,
+        id: NodeId<node::Module>,
+        tree: &Tree,
+        stack: &mut EventStack,
+    ) -> Result<(), Self::Error> {
+        let module = id.get(tree);
+
+        for id in &module.0 {
+            stack.push_branch(*id);
+        }
+
+        Ok(())
+    }
+
+    fn walk_spec(
+        &mut self,
+        id: NodeId<node::Spec>,
+        tree: &Tree,
+        stack: &mut EventStack,
+    ) -> Result<(), Self::Error> {
+        use node::Spec::*;
+
+        match *id.get(tree) {
+            Type(id) => stack.push_branch(id),
+            ModuleType(id) => stack.push_branch(id),
+        }
+
+        Ok(())
+    }
+
+    fn walk_module_type(
+        &mut self,
+        id: NodeId<node::ModuleType>,
+        tree: &Tree,
+        stack: &mut EventStack,
+    ) -> Result<(), Self::Error> {
+        let module_type = id.get(tree);
+
+        for id in &module_type.0 {
+            stack.push_branch(*id);
         }
 
         Ok(())
@@ -458,21 +790,21 @@ mod tests {
             Ok(())
         }
 
-        fn handle_unary(
+        fn handle_unary_expr(
             &mut self,
             _unary: &node::UnaryExpr,
             _id: NodeId<node::UnaryExpr>,
         ) -> Result<(), Self::Error> {
-            self.flow.push(NodeKind::Unary);
+            self.flow.push(NodeKind::UnaryExpr);
             Ok(())
         }
 
-        fn handle_literal(
+        fn handle_literal_expr(
             &mut self,
             _literal: &node::LiteralExpr,
             _id: NodeId<node::LiteralExpr>,
         ) -> Result<(), Self::Error> {
-            self.flow.push(NodeKind::Literal);
+            self.flow.push(NodeKind::LiteralExpr);
             Ok(())
         }
     }
@@ -491,9 +823,9 @@ mod tests {
         let mut visitor = TestVisitor::default();
         visitor.visit_post_order(&tree).unwrap();
         assert_eq!(visitor.flow, vec![
-            NodeKind::Literal,
+            NodeKind::LiteralExpr,
             NodeKind::Expr,
-            NodeKind::Unary,
+            NodeKind::UnaryExpr,
             NodeKind::Expr,
         ]);
 
@@ -501,9 +833,9 @@ mod tests {
         visitor.visit_pre_order(&tree).unwrap();
         assert_eq!(visitor.flow, vec![
             NodeKind::Expr,
-            NodeKind::Unary,
+            NodeKind::UnaryExpr,
             NodeKind::Expr,
-            NodeKind::Literal,
+            NodeKind::LiteralExpr,
         ]);
     }
 }

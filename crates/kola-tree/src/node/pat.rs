@@ -91,7 +91,7 @@ impl RecordFieldPat {
         self.field.get(tree)
     }
 
-    pub fn value(self, tree: &impl NodeContainer) -> Option<Pat> {
+    pub fn pat(self, tree: &impl NodeContainer) -> Option<Pat> {
         self.pat.map(|id| id.get(tree)).copied()
     }
 }
@@ -100,25 +100,25 @@ impl Printable<TreePrinter> for RecordFieldPat {
     fn notate<'a>(&'a self, with: &'a TreePrinter, arena: &'a Bump) -> Notation<'a> {
         let Self { field, pat } = self;
 
-        let head = "PropertyPat".blue().display_in(arena);
+        let head = "RecordFieldPat".blue().display_in(arena);
 
         let field = field.notate(with, arena);
         let pat = pat.as_ref().map(|v| v.notate(with, arena));
 
         let single = [
-            arena.notate(" key = "),
+            arena.notate(" field = "),
             field.clone().flatten(arena),
             pat.clone()
-                .map(|v| arena.notate(", value = ").then(v, arena))
+                .map(|v| arena.notate(", pat = ").then(v, arena))
                 .or_not(arena),
         ]
         .concat_in(arena);
 
         let multi = [
             arena.newline(),
-            arena.notate("key = "),
+            arena.notate("field = "),
             field,
-            pat.map(|v| [arena.newline(), arena.notate("value = "), v].concat_in(arena))
+            pat.map(|v| [arena.newline(), arena.notate("pat = "), v].concat_in(arena))
                 .or_not(arena),
         ]
         .concat_in(arena)
@@ -158,6 +158,82 @@ impl Printable<TreePrinter> for RecordPat {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+pub struct VariantCasePat {
+    pub case: NodeId<Name>,
+    pub pat: Option<NodeId<Pat>>,
+}
+
+impl VariantCasePat {
+    pub fn case(self, tree: &impl NodeContainer) -> &Name {
+        self.case.get(tree)
+    }
+
+    pub fn pat(self, tree: &impl NodeContainer) -> Option<Pat> {
+        self.pat.map(|id| id.get(tree)).copied()
+    }
+}
+
+impl Printable<TreePrinter> for VariantCasePat {
+    fn notate<'a>(&'a self, with: &'a TreePrinter, arena: &'a Bump) -> Notation<'a> {
+        let Self { case, pat } = self;
+
+        let head = "VariantCasePat".blue().display_in(arena);
+
+        let case = case.notate(with, arena);
+        let pat = pat.as_ref().map(|v| v.notate(with, arena));
+
+        let single = [
+            arena.notate(" case = "),
+            case.clone().flatten(arena),
+            pat.clone()
+                .map(|v| arena.notate(", pat = ").then(v, arena))
+                .or_not(arena),
+        ]
+        .concat_in(arena);
+
+        let multi = [
+            arena.newline(),
+            arena.notate("case = "),
+            case,
+            pat.map(|v| [arena.newline(), arena.notate("pat = "), v].concat_in(arena))
+                .or_not(arena),
+        ]
+        .concat_in(arena)
+        .indent(arena);
+
+        head.then(single.or(multi, arena), arena)
+    }
+}
+
+#[derive(Debug, From, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+pub struct VariantPat(pub Vec<NodeId<VariantCasePat>>);
+
+impl VariantPat {
+    pub fn get(&self, name: impl AsRef<str>, tree: &impl NodeContainer) -> Option<VariantCasePat> {
+        self.0.iter().find_map(|id| {
+            let case = id.get(tree);
+            (case.case(tree) == name.as_ref()).then_some(case).copied()
+        })
+    }
+}
+
+impl Printable<TreePrinter> for VariantPat {
+    fn notate<'a>(&'a self, with: &'a TreePrinter, arena: &'a Bump) -> Notation<'a> {
+        let head = "VariantPat".blue().display_in(arena);
+
+        let cases = self.0.gather(with, arena);
+
+        let single = cases.clone().concat_map(
+            |case| arena.notate(" ").then(case.flatten(arena), arena),
+            arena,
+        );
+        let multi = cases.concat_map(|case| arena.newline().then(case, arena), arena);
+
+        head.then(single.or(multi, arena), arena)
+    }
+}
+
 #[derive(Debug, From, Clone, Copy, PartialEq, PartialOrd, Serialize, Deserialize)]
 pub enum Pat {
     Error(NodeId<PatError>),
@@ -165,6 +241,7 @@ pub enum Pat {
     Literal(NodeId<LiteralPat>),
     Ident(NodeId<IdentPat>),
     Record(NodeId<RecordPat>),
+    Variant(NodeId<VariantPat>),
 }
 
 impl Printable<TreePrinter> for Pat {
@@ -175,6 +252,7 @@ impl Printable<TreePrinter> for Pat {
             Self::Literal(l) => l.notate(with, arena),
             Self::Ident(i) => i.notate(with, arena),
             Self::Record(r) => r.notate(with, arena),
+            Self::Variant(v) => v.notate(with, arena),
         }
     }
 }

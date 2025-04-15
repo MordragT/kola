@@ -48,7 +48,7 @@ where
     }
 
     #[inline]
-    fn to_mono_type(self) -> impl Parser<'src, I, NodeId<node::TypeExpr>, Extra<'src>>
+    fn to_type_expr(self) -> impl Parser<'src, I, NodeId<node::TypeExpr>, Extra<'src>>
     where
         node::TypeExpr: From<T>,
     {

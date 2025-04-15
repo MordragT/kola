@@ -1,4 +1,4 @@
-use kola_tree::UniformPhase;
+use kola_tree::meta::UniformPhase;
 use span::Span;
 
 pub mod error;
