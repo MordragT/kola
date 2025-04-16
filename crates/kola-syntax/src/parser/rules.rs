@@ -113,6 +113,9 @@ type Test = { name : Str } | { peter : [Red | Blue]}
 
 type ColorOpen = [| Red | Green | Blue | Other : str |*]
 
+type Color = [| Red, Green, Blue |]
+type Person = {| name : Str, age : Num |}
+
 type OpenPerson = {| name : Str, age : Num |*}
 */
 
@@ -205,7 +208,7 @@ data scheme Machine : { ip : Str, cmd : Str }
 /// record_pat    ::= '{' (record_field_pat (',' record_field_pat)*)? '}'
 /// record_field_pat ::= name (':' pat)?
 ///
-/// variant_pat    ::= '[' (variant_case_pat (',' variant_case_pat)*)? ']'
+/// variant_pat    ::= '<' (variant_case_pat (',' variant_case_pat)*)? '>'
 /// variant_case_pat ::= name (':' pat)?
 /// ```
 pub fn pat_parser<'src, I>() -> impl Parser<'src, I, NodeId<node::Pat>, Extra<'src>> + Clone
@@ -762,6 +765,47 @@ where
         ))
         .boxed()
 }
+
+// pub fn nested_in_parser<'src, I, T, U>(
+//     left: Token,
+//     parser: impl Parser<'src, I, NodeId<T>, Extra<'src>> + 'src,
+//     right: Token,
+//     fallback: impl Fn(Span) -> U + Clone + 'src,
+// ) -> impl Parser<'src, I, NodeId<T>, Extra<'src>> + Clone
+// where
+//     Node: From<T> + From<U>,
+//     T: From<NodeId<U>> + MetaCast<SyntaxPhase, Meta = Span> + 'src,
+//     U: MetaCast<SyntaxPhase, Meta = Span> + 'src,
+//     I: ValueInput<'src, Token = Token<'src>, Span = Span>,
+// {
+//     parser
+//         .delimited_by(just(left_, just(Token::Close(delim)))
+//         .recover_with(via_parser(
+//             nested_delimiters(
+//                 Token::Open(delim),
+//                 Token::Close(delim),
+//                 [
+//                     (
+//                         Token::Open(Delimiter::Paren),
+//                         Token::Close(Delimiter::Paren),
+//                     ),
+//                     (
+//                         Token::Open(Delimiter::Bracket),
+//                         Token::Close(Delimiter::Bracket),
+//                     ),
+//                     (
+//                         Token::Open(Delimiter::Brace),
+//                         Token::Close(Delimiter::Brace),
+//                     ),
+//                 ],
+//                 fallback,
+//             )
+//             .to_node()
+//             .map(T::from)
+//             .to_node(),
+//         ))
+//         .boxed()
+// }
 
 #[cfg(test)]
 mod tests {

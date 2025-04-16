@@ -29,6 +29,8 @@
 #    in y
 #in x
 
+type Option = forall a . < Some : a, None >
+
 type Person = { name : Str, age : Num }
 
 type NestedPerson = { id : Num, info : { age : Num } }
@@ -41,6 +43,7 @@ age : Person -> Person = fn person => { person | age += 1 }
 module test = {
     test_age =
         let peter = { name = "peter", age = 25 } in
+        let some_peter = Some peter
         let older_peter = age peter in
         older_peter.age == peter.age + 1
 }
