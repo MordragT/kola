@@ -1,6 +1,7 @@
 pub use ext::ParserExt;
 pub use state::{Extra, State, StateRepr};
 
+pub mod primitives;
 pub mod rules;
 
 mod ext;

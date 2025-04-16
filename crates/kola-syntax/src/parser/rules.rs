@@ -1,10 +1,13 @@
 use chumsky::{input::ValueInput, prelude::*};
 use kola_tree::prelude::*;
 
-use super::{Extra, ParserExt, State};
+use super::{
+    Extra, ParserExt, State,
+    primitives::{close_delim, ctrl, kw, op, open_delim},
+};
 use crate::{
     Span, SyntaxPhase,
-    token::{Delimiter, Op, Token},
+    token::{CloseT, CtrlT, Delim, KwT, Literal, OpT, OpenT, Token},
 };
 
 /*
@@ -43,16 +46,16 @@ Callable := Symbol
 CallExpr := '(' Callable Expr ')'
 */
 
-pub fn module_parser<'src, I>() -> impl Parser<'src, I, NodeId<node::Module>, Extra<'src>> + Clone
+pub fn module_parser<'t, I>() -> impl Parser<'t, I, NodeId<node::Module>, Extra<'t>> + Clone
 where
-    I: ValueInput<'src, Token = Token<'src>, Span = Span>,
+    I: ValueInput<'t, Token = Token<'t>, Span = Span>,
 {
     todo()
 }
 
-pub fn name_parser<'src, I>() -> impl Parser<'src, I, NodeId<node::Name>, Extra<'src>> + Clone
+pub fn name_parser<'t, I>() -> impl Parser<'t, I, NodeId<node::Name>, Extra<'t>> + Clone
 where
-    I: ValueInput<'src, Token = Token<'src>, Span = Span>,
+    I: ValueInput<'t, Token = Token<'t>, Span = Span>,
 {
     select! { Token::Symbol(s) => node::Symbol::from(s) }
         .map(node::Name)
@@ -69,16 +72,20 @@ where
 ///                | char
 ///                | str
 /// ```
-pub fn literal_parser<'src, I>() -> impl Parser<'src, I, node::LiteralExpr, Extra<'src>> + Sized
+pub fn literal_parser<'t, I>() -> impl Parser<'t, I, node::LiteralExpr, Extra<'t>> + Sized
 where
-    I: ValueInput<'src, Token = Token<'src>, Span = Span>,
+    I: ValueInput<'t, Token = Token<'t>, Span = Span>,
 {
     select! {
-        Token::Num(n) => node::LiteralExpr::Num(n),
-        Token::Bool(b) => node::LiteralExpr::Bool(b),
-        Token::Char(c) => node::LiteralExpr::Char(c),
-        Token::Str(s) => node::LiteralExpr::Str(node::Symbol::from(s))
+        Token::Literal(l) => l
+
     }
+    .map(|l| match l {
+        Literal::Num(n) => node::LiteralExpr::Num(n),
+        Literal::Bool(b) => node::LiteralExpr::Bool(b),
+        Literal::Char(c) => node::LiteralExpr::Char(c),
+        Literal::Str(s) => node::LiteralExpr::Str(node::Symbol::from(s)),
+    })
 }
 
 /*
@@ -211,43 +218,43 @@ data scheme Machine : { ip : Str, cmd : Str }
 /// variant_pat    ::= '<' (variant_case_pat (',' variant_case_pat)*)? '>'
 /// variant_case_pat ::= name (':' pat)?
 /// ```
-pub fn pat_parser<'src, I>() -> impl Parser<'src, I, NodeId<node::Pat>, Extra<'src>> + Clone
+pub fn pat_parser<'t, I>() -> impl Parser<'t, I, NodeId<node::Pat>, Extra<'t>> + Clone
 where
-    I: ValueInput<'src, Token = Token<'src>, Span = Span>,
+    I: ValueInput<'t, Token = Token<'t>, Span = Span>,
 {
     recursive(|pat| {
         let ident = select! { Token::Symbol(s) => node::Symbol::from(s) }
             .map_to_node(node::IdentPat)
             .to_pat();
-        let wildcard = just(Token::Underscore).to(node::AnyPat).to_node().to_pat();
+        let wildcard = ctrl(CtrlT::UNDERSCORE).to(node::AnyPat).to_node().to_pat();
         let literal = literal_parser().map_to_node(node::LiteralPat).to_pat();
 
         let field = name_parser()
-            .then(just(Token::Colon).ignore_then(pat.clone()).or_not())
+            .then(ctrl(CtrlT::COLON).ignore_then(pat.clone()).or_not())
             .map_to_node(|(field, pat)| node::RecordFieldPat { field, pat });
 
         let record = nested_parser(
             field
-                .separated_by(just(Token::Comma))
+                .separated_by(ctrl(CtrlT::COMMA))
                 .allow_trailing()
                 .collect()
                 .map_to_node(node::RecordPat)
                 .to_pat(),
-            Delimiter::Brace,
+            Delim::Brace,
             |_span| node::PatError,
         );
 
         let case = name_parser()
-            .then(just(Token::Colon).ignore_then(pat.clone()).or_not())
+            .then(ctrl(CtrlT::COLON).ignore_then(pat.clone()).or_not())
             .map_to_node(|(case, pat)| node::VariantCasePat { case, pat });
 
         let variant = nested_parser(
-            case.separated_by(just(Token::Comma))
+            case.separated_by(ctrl(CtrlT::COMMA))
                 .allow_trailing()
                 .collect()
                 .map_to_node(node::VariantPat)
                 .to_pat(),
-            Delimiter::Brace,
+            Delim::Angle,
             |_span| node::PatError,
         );
 
@@ -256,9 +263,9 @@ where
     .boxed()
 }
 
-pub fn expr_parser<'src, I>() -> impl Parser<'src, I, NodeId<node::Expr>, Extra<'src>> + Clone
+pub fn expr_parser<'t, I>() -> impl Parser<'t, I, NodeId<node::Expr>, Extra<'t>> + Clone
 where
-    I: ValueInput<'src, Token = Token<'src>, Span = Span>,
+    I: ValueInput<'t, Token = Token<'t>, Span = Span>,
 {
     recursive(|expr| {
         let name = name_parser();
@@ -266,7 +273,7 @@ where
         // Path expression (a.b.c) for variable and module access
         let path = name
             .clone()
-            .separated_by(just(Token::Dot))
+            .separated_by(ctrl(CtrlT::DOT))
             .collect()
             .map_to_node(node::PathExpr)
             .to_expr()
@@ -283,12 +290,12 @@ where
         // TODO use new syntax: let xs = (list 1 2 3) in ...
         let list = nested_parser(
             expr.clone()
-                .separated_by(just(Token::Comma))
+                .separated_by(ctrl(CtrlT::COMMA))
                 .allow_trailing()
                 .collect()
                 .map_to_node(node::ListExpr)
                 .to_expr(),
-            Delimiter::Bracket,
+            Delim::Bracket,
             |_span| node::ExprError,
         )
         .labelled("ListExpr")
@@ -298,13 +305,13 @@ where
 
         let field = name
             .clone()
-            .then_ignore(just(Token::Op(Op::Assign)))
+            .then_ignore(op(OpT::ASSIGN))
             .then(expr.clone())
             .map(|(field, value)| node::RecordField { field, value })
             .to_node();
 
         let instantiate = field
-            .separated_by(just(Token::Comma))
+            .separated_by(ctrl(CtrlT::COMMA))
             .allow_trailing()
             .collect()
             .map_to_node(node::RecordExpr)
@@ -321,25 +328,25 @@ where
             ),
         }
 
-        let extend = just(Token::Op(Op::Add))
+        let extend = op(OpT::ADD)
             .ignore_then(name.clone())
-            .then_ignore(just(Token::Op(Op::Assign)))
+            .then_ignore(op(OpT::ASSIGN))
             .then(expr.clone())
             .map(|(field, value)| RecordOp::Extend(field, value))
             .boxed();
 
-        let restrict = just(Token::Op(Op::Sub))
+        let restrict = op(OpT::SUB)
             .ignore_then(name.clone())
             .map(RecordOp::Restrict)
             .boxed();
 
         let update_op = choice((
-            just(Token::Op(Op::Assign)).to(node::RecordUpdateOp::Assign),
-            just(Token::Op(Op::AddAssign)).to(node::RecordUpdateOp::AddAssign),
-            just(Token::Op(Op::SubAssign)).to(node::RecordUpdateOp::SubAssign),
-            just(Token::Op(Op::MulAssign)).to(node::RecordUpdateOp::MulAssign),
-            just(Token::Op(Op::DivAssign)).to(node::RecordUpdateOp::DivAssign),
-            just(Token::Op(Op::RemAssign)).to(node::RecordUpdateOp::RemAssign),
+            op(OpT::ASSIGN).to(node::RecordUpdateOp::Assign),
+            op(OpT::ADD_ASSIGN).to(node::RecordUpdateOp::AddAssign),
+            op(OpT::SUB_ASSIGN).to(node::RecordUpdateOp::SubAssign),
+            op(OpT::MUL_ASSIGN).to(node::RecordUpdateOp::MulAssign),
+            op(OpT::DIV_ASSIGN).to(node::RecordUpdateOp::DivAssign),
+            op(OpT::REM_ASSIGN).to(node::RecordUpdateOp::RemAssign),
         ))
         .to_node();
 
@@ -347,7 +354,7 @@ where
             .map(|(field, op, value)| RecordOp::Update(field, op, value))
             .boxed();
 
-        let inner_op = just(Token::Pipe)
+        let inner_op = ctrl(CtrlT::PIPE)
             .ignore_then(choice((extend, restrict, update)))
             .repeated()
             .at_least(1);
@@ -383,18 +390,18 @@ where
             })
             .boxed();
 
-        let record_expr = nested_parser(record_op.or(instantiate), Delimiter::Brace, |_span| {
+        let record_expr = nested_parser(record_op.or(instantiate), Delim::Brace, |_span| {
             node::ExprError
         })
         .labelled("RecordExpr")
         .as_context();
 
         // TODO allow type annotation
-        let let_ = just(Token::Let)
+        let let_ = kw(KwT::LET)
             .ignore_then(name.clone())
-            .then_ignore(just(Token::Op(Op::Assign)))
+            .then_ignore(op(OpT::ASSIGN))
             .then(expr.clone())
-            .then_ignore(just(Token::In))
+            .then_ignore(kw(KwT::IN))
             .then(expr.clone())
             .map_to_node(|((name, value), inside)| node::LetExpr {
                 name,
@@ -406,11 +413,11 @@ where
             .as_context()
             .boxed();
 
-        let if_ = just(Token::If)
+        let if_ = kw(KwT::IF)
             .ignore_then(expr.clone())
-            .then_ignore(just(Token::Then))
+            .then_ignore(kw(KwT::THEN))
             .then(expr.clone())
-            .then_ignore(just(Token::Else))
+            .then_ignore(kw(KwT::ELSE))
             .then(expr.clone())
             .map_to_node(|((predicate, then), or)| node::IfExpr {
                 predicate,
@@ -423,18 +430,18 @@ where
             .boxed();
 
         let branch = pat_parser()
-            .then_ignore(just(Token::DoubleArrow))
+            .then_ignore(ctrl(CtrlT::DOUBLE_ARROW))
             .then(expr.clone())
             .map(|(pat, matches)| node::CaseBranch { pat, matches })
             .to_node();
         let branches = branch
-            .separated_by(just(Token::Comma))
+            .separated_by(ctrl(CtrlT::COMMA))
             .allow_trailing()
             .at_least(1)
             .collect();
-        let case = just(Token::Case)
+        let case = kw(KwT::CASE)
             .ignore_then(path.clone())
-            .then_ignore(just(Token::Of))
+            .then_ignore(kw(KwT::OF))
             .then(branches)
             .map_to_node(|(source, branches)| node::CaseExpr { source, branches })
             .to_expr()
@@ -443,9 +450,9 @@ where
             .boxed();
 
         // Allow type annotation of ident
-        let func = just(Token::Fn)
+        let func = kw(KwT::FN)
             .ignore_then(name.clone())
-            .then_ignore(just(Token::DoubleArrow))
+            .then_ignore(ctrl(CtrlT::DOUBLE_ARROW))
             .then(expr.clone())
             .map_to_node(|(param, body)| node::LambdaExpr { param, body })
             .to_expr()
@@ -466,7 +473,7 @@ where
                     .then(expr.clone())
                     .map_to_node(|(func, arg)| node::CallExpr { func, arg })
                     .to_expr(),
-                Delimiter::Paren,
+                Delim::Paren,
                 |_span| node::ExprError,
             )
             .boxed()
@@ -488,9 +495,9 @@ where
         ))
         .boxed();
 
-        let unary_op = just(Token::Op(Op::Sub))
+        let unary_op = op(OpT::SUB)
             .to(node::UnaryOp::Neg)
-            .or(just(Token::Op(Op::Not)).to(node::UnaryOp::Neg))
+            .or(op(OpT::NOT).to(node::UnaryOp::Neg))
             .to_node();
         let unary = unary_op
             .repeated()
@@ -507,65 +514,71 @@ where
             })
             .boxed();
 
-        let op = choice((
-            just(Token::Op(Op::Mul)).to(node::BinaryOp::Mul),
-            just(Token::Op(Op::Div)).to(node::BinaryOp::Div),
-            just(Token::Op(Op::Rem)).to(node::BinaryOp::Rem),
+        let product_op = choice((
+            op(OpT::MUL).to(node::BinaryOp::Mul),
+            op(OpT::DIV).to(node::BinaryOp::Div),
+            op(OpT::REM).to(node::BinaryOp::Rem),
         ))
         .to_node();
         let product = unary
             .clone()
-            .foldl_with(op.then(unary).repeated(), |left, (op, right), e| {
+            .foldl_with(product_op.then(unary).repeated(), |left, (op, right), e| {
                 let span = e.span();
                 let tree: &mut State = e.state();
                 tree.insert_as::<node::Expr, _>(node::BinaryExpr { op, left, right }, span)
             })
             .boxed();
 
-        let op = just(Token::Op(Op::Add))
+        let sum_op = op(OpT::ADD)
             .to(node::BinaryOp::Add)
-            .or(just(Token::Op(Op::Sub)).to(node::BinaryOp::Sub))
+            .or(op(OpT::SUB).to(node::BinaryOp::Sub))
             .to_node();
         let sum = product
             .clone()
-            .foldl_with(op.then(product).repeated(), |left, (op, right), e| {
+            .foldl_with(sum_op.then(product).repeated(), |left, (op, right), e| {
                 let span = e.span();
                 let tree: &mut State = e.state();
                 tree.insert_as::<node::Expr, _>(node::BinaryExpr { op, left, right }, span)
             })
             .boxed();
 
-        let op = choice((
-            just(Token::Op(Op::Less)).to(node::BinaryOp::Less),
-            just(Token::Op(Op::LessEq)).to(node::BinaryOp::LessEq),
-            just(Token::Op(Op::Greater)).to(node::BinaryOp::Greater),
-            just(Token::Op(Op::GreaterEq)).to(node::BinaryOp::GreaterEq),
-            just(Token::Op(Op::Eq)).to(node::BinaryOp::Eq),
-            just(Token::Op(Op::NotEq)).to(node::BinaryOp::NotEq),
+        let comparison_op = choice((
+            op(OpT::LESS).to(node::BinaryOp::Less),
+            op(OpT::LESS_EQ).to(node::BinaryOp::LessEq),
+            op(OpT::GREATER).to(node::BinaryOp::Greater),
+            op(OpT::GREATER_EQ).to(node::BinaryOp::GreaterEq),
+            op(OpT::EQ).to(node::BinaryOp::Eq),
+            op(OpT::NOT_EQ).to(node::BinaryOp::NotEq),
         ))
         .to_node();
         let comparison = sum
             .clone()
-            .foldl_with(op.then(sum).repeated(), |left, (op, right), e| {
-                let span = e.span();
-                let tree: &mut State = e.state();
-                tree.insert_as::<node::Expr, _>(node::BinaryExpr { op, left, right }, span)
-            })
+            .foldl_with(
+                comparison_op.then(sum).repeated(),
+                |left, (op, right), e| {
+                    let span = e.span();
+                    let tree: &mut State = e.state();
+                    tree.insert_as::<node::Expr, _>(node::BinaryExpr { op, left, right }, span)
+                },
+            )
             .boxed();
 
-        let op = choice((
-            just(Token::Op(Op::And)).to(node::BinaryOp::And),
-            just(Token::Op(Op::Or)).to(node::BinaryOp::Or),
-            just(Token::Op(Op::Xor)).to(node::BinaryOp::Xor),
+        let logical_op = choice((
+            op(OpT::AND).to(node::BinaryOp::And),
+            op(OpT::OR).to(node::BinaryOp::Or),
+            op(OpT::XOR).to(node::BinaryOp::Xor),
         ))
         .to_node();
         let logical = comparison
             .clone()
-            .foldl_with(op.then(comparison).repeated(), |left, (op, right), e| {
-                let span = e.span();
-                let tree: &mut State = e.state();
-                tree.insert_as::<node::Expr, _>(node::BinaryExpr { op, left, right }, span)
-            })
+            .foldl_with(
+                logical_op.then(comparison).repeated(),
+                |left, (op, right), e| {
+                    let span = e.span();
+                    let tree: &mut State = e.state();
+                    tree.insert_as::<node::Expr, _>(node::BinaryExpr { op, left, right }, span)
+                },
+            )
             .boxed();
 
         logical
@@ -596,17 +609,16 @@ where
 ///
 /// type_path       ::= name ('.' name)*  // Path to a type (like Num or std.List)
 /// ```
-pub fn type_expr_parser<'src, I>()
--> impl Parser<'src, I, NodeId<node::TypeExpr>, Extra<'src>> + Clone
+pub fn type_expr_parser<'t, I>() -> impl Parser<'t, I, NodeId<node::TypeExpr>, Extra<'t>> + Clone
 where
-    I: ValueInput<'src, Token = Token<'src>, Span = Span>,
+    I: ValueInput<'t, Token = Token<'t>, Span = Span>,
 {
     recursive(|ty| {
         let name = name_parser();
 
         let path = name
             .clone()
-            .separated_by(just(Token::Dot))
+            .separated_by(ctrl(CtrlT::DOT))
             .at_least(1)
             .collect()
             .map_to_node(node::TypePath)
@@ -615,33 +627,33 @@ where
 
         let field = name
             .clone()
-            .then_ignore(just(Token::Colon))
+            .then_ignore(ctrl(CtrlT::COLON))
             .then(ty.clone())
             .map_to_node(|(name, ty)| node::RecordFieldType { name, ty });
 
         let record = nested_parser(
             field
-                .separated_by(just(Token::Comma))
+                .separated_by(ctrl(CtrlT::COMMA))
                 .allow_trailing()
                 .collect()
                 .map_to_node(node::RecordType)
                 .to_type_expr(),
-            Delimiter::Brace,
+            Delim::Brace,
             |_span| node::TypeError,
         );
 
         let case = name
             .clone()
-            .then(just(Token::Colon).ignore_then(ty.clone()).or_not())
+            .then(ctrl(CtrlT::COLON).ignore_then(ty.clone()).or_not())
             .map_to_node(|(name, ty)| node::VariantCaseType { name, ty });
 
         let variant = nested_parser(
-            case.separated_by(just(Token::Comma))
+            case.separated_by(ctrl(CtrlT::COMMA))
                 .allow_trailing()
                 .collect()
                 .map_to_node(node::VariantType)
                 .to_type_expr(),
-            Delimiter::Bracket,
+            Delim::Bracket,
             |_span| node::TypeError,
         );
 
@@ -649,7 +661,7 @@ where
             path,
             record,
             variant,
-            nested_parser(ty.clone(), Delimiter::Paren, |_| node::TypeError),
+            nested_parser(ty.clone(), Delim::Paren, |_| node::TypeError),
         ));
 
         let appl = atom
@@ -668,7 +680,7 @@ where
         let func = appl
             .clone()
             .foldl_with(
-                just(Token::Arrow).ignore_then(ty.clone()).repeated(),
+                ctrl(CtrlT::ARROW).ignore_then(ty.clone()).repeated(),
                 |input, output, e| {
                     let span = e.span();
                     let tree: &mut State = e.state();
@@ -689,15 +701,15 @@ where
 /// type      ::= 'forall' name+ '.' type_expression
 ///             | type_expression
 /// ```
-pub fn type_parser<'src, I>() -> impl Parser<'src, I, NodeId<node::Type>, Extra<'src>> + Clone
+pub fn type_parser<'t, I>() -> impl Parser<'t, I, NodeId<node::Type>, Extra<'t>> + Clone
 where
-    I: ValueInput<'src, Token = Token<'src>, Span = Span>,
+    I: ValueInput<'t, Token = Token<'t>, Span = Span>,
 {
     // hindley milner only allows standard polymorphism (top-level forall)
     // higher-rank polymorphism (nested forall) is undecidable for full type-inference
-    just(Token::Forall)
+    kw(KwT::FORALL)
         .ignore_then(name_parser().repeated().at_least(1).collect())
-        .then_ignore(just(Token::Dot))
+        .then_ignore(ctrl(CtrlT::DOT))
         .or_not()
         .then(type_expr_parser())
         .map_to_node(|(vars, ty)| node::Type {
@@ -713,49 +725,61 @@ where
 /// ```bnf
 /// type_bind ::= 'type' name '=' type
 /// ```
-pub fn type_bind_parser<'src, I>()
--> impl Parser<'src, I, NodeId<node::TypeBind>, Extra<'src>> + Clone
+pub fn type_bind_parser<'t, I>() -> impl Parser<'t, I, NodeId<node::TypeBind>, Extra<'t>> + Clone
 where
-    I: ValueInput<'src, Token = Token<'src>, Span = Span>,
+    I: ValueInput<'t, Token = Token<'t>, Span = Span>,
 {
-    just(Token::Type)
+    kw(KwT::TYPE)
         .ignore_then(name_parser())
-        .then_ignore(just(Token::Op(Op::Assign)))
+        .then_ignore(op(OpT::ASSIGN))
         .then(type_parser())
         .map_to_node(|(name, ty)| node::TypeBind { name, ty })
         .boxed()
 }
 
-pub fn nested_parser<'src, I, T, U>(
-    parser: impl Parser<'src, I, NodeId<T>, Extra<'src>> + 'src,
-    delim: Delimiter,
-    fallback: impl Fn(Span) -> U + Clone + 'src,
-) -> impl Parser<'src, I, NodeId<T>, Extra<'src>> + Clone
+pub fn nested_parser<'t, I, T, U>(
+    parser: impl Parser<'t, I, NodeId<T>, Extra<'t>> + 't,
+    delim: Delim,
+    fallback: impl Fn(Span) -> U + Clone + 't,
+) -> impl Parser<'t, I, NodeId<T>, Extra<'t>> + Clone
 where
     Node: From<T> + From<U>,
-    T: From<NodeId<U>> + MetaCast<SyntaxPhase, Meta = Span> + 'src,
-    U: MetaCast<SyntaxPhase, Meta = Span> + 'src,
-    I: ValueInput<'src, Token = Token<'src>, Span = Span>,
+    T: From<NodeId<U>> + MetaCast<SyntaxPhase, Meta = Span> + 't,
+    U: MetaCast<SyntaxPhase, Meta = Span> + 't,
+    I: ValueInput<'t, Token = Token<'t>, Span = Span>,
+{
+    let (open, close) = match delim {
+        Delim::Paren => (OpenT::PAREN, CloseT::PAREN),
+        Delim::Bracket => (OpenT::BRACKET, CloseT::BRACKET),
+        Delim::Brace => (OpenT::BRACE, CloseT::BRACE),
+        Delim::Angle => (OpenT::ANGLE, CloseT::ANGLE),
+    };
+
+    nested_in_parser(open, close, parser, fallback)
+}
+
+pub fn nested_in_parser<'t, I, T, U>(
+    open: OpenT<'t>,
+    close: CloseT<'t>,
+    parser: impl Parser<'t, I, NodeId<T>, Extra<'t>> + 't,
+    fallback: impl Fn(Span) -> U + Clone + 't,
+) -> impl Parser<'t, I, NodeId<T>, Extra<'t>> + Clone
+where
+    Node: From<T> + From<U>,
+    T: From<NodeId<U>> + MetaCast<SyntaxPhase, Meta = Span> + 't,
+    U: MetaCast<SyntaxPhase, Meta = Span> + 't,
+    I: ValueInput<'t, Token = Token<'t>, Span = Span>,
 {
     parser
-        .delimited_by(just(Token::Open(delim)), just(Token::Close(delim)))
+        .delimited_by(open_delim(open), close_delim(close))
         .recover_with(via_parser(
             nested_delimiters(
-                Token::Open(delim),
-                Token::Close(delim),
+                open.0,
+                close.0,
                 [
-                    (
-                        Token::Open(Delimiter::Paren),
-                        Token::Close(Delimiter::Paren),
-                    ),
-                    (
-                        Token::Open(Delimiter::Bracket),
-                        Token::Close(Delimiter::Bracket),
-                    ),
-                    (
-                        Token::Open(Delimiter::Brace),
-                        Token::Close(Delimiter::Brace),
-                    ),
+                    (OpenT::PAREN.0, CloseT::PAREN.0),
+                    (OpenT::BRACKET.0, CloseT::BRACKET.0),
+                    (OpenT::BRACE.0, CloseT::BRACE.0),
                 ],
                 fallback,
             )
@@ -765,47 +789,6 @@ where
         ))
         .boxed()
 }
-
-// pub fn nested_in_parser<'src, I, T, U>(
-//     left: Token,
-//     parser: impl Parser<'src, I, NodeId<T>, Extra<'src>> + 'src,
-//     right: Token,
-//     fallback: impl Fn(Span) -> U + Clone + 'src,
-// ) -> impl Parser<'src, I, NodeId<T>, Extra<'src>> + Clone
-// where
-//     Node: From<T> + From<U>,
-//     T: From<NodeId<U>> + MetaCast<SyntaxPhase, Meta = Span> + 'src,
-//     U: MetaCast<SyntaxPhase, Meta = Span> + 'src,
-//     I: ValueInput<'src, Token = Token<'src>, Span = Span>,
-// {
-//     parser
-//         .delimited_by(just(left_, just(Token::Close(delim)))
-//         .recover_with(via_parser(
-//             nested_delimiters(
-//                 Token::Open(delim),
-//                 Token::Close(delim),
-//                 [
-//                     (
-//                         Token::Open(Delimiter::Paren),
-//                         Token::Close(Delimiter::Paren),
-//                     ),
-//                     (
-//                         Token::Open(Delimiter::Bracket),
-//                         Token::Close(Delimiter::Bracket),
-//                     ),
-//                     (
-//                         Token::Open(Delimiter::Brace),
-//                         Token::Close(Delimiter::Brace),
-//                     ),
-//                 ],
-//                 fallback,
-//             )
-//             .to_node()
-//             .map(T::from)
-//             .to_node(),
-//         ))
-//         .boxed()
-// }
 
 #[cfg(test)]
 mod tests {

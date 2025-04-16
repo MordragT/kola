@@ -15,7 +15,7 @@ pub mod prelude {
     pub use crate::parser::{ParseResult, parse};
     pub use crate::source::Source;
     pub use crate::span::*;
-    pub use crate::token::{SemanticTokenKind, Token, TokenPrinter, Tokens};
+    pub use crate::token::{SemanticToken, SemanticTokenKind, Token, Tokens};
 }
 
 #[derive(Clone, Copy, Debug)]

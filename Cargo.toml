@@ -14,7 +14,7 @@ derive_more = { version = "2.0", features = ["from", "try_into", "display"] }
 thiserror = "2.0"
 owo-colors = "4.1"
 miette = "7.4.0"
-
+paste = "1.0"
 
 [package]
 name = "kola"

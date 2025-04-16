@@ -3,11 +3,11 @@ use chumsky::prelude::*;
 use crate::{
     error::{SyntaxError, SyntaxErrors},
     span::{Span, Spanned},
-    token::{Delimiter, Op, Token, Tokens},
+    token::{CloseT, CtrlT, KwT, Literal, OpT, OpenT, Token, Tokens},
 };
 
-pub struct TokenizeResult<'a> {
-    pub tokens: Option<Tokens<'a>>,
+pub struct TokenizeResult<'t> {
+    pub tokens: Option<Tokens<'t>>,
     pub errors: SyntaxErrors,
 }
 
@@ -22,15 +22,38 @@ pub fn tokenize(input: &str) -> TokenizeResult<'_> {
     TokenizeResult { tokens, errors }
 }
 
-pub type Extra<'src> = extra::Full<Rich<'src, char, Span>, (), ()>;
+pub type Extra<'t> = extra::Full<Rich<'t, char, Span>, (), ()>;
 
-pub fn lexer<'src>() -> impl Parser<'src, &'src str, Vec<Spanned<Token<'src>>>, Extra<'src>> {
+/*
+ *  ######     #     #     #  #######  ###  #######  #     #
+ *  #         # #    #     #     #      #   #     #  ##    #
+ *  #        #   #   #     #     #      #   #     #  # #   #
+ *  #       #     #  #     #     #      #   #     #  #  #  #
+ *  #       #######  #     #     #      #   #     #  #   # #
+ *  #       #     #  #     #     #      #   #     #  #    ##
+ *  ######  #     #   #####      #     ###  #######  #     #
+ *
+ * The tokenizer is using an untyped approach to represent tokens.
+ * This means there's no compile-time guarantee that all token patterns
+ * are properly handled in the lexer and parser.
+ *
+ * When adding new tokens or modifying existing ones:
+ * - Update the Token enum in token.rs
+ * - Update the lexer patterns here
+ * - Update the parser to handle the new token
+ * - Update any display or conversion logic
+ *
+ * Missing tokens won't cause compilation errors but will lead to
+ * unexpected runtime behavior or parse failures!
+ */
+
+pub fn lexer<'t>() -> impl Parser<'t, &'t str, Vec<Spanned<Token<'t>>>, Extra<'t>> {
     let num = text::int(10)
         .then(just('.').then(text::digits(10)).or_not())
         .to_slice()
         .from_str()
         .unwrapped()
-        .map(Token::Num);
+        .map(|n| Token::Literal(Literal::Num(n)));
 
     let escape = just('\\').ignore_then(
         just('\\')
@@ -46,7 +69,7 @@ pub fn lexer<'src>() -> impl Parser<'src, &'src str, Vec<Spanned<Token<'src>>>, 
     let character = just('\'')
         .ignore_then(any().filter(|c| *c != '\\' && *c != '\'').or(escape))
         .then_ignore(just('\''))
-        .map(Token::Char);
+        .map(|c| Token::Literal(Literal::Char(c)));
 
     let string = just('"')
         .ignore_then(
@@ -57,88 +80,96 @@ pub fn lexer<'src>() -> impl Parser<'src, &'src str, Vec<Spanned<Token<'src>>>, 
                 .to_slice(),
         )
         .then_ignore(just('"'))
-        .map(Token::Str);
+        .map(|s| Token::Literal(Literal::Str(s)));
 
     // Lexer prioritizes the first defined token when ambiguous
     // therefore longer tokens must be defined before shorter ones
 
     // Multi-character operators
     let multi_op = choice((
-        just("+=").to(Op::AddAssign),
-        just("-=").to(Op::SubAssign),
-        just("*=").to(Op::MulAssign),
-        just("/=").to(Op::DivAssign),
-        just("%=").to(Op::RemAssign),
-        just("<=").to(Op::LessEq),
-        just(">=").to(Op::GreaterEq),
-        just("==").to(Op::Eq),
-        just("!=").to(Op::NotEq),
+        just("+=").to(OpT::ADD_ASSIGN),
+        just("-=").to(OpT::SUB_ASSIGN),
+        just("*=").to(OpT::MUL_ASSIGN),
+        just("/=").to(OpT::DIV_ASSIGN),
+        just("%=").to(OpT::REM_ASSIGN),
+        just("<=").to(OpT::LESS_EQ),
+        just(">=").to(OpT::GREATER_EQ),
+        just("==").to(OpT::EQ),
+        just("!=").to(OpT::NOT_EQ),
         // Keywords that are operators
-        just("and").to(Op::And),
-        just("or").to(Op::Or),
-        just("xor").to(Op::Xor),
+        just("and").to(OpT::AND),
+        just("or").to(OpT::OR),
+        just("xor").to(OpT::XOR),
     ))
-    .map(Token::Op);
+    .map(|op| op.0);
 
     // Single-character operators
     let single_op = choice((
-        just('=').to(Op::Assign),
-        just('+').to(Op::Add),
-        just('-').to(Op::Sub),
-        just('*').to(Op::Mul),
-        just('/').to(Op::Div),
-        just('%').to(Op::Rem),
-        just('<').to(Op::Less),
-        just('>').to(Op::Greater),
-        just('!').to(Op::Not),
-        just('&').to(Op::Merge),
+        just('=').to(OpT::ASSIGN),
+        just('+').to(OpT::ADD),
+        just('-').to(OpT::SUB),
+        just('*').to(OpT::MUL),
+        just('/').to(OpT::DIV),
+        just('%').to(OpT::REM),
+        just('<').to(OpT::LESS),
+        just('>').to(OpT::GREATER),
+        just('!').to(OpT::NOT),
+        just('&').to(OpT::MERGE),
     ))
-    .map(Token::Op);
+    .map(|op| op.0);
 
     // Multi-character control tokens
     let multi_ctrl = choice((
-        just("->").to(Token::Arrow),
-        just("=>").to(Token::DoubleArrow),
-    ));
+        just("->").to(CtrlT::ARROW),
+        just("=>").to(CtrlT::DOUBLE_ARROW),
+    ))
+    .map(|ctrl| ctrl.0);
 
     // Single-character control tokens
     let single_ctrl = choice((
-        just('.').to(Token::Dot),
-        just(':').to(Token::Colon),
-        just(',').to(Token::Comma),
-        just('~').to(Token::Tilde),
-        just('|').to(Token::Pipe),
-        just('\\').to(Token::Backslash),
-        just('_').to(Token::Underscore),
-    ));
+        just('.').to(CtrlT::DOT),
+        just(':').to(CtrlT::COLON),
+        just(',').to(CtrlT::COMMA),
+        just('~').to(CtrlT::TILDE),
+        just('|').to(CtrlT::PIPE),
+        just('\\').to(CtrlT::BACKSLASH),
+        just('_').to(CtrlT::UNDERSCORE),
+    ))
+    .map(|ctrl| ctrl.0);
 
     // Delimiters group
-    let delim = choice((
-        just('(').to(Token::Open(Delimiter::Paren)),
-        just(')').to(Token::Close(Delimiter::Paren)),
-        just('[').to(Token::Open(Delimiter::Bracket)),
-        just(']').to(Token::Close(Delimiter::Bracket)),
-        just('{').to(Token::Open(Delimiter::Brace)),
-        just('}').to(Token::Close(Delimiter::Brace)),
-    ));
+    let open = choice((
+        just('(').to(OpenT::PAREN),
+        just('[').to(OpenT::BRACKET),
+        just('{').to(OpenT::BRACE),
+    ))
+    .map(|open| open.0);
 
+    let close = choice((
+        just(')').to(CloseT::PAREN),
+        just(']').to(CloseT::BRACKET),
+        just('}').to(CloseT::BRACE),
+    ))
+    .map(|close| close.0);
+
+    // TODO this looks kind of ugly, move keywords somewhere
     // Keywords and identifiers
     let word = text::ident().map(|ident| match ident {
-        "type" => Token::Type,
-        "fn" => Token::Fn,
-        "functor" => Token::Functor,
-        "let" => Token::Let,
-        "in" => Token::In,
-        "if" => Token::If,
-        "then" => Token::Then,
-        "else" => Token::Else,
-        "case" => Token::Case,
-        "of" => Token::Of,
-        "import" => Token::Import,
-        "export" => Token::Export,
-        "forall" => Token::Forall,
-        "true" => Token::Bool(true),
-        "false" => Token::Bool(false),
+        "type" => KwT::TYPE.0,
+        "fn" => KwT::FN.0,
+        "functor" => KwT::FUNCTOR.0,
+        "let" => KwT::LET.0,
+        "in" => KwT::IN.0,
+        "if" => KwT::IF.0,
+        "then" => KwT::THEN.0,
+        "else" => KwT::ELSE.0,
+        "case" => KwT::CASE.0,
+        "of" => KwT::OF.0,
+        "import" => KwT::IMPORT.0,
+        "export" => KwT::EXPORT.0,
+        "forall" => KwT::FORALL.0,
+        "true" => Token::Literal(Literal::Bool(true)),
+        "false" => Token::Literal(Literal::Bool(false)),
         _ => Token::Symbol(ident),
     });
 
@@ -150,7 +181,8 @@ pub fn lexer<'src>() -> impl Parser<'src, &'src str, Vec<Spanned<Token<'src>>>, 
         multi_ctrl,
         single_op,
         single_ctrl,
-        delim,
+        open,
+        close,
         word,
     ));
 

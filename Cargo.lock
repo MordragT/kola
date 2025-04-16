@@ -348,6 +348,7 @@ dependencies = [
  "kola-utils",
  "miette",
  "owo-colors",
+ "paste",
  "thiserror 2.0.12",
 ]
 
