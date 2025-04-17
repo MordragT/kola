@@ -51,6 +51,7 @@
             clippy
             rustfmt
             pkg-config
+            lldb
           ];
 
           # Specify the rust-src path (many editors rely on this)

@@ -22,7 +22,7 @@ pub mod prelude {
     pub use crate::unify::Unifiable;
 }
 
-use kola_tree::{Phase, node::Symbol};
+use kola_tree::{meta::Phase, node::Symbol};
 
 #[derive(Clone, Copy, Debug)]
 pub struct SemanticPhase;

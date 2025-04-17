@@ -4,12 +4,12 @@ use kola_tree::prelude::*;
 use super::{Extra, State};
 use crate::{Span, SyntaxPhase, token::Token};
 
-pub trait ParserExt<'src, I, T>: Parser<'src, I, T, Extra<'src>> + Sized
+pub trait ParserExt<'t, I, T>: Parser<'t, I, T, Extra<'t>> + Sized
 where
-    I: ValueInput<'src, Token = Token<'src>, Span = Span>,
+    I: ValueInput<'t, Token = Token<'t>, Span = Span>,
 {
     #[inline]
-    fn to_node(self) -> impl Parser<'src, I, NodeId<T>, Extra<'src>>
+    fn to_node(self) -> impl Parser<'t, I, NodeId<T>, Extra<'t>>
     where
         Node: From<T>,
         T: MetaCast<SyntaxPhase, Meta = Span>,
@@ -22,7 +22,7 @@ where
     }
 
     #[inline]
-    fn map_to_node<F, U>(self, f: F) -> impl Parser<'src, I, NodeId<U>, Extra<'src>>
+    fn map_to_node<F, U>(self, f: F) -> impl Parser<'t, I, NodeId<U>, Extra<'t>>
     where
         F: Fn(T) -> U,
         U: MetaCast<SyntaxPhase, Meta = Span>,
@@ -32,7 +32,7 @@ where
     }
 
     #[inline]
-    fn to_expr(self) -> impl Parser<'src, I, NodeId<node::Expr>, Extra<'src>>
+    fn to_expr(self) -> impl Parser<'t, I, NodeId<node::Expr>, Extra<'t>>
     where
         node::Expr: From<T>,
     {
@@ -40,7 +40,7 @@ where
     }
 
     #[inline]
-    fn to_pat(self) -> impl Parser<'src, I, NodeId<node::Pat>, Extra<'src>>
+    fn to_pat(self) -> impl Parser<'t, I, NodeId<node::Pat>, Extra<'t>>
     where
         node::Pat: From<T>,
     {
@@ -48,19 +48,35 @@ where
     }
 
     #[inline]
-    fn to_type_expr(self) -> impl Parser<'src, I, NodeId<node::TypeExpr>, Extra<'src>>
+    fn to_type_expr(self) -> impl Parser<'t, I, NodeId<node::TypeExpr>, Extra<'t>>
     where
         node::TypeExpr: From<T>,
     {
         self.map(node::TypeExpr::from).to_node()
     }
+
+    #[inline]
+    fn to_bind(self) -> impl Parser<'t, I, NodeId<node::Bind>, Extra<'t>>
+    where
+        node::Bind: From<T>,
+    {
+        self.map(node::Bind::from).to_node()
+    }
+
+    #[inline]
+    fn to_spec(self) -> impl Parser<'t, I, NodeId<node::Spec>, Extra<'t>>
+    where
+        node::Spec: From<T>,
+    {
+        self.map(node::Spec::from).to_node()
+    }
 }
 
 impl<
-    'src,
+    't,
     T,
-    I: ValueInput<'src, Token = Token<'src>, Span = Span>,
-    P: Parser<'src, I, T, Extra<'src>> + Sized,
-> ParserExt<'src, I, T> for P
+    I: ValueInput<'t, Token = Token<'t>, Span = Span>,
+    P: Parser<'t, I, T, Extra<'t>> + Sized,
+> ParserExt<'t, I, T> for P
 {
 }

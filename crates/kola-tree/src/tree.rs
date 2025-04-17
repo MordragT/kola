@@ -5,7 +5,7 @@ use kola_utils::{TryAsMut, TryAsRef};
 use crate::{
     id::NodeId,
     meta::{Meta, Phase},
-    node::{Expr, Node},
+    node::{Module, Node},
 };
 
 pub trait NodeContainer {
@@ -67,7 +67,7 @@ impl TreeBuilder {
         NodeId::new(id)
     }
 
-    pub fn finish(self, root: NodeId<Expr>) -> Tree {
+    pub fn finish(self, root: NodeId<Module>) -> Tree {
         let Self { nodes } = self;
 
         let nodes = Rc::new(nodes);
@@ -79,7 +79,7 @@ impl TreeBuilder {
 #[derive(Debug, Clone)]
 pub struct Tree {
     nodes: Rc<Vec<Node>>,
-    root: NodeId<Expr>,
+    root: NodeId<Module>,
 }
 
 impl NodeContainer for Tree {
@@ -93,7 +93,7 @@ impl NodeContainer for Tree {
 }
 
 impl Tree {
-    pub fn root_id(&self) -> NodeId<Expr> {
+    pub fn root_id(&self) -> NodeId<Module> {
         self.root
     }
 

@@ -138,8 +138,8 @@ define_nodes!(
     ExprError,
     Expr,
     // Types
-    TypeError,
     TypePath,
+    TypeVar,
     RecordFieldType,
     RecordType,
     VariantCaseType,
@@ -147,14 +147,20 @@ define_nodes!(
     FuncType,
     TypeApplication,
     TypeExpr,
+    TypeError,
     Type,
-    TypeBind,
     // Modules
     ValueBind,
+    TypeBind,
+    OpaqueTypeBind,
     ModuleBind,
     ModuleTypeBind,
     Bind,
     Module,
+    ValueSpec,
+    OpaqueTypeKind,
+    OpaqueTypeSpec,
+    ModuleSpec,
     Spec,
     ModuleType
 );

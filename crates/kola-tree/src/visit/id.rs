@@ -37,13 +37,17 @@ pub enum BranchId {
     TypeApplication(NodeId<node::TypeApplication>),
     TypeExpr(NodeId<node::TypeExpr>),
     Type(NodeId<node::Type>),
-    TypeBind(NodeId<node::TypeBind>),
     // Modules
     ValueBind(NodeId<node::ValueBind>),
+    TypeBind(NodeId<node::TypeBind>),
+    OpaqueTypeBind(NodeId<node::OpaqueTypeBind>),
     ModuleBind(NodeId<node::ModuleBind>),
     ModuleTypeBind(NodeId<node::ModuleTypeBind>),
     Bind(NodeId<node::Bind>),
     Module(NodeId<node::Module>),
+    ValueSpec(NodeId<node::ValueSpec>),
+    OpaqueTypeSpec(NodeId<node::OpaqueTypeSpec>),
+    ModuleSpec(NodeId<node::ModuleSpec>),
     Spec(NodeId<node::Spec>),
     ModuleType(NodeId<node::ModuleType>),
 }
@@ -63,5 +67,8 @@ pub enum LeafId {
     RecordUpdateOp(NodeId<node::RecordUpdateOp>),
     ExprError(NodeId<node::ExprError>),
     // Types
+    TypeVar(NodeId<node::TypeVar>),
     TypeError(NodeId<node::TypeError>),
+    // Modules
+    OpaqueTypeKind(NodeId<node::OpaqueTypeKind>),
 }

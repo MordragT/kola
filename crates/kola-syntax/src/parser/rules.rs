@@ -1,10 +1,7 @@
 use chumsky::{input::ValueInput, prelude::*};
 use kola_tree::prelude::*;
 
-use super::{
-    Extra, ParserExt, State,
-    primitives::{close_delim, ctrl, kw, op, open_delim},
-};
+use super::{Extra, ParserExt, State, primitives::*};
 use crate::{
     Span, SyntaxPhase,
     token::{CloseT, CtrlT, Delim, KwT, Literal, OpT, OpenT, Token},
@@ -46,21 +43,104 @@ Callable := Symbol
 CallExpr := '(' Callable Expr ')'
 */
 
+// TODO case expr also end in a ',' which is ambiguos to binds being separated by ','
+// Therefore replace the "case x of 10 => ..., 5 => ...," with something different.
+
+// pub fn file_module_parser<'t, I>() -> impl Parser<'t, I, NodeId<node::Module>, Extra<'t>> + Clone
+// where
+//     I: ValueInput<'t, Token = Token<'t>, Span = Span>,
+// {
+//     bind_parser()
+//         .separated_by(ctrl(CtrlT::COMMA))
+//         .allow_trailing()
+//         .collect()
+//         .map_to_node(node::Module)
+//         .boxed()
+// }
+
 pub fn module_parser<'t, I>() -> impl Parser<'t, I, NodeId<node::Module>, Extra<'t>> + Clone
 where
     I: ValueInput<'t, Token = Token<'t>, Span = Span>,
 {
-    todo()
+    let module_type = module_type_parser();
+
+    recursive(|module| {
+        let value_bind = name_parser()
+            .then(ctrl(CtrlT::COLON).ignore_then(type_parser()).or_not())
+            .then_ignore(op(OpT::ASSIGN))
+            .then(expr_parser())
+            .map_to_node(|((name, ty), value)| node::ValueBind { name, ty, value })
+            .to_bind();
+
+        let type_bind = type_bind_parser().to_bind();
+
+        // TODO opaque type bind
+
+        let module_bind = kw(KwT::MODULE)
+            .ignore_then(name_parser())
+            .then(ctrl(CtrlT::COLON).ignore_then(module_type.clone()).or_not())
+            .then_ignore(op(OpT::ASSIGN))
+            .then(module)
+            .map_to_node(|((name, ty), value)| node::ModuleBind { name, ty, value })
+            .to_bind();
+
+        let module_type_bind = kw(KwT::MODULE)
+            .ignore_then(kw(KwT::TYPE))
+            .ignore_then(name_parser())
+            .then_ignore(op(OpT::ASSIGN))
+            .then(module_type)
+            .map_to_node(|(name, ty)| node::ModuleTypeBind { name, ty })
+            .to_bind();
+
+        let bind = choice((module_type_bind, module_bind, type_bind, value_bind)).boxed();
+
+        bind.separated_by(ctrl(CtrlT::COMMA))
+            .allow_trailing()
+            .collect()
+            .map_to_node(node::Module)
+            .delimited_by(open_delim(OpenT::BRACE), close_delim(CloseT::BRACE))
+            .boxed()
+    })
+}
+
+pub fn module_type_parser<'t, I>() -> impl Parser<'t, I, NodeId<node::ModuleType>, Extra<'t>> + Clone
+where
+    I: ValueInput<'t, Token = Token<'t>, Span = Span>,
+{
+    recursive(|module_type| {
+        let value_spec = name_parser()
+            .then_ignore(ctrl(CtrlT::COLON))
+            .then(type_parser())
+            .map_to_node(|(name, ty)| node::ValueSpec { name, ty })
+            .to_spec();
+
+        let type_bind = type_bind_parser().to_spec();
+
+        // TODO opaque type spec
+
+        let module_spec = kw(KwT::MODULE)
+            .ignore_then(name_parser())
+            .then_ignore(ctrl(CtrlT::COLON))
+            .then(module_type)
+            .map_to_node(|(name, ty)| node::ModuleSpec { name, ty })
+            .to_spec();
+
+        let spec = choice((value_spec, type_bind, module_spec)).boxed();
+
+        spec.separated_by(ctrl(CtrlT::COMMA))
+            .allow_trailing()
+            .collect()
+            .map_to_node(node::ModuleType)
+            .delimited_by(open_delim(OpenT::BRACE), close_delim(CloseT::BRACE))
+            .boxed()
+    })
 }
 
 pub fn name_parser<'t, I>() -> impl Parser<'t, I, NodeId<node::Name>, Extra<'t>> + Clone
 where
     I: ValueInput<'t, Token = Token<'t>, Span = Span>,
 {
-    select! { Token::Symbol(s) => node::Symbol::from(s) }
-        .map(node::Name)
-        .to_node()
-        .boxed()
+    symbol().map(node::Name).to_node().boxed()
 }
 
 /// Parser for literal expressions in the language.
@@ -76,11 +156,7 @@ pub fn literal_parser<'t, I>() -> impl Parser<'t, I, node::LiteralExpr, Extra<'t
 where
     I: ValueInput<'t, Token = Token<'t>, Span = Span>,
 {
-    select! {
-        Token::Literal(l) => l
-
-    }
-    .map(|l| match l {
+    literal().map(|l| match l {
         Literal::Num(n) => node::LiteralExpr::Num(n),
         Literal::Bool(b) => node::LiteralExpr::Bool(b),
         Literal::Char(c) => node::LiteralExpr::Char(c),
@@ -625,6 +701,11 @@ where
             .to_type_expr()
             .boxed();
 
+        let row_var = ctrl(CtrlT::PIPE)
+            .ignore_then(symbol().map_to_node(node::TypeVar))
+            .or_not()
+            .boxed();
+
         let field = name
             .clone()
             .then_ignore(ctrl(CtrlT::COLON))
@@ -634,9 +715,11 @@ where
         let record = nested_parser(
             field
                 .separated_by(ctrl(CtrlT::COMMA))
+                .at_least(1)
                 .allow_trailing()
                 .collect()
-                .map_to_node(node::RecordType)
+                .then(row_var.clone())
+                .map_to_node(|(fields, extension)| node::RecordType { fields, extension })
                 .to_type_expr(),
             Delim::Brace,
             |_span| node::TypeError,
@@ -649,11 +732,13 @@ where
 
         let variant = nested_parser(
             case.separated_by(ctrl(CtrlT::COMMA))
+                .at_least(1)
                 .allow_trailing()
                 .collect()
-                .map_to_node(node::VariantType)
+                .then(row_var)
+                .map_to_node(|(cases, extension)| node::VariantType { cases, extension })
                 .to_type_expr(),
-            Delim::Bracket,
+            Delim::Angle,
             |_span| node::TypeError,
         );
 
@@ -796,7 +881,10 @@ mod tests {
 
     use kola_tree::prelude::*;
 
-    use super::{expr_parser, pat_parser, type_bind_parser, type_expr_parser, type_parser};
+    use super::{
+        expr_parser, module_parser, module_type_parser, pat_parser, type_bind_parser,
+        type_expr_parser, type_parser,
+    };
     use crate::{lexer::lexer, parser::try_parse_with};
 
     #[test]
@@ -1036,7 +1124,7 @@ mod tests {
         // { a: Num, ... } -> ...
         let node::FuncType { input, output } = output.get(&tree).to_func_type().unwrap().get(&tree);
 
-        let input = &input.get(&tree).to_record_type().unwrap().get(&tree).0;
+        let input = &input.get(&tree).to_record_type().unwrap().get(&tree).fields;
         assert_eq!(input.len(), 2);
 
         let a = input[0].get(&tree);
@@ -1118,7 +1206,7 @@ mod tests {
         assert_eq!(vars[1].get(&tree), "b");
 
         let record_type = ty.get(&tree).to_record_type().unwrap().get(&tree);
-        assert_eq!(record_type.0.len(), 2);
+        assert_eq!(record_type.fields.len(), 2);
 
         let left = record_type.get(0, &tree);
         assert_eq!(left.name.get(&tree), "left");
@@ -1173,13 +1261,13 @@ mod tests {
         assert_eq!(vars.len(), 1);
         assert_eq!(vars[0].get(&tree), "a");
 
-        let record_type = &ty.get(&tree).to_record_type().unwrap().get(&tree).0;
+        let record_type = &ty.get(&tree).to_record_type().unwrap().get(&tree).fields;
         assert_eq!(record_type.len(), 3);
     }
 
     #[test]
     fn variant_type_bind() {
-        let src = "type Option = forall a . [ Some : a, None ]";
+        let src = "type Option = forall a b . < Some : a, None | b >";
         let tokens = lexer().parse(src).into_result().unwrap();
         let eoi = (src.len()..src.len()).into();
         let input = tokens.as_slice().map(eoi, |(t, s)| (t, s));
@@ -1190,11 +1278,12 @@ mod tests {
         assert_eq!(name.get(&tree), "Option");
 
         let node::Type { vars, ty } = ty.get(&tree);
-        assert_eq!(vars.len(), 1);
+        assert_eq!(vars.len(), 2);
         assert_eq!(vars[0].get(&tree), "a");
 
         let variant = ty.get(&tree).to_variant_type().unwrap().get(&tree);
-        assert_eq!(variant.0.len(), 2);
+        assert_eq!(variant.cases.len(), 2);
+        assert!(variant.extension.is_some());
 
         let some = variant.get(0, &tree);
         assert_eq!(some.name.get(&tree), "Some");
@@ -1212,5 +1301,155 @@ mod tests {
         let none = variant.get(1, &tree);
         assert_eq!(none.name.get(&tree), "None");
         assert_eq!(none.ty, None);
+    }
+
+    #[test]
+    fn module() {
+        let src = "{ x = 10, type T = Num }";
+        let tokens = lexer().parse(src).into_result().unwrap();
+        let eoi = (src.len()..src.len()).into();
+        let input = tokens.as_slice().map(eoi, |(t, s)| (t, s));
+
+        let (module, tree, _spans) = try_parse_with(input, module_parser()).unwrap();
+
+        let binds = &module.get(&tree).0;
+        assert_eq!(binds.len(), 2);
+
+        let value_bind = binds[0].get(&tree).to_value().unwrap().get(&tree);
+        assert_eq!(value_bind.name.get(&tree), "x");
+        assert_eq!(
+            value_bind.value.get(&tree).to_literal().unwrap().get(&tree),
+            &node::LiteralExpr::Num(10.0)
+        );
+
+        let type_bind = binds[1].get(&tree).to_type().unwrap().get(&tree);
+        assert_eq!(type_bind.name.get(&tree), "T");
+        assert_eq!(
+            type_bind
+                .ty
+                .get(&tree)
+                .ty
+                .get(&tree)
+                .to_type_path()
+                .unwrap()
+                .get(&tree)
+                .get(0, &tree),
+            "Num"
+        );
+    }
+
+    #[test]
+    fn module_type() {
+        let src = "{ x : Num, type T = Str }";
+        let tokens = lexer().parse(src).into_result().unwrap();
+        let eoi = (src.len()..src.len()).into();
+        let input = tokens.as_slice().map(eoi, |(t, s)| (t, s));
+
+        let (module_type, tree, _spans) = try_parse_with(input, module_type_parser()).unwrap();
+
+        let specs = &module_type.get(&tree).0;
+        assert_eq!(specs.len(), 2);
+
+        let value_spec = specs[0].get(&tree).to_value().unwrap().get(&tree);
+        assert_eq!(value_spec.name.get(&tree), "x");
+        assert_eq!(
+            value_spec
+                .ty
+                .get(&tree)
+                .ty
+                .get(&tree)
+                .to_type_path()
+                .unwrap()
+                .get(&tree)
+                .get(0, &tree),
+            "Num"
+        );
+
+        let type_bind = specs[1].get(&tree).to_type_bind().unwrap().get(&tree);
+        assert_eq!(type_bind.name.get(&tree), "T");
+        assert_eq!(
+            type_bind
+                .ty
+                .get(&tree)
+                .ty
+                .get(&tree)
+                .to_type_path()
+                .unwrap()
+                .get(&tree)
+                .get(0, &tree),
+            "Str"
+        );
+    }
+
+    #[test]
+    fn nested_module() {
+        let src = "{ module M = { x = 10 } }";
+        let tokens = lexer().parse(src).into_result().unwrap();
+        let eoi = (src.len()..src.len()).into();
+        let input = tokens.as_slice().map(eoi, |(t, s)| (t, s));
+
+        let (module, tree, _spans) = try_parse_with(input, module_parser()).unwrap();
+
+        let binds = &module.get(&tree).0;
+        assert_eq!(binds.len(), 1);
+
+        let module_bind = binds[0].get(&tree).to_module().unwrap().get(&tree);
+        assert_eq!(module_bind.name.get(&tree), "M");
+        assert!(module_bind.ty.is_none());
+
+        let m_binds = &module_bind.value.get(&tree).0;
+        assert_eq!(m_binds.len(), 1);
+
+        let value_bind = m_binds[0].get(&tree).to_value().unwrap().get(&tree);
+        assert_eq!(value_bind.name.get(&tree), "x");
+        assert_eq!(
+            value_bind.value.get(&tree).to_literal().unwrap().get(&tree),
+            &node::LiteralExpr::Num(10.0)
+        );
+    }
+
+    #[test]
+    fn nested_module_with_type() {
+        let src = "{ module M : { x : Num } = { x = 10 } }";
+        let tokens = lexer().parse(src).into_result().unwrap();
+        let eoi = (src.len()..src.len()).into();
+        let input = tokens.as_slice().map(eoi, |(t, s)| (t, s));
+
+        let (module, tree, _spans) = try_parse_with(input, module_parser()).unwrap();
+
+        let binds = &module.get(&tree).0;
+        assert_eq!(binds.len(), 1);
+
+        let module_bind = binds[0].get(&tree).to_module().unwrap().get(&tree);
+        assert_eq!(module_bind.name.get(&tree), "M");
+
+        // Check interface
+        assert!(module_bind.ty.is_some());
+        let ty_specs = &module_bind.ty.unwrap().get(&tree).0;
+        assert_eq!(ty_specs.len(), 1);
+        let value_spec = ty_specs[0].get(&tree).to_value().unwrap().get(&tree);
+        assert_eq!(value_spec.name.get(&tree), "x");
+        assert_eq!(
+            value_spec
+                .ty
+                .get(&tree)
+                .ty
+                .get(&tree)
+                .to_type_path()
+                .unwrap()
+                .get(&tree)
+                .get(0, &tree),
+            "Num"
+        );
+
+        // Check implementation
+        let m_binds = &module_bind.value.get(&tree).0;
+        assert_eq!(m_binds.len(), 1);
+        let value_bind = m_binds[0].get(&tree).to_value().unwrap().get(&tree);
+        assert_eq!(value_bind.name.get(&tree), "x");
+        assert_eq!(
+            value_bind.value.get(&tree).to_literal().unwrap().get(&tree),
+            &node::LiteralExpr::Num(10.0)
+        );
     }
 }

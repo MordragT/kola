@@ -3,9 +3,9 @@ use std::path::PathBuf;
 use miette::IntoDiagnostic;
 use owo_colors::OwoColorize;
 
-use kola_compiler::prelude::*;
+// use kola_semantic::prelude::*;
+// use kola_compiler::prelude::*;
 use kola_print::prelude::*;
-use kola_semantic::prelude::*;
 use kola_syntax::prelude::*;
 use kola_tree::prelude::*;
 
@@ -54,21 +54,21 @@ fn main() -> miette::Result<()> {
                 .with(SpanDecorator(spans.clone()))
                 .print(options);
 
-            let inferer = Inferer::new(&tree, spans.clone());
-            let types = inferer
-                .solve(&tree)
-                .map_err(|(errors, span)| SemanticReport::new(source, span, errors))?;
+            // let inferer = Inferer::new(&tree, spans.clone());
+            // let types = inferer
+            //     .solve(&tree)
+            //     .map_err(|(errors, span)| SemanticReport::new(source, span, errors))?;
 
-            println!("\n{}", "Typed Abstract Syntax Tree".bold().bright_white());
-            TreePrinter::new(&tree)
-                .with(SpanDecorator(spans.clone()))
-                .with(TypeDecorator(types.clone()))
-                .print(options);
+            // println!("\n{}", "Typed Abstract Syntax Tree".bold().bright_white());
+            // TreePrinter::new(&tree)
+            //     .with(SpanDecorator(spans.clone()))
+            //     .with(TypeDecorator(types.clone()))
+            //     .print(options);
 
-            let ir = Normalizer::normalize(&tree);
+            // let ir = Normalizer::normalize(&tree);
 
-            println!("\n{}", "Intermediate Representation".bold().bright_white());
-            ir.print(options);
+            // println!("\n{}", "Intermediate Representation".bold().bright_white());
+            // ir.print(options);
         }
     }
 

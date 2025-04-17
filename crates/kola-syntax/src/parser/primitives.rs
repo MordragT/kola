@@ -1,9 +1,10 @@
 use chumsky::{input::ValueInput, prelude::*};
+use kola_tree::node;
 
 use super::Extra;
 use crate::{
     span::Span,
-    token::{CloseT, Ctrl, CtrlT, Kw, KwT, Op, OpT, OpenT, SemanticToken, Token},
+    token::{CloseT, Ctrl, CtrlT, Kw, KwT, Literal, Op, OpT, OpenT, SemanticToken, Token},
 };
 
 // TODO See the tokens module for an explanation on how this can enable more features
@@ -45,4 +46,18 @@ where
     I: ValueInput<'t, Token = Token<'t>, Span = Span>,
 {
     just(delim.0).to(SemanticToken::from(delim))
+}
+
+pub fn literal<'t, I>() -> impl Parser<'t, I, Literal<'t>, Extra<'t>> + Sized
+where
+    I: ValueInput<'t, Token = Token<'t>, Span = Span>,
+{
+    select! { Token::Literal(l) => l }
+}
+
+pub fn symbol<'t, I>() -> impl Parser<'t, I, node::Symbol, Extra<'t>> + Clone
+where
+    I: ValueInput<'t, Token = Token<'t>, Span = Span>,
+{
+    select! { Token::Symbol(s) => node::Symbol::from(s) }
 }

@@ -1,31 +1,36 @@
 use bumpalo::collections::CollectIn;
 use derive_more::Display;
 use kola_print::prelude::*;
+use owo_colors::{OwoColorize, Style};
 use paste::paste;
 use std::fmt;
 
 use super::span::Spanned;
 
-// pub struct TokenPrinter<'t>(pub &'t Tokens<'t>);
+pub struct TokenPrinter<'t>(pub &'t Tokens<'t>);
 
-// impl<'t> Printable<()> for TokenPrinter<'t> {
-//     fn notate<'t>(&'t self, _with: &'t (), arena: &'t Bump) -> Notation<'t> {
-//         let tokens = self
-//             .0
-//             .iter()
-//             .flat_map(|(token, span)| {
-//                 let kind = token.kind();
+impl<'t> Printable<()> for TokenPrinter<'t> {
+    fn notate<'a>(&'a self, _with: &'a (), arena: &'a Bump) -> Notation<'a> {
+        let tokens = self
+            .0
+            .iter()
+            .flat_map(|(token, span)| {
+                let kind = match token {
+                    Token::Atom(_) => "atom".style(Style::new().red()),
+                    Token::Symbol(_) => "symbol".style(Style::new().blue()),
+                    Token::Literal(_) => "literal".style(Style::new().green()),
+                };
 
-//                 [
-//                     format_args!("\"{token}\"\t\t({kind}, {span})").display_in(arena),
-//                     arena.newline(),
-//                 ]
-//             })
-//             .collect_in::<bumpalo::collections::Vec<_>>(arena);
+                [
+                    format_args!("\"{token}\"\t\t({kind}, {span})").display_in(arena),
+                    arena.newline(),
+                ]
+            })
+            .collect_in::<bumpalo::collections::Vec<_>>(arena);
 
-//         arena.concat(tokens.into_bump_slice())
-//     }
-// }
+        arena.concat(tokens.into_bump_slice())
+    }
+}
 
 /*
 Idea:
@@ -62,15 +67,11 @@ pub type Tokens<'t> = Vec<Spanned<Token<'t>>>;
 #[derive(Debug, Display, Clone, Copy, PartialEq)]
 pub enum Token<'t> {
     #[display("{_0}")]
+    Atom(&'static str),
+    #[display("{_0}")]
     Symbol(&'t str),
     #[display("{_0}")]
     Literal(Literal<'t>),
-    #[display("{_0}")]
-    Keyword(&'static str),
-    #[display("{_0}")]
-    Punct(char),
-    #[display("{_0}{_1}")]
-    Joint(char, char),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -78,10 +79,10 @@ pub enum Token<'t> {
 pub struct OpenT<'t>(pub Token<'t>);
 
 impl<'t> OpenT<'t> {
-    pub const PAREN: Self = Self(Token::Punct('('));
-    pub const BRACKET: Self = Self(Token::Punct('['));
-    pub const BRACE: Self = Self(Token::Punct('{'));
-    pub const ANGLE: Self = Self(Token::Punct('<'));
+    pub const PAREN: Self = Self(Token::Atom("("));
+    pub const BRACKET: Self = Self(Token::Atom("["));
+    pub const BRACE: Self = Self(Token::Atom("{"));
+    pub const ANGLE: Self = Self(Token::Atom("<"));
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -89,17 +90,17 @@ impl<'t> OpenT<'t> {
 pub struct CloseT<'t>(pub Token<'t>);
 
 impl<'t> CloseT<'t> {
-    pub const PAREN: Self = Self(Token::Punct(')'));
-    pub const BRACKET: Self = Self(Token::Punct(']'));
-    pub const BRACE: Self = Self(Token::Punct('}'));
-    pub const ANGLE: Self = Self(Token::Punct('>'));
+    pub const PAREN: Self = Self(Token::Atom(")"));
+    pub const BRACKET: Self = Self(Token::Atom("]"));
+    pub const BRACE: Self = Self(Token::Atom("}"));
+    pub const ANGLE: Self = Self(Token::Atom(">"));
 }
 
 macro_rules! define_token_type {
     (
         $name:ident {
             $(
-                $variant:ident => $token_expr:expr => $display:literal
+                $variant:ident => $atom:literal
             ),* $(,)?
         }
     ) => {
@@ -110,14 +111,14 @@ macro_rules! define_token_type {
             pub struct [<$name T>]<'t>(pub Token<'t>);
 
             impl<'t> [<$name T>]<'t> {
-                $(pub const [<$variant:snake:upper>]: Self = Self($token_expr);)*
+                $(pub const [<$variant:snake:upper>]: Self = Self(Token::Atom($atom));)*
             }
 
             // Define the semantic enum (Op, Kw, Ctrl, etc.)
             #[derive(Debug, Display, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
             pub enum $name {
                 $(
-                    #[display($display)]
+                    #[display($atom)]
                     $variant,
                 )*
             }
@@ -150,60 +151,61 @@ macro_rules! define_token_type {
 }
 
 define_token_type!(Op {
-    Assign => Token::Punct('=') => "=",
-    Add => Token::Punct('+') => "+",
-    AddAssign => Token::Joint('+', '=') => "+=",
-    Sub => Token::Punct('-') => "-",
-    SubAssign => Token::Joint('-', '=') => "-=",
-    Mul => Token::Punct('*') => "*",
-    MulAssign => Token::Joint('*', '=') => "*=",
-    Div => Token::Punct('/') => "/",
-    DivAssign => Token::Joint('/', '=') => "/=",
-    Rem => Token::Punct('%') => "%",
-    RemAssign => Token::Joint('%', '=') => "%=",
+    Assign => "=",
+    Add => "+",
+    AddAssign => "+=",
+    Sub => "-",
+    SubAssign => "-=",
+    Mul => "*",
+    MulAssign => "*=",
+    Div => "/",
+    DivAssign => "/=",
+    Rem => "%",
+    RemAssign => "%=",
     // Comparison
-    Less => Token::Punct('<') => "<",
-    Greater => Token::Punct('>') => ">",
-    LessEq => Token::Joint('<', '=') => "<=",
-    GreaterEq => Token::Joint('>', '=') => ">=",
+    Less => "<",
+    Greater => ">",
+    LessEq => "<=",
+    GreaterEq => ">=",
     // Logical
-    Not => Token::Punct('!') => "!",
-    And => Token::Keyword("and") => "and",
-    Or => Token::Keyword("or") => "or",
-    Xor => Token::Keyword("xor") => "xor",
+    Not => "!",
+    And => "and",
+    Or => "or",
+    Xor => "xor",
     // Equality
-    Eq => Token::Joint('=', '=') => "==",
-    NotEq => Token::Joint('!', '=') => "!=",
+    Eq => "==",
+    NotEq => "!=",
     // Record
-    Merge => Token::Punct('&') => "&",
+    Merge => "&",
 });
 
 define_token_type!(Kw {
-    Type => Token::Keyword("type") => "type",
-    Fn => Token::Keyword("fn") => "fn",
-    Functor => Token::Keyword("functor") => "functor",
-    Let => Token::Keyword("let") => "let",
-    In => Token::Keyword("in") => "in",
-    If => Token::Keyword("if") => "if",
-    Then => Token::Keyword("then") => "then",
-    Else => Token::Keyword("else") => "else",
-    Case => Token::Keyword("case") => "case",
-    Of => Token::Keyword("of") => "of",
-    Forall => Token::Keyword("forall") => "forall",
-    Import => Token::Keyword("import") => "import",
-    Export => Token::Keyword("export") => "export",
+    Module => "module",
+    Import => "import",
+    Export => "export",
+    Functor => "functor",
+    Type => "type",
+    Forall => "forall",
+    Fn => "fn",
+    Let => "let",
+    In => "in",
+    If => "if",
+    Then => "then",
+    Else => "else",
+    Case => "case",
+    Of => "of",
 });
 
 define_token_type!(Ctrl {
-    Dot => Token::Punct('.') => ".",
-    Colon => Token::Punct(':') => ":",
-    Comma => Token::Punct(',') => ",",
-    Tilde => Token::Punct('~') => "~",
-    Pipe => Token::Punct('|') => "|",
-    Backslash => Token::Punct('\\') => "\\",
-    Underscore => Token::Punct('_') => "_",
-    Arrow => Token::Joint('-', '>') => "->",
-    DoubleArrow => Token::Joint('=', '>') => "=>",
+    Dot => ".",
+    Colon => ":",
+    Comma => ",",
+    Tilde => "~",
+    Pipe => "|",
+    Backslash => "\\",
+    Underscore => "_",
+    Arrow => "->",
+    DoubleArrow => "=>",
 });
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]

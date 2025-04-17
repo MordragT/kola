@@ -1,4 +1,6 @@
 pub mod id;
+#[cfg(test)]
+pub mod inspector;
 pub mod meta;
 pub mod node;
 pub mod print;

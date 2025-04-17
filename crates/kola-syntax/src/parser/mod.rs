@@ -25,7 +25,7 @@ pub struct ParseResult {
 
 pub fn parse(tokens: Tokens<'_>, eoi: Span) -> ParseResult {
     let input = tokens.as_slice().map(eoi, |(t, s)| (t, s));
-    let parser = rules::expr_parser();
+    let parser = rules::module_parser();
 
     let mut state = State::from(StateRepr::new());
 

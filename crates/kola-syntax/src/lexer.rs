@@ -3,7 +3,7 @@ use chumsky::prelude::*;
 use crate::{
     error::{SyntaxError, SyntaxErrors},
     span::{Span, Spanned},
-    token::{CloseT, CtrlT, KwT, Literal, OpT, OpenT, Token, Tokens},
+    token::{Literal, Token, Tokens},
 };
 
 pub struct TokenizeResult<'t> {
@@ -35,26 +35,19 @@ pub type Extra<'t> = extra::Full<Rich<'t, char, Span>, (), ()>;
  *
  * The tokenizer is using an untyped approach to represent tokens.
  * This means there's no compile-time guarantee that all token patterns
- * are properly handled in the lexer and parser.
+ * are properly handled in the lexer.
  *
  * When adding new tokens or modifying existing ones:
- * - Update the Token enum in token.rs
+ * - Update the Token newtype wrapers in token.rs
  * - Update the lexer patterns here
  * - Update the parser to handle the new token
- * - Update any display or conversion logic
  *
  * Missing tokens won't cause compilation errors but will lead to
  * unexpected runtime behavior or parse failures!
  */
 
 pub fn lexer<'t>() -> impl Parser<'t, &'t str, Vec<Spanned<Token<'t>>>, Extra<'t>> {
-    let num = text::int(10)
-        .then(just('.').then(text::digits(10)).or_not())
-        .to_slice()
-        .from_str()
-        .unwrapped()
-        .map(|n| Token::Literal(Literal::Num(n)));
-
+    // Define a common escape sequence parser
     let escape = just('\\').ignore_then(
         just('\\')
             .or(just('/'))
@@ -66,125 +59,114 @@ pub fn lexer<'t>() -> impl Parser<'t, &'t str, Vec<Spanned<Token<'t>>>, Extra<'t
             .or(just('t').to('\t')),
     );
 
-    let character = just('\'')
-        .ignore_then(any().filter(|c| *c != '\\' && *c != '\'').or(escape))
-        .then_ignore(just('\''))
-        .map(|c| Token::Literal(Literal::Char(c)));
-
-    let string = just('"')
-        .ignore_then(
-            any()
-                .filter(|c| *c != '\\' && *c != '"')
-                .or(escape)
-                .repeated()
-                .to_slice(),
-        )
-        .then_ignore(just('"'))
-        .map(|s| Token::Literal(Literal::Str(s)));
-
-    // Lexer prioritizes the first defined token when ambiguous
-    // therefore longer tokens must be defined before shorter ones
-
-    // Multi-character operators
-    let multi_op = choice((
-        just("+=").to(OpT::ADD_ASSIGN),
-        just("-=").to(OpT::SUB_ASSIGN),
-        just("*=").to(OpT::MUL_ASSIGN),
-        just("/=").to(OpT::DIV_ASSIGN),
-        just("%=").to(OpT::REM_ASSIGN),
-        just("<=").to(OpT::LESS_EQ),
-        just(">=").to(OpT::GREATER_EQ),
-        just("==").to(OpT::EQ),
-        just("!=").to(OpT::NOT_EQ),
-        // Keywords that are operators
-        just("and").to(OpT::AND),
-        just("or").to(OpT::OR),
-        just("xor").to(OpT::XOR),
+    // Combined literal parser
+    let literal = choice((
+        // Number literals
+        text::int(10)
+            .then(just('.').then(text::digits(10)).or_not())
+            .to_slice()
+            .from_str()
+            .unwrapped()
+            .map(Literal::Num),
+        // Character literals
+        just('\'')
+            .ignore_then(any().filter(|c| *c != '\\' && *c != '\'').or(escape))
+            .then_ignore(just('\''))
+            .map(Literal::Char),
+        // String literals
+        just('"')
+            .ignore_then(
+                any()
+                    .filter(|c| *c != '\\' && *c != '"')
+                    .or(escape)
+                    .repeated()
+                    .to_slice(),
+            )
+            .then_ignore(just('"'))
+            .map(Literal::Str),
+        // Boolean literals
+        just("true").to(Literal::Bool(true)),
+        just("false").to(Literal::Bool(false)),
     ))
-    .map(|op| op.0);
+    .map(Token::Literal)
+    .boxed();
 
-    // Single-character operators
-    let single_op = choice((
-        just('=').to(OpT::ASSIGN),
-        just('+').to(OpT::ADD),
-        just('-').to(OpT::SUB),
-        just('*').to(OpT::MUL),
-        just('/').to(OpT::DIV),
-        just('%').to(OpT::REM),
-        just('<').to(OpT::LESS),
-        just('>').to(OpT::GREATER),
-        just('!').to(OpT::NOT),
-        just('&').to(OpT::MERGE),
+    // Single-character tokens
+    let punct = choice((
+        // Operators
+        just('=').to(Token::Atom("=")),
+        just('+').to(Token::Atom("+")),
+        just('-').to(Token::Atom("-")),
+        just('*').to(Token::Atom("*")),
+        just('/').to(Token::Atom("/")),
+        just('%').to(Token::Atom("%")),
+        just('!').to(Token::Atom("!")),
+        just('&').to(Token::Atom("&")),
+        // Control tokens
+        just('.').to(Token::Atom(".")),
+        just(':').to(Token::Atom(":")),
+        just(',').to(Token::Atom(",")),
+        just('~').to(Token::Atom("~")),
+        just('|').to(Token::Atom("|")),
+        just('\\').to(Token::Atom("\\")),
+        just('_').to(Token::Atom("_")),
+        // Delimiters
+        just('(').to(Token::Atom("(")),
+        just('[').to(Token::Atom("[")),
+        just('{').to(Token::Atom("{")),
+        just(')').to(Token::Atom(")")),
+        just(']').to(Token::Atom("]")),
+        just('}').to(Token::Atom("}")),
+        // Shared
+        just('<').to(Token::Atom("<")),
+        just('>').to(Token::Atom(">")),
     ))
-    .map(|op| op.0);
+    .boxed();
 
-    // Multi-character control tokens
-    let multi_ctrl = choice((
-        just("->").to(CtrlT::ARROW),
-        just("=>").to(CtrlT::DOUBLE_ARROW),
+    // Two-character tokens
+    let joint = choice((
+        just("+=").to(Token::Atom("+=")),
+        just("-=").to(Token::Atom("-=")),
+        just("*=").to(Token::Atom("*=")),
+        just("/=").to(Token::Atom("/=")),
+        just("%=").to(Token::Atom("%=")),
+        just("<=").to(Token::Atom("<=")),
+        just(">=").to(Token::Atom(">=")),
+        just("==").to(Token::Atom("==")),
+        just("!=").to(Token::Atom("!=")),
+        just("->").to(Token::Atom("->")),
+        just("=>").to(Token::Atom("=>")),
     ))
-    .map(|ctrl| ctrl.0);
+    .boxed();
 
-    // Single-character control tokens
-    let single_ctrl = choice((
-        just('.').to(CtrlT::DOT),
-        just(':').to(CtrlT::COLON),
-        just(',').to(CtrlT::COMMA),
-        just('~').to(CtrlT::TILDE),
-        just('|').to(CtrlT::PIPE),
-        just('\\').to(CtrlT::BACKSLASH),
-        just('_').to(CtrlT::UNDERSCORE),
+    // Multi-character tokens
+    let word = choice((
+        // Type and module keywords
+        just("module").to(Token::Atom("module")),
+        just("import").to(Token::Atom("import")),
+        just("export").to(Token::Atom("export")),
+        just("functor").to(Token::Atom("functor")),
+        just("type").to(Token::Atom("type")),
+        just("forall").to(Token::Atom("forall")),
+        // Expression keywords
+        just("fn").to(Token::Atom("fn")),
+        just("let").to(Token::Atom("let")),
+        just("in").to(Token::Atom("in")),
+        just("if").to(Token::Atom("if")),
+        just("then").to(Token::Atom("then")),
+        just("else").to(Token::Atom("else")),
+        just("case").to(Token::Atom("case")),
+        just("of").to(Token::Atom("of")),
+        // Logical operators
+        just("and").to(Token::Atom("and")),
+        just("or").to(Token::Atom("or")),
+        just("xor").to(Token::Atom("xor")),
     ))
-    .map(|ctrl| ctrl.0);
+    .boxed();
 
-    // Delimiters group
-    let open = choice((
-        just('(').to(OpenT::PAREN),
-        just('[').to(OpenT::BRACKET),
-        just('{').to(OpenT::BRACE),
-    ))
-    .map(|open| open.0);
+    let symbol = text::ident().map(Token::Symbol);
 
-    let close = choice((
-        just(')').to(CloseT::PAREN),
-        just(']').to(CloseT::BRACKET),
-        just('}').to(CloseT::BRACE),
-    ))
-    .map(|close| close.0);
-
-    // TODO this looks kind of ugly, move keywords somewhere
-    // Keywords and identifiers
-    let word = text::ident().map(|ident| match ident {
-        "type" => KwT::TYPE.0,
-        "fn" => KwT::FN.0,
-        "functor" => KwT::FUNCTOR.0,
-        "let" => KwT::LET.0,
-        "in" => KwT::IN.0,
-        "if" => KwT::IF.0,
-        "then" => KwT::THEN.0,
-        "else" => KwT::ELSE.0,
-        "case" => KwT::CASE.0,
-        "of" => KwT::OF.0,
-        "import" => KwT::IMPORT.0,
-        "export" => KwT::EXPORT.0,
-        "forall" => KwT::FORALL.0,
-        "true" => Token::Literal(Literal::Bool(true)),
-        "false" => Token::Literal(Literal::Bool(false)),
-        _ => Token::Symbol(ident),
-    });
-
-    let token = choice((
-        num,
-        character,
-        string,
-        multi_op,
-        multi_ctrl,
-        single_op,
-        single_ctrl,
-        open,
-        close,
-        word,
-    ));
+    let token = choice((literal, word, joint, punct, symbol)).boxed();
 
     let comment = just('#')
         .then(any().and_is(just('\n').not()).repeated())

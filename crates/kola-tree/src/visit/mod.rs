@@ -31,10 +31,10 @@ pub trait Visitor: Handler {
 
     fn visit_level_order(&mut self, tree: &Tree) -> Result<(), Self::Error> {
         let root_id = tree.root_id();
-        self.visit_expr(root_id, tree)
+        self.visit_module(root_id, tree)
     }
 
-    fn visit_expr(&mut self, id: NodeId<node::Expr>, tree: &Tree) -> Result<(), Self::Error> {
+    fn visit_module(&mut self, id: NodeId<node::Module>, tree: &Tree) -> Result<(), Self::Error> {
         let mut stack = EventStack::new();
         stack.push_branch(id);
 
@@ -53,6 +53,16 @@ pub trait Visitor: Handler {
     ) -> Result<(), Self::Error> {
         match event {
             Event::Enter(id) => match id {
+                // Pattern nodes
+                BranchId::RecordFieldPat(id) => self.walk_record_field_pat(id, tree, stack),
+                BranchId::RecordPat(id) => self.walk_record_pat(id, tree, stack),
+                BranchId::VariantCasePat(id) => self.walk_variant_case_pat(id, tree, stack),
+                BranchId::VariantPat(id) => self.walk_variant_pat(id, tree, stack),
+                BranchId::Pat(id) => self.walk_pat(id, tree, stack),
+                BranchId::CaseBranch(id) => self.walk_case_branch(id, tree, stack),
+
+                // Expression nodes
+                BranchId::Path(id) => self.walk_path_expr(id, tree, stack),
                 BranchId::List(id) => self.walk_list_expr(id, tree, stack),
                 BranchId::RecordField(id) => self.walk_record_field(id, tree, stack),
                 BranchId::Record(id) => self.walk_record_expr(id, tree, stack),
@@ -62,17 +72,13 @@ pub trait Visitor: Handler {
                 BranchId::Unary(id) => self.walk_unary_expr(id, tree, stack),
                 BranchId::Binary(id) => self.walk_binary_expr(id, tree, stack),
                 BranchId::Let(id) => self.walk_let_expr(id, tree, stack),
-                BranchId::RecordFieldPat(id) => self.walk_record_field_pat(id, tree, stack),
-                BranchId::RecordPat(id) => self.walk_record_pat(id, tree, stack),
-                BranchId::VariantCasePat(id) => self.walk_variant_case_pat(id, tree, stack),
-                BranchId::VariantPat(id) => self.walk_variant_pat(id, tree, stack),
-                BranchId::Pat(id) => self.walk_pat(id, tree, stack),
-                BranchId::CaseBranch(id) => self.walk_case_branch(id, tree, stack),
                 BranchId::Case(id) => self.walk_case_expr(id, tree, stack),
                 BranchId::If(id) => self.walk_if_expr(id, tree, stack),
                 BranchId::Lambda(id) => self.walk_lambda_expr(id, tree, stack),
                 BranchId::Call(id) => self.walk_call_expr(id, tree, stack),
                 BranchId::Expr(id) => self.walk_expr(id, tree, stack),
+
+                // Type nodes
                 BranchId::TypePath(id) => self.walk_type_path(id, tree, stack),
                 BranchId::RecordFieldType(id) => self.walk_record_field_type(id, tree, stack),
                 BranchId::RecordType(id) => self.walk_record_type(id, tree, stack),
@@ -82,17 +88,32 @@ pub trait Visitor: Handler {
                 BranchId::TypeApplication(id) => self.walk_type_application(id, tree, stack),
                 BranchId::TypeExpr(id) => self.walk_type_expr(id, tree, stack),
                 BranchId::Type(id) => self.walk_type(id, tree, stack),
-                BranchId::TypeBind(id) => self.walk_type_bind(id, tree, stack),
+
+                // Module nodes
                 BranchId::ValueBind(id) => self.walk_value_bind(id, tree, stack),
+                BranchId::TypeBind(id) => self.walk_type_bind(id, tree, stack),
+                BranchId::OpaqueTypeBind(id) => self.walk_opaque_type_bind(id, tree, stack),
                 BranchId::ModuleBind(id) => self.walk_module_bind(id, tree, stack),
                 BranchId::ModuleTypeBind(id) => self.walk_module_type_bind(id, tree, stack),
                 BranchId::Bind(id) => self.walk_bind(id, tree, stack),
                 BranchId::Module(id) => self.walk_module(id, tree, stack),
+                BranchId::ValueSpec(id) => self.walk_value_spec(id, tree, stack),
+                BranchId::OpaqueTypeSpec(id) => self.walk_opaque_type_spec(id, tree, stack),
+                BranchId::ModuleSpec(id) => self.walk_module_spec(id, tree, stack),
                 BranchId::Spec(id) => self.walk_spec(id, tree, stack),
                 BranchId::ModuleType(id) => self.walk_module_type(id, tree, stack),
-                BranchId::Path(id) => self.walk_path_expr(id, tree, stack),
             },
             Event::Exit(id) => match id {
+                // Pattern nodes
+                BranchId::RecordFieldPat(id) => self.handle_record_field_pat(id.get(tree), id),
+                BranchId::RecordPat(id) => self.handle_record_pat(id.get(tree), id),
+                BranchId::VariantCasePat(id) => self.handle_variant_case_pat(id.get(tree), id),
+                BranchId::VariantPat(id) => self.handle_variant_pat(id.get(tree), id),
+                BranchId::Pat(id) => self.handle_pat(id.get(tree), id),
+                BranchId::CaseBranch(id) => self.handle_case_branch(id.get(tree), id),
+
+                // Expression nodes
+                BranchId::Path(id) => self.handle_path_expr(id.get(tree), id),
                 BranchId::List(id) => self.handle_list_expr(id.get(tree), id),
                 BranchId::RecordField(id) => self.handle_record_field(id.get(tree), id),
                 BranchId::Record(id) => self.handle_record_expr(id.get(tree), id),
@@ -102,17 +123,13 @@ pub trait Visitor: Handler {
                 BranchId::Unary(id) => self.handle_unary_expr(id.get(tree), id),
                 BranchId::Binary(id) => self.handle_binary_expr(id.get(tree), id),
                 BranchId::Let(id) => self.handle_let_expr(id.get(tree), id),
-                BranchId::RecordFieldPat(id) => self.handle_record_field_pat(id.get(tree), id),
-                BranchId::RecordPat(id) => self.handle_record_pat(id.get(tree), id),
-                BranchId::VariantCasePat(id) => self.handle_variant_case_pat(id.get(tree), id),
-                BranchId::VariantPat(id) => self.handle_variant_pat(id.get(tree), id),
-                BranchId::Pat(id) => self.handle_pat(id.get(tree), id),
-                BranchId::CaseBranch(id) => self.handle_case_branch(id.get(tree), id),
                 BranchId::Case(id) => self.handle_case_expr(id.get(tree), id),
                 BranchId::If(id) => self.handle_if_expr(id.get(tree), id),
                 BranchId::Lambda(id) => self.handle_lambda_expr(id.get(tree), id),
                 BranchId::Call(id) => self.handle_call_expr(id.get(tree), id),
                 BranchId::Expr(id) => self.handle_expr(id.get(tree), id),
+
+                // Type nodes
                 BranchId::TypePath(id) => self.handle_type_path(id.get(tree), id),
                 BranchId::RecordFieldType(id) => self.handle_record_field_type(id.get(tree), id),
                 BranchId::RecordType(id) => self.handle_record_type(id.get(tree), id),
@@ -122,28 +139,42 @@ pub trait Visitor: Handler {
                 BranchId::TypeApplication(id) => self.handle_type_application(id.get(tree), id),
                 BranchId::TypeExpr(id) => self.handle_type_expr(id.get(tree), id),
                 BranchId::Type(id) => self.handle_type(id.get(tree), id),
-                BranchId::TypeBind(id) => self.handle_type_bind(id.get(tree), id),
+
+                // Module nodes
                 BranchId::ValueBind(id) => self.handle_value_bind(id.get(tree), id),
+                BranchId::TypeBind(id) => self.handle_type_bind(id.get(tree), id),
+                BranchId::OpaqueTypeBind(id) => self.handle_opaque_type_bind(id.get(tree), id),
                 BranchId::ModuleBind(id) => self.handle_module_bind(id.get(tree), id),
                 BranchId::ModuleTypeBind(id) => self.handle_module_type_bind(id.get(tree), id),
                 BranchId::Bind(id) => self.handle_bind(id.get(tree), id),
                 BranchId::Module(id) => self.handle_module(id.get(tree), id),
+                BranchId::ValueSpec(id) => self.handle_value_spec(id.get(tree), id),
+                BranchId::OpaqueTypeSpec(id) => self.handle_opaque_type_spec(id.get(tree), id),
+                BranchId::ModuleSpec(id) => self.handle_module_spec(id.get(tree), id),
                 BranchId::Spec(id) => self.handle_spec(id.get(tree), id),
                 BranchId::ModuleType(id) => self.handle_module_type(id.get(tree), id),
-                BranchId::Path(id) => self.handle_path_expr(id.get(tree), id),
             },
             Event::Visit(id) => match id {
-                LeafId::Name(id) => self.handle_name(id.get(tree), id),
+                // Pattern nodes
                 LeafId::AnyPat(id) => self.handle_any_pat(id.get(tree), id),
                 LeafId::LiteralPat(id) => self.handle_literal_pat(id.get(tree), id),
                 LeafId::IdentPat(id) => self.handle_ident_pat(id.get(tree), id),
+                LeafId::PatError(id) => self.handle_pat_error(id.get(tree), id),
+
+                // Expression nodes
+                LeafId::Name(id) => self.handle_name(id.get(tree), id),
                 LeafId::Literal(id) => self.handle_literal_expr(id.get(tree), id),
                 LeafId::UnaryOp(id) => self.handle_unary_op(id.get(tree), id),
                 LeafId::BinaryOp(id) => self.handle_binary_op(id.get(tree), id),
                 LeafId::RecordUpdateOp(id) => self.handle_record_update_op(id.get(tree), id),
-                LeafId::PatError(id) => self.handle_pat_error(id.get(tree), id),
                 LeafId::ExprError(id) => self.handle_expr_error(id.get(tree), id),
+
+                // Type nodes
+                LeafId::TypeVar(id) => self.handle_type_var(id.get(tree), id),
                 LeafId::TypeError(id) => self.handle_type_error(id.get(tree), id),
+
+                // Module nodes
+                LeafId::OpaqueTypeKind(id) => self.handle_opaque_type_kind(id.get(tree), id),
             },
         }
     }
@@ -533,10 +564,14 @@ pub trait Visitor: Handler {
         tree: &Tree,
         stack: &mut EventStack,
     ) -> Result<(), Self::Error> {
-        let record_type = id.get(tree);
+        let node::RecordType { fields, extension } = id.get(tree);
 
-        for id in &record_type.0 {
+        for id in fields {
             stack.push_branch(*id);
+        }
+
+        if let Some(ext) = extension {
+            stack.push_leaf(*ext);
         }
 
         Ok(())
@@ -564,10 +599,14 @@ pub trait Visitor: Handler {
         tree: &Tree,
         stack: &mut EventStack,
     ) -> Result<(), Self::Error> {
-        let variant_type = id.get(tree);
+        let node::VariantType { cases, extension } = id.get(tree);
 
-        for id in &variant_type.0 {
+        for id in cases {
             stack.push_branch(*id);
+        }
+
+        if let Some(ext) = extension {
+            stack.push_leaf(*ext);
         }
 
         Ok(())
@@ -637,20 +676,6 @@ pub trait Visitor: Handler {
         Ok(())
     }
 
-    fn walk_type_bind(
-        &mut self,
-        id: NodeId<node::TypeBind>,
-        tree: &Tree,
-        stack: &mut EventStack,
-    ) -> Result<(), Self::Error> {
-        let node::TypeBind { name, ty } = id.get(tree);
-
-        stack.push_leaf(*name);
-        stack.push_branch(*ty);
-
-        Ok(())
-    }
-
     // Module-related walking functions
     fn walk_value_bind(
         &mut self,
@@ -665,6 +690,34 @@ pub trait Visitor: Handler {
             stack.push_branch(*ty);
         }
         stack.push_branch(*value);
+
+        Ok(())
+    }
+
+    fn walk_type_bind(
+        &mut self,
+        id: NodeId<node::TypeBind>,
+        tree: &Tree,
+        stack: &mut EventStack,
+    ) -> Result<(), Self::Error> {
+        let node::TypeBind { name, ty } = id.get(tree);
+
+        stack.push_leaf(*name);
+        stack.push_branch(*ty);
+
+        Ok(())
+    }
+
+    fn walk_opaque_type_bind(
+        &mut self,
+        id: NodeId<node::OpaqueTypeBind>,
+        tree: &Tree,
+        stack: &mut EventStack,
+    ) -> Result<(), Self::Error> {
+        let node::OpaqueTypeBind { name, ty } = id.get(tree);
+
+        stack.push_leaf(*name);
+        stack.push_branch(*ty);
 
         Ok(())
     }
@@ -711,6 +764,7 @@ pub trait Visitor: Handler {
         match *id.get(tree) {
             Value(id) => stack.push_branch(id),
             Type(id) => stack.push_branch(id),
+            OpaqueType(id) => stack.push_branch(id),
             Module(id) => stack.push_branch(id),
             ModuleType(id) => stack.push_branch(id),
         }
@@ -733,6 +787,48 @@ pub trait Visitor: Handler {
         Ok(())
     }
 
+    fn walk_value_spec(
+        &mut self,
+        id: NodeId<node::ValueSpec>,
+        tree: &Tree,
+        stack: &mut EventStack,
+    ) -> Result<(), Self::Error> {
+        let node::ValueSpec { name, ty } = id.get(tree);
+
+        stack.push_leaf(*name);
+        stack.push_branch(*ty);
+
+        Ok(())
+    }
+
+    fn walk_opaque_type_spec(
+        &mut self,
+        id: NodeId<node::OpaqueTypeSpec>,
+        tree: &Tree,
+        stack: &mut EventStack,
+    ) -> Result<(), Self::Error> {
+        let node::OpaqueTypeSpec { name, kind } = id.get(tree);
+
+        stack.push_leaf(*name);
+        stack.push_leaf(*kind);
+
+        Ok(())
+    }
+
+    fn walk_module_spec(
+        &mut self,
+        id: NodeId<node::ModuleSpec>,
+        tree: &Tree,
+        stack: &mut EventStack,
+    ) -> Result<(), Self::Error> {
+        let node::ModuleSpec { name, ty } = id.get(tree);
+
+        stack.push_leaf(*name);
+        stack.push_branch(*ty);
+
+        Ok(())
+    }
+
     fn walk_spec(
         &mut self,
         id: NodeId<node::Spec>,
@@ -742,8 +838,10 @@ pub trait Visitor: Handler {
         use node::Spec::*;
 
         match *id.get(tree) {
-            Type(id) => stack.push_branch(id),
-            ModuleType(id) => stack.push_branch(id),
+            Value(id) => stack.push_branch(id),
+            TypeBind(id) => stack.push_branch(id),
+            OpaqueType(id) => stack.push_branch(id),
+            Module(id) => stack.push_branch(id),
         }
 
         Ok(())
@@ -815,27 +913,35 @@ mod tests {
 
         let target = builder.insert(node::LiteralExpr::Num(10.0));
         let unary = node::UnaryExpr::new_in(node::UnaryOp::Neg, target.into(), &mut builder);
-        let root = builder.insert(node::Expr::Unary(unary));
+        let bind =
+            node::Bind::value_in("name".into(), None, node::Expr::Unary(unary), &mut builder);
+        let root = builder.insert(node::Module(vec![bind]));
 
         // -10
         let tree = builder.finish(root);
 
         let mut visitor = TestVisitor::default();
         visitor.visit_post_order(&tree).unwrap();
-        assert_eq!(visitor.flow, vec![
-            NodeKind::LiteralExpr,
-            NodeKind::Expr,
-            NodeKind::UnaryExpr,
-            NodeKind::Expr,
-        ]);
+        assert_eq!(
+            visitor.flow,
+            vec![
+                NodeKind::LiteralExpr,
+                NodeKind::Expr,
+                NodeKind::UnaryExpr,
+                NodeKind::Expr,
+            ]
+        );
 
         let mut visitor = TestVisitor::default();
         visitor.visit_pre_order(&tree).unwrap();
-        assert_eq!(visitor.flow, vec![
-            NodeKind::Expr,
-            NodeKind::UnaryExpr,
-            NodeKind::Expr,
-            NodeKind::LiteralExpr,
-        ]);
+        assert_eq!(
+            visitor.flow,
+            vec![
+                NodeKind::Expr,
+                NodeKind::UnaryExpr,
+                NodeKind::Expr,
+                NodeKind::LiteralExpr,
+            ]
+        );
     }
 }
