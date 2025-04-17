@@ -476,7 +476,6 @@ impl Printable<TreePrinter> for Type {
     }
 }
 
-#[cfg(test)]
 mod inspector {
     use super::*;
     use crate::inspector::*;

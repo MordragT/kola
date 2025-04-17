@@ -637,7 +637,6 @@ ascription ?
 module num : [pi] = import "num.kl" # only exports num ?
 */
 
-#[cfg(test)]
 mod inspector {
     use super::*;
     use crate::inspector::*;

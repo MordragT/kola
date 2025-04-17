@@ -874,12 +874,11 @@ where
         ))
         .boxed()
 }
-
 #[cfg(test)]
 mod tests {
     use chumsky::prelude::*;
 
-    use kola_tree::prelude::*;
+    use kola_tree::{inspector::NodeInspector, prelude::*};
 
     use super::{
         expr_parser, module_parser, module_type_parser, pat_parser, type_bind_parser,
@@ -895,23 +894,43 @@ mod tests {
         let input = tokens.as_slice().map(eoi, |(t, s)| (t, s));
 
         let (pat, tree, _spans) = try_parse_with(input, pat_parser()).unwrap();
+        let inspector = NodeInspector::new(pat, &tree);
 
-        let record = pat.get(&tree).to_record().unwrap().get(&tree);
+        let record = inspector.as_record().unwrap();
 
-        let a = record.get("a", &tree).unwrap();
-        assert!(a.pat.is_some());
-        assert_eq!(a.pat(&tree).unwrap().to_ident().unwrap().get(&tree), "x");
+        record
+            .field_named("a")
+            .unwrap()
+            .pattern()
+            .unwrap()
+            .as_ident()
+            .unwrap()
+            .has_name("x");
 
-        let b = record.get("b", &tree).unwrap();
-        assert!(b.pat.is_some());
-        let b = b.pat(&tree).unwrap().to_record().unwrap().get(&tree);
-        assert!(b.get("y", &tree).unwrap().pat.is_none());
+        assert!(
+            record
+                .field_named("b")
+                .unwrap()
+                .pattern()
+                .unwrap()
+                .as_record()
+                .unwrap()
+                .field_named("y")
+                .unwrap()
+                .pattern()
+                .is_none()
+        );
 
-        let c = record.get("c", &tree).unwrap();
-        assert!(c.pat(&tree).unwrap().is_wildcard());
+        record
+            .field_named("c")
+            .unwrap()
+            .pattern()
+            .unwrap()
+            .as_any()
+            .unwrap()
+            .is_any();
 
-        let d = record.get("d", &tree).unwrap();
-        assert_eq!(d.pat(&tree), None);
+        assert!(record.field_named("d").unwrap().pattern().is_none());
     }
 
     #[test]
@@ -922,33 +941,33 @@ mod tests {
         let input = tokens.as_slice().map(eoi, |(t, s)| (t, s));
 
         let (expr, tree, _spans) = try_parse_with(input, expr_parser()).unwrap();
+        let inspector = NodeInspector::new(expr, &tree);
 
-        let node::CaseExpr { source, branches } = expr.get(&tree).to_case().unwrap().get(&tree);
+        let case = inspector.as_case().unwrap();
 
-        assert_eq!(
-            source
-                .get(&tree)
-                .to_path()
-                .unwrap()
-                .get(&tree)
-                .get(0, &tree),
-            "x"
-        );
+        case.source()
+            .as_path()
+            .unwrap()
+            .has_segments(1)
+            .segment_at_is(0, "x");
 
-        let mut branches = branches.iter().rev();
+        case.has_branches(2);
 
-        let branch = branches.next().unwrap().get(&tree);
-        assert!(branch.pat(&tree).is_wildcard());
-        let matches = branch.matches(&tree).to_literal().unwrap().get(&tree);
-        assert_eq!(matches, &node::LiteralExpr::Bool(false));
+        case.branch_at(0).pat().as_literal().unwrap().is_num(1.0);
 
-        let branch = branches.next().unwrap().get(&tree);
-        let pat = &branch.pat(&tree).to_literal().unwrap().get(&tree).0;
-        assert_eq!(pat, &node::LiteralExpr::Num(1.0));
-        let matches = branch.matches(&tree).to_literal().unwrap().get(&tree);
-        assert_eq!(matches, &node::LiteralExpr::Bool(true));
+        case.branch_at(0)
+            .matches()
+            .as_literal()
+            .unwrap()
+            .is_bool(true);
 
-        assert_eq!(branches.len(), 0);
+        case.branch_at(1).pat().as_any().unwrap().is_any();
+
+        case.branch_at(1)
+            .matches()
+            .as_literal()
+            .unwrap()
+            .is_bool(false);
     }
 
     #[test]
@@ -959,13 +978,16 @@ mod tests {
         let input = tokens.as_slice().map(eoi, |(t, s)| (t, s));
 
         let (expr, tree, _spans) = try_parse_with(input, expr_parser()).unwrap();
+        let inspector = NodeInspector::new(expr, &tree);
 
-        let node::LambdaExpr { param, body } = expr.get(&tree).to_lambda().unwrap().get(&tree);
-
-        assert_eq!(param.get(&tree), "name");
-
-        let body = body.get(&tree).to_binary().unwrap().get(&tree);
-        assert_eq!(body.op(&tree), node::BinaryOp::Add);
+        inspector
+            .as_lambda()
+            .unwrap()
+            .has_param("name")
+            .body()
+            .as_binary()
+            .unwrap()
+            .has_op(node::BinaryOp::Add);
     }
 
     #[test]
@@ -977,27 +999,33 @@ mod tests {
         let input = tokens.as_slice().map(eoi, |(t, s)| (t, s));
 
         let (expr, tree, _spans) = try_parse_with(input, expr_parser()).unwrap();
+        let inspector = NodeInspector::new(expr, &tree);
 
-        // _ = 0
-        let eq = expr.get(&tree).to_binary().unwrap().get(&tree);
+        // _ == 0
+        let eq = inspector.as_binary().unwrap();
+        eq.has_op(node::BinaryOp::Eq);
 
-        assert_eq!(eq.op(&tree), node::BinaryOp::Eq);
+        // Right side is 0
+        eq.right().as_literal().unwrap().is_num(0.0);
 
-        // _ + 30
-        let sum = eq.left(&tree).to_binary().unwrap().get(&tree);
-        assert_eq!(sum.op(&tree), node::BinaryOp::Add);
+        // Left side: _ + 30
+        let sum = eq.left().as_binary().unwrap();
+        sum.has_op(node::BinaryOp::Add);
 
-        // (_) + (_)
-        let sum = sum.left(&tree).to_binary().unwrap().get(&tree);
-        assert_eq!(sum.op(&tree), node::BinaryOp::Add);
+        // Right side of sum is 30
+        sum.right().as_literal().unwrap().is_num(30.0);
 
-        // (-4 * 10)
-        let mul = sum.left(&tree).to_binary().unwrap().get(&tree);
-        assert_eq!(mul.op(&tree), node::BinaryOp::Mul);
+        // Left side of sum: (_) + (_)
+        let sum2 = sum.left().as_binary().unwrap();
+        sum2.has_op(node::BinaryOp::Add);
 
-        // (40 / 4)
-        let div = sum.right(&tree).to_binary().unwrap().get(&tree);
-        assert_eq!(div.op(&tree), node::BinaryOp::Div);
+        // Left side of sum2: (-4 * 10)
+        let mul = sum2.left().as_binary().unwrap();
+        mul.has_op(node::BinaryOp::Mul);
+
+        // Right side of sum2: (40 / 4)
+        let div = sum2.right().as_binary().unwrap();
+        div.has_op(node::BinaryOp::Div);
     }
 
     #[test]
@@ -1008,32 +1036,25 @@ mod tests {
         let input = tokens.as_slice().map(eoi, |(t, s)| (t, s));
 
         let (expr, tree, _spans) = try_parse_with(input, expr_parser()).unwrap();
+        let inspector = NodeInspector::new(expr, &tree);
 
-        let node::IfExpr {
-            predicate,
-            then,
-            or,
-        } = expr.get(&tree).to_if().unwrap().get(&tree);
+        let if_expr = inspector.as_if().unwrap();
 
-        assert_eq!(
-            predicate
-                .get(&tree)
-                .to_path()
-                .unwrap()
-                .get(&tree)
-                .get(0, &tree),
-            "y"
-        );
+        if_expr
+            .predicate()
+            .as_path()
+            .unwrap()
+            .has_segments(1)
+            .segment_at_is(0, "y");
 
-        assert_eq!(
-            then.get(&tree).to_path().unwrap().get(&tree).get(0, &tree),
-            "x"
-        );
+        if_expr
+            .then()
+            .as_path()
+            .unwrap()
+            .has_segments(1)
+            .segment_at_is(0, "x");
 
-        assert_eq!(
-            or.get(&tree).to_literal().unwrap().get(&tree),
-            &node::LiteralExpr::Num(0.0)
-        );
+        if_expr.or().as_literal().unwrap().is_num(0.0);
     }
 
     #[test]
@@ -1044,13 +1065,15 @@ mod tests {
         let input = tokens.as_slice().map(eoi, |(t, s)| (t, s));
 
         let (expr, tree, _spans) = try_parse_with(input, expr_parser()).unwrap();
+        let inspector = NodeInspector::new(expr, &tree);
 
-        let path = expr.get(&tree).to_path().unwrap().get(&tree);
-        assert_eq!(path.0.len(), 3);
-
-        assert_eq!(path.get(0, &tree), "x");
-        assert_eq!(path.get(1, &tree), "y");
-        assert_eq!(path.get(2, &tree), "z");
+        inspector
+            .as_path()
+            .unwrap()
+            .has_segments(3)
+            .segment_at_is(0, "x")
+            .segment_at_is(1, "y")
+            .segment_at_is(2, "z");
     }
 
     #[test]
@@ -1061,19 +1084,20 @@ mod tests {
         let input = tokens.as_slice().map(eoi, |(t, s)| (t, s));
 
         let (expr, tree, _spans) = try_parse_with(input, expr_parser()).unwrap();
+        let inspector = NodeInspector::new(expr, &tree);
 
-        let node::RecordExtendExpr {
-            source,
-            field,
-            value,
-        } = expr.get(&tree).to_record_extend().unwrap().get(&tree);
-        assert_eq!(field.get(&tree), "x");
+        let extend = inspector.as_record_extend().unwrap();
 
-        let source = source.get(&tree).to_path().unwrap().get(&tree);
-        assert_eq!(source.get(0, &tree), "y");
+        extend.has_field("x");
 
-        let value = value.get(&tree).to_literal().unwrap().get(&tree);
-        assert_eq!(value, &node::LiteralExpr::Num(10.0));
+        extend
+            .source()
+            .as_path()
+            .unwrap()
+            .has_segments(1)
+            .segment_at_is(0, "y");
+
+        extend.value().as_literal().unwrap().is_num(10.0);
     }
 
     #[test]
@@ -1084,20 +1108,28 @@ mod tests {
         let input = tokens.as_slice().map(eoi, |(t, s)| (t, s));
 
         let (expr, tree, _spans) = try_parse_with(input, expr_parser()).unwrap();
+        let inspector = NodeInspector::new(expr, &tree);
 
-        let record = expr.get(&tree).to_record().unwrap().get(&tree);
+        let record = inspector.as_record().unwrap();
+        record.has_fields(2);
 
-        let x = record.get("x", &tree).unwrap();
-        assert_eq!(
-            x.value(&tree).to_literal().unwrap().get(&tree),
-            &node::LiteralExpr::Num(10.0)
-        );
+        record
+            .field_named("x")
+            .unwrap()
+            .has_field_name("x")
+            .value()
+            .as_literal()
+            .unwrap()
+            .is_num(10.0);
 
-        let y = record.get("y", &tree).unwrap();
-        assert_eq!(
-            y.value(&tree).to_literal().unwrap().get(&tree),
-            &node::LiteralExpr::Num(20.0)
-        );
+        record
+            .field_named("y")
+            .unwrap()
+            .has_field_name("y")
+            .value()
+            .as_literal()
+            .unwrap()
+            .is_num(20.0);
     }
 
     #[test]
@@ -1108,49 +1140,45 @@ mod tests {
         let input = tokens.as_slice().map(eoi, |(t, s)| (t, s));
 
         let (ty, tree, _spans) = try_parse_with(input, type_expr_parser()).unwrap();
+        let inspector = NodeInspector::new(ty, &tree);
 
         // Num -> (...)
-        let node::FuncType { input, output } = ty.get(&tree).to_func_type().unwrap().get(&tree);
-        assert_eq!(
-            input
-                .get(&tree)
-                .to_type_path()
-                .unwrap()
-                .get(&tree)
-                .get(0, &tree),
-            "Num"
-        );
+        let func = inspector.as_function().unwrap();
+
+        func.input()
+            .as_path()
+            .unwrap()
+            .has_segments(1)
+            .segment_at_is(0, "Num");
 
         // { a: Num, ... } -> ...
-        let node::FuncType { input, output } = output.get(&tree).to_func_type().unwrap().get(&tree);
+        let func2 = func.output().as_function().unwrap();
 
-        let input = &input.get(&tree).to_record_type().unwrap().get(&tree).fields;
-        assert_eq!(input.len(), 2);
+        let record = func2.input().as_record().unwrap();
+        record.has_fields(2);
 
-        let a = input[0].get(&tree);
-        assert_eq!(a.name.get(&tree), "a");
-        assert_eq!(
-            a.ty.get(&tree)
-                .to_type_path()
-                .unwrap()
-                .get(&tree)
-                .get(0, &tree),
-            "Num"
-        );
+        record
+            .field_at(0)
+            .has_field_name("a")
+            .type_expr()
+            .as_path()
+            .unwrap()
+            .has_segments(1)
+            .segment_at_is(0, "Num");
 
-        let b = input[1].get(&tree);
-        assert_eq!(b.name.get(&tree), "b");
-        assert!(b.ty.get(&tree).is_func_type());
+        record
+            .field_at(1)
+            .has_field_name("b")
+            .type_expr()
+            .as_function()
+            .unwrap();
 
-        assert_eq!(
-            output
-                .get(&tree)
-                .to_type_path()
-                .unwrap()
-                .get(&tree)
-                .get(0, &tree),
-            "Str"
-        );
+        func2
+            .output()
+            .as_path()
+            .unwrap()
+            .has_segments(1)
+            .segment_at_is(0, "Str");
     }
 
     #[test]
@@ -1161,33 +1189,29 @@ mod tests {
         let input = tokens.as_slice().map(eoi, |(t, s)| (t, s));
 
         let (ty, tree, _spans) = try_parse_with(input, type_expr_parser()).unwrap();
+        let inspector = NodeInspector::new(ty, &tree);
 
         // Map (Num -> Str) @@ (std.List Str)
-        let node::TypeApplication { constructor, arg } =
-            ty.get(&tree).to_type_application().unwrap().get(&tree);
+        let app = inspector.as_application().unwrap();
 
-        {
-            // Map @@ Num -> Str
-            let node::TypeApplication { constructor, arg } = constructor
-                .get(&tree)
-                .to_type_application()
-                .unwrap()
-                .get(&tree);
+        // Map @@ Num -> Str
+        let inner_app = app.constructor().as_application().unwrap();
 
-            let map = constructor.get(&tree).to_type_path().unwrap().get(&tree);
-            assert_eq!(map.get(0, &tree), "Map");
+        inner_app
+            .constructor()
+            .as_path()
+            .unwrap()
+            .has_segments(1)
+            .segment_at_is(0, "Map");
 
-            let node::FuncType { input, output } =
-                arg.get(&tree).to_func_type().unwrap().get(&tree);
-            assert!(input.get(&tree).is_type_path()); // Num
-            assert!(output.get(&tree).is_type_path()); // Str
-        }
+        inner_app.arg().as_function().unwrap();
 
         // std.List @@ Str
-        let node::TypeApplication { constructor, arg } =
-            arg.get(&tree).to_type_application().unwrap().get(&tree);
-        assert!(constructor.get(&tree).is_type_path()); // std.List
-        assert!(arg.get(&tree).is_type_path()); // Str
+        let list_app = app.arg().as_application().unwrap();
+
+        list_app.constructor().as_path().unwrap();
+
+        list_app.arg().as_path().unwrap();
     }
 
     #[test]
@@ -1198,51 +1222,49 @@ mod tests {
         let input = tokens.as_slice().map(eoi, |(t, s)| (t, s));
 
         let (pty, tree, _spans) = try_parse_with(input, type_parser()).unwrap();
+        let inspector = NodeInspector::new(pty, &tree);
 
-        let node::Type { vars, ty } = pty.get(&tree);
+        inspector
+            .has_type_vars(2)
+            .type_var_at(0)
+            .inspect(|name, tree| {
+                assert_eq!(name.get(tree), "a");
+            });
 
-        assert_eq!(vars.len(), 2);
-        assert_eq!(vars[0].get(&tree), "a");
-        assert_eq!(vars[1].get(&tree), "b");
+        inspector.type_var_at(1).inspect(|name, tree| {
+            assert_eq!(name.get(tree), "b");
+        });
 
-        let record_type = ty.get(&tree).to_record_type().unwrap().get(&tree);
-        assert_eq!(record_type.fields.len(), 2);
+        let record = inspector.type_expr().as_record().unwrap();
+        record.has_fields(2);
 
-        let left = record_type.get(0, &tree);
-        assert_eq!(left.name.get(&tree), "left");
-        assert_eq!(
-            left.ty
-                .get(&tree)
-                .to_type_path()
-                .unwrap()
-                .get(&tree)
-                .get(0, &tree),
-            "a"
-        );
+        record
+            .field_at(0)
+            .has_field_name("left")
+            .type_expr()
+            .as_path()
+            .unwrap()
+            .has_segments(1)
+            .segment_at_is(0, "a");
 
-        let right = record_type.get(1, &tree);
-        assert_eq!(right.name.get(&tree), "right");
+        let right_field = record.field_at(1);
+        right_field.has_field_name("right");
 
-        let node::FuncType { input, output } =
-            right.ty.get(&tree).to_func_type().unwrap().get(&tree);
-        assert_eq!(
-            input
-                .get(&tree)
-                .to_type_path()
-                .unwrap()
-                .get(&tree)
-                .get(0, &tree),
-            "Num"
-        );
-        assert_eq!(
-            output
-                .get(&tree)
-                .to_type_path()
-                .unwrap()
-                .get(&tree)
-                .get(0, &tree),
-            "b"
-        );
+        let fn_type = right_field.type_expr().as_function().unwrap();
+
+        fn_type
+            .input()
+            .as_path()
+            .unwrap()
+            .has_segments(1)
+            .segment_at_is(0, "Num");
+
+        fn_type
+            .output()
+            .as_path()
+            .unwrap()
+            .has_segments(1)
+            .segment_at_is(0, "b");
     }
 
     #[test]
@@ -1253,16 +1275,15 @@ mod tests {
         let input = tokens.as_slice().map(eoi, |(t, s)| (t, s));
 
         let (alias, tree, _spans) = try_parse_with(input, type_bind_parser()).unwrap();
+        let inspector = NodeInspector::new(alias, &tree);
 
-        let node::TypeBind { name, ty } = alias.get(&tree);
-        assert_eq!(name.get(&tree), "Person");
+        inspector.has_name("Person");
 
-        let node::Type { vars, ty } = ty.get(&tree);
-        assert_eq!(vars.len(), 1);
-        assert_eq!(vars[0].get(&tree), "a");
+        let type_node = inspector.type_node();
+        type_node.has_type_vars(1);
 
-        let record_type = &ty.get(&tree).to_record_type().unwrap().get(&tree).fields;
-        assert_eq!(record_type.len(), 3);
+        let record = type_node.type_expr().as_record().unwrap();
+        record.has_fields(3);
     }
 
     #[test]
@@ -1273,34 +1294,40 @@ mod tests {
         let input = tokens.as_slice().map(eoi, |(t, s)| (t, s));
 
         let (bind, tree, _spans) = try_parse_with(input, type_bind_parser()).unwrap();
+        let inspector = NodeInspector::new(bind, &tree);
 
-        let node::TypeBind { name, ty } = bind.get(&tree);
-        assert_eq!(name.get(&tree), "Option");
+        inspector.has_name("Option");
 
-        let node::Type { vars, ty } = ty.get(&tree);
-        assert_eq!(vars.len(), 2);
-        assert_eq!(vars[0].get(&tree), "a");
+        let type_node = inspector.type_node();
+        type_node
+            .has_type_vars(2)
+            .type_var_at(0)
+            .inspect(|name, tree| {
+                assert_eq!(name.get(tree), "a");
+            });
 
-        let variant = ty.get(&tree).to_variant_type().unwrap().get(&tree);
-        assert_eq!(variant.cases.len(), 2);
-        assert!(variant.extension.is_some());
+        let variant = type_node.type_expr().as_variant().unwrap();
+        variant.has_cases(2);
 
-        let some = variant.get(0, &tree);
-        assert_eq!(some.name.get(&tree), "Some");
-        assert_eq!(
-            some.ty
-                .unwrap()
-                .get(&tree)
-                .to_type_path()
-                .unwrap()
-                .get(&tree)
-                .get(0, &tree),
-            "a"
+        variant
+            .case_at(0)
+            .has_case_name("Some")
+            .type_expr()
+            .unwrap()
+            .as_path()
+            .unwrap()
+            .has_segments(1)
+            .segment_at_is(0, "a");
+
+        assert!(
+            variant
+                .case_at(1)
+                .has_case_name("None")
+                .type_expr()
+                .is_none()
         );
 
-        let none = variant.get(1, &tree);
-        assert_eq!(none.name.get(&tree), "None");
-        assert_eq!(none.ty, None);
+        variant.extension().unwrap().has_name("b");
     }
 
     #[test]
@@ -1311,31 +1338,31 @@ mod tests {
         let input = tokens.as_slice().map(eoi, |(t, s)| (t, s));
 
         let (module, tree, _spans) = try_parse_with(input, module_parser()).unwrap();
+        let inspector = NodeInspector::new(module, &tree);
 
-        let binds = &module.get(&tree).0;
-        assert_eq!(binds.len(), 2);
+        inspector.has_binds(2);
 
-        let value_bind = binds[0].get(&tree).to_value().unwrap().get(&tree);
-        assert_eq!(value_bind.name.get(&tree), "x");
-        assert_eq!(
-            value_bind.value.get(&tree).to_literal().unwrap().get(&tree),
-            &node::LiteralExpr::Num(10.0)
-        );
+        inspector
+            .bind_at(0)
+            .as_value()
+            .unwrap()
+            .has_name("x")
+            .value()
+            .as_literal()
+            .unwrap()
+            .is_num(10.0);
 
-        let type_bind = binds[1].get(&tree).to_type().unwrap().get(&tree);
-        assert_eq!(type_bind.name.get(&tree), "T");
-        assert_eq!(
-            type_bind
-                .ty
-                .get(&tree)
-                .ty
-                .get(&tree)
-                .to_type_path()
-                .unwrap()
-                .get(&tree)
-                .get(0, &tree),
-            "Num"
-        );
+        inspector
+            .bind_at(1)
+            .as_type()
+            .unwrap()
+            .has_name("T")
+            .type_node()
+            .type_expr()
+            .as_path()
+            .unwrap()
+            .has_segments(1)
+            .segment_at_is(0, "Num");
     }
 
     #[test]
@@ -1346,39 +1373,33 @@ mod tests {
         let input = tokens.as_slice().map(eoi, |(t, s)| (t, s));
 
         let (module_type, tree, _spans) = try_parse_with(input, module_type_parser()).unwrap();
+        let inspector = NodeInspector::new(module_type, &tree);
 
-        let specs = &module_type.get(&tree).0;
-        assert_eq!(specs.len(), 2);
+        inspector.has_specs(2);
 
-        let value_spec = specs[0].get(&tree).to_value().unwrap().get(&tree);
-        assert_eq!(value_spec.name.get(&tree), "x");
-        assert_eq!(
-            value_spec
-                .ty
-                .get(&tree)
-                .ty
-                .get(&tree)
-                .to_type_path()
-                .unwrap()
-                .get(&tree)
-                .get(0, &tree),
-            "Num"
-        );
+        inspector
+            .spec_at(0)
+            .as_value()
+            .unwrap()
+            .has_name("x")
+            .type_node()
+            .type_expr()
+            .as_path()
+            .unwrap()
+            .has_segments(1)
+            .segment_at_is(0, "Num");
 
-        let type_bind = specs[1].get(&tree).to_type_bind().unwrap().get(&tree);
-        assert_eq!(type_bind.name.get(&tree), "T");
-        assert_eq!(
-            type_bind
-                .ty
-                .get(&tree)
-                .ty
-                .get(&tree)
-                .to_type_path()
-                .unwrap()
-                .get(&tree)
-                .get(0, &tree),
-            "Str"
-        );
+        inspector
+            .spec_at(1)
+            .as_type_bind()
+            .unwrap()
+            .has_name("T")
+            .type_node()
+            .type_expr()
+            .as_path()
+            .unwrap()
+            .has_segments(1)
+            .segment_at_is(0, "Str");
     }
 
     #[test]
@@ -1389,23 +1410,25 @@ mod tests {
         let input = tokens.as_slice().map(eoi, |(t, s)| (t, s));
 
         let (module, tree, _spans) = try_parse_with(input, module_parser()).unwrap();
+        let inspector = NodeInspector::new(module, &tree);
 
-        let binds = &module.get(&tree).0;
-        assert_eq!(binds.len(), 1);
+        inspector.has_binds(1);
 
-        let module_bind = binds[0].get(&tree).to_module().unwrap().get(&tree);
-        assert_eq!(module_bind.name.get(&tree), "M");
-        assert!(module_bind.ty.is_none());
+        let module_bind = inspector.bind_at(0).as_module().unwrap().has_name("M");
 
-        let m_binds = &module_bind.value.get(&tree).0;
-        assert_eq!(m_binds.len(), 1);
+        assert!(module_bind.module_type().is_none());
 
-        let value_bind = m_binds[0].get(&tree).to_value().unwrap().get(&tree);
-        assert_eq!(value_bind.name.get(&tree), "x");
-        assert_eq!(
-            value_bind.value.get(&tree).to_literal().unwrap().get(&tree),
-            &node::LiteralExpr::Num(10.0)
-        );
+        module_bind
+            .value()
+            .has_binds(1)
+            .bind_at(0)
+            .as_value()
+            .unwrap()
+            .has_name("x")
+            .value()
+            .as_literal()
+            .unwrap()
+            .is_num(10.0);
     }
 
     #[test]
@@ -1416,40 +1439,39 @@ mod tests {
         let input = tokens.as_slice().map(eoi, |(t, s)| (t, s));
 
         let (module, tree, _spans) = try_parse_with(input, module_parser()).unwrap();
+        let inspector = NodeInspector::new(module, &tree);
 
-        let binds = &module.get(&tree).0;
-        assert_eq!(binds.len(), 1);
+        inspector.has_binds(1);
 
-        let module_bind = binds[0].get(&tree).to_module().unwrap().get(&tree);
-        assert_eq!(module_bind.name.get(&tree), "M");
+        let module_bind = inspector.bind_at(0).as_module().unwrap().has_name("M");
 
         // Check interface
-        assert!(module_bind.ty.is_some());
-        let ty_specs = &module_bind.ty.unwrap().get(&tree).0;
-        assert_eq!(ty_specs.len(), 1);
-        let value_spec = ty_specs[0].get(&tree).to_value().unwrap().get(&tree);
-        assert_eq!(value_spec.name.get(&tree), "x");
-        assert_eq!(
-            value_spec
-                .ty
-                .get(&tree)
-                .ty
-                .get(&tree)
-                .to_type_path()
-                .unwrap()
-                .get(&tree)
-                .get(0, &tree),
-            "Num"
-        );
+        let module_type = module_bind.module_type().unwrap();
+        module_type.has_specs(1);
+
+        module_type
+            .spec_at(0)
+            .as_value()
+            .unwrap()
+            .has_name("x")
+            .type_node()
+            .type_expr()
+            .as_path()
+            .unwrap()
+            .has_segments(1)
+            .segment_at_is(0, "Num");
 
         // Check implementation
-        let m_binds = &module_bind.value.get(&tree).0;
-        assert_eq!(m_binds.len(), 1);
-        let value_bind = m_binds[0].get(&tree).to_value().unwrap().get(&tree);
-        assert_eq!(value_bind.name.get(&tree), "x");
-        assert_eq!(
-            value_bind.value.get(&tree).to_literal().unwrap().get(&tree),
-            &node::LiteralExpr::Num(10.0)
-        );
+        module_bind
+            .value()
+            .has_binds(1)
+            .bind_at(0)
+            .as_value()
+            .unwrap()
+            .has_name("x")
+            .value()
+            .as_literal()
+            .unwrap()
+            .is_num(10.0);
     }
 }

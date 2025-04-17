@@ -343,7 +343,6 @@ impl Pat {
     }
 }
 
-#[cfg(test)]
 mod inspector {
     use super::*;
     use crate::inspector::*;
