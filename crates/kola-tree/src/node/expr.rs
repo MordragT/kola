@@ -90,9 +90,15 @@ impl Printable<TreePrinter> for PathExpr {
     fn notate<'a>(&'a self, with: &'a TreePrinter, arena: &'a Bump) -> Notation<'a> {
         let head = "PathExpr".cyan().display_in(arena);
 
-        let path = self.0.gather(with, arena).concat_by(arena.just('.'), arena);
-        let single = [arena.just(' '), path.clone()].concat_in(arena);
-        let multi = [arena.newline(), path].concat_in(arena).indent(arena);
+        let path = self.0.gather(with, arena);
+
+        let single = path
+            .clone()
+            .concat_map(|s| arena.just(' ').then(s, arena), arena)
+            .flatten(arena);
+        let multi = path
+            .concat_map(|s| arena.newline().then(s, arena), arena)
+            .indent(arena);
 
         head.then(single.or(multi, arena), arena)
     }
@@ -198,7 +204,9 @@ impl Printable<TreePrinter> for RecordExpr {
             |field| arena.just(' ').then(field.flatten(arena), arena),
             arena,
         );
-        let multi = fields.concat_map(|field| arena.newline().then(field, arena), arena);
+        let multi = fields
+            .concat_map(|field| arena.newline().then(field, arena), arena)
+            .indent(arena);
 
         head.then(single.or(multi, arena), arena)
     }
@@ -352,7 +360,7 @@ pub enum RecordUpdateOp {
 
 impl Printable<TreePrinter> for RecordUpdateOp {
     fn notate<'a>(&'a self, _with: &'a TreePrinter, arena: &'a Bump) -> Notation<'a> {
-        self.display_in(arena)
+        self.red().display_in(arena)
     }
 }
 
@@ -442,7 +450,7 @@ pub enum UnaryOp {
 
 impl Printable<TreePrinter> for UnaryOp {
     fn notate<'a>(&'a self, _with: &'a TreePrinter, arena: &'a Bump) -> Notation<'a> {
-        self.display_in(arena)
+        self.red().display_in(arena)
     }
 }
 
@@ -521,7 +529,7 @@ pub enum BinaryOp {
 
 impl Printable<TreePrinter> for BinaryOp {
     fn notate<'a>(&'a self, _with: &'a TreePrinter, arena: &'a Bump) -> Notation<'a> {
-        self.display_in(arena)
+        self.red().display_in(arena)
     }
 }
 

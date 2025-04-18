@@ -152,10 +152,7 @@ impl Printable<TreePrinter> for RecordType {
         let head = "RecordType".blue().display_in(arena);
 
         let fields = fields.gather(with, arena);
-        let extension = extension
-            .as_ref()
-            .map(|ext| ext.notate(with, arena))
-            .or_not(arena);
+        let extension = extension.as_ref().map(|ext| ext.notate(with, arena));
 
         let single = [
             arena.notate(" fields = "),
@@ -163,8 +160,11 @@ impl Printable<TreePrinter> for RecordType {
                 |field| arena.just(' ').then(field, arena).flatten(arena),
                 arena,
             ),
-            arena.notate(" extension = "),
-            extension.clone(),
+            extension
+                .clone()
+                .map(|ext| arena.notate(" extension = ").then(ext, arena))
+                .or_not(arena)
+                .flatten(arena),
         ]
         .concat_in(arena);
 
@@ -172,9 +172,9 @@ impl Printable<TreePrinter> for RecordType {
             arena.newline(),
             arena.notate("fields = "),
             fields.concat_by(arena.newline(), arena),
-            arena.newline(),
-            arena.notate("extension = "),
-            extension,
+            extension
+                .map(|ext| [arena.newline(), arena.notate("extension = "), ext].concat_in(arena))
+                .or_not(arena),
         ]
         .concat_in(arena)
         .indent(arena);
@@ -197,13 +197,15 @@ impl Printable<TreePrinter> for VariantCaseType {
         let head = "VariantCaseType".blue().display_in(arena);
 
         let name = name.notate(with, arena);
-        let ty = ty.as_ref().map(|ty| ty.notate(with, arena)).or_not(arena);
+        let ty = ty.as_ref().map(|ty| ty.notate(with, arena));
 
         let single = [
             arena.notate(" name = "),
             name.clone().flatten(arena),
-            arena.notate(", type = "),
-            ty.clone().flatten(arena),
+            ty.clone()
+                .map(|ty| arena.notate(", type = ").then(ty, arena))
+                .or_not(arena)
+                .flatten(arena),
         ]
         .concat_in(arena);
 
@@ -211,9 +213,8 @@ impl Printable<TreePrinter> for VariantCaseType {
             arena.newline(),
             arena.notate("name = "),
             name,
-            arena.newline(),
-            arena.notate("type = "),
-            ty,
+            ty.map(|ty| [arena.newline(), arena.notate("type = "), ty].concat_in(arena))
+                .or_not(arena),
         ]
         .concat_in(arena)
         .indent(arena);
@@ -241,10 +242,7 @@ impl Printable<TreePrinter> for VariantType {
         let head = "VariantType".blue().display_in(arena);
 
         let cases = cases.gather(with, arena);
-        let extension = extension
-            .as_ref()
-            .map(|ext| ext.notate(with, arena))
-            .or_not(arena);
+        let extension = extension.as_ref().map(|ext| ext.notate(with, arena));
 
         let single = [
             arena.notate(" cases = "),
@@ -252,8 +250,11 @@ impl Printable<TreePrinter> for VariantType {
                 |field| arena.just(' ').then(field, arena).flatten(arena),
                 arena,
             ),
-            arena.notate(" extension = "),
-            extension.clone(),
+            extension
+                .clone()
+                .map(|ext| arena.notate(" extension = ").then(ext, arena))
+                .or_not(arena)
+                .flatten(arena),
         ]
         .concat_in(arena);
 
@@ -261,9 +262,9 @@ impl Printable<TreePrinter> for VariantType {
             arena.newline(),
             arena.notate("cases = "),
             cases.concat_by(arena.newline(), arena),
-            arena.newline(),
-            arena.notate("extension = "),
-            extension,
+            extension
+                .map(|ext| [arena.newline(), arena.notate("extension = "), ext].concat_in(arena))
+                .or_not(arena),
         ]
         .concat_in(arena)
         .indent(arena);
@@ -451,26 +452,39 @@ impl Printable<TreePrinter> for Type {
         let vars = vars.gather(with, arena);
         let ty = ty.notate(with, arena);
 
-        let single = [
-            arena.notate(" vars = "),
-            vars.clone()
-                .concat_by(arena.just(' '), arena)
-                .flatten(arena),
-            arena.notate(", type = "),
-            ty.clone().flatten(arena),
-        ]
-        .concat_in(arena);
+        let single = if vars.is_empty() {
+            arena
+                .notate(" type = ")
+                .then(ty.clone(), arena)
+                .flatten(arena)
+        } else {
+            [
+                arena.notate(" vars = "),
+                vars.clone()
+                    .concat_by(arena.just(' '), arena)
+                    .flatten(arena),
+                arena.notate(", type = "),
+                ty.clone().flatten(arena),
+            ]
+            .concat_in(arena)
+        };
 
-        let multi = [
-            arena.newline(),
-            arena.notate("vars = "),
-            vars.concat_by(arena.newline(), arena),
-            arena.newline(),
-            arena.notate("type = "),
-            ty,
-        ]
-        .concat_in(arena)
-        .indent(arena);
+        let multi = if vars.is_empty() {
+            [arena.newline(), arena.notate("type = "), ty]
+                .concat_in(arena)
+                .indent(arena)
+        } else {
+            [
+                arena.newline(),
+                arena.notate("vars = "),
+                vars.concat_by(arena.newline(), arena),
+                arena.newline(),
+                arena.notate("type = "),
+                ty,
+            ]
+            .concat_in(arena)
+            .indent(arena)
+        };
 
         head.then(single.or(multi, arena), arena)
     }

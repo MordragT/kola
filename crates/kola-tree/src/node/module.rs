@@ -5,11 +5,7 @@ use owo_colors::OwoColorize;
 use serde::{Deserialize, Serialize};
 
 use super::{Expr, Name, Type};
-use crate::{
-    id::NodeId,
-    print::TreePrinter,
-    tree::{NodeContainer, TreeBuilder},
-};
+use crate::{id::NodeId, print::TreePrinter, tree::TreeBuilder};
 
 /*
 Nice to haves:
@@ -150,14 +146,16 @@ impl Printable<TreePrinter> for ValueBind {
         let head = "ValueBind".green().display_in(arena);
 
         let name = name.notate(with, arena);
-        let ty = ty.as_ref().map(|ty| ty.notate(with, arena)).or_not(arena);
+        let ty = ty.as_ref().map(|ty| ty.notate(with, arena));
         let value = value.notate(with, arena);
 
         let single = [
             arena.notate(" name = "),
             name.clone().flatten(arena),
-            arena.notate(", ty = "),
-            ty.clone().flatten(arena),
+            ty.clone()
+                .map(|ty| arena.notate(", ty = ").then(ty, arena))
+                .or_not(arena)
+                .flatten(arena),
             arena.notate(", value = "),
             value.clone().flatten(arena),
         ]
@@ -167,9 +165,8 @@ impl Printable<TreePrinter> for ValueBind {
             arena.newline(),
             arena.notate("name = "),
             name,
-            arena.newline(),
-            arena.notate("ty = "),
-            ty,
+            ty.map(|ty| [arena.newline(), arena.notate("ty = "), ty].concat_in(arena))
+                .or_not(arena),
             arena.newline(),
             arena.notate("value = "),
             value,
@@ -286,14 +283,16 @@ impl Printable<TreePrinter> for ModuleBind {
         let head = "ModuleBind".green().display_in(arena);
 
         let name = name.notate(with, arena);
-        let ty = ty.as_ref().map(|ty| ty.notate(with, arena)).or_not(arena);
+        let ty = ty.as_ref().map(|ty| ty.notate(with, arena));
         let value = value.notate(with, arena);
 
         let single = [
             arena.notate(" name = "),
             name.clone().flatten(arena),
-            arena.notate(", ty = "),
-            ty.clone().flatten(arena),
+            ty.clone()
+                .map(|ty| arena.notate(", ty = ").then(ty, arena))
+                .or_not(arena)
+                .flatten(arena),
             arena.notate(", value = "),
             value.clone().flatten(arena),
         ]
@@ -303,9 +302,8 @@ impl Printable<TreePrinter> for ModuleBind {
             arena.newline(),
             arena.notate("name = "),
             name,
-            arena.newline(),
-            arena.notate("ty = "),
-            ty,
+            ty.map(|ty| [arena.newline(), arena.notate("ty = "), ty].concat_in(arena))
+                .or_not(arena),
             arena.newline(),
             arena.notate("value = "),
             value,
