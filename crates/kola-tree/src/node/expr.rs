@@ -145,7 +145,7 @@ impl Printable<TreePrinter> for RecordField {
     fn notate<'a>(&'a self, with: &'a TreePrinter, arena: &'a Bump) -> Notation<'a> {
         let Self { field, value } = self;
 
-        let head = "Property".blue().display_in(arena);
+        let head = "RecordField".blue().display_in(arena);
 
         let field = field.notate(with, arena);
         let value = value.notate(with, arena);
@@ -174,7 +174,7 @@ impl Printable<TreePrinter> for RecordField {
 }
 
 // { x = 10, y = 20 }
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[derive(Debug, From, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct RecordExpr(pub Vec<NodeId<RecordField>>);
 
 impl RecordExpr {
@@ -204,11 +204,32 @@ impl Printable<TreePrinter> for RecordExpr {
     }
 }
 
+#[derive(Debug, From, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+pub struct RecordFieldPath(pub Vec<NodeId<Name>>);
+
+impl Printable<TreePrinter> for RecordFieldPath {
+    fn notate<'a>(&'a self, with: &'a TreePrinter, arena: &'a Bump) -> Notation<'a> {
+        let head = "RecordFieldPath".cyan().display_in(arena);
+
+        let path = self.0.gather(with, arena).concat_by(arena.just('.'), arena);
+        let single = [arena.just(' '), path.clone()].concat_in(arena);
+        let multi = [arena.newline(), path].concat_in(arena).indent(arena);
+
+        head.then(single.or(multi, arena), arena)
+    }
+}
+
+impl RecordFieldPath {
+    pub fn get<'a>(&self, index: usize, tree: &'a impl NodeContainer) -> &'a Name {
+        self.0[index].get(tree)
+    }
+}
+
 // { y | +x = 10 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct RecordExtendExpr {
     pub source: NodeId<Expr>,
-    pub field: NodeId<Name>,
+    pub field: NodeId<RecordFieldPath>,
     pub value: NodeId<Expr>,
 }
 
@@ -217,7 +238,7 @@ impl RecordExtendExpr {
         *self.source.get(tree)
     }
 
-    pub fn field(self, tree: &impl NodeContainer) -> &Name {
+    pub fn field(self, tree: &impl NodeContainer) -> &RecordFieldPath {
         self.field.get(tree)
     }
 
@@ -272,7 +293,7 @@ impl Printable<TreePrinter> for RecordExtendExpr {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct RecordRestrictExpr {
     pub source: NodeId<Expr>,
-    pub field: NodeId<Name>,
+    pub field: NodeId<RecordFieldPath>,
 }
 
 impl RecordRestrictExpr {
@@ -280,7 +301,7 @@ impl RecordRestrictExpr {
         *self.source.get(tree)
     }
 
-    pub fn field(self, tree: &impl NodeContainer) -> &Name {
+    pub fn field(self, tree: &impl NodeContainer) -> &RecordFieldPath {
         self.field.get(tree)
     }
 }
@@ -339,7 +360,7 @@ impl Printable<TreePrinter> for RecordUpdateOp {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct RecordUpdateExpr {
     pub source: NodeId<Expr>,
-    pub field: NodeId<Name>,
+    pub field: NodeId<RecordFieldPath>,
     pub op: NodeId<RecordUpdateOp>,
     pub value: NodeId<Expr>,
 }
@@ -349,7 +370,7 @@ impl RecordUpdateExpr {
         *self.source.get(tree)
     }
 
-    pub fn field(self, tree: &impl NodeContainer) -> &Name {
+    pub fn field(self, tree: &impl NodeContainer) -> &RecordFieldPath {
         self.field.get(tree)
     }
 
@@ -1612,6 +1633,38 @@ mod inspector {
             NodeInspector::new(field.value, self.tree)
         }
     }
+    impl<'t> NodeInspector<'t, NodeId<RecordFieldPath>> {
+        /// Assert the field path has the specified number of segments
+        pub fn has_segments(self, count: usize) -> Self {
+            let segments_len = self.node.get(self.tree).0.len();
+            assert_eq!(
+                segments_len, count,
+                "Expected {} segments but found {}",
+                count, segments_len
+            );
+            self
+        }
+
+        /// Assert the field path segment at the given index has the expected name
+        pub fn segment_at_is(self, index: usize, expected: &str) -> Self {
+            let field_path = self.node.get(self.tree);
+            assert!(
+                index < field_path.0.len(),
+                "Segment index {} out of bounds (max {})",
+                index,
+                field_path.0.len() - 1
+            );
+            let segment = field_path.get(index, self.tree);
+            assert_eq!(
+                segment.as_str(),
+                expected,
+                "Expected segment '{}' but found '{}'",
+                expected,
+                segment.0
+            );
+            self
+        }
+    }
 
     impl<'t> NodeInspector<'t, NodeId<RecordExtendExpr>> {
         /// Get an inspector for the source record
@@ -1620,17 +1673,10 @@ mod inspector {
             NodeInspector::new(extend.source, self.tree)
         }
 
-        /// Assert the field being extended has the expected name
-        pub fn has_field(self, expected: &str) -> Self {
-            let field = self.node.get(self.tree).field(self.tree);
-            assert_eq!(
-                field.as_str(),
-                expected,
-                "Expected field name '{}' but found '{}'",
-                expected,
-                field.0
-            );
-            self
+        /// Get an inspector for the field path being extended
+        pub fn field(self) -> NodeInspector<'t, NodeId<RecordFieldPath>> {
+            let extend = self.node.get(self.tree);
+            NodeInspector::new(extend.field, self.tree)
         }
 
         /// Get an inspector for the value being added
@@ -1647,17 +1693,10 @@ mod inspector {
             NodeInspector::new(restrict.source, self.tree)
         }
 
-        /// Assert the field being restricted has the expected name
-        pub fn has_field(self, expected: &str) -> Self {
-            let field = self.node.get(self.tree).field(self.tree);
-            assert_eq!(
-                field.as_str(),
-                expected,
-                "Expected field name '{}' but found '{}'",
-                expected,
-                field.0
-            );
-            self
+        /// Get an inspector for the field path being restricted
+        pub fn field(self) -> NodeInspector<'t, NodeId<RecordFieldPath>> {
+            let restrict = self.node.get(self.tree);
+            NodeInspector::new(restrict.field, self.tree)
         }
     }
 
@@ -1668,17 +1707,10 @@ mod inspector {
             NodeInspector::new(update.source, self.tree)
         }
 
-        /// Assert the field being updated has the expected name
-        pub fn has_field(self, expected: &str) -> Self {
-            let field = self.node.get(self.tree).field(self.tree);
-            assert_eq!(
-                field.as_str(),
-                expected,
-                "Expected field name '{}' but found '{}'",
-                expected,
-                field.0
-            );
-            self
+        /// Get an inspector for the field path being updated
+        pub fn field(self) -> NodeInspector<'t, NodeId<RecordFieldPath>> {
+            let update = self.node.get(self.tree);
+            NodeInspector::new(update.field, self.tree)
         }
 
         /// Get the update operation

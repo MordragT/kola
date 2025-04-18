@@ -121,6 +121,7 @@ define_nodes!(
     ListExpr,
     RecordField,
     RecordExpr,
+    RecordFieldPath,
     RecordExtendExpr,
     RecordRestrictExpr,
     RecordUpdateOp,

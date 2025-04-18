@@ -29,21 +29,23 @@
 #    in y
 #in x
 
-type Option = forall a . < Some : a, None >
+{
+    type Option = forall a . < Some : a, None >,
 
-type Person = { name : Str, age : Num }
+    type Person = { name : Str, age : Num },
 
-type NestedPerson = { id : Num, info : { age : Num } }
+    type NestedPerson = { id : Num, info : { age : Num } },
 
-main = let p = { id = 0, info = { age = 25 } } in { p | info.age += 1 } # record update should also allow record field selections
-# currently would be: in { p | info = { p.info | age += 1 } }
+    main = let p = { id = 0, info = { age = 25 } } in { p | info.age += 1 }, # record update should also allow record field selections
+    # currently would be: in { p | info = { p.info | age += 1 } },
 
-age : Person -> Person = fn person => { person | age += 1 }
+    age : Person -> Person = fn person => { person | age += 1 },
 
-module test = {
-    test_age =
-        let peter = { name = "peter", age = 25 } in
-        let some_peter = Some peter
-        let older_peter = age peter in
-        older_peter.age == peter.age + 1
+    module test = {
+        test_age =
+            let peter = { name = "peter", age = 25 } in
+            let some_peter = (Some peter) in
+            let older_peter = (age peter) in
+            older_peter.age == peter.age + 1,
+    },
 }

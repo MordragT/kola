@@ -105,7 +105,7 @@ impl Printable<TreePrinter> for RecordFieldType {
     fn notate<'a>(&'a self, with: &'a TreePrinter, arena: &'a Bump) -> Notation<'a> {
         let Self { name, ty } = self;
 
-        let head = "RecordField".blue().display_in(arena);
+        let head = "RecordFieldType".blue().display_in(arena);
 
         let name = name.notate(with, arena);
         let ty = ty.notate(with, arena);
@@ -194,7 +194,7 @@ impl Printable<TreePrinter> for VariantCaseType {
     fn notate<'a>(&'a self, with: &'a TreePrinter, arena: &'a Bump) -> Notation<'a> {
         let Self { name, ty } = self;
 
-        let head = "VariantCase".blue().display_in(arena);
+        let head = "VariantCaseType".blue().display_in(arena);
 
         let name = name.notate(with, arena);
         let ty = ty.as_ref().map(|ty| ty.notate(with, arena)).or_not(arena);

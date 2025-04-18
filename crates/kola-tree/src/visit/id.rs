@@ -15,6 +15,7 @@ pub enum BranchId {
     List(NodeId<node::ListExpr>),
     RecordField(NodeId<node::RecordField>),
     Record(NodeId<node::RecordExpr>),
+    RecordFieldPath(NodeId<node::RecordFieldPath>),
     RecordExtend(NodeId<node::RecordExtendExpr>),
     RecordRestrict(NodeId<node::RecordRestrictExpr>),
     RecordUpdate(NodeId<node::RecordUpdateExpr>),

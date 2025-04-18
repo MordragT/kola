@@ -186,6 +186,7 @@ define!(
     ListExpr,
     RecordField,
     RecordExpr,
+    RecordFieldPath,
     RecordExtendExpr,
     RecordRestrictExpr,
     RecordUpdateOp,

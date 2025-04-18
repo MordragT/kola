@@ -395,24 +395,31 @@ where
             .boxed();
 
         enum RecordOp {
-            Extend(NodeId<node::Name>, NodeId<node::Expr>),
-            Restrict(NodeId<node::Name>),
+            Extend(NodeId<node::RecordFieldPath>, NodeId<node::Expr>),
+            Restrict(NodeId<node::RecordFieldPath>),
             Update(
-                NodeId<node::Name>,
+                NodeId<node::RecordFieldPath>,
                 NodeId<node::RecordUpdateOp>,
                 NodeId<node::Expr>,
             ),
         }
 
+        let field_path = name
+            .clone()
+            .separated_by(ctrl(CtrlT::DOT))
+            .collect()
+            .map_to_node(node::RecordFieldPath)
+            .boxed();
+
         let extend = op(OpT::ADD)
-            .ignore_then(name.clone())
+            .ignore_then(field_path.clone())
             .then_ignore(op(OpT::ASSIGN))
             .then(expr.clone())
             .map(|(field, value)| RecordOp::Extend(field, value))
             .boxed();
 
         let restrict = op(OpT::SUB)
-            .ignore_then(name.clone())
+            .ignore_then(field_path.clone())
             .map(RecordOp::Restrict)
             .boxed();
 
@@ -426,7 +433,7 @@ where
         ))
         .to_node();
 
-        let update = group((name.clone(), update_op, expr.clone()))
+        let update = group((field_path.clone(), update_op, expr.clone()))
             .map(|(field, op, value)| RecordOp::Update(field, op, value))
             .boxed();
 
@@ -1088,7 +1095,7 @@ mod tests {
 
         let extend = inspector.as_record_extend().unwrap();
 
-        extend.has_field("x");
+        extend.field().has_segments(1).segment_at_is(0, "x");
 
         extend
             .source()

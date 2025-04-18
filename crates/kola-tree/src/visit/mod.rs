@@ -66,6 +66,7 @@ pub trait Visitor: Handler {
                 BranchId::List(id) => self.walk_list_expr(id, tree, stack),
                 BranchId::RecordField(id) => self.walk_record_field(id, tree, stack),
                 BranchId::Record(id) => self.walk_record_expr(id, tree, stack),
+                BranchId::RecordFieldPath(id) => self.walk_record_field_path(id, tree, stack),
                 BranchId::RecordExtend(id) => self.walk_record_extend_expr(id, tree, stack),
                 BranchId::RecordRestrict(id) => self.walk_record_restrict_expr(id, tree, stack),
                 BranchId::RecordUpdate(id) => self.walk_record_update_expr(id, tree, stack),
@@ -117,6 +118,7 @@ pub trait Visitor: Handler {
                 BranchId::List(id) => self.handle_list_expr(id.get(tree), id),
                 BranchId::RecordField(id) => self.handle_record_field(id.get(tree), id),
                 BranchId::Record(id) => self.handle_record_expr(id.get(tree), id),
+                BranchId::RecordFieldPath(id) => self.handle_record_field_path(id.get(tree), id),
                 BranchId::RecordExtend(id) => self.handle_record_extend_expr(id.get(tree), id),
                 BranchId::RecordRestrict(id) => self.handle_record_restrict_expr(id.get(tree), id),
                 BranchId::RecordUpdate(id) => self.handle_record_update_expr(id.get(tree), id),
@@ -238,6 +240,21 @@ pub trait Visitor: Handler {
         Ok(())
     }
 
+    fn walk_record_field_path(
+        &mut self,
+        id: NodeId<node::RecordFieldPath>,
+        tree: &Tree,
+        stack: &mut EventStack,
+    ) -> Result<(), Self::Error> {
+        let path = id.get(tree);
+
+        for id in &path.0 {
+            stack.push_leaf(*id);
+        }
+
+        Ok(())
+    }
+
     fn walk_record_extend_expr(
         &mut self,
         id: NodeId<node::RecordExtendExpr>,
@@ -251,7 +268,7 @@ pub trait Visitor: Handler {
         } = id.get(tree);
 
         stack.push_branch(*source);
-        stack.push_leaf(*field);
+        stack.push_branch(*field);
         stack.push_branch(*value);
 
         Ok(())
@@ -266,7 +283,7 @@ pub trait Visitor: Handler {
         let node::RecordRestrictExpr { source, field } = id.get(tree);
 
         stack.push_branch(*source);
-        stack.push_leaf(*field);
+        stack.push_branch(*field);
 
         Ok(())
     }
@@ -285,7 +302,7 @@ pub trait Visitor: Handler {
         } = id.get(tree);
 
         stack.push_branch(*source);
-        stack.push_leaf(*field);
+        stack.push_branch(*field);
         stack.push_leaf(*op);
         stack.push_branch(*value);
 
