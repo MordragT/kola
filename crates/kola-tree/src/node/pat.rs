@@ -5,7 +5,7 @@ use owo_colors::OwoColorize;
 use serde::{Deserialize, Serialize};
 
 use super::{LiteralExpr, Name, Symbol};
-use crate::{id::NodeId, print::TreePrinter, tree::NodeContainer};
+use crate::{id::Id, print::TreePrinter, tree::TreeAccess};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct PatError;
@@ -116,16 +116,16 @@ impl Printable<TreePrinter> for IdentPat {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct RecordFieldPat {
-    pub field: NodeId<Name>,
-    pub pat: Option<NodeId<Pat>>,
+    pub field: Id<Name>,
+    pub pat: Option<Id<Pat>>,
 }
 
 impl RecordFieldPat {
-    pub fn field(self, tree: &impl NodeContainer) -> &Name {
+    pub fn field(self, tree: &impl TreeAccess) -> &Name {
         self.field.get(tree)
     }
 
-    pub fn pat(self, tree: &impl NodeContainer) -> Option<Pat> {
+    pub fn pat(self, tree: &impl TreeAccess) -> Option<Pat> {
         self.pat.map(|id| id.get(tree)).copied()
     }
 }
@@ -163,10 +163,10 @@ impl Printable<TreePrinter> for RecordFieldPat {
 }
 
 #[derive(Debug, From, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
-pub struct RecordPat(pub Vec<NodeId<RecordFieldPat>>);
+pub struct RecordPat(pub Vec<Id<RecordFieldPat>>);
 
 impl RecordPat {
-    pub fn get(&self, name: impl AsRef<str>, tree: &impl NodeContainer) -> Option<RecordFieldPat> {
+    pub fn get(&self, name: impl AsRef<str>, tree: &impl TreeAccess) -> Option<RecordFieldPat> {
         self.0.iter().find_map(|id| {
             let field = id.get(tree);
             (field.field(tree) == name.as_ref())
@@ -194,16 +194,16 @@ impl Printable<TreePrinter> for RecordPat {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct VariantCasePat {
-    pub case: NodeId<Name>,
-    pub pat: Option<NodeId<Pat>>,
+    pub case: Id<Name>,
+    pub pat: Option<Id<Pat>>,
 }
 
 impl VariantCasePat {
-    pub fn case(self, tree: &impl NodeContainer) -> &Name {
+    pub fn case(self, tree: &impl TreeAccess) -> &Name {
         self.case.get(tree)
     }
 
-    pub fn pat(self, tree: &impl NodeContainer) -> Option<Pat> {
+    pub fn pat(self, tree: &impl TreeAccess) -> Option<Pat> {
         self.pat.map(|id| id.get(tree)).copied()
     }
 }
@@ -241,10 +241,10 @@ impl Printable<TreePrinter> for VariantCasePat {
 }
 
 #[derive(Debug, From, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
-pub struct VariantPat(pub Vec<NodeId<VariantCasePat>>);
+pub struct VariantPat(pub Vec<Id<VariantCasePat>>);
 
 impl VariantPat {
-    pub fn get(&self, name: impl AsRef<str>, tree: &impl NodeContainer) -> Option<VariantCasePat> {
+    pub fn get(&self, name: impl AsRef<str>, tree: &impl TreeAccess) -> Option<VariantCasePat> {
         self.0.iter().find_map(|id| {
             let case = id.get(tree);
             (case.case(tree) == name.as_ref()).then_some(case).copied()
@@ -270,12 +270,12 @@ impl Printable<TreePrinter> for VariantPat {
 
 #[derive(Debug, From, Clone, Copy, PartialEq, PartialOrd, Serialize, Deserialize)]
 pub enum Pat {
-    Error(NodeId<PatError>),
-    Any(NodeId<AnyPat>),
-    Literal(NodeId<LiteralPat>),
-    Ident(NodeId<IdentPat>),
-    Record(NodeId<RecordPat>),
-    Variant(NodeId<VariantPat>),
+    Error(Id<PatError>),
+    Any(Id<AnyPat>),
+    Literal(Id<LiteralPat>),
+    Ident(Id<IdentPat>),
+    Record(Id<RecordPat>),
+    Variant(Id<VariantPat>),
 }
 
 impl Printable<TreePrinter> for Pat {
@@ -293,27 +293,27 @@ impl Printable<TreePrinter> for Pat {
 
 impl Pat {
     #[inline]
-    pub fn to_error(self) -> Option<NodeId<PatError>> {
+    pub fn to_error(self) -> Option<Id<PatError>> {
         as_variant!(self, Self::Error)
     }
 
     #[inline]
-    pub fn to_wildcard(self) -> Option<NodeId<AnyPat>> {
+    pub fn to_wildcard(self) -> Option<Id<AnyPat>> {
         as_variant!(self, Self::Any)
     }
 
     #[inline]
-    pub fn to_literal(self) -> Option<NodeId<LiteralPat>> {
+    pub fn to_literal(self) -> Option<Id<LiteralPat>> {
         as_variant!(self, Self::Literal)
     }
 
     #[inline]
-    pub fn to_ident(self) -> Option<NodeId<IdentPat>> {
+    pub fn to_ident(self) -> Option<Id<IdentPat>> {
         as_variant!(self, Self::Ident)
     }
 
     #[inline]
-    pub fn to_record(self) -> Option<NodeId<RecordPat>> {
+    pub fn to_record(self) -> Option<Id<RecordPat>> {
         as_variant!(self, Self::Record)
     }
 
@@ -347,44 +347,44 @@ mod inspector {
     use super::*;
     use crate::inspector::*;
 
-    impl<'t> NodeInspector<'t, NodeId<Pat>> {
+    impl<'t> NodeInspector<'t, Id<Pat>> {
         /// Check if this pattern is an error pattern
-        pub fn as_error(self) -> Option<NodeInspector<'t, NodeId<PatError>>> {
+        pub fn as_error(self) -> Option<NodeInspector<'t, Id<PatError>>> {
             let pat = self.node.get(self.tree);
             pat.to_error()
                 .map(|err_id| NodeInspector::new(err_id, self.tree))
         }
 
         /// Check if this pattern is a wildcard pattern
-        pub fn as_any(self) -> Option<NodeInspector<'t, NodeId<AnyPat>>> {
+        pub fn as_any(self) -> Option<NodeInspector<'t, Id<AnyPat>>> {
             let pat = self.node.get(self.tree);
             pat.to_wildcard()
                 .map(|wild_id| NodeInspector::new(wild_id, self.tree))
         }
 
         /// Check if this pattern is a literal pattern
-        pub fn as_literal(self) -> Option<NodeInspector<'t, NodeId<LiteralPat>>> {
+        pub fn as_literal(self) -> Option<NodeInspector<'t, Id<LiteralPat>>> {
             let pat = self.node.get(self.tree);
             pat.to_literal()
                 .map(|lit_id| NodeInspector::new(lit_id, self.tree))
         }
 
         /// Check if this pattern is an identifier pattern
-        pub fn as_ident(self) -> Option<NodeInspector<'t, NodeId<IdentPat>>> {
+        pub fn as_ident(self) -> Option<NodeInspector<'t, Id<IdentPat>>> {
             let pat = self.node.get(self.tree);
             pat.to_ident()
                 .map(|id_id| NodeInspector::new(id_id, self.tree))
         }
 
         /// Check if this pattern is a record pattern
-        pub fn as_record(self) -> Option<NodeInspector<'t, NodeId<RecordPat>>> {
+        pub fn as_record(self) -> Option<NodeInspector<'t, Id<RecordPat>>> {
             let pat = self.node.get(self.tree);
             pat.to_record()
                 .map(|rec_id| NodeInspector::new(rec_id, self.tree))
         }
 
         /// Check if this pattern is a variant pattern
-        pub fn as_variant(self) -> Option<NodeInspector<'t, NodeId<VariantPat>>> {
+        pub fn as_variant(self) -> Option<NodeInspector<'t, Id<VariantPat>>> {
             let pat = self.node.get(self.tree);
             match pat {
                 Pat::Variant(v) => Some(NodeInspector::new(*v, self.tree)),
@@ -393,7 +393,7 @@ mod inspector {
         }
     }
 
-    impl<'t> NodeInspector<'t, NodeId<AnyPat>> {
+    impl<'t> NodeInspector<'t, Id<AnyPat>> {
         /// Simple assertion that this is indeed a wildcard pattern
         pub fn is_any(self) -> Self {
             // Just verify that we have a valid any pattern
@@ -402,7 +402,7 @@ mod inspector {
         }
     }
 
-    impl<'t> NodeInspector<'t, NodeId<LiteralPat>> {
+    impl<'t> NodeInspector<'t, Id<LiteralPat>> {
         /// Check what kind of literal pattern this is
         pub fn is_bool(self, expected: bool) -> Self {
             let lit_pat = self.node.get(self.tree);
@@ -467,7 +467,7 @@ mod inspector {
         }
     }
 
-    impl<'t> NodeInspector<'t, NodeId<IdentPat>> {
+    impl<'t> NodeInspector<'t, Id<IdentPat>> {
         /// Assert the identifier pattern has the expected name
         pub fn has_name(self, expected: &str) -> Self {
             let ident = self.node.get(self.tree);
@@ -482,7 +482,7 @@ mod inspector {
         }
     }
 
-    impl<'t> NodeInspector<'t, NodeId<RecordPat>> {
+    impl<'t> NodeInspector<'t, Id<RecordPat>> {
         /// Assert the record pattern has the specified number of fields
         pub fn has_fields(self, count: usize) -> Self {
             let fields_len = self.node.get(self.tree).0.len();
@@ -495,7 +495,7 @@ mod inspector {
         }
 
         /// Get an inspector for the field at the given index
-        pub fn field_at(self, index: usize) -> NodeInspector<'t, NodeId<RecordFieldPat>> {
+        pub fn field_at(self, index: usize) -> NodeInspector<'t, Id<RecordFieldPat>> {
             let record_pat = self.node.get(self.tree);
             assert!(
                 index < record_pat.0.len(),
@@ -508,7 +508,7 @@ mod inspector {
         }
 
         /// Get an inspector for the field with the given name, if it exists
-        pub fn field_named(self, name: &str) -> Option<NodeInspector<'t, NodeId<RecordFieldPat>>> {
+        pub fn field_named(self, name: &str) -> Option<NodeInspector<'t, Id<RecordFieldPat>>> {
             let record_pat = self.node.get(self.tree);
             record_pat.get(name, self.tree).map(|_| {
                 let field_id = record_pat
@@ -521,7 +521,7 @@ mod inspector {
         }
     }
 
-    impl<'t> NamedNode for NodeInspector<'t, NodeId<RecordFieldPat>> {
+    impl<'t> NamedNode for NodeInspector<'t, Id<RecordFieldPat>> {
         fn assert_name(self, expected: &str, node_type: &str) -> Self {
             let name = self.node.get(self.tree).field(self.tree);
             assert_eq!(
@@ -536,14 +536,14 @@ mod inspector {
         }
     }
 
-    impl<'t> NodeInspector<'t, NodeId<RecordFieldPat>> {
+    impl<'t> NodeInspector<'t, Id<RecordFieldPat>> {
         /// Assert the record field pattern has the specified name
         pub fn has_field_name(self, expected: &str) -> Self {
             self.assert_name(expected, "field pattern")
         }
 
         /// Get an inspector for the pattern if it has one
-        pub fn pattern(self) -> Option<NodeInspector<'t, NodeId<Pat>>> {
+        pub fn pattern(self) -> Option<NodeInspector<'t, Id<Pat>>> {
             let field_pat = self.node.get(self.tree);
             field_pat
                 .pat
@@ -551,7 +551,7 @@ mod inspector {
         }
     }
 
-    impl<'t> NodeInspector<'t, NodeId<VariantPat>> {
+    impl<'t> NodeInspector<'t, Id<VariantPat>> {
         /// Assert the variant pattern has the specified number of cases
         pub fn has_cases(self, count: usize) -> Self {
             let cases_len = self.node.get(self.tree).0.len();
@@ -564,7 +564,7 @@ mod inspector {
         }
 
         /// Get an inspector for the case at the given index
-        pub fn case_at(self, index: usize) -> NodeInspector<'t, NodeId<VariantCasePat>> {
+        pub fn case_at(self, index: usize) -> NodeInspector<'t, Id<VariantCasePat>> {
             let variant_pat = self.node.get(self.tree);
             assert!(
                 index < variant_pat.0.len(),
@@ -577,7 +577,7 @@ mod inspector {
         }
 
         /// Get an inspector for the case with the given name, if it exists
-        pub fn case_named(self, name: &str) -> Option<NodeInspector<'t, NodeId<VariantCasePat>>> {
+        pub fn case_named(self, name: &str) -> Option<NodeInspector<'t, Id<VariantCasePat>>> {
             let variant_pat = self.node.get(self.tree);
             variant_pat.get(name, self.tree).map(|_| {
                 let case_id = variant_pat
@@ -590,7 +590,7 @@ mod inspector {
         }
     }
 
-    impl<'t> NamedNode for NodeInspector<'t, NodeId<VariantCasePat>> {
+    impl<'t> NamedNode for NodeInspector<'t, Id<VariantCasePat>> {
         fn assert_name(self, expected: &str, node_type: &str) -> Self {
             let name = self.node.get(self.tree).case(self.tree);
             assert_eq!(
@@ -605,14 +605,14 @@ mod inspector {
         }
     }
 
-    impl<'t> NodeInspector<'t, NodeId<VariantCasePat>> {
+    impl<'t> NodeInspector<'t, Id<VariantCasePat>> {
         /// Assert the variant case pattern has the specified name
         pub fn has_case_name(self, expected: &str) -> Self {
             self.assert_name(expected, "variant case")
         }
 
         /// Get an inspector for the pattern if it has one
-        pub fn pattern(self) -> Option<NodeInspector<'t, NodeId<Pat>>> {
+        pub fn pattern(self) -> Option<NodeInspector<'t, Id<Pat>>> {
             let case_pat = self.node.get(self.tree);
             case_pat
                 .pat

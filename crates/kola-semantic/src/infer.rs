@@ -1,3 +1,5 @@
+use std::ops::ControlFlow;
+
 use kola_syntax::prelude::*;
 use kola_tree::prelude::*;
 use kola_utils::Errors;
@@ -79,7 +81,7 @@ impl Constraints {
             }
         }
 
-        Ok(())
+        ControlFlow::Continue(())
     }
 }
 
@@ -99,42 +101,67 @@ pub struct Inferer {
 }
 
 impl Inferer {
-    pub fn new(tree: &Tree, spans: SpanMetadata) -> Self {
-        // TODO init names with actual cloned names
-
+    pub fn new(tree: &impl TreeAccess, spans: SpanMetadata) -> Self {
         let types = tree.metadata_with(|node| match node {
             Node::Name(n) => Meta::Name(n.0.clone()),
-            Node::Ident(_) => Meta::Ident(MonoType::variable()),
-            Node::Literal(_) => Meta::Literal(MonoType::variable()),
-            Node::List(_) => Meta::List(MonoType::variable()),
-            Node::Property(_) => Meta::Property(Property {
+            Node::AnyPat(_) => Meta::AnyPat(MonoType::variable()),
+            Node::IdentPat(_) => Meta::IdentPat(MonoType::variable()),
+            Node::LiteralPat(_) => Meta::LiteralPat(MonoType::variable()),
+            Node::RecordFieldPat(_) => Meta::RecordFieldPat(MonoType::variable()),
+            Node::RecordPat(_) => Meta::RecordPat(MonoType::variable()),
+            Node::VariantCasePat(_) => Meta::VariantCasePat(MonoType::variable()),
+            Node::VariantPat(_) => Meta::VariantPat(MonoType::variable()),
+            Node::PatError(_) => Meta::PatError(()),
+            Node::Pat(_) => Meta::Pat(MonoType::variable()),
+            Node::LiteralExpr(_) => Meta::LiteralExpr(MonoType::variable()),
+            Node::PathExpr(_) => Meta::PathExpr(MonoType::variable()),
+            Node::ListExpr(_) => Meta::ListExpr(MonoType::variable()),
+            Node::RecordField(_) => Meta::RecordField(Property {
                 k: Default::default(),
                 v: MonoType::variable(),
             }),
-            Node::Record(_) => Meta::Record(MonoType::variable()),
-            Node::RecordSelect(_) => Meta::RecordSelect(MonoType::variable()),
-            Node::RecordExtend(_) => Meta::RecordExtend(MonoType::variable()),
-            Node::RecordRestrict(_) => Meta::RecordRestrict(MonoType::variable()),
-            Node::RecordUpdate(_) => Meta::RecordUpdate(MonoType::variable()),
+            Node::RecordExpr(_) => Meta::RecordExpr(MonoType::variable()),
+            Node::RecordFieldPath(_) => Meta::RecordFieldPath(MonoType::variable()),
+            Node::RecordExtendExpr(_) => Meta::RecordExtendExpr(MonoType::variable()),
+            Node::RecordRestrictExpr(_) => Meta::RecordRestrictExpr(MonoType::variable()),
+            Node::RecordUpdateOp(_) => Meta::RecordUpdateOp(MonoType::variable()),
+            Node::RecordUpdateExpr(_) => Meta::RecordUpdateExpr(MonoType::variable()),
             Node::UnaryOp(_) => Meta::UnaryOp(MonoType::variable()),
-            Node::Unary(_) => Meta::Unary(MonoType::variable()),
+            Node::UnaryExpr(_) => Meta::UnaryExpr(MonoType::variable()),
             Node::BinaryOp(_) => Meta::BinaryOp(MonoType::variable()),
-            Node::Binary(_) => Meta::Binary(MonoType::variable()),
-            Node::Let(_) => Meta::Let(MonoType::variable()),
-            Node::PatError(_) => Meta::PatError(()),
-            Node::Wildcard(_) => Meta::Wildcard(MonoType::variable()),
-            Node::LiteralPat(_) => Meta::LiteralPat(MonoType::variable()),
-            Node::IdentPat(_) => Meta::IdentPat(MonoType::variable()),
-            Node::PropertyPat(_) => Meta::PropertyPat(MonoType::variable()),
-            Node::RecordPat(_) => Meta::RecordPat(MonoType::variable()),
-            Node::Pat(_) => Meta::Pat(MonoType::variable()),
-            Node::Branch(_) => Meta::Branch(()),
-            Node::Case(_) => Meta::Case(MonoType::variable()),
-            Node::If(_) => Meta::If(MonoType::variable()),
-            Node::Func(_) => Meta::Func(MonoType::variable()),
-            Node::Call(_) => Meta::Call(MonoType::variable()),
+            Node::BinaryExpr(_) => Meta::BinaryExpr(MonoType::variable()),
+            Node::LetExpr(_) => Meta::LetExpr(MonoType::variable()),
+            Node::CaseBranch(_) => Meta::CaseBranch(()),
+            Node::CaseExpr(_) => Meta::CaseExpr(MonoType::variable()),
+            Node::IfExpr(_) => Meta::IfExpr(MonoType::variable()),
+            Node::LambdaExpr(_) => Meta::LambdaExpr(MonoType::variable()),
+            Node::CallExpr(_) => Meta::CallExpr(MonoType::variable()),
             Node::ExprError(_) => Meta::ExprError(()),
             Node::Expr(_) => Meta::Expr(MonoType::variable()),
+            Node::TypePath(_) => Meta::TypePath(MonoType::variable()),
+            Node::TypeVar(_) => Meta::TypeVar(MonoType::variable()),
+            Node::RecordFieldType(_) => Meta::RecordFieldType(MonoType::variable()),
+            Node::RecordType(_) => Meta::RecordType(MonoType::variable()),
+            Node::VariantCaseType(_) => Meta::VariantCaseType(MonoType::variable()),
+            Node::VariantType(_) => Meta::VariantType(MonoType::variable()),
+            Node::FuncType(_) => Meta::FuncType(MonoType::variable()),
+            Node::TypeApplication(_) => Meta::TypeApplication(MonoType::variable()),
+            Node::TypeExpr(_) => Meta::TypeExpr(MonoType::variable()),
+            Node::TypeError(_) => Meta::TypeError(()),
+            Node::Type(_) => Meta::Type(MonoType::variable()),
+            Node::ValueBind(_) => Meta::ValueBind(MonoType::variable()),
+            Node::TypeBind(_) => Meta::TypeBind(MonoType::variable()),
+            Node::OpaqueTypeBind(_) => Meta::OpaqueTypeBind(MonoType::variable()),
+            Node::ModuleBind(_) => Meta::ModuleBind(MonoType::variable()),
+            Node::ModuleTypeBind(_) => Meta::ModuleTypeBind(MonoType::variable()),
+            Node::Bind(_) => Meta::Bind(MonoType::variable()),
+            Node::Module(_) => Meta::Module(MonoType::variable()),
+            Node::ValueSpec(_) => Meta::ValueSpec(MonoType::variable()),
+            Node::OpaqueTypeKind(_) => Meta::OpaqueTypeKind(MonoType::variable()),
+            Node::OpaqueTypeSpec(_) => Meta::OpaqueTypeSpec(MonoType::variable()),
+            Node::ModuleSpec(_) => Meta::ModuleSpec(MonoType::variable()),
+            Node::Spec(_) => Meta::Spec(MonoType::variable()),
+            Node::ModuleType(_) => Meta::ModuleType(MonoType::variable()),
         });
 
         Self {
@@ -147,8 +174,11 @@ impl Inferer {
         }
     }
 
-    pub fn solve(mut self, tree: &Tree) -> Result<TypeMetadata, Error> {
-        self.visit_level_order(tree)?;
+    pub fn solve<T>(mut self, node: impl Visitable<T>, tree: &T) -> Result<TypeMetadata, Error>
+    where
+        T: TreeAccess,
+    {
+        node.visit_by(&mut self, tree);
 
         let Self {
             mut subs,
@@ -165,14 +195,14 @@ impl Inferer {
         Ok(types.into_metadata())
     }
 
-    fn update_type<T>(&mut self, id: NodeId<T>, t: T::Meta) -> T::Meta
+    fn update_type<T>(&mut self, id: Id<T>, t: T::Meta) -> T::Meta
     where
         T: MetaCast<SemanticPhase>,
     {
         self.types.update_meta(id, t)
     }
 
-    fn span<T>(&self, id: NodeId<T>) -> Span
+    fn span<T>(&self, id: Id<T>) -> Span
     where
         T: MetaCast<SyntaxPhase, Meta = Span>,
     {
@@ -181,16 +211,17 @@ impl Inferer {
 
     fn partial_restrict(
         &mut self,
-        source: NodeId<node::Expr>,
-        field: NodeId<node::Name>,
+        source: Id<node::Expr>,
+        field: Id<node::RecordFieldPath>,
         span: Span,
-    ) -> Result<MonoType, Error> {
+    ) -> MonoType {
         let t = self.types.meta(source);
 
         self.cons.constrain_kind(Kind::Record, t.clone(), span);
 
         let t_prime = MonoType::variable();
 
+        // TODO handle field path
         let head = Property {
             k: self.types.meta(field).clone(),
             v: MonoType::variable(),
@@ -199,102 +230,25 @@ impl Inferer {
         self.cons
             .constrain(MonoType::row(head, t_prime.clone()), t.clone(), span);
 
-        Ok(t_prime)
+        t_prime
     }
 }
 
-impl Visitor for Inferer {
+impl<T: TreeAccess> Visitor<T> for Inferer {
+    type BreakValue = !;
+
     // Generalization
     // Γ'(τ) quantifies all monotype variables not bound in Γ
-
-    // Let rule
-    // Γ ⊢ e0 : τ
-    // Γ, x : Γ'(τ) ⊢ e1 : τ'
-    // --------------------
-    // Γ ⊢ let x = e0 in e1 : τ'
-    fn walk_let(
-        &mut self,
-        id: NodeId<node::LetExpr>,
-        tree: &Tree,
-        _stack: &mut EventStack,
-    ) -> Result<(), Self::Error> {
-        let &node::LetExpr {
-            name,
-            value,
-            inside,
-        } = id.get(tree);
-
-        // TODO unsure if name is already populated by init inside self.types
-        // otherwise implement traverse function for name
-
-        let name = self.types.meta(name).clone();
-
-        TypeVar::enter();
-        self.visit_expr(value, tree)?;
-        TypeVar::exit();
-
-        // due to explicit traversal this is known
-        let t = self.types.meta(value).clone();
-
-        self.t_env.enter();
-        {
-            let pt = t.generalize(&self.t_env.bound_vars());
-            self.t_env.insert(name, pt);
-
-            self.visit_expr(inside, tree)?;
-        }
-        self.t_env.exit();
-
-        let t_prime = self.types.meta(inside).clone();
-        self.update_type(id, t_prime);
-
-        Ok(())
-    }
-
-    // Abstraction rule
-    // τ = newvar()
-    // Γ, x : τ ⊢ e : τ'
-    // --------------------
-    // Γ ⊢ \x -> e : t -> t'
-    fn walk_func(
-        &mut self,
-        id: NodeId<node::LambdaExpr>,
-        tree: &Tree,
-        _stack: &mut EventStack,
-    ) -> Result<(), Self::Error> {
-        let func = id.get(tree);
-        let t = MonoType::variable();
-
-        // let name = self.types.meta(func.param).clone();
-        let name = func.param.get(tree).0.clone();
-
-        self.t_env.enter();
-        {
-            self.t_env.insert(name, PolyType::from(t.clone()));
-            self.visit_expr(func.body, tree)?;
-        }
-        self.t_env.exit();
-
-        let t_prime = self.types.meta(func.body).clone();
-        let func = MonoType::func(t, t_prime);
-
-        self.update_type(id, func);
-        Ok(())
-    }
-}
-
-impl Handler for Inferer {
-    type Error = Error;
 
     // Unit rule
     // -----------------------
     // Γ ⊢ () : unit
-    fn handle_literal(
+    fn visit_literal_expr(
         &mut self,
-        literal: &node::LiteralExpr,
-        id: NodeId<node::LiteralExpr>,
-    ) -> Result<(), Self::Error> {
-        let actual = match literal {
+        id: Id<node::LiteralExpr>,
+        tree: &T,
+    ) -> ControlFlow<Self::BreakValue> {
+        let actual = match id.get(tree) {
             &node::LiteralExpr::Bool(_) => MonoType::BOOL,
             &node::LiteralExpr::Char(_) => MonoType::CHAR,
             &node::LiteralExpr::Num(_) => MonoType::NUM,
@@ -302,58 +256,66 @@ impl Handler for Inferer {
         };
 
         self.update_type(id, actual);
-        Ok(())
+        ControlFlow::Continue(())
     }
 
     // Var rule to infer variable 'x'
     // x : σ ∈ Γ   τ = inst(σ)
     // -----------------------
     // ∆;Γ ⊢ x : τ
-    fn handle_ident(
+    fn visit_path_expr(
         &mut self,
-        ident: &node::Ident,
-        id: NodeId<node::Ident>,
-    ) -> Result<(), Self::Error> {
-        let t = self
-            .t_env
-            .try_lookup(&ident.0)
-            .map_err(|e| e.with(self.span(id)))?
-            .instantiate();
+        id: Id<node::PathExpr>,
+        tree: &T,
+    ) -> ControlFlow<Self::BreakValue> {
+        // TODO need some access to modules for inference
+        // let t = self
+        //     .t_env
+        //     .try_lookup(&ident.0)
+        //     .map_err(|e| e.with(self.span(id)))?
+        //     .instantiate();
 
-        self.update_type(id, t);
-        Ok(())
+        // self.update_type(id, t);
+        // ControlFlow::Continue(())
+        ControlFlow::Continue(())
     }
 
-    fn handle_property(
+    fn visit_record_field(
         &mut self,
-        property: &node::RecordField,
-        id: NodeId<node::RecordField>,
-    ) -> Result<(), Self::Error> {
-        let k = self.types.meta(property.field).clone();
-        let v = self.types.meta(property.value).clone();
+        id: Id<node::RecordField>,
+        tree: &T,
+    ) -> ControlFlow<Self::BreakValue> {
+        self.walk_record_field(id, tree)?;
+
+        let node::RecordField { field, value } = *id.get(tree);
+
+        let k = self.types.meta(field).clone();
+        let v = self.types.meta(value).clone();
 
         self.update_type(id, Property { k, v });
-        Ok(())
+        ControlFlow::Continue(())
     }
 
     // Rule for Record Instantiation via Induction
     // ∆;Γ ⊢ R : { l0 : t0, ..., ln : tn | {} }
     // -----------------------
     // ∆;Γ ⊢ R : { { l1 : t1, ..., ln : tn } | +l0 : τ0 | {} }
-    fn handle_record(
+    fn visit_record_expr(
         &mut self,
-        record: &node::RecordExpr,
-        id: NodeId<node::RecordExpr>,
-    ) -> Result<(), Self::Error> {
+        id: Id<node::RecordExpr>,
+        tree: &T,
+    ) -> ControlFlow<Self::BreakValue> {
+        self.walk_record_expr(id, tree)?;
+
         let mut r = MonoType::empty_row();
 
-        for &field in &record.fields {
+        for &field in &id.get(tree).0 {
             let head = self.types.meta(field).clone();
             r = MonoType::row(head, r);
         }
 
         self.update_type(id, r);
-        Ok(())
+        ControlFlow::Continue(())
     }
 
     // Rule for Record Selection of 'r' with label 'l'
@@ -362,32 +324,33 @@ impl Handler for Inferer {
     // -----------------------
     // ∆;Γ ⊢ r.l : τ'
 
-    // old: ∀rα. {l :: α | r} → α
-    // TODO check if feasible to just iterate over record to get the selected type
-    // and if not possible fallback to original behaviour
-    fn handle_record_select(
-        &mut self,
-        select: &node::RecordSelect,
-        id: NodeId<node::RecordSelect>,
-    ) -> Result<(), Self::Error> {
-        let span = self.span(id);
+    // // old: ∀rα. {l :: α | r} → α
+    // // TODO check if feasible to just iterate over record to get the selected type
+    // // and if not possible fallback to original behaviour
+    // fn visit_record_select(
+    //     &mut self,
+    //     select: &node::RecordSelect,
+    //     id: NodeId<node::RecordSelect>,
+    // ) -> ControlFlow<Self::BreakValue>  {
+    //     let span = self.span(id);
 
-        let t0 = self.types.meta(select.source);
+    //     let t0 = self.types.meta(select.source);
 
-        self.cons.constrain_kind(Kind::Record, t0.clone(), span);
+    //     self.cons.constrain_kind(Kind::Record, t0.clone(), span);
 
-        let t_prime = MonoType::variable();
+    //     let t_prime = MonoType::variable();
 
-        let head = Property {
-            k: self.types.meta(select.field).clone(),
-            v: t_prime.clone(),
-        };
-        self.cons
-            .constrain(MonoType::row(head, MonoType::variable()), t0.clone(), span);
+    //     let head = Property {
+    //         k: self.types.meta(select.field).clone(),
+    //         v: t_prime.clone(),
+    //     };
+    //     self.cons
+    //         .constrain(MonoType::row(head, MonoType::variable()), t0.clone(), span);
 
-        self.update_type(id, t_prime);
-        Ok(())
-    }
+    //     self.update_type(id, t_prime);
+    //             ControlFlow::Continue(())
+
+    // }
 
     // Rule for Record Extension of 'r' with label 'l' and Value 'v'
     // ∆;Γ ⊢ v : τ0
@@ -396,26 +359,35 @@ impl Handler for Inferer {
     // ∆;Γ ⊢ { r | +l = v } : { τ1 | +l : τ0 }
 
     // old: ∀rα. α → {r} → {l :: α | r}
-    fn handle_record_extend(
+    fn visit_record_extend_expr(
         &mut self,
-        extend: &node::RecordExtendExpr,
-        id: NodeId<node::RecordExtendExpr>,
-    ) -> Result<(), Self::Error> {
+        id: Id<node::RecordExtendExpr>,
+        tree: &T,
+    ) -> ControlFlow<Self::BreakValue> {
+        self.walk_record_extend_expr(id, tree)?;
+
         let span = self.span(id);
 
-        let t0 = self.types.meta(extend.value);
-        let t1 = self.types.meta(extend.source);
+        let node::RecordExtendExpr {
+            source,
+            field,
+            value,
+        } = *id.get(tree);
+
+        let t0 = self.types.meta(value);
+        let t1 = self.types.meta(source);
 
         self.cons.constrain_kind(Kind::Record, t1.clone(), span);
 
+        // TODO handle record field path
         let head = Property {
-            k: self.types.meta(extend.field).clone(),
+            k: self.types.meta(field).clone(),
             v: t0.clone(),
         };
         let row = MonoType::row(head, t1.clone());
 
         self.update_type(id, row);
-        Ok(())
+        ControlFlow::Continue(())
     }
 
     // Rule for Record Restriction of 'r' with label 'l'
@@ -423,17 +395,21 @@ impl Handler for Inferer {
     // -----------------------
     // ∆;Γ ⊢ { r | -l } : τ0
     // ∀rα. {l :: α | r} → {r}
-    fn handle_record_restrict(
+    fn visit_record_restrict_expr(
         &mut self,
-        restrict: &node::RecordRestrictExpr,
-        id: NodeId<node::RecordRestrictExpr>,
-    ) -> Result<(), Self::Error> {
+        id: Id<node::RecordRestrictExpr>,
+        tree: &T,
+    ) -> ControlFlow<Self::BreakValue> {
+        self.walk_record_restrict_expr(id, tree)?;
+
         let span = self.span(id);
 
-        let t_prime = self.partial_restrict(restrict.source, restrict.field, span)?;
+        let node::RecordRestrictExpr { source, field } = *id.get(tree);
+
+        let t_prime = self.partial_restrict(source, field, span);
 
         self.update_type(id, t_prime);
-        Ok(())
+        ControlFlow::Continue(())
     }
 
     // Rule for Record Update of 'r' with label 'l' and value 'v'
@@ -441,24 +417,33 @@ impl Handler for Inferer {
     // ∆;Γ ⊢ v : τ2
     // -----------------------
     // ∆;Γ ⊢ { r | l = v } : { r | -l | +l : τ2 }
-    fn handle_record_update(
+    fn visit_record_update_expr(
         &mut self,
-        update: &node::RecordUpdateExpr,
-        id: NodeId<node::RecordUpdateExpr>,
-    ) -> Result<(), Self::Error> {
+        id: Id<node::RecordUpdateExpr>,
+        tree: &T,
+    ) -> ControlFlow<Self::BreakValue> {
+        self.walk_record_update_expr(id, tree)?;
+
         let span = self.span(id);
 
-        let t0 = self.partial_restrict(update.source, update.field, span)?;
-        let t2 = self.types.meta(update.value).clone();
+        let node::RecordUpdateExpr {
+            source,
+            field,
+            op,
+            value,
+        } = *id.get(tree);
+
+        let t0 = self.partial_restrict(source, field, span);
+        let t2 = self.types.meta(value).clone();
 
         let head = Property {
-            k: self.types.meta(update.field).clone(),
+            k: self.types.meta(field).clone(),
             v: t2,
         };
         let row = MonoType::row(head, t0);
 
         self.update_type(id, row);
-        Ok(())
+        ControlFlow::Continue(())
     }
 
     // Abstraction rule
@@ -466,12 +451,8 @@ impl Handler for Inferer {
     // Γ, x : τ ⊢ e : τ'
     // ___________________
     // Γ ⊢ \x -> e : τ -> τ'
-    fn handle_unary_op(
-        &mut self,
-        unary_op: &node::UnaryOp,
-        id: NodeId<node::UnaryOp>,
-    ) -> Result<(), Self::Error> {
-        let t = match unary_op {
+    fn visit_unary_op(&mut self, id: Id<node::UnaryOp>, tree: &T) -> ControlFlow<Self::BreakValue> {
+        let t = match id.get(tree) {
             &node::UnaryOp::Neg => MonoType::NUM,
             &node::UnaryOp::Not => MonoType::BOOL,
         };
@@ -479,7 +460,7 @@ impl Handler for Inferer {
         let func = MonoType::func(t.clone(), t);
 
         self.update_type(id, func);
-        Ok(())
+        ControlFlow::Continue(())
     }
 
     // Application rule
@@ -489,15 +470,19 @@ impl Handler for Inferer {
     // unify(τ0, τ1 -> τ')
     // --------------------
     // Γ ⊢ f x : τ'
-    fn handle_unary(
+    fn visit_unary_expr(
         &mut self,
-        unary: &node::UnaryExpr,
-        id: NodeId<node::UnaryExpr>,
-    ) -> Result<(), Self::Error> {
+        id: Id<node::UnaryExpr>,
+        tree: &T,
+    ) -> ControlFlow<Self::BreakValue> {
+        self.walk_unary_expr(id, tree)?;
+
         let span = self.span(id);
 
-        let t0 = self.types.meta(unary.op).clone();
-        let t1 = self.types.meta(unary.operand).clone();
+        let node::UnaryExpr { op, operand } = *id.get(tree);
+
+        let t0 = self.types.meta(op).clone();
+        let t1 = self.types.meta(operand).clone();
 
         let t_prime = MonoType::variable();
 
@@ -505,17 +490,17 @@ impl Handler for Inferer {
             .constrain(t0, MonoType::func(t1, t_prime.clone()), span);
 
         self.update_type(id, t_prime);
-        Ok(())
+        ControlFlow::Continue(())
     }
 
-    fn handle_binary_op(
+    fn visit_binary_op(
         &mut self,
-        binary_op: &node::BinaryOp,
-        id: NodeId<node::BinaryOp>,
-    ) -> Result<(), Self::Error> {
+        id: Id<node::BinaryOp>,
+        tree: &T,
+    ) -> ControlFlow<Self::BreakValue> {
         let span = self.span(id);
 
-        let (t, t_prime) = match binary_op {
+        let (t, t_prime) = match id.get(tree) {
             node::BinaryOp::Add => {
                 let t = MonoType::variable();
                 self.cons.constrain_kind(Kind::Addable, t.clone(), span);
@@ -553,7 +538,7 @@ impl Handler for Inferer {
         let func = MonoType::func(t.clone(), MonoType::func(t, t_prime));
 
         self.update_type(id, func);
-        Ok(())
+        ControlFlow::Continue(())
     }
 
     // Application rule
@@ -563,16 +548,20 @@ impl Handler for Inferer {
     // unify(τ0, τ1 -> τ')
     // --------------------
     // Γ ⊢ f x : τ'
-    fn handle_binary(
+    fn visit_binary_expr(
         &mut self,
-        binary: &node::BinaryExpr,
-        id: NodeId<node::BinaryExpr>,
-    ) -> Result<(), Self::Error> {
+        id: Id<node::BinaryExpr>,
+        tree: &T,
+    ) -> ControlFlow<Self::BreakValue> {
+        self.walk_binary_expr(id, tree)?;
+
         let span = self.span(id);
 
-        let t0 = self.types.meta(binary.op).clone();
-        let lhs = self.types.meta(binary.left).clone();
-        let rhs = self.types.meta(binary.right).clone();
+        let node::BinaryExpr { left, op, right } = *id.get(tree);
+
+        let t0 = self.types.meta(op).clone();
+        let lhs = self.types.meta(left).clone();
+        let rhs = self.types.meta(right).clone();
 
         let t_prime = MonoType::variable();
 
@@ -580,16 +569,16 @@ impl Handler for Inferer {
         self.cons.constrain(t0, func, span);
 
         self.update_type(id, t_prime);
-        Ok(())
+        ControlFlow::Continue(())
     }
 
-    fn handle_let(
+    fn visit_let_expr(
         &mut self,
-        _let_: &node::LetExpr,
-        _id: NodeId<node::LetExpr>,
-    ) -> Result<(), Self::Error> {
+        _id: Id<node::LetExpr>,
+        tree: &T,
+    ) -> ControlFlow<Self::BreakValue> {
         // handled by lower level walk_let
-        Ok(())
+        ControlFlow::Continue(())
     }
 
     // If
@@ -598,41 +587,45 @@ impl Handler for Inferer {
     // Γ ⊢ e1 : τ
     // --------------------------
     // Γ ⊢ if predicate then e0 else e1 : τ
-    fn handle_if(
-        &mut self,
-        if_: &node::IfExpr,
-        id: NodeId<node::IfExpr>,
-    ) -> Result<(), Self::Error> {
+    fn visit_if_expr(&mut self, id: Id<node::IfExpr>, tree: &T) -> ControlFlow<Self::BreakValue> {
+        self.walk_if_expr(id, tree)?;
+
         let span = self.span(id);
 
-        let t0 = self.types.meta(if_.predicate).clone();
+        let node::IfExpr {
+            predicate,
+            then,
+            or,
+        } = *id.get(tree);
+
+        let t0 = self.types.meta(predicate).clone();
 
         self.cons.constrain(MonoType::BOOL, t0, span);
 
-        let then = self.types.meta(if_.then).clone();
-        let or = self.types.meta(if_.or).clone();
+        let then = self.types.meta(then).clone();
+        let or = self.types.meta(or).clone();
 
         self.cons.constrain(then.clone(), or, span);
 
         self.update_type(id, then);
-        Ok(())
+        ControlFlow::Continue(())
     }
 
-    fn handle_case(
+    fn visit_case_expr(
         &mut self,
-        _case: &node::CaseExpr,
-        _id: NodeId<node::CaseExpr>,
-    ) -> Result<(), Self::Error> {
+        _id: Id<node::CaseExpr>,
+        tree: &T,
+    ) -> ControlFlow<Self::BreakValue> {
         todo!()
     }
 
-    fn handle_func(
+    fn visit_lambda_expr(
         &mut self,
-        _func: &node::LambdaExpr,
-        _id: NodeId<node::LambdaExpr>,
-    ) -> Result<(), Self::Error> {
+        _id: Id<node::LambdaExpr>,
+        tree: &T,
+    ) -> ControlFlow<Self::BreakValue> {
         // handled by lower level walk_func
-        Ok(())
+        ControlFlow::Continue(())
     }
 
     // Application rule
@@ -642,36 +635,37 @@ impl Handler for Inferer {
     // unify(τ0, τ1 -> τ')
     // --------------------
     // Γ ⊢ f x : τ'
-    fn handle_call(
+    fn visit_call_expr(
         &mut self,
-        call: &node::CallExpr,
-        id: NodeId<node::CallExpr>,
-    ) -> Result<(), Self::Error> {
+        id: Id<node::CallExpr>,
+        tree: &T,
+    ) -> ControlFlow<Self::BreakValue> {
+        self.walk_call_expr(id, tree)?;
+
         let span = self.span(id);
 
-        let t0 = self.types.meta(call.func).clone();
-        let t1 = self.types.meta(call.arg).clone();
+        let node::CallExpr { func, arg } = *id.get(tree);
+
+        let t0 = self.types.meta(func).clone();
+        let t1 = self.types.meta(arg).clone();
         let t_prime = MonoType::variable();
 
         self.cons
             .constrain(t0, MonoType::func(t1, t_prime.clone()), span);
 
         self.update_type(id, t_prime);
-        Ok(())
+        ControlFlow::Continue(())
     }
 
-    fn handle_expr(
-        &mut self,
-        expr: &node::Expr,
-        id: NodeId<node::Expr>,
-    ) -> Result<(), Self::Error> {
-        let t = match *expr {
-            node::Expr::Error(_) => return Err((Errors::new(), self.span(id))),
+    fn visit_expr(&mut self, id: Id<node::Expr>, tree: &T) -> ControlFlow<Self::BreakValue> {
+        self.walk_expr(id, tree)?;
+
+        let t = match *id.get(tree) {
+            node::Expr::Error(_) => todo!(),
             node::Expr::Literal(id) => self.types.meta(id),
-            node::Expr::Ident(id) => self.types.meta(id),
+            node::Expr::Path(id) => self.types.meta(id),
             node::Expr::List(id) => self.types.meta(id),
             node::Expr::Record(id) => self.types.meta(id),
-            node::Expr::RecordSelect(id) => self.types.meta(id),
             node::Expr::RecordExtend(id) => self.types.meta(id),
             node::Expr::RecordRestrict(id) => self.types.meta(id),
             node::Expr::RecordUpdate(id) => self.types.meta(id),
@@ -686,7 +680,76 @@ impl Handler for Inferer {
         .clone();
 
         self.update_type(id, t);
-        Ok(())
+        ControlFlow::Continue(())
+    }
+
+    // Let rule
+    // Γ ⊢ e0 : τ
+    // Γ, x : Γ'(τ) ⊢ e1 : τ'
+    // --------------------
+    // Γ ⊢ let x = e0 in e1 : τ'
+    fn walk_let_expr(&mut self, id: Id<node::LetExpr>, tree: &T) -> ControlFlow<Self::BreakValue> {
+        let &node::LetExpr {
+            name,
+            value,
+            inside,
+        } = id.get(tree);
+
+        // TODO unsure if name is already populated by init inside self.types
+        // otherwise implement traverse function for name
+
+        let name = self.types.meta(name).clone();
+
+        TypeVar::enter();
+        self.visit_expr(value, tree)?;
+        TypeVar::exit();
+
+        // due to explicit traversal this is known
+        let t = self.types.meta(value).clone();
+
+        self.t_env.enter();
+        {
+            let pt = t.generalize(&self.t_env.bound_vars());
+            self.t_env.insert(name, pt);
+
+            self.visit_expr(inside, tree)?;
+        }
+        self.t_env.exit();
+
+        let t_prime = self.types.meta(inside).clone();
+        self.update_type(id, t_prime);
+
+        ControlFlow::Continue(())
+    }
+
+    // Abstraction rule
+    // τ = newvar()
+    // Γ, x : τ ⊢ e : τ'
+    // --------------------
+    // Γ ⊢ \x -> e : t -> t'
+    fn walk_lambda_expr(
+        &mut self,
+        id: Id<node::LambdaExpr>,
+        tree: &T,
+    ) -> ControlFlow<Self::BreakValue> {
+        let node::LambdaExpr { param, body } = *id.get(tree);
+        let t = MonoType::variable();
+
+        // let name = self.types.meta(func.param).clone();
+        let name = param.get(tree).0.clone();
+
+        self.t_env.enter();
+        {
+            self.t_env.insert(name, PolyType::from(t.clone()));
+            self.visit_expr(body, tree)?;
+        }
+        self.t_env.exit();
+
+        let t_prime = self.types.meta(body).clone();
+        let func = MonoType::func(t, t_prime);
+
+        self.update_type(id, func);
+        ControlFlow::Continue(())
     }
 }
 
@@ -698,39 +761,69 @@ mod tests {
     use super::Inferer;
     use crate::{error::SemanticError, types::*};
 
-    fn mocked_spans(tree: &Tree) -> SpanMetadata {
-        let span = Span::new(0, 0);
-
+    fn mocked_spans(tree: &impl TreeAccess) -> SpanMetadata {
+        let span = Span {
+            start: 0,
+            end: 0,
+            context: (),
+        };
         tree.metadata_with(|kind| match kind {
             Node::Name(_) => Meta::Name(span),
-            Node::Ident(_) => Meta::Ident(span),
-            Node::Literal(_) => Meta::Literal(span),
-            Node::List(_) => Meta::List(span),
-            Node::Property(_) => Meta::Property(span),
-            Node::Record(_) => Meta::Record(span),
-            Node::RecordSelect(_) => Meta::RecordSelect(span),
-            Node::RecordExtend(_) => Meta::RecordExtend(span),
-            Node::RecordRestrict(_) => Meta::RecordRestrict(span),
-            Node::RecordUpdate(_) => Meta::RecordUpdate(span),
-            Node::UnaryOp(_) => Meta::UnaryOp(span),
-            Node::Unary(_) => Meta::Unary(span),
-            Node::BinaryOp(_) => Meta::BinaryOp(span),
-            Node::Binary(_) => Meta::Binary(span),
-            Node::Let(_) => Meta::Let(span),
-            Node::PatError(_) => Meta::PatError(span),
-            Node::Wildcard(_) => Meta::Wildcard(span),
+            Node::AnyPat(_) => Meta::AnyPat(span),
             Node::LiteralPat(_) => Meta::LiteralPat(span),
             Node::IdentPat(_) => Meta::IdentPat(span),
-            Node::PropertyPat(_) => Meta::PropertyPat(span),
+            Node::RecordFieldPat(_) => Meta::RecordFieldPat(span),
             Node::RecordPat(_) => Meta::RecordPat(span),
+            Node::VariantCasePat(_) => Meta::VariantCasePat(span),
+            Node::VariantPat(_) => Meta::VariantPat(span),
+            Node::PatError(_) => Meta::PatError(span),
             Node::Pat(_) => Meta::Pat(span),
-            Node::Branch(_) => Meta::Branch(span),
-            Node::Case(_) => Meta::Case(span),
-            Node::If(_) => Meta::If(span),
-            Node::Func(_) => Meta::Func(span),
-            Node::Call(_) => Meta::Call(span),
+            Node::LiteralExpr(_) => Meta::LiteralExpr(span),
+            Node::PathExpr(_) => Meta::PathExpr(span),
+            Node::ListExpr(_) => Meta::ListExpr(span),
+            Node::RecordField(_) => Meta::RecordField(span),
+            Node::RecordExpr(_) => Meta::RecordExpr(span),
+            Node::RecordFieldPath(_) => Meta::RecordFieldPath(span),
+            Node::RecordExtendExpr(_) => Meta::RecordExtendExpr(span),
+            Node::RecordRestrictExpr(_) => Meta::RecordRestrictExpr(span),
+            Node::RecordUpdateOp(_) => Meta::RecordUpdateOp(span),
+            Node::RecordUpdateExpr(_) => Meta::RecordUpdateExpr(span),
+            Node::UnaryOp(_) => Meta::UnaryOp(span),
+            Node::UnaryExpr(_) => Meta::UnaryExpr(span),
+            Node::BinaryOp(_) => Meta::BinaryOp(span),
+            Node::BinaryExpr(_) => Meta::BinaryExpr(span),
+            Node::LetExpr(_) => Meta::LetExpr(span),
+            Node::CaseBranch(_) => Meta::CaseBranch(span),
+            Node::CaseExpr(_) => Meta::CaseExpr(span),
+            Node::IfExpr(_) => Meta::IfExpr(span),
+            Node::LambdaExpr(_) => Meta::LambdaExpr(span),
+            Node::CallExpr(_) => Meta::CallExpr(span),
             Node::ExprError(_) => Meta::ExprError(span),
             Node::Expr(_) => Meta::Expr(span),
+            Node::TypePath(_) => Meta::TypePath(span),
+            Node::TypeVar(_) => Meta::TypeVar(span),
+            Node::RecordFieldType(_) => Meta::RecordFieldType(span),
+            Node::RecordType(_) => Meta::RecordType(span),
+            Node::VariantCaseType(_) => Meta::VariantCaseType(span),
+            Node::VariantType(_) => Meta::VariantType(span),
+            Node::FuncType(_) => Meta::FuncType(span),
+            Node::TypeApplication(_) => Meta::TypeApplication(span),
+            Node::TypeExpr(_) => Meta::TypeExpr(span),
+            Node::TypeError(_) => Meta::TypeError(span),
+            Node::Type(_) => Meta::Type(span),
+            Node::ValueBind(_) => Meta::ValueBind(span),
+            Node::TypeBind(_) => Meta::TypeBind(span),
+            Node::OpaqueTypeBind(_) => Meta::OpaqueTypeBind(span),
+            Node::ModuleBind(_) => Meta::ModuleBind(span),
+            Node::ModuleTypeBind(_) => Meta::ModuleTypeBind(span),
+            Node::Bind(_) => Meta::Bind(span),
+            Node::Module(_) => Meta::Module(span),
+            Node::ValueSpec(_) => Meta::ValueSpec(span),
+            Node::OpaqueTypeKind(_) => Meta::OpaqueTypeKind(span),
+            Node::OpaqueTypeSpec(_) => Meta::OpaqueTypeSpec(span),
+            Node::ModuleSpec(_) => Meta::ModuleSpec(span),
+            Node::Spec(_) => Meta::Spec(span),
+            Node::ModuleType(_) => Meta::ModuleType(span),
         })
         .into_metadata()
     }
@@ -740,10 +833,9 @@ mod tests {
         let mut builder = TreeBuilder::new();
         let lit = builder.insert(node::LiteralExpr::Num(10.0));
         let root = builder.insert(node::Expr::Literal(lit));
-        let tree = builder.finish(root);
 
-        let types = Inferer::new(&tree, mocked_spans(&tree))
-            .solve(&tree)
+        let types = Inferer::new(&builder, mocked_spans(&builder))
+            .solve(root, &builder)
             .unwrap();
 
         assert_eq!(types.meta(lit), &MonoType::NUM);
@@ -780,10 +872,13 @@ mod tests {
             .solve(&tree)
             .unwrap_err();
 
-        assert_eq!(errors[0], SemanticError::CannotUnify {
-            expected: MonoType::BOOL,
-            actual: MonoType::NUM
-        });
+        assert_eq!(
+            errors[0],
+            SemanticError::CannotUnify {
+                expected: MonoType::BOOL,
+                actual: MonoType::NUM
+            }
+        );
     }
 
     #[test]
@@ -802,10 +897,13 @@ mod tests {
             .solve(&tree)
             .unwrap_err();
 
-        assert_eq!(errors[0], SemanticError::CannotUnify {
-            expected: MonoType::BOOL,
-            actual: MonoType::NUM
-        });
+        assert_eq!(
+            errors[0],
+            SemanticError::CannotUnify {
+                expected: MonoType::BOOL,
+                actual: MonoType::NUM
+            }
+        );
     }
 
     #[test]
@@ -866,9 +964,12 @@ mod tests {
             .solve(&tree)
             .unwrap_err();
 
-        assert_eq!(errors[0], SemanticError::CannotUnify {
-            expected: MonoType::NUM,
-            actual: MonoType::CHAR,
-        });
+        assert_eq!(
+            errors[0],
+            SemanticError::CannotUnify {
+                expected: MonoType::NUM,
+                actual: MonoType::CHAR,
+            }
+        );
     }
 }

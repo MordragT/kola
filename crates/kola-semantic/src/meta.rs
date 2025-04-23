@@ -13,7 +13,7 @@ impl Decorator for TypeDecorator {
     fn decorate<'a>(
         &'a self,
         notation: Notation<'a>,
-        with: NodeId<()>,
+        with: Id<()>,
         arena: &'a Bump,
     ) -> Notation<'a> {
         let ty = match self.0.get(with) {

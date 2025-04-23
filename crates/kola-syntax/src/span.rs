@@ -15,7 +15,7 @@ impl Decorator for SpanDecorator {
     fn decorate<'a>(
         &'a self,
         notation: Notation<'a>,
-        with: NodeId<()>,
+        with: Id<()>,
         arena: &'a Bump,
     ) -> Notation<'a> {
         let span = self.0.get(with).inner_ref();

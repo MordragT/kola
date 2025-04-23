@@ -5,7 +5,7 @@ use owo_colors::OwoColorize;
 use serde::{Deserialize, Serialize};
 
 use super::{Expr, Name, Type};
-use crate::{id::NodeId, print::TreePrinter, tree::TreeBuilder};
+use crate::{id::Id, print::TreePrinter, tree::TreeBuilder};
 
 /*
 Nice to haves:
@@ -35,7 +35,7 @@ module safe-stack = functor (s : Stack) => {
 */
 
 #[derive(Debug, From, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
-pub struct Module(pub Vec<NodeId<Bind>>); // TODO maybe should know its parent ?
+pub struct Module(pub Vec<Id<Bind>>); // TODO maybe should know its parent ?
 
 impl Printable<TreePrinter> for Module {
     fn notate<'a>(&'a self, with: &'a TreePrinter, arena: &'a Bump) -> Notation<'a> {
@@ -60,11 +60,11 @@ impl Printable<TreePrinter> for Module {
     Debug, From, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
 )]
 pub enum Bind {
-    Value(NodeId<ValueBind>),
-    Type(NodeId<TypeBind>),
-    OpaqueType(NodeId<OpaqueTypeBind>),
-    Module(NodeId<ModuleBind>),
-    ModuleType(NodeId<ModuleTypeBind>),
+    Value(Id<ValueBind>),
+    Type(Id<TypeBind>),
+    OpaqueType(Id<OpaqueTypeBind>),
+    Module(Id<ModuleBind>),
+    ModuleType(Id<ModuleTypeBind>),
 }
 
 impl Printable<TreePrinter> for Bind {
@@ -85,29 +85,29 @@ impl Bind {
         ty: Option<Type>,
         value: Expr,
         builder: &mut TreeBuilder,
-    ) -> NodeId<Self> {
+    ) -> Id<Self> {
         let bind = ValueBind::new_in(name, ty, value, builder);
 
         builder.insert(Self::Value(bind))
     }
 
-    pub fn to_value(self) -> Option<NodeId<ValueBind>> {
+    pub fn to_value(self) -> Option<Id<ValueBind>> {
         as_variant!(self, Self::Value)
     }
 
-    pub fn to_type(self) -> Option<NodeId<TypeBind>> {
+    pub fn to_type(self) -> Option<Id<TypeBind>> {
         as_variant!(self, Self::Type)
     }
 
-    pub fn to_opaque_type(self) -> Option<NodeId<OpaqueTypeBind>> {
+    pub fn to_opaque_type(self) -> Option<Id<OpaqueTypeBind>> {
         as_variant!(self, Self::OpaqueType)
     }
 
-    pub fn to_module(self) -> Option<NodeId<ModuleBind>> {
+    pub fn to_module(self) -> Option<Id<ModuleBind>> {
         as_variant!(self, Self::Module)
     }
 
-    pub fn to_module_type(self) -> Option<NodeId<ModuleTypeBind>> {
+    pub fn to_module_type(self) -> Option<Id<ModuleTypeBind>> {
         as_variant!(self, Self::ModuleType)
     }
 
@@ -134,9 +134,9 @@ impl Bind {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct ValueBind {
-    pub name: NodeId<Name>,
-    pub ty: Option<NodeId<Type>>,
-    pub value: NodeId<Expr>,
+    pub name: Id<Name>,
+    pub ty: Option<Id<Type>>,
+    pub value: Id<Expr>,
 }
 
 impl Printable<TreePrinter> for ValueBind {
@@ -184,7 +184,7 @@ impl ValueBind {
         ty: Option<Type>,
         value: Expr,
         builder: &mut TreeBuilder,
-    ) -> NodeId<Self> {
+    ) -> Id<Self> {
         let name = builder.insert(name);
         let ty = ty.map(|ty| builder.insert(ty));
         let value = builder.insert(value);
@@ -195,8 +195,8 @@ impl ValueBind {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct TypeBind {
-    pub name: NodeId<Name>,
-    pub ty: NodeId<Type>,
+    pub name: Id<Name>,
+    pub ty: Id<Type>,
 }
 
 impl Printable<TreePrinter> for TypeBind {
@@ -233,8 +233,8 @@ impl Printable<TreePrinter> for TypeBind {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct OpaqueTypeBind {
-    pub name: NodeId<Name>,
-    pub ty: NodeId<Type>,
+    pub name: Id<Name>,
+    pub ty: Id<Type>,
 }
 
 impl Printable<TreePrinter> for OpaqueTypeBind {
@@ -271,9 +271,9 @@ impl Printable<TreePrinter> for OpaqueTypeBind {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct ModuleBind {
-    pub name: NodeId<Name>,
-    pub ty: Option<NodeId<ModuleType>>,
-    pub value: NodeId<Module>,
+    pub name: Id<Name>,
+    pub ty: Option<Id<ModuleType>>,
+    pub value: Id<Module>,
 }
 
 impl Printable<TreePrinter> for ModuleBind {
@@ -317,8 +317,8 @@ impl Printable<TreePrinter> for ModuleBind {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct ModuleTypeBind {
-    pub name: NodeId<Name>,
-    pub ty: NodeId<ModuleType>,
+    pub name: Id<Name>,
+    pub ty: Id<ModuleType>,
 }
 
 impl Printable<TreePrinter> for ModuleTypeBind {
@@ -356,7 +356,7 @@ impl Printable<TreePrinter> for ModuleTypeBind {
 // cannot infact contain another module type bind
 // only submodules can be defined
 #[derive(Debug, From, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
-pub struct ModuleType(pub Vec<NodeId<Spec>>); // TODO functor ?
+pub struct ModuleType(pub Vec<Id<Spec>>); // TODO functor ?
 
 impl Printable<TreePrinter> for ModuleType {
     fn notate<'a>(&'a self, with: &'a TreePrinter, arena: &'a Bump) -> Notation<'a> {
@@ -381,10 +381,10 @@ impl Printable<TreePrinter> for ModuleType {
     Debug, From, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
 )]
 pub enum Spec {
-    Value(NodeId<ValueSpec>),
-    TypeBind(NodeId<TypeBind>),
-    OpaqueType(NodeId<OpaqueTypeSpec>),
-    Module(NodeId<ModuleSpec>),
+    Value(Id<ValueSpec>),
+    TypeBind(Id<TypeBind>),
+    OpaqueType(Id<OpaqueTypeSpec>),
+    Module(Id<ModuleSpec>),
 }
 
 impl Printable<TreePrinter> for Spec {
@@ -399,19 +399,19 @@ impl Printable<TreePrinter> for Spec {
 }
 
 impl Spec {
-    pub fn to_value(self) -> Option<NodeId<ValueSpec>> {
+    pub fn to_value(self) -> Option<Id<ValueSpec>> {
         as_variant!(self, Self::Value)
     }
 
-    pub fn to_type_bind(self) -> Option<NodeId<TypeBind>> {
+    pub fn to_type_bind(self) -> Option<Id<TypeBind>> {
         as_variant!(self, Self::TypeBind)
     }
 
-    pub fn to_opaque_type(self) -> Option<NodeId<OpaqueTypeSpec>> {
+    pub fn to_opaque_type(self) -> Option<Id<OpaqueTypeSpec>> {
         as_variant!(self, Self::OpaqueType)
     }
 
-    pub fn to_module(self) -> Option<NodeId<ModuleSpec>> {
+    pub fn to_module(self) -> Option<Id<ModuleSpec>> {
         as_variant!(self, Self::Module)
     }
 
@@ -435,8 +435,8 @@ impl Spec {
 // f : Num -> Num
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct ValueSpec {
-    pub name: NodeId<Name>,
-    pub ty: NodeId<Type>,
+    pub name: Id<Name>,
+    pub ty: Id<Type>,
 }
 
 impl Printable<TreePrinter> for ValueSpec {
@@ -474,8 +474,8 @@ impl Printable<TreePrinter> for ValueSpec {
 // module M : { ... }
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct ModuleSpec {
-    pub name: NodeId<Name>,
-    pub ty: NodeId<ModuleType>,
+    pub name: Id<Name>,
+    pub ty: Id<ModuleType>,
 }
 
 impl Printable<TreePrinter> for ModuleSpec {
@@ -513,8 +513,8 @@ impl Printable<TreePrinter> for ModuleSpec {
 // opaque type T : * -> *
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct OpaqueTypeSpec {
-    pub name: NodeId<Name>,
-    pub kind: NodeId<OpaqueTypeKind>,
+    pub name: Id<Name>,
+    pub kind: Id<OpaqueTypeKind>,
 }
 
 impl Printable<TreePrinter> for OpaqueTypeSpec {
@@ -639,7 +639,7 @@ mod inspector {
     use super::*;
     use crate::inspector::*;
 
-    impl<'t> NodeInspector<'t, NodeId<Module>> {
+    impl<'t> NodeInspector<'t, Id<Module>> {
         /// Assert the module has the specified number of binds
         pub fn has_binds(self, count: usize) -> Self {
             let binds_len = self.node.get(self.tree).0.len();
@@ -652,7 +652,7 @@ mod inspector {
         }
 
         /// Get an inspector for the bind at the given index
-        pub fn bind_at(self, index: usize) -> NodeInspector<'t, NodeId<Bind>> {
+        pub fn bind_at(self, index: usize) -> NodeInspector<'t, Id<Bind>> {
             let module = self.node.get(self.tree);
             assert!(
                 index < module.0.len(),
@@ -665,44 +665,44 @@ mod inspector {
         }
     }
 
-    impl<'t> NodeInspector<'t, NodeId<Bind>> {
+    impl<'t> NodeInspector<'t, Id<Bind>> {
         /// Check if this bind is a module bind and return an inspector for it
-        pub fn as_module(self) -> Option<NodeInspector<'t, NodeId<ModuleBind>>> {
+        pub fn as_module(self) -> Option<NodeInspector<'t, Id<ModuleBind>>> {
             let bind = self.node.get(self.tree);
             bind.to_module()
                 .map(|module_id| NodeInspector::new(module_id, self.tree))
         }
 
         /// Check if this bind is a value bind and return an inspector for it
-        pub fn as_value(self) -> Option<NodeInspector<'t, NodeId<ValueBind>>> {
+        pub fn as_value(self) -> Option<NodeInspector<'t, Id<ValueBind>>> {
             let bind = self.node.get(self.tree);
             bind.to_value()
                 .map(|value_id| NodeInspector::new(value_id, self.tree))
         }
 
         /// Check if this bind is a type bind and return an inspector for it
-        pub fn as_type(self) -> Option<NodeInspector<'t, NodeId<TypeBind>>> {
+        pub fn as_type(self) -> Option<NodeInspector<'t, Id<TypeBind>>> {
             let bind = self.node.get(self.tree);
             bind.to_type()
                 .map(|type_id| NodeInspector::new(type_id, self.tree))
         }
 
         /// Check if this bind is a module type bind and return an inspector for it
-        pub fn as_module_type(self) -> Option<NodeInspector<'t, NodeId<ModuleTypeBind>>> {
+        pub fn as_module_type(self) -> Option<NodeInspector<'t, Id<ModuleTypeBind>>> {
             let bind = self.node.get(self.tree);
             bind.to_module_type()
                 .map(|mt_id| NodeInspector::new(mt_id, self.tree))
         }
 
         /// Check if this bind is an opaque type bind and return an inspector for it
-        pub fn as_opaque_type(self) -> Option<NodeInspector<'t, NodeId<OpaqueTypeBind>>> {
+        pub fn as_opaque_type(self) -> Option<NodeInspector<'t, Id<OpaqueTypeBind>>> {
             let bind = self.node.get(self.tree);
             bind.to_opaque_type()
                 .map(|ot_id| NodeInspector::new(ot_id, self.tree))
         }
     }
 
-    impl<'t> NamedNode for NodeInspector<'t, NodeId<ModuleBind>> {
+    impl<'t> NamedNode for NodeInspector<'t, Id<ModuleBind>> {
         fn assert_name(self, expected: &str, node_type: &str) -> Self {
             let name = self.node.get(self.tree).name.get(self.tree);
             assert_eq!(
@@ -717,20 +717,20 @@ mod inspector {
         }
     }
 
-    impl<'t> NodeInspector<'t, NodeId<ModuleBind>> {
+    impl<'t> NodeInspector<'t, Id<ModuleBind>> {
         /// Assert the module bind has the specified name
         pub fn has_name(self, expected: &str) -> Self {
             self.assert_name(expected, "module")
         }
 
         /// Get an inspector for the module's implementation
-        pub fn value(self) -> NodeInspector<'t, NodeId<Module>> {
+        pub fn value(self) -> NodeInspector<'t, Id<Module>> {
             let module_bind = self.node.get(self.tree);
             NodeInspector::new(module_bind.value, self.tree)
         }
 
         /// Get an inspector for the module's interface if it has one
-        pub fn module_type(self) -> Option<NodeInspector<'t, NodeId<ModuleType>>> {
+        pub fn module_type(self) -> Option<NodeInspector<'t, Id<ModuleType>>> {
             let module_bind = self.node.get(self.tree);
             module_bind
                 .ty
@@ -738,7 +738,7 @@ mod inspector {
         }
     }
 
-    impl<'t> NamedNode for NodeInspector<'t, NodeId<OpaqueTypeBind>> {
+    impl<'t> NamedNode for NodeInspector<'t, Id<OpaqueTypeBind>> {
         fn assert_name(self, expected: &str, node_type: &str) -> Self {
             let name = self.node.get(self.tree).name.get(self.tree);
             assert_eq!(
@@ -753,20 +753,20 @@ mod inspector {
         }
     }
 
-    impl<'t> NodeInspector<'t, NodeId<OpaqueTypeBind>> {
+    impl<'t> NodeInspector<'t, Id<OpaqueTypeBind>> {
         /// Assert the opaque type bind has the specified name
         pub fn has_name(self, expected: &str) -> Self {
             self.assert_name(expected, "opaque type")
         }
 
         /// Get an inspector for the opaque type's implementation
-        pub fn type_node(self) -> NodeInspector<'t, NodeId<Type>> {
+        pub fn type_node(self) -> NodeInspector<'t, Id<Type>> {
             let opaque_type_bind = self.node.get(self.tree);
             NodeInspector::new(opaque_type_bind.ty, self.tree)
         }
     }
 
-    impl<'t> NamedNode for NodeInspector<'t, NodeId<ModuleTypeBind>> {
+    impl<'t> NamedNode for NodeInspector<'t, Id<ModuleTypeBind>> {
         fn assert_name(self, expected: &str, node_type: &str) -> Self {
             let name = self.node.get(self.tree).name.get(self.tree);
             assert_eq!(
@@ -781,20 +781,20 @@ mod inspector {
         }
     }
 
-    impl<'t> NodeInspector<'t, NodeId<ModuleTypeBind>> {
+    impl<'t> NodeInspector<'t, Id<ModuleTypeBind>> {
         /// Assert the module type bind has the specified name
         pub fn has_name(self, expected: &str) -> Self {
             self.assert_name(expected, "module type")
         }
 
         /// Get an inspector for the module type
-        pub fn type_node(self) -> NodeInspector<'t, NodeId<ModuleType>> {
+        pub fn type_node(self) -> NodeInspector<'t, Id<ModuleType>> {
             let module_type_bind = self.node.get(self.tree);
             NodeInspector::new(module_type_bind.ty, self.tree)
         }
     }
 
-    impl<'t> NodeInspector<'t, NodeId<ModuleType>> {
+    impl<'t> NodeInspector<'t, Id<ModuleType>> {
         /// Assert the module type has the specified number of specifications
         pub fn has_specs(self, count: usize) -> Self {
             let specs_len = self.node.get(self.tree).0.len();
@@ -807,7 +807,7 @@ mod inspector {
         }
 
         /// Get an inspector for the spec at the given index
-        pub fn spec_at(self, index: usize) -> NodeInspector<'t, NodeId<Spec>> {
+        pub fn spec_at(self, index: usize) -> NodeInspector<'t, Id<Spec>> {
             let module_type = self.node.get(self.tree);
             assert!(
                 index < module_type.0.len(),
@@ -820,37 +820,37 @@ mod inspector {
         }
     }
 
-    impl<'t> NodeInspector<'t, NodeId<Spec>> {
+    impl<'t> NodeInspector<'t, Id<Spec>> {
         /// Check if this spec is a value spec and return an inspector for it
-        pub fn as_value(self) -> Option<NodeInspector<'t, NodeId<ValueSpec>>> {
+        pub fn as_value(self) -> Option<NodeInspector<'t, Id<ValueSpec>>> {
             let spec = self.node.get(self.tree);
             spec.to_value()
                 .map(|value_id| NodeInspector::new(value_id, self.tree))
         }
 
         /// Check if this spec is a type bind and return an inspector for it
-        pub fn as_type_bind(self) -> Option<NodeInspector<'t, NodeId<TypeBind>>> {
+        pub fn as_type_bind(self) -> Option<NodeInspector<'t, Id<TypeBind>>> {
             let spec = self.node.get(self.tree);
             spec.to_type_bind()
                 .map(|type_id| NodeInspector::new(type_id, self.tree))
         }
 
         /// Check if this spec is a module spec and return an inspector for it
-        pub fn as_module(self) -> Option<NodeInspector<'t, NodeId<ModuleSpec>>> {
+        pub fn as_module(self) -> Option<NodeInspector<'t, Id<ModuleSpec>>> {
             let spec = self.node.get(self.tree);
             spec.to_module()
                 .map(|module_id| NodeInspector::new(module_id, self.tree))
         }
 
         /// Check if this spec is an opaque type spec and return an inspector for it
-        pub fn as_opaque_type(self) -> Option<NodeInspector<'t, NodeId<OpaqueTypeSpec>>> {
+        pub fn as_opaque_type(self) -> Option<NodeInspector<'t, Id<OpaqueTypeSpec>>> {
             let spec = self.node.get(self.tree);
             spec.to_opaque_type()
                 .map(|opaque_id| NodeInspector::new(opaque_id, self.tree))
         }
     }
 
-    impl<'t> NamedNode for NodeInspector<'t, NodeId<ValueSpec>> {
+    impl<'t> NamedNode for NodeInspector<'t, Id<ValueSpec>> {
         fn assert_name(self, expected: &str, node_type: &str) -> Self {
             let name = self.node.get(self.tree).name.get(self.tree);
             assert_eq!(
@@ -865,19 +865,19 @@ mod inspector {
         }
     }
 
-    impl<'t> NodeInspector<'t, NodeId<ValueSpec>> {
+    impl<'t> NodeInspector<'t, Id<ValueSpec>> {
         /// Assert the value spec has the specified name
         pub fn has_name(self, expected: &str) -> Self {
             self.assert_name(expected, "value spec")
         }
 
-        pub fn type_node(self) -> NodeInspector<'t, NodeId<Type>> {
+        pub fn type_node(self) -> NodeInspector<'t, Id<Type>> {
             let value_spec = self.node.get(self.tree);
             NodeInspector::new(value_spec.ty, self.tree)
         }
     }
 
-    impl<'t> NamedNode for NodeInspector<'t, NodeId<ValueBind>> {
+    impl<'t> NamedNode for NodeInspector<'t, Id<ValueBind>> {
         fn assert_name(self, expected: &str, node_type: &str) -> Self {
             let name = self.node.get(self.tree).name.get(self.tree);
             assert_eq!(
@@ -892,14 +892,14 @@ mod inspector {
         }
     }
 
-    impl<'t> NodeInspector<'t, NodeId<ValueBind>> {
+    impl<'t> NodeInspector<'t, Id<ValueBind>> {
         /// Assert the value bind has the specified name
         pub fn has_name(self, expected: &str) -> Self {
             self.assert_name(expected, "value")
         }
 
         /// Get an inspector for the value's type if it has one
-        pub fn type_node(self) -> Option<NodeInspector<'t, NodeId<Type>>> {
+        pub fn type_node(self) -> Option<NodeInspector<'t, Id<Type>>> {
             let value_bind = self.node.get(self.tree);
             value_bind
                 .ty
@@ -907,13 +907,13 @@ mod inspector {
         }
 
         /// Get an inspector for the value's expression
-        pub fn value(self) -> NodeInspector<'t, NodeId<Expr>> {
+        pub fn value(self) -> NodeInspector<'t, Id<Expr>> {
             let value_bind = self.node.get(self.tree);
             NodeInspector::new(value_bind.value, self.tree)
         }
     }
 
-    impl<'t> NamedNode for NodeInspector<'t, NodeId<TypeBind>> {
+    impl<'t> NamedNode for NodeInspector<'t, Id<TypeBind>> {
         fn assert_name(self, expected: &str, node_type: &str) -> Self {
             let name = self.node.get(self.tree).name.get(self.tree);
             assert_eq!(
@@ -928,20 +928,20 @@ mod inspector {
         }
     }
 
-    impl<'t> NodeInspector<'t, NodeId<TypeBind>> {
+    impl<'t> NodeInspector<'t, Id<TypeBind>> {
         /// Assert the type bind has the specified name
         pub fn has_name(self, expected: &str) -> Self {
             self.assert_name(expected, "type")
         }
 
         /// Get an inspector for the type definition
-        pub fn type_node(self) -> NodeInspector<'t, NodeId<Type>> {
+        pub fn type_node(self) -> NodeInspector<'t, Id<Type>> {
             let type_bind = self.node.get(self.tree);
             NodeInspector::new(type_bind.ty, self.tree)
         }
     }
 
-    impl<'t> NamedNode for NodeInspector<'t, NodeId<ModuleSpec>> {
+    impl<'t> NamedNode for NodeInspector<'t, Id<ModuleSpec>> {
         fn assert_name(self, expected: &str, node_type: &str) -> Self {
             let name = self.node.get(self.tree).name.get(self.tree);
             assert_eq!(
@@ -956,20 +956,20 @@ mod inspector {
         }
     }
 
-    impl<'t> NodeInspector<'t, NodeId<ModuleSpec>> {
+    impl<'t> NodeInspector<'t, Id<ModuleSpec>> {
         /// Assert the module spec has the specified name
         pub fn has_name(self, expected: &str) -> Self {
             self.assert_name(expected, "module spec")
         }
 
         /// Get an inspector for the module spec's type
-        pub fn module_type(self) -> NodeInspector<'t, NodeId<ModuleType>> {
+        pub fn module_type(self) -> NodeInspector<'t, Id<ModuleType>> {
             let module_spec = self.node.get(self.tree);
             NodeInspector::new(module_spec.ty, self.tree)
         }
     }
 
-    impl<'t> NamedNode for NodeInspector<'t, NodeId<OpaqueTypeSpec>> {
+    impl<'t> NamedNode for NodeInspector<'t, Id<OpaqueTypeSpec>> {
         fn assert_name(self, expected: &str, node_type: &str) -> Self {
             let name = self.node.get(self.tree).name.get(self.tree);
             assert_eq!(
@@ -984,20 +984,20 @@ mod inspector {
         }
     }
 
-    impl<'t> NodeInspector<'t, NodeId<OpaqueTypeSpec>> {
+    impl<'t> NodeInspector<'t, Id<OpaqueTypeSpec>> {
         /// Assert the opaque type spec has the specified name
         pub fn has_name(self, expected: &str) -> Self {
             self.assert_name(expected, "opaque type spec")
         }
 
         /// Get an inspector for the opaque type's kind
-        pub fn kind(self) -> NodeInspector<'t, NodeId<OpaqueTypeKind>> {
+        pub fn kind(self) -> NodeInspector<'t, Id<OpaqueTypeKind>> {
             let opaque_type_spec = self.node.get(self.tree);
             NodeInspector::new(opaque_type_spec.kind, self.tree)
         }
     }
 
-    impl<'t> NodeInspector<'t, NodeId<OpaqueTypeKind>> {
+    impl<'t> NodeInspector<'t, Id<OpaqueTypeKind>> {
         /// Assert the opaque type kind has the specified arity
         pub fn has_arity(self, expected: usize) -> Self {
             let arity = self.node.get(self.tree).arity;

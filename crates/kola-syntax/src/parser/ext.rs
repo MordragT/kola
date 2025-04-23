@@ -9,7 +9,7 @@ where
     I: ValueInput<'t, Token = Token<'t>, Span = Span>,
 {
     #[inline]
-    fn to_node(self) -> impl Parser<'t, I, NodeId<T>, Extra<'t>>
+    fn to_node(self) -> impl Parser<'t, I, Id<T>, Extra<'t>>
     where
         Node: From<T>,
         T: MetaCast<SyntaxPhase, Meta = Span>,
@@ -22,7 +22,7 @@ where
     }
 
     #[inline]
-    fn map_to_node<F, U>(self, f: F) -> impl Parser<'t, I, NodeId<U>, Extra<'t>>
+    fn map_to_node<F, U>(self, f: F) -> impl Parser<'t, I, Id<U>, Extra<'t>>
     where
         F: Fn(T) -> U,
         U: MetaCast<SyntaxPhase, Meta = Span>,
@@ -32,7 +32,7 @@ where
     }
 
     #[inline]
-    fn to_expr(self) -> impl Parser<'t, I, NodeId<node::Expr>, Extra<'t>>
+    fn to_expr(self) -> impl Parser<'t, I, Id<node::Expr>, Extra<'t>>
     where
         node::Expr: From<T>,
     {
@@ -40,7 +40,7 @@ where
     }
 
     #[inline]
-    fn to_pat(self) -> impl Parser<'t, I, NodeId<node::Pat>, Extra<'t>>
+    fn to_pat(self) -> impl Parser<'t, I, Id<node::Pat>, Extra<'t>>
     where
         node::Pat: From<T>,
     {
@@ -48,7 +48,7 @@ where
     }
 
     #[inline]
-    fn to_type_expr(self) -> impl Parser<'t, I, NodeId<node::TypeExpr>, Extra<'t>>
+    fn to_type_expr(self) -> impl Parser<'t, I, Id<node::TypeExpr>, Extra<'t>>
     where
         node::TypeExpr: From<T>,
     {
@@ -56,7 +56,7 @@ where
     }
 
     #[inline]
-    fn to_bind(self) -> impl Parser<'t, I, NodeId<node::Bind>, Extra<'t>>
+    fn to_bind(self) -> impl Parser<'t, I, Id<node::Bind>, Extra<'t>>
     where
         node::Bind: From<T>,
     {
@@ -64,7 +64,7 @@ where
     }
 
     #[inline]
-    fn to_spec(self) -> impl Parser<'t, I, NodeId<node::Spec>, Extra<'t>>
+    fn to_spec(self) -> impl Parser<'t, I, Id<node::Spec>, Extra<'t>>
     where
         node::Spec: From<T>,
     {

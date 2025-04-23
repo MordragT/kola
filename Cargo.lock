@@ -361,6 +361,7 @@ dependencies = [
  "owo-colors",
  "paste",
  "serde",
+ "stacker",
 ]
 
 [[package]]

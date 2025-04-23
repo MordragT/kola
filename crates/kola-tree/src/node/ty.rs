@@ -5,7 +5,7 @@ use owo_colors::OwoColorize;
 use serde::{Deserialize, Serialize};
 
 use super::{Name, Symbol};
-use crate::{id::NodeId, print::TreePrinter, tree::NodeContainer};
+use crate::{id::Id, print::TreePrinter, tree::TreeAccess};
 
 /*
 type Option = forall a . [ Some : a, None ]
@@ -41,10 +41,10 @@ impl Printable<TreePrinter> for TypeError {
 }
 
 #[derive(Debug, From, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
-pub struct TypePath(pub Vec<NodeId<Name>>);
+pub struct TypePath(pub Vec<Id<Name>>);
 
 impl TypePath {
-    pub fn get<'a>(&self, index: usize, tree: &'a impl NodeContainer) -> &'a Name {
+    pub fn get<'a>(&self, index: usize, tree: &'a impl TreeAccess) -> &'a Name {
         self.0[index].get(tree)
     }
 }
@@ -97,8 +97,8 @@ impl Printable<TreePrinter> for TypeVar {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct RecordFieldType {
-    pub name: NodeId<Name>,
-    pub ty: NodeId<TypeExpr>,
+    pub name: Id<Name>,
+    pub ty: Id<TypeExpr>,
 }
 
 impl Printable<TreePrinter> for RecordFieldType {
@@ -135,12 +135,12 @@ impl Printable<TreePrinter> for RecordFieldType {
 
 #[derive(Debug, From, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct RecordType {
-    pub fields: Vec<NodeId<RecordFieldType>>,
-    pub extension: Option<NodeId<TypeVar>>,
+    pub fields: Vec<Id<RecordFieldType>>,
+    pub extension: Option<Id<TypeVar>>,
 }
 
 impl RecordType {
-    pub fn get(&self, index: usize, tree: &impl NodeContainer) -> RecordFieldType {
+    pub fn get(&self, index: usize, tree: &impl TreeAccess) -> RecordFieldType {
         *self.fields[index].get(tree)
     }
 }
@@ -186,8 +186,8 @@ impl Printable<TreePrinter> for RecordType {
 // TODO better name it Tag ??
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct VariantCaseType {
-    pub name: NodeId<Name>,
-    pub ty: Option<NodeId<TypeExpr>>,
+    pub name: Id<Name>,
+    pub ty: Option<Id<TypeExpr>>,
 }
 
 impl Printable<TreePrinter> for VariantCaseType {
@@ -225,12 +225,12 @@ impl Printable<TreePrinter> for VariantCaseType {
 
 #[derive(Debug, From, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct VariantType {
-    pub cases: Vec<NodeId<VariantCaseType>>,
-    pub extension: Option<NodeId<TypeVar>>,
+    pub cases: Vec<Id<VariantCaseType>>,
+    pub extension: Option<Id<TypeVar>>,
 }
 
 impl VariantType {
-    pub fn get(&self, index: usize, tree: &impl NodeContainer) -> VariantCaseType {
+    pub fn get(&self, index: usize, tree: &impl TreeAccess) -> VariantCaseType {
         *self.cases[index].get(tree)
     }
 }
@@ -276,8 +276,8 @@ impl Printable<TreePrinter> for VariantType {
 // TODO this needs to be disambiguated with parentheses if a function should be one argument
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct FuncType {
-    pub input: NodeId<TypeExpr>,
-    pub output: NodeId<TypeExpr>,
+    pub input: Id<TypeExpr>,
+    pub output: Id<TypeExpr>,
 }
 
 impl Printable<TreePrinter> for FuncType {
@@ -314,8 +314,8 @@ impl Printable<TreePrinter> for FuncType {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct TypeApplication {
-    pub constructor: NodeId<TypeExpr>,
-    pub arg: NodeId<TypeExpr>,
+    pub constructor: Id<TypeExpr>,
+    pub arg: Id<TypeExpr>,
 }
 
 impl Printable<TreePrinter> for TypeApplication {
@@ -354,12 +354,12 @@ impl Printable<TreePrinter> for TypeApplication {
     Debug, From, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
 )]
 pub enum TypeExpr {
-    Error(NodeId<TypeError>),
-    Path(NodeId<TypePath>),
-    Record(NodeId<RecordType>),
-    Variant(NodeId<VariantType>),
-    Func(NodeId<FuncType>),
-    Application(NodeId<TypeApplication>),
+    Error(Id<TypeError>),
+    Path(Id<TypePath>),
+    Record(Id<RecordType>),
+    Variant(Id<VariantType>),
+    Func(Id<FuncType>),
+    Application(Id<TypeApplication>),
 }
 
 impl Printable<TreePrinter> for TypeExpr {
@@ -377,32 +377,32 @@ impl Printable<TreePrinter> for TypeExpr {
 
 impl TypeExpr {
     #[inline]
-    pub fn to_error(self) -> Option<NodeId<TypeError>> {
+    pub fn to_error(self) -> Option<Id<TypeError>> {
         as_variant!(self, Self::Error)
     }
 
     #[inline]
-    pub fn to_type_path(self) -> Option<NodeId<TypePath>> {
+    pub fn to_type_path(self) -> Option<Id<TypePath>> {
         as_variant!(self, Self::Path)
     }
 
     #[inline]
-    pub fn to_record_type(self) -> Option<NodeId<RecordType>> {
+    pub fn to_record_type(self) -> Option<Id<RecordType>> {
         as_variant!(self, Self::Record)
     }
 
     #[inline]
-    pub fn to_variant_type(self) -> Option<NodeId<VariantType>> {
+    pub fn to_variant_type(self) -> Option<Id<VariantType>> {
         as_variant!(self, Self::Variant)
     }
 
     #[inline]
-    pub fn to_func_type(self) -> Option<NodeId<FuncType>> {
+    pub fn to_func_type(self) -> Option<Id<FuncType>> {
         as_variant!(self, Self::Func)
     }
 
     #[inline]
-    pub fn to_type_application(self) -> Option<NodeId<TypeApplication>> {
+    pub fn to_type_application(self) -> Option<Id<TypeApplication>> {
         as_variant!(self, Self::Application)
     }
 
@@ -439,8 +439,8 @@ impl TypeExpr {
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct Type {
-    pub vars: Vec<NodeId<Name>>,
-    pub ty: NodeId<TypeExpr>,
+    pub vars: Vec<Id<Name>>,
+    pub ty: Id<TypeExpr>,
 }
 
 impl Printable<TreePrinter> for Type {
@@ -494,9 +494,9 @@ mod inspector {
     use super::*;
     use crate::inspector::*;
 
-    impl<'t> NodeInspector<'t, NodeId<Type>> {
+    impl<'t> NodeInspector<'t, Id<Type>> {
         /// Check if this type is a type path and return an inspector for it
-        pub fn as_type_path(self) -> Option<NodeInspector<'t, NodeId<TypePath>>> {
+        pub fn as_type_path(self) -> Option<NodeInspector<'t, Id<TypePath>>> {
             let ty = self.node.get(self.tree);
             ty.ty
                 .get(self.tree)
@@ -505,7 +505,7 @@ mod inspector {
         }
 
         /// Check if this type is a function type and return an inspector for it
-        pub fn as_function(self) -> Option<NodeInspector<'t, NodeId<FuncType>>> {
+        pub fn as_function(self) -> Option<NodeInspector<'t, Id<FuncType>>> {
             let ty = self.node.get(self.tree);
             ty.ty
                 .get(self.tree)
@@ -514,7 +514,7 @@ mod inspector {
         }
 
         /// Check if this type is a record type and return an inspector for it
-        pub fn as_record(self) -> Option<NodeInspector<'t, NodeId<RecordType>>> {
+        pub fn as_record(self) -> Option<NodeInspector<'t, Id<RecordType>>> {
             let ty = self.node.get(self.tree);
             ty.ty
                 .get(self.tree)
@@ -523,7 +523,7 @@ mod inspector {
         }
 
         /// Check if this type is a variant type and return an inspector for it
-        pub fn as_variant(self) -> Option<NodeInspector<'t, NodeId<VariantType>>> {
+        pub fn as_variant(self) -> Option<NodeInspector<'t, Id<VariantType>>> {
             let ty = self.node.get(self.tree);
             ty.ty
                 .get(self.tree)
@@ -532,7 +532,7 @@ mod inspector {
         }
 
         /// Check if this type is a type application and return an inspector for it
-        pub fn as_type_application(self) -> Option<NodeInspector<'t, NodeId<TypeApplication>>> {
+        pub fn as_type_application(self) -> Option<NodeInspector<'t, Id<TypeApplication>>> {
             let ty = self.node.get(self.tree);
             ty.ty
                 .get(self.tree)
@@ -552,7 +552,7 @@ mod inspector {
         }
 
         /// Get an inspector for the type variable at the given index
-        pub fn type_var_at(self, index: usize) -> NodeInspector<'t, NodeId<Name>> {
+        pub fn type_var_at(self, index: usize) -> NodeInspector<'t, Id<Name>> {
             let ty = self.node.get(self.tree);
             assert!(
                 index < ty.vars.len(),
@@ -565,13 +565,13 @@ mod inspector {
         }
 
         /// Get an inspector for the type expression
-        pub fn type_expr(self) -> NodeInspector<'t, NodeId<TypeExpr>> {
+        pub fn type_expr(self) -> NodeInspector<'t, Id<TypeExpr>> {
             let ty = self.node.get(self.tree);
             NodeInspector::new(ty.ty, self.tree)
         }
     }
 
-    impl<'t> NodeInspector<'t, NodeId<TypePath>> {
+    impl<'t> NodeInspector<'t, Id<TypePath>> {
         /// Assert the type path has the specified number of segments
         pub fn has_segments(self, count: usize) -> Self {
             let segments_len = self.node.get(self.tree).0.len();
@@ -604,7 +604,7 @@ mod inspector {
         }
     }
 
-    impl<'t> NodeInspector<'t, NodeId<TypeVar>> {
+    impl<'t> NodeInspector<'t, Id<TypeVar>> {
         /// Assert the type variable has the specified name
         pub fn has_name(self, expected: &str) -> Self {
             let type_var = self.node.get(self.tree);
@@ -619,21 +619,21 @@ mod inspector {
         }
     }
 
-    impl<'t> NodeInspector<'t, NodeId<FuncType>> {
+    impl<'t> NodeInspector<'t, Id<FuncType>> {
         /// Get an inspector for the function's parameter type
-        pub fn input(self) -> NodeInspector<'t, NodeId<TypeExpr>> {
+        pub fn input(self) -> NodeInspector<'t, Id<TypeExpr>> {
             let function_type = self.node.get(self.tree);
             NodeInspector::new(function_type.input, self.tree)
         }
 
         /// Get an inspector for the function's return type
-        pub fn output(self) -> NodeInspector<'t, NodeId<TypeExpr>> {
+        pub fn output(self) -> NodeInspector<'t, Id<TypeExpr>> {
             let function_type = self.node.get(self.tree);
             NodeInspector::new(function_type.output, self.tree)
         }
     }
 
-    impl<'t> NodeInspector<'t, NodeId<RecordType>> {
+    impl<'t> NodeInspector<'t, Id<RecordType>> {
         /// Assert the record type has the specified number of fields
         pub fn has_fields(self, count: usize) -> Self {
             let fields_len = self.node.get(self.tree).fields.len();
@@ -646,7 +646,7 @@ mod inspector {
         }
 
         /// Get an inspector for the record field at the given index
-        pub fn field_at(self, index: usize) -> NodeInspector<'t, NodeId<RecordFieldType>> {
+        pub fn field_at(self, index: usize) -> NodeInspector<'t, Id<RecordFieldType>> {
             let record_type = self.node.get(self.tree);
             assert!(
                 index < record_type.fields.len(),
@@ -659,7 +659,7 @@ mod inspector {
         }
 
         /// Get an inspector for the record type extension if it has one
-        pub fn extension(self) -> Option<NodeInspector<'t, NodeId<TypeVar>>> {
+        pub fn extension(self) -> Option<NodeInspector<'t, Id<TypeVar>>> {
             let record_type = self.node.get(self.tree);
             record_type
                 .extension
@@ -667,7 +667,7 @@ mod inspector {
         }
     }
 
-    impl<'t> NamedNode for NodeInspector<'t, NodeId<RecordFieldType>> {
+    impl<'t> NamedNode for NodeInspector<'t, Id<RecordFieldType>> {
         fn assert_name(self, expected: &str, node_type: &str) -> Self {
             let name = self.node.get(self.tree).name.get(self.tree);
             assert_eq!(
@@ -682,19 +682,19 @@ mod inspector {
         }
     }
 
-    impl<'t> NodeInspector<'t, NodeId<RecordFieldType>> {
+    impl<'t> NodeInspector<'t, Id<RecordFieldType>> {
         /// Assert the record field has the specified name
         pub fn has_field_name(self, expected: &str) -> Self {
             self.assert_name(expected, "field")
         }
 
-        pub fn type_expr(self) -> NodeInspector<'t, NodeId<TypeExpr>> {
+        pub fn type_expr(self) -> NodeInspector<'t, Id<TypeExpr>> {
             let field = self.node.get(self.tree);
             NodeInspector::new(field.ty, self.tree)
         }
     }
 
-    impl<'t> NodeInspector<'t, NodeId<VariantType>> {
+    impl<'t> NodeInspector<'t, Id<VariantType>> {
         /// Assert the variant type has the specified number of cases
         pub fn has_cases(self, count: usize) -> Self {
             let cases_len = self.node.get(self.tree).cases.len();
@@ -707,7 +707,7 @@ mod inspector {
         }
 
         /// Get an inspector for the variant case at the given index
-        pub fn case_at(self, index: usize) -> NodeInspector<'t, NodeId<VariantCaseType>> {
+        pub fn case_at(self, index: usize) -> NodeInspector<'t, Id<VariantCaseType>> {
             let variant_type = self.node.get(self.tree);
             assert!(
                 index < variant_type.cases.len(),
@@ -720,7 +720,7 @@ mod inspector {
         }
 
         /// Check if this variant type has an extension and return an inspector for it
-        pub fn extension(self) -> Option<NodeInspector<'t, NodeId<TypeVar>>> {
+        pub fn extension(self) -> Option<NodeInspector<'t, Id<TypeVar>>> {
             let variant_type = self.node.get(self.tree);
             variant_type
                 .extension
@@ -728,7 +728,7 @@ mod inspector {
         }
     }
 
-    impl<'t> NamedNode for NodeInspector<'t, NodeId<VariantCaseType>> {
+    impl<'t> NamedNode for NodeInspector<'t, Id<VariantCaseType>> {
         fn assert_name(self, expected: &str, node_type: &str) -> Self {
             let name = self.node.get(self.tree).name.get(self.tree);
             assert_eq!(
@@ -743,22 +743,22 @@ mod inspector {
         }
     }
 
-    impl<'t> NodeInspector<'t, NodeId<VariantCaseType>> {
+    impl<'t> NodeInspector<'t, Id<VariantCaseType>> {
         /// Assert the variant case has the specified name
         pub fn has_case_name(self, expected: &str) -> Self {
             self.assert_name(expected, "case")
         }
 
         /// Get an inspector for the case's type if it has one
-        pub fn type_expr(self) -> Option<NodeInspector<'t, NodeId<TypeExpr>>> {
+        pub fn type_expr(self) -> Option<NodeInspector<'t, Id<TypeExpr>>> {
             let case = self.node.get(self.tree);
             case.ty.map(|ty_id| NodeInspector::new(ty_id, self.tree))
         }
     }
 
-    impl<'t> NodeInspector<'t, NodeId<TypeExpr>> {
+    impl<'t> NodeInspector<'t, Id<TypeExpr>> {
         /// Check if this type expression is an error type
-        pub fn as_error(self) -> Option<NodeInspector<'t, NodeId<TypeError>>> {
+        pub fn as_error(self) -> Option<NodeInspector<'t, Id<TypeError>>> {
             let type_expr = self.node.get(self.tree);
             type_expr
                 .to_error()
@@ -766,7 +766,7 @@ mod inspector {
         }
 
         /// Check if this type expression is a type path
-        pub fn as_path(self) -> Option<NodeInspector<'t, NodeId<TypePath>>> {
+        pub fn as_path(self) -> Option<NodeInspector<'t, Id<TypePath>>> {
             let type_expr = self.node.get(self.tree);
             type_expr
                 .to_type_path()
@@ -774,7 +774,7 @@ mod inspector {
         }
 
         /// Check if this type expression is a record type
-        pub fn as_record(self) -> Option<NodeInspector<'t, NodeId<RecordType>>> {
+        pub fn as_record(self) -> Option<NodeInspector<'t, Id<RecordType>>> {
             let type_expr = self.node.get(self.tree);
             type_expr
                 .to_record_type()
@@ -782,7 +782,7 @@ mod inspector {
         }
 
         /// Check if this type expression is a variant type
-        pub fn as_variant(self) -> Option<NodeInspector<'t, NodeId<VariantType>>> {
+        pub fn as_variant(self) -> Option<NodeInspector<'t, Id<VariantType>>> {
             let type_expr = self.node.get(self.tree);
             type_expr
                 .to_variant_type()
@@ -790,7 +790,7 @@ mod inspector {
         }
 
         /// Check if this type expression is a function type
-        pub fn as_function(self) -> Option<NodeInspector<'t, NodeId<FuncType>>> {
+        pub fn as_function(self) -> Option<NodeInspector<'t, Id<FuncType>>> {
             let type_expr = self.node.get(self.tree);
             type_expr
                 .to_func_type()
@@ -798,7 +798,7 @@ mod inspector {
         }
 
         /// Check if this type expression is a type application
-        pub fn as_application(self) -> Option<NodeInspector<'t, NodeId<TypeApplication>>> {
+        pub fn as_application(self) -> Option<NodeInspector<'t, Id<TypeApplication>>> {
             let type_expr = self.node.get(self.tree);
             type_expr
                 .to_type_application()
@@ -806,15 +806,15 @@ mod inspector {
         }
     }
 
-    impl<'t> NodeInspector<'t, NodeId<TypeApplication>> {
+    impl<'t> NodeInspector<'t, Id<TypeApplication>> {
         /// Get an inspector for the type constructor
-        pub fn constructor(self) -> NodeInspector<'t, NodeId<TypeExpr>> {
+        pub fn constructor(self) -> NodeInspector<'t, Id<TypeExpr>> {
             let type_app = self.node.get(self.tree);
             NodeInspector::new(type_app.constructor, self.tree)
         }
 
         /// Get an inspector for the type argument
-        pub fn arg(self) -> NodeInspector<'t, NodeId<TypeExpr>> {
+        pub fn arg(self) -> NodeInspector<'t, Id<TypeExpr>> {
             let type_app = self.node.get(self.tree);
             NodeInspector::new(type_app.arg, self.tree)
         }

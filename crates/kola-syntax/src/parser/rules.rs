@@ -58,7 +58,7 @@ CallExpr := '(' Callable Expr ')'
 //         .boxed()
 // }
 
-pub fn module_parser<'t, I>() -> impl Parser<'t, I, NodeId<node::Module>, Extra<'t>> + Clone
+pub fn module_parser<'t, I>() -> impl Parser<'t, I, Id<node::Module>, Extra<'t>> + Clone
 where
     I: ValueInput<'t, Token = Token<'t>, Span = Span>,
 {
@@ -103,7 +103,7 @@ where
     })
 }
 
-pub fn module_type_parser<'t, I>() -> impl Parser<'t, I, NodeId<node::ModuleType>, Extra<'t>> + Clone
+pub fn module_type_parser<'t, I>() -> impl Parser<'t, I, Id<node::ModuleType>, Extra<'t>> + Clone
 where
     I: ValueInput<'t, Token = Token<'t>, Span = Span>,
 {
@@ -136,7 +136,7 @@ where
     })
 }
 
-pub fn name_parser<'t, I>() -> impl Parser<'t, I, NodeId<node::Name>, Extra<'t>> + Clone
+pub fn name_parser<'t, I>() -> impl Parser<'t, I, Id<node::Name>, Extra<'t>> + Clone
 where
     I: ValueInput<'t, Token = Token<'t>, Span = Span>,
 {
@@ -294,7 +294,7 @@ data scheme Machine : { ip : Str, cmd : Str }
 /// variant_pat    ::= '<' (variant_case_pat (',' variant_case_pat)*)? '>'
 /// variant_case_pat ::= name (':' pat)?
 /// ```
-pub fn pat_parser<'t, I>() -> impl Parser<'t, I, NodeId<node::Pat>, Extra<'t>> + Clone
+pub fn pat_parser<'t, I>() -> impl Parser<'t, I, Id<node::Pat>, Extra<'t>> + Clone
 where
     I: ValueInput<'t, Token = Token<'t>, Span = Span>,
 {
@@ -339,7 +339,7 @@ where
     .boxed()
 }
 
-pub fn expr_parser<'t, I>() -> impl Parser<'t, I, NodeId<node::Expr>, Extra<'t>> + Clone
+pub fn expr_parser<'t, I>() -> impl Parser<'t, I, Id<node::Expr>, Extra<'t>> + Clone
 where
     I: ValueInput<'t, Token = Token<'t>, Span = Span>,
 {
@@ -395,12 +395,12 @@ where
             .boxed();
 
         enum RecordOp {
-            Extend(NodeId<node::RecordFieldPath>, NodeId<node::Expr>),
-            Restrict(NodeId<node::RecordFieldPath>),
+            Extend(Id<node::RecordFieldPath>, Id<node::Expr>),
+            Restrict(Id<node::RecordFieldPath>),
             Update(
-                NodeId<node::RecordFieldPath>,
-                NodeId<node::RecordUpdateOp>,
-                NodeId<node::Expr>,
+                Id<node::RecordFieldPath>,
+                Id<node::RecordUpdateOp>,
+                Id<node::Expr>,
             ),
         }
 
@@ -692,7 +692,7 @@ where
 ///
 /// type_path       ::= name ('.' name)*  // Path to a type (like Num or std.List)
 /// ```
-pub fn type_expr_parser<'t, I>() -> impl Parser<'t, I, NodeId<node::TypeExpr>, Extra<'t>> + Clone
+pub fn type_expr_parser<'t, I>() -> impl Parser<'t, I, Id<node::TypeExpr>, Extra<'t>> + Clone
 where
     I: ValueInput<'t, Token = Token<'t>, Span = Span>,
 {
@@ -793,7 +793,7 @@ where
 /// type      ::= 'forall' name+ '.' type_expression
 ///             | type_expression
 /// ```
-pub fn type_parser<'t, I>() -> impl Parser<'t, I, NodeId<node::Type>, Extra<'t>> + Clone
+pub fn type_parser<'t, I>() -> impl Parser<'t, I, Id<node::Type>, Extra<'t>> + Clone
 where
     I: ValueInput<'t, Token = Token<'t>, Span = Span>,
 {
@@ -817,7 +817,7 @@ where
 /// ```bnf
 /// type_bind ::= 'type' name '=' type
 /// ```
-pub fn type_bind_parser<'t, I>() -> impl Parser<'t, I, NodeId<node::TypeBind>, Extra<'t>> + Clone
+pub fn type_bind_parser<'t, I>() -> impl Parser<'t, I, Id<node::TypeBind>, Extra<'t>> + Clone
 where
     I: ValueInput<'t, Token = Token<'t>, Span = Span>,
 {
@@ -830,13 +830,13 @@ where
 }
 
 pub fn nested_parser<'t, I, T, U>(
-    parser: impl Parser<'t, I, NodeId<T>, Extra<'t>> + 't,
+    parser: impl Parser<'t, I, Id<T>, Extra<'t>> + 't,
     delim: Delim,
     fallback: impl Fn(Span) -> U + Clone + 't,
-) -> impl Parser<'t, I, NodeId<T>, Extra<'t>> + Clone
+) -> impl Parser<'t, I, Id<T>, Extra<'t>> + Clone
 where
     Node: From<T> + From<U>,
-    T: From<NodeId<U>> + MetaCast<SyntaxPhase, Meta = Span> + 't,
+    T: From<Id<U>> + MetaCast<SyntaxPhase, Meta = Span> + 't,
     U: MetaCast<SyntaxPhase, Meta = Span> + 't,
     I: ValueInput<'t, Token = Token<'t>, Span = Span>,
 {
@@ -853,12 +853,12 @@ where
 pub fn nested_in_parser<'t, I, T, U>(
     open: OpenT<'t>,
     close: CloseT<'t>,
-    parser: impl Parser<'t, I, NodeId<T>, Extra<'t>> + 't,
+    parser: impl Parser<'t, I, Id<T>, Extra<'t>> + 't,
     fallback: impl Fn(Span) -> U + Clone + 't,
-) -> impl Parser<'t, I, NodeId<T>, Extra<'t>> + Clone
+) -> impl Parser<'t, I, Id<T>, Extra<'t>> + Clone
 where
     Node: From<T> + From<U>,
-    T: From<NodeId<U>> + MetaCast<SyntaxPhase, Meta = Span> + 't,
+    T: From<Id<U>> + MetaCast<SyntaxPhase, Meta = Span> + 't,
     U: MetaCast<SyntaxPhase, Meta = Span> + 't,
     I: ValueInput<'t, Token = Token<'t>, Span = Span>,
 {

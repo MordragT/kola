@@ -1,6 +1,6 @@
 use std::{fmt::Debug, marker::PhantomData, ops::Deref, rc::Rc};
 
-use crate::{id::NodeId, node};
+use crate::{id::Id, node};
 
 #[derive(Debug, Clone)]
 pub struct Metadata<P, C = MetaVec<P>>
@@ -27,11 +27,11 @@ where
 pub type MetaVec<P> = Vec<Meta<P>>;
 
 pub trait MetaContainer<P: Phase>: Sized {
-    fn get<T>(&self, id: NodeId<T>) -> &Meta<P>;
+    fn get<T>(&self, id: Id<T>) -> &Meta<P>;
 
-    fn get_mut<T>(&mut self, id: NodeId<T>) -> &mut Meta<P>;
+    fn get_mut<T>(&mut self, id: Id<T>) -> &mut Meta<P>;
 
-    fn meta<T>(&self, id: NodeId<T>) -> &T::Meta
+    fn meta<T>(&self, id: Id<T>) -> &T::Meta
     where
         T: MetaCast<P>,
     {
@@ -39,7 +39,7 @@ pub trait MetaContainer<P: Phase>: Sized {
         T::try_downcast_ref(meta).unwrap()
     }
 
-    fn meta_mut<T>(&mut self, id: NodeId<T>) -> &mut T::Meta
+    fn meta_mut<T>(&mut self, id: Id<T>) -> &mut T::Meta
     where
         T: MetaCast<P>,
     {
@@ -47,7 +47,7 @@ pub trait MetaContainer<P: Phase>: Sized {
         T::try_downcast_mut(meta).unwrap()
     }
 
-    fn update_meta<T>(&mut self, id: NodeId<T>, meta: T::Meta) -> T::Meta
+    fn update_meta<T>(&mut self, id: Id<T>, meta: T::Meta) -> T::Meta
     where
         T: MetaCast<P>,
     {
@@ -64,11 +64,11 @@ pub trait MetaContainer<P: Phase>: Sized {
 }
 
 impl<P: Phase> MetaContainer<P> for MetaVec<P> {
-    fn get<T>(&self, id: NodeId<T>) -> &Meta<P> {
+    fn get<T>(&self, id: Id<T>) -> &Meta<P> {
         &self[id.as_usize()]
     }
 
-    fn get_mut<T>(&mut self, id: NodeId<T>) -> &mut Meta<P> {
+    fn get_mut<T>(&mut self, id: Id<T>) -> &mut Meta<P> {
         &mut self[id.as_usize()]
     }
 }

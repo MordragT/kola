@@ -17,7 +17,7 @@ impl StateRepr {
         Self::default()
     }
 
-    pub fn insert<T>(&mut self, node: T, meta: Span) -> NodeId<T>
+    pub fn insert<T>(&mut self, node: T, meta: Span) -> Id<T>
     where
         Node: From<T>,
         T: MetaCast<SyntaxPhase, Meta = Span>,
@@ -28,11 +28,11 @@ impl StateRepr {
         id
     }
 
-    pub fn insert_as<U, T>(&mut self, node: T, meta: Span) -> NodeId<U>
+    pub fn insert_as<U, T>(&mut self, node: T, meta: Span) -> Id<U>
     where
         Node: From<T> + From<U>,
         T: MetaCast<SyntaxPhase, Meta = Span>,
-        U: From<NodeId<T>> + MetaCast<SyntaxPhase, Meta = Span>,
+        U: From<Id<T>> + MetaCast<SyntaxPhase, Meta = Span>,
     {
         let id = self.insert(node, meta.clone());
         let u = U::from(id);

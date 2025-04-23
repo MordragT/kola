@@ -3,28 +3,43 @@ use std::ops::ControlFlow;
 pub trait TypeVisitor: Sized {
     type BreakValue;
 
-    fn visit_builtin(&mut self, builtin: &super::BuiltinType) -> ControlFlow<Self::BreakValue> {
-        walk_builtin(self, builtin)
+    fn visit_builtin(&mut self, _builtin: &super::BuiltinType) -> ControlFlow<Self::BreakValue> {
+        ControlFlow::Continue(())
     }
 
     fn visit_func(&mut self, func: &super::FuncType) -> ControlFlow<Self::BreakValue> {
-        walk_func(self, func)
+        self.visit_mono(&func.input)?;
+        self.visit_mono(&func.output)?;
+        ControlFlow::Continue(())
     }
 
     fn visit_property(&mut self, property: &super::Property) -> ControlFlow<Self::BreakValue> {
-        walk_property(self, property)
+        self.visit_mono(&property.v)?;
+        ControlFlow::Continue(())
     }
 
     fn visit_mono(&mut self, mono: &super::MonoType) -> ControlFlow<Self::BreakValue> {
-        walk_mono(self, mono)
+        match mono {
+            super::MonoType::Builtin(b) => self.visit_builtin(b),
+            super::MonoType::Func(f) => self.visit_func(f),
+            super::MonoType::Row(r) => self.visit_record(r),
+            super::MonoType::Var(v) => self.visit_var(v),
+        }
     }
 
     fn visit_record(&mut self, record: &super::RowType) -> ControlFlow<Self::BreakValue> {
-        walk_record(self, record)
+        match record {
+            super::RowType::Empty => ControlFlow::Continue(()),
+            super::RowType::Extension { head, tail } => {
+                self.visit_property(head)?;
+                self.visit_mono(tail)?;
+                ControlFlow::Continue(())
+            }
+        }
     }
 
     fn visit_var(&mut self, var: &super::TypeVar) -> ControlFlow<Self::BreakValue> {
-        walk_var(self, var)
+        ControlFlow::Continue(())
     }
 }
 
@@ -33,32 +48,47 @@ pub trait TypeVisitorMut: Sized {
 
     fn visit_builtin_mut(
         &mut self,
-        builtin: &mut super::BuiltinType,
+        _builtin: &mut super::BuiltinType,
     ) -> ControlFlow<Self::BreakValue> {
-        walk_builtin_mut(self, builtin)
+        ControlFlow::Continue(())
     }
 
     fn visit_func_mut(&mut self, func: &mut super::FuncType) -> ControlFlow<Self::BreakValue> {
-        walk_func_mut(self, func)
+        self.visit_mono_mut(&mut func.input)?;
+        self.visit_mono_mut(&mut func.output)?;
+        ControlFlow::Continue(())
     }
 
     fn visit_property_mut(
         &mut self,
         property: &mut super::Property,
     ) -> ControlFlow<Self::BreakValue> {
-        walk_property_mut(self, property)
+        self.visit_mono_mut(&mut property.v)?;
+        ControlFlow::Continue(())
     }
 
     fn visit_mono_mut(&mut self, mono: &mut super::MonoType) -> ControlFlow<Self::BreakValue> {
-        walk_mono_mut(self, mono)
+        match mono {
+            super::MonoType::Builtin(b) => self.visit_builtin_mut(b),
+            super::MonoType::Func(f) => self.visit_func_mut(f),
+            super::MonoType::Row(r) => self.visit_record_mut(r),
+            super::MonoType::Var(v) => self.visit_var_mut(v),
+        }
     }
 
     fn visit_record_mut(&mut self, record: &mut super::RowType) -> ControlFlow<Self::BreakValue> {
-        walk_record_mut(self, record)
+        match record {
+            super::RowType::Empty => ControlFlow::Continue(()),
+            super::RowType::Extension { head, tail } => {
+                self.visit_property_mut(head)?;
+                self.visit_mono_mut(tail)?;
+                ControlFlow::Continue(())
+            }
+        }
     }
 
-    fn visit_var_mut(&mut self, var: &mut super::TypeVar) -> ControlFlow<Self::BreakValue> {
-        walk_var_mut(self, var)
+    fn visit_var_mut(&mut self, _var: &mut super::TypeVar) -> ControlFlow<Self::BreakValue> {
+        ControlFlow::Continue(())
     }
 }
 
@@ -70,8 +100,6 @@ pub trait TypeVisitable {
     where
         V: TypeVisitorMut;
 }
-
-// Builtin Type
 
 impl TypeVisitable for super::BuiltinType {
     fn visit_type_by<V>(&self, visitor: &mut V) -> ControlFlow<V::BreakValue>
@@ -89,28 +117,6 @@ impl TypeVisitable for super::BuiltinType {
     }
 }
 
-pub fn walk_builtin<V>(
-    _visitor: &mut V,
-    _builtin: &super::BuiltinType,
-) -> ControlFlow<V::BreakValue>
-where
-    V: TypeVisitor,
-{
-    ControlFlow::Continue(())
-}
-
-pub fn walk_builtin_mut<V>(
-    _visitor: &mut V,
-    _builtin: &mut super::BuiltinType,
-) -> ControlFlow<V::BreakValue>
-where
-    V: TypeVisitorMut,
-{
-    ControlFlow::Continue(())
-}
-
-// Func Type
-
 impl TypeVisitable for super::FuncType {
     fn visit_type_by<V>(&self, visitor: &mut V) -> ControlFlow<V::BreakValue>
     where
@@ -126,26 +132,6 @@ impl TypeVisitable for super::FuncType {
         visitor.visit_func_mut(self)
     }
 }
-
-pub fn walk_func<V>(visitor: &mut V, func: &super::FuncType) -> ControlFlow<V::BreakValue>
-where
-    V: TypeVisitor,
-{
-    visitor.visit_mono(&func.input)?;
-    visitor.visit_mono(&func.output)?;
-    ControlFlow::Continue(())
-}
-
-pub fn walk_func_mut<V>(visitor: &mut V, func: &mut super::FuncType) -> ControlFlow<V::BreakValue>
-where
-    V: TypeVisitorMut,
-{
-    visitor.visit_mono_mut(&mut func.input)?;
-    visitor.visit_mono_mut(&mut func.output)?;
-    ControlFlow::Continue(())
-}
-
-// Property Type
 
 impl TypeVisitable for super::Property {
     fn visit_type_by<V>(&self, visitor: &mut V) -> ControlFlow<V::BreakValue>
@@ -163,27 +149,6 @@ impl TypeVisitable for super::Property {
     }
 }
 
-pub fn walk_property<V>(visitor: &mut V, property: &super::Property) -> ControlFlow<V::BreakValue>
-where
-    V: TypeVisitor,
-{
-    visitor.visit_mono(&property.v)?;
-    ControlFlow::Continue(())
-}
-
-pub fn walk_property_mut<V>(
-    visitor: &mut V,
-    property: &mut super::Property,
-) -> ControlFlow<V::BreakValue>
-where
-    V: TypeVisitorMut,
-{
-    visitor.visit_mono_mut(&mut property.v)?;
-    ControlFlow::Continue(())
-}
-
-// Mono Type
-
 impl TypeVisitable for super::MonoType {
     fn visit_type_by<V>(&self, visitor: &mut V) -> ControlFlow<V::BreakValue>
     where
@@ -199,32 +164,6 @@ impl TypeVisitable for super::MonoType {
         visitor.visit_mono_mut(self)
     }
 }
-
-pub fn walk_mono<V>(visitor: &mut V, mono: &super::MonoType) -> ControlFlow<V::BreakValue>
-where
-    V: TypeVisitor,
-{
-    match mono {
-        super::MonoType::Builtin(b) => visitor.visit_builtin(b),
-        super::MonoType::Func(f) => visitor.visit_func(f),
-        super::MonoType::Row(r) => visitor.visit_record(r),
-        super::MonoType::Var(v) => visitor.visit_var(v),
-    }
-}
-
-pub fn walk_mono_mut<V>(visitor: &mut V, mono: &mut super::MonoType) -> ControlFlow<V::BreakValue>
-where
-    V: TypeVisitorMut,
-{
-    match mono {
-        super::MonoType::Builtin(b) => visitor.visit_builtin_mut(b),
-        super::MonoType::Func(f) => visitor.visit_func_mut(f),
-        super::MonoType::Row(r) => visitor.visit_record_mut(r),
-        super::MonoType::Var(v) => visitor.visit_var_mut(v),
-    }
-}
-
-// Record Type
 
 impl TypeVisitable for super::RowType {
     fn visit_type_by<V>(&self, visitor: &mut V) -> ControlFlow<V::BreakValue>
@@ -242,39 +181,6 @@ impl TypeVisitable for super::RowType {
     }
 }
 
-pub fn walk_record<V>(visitor: &mut V, record: &super::RowType) -> ControlFlow<V::BreakValue>
-where
-    V: TypeVisitor,
-{
-    match record {
-        super::RowType::Empty => ControlFlow::Continue(()),
-        super::RowType::Extension { head, tail } => {
-            visitor.visit_property(head)?;
-            visitor.visit_mono(tail)?;
-            ControlFlow::Continue(())
-        }
-    }
-}
-
-pub fn walk_record_mut<V>(
-    visitor: &mut V,
-    record: &mut super::RowType,
-) -> ControlFlow<V::BreakValue>
-where
-    V: TypeVisitorMut,
-{
-    match record {
-        super::RowType::Empty => ControlFlow::Continue(()),
-        super::RowType::Extension { head, tail } => {
-            visitor.visit_property_mut(head)?;
-            visitor.visit_mono_mut(tail)?;
-            ControlFlow::Continue(())
-        }
-    }
-}
-
-// TypeVar
-
 impl TypeVisitable for super::TypeVar {
     fn visit_type_by<V>(&self, visitor: &mut V) -> ControlFlow<V::BreakValue>
     where
@@ -289,18 +195,4 @@ impl TypeVisitable for super::TypeVar {
     {
         visitor.visit_var_mut(self)
     }
-}
-
-pub fn walk_var<V>(_visitor: &mut V, _var: &super::TypeVar) -> ControlFlow<V::BreakValue>
-where
-    V: TypeVisitor,
-{
-    ControlFlow::Continue(())
-}
-
-pub fn walk_var_mut<V>(_visitor: &mut V, _var: &mut super::TypeVar) -> ControlFlow<V::BreakValue>
-where
-    V: TypeVisitorMut,
-{
-    ControlFlow::Continue(())
 }

@@ -1,10 +1,9 @@
-use crate::{id::NodeId, print::TreePrinter};
+use crate::{id::Id, print::TreePrinter};
 
 use derive_more::{From, TryInto};
 use kola_print::prelude::*;
 use kola_utils::impl_try_as;
 use owo_colors::OwoColorize;
-use paste::paste;
 use serde::{Deserialize, Serialize};
 
 mod expr;
@@ -65,6 +64,11 @@ macro_rules! define_nodes {
             $($variant),*
         }
 
+        #[derive(Debug, From, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+        pub enum NodeId {
+            $($variant(Id<$variant>)),*
+        }
+
         #[derive(Clone, Debug, PartialEq, From, TryInto)]
         pub enum Node {
             $($variant($variant)),*
@@ -82,24 +86,6 @@ macro_rules! define_nodes {
             Node,
             $($variant($variant)),*
         );
-
-        pub trait Handler {
-            type Error;
-
-            paste! {
-                fn handle_node(&mut self, node: &Node, id: usize) -> Result<(), Self::Error> {
-                    match node {
-                        $(Node::$variant(v) => self.[<handle_ $variant:snake>](v, NodeId::from_usize(id)),)*
-                    }
-                }
-
-                $(
-                    fn [<handle_ $variant:snake>](&mut self, [<_ $variant:snake>]: &$variant, _id: NodeId<$variant>) -> Result<(), Self::Error> {
-                        Ok(())
-                    }
-                )*
-            }
-        }
     }
 }
 

@@ -11,3 +11,4 @@ serde.workspace = true
 owo-colors.workspace = true
 derive_more.workspace = true
 paste.workspace = true
+stacker = "0.1"              # TODO use for visitor recursion

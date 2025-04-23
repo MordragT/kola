@@ -7,16 +7,16 @@ use crate::{
     meta::{MetaCast, MetaContainer, Phase},
     node::Node,
     print::TreePrinter,
-    tree::NodeContainer,
+    tree::TreeAccess,
 };
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct NodeId<T> {
+pub struct Id<T> {
     id: u32,
     t: PhantomData<T>,
 }
 
-impl<T> Clone for NodeId<T> {
+impl<T> Clone for Id<T> {
     fn clone(&self) -> Self {
         Self {
             id: self.id,
@@ -25,35 +25,35 @@ impl<T> Clone for NodeId<T> {
     }
 }
 
-impl<T> Copy for NodeId<T> {}
+impl<T> Copy for Id<T> {}
 
-impl<T> PartialEq for NodeId<T> {
+impl<T> PartialEq for Id<T> {
     fn eq(&self, other: &Self) -> bool {
         self.id.eq(&other.id)
     }
 }
 
-impl<T> Eq for NodeId<T> {}
+impl<T> Eq for Id<T> {}
 
-impl<T> PartialOrd for NodeId<T> {
+impl<T> PartialOrd for Id<T> {
     fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
         self.id.partial_cmp(&other.id)
     }
 }
 
-impl<T> Ord for NodeId<T> {
+impl<T> Ord for Id<T> {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
         self.id.cmp(&other.id)
     }
 }
 
-impl<T> Hash for NodeId<T> {
+impl<T> Hash for Id<T> {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.id.hash(state);
     }
 }
 
-impl<T> NodeId<T> {
+impl<T> Id<T> {
     pub(crate) fn from_usize(id: usize) -> Self {
         Self {
             id: id as u32,
@@ -69,7 +69,7 @@ impl<T> NodeId<T> {
         self.id as usize
     }
 
-    pub fn get(self, tree: &impl NodeContainer) -> &T
+    pub fn get(self, tree: &impl TreeAccess) -> &T
     where
         Node: TryAsRef<T>,
     {
@@ -92,15 +92,15 @@ impl<T> NodeId<T> {
         metadata.meta_mut(self)
     }
 
-    pub(crate) fn cast<U>(self) -> NodeId<U> {
-        NodeId {
+    pub(crate) fn cast<U>(self) -> Id<U> {
+        Id {
             id: self.id,
             t: PhantomData,
         }
     }
 }
 
-impl<T> Printable<TreePrinter> for NodeId<T>
+impl<T> Printable<TreePrinter> for Id<T>
 where
     Node: TryAsRef<T>,
     T: Printable<TreePrinter>,

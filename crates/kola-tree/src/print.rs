@@ -2,9 +2,9 @@ use kola_print::prelude::*;
 use kola_utils::TryAsRef;
 
 use crate::{
-    id::NodeId,
+    id::Id,
     node::Node,
-    tree::{NodeContainer, Tree},
+    tree::{Tree, TreeAccess},
 };
 
 // This is somewhat hacky I use NodeId<()> and then only the Metadata get function
@@ -15,7 +15,7 @@ pub trait Decorator {
     fn decorate<'a>(
         &'a self,
         notation: Notation<'a>,
-        with: NodeId<()>,
+        with: Id<()>,
         arena: &'a Bump,
     ) -> Notation<'a>;
 }
@@ -38,7 +38,7 @@ impl TreePrinter {
         self
     }
 
-    pub fn decorate<'a, T>(&'a self, id: NodeId<T>, arena: &'a Bump) -> Notation<'a>
+    pub fn decorate<'a, T>(&'a self, id: Id<T>, arena: &'a Bump) -> Notation<'a>
     where
         Node: TryAsRef<T>,
         T: Printable<Self> + 'a,
