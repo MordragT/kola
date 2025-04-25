@@ -26,6 +26,7 @@ pub struct DiscoverOptions {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
 pub struct DiscoverVerboseOptions {
+    pub debug: bool,
     pub source: bool,
     pub tokens: bool,
     pub tree: bool,
@@ -70,6 +71,10 @@ impl World {
                     stack.pop();
                     continue;
                 }
+            }
+
+            if options.verbose.debug {
+                println!("\nVisiting {path:?}");
             }
 
             let source = Source::from_path(&path).into_diagnostic()?;

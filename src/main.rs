@@ -43,12 +43,13 @@ fn main() -> miette::Result<()> {
         }
         Cmd::Analyze { path } => {
             let options = DiscoverOptions {
-                // verbose: DiscoverVerboseOptions {
-                //     source: true,
-                //     tokens: true,
-                //     tree: true,
-                //     typed_tree: true,
-                // },
+                verbose: DiscoverVerboseOptions {
+                    debug: true,
+                    source: false,
+                    tokens: false,
+                    tree: true,
+                    typed_tree: true,
+                },
                 ..Default::default()
             };
 

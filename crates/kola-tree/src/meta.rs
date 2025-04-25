@@ -1,5 +1,7 @@
 use std::{fmt::Debug, marker::PhantomData, ops::Deref, rc::Rc};
 
+use derive_more::Display;
+
 use crate::{id::Id, node};
 
 #[derive(Debug, Clone)]
@@ -80,6 +82,12 @@ pub trait MetaCast<P: Phase> {
     fn try_downcast_ref(meta: &Meta<P>) -> Option<&Self::Meta>;
     fn try_downcast_mut(meta: &mut Meta<P>) -> Option<&mut Self::Meta>;
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+pub struct Empty;
+
+#[derive(Debug, Display, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
+pub struct Stub<T>(pub T);
 
 macro_rules! define {
     ($($node:ident),*) => {

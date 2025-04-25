@@ -1,3 +1,5 @@
+use std::fmt;
+
 use serde::{Deserialize, Serialize};
 
 use super::{MonoType, TypeVar, Typed};
@@ -58,5 +60,20 @@ impl PolyType {
 impl From<MonoType> for PolyType {
     fn from(ty: MonoType) -> Self {
         Self::new(ty)
+    }
+}
+
+impl fmt::Display for PolyType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let Self { vars, ty } = self;
+
+        write!(f, "forall ")?;
+
+        for tv in vars {
+            write!(f, "{tv}")?;
+        }
+
+        write!(f, " . ")?;
+        ty.fmt(f)
     }
 }

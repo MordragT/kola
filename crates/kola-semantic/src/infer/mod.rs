@@ -5,14 +5,19 @@ use kola_tree::prelude::*;
 use kola_utils::Errors;
 
 use crate::{
-    SemanticPhase,
     env::{KindEnv, TypeEnv},
     error::SemanticError,
-    meta::TypeMetadata,
     substitute::{Substitutable, Substitution},
+    types,
     types::{Kind, MonoType, PolyType, Property, TypeVar, Typed},
     unify::Unifiable,
 };
+
+mod phase;
+mod print;
+
+pub use phase::{InferMetadata, InferPhase};
+pub use print::InferDecorator;
 
 // https://blog.stimsina.com/post/implementing-a-hindley-milner-type-system-part-2
 
@@ -91,13 +96,20 @@ impl Constraints {
 // TODO τ for normal types
 // r for record types ?
 
+// TODO inferer should only run over value bindings
+// so it needs some sort of intermediate results from the elaborator
+// actually module env information should also be available.
+// Therefore instead of owning TypeEnv, KindEnv, SpanMetadata and Vec<Meta<SemanticPhase>>,
+// it should take a mutable reference to the Elaborator
+//
+
 pub struct Inferer {
     subs: Substitution,
     cons: Constraints,
     t_env: TypeEnv,
     k_env: KindEnv,
     spans: SpanMetadata,
-    types: Vec<Meta<SemanticPhase>>,
+    types: Vec<Meta<InferPhase>>,
 }
 
 impl Inferer {
@@ -197,7 +209,7 @@ impl Inferer {
 
     fn update_type<T>(&mut self, id: Id<T>, t: T::Meta) -> T::Meta
     where
-        T: MetaCast<SemanticPhase>,
+        T: MetaCast<InferPhase>,
     {
         self.types.update_meta(id, t)
     }
@@ -818,6 +830,9 @@ mod tests {
             Node::ModuleTypeBind(_) => Meta::ModuleTypeBind(span),
             Node::Bind(_) => Meta::Bind(span),
             Node::Module(_) => Meta::Module(span),
+            Node::ModulePath(_) => Meta::ModulePath(span),
+            Node::ModuleImport(_) => Meta::ModuleImport(span),
+            Node::ModuleExpr(_) => Meta::ModuleExpr(span),
             Node::ValueSpec(_) => Meta::ValueSpec(span),
             Node::OpaqueTypeKind(_) => Meta::OpaqueTypeKind(span),
             Node::OpaqueTypeSpec(_) => Meta::OpaqueTypeSpec(span),
@@ -849,10 +864,8 @@ mod tests {
         let unary = node::UnaryExpr::new_in(node::UnaryOp::Neg, target.into(), &mut builder);
         let root = builder.insert(node::Expr::Unary(unary));
 
-        let tree = builder.finish(root);
-
-        let types = Inferer::new(&tree, mocked_spans(&tree))
-            .solve(&tree)
+        let types = Inferer::new(&builder, mocked_spans(&builder))
+            .solve(root, &builder)
             .unwrap();
 
         assert_eq!(types.meta(unary), &MonoType::NUM);
@@ -866,10 +879,8 @@ mod tests {
         let unary = node::UnaryExpr::new_in(node::UnaryOp::Not, target.into(), &mut builder);
         let root = builder.insert(node::Expr::Unary(unary));
 
-        let tree = builder.finish(root);
-
-        let (errors, _) = Inferer::new(&tree, mocked_spans(&tree))
-            .solve(&tree)
+        let (errors, _) = Inferer::new(&builder, mocked_spans(&builder))
+            .solve(root, &builder)
             .unwrap_err();
 
         assert_eq!(
@@ -891,10 +902,8 @@ mod tests {
             node::BinaryExpr::new_in(node::BinaryOp::Eq, left.into(), right.into(), &mut builder);
         let root = builder.insert(node::Expr::Binary(binary));
 
-        let tree = builder.finish(root);
-
-        let (errors, _) = Inferer::new(&tree, mocked_spans(&tree))
-            .solve(&tree)
+        let (errors, _) = Inferer::new(&builder, mocked_spans(&builder))
+            .solve(root, &builder)
             .unwrap_err();
 
         assert_eq!(
@@ -911,7 +920,8 @@ mod tests {
         let mut builder = TreeBuilder::new();
 
         let value = builder.insert(node::LiteralExpr::Num(10.0));
-        let inside = builder.insert(node::Ident::from("x"));
+        let segment = builder.insert(node::Name::from("x"));
+        let inside = builder.insert(node::PathExpr(vec![segment]));
         let let_ = node::LetExpr::new_in(
             node::Name::from("x"),
             value.into(),
@@ -920,10 +930,8 @@ mod tests {
         );
         let root = builder.insert(node::Expr::Let(let_));
 
-        let tree = builder.finish(root);
-
-        let types = Inferer::new(&tree, mocked_spans(&tree))
-            .solve(&tree)
+        let types = Inferer::new(&builder, mocked_spans(&builder))
+            .solve(root, &builder)
             .unwrap();
 
         assert_eq!(types.meta(let_), &MonoType::NUM);
@@ -939,10 +947,8 @@ mod tests {
         let if_ = node::IfExpr::new_in(predicate.into(), then.into(), or.into(), &mut builder);
         let root = builder.insert(node::Expr::If(if_));
 
-        let tree = builder.finish(root);
-
-        let types = Inferer::new(&tree, mocked_spans(&tree))
-            .solve(&tree)
+        let types = Inferer::new(&builder, mocked_spans(&builder))
+            .solve(root, &builder)
             .unwrap();
 
         assert_eq!(types.meta(if_), &MonoType::NUM);
@@ -958,10 +964,8 @@ mod tests {
         let if_ = node::IfExpr::new_in(predicate.into(), then.into(), or.into(), &mut builder);
         let root = builder.insert(node::Expr::If(if_));
 
-        let tree = builder.finish(root);
-
-        let (errors, _) = Inferer::new(&tree, mocked_spans(&tree))
-            .solve(&tree)
+        let (errors, _) = Inferer::new(&builder, mocked_spans(&builder))
+            .solve(root, &builder)
             .unwrap_err();
 
         assert_eq!(

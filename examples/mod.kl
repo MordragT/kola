@@ -32,6 +32,7 @@
 {
     module str = import str,
     module cyclic = import cyclic,
+    module str = import str,
 
     type Option = forall a . < Some : a, None >,
 

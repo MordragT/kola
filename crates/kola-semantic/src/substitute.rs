@@ -1,9 +1,8 @@
-use kola_tree::meta::Meta;
+use kola_tree::prelude::*;
 use owo_colors::OwoColorize;
 use std::{borrow::Cow, collections::HashMap, fmt};
 
 use super::types::{MonoType, TypeVar};
-use crate::{SemanticPhase, types::Property};
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Substitution {
@@ -102,6 +101,18 @@ pub trait Substitutable: Sized {
     fn try_apply(&self, s: &mut Substitution) -> Option<Self>;
 }
 
+impl<T> Substitutable for Stub<T> {
+    fn try_apply(&self, _s: &mut Substitution) -> Option<Self> {
+        None
+    }
+}
+
+impl Substitutable for Empty {
+    fn try_apply(&self, _s: &mut Substitution) -> Option<Self> {
+        None
+    }
+}
+
 impl<T> Substitutable for Vec<T>
 where
     T: Substitutable + Clone,
@@ -132,43 +143,89 @@ where
     }
 }
 
-// impl Substitutable for Meta<SemanticPhase> {
-//     fn try_apply(&self, s: &mut Substitution) -> Option<Self> {
-//         match self {
-//             Meta::Name(_) | Meta::PatError(()) | Meta::Branch(()) | Meta::ExprError(()) => None,
+macro_rules! impl_meta_substitutable {
+    ($($variant:ident),* $(,)?) => {
+        impl<P> Substitutable for Meta<P>
+        where
+        P: Phase<
+            $($variant: Substitutable),*
+        >,
+        {
+            fn try_apply(&self, s: &mut Substitution) -> Option<Self> {
+                match self {
+                    $(Self::$variant(t) => t.try_apply(s).map(Self::$variant)),*
+                }
+            }
 
-//             Meta::Property(Property { k, v }) => v
-//                 .try_apply(s)
-//                 .map(|v| Property { k: k.clone(), v })
-//                 .map(Meta::Property),
+        }
+    };
+}
 
-//             Meta::Ident(t) => t.try_apply(s).map(Meta::Ident),
-//             Meta::Literal(t) => t.try_apply(s).map(Meta::Literal),
-//             Meta::List(t) => t.try_apply(s).map(Meta::List),
-//             Meta::Record(t) => t.try_apply(s).map(Meta::Record),
-//             Meta::RecordSelect(t) => t.try_apply(s).map(Meta::RecordSelect),
-//             Meta::RecordExtend(t) => t.try_apply(s).map(Meta::RecordExtend),
-//             Meta::RecordRestrict(t) => t.try_apply(s).map(Meta::RecordRestrict),
-//             Meta::RecordUpdate(t) => t.try_apply(s).map(Meta::RecordUpdate),
-//             Meta::UnaryOp(t) => t.try_apply(s).map(Meta::UnaryOp),
-//             Meta::Unary(t) => t.try_apply(s).map(Meta::Unary),
-//             Meta::BinaryOp(t) => t.try_apply(s).map(Meta::BinaryOp),
-//             Meta::Binary(t) => t.try_apply(s).map(Meta::Binary),
-//             Meta::Let(t) => t.try_apply(s).map(Meta::Let),
-//             Meta::Wildcard(t) => t.try_apply(s).map(Meta::Wildcard),
-//             Meta::LiteralPat(t) => t.try_apply(s).map(Meta::LiteralPat),
-//             Meta::IdentPat(t) => t.try_apply(s).map(Meta::IdentPat),
-//             Meta::PropertyPat(t) => t.try_apply(s).map(Meta::PropertyPat),
-//             Meta::RecordPat(t) => t.try_apply(s).map(Meta::RecordPat),
-//             Meta::Pat(t) => t.try_apply(s).map(Meta::Pat),
-//             Meta::Case(t) => t.try_apply(s).map(Meta::Case),
-//             Meta::If(t) => t.try_apply(s).map(Meta::If),
-//             Meta::Func(t) => t.try_apply(s).map(Meta::Func),
-//             Meta::Call(t) => t.try_apply(s).map(Meta::Call),
-//             Meta::Expr(t) => t.try_apply(s).map(Meta::Expr),
-//         }
-//     }
-// }
+impl_meta_substitutable!(
+    Name,
+    // Patterns
+    AnyPat,
+    LiteralPat,
+    IdentPat,
+    RecordFieldPat,
+    RecordPat,
+    VariantCasePat,
+    VariantPat,
+    PatError,
+    Pat,
+    // Expressions
+    LiteralExpr,
+    PathExpr,
+    ListExpr,
+    RecordField,
+    RecordExpr,
+    RecordFieldPath,
+    RecordExtendExpr,
+    RecordRestrictExpr,
+    RecordUpdateOp,
+    RecordUpdateExpr,
+    UnaryOp,
+    UnaryExpr,
+    BinaryOp,
+    BinaryExpr,
+    LetExpr,
+    CaseBranch,
+    CaseExpr,
+    IfExpr,
+    LambdaExpr,
+    CallExpr,
+    ExprError,
+    Expr,
+    // Types
+    TypePath,
+    TypeVar,
+    RecordFieldType,
+    RecordType,
+    VariantCaseType,
+    VariantType,
+    FuncType,
+    TypeApplication,
+    TypeExpr,
+    TypeError,
+    Type,
+    // Modules
+    ValueBind,
+    TypeBind,
+    OpaqueTypeBind,
+    ModuleBind,
+    ModuleTypeBind,
+    Bind,
+    Module,
+    ModulePath,
+    ModuleImport,
+    ModuleExpr,
+    ValueSpec,
+    OpaqueTypeKind,
+    OpaqueTypeSpec,
+    ModuleSpec,
+    Spec,
+    ModuleType
+);
 
 pub fn merge<A, B, DA, DB>(
     a: Option<A>,
