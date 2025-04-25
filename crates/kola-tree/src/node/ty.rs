@@ -53,10 +53,15 @@ impl Printable<TreePrinter> for TypePath {
     fn notate<'a>(&'a self, with: &'a TreePrinter, arena: &'a Bump) -> Notation<'a> {
         let head = "TypePath".cyan().display_in(arena);
 
-        let path = self.0.gather(with, arena).concat_by(arena.just('.'), arena);
+        let path = self.0.gather(with, arena);
 
-        let single = arena.just(' ').then(path.clone(), arena);
-        let multi = arena.newline().then(path, arena).indent(arena);
+        let single = path
+            .clone()
+            .concat_map(|s| arena.just(' ').then(s, arena), arena)
+            .flatten(arena);
+        let multi = path
+            .concat_map(|s| arena.newline().then(s, arena), arena)
+            .indent(arena);
 
         head.then(single.or(multi, arena), arena)
     }

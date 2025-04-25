@@ -56,6 +56,14 @@ where
     }
 
     #[inline]
+    fn to_module_expr(self) -> impl Parser<'t, I, Id<node::ModuleExpr>, Extra<'t>>
+    where
+        node::ModuleExpr: From<T>,
+    {
+        self.map(node::ModuleExpr::from).to_node()
+    }
+
+    #[inline]
     fn to_bind(self) -> impl Parser<'t, I, Id<node::Bind>, Extra<'t>>
     where
         node::Bind: From<T>,

@@ -219,9 +219,15 @@ impl Printable<TreePrinter> for RecordFieldPath {
     fn notate<'a>(&'a self, with: &'a TreePrinter, arena: &'a Bump) -> Notation<'a> {
         let head = "RecordFieldPath".cyan().display_in(arena);
 
-        let path = self.0.gather(with, arena).concat_by(arena.just('.'), arena);
-        let single = [arena.just(' '), path.clone()].concat_in(arena);
-        let multi = [arena.newline(), path].concat_in(arena).indent(arena);
+        let path = self.0.gather(with, arena);
+
+        let single = path
+            .clone()
+            .concat_map(|s| arena.just(' ').then(s, arena), arena)
+            .flatten(arena);
+        let multi = path
+            .concat_map(|s| arena.newline().then(s, arena), arena)
+            .indent(arena);
 
         head.then(single.or(multi, arena), arena)
     }
@@ -541,12 +547,7 @@ pub struct BinaryExpr {
 }
 
 impl BinaryExpr {
-    pub fn new_in(
-        op: BinaryOp,
-        left: Expr,
-        right: Expr,
-        builder: &mut TreeBuilder,
-    ) -> Id<Self> {
+    pub fn new_in(op: BinaryOp, left: Expr, right: Expr, builder: &mut TreeBuilder) -> Id<Self> {
         let op = builder.insert(op);
         let left = builder.insert(left);
         let right = builder.insert(right);
@@ -610,12 +611,7 @@ pub struct LetExpr {
 }
 
 impl LetExpr {
-    pub fn new_in(
-        name: Name,
-        value: Expr,
-        inside: Expr,
-        builder: &mut TreeBuilder,
-    ) -> Id<Self> {
+    pub fn new_in(name: Name, value: Expr, inside: Expr, builder: &mut TreeBuilder) -> Id<Self> {
         let name = builder.insert(name);
         let value = builder.insert(value);
         let inside = builder.insert(inside);
@@ -690,12 +686,7 @@ pub struct IfExpr {
 }
 
 impl IfExpr {
-    pub fn new_in(
-        predicate: Expr,
-        then: Expr,
-        or: Expr,
-        builder: &mut TreeBuilder,
-    ) -> Id<Self> {
+    pub fn new_in(predicate: Expr, then: Expr, or: Expr, builder: &mut TreeBuilder) -> Id<Self> {
         let predicate = builder.insert(predicate);
         let then = builder.insert(then);
         let or = builder.insert(or);

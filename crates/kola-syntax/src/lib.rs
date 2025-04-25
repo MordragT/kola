@@ -10,7 +10,7 @@ pub mod token;
 
 pub mod prelude {
     pub use crate::SyntaxPhase;
-    pub use crate::error::{SyntaxError, SyntaxErrors, SyntaxReport};
+    pub use crate::error::{SourceDiagnostic, SourceReport, SourceResult};
     pub use crate::lexer::{TokenizeResult, tokenize};
     pub use crate::parser::{ParseResult, parse};
     pub use crate::source::Source;

@@ -22,7 +22,7 @@ impl<'t> Printable<()> for TokenPrinter<'t> {
                 };
 
                 [
-                    format_args!("\"{token}\"\t\t({kind}, {span})").display_in(arena),
+                    format_args!("\"{token}\"\t\t\t\t({kind}, {span})").display_in(arena),
                     arena.newline(),
                 ]
             })

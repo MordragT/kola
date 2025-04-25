@@ -30,6 +30,8 @@
 #in x
 
 {
+    module str = import std.str,
+
     type Option = forall a . < Some : a, None >,
 
     type Person = { name : Str, age : Num },

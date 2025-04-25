@@ -81,7 +81,7 @@ impl Constraints {
             }
         }
 
-        ControlFlow::Continue(())
+        Ok(())
     }
 }
 

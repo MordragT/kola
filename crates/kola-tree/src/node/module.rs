@@ -5,7 +5,11 @@ use owo_colors::OwoColorize;
 use serde::{Deserialize, Serialize};
 
 use super::{Expr, Name, Type};
-use crate::{id::Id, print::TreePrinter, tree::TreeBuilder};
+use crate::{
+    id::Id,
+    print::TreePrinter,
+    tree::{TreeAccess, TreeBuilder},
+};
 
 /*
 Nice to haves:
@@ -53,6 +57,68 @@ impl Printable<TreePrinter> for Module {
             .indent(arena);
 
         head.then(single.or(multi, arena), arena)
+    }
+}
+
+#[derive(Debug, From, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+pub struct ModulePath(pub Vec<Id<Name>>);
+
+impl ModulePath {
+    pub fn get<'a>(&self, index: usize, tree: &'a impl TreeAccess) -> &'a Name {
+        self.0[index].get(tree)
+    }
+}
+
+impl Printable<TreePrinter> for ModulePath {
+    fn notate<'a>(&'a self, with: &'a TreePrinter, arena: &'a Bump) -> Notation<'a> {
+        let head = "ModulePath".cyan().display_in(arena);
+
+        let path = self.0.gather(with, arena);
+
+        let single = path
+            .clone()
+            .concat_map(|s| arena.just(' ').then(s, arena), arena)
+            .flatten(arena);
+        let multi = path
+            .concat_map(|s| arena.newline().then(s, arena), arena)
+            .indent(arena);
+
+        head.then(single.or(multi, arena), arena)
+    }
+}
+
+#[derive(
+    Debug, From, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+)]
+pub struct ModuleImport(pub Id<ModulePath>);
+
+impl Printable<TreePrinter> for ModuleImport {
+    fn notate<'a>(&'a self, with: &'a TreePrinter, arena: &'a Bump) -> Notation<'a> {
+        let head = "ModuleImport".green().display_in(arena);
+
+        let path = self.0.notate(with, arena);
+
+        let single = arena.just(' ').then(path.clone().flatten(arena), arena);
+        let multi = arena.newline().then(path, arena).indent(arena);
+
+        head.then(single.or(multi, arena), arena)
+    }
+}
+
+#[derive(
+    Debug, From, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+)]
+pub enum ModuleExpr {
+    Module(Id<Module>),
+    Import(Id<ModuleImport>),
+}
+
+impl Printable<TreePrinter> for ModuleExpr {
+    fn notate<'a>(&'a self, with: &'a TreePrinter, arena: &'a Bump) -> Notation<'a> {
+        match *self {
+            Self::Module(id) => id.get(&with.tree).notate(with, arena),
+            Self::Import(id) => id.get(&with.tree).notate(with, arena),
+        }
     }
 }
 
@@ -273,7 +339,7 @@ impl Printable<TreePrinter> for OpaqueTypeBind {
 pub struct ModuleBind {
     pub name: Id<Name>,
     pub ty: Option<Id<ModuleType>>,
-    pub value: Id<Module>,
+    pub value: Id<ModuleExpr>,
 }
 
 impl Printable<TreePrinter> for ModuleBind {
@@ -665,6 +731,63 @@ mod inspector {
         }
     }
 
+    impl<'t> NodeInspector<'t, Id<ModulePath>> {
+        /// Assert the path has the specified number of segments
+        pub fn has_segments(self, count: usize) -> Self {
+            let segments_len = self.node.get(self.tree).0.len();
+            assert_eq!(
+                segments_len, count,
+                "Expected {} segments but found {}",
+                count, segments_len
+            );
+            self
+        }
+
+        /// Assert the path segment at the given index has the expected name
+        pub fn segment_at_is(self, index: usize, expected: &str) -> Self {
+            let path = self.node.get(self.tree);
+            assert!(
+                index < path.0.len(),
+                "Segment index {} out of bounds (max {})",
+                index,
+                path.0.len() - 1
+            );
+            let segment = path.get(index, self.tree);
+            assert_eq!(
+                segment.as_str(),
+                expected,
+                "Expected segment '{}' but found '{}'",
+                expected,
+                segment.0
+            );
+            self
+        }
+    }
+
+    impl<'t> NodeInspector<'t, Id<ModuleImport>> {
+        pub fn as_path(self) -> NodeInspector<'t, Id<ModulePath>> {
+            let path_id = self.node.get(self.tree).0;
+
+            NodeInspector::new(path_id, self.tree)
+        }
+    }
+
+    impl<'t> NodeInspector<'t, Id<ModuleExpr>> {
+        pub fn as_import(self) -> Option<NodeInspector<'t, Id<ModuleImport>>> {
+            match *self.node.get(self.tree) {
+                ModuleExpr::Import(id) => Some(NodeInspector::new(id, self.tree)),
+                _ => None,
+            }
+        }
+
+        pub fn as_module(self) -> Option<NodeInspector<'t, Id<Module>>> {
+            match *self.node.get(self.tree) {
+                ModuleExpr::Module(id) => Some(NodeInspector::new(id, self.tree)),
+                _ => None,
+            }
+        }
+    }
+
     impl<'t> NodeInspector<'t, Id<Bind>> {
         /// Check if this bind is a module bind and return an inspector for it
         pub fn as_module(self) -> Option<NodeInspector<'t, Id<ModuleBind>>> {
@@ -724,7 +847,7 @@ mod inspector {
         }
 
         /// Get an inspector for the module's implementation
-        pub fn value(self) -> NodeInspector<'t, Id<Module>> {
+        pub fn value(self) -> NodeInspector<'t, Id<ModuleExpr>> {
             let module_bind = self.node.get(self.tree);
             NodeInspector::new(module_bind.value, self.tree)
         }

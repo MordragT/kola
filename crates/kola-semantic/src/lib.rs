@@ -1,9 +1,11 @@
 #![feature(never_type)]
+#![feature(path_add_extension)]
 
 //! Algorithm W with addition in Polymoprhic Type System for Extensible Records
 //! https://github.com/miguel-nascimento/algorithm-j-rs/
 //! https://github.com/nwoeanhinnogaehr/algorithmw-rust/
 
+pub mod elaborate;
 pub mod env;
 pub mod error;
 pub mod infer;
@@ -12,6 +14,7 @@ pub mod module;
 pub mod substitute;
 pub mod types;
 pub mod unify;
+pub mod world;
 
 pub mod prelude {
     pub use crate::env::{KindEnv, TypeEnv};

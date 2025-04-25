@@ -18,12 +18,19 @@ use crate::env::{KindEnv, TypeEnv};
     and then looking up `x` or `T` within `MyModule`.
 */
 
-pub struct ModuleEnv {
-    modules: IndexMap<Symbol, ModuleType>,
+pub type ModuleEnv = IndexMap<Symbol, Module>;
+
+pub struct Module {
+    types: TypeEnv,
+    kinds: KindEnv,
+    modules: ModuleEnv,
+    module_types: ModuleTypeEnv,
 }
+
+pub type ModuleTypeEnv = IndexMap<Symbol, ModuleType>;
 
 pub struct ModuleType {
     types: TypeEnv,
     kinds: KindEnv,
-    modules: ModuleEnv,
+    module_types: ModuleTypeEnv,
 }

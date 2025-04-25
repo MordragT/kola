@@ -65,6 +65,18 @@ where
     let module_type = module_type_parser();
 
     recursive(|module| {
+        let module_path = name_parser()
+            .separated_by(ctrl(CtrlT::DOT))
+            .collect()
+            .map_to_node(node::ModulePath);
+
+        let module_import = kw(KwT::IMPORT)
+            .ignore_then(module_path)
+            .map_to_node(node::ModuleImport)
+            .to_module_expr();
+
+        let module_expr = module.clone().to_module_expr().or(module_import);
+
         let value_bind = name_parser()
             .then(ctrl(CtrlT::COLON).ignore_then(type_parser()).or_not())
             .then_ignore(op(OpT::ASSIGN))
@@ -80,7 +92,7 @@ where
             .ignore_then(name_parser())
             .then(ctrl(CtrlT::COLON).ignore_then(module_type.clone()).or_not())
             .then_ignore(op(OpT::ASSIGN))
-            .then(module)
+            .then(module_expr)
             .map_to_node(|((name, ty), value)| node::ModuleBind { name, ty, value })
             .to_bind();
 
@@ -1427,6 +1439,8 @@ mod tests {
 
         module_bind
             .value()
+            .as_module()
+            .unwrap()
             .has_binds(1)
             .bind_at(0)
             .as_value()
@@ -1471,6 +1485,8 @@ mod tests {
         // Check implementation
         module_bind
             .value()
+            .as_module()
+            .unwrap()
             .has_binds(1)
             .bind_at(0)
             .as_value()

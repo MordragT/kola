@@ -4,12 +4,13 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-thiserror.workspace = true
-miette.workspace = true
-owo-colors.workspace = true
-serde.workspace = true
 kola-tree.workspace = true
 kola-syntax.workspace = true
 kola-utils.workspace = true
 kola-print.workspace = true
+thiserror.workspace = true
+miette.workspace = true
+owo-colors.workspace = true
+serde.workspace = true
+derive_more.workspace = true
 indexmap = "2.7.1"

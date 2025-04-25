@@ -12,7 +12,7 @@ use kola_tree::prelude::*;
 
 use crate::{
     SyntaxPhase,
-    error::{SyntaxError, SyntaxErrors},
+    error::{SourceDiagnostic, SourceResult},
     span::{Span, SpanMetadata},
     token::{Token, Tokens},
 };
@@ -20,7 +20,7 @@ use crate::{
 pub struct ParseResult {
     pub tree: Option<Tree>,
     pub spans: SpanMetadata,
-    pub errors: SyntaxErrors,
+    pub errors: Vec<SourceDiagnostic>,
 }
 
 pub fn parse(tokens: Tokens<'_>, eoi: Span) -> ParseResult {
@@ -33,10 +33,7 @@ pub fn parse(tokens: Tokens<'_>, eoi: Span) -> ParseResult {
         .parse_with_state(input, &mut state)
         .into_output_errors();
 
-    let errors = errors
-        .into_iter()
-        .map(SyntaxError::from)
-        .collect::<SyntaxErrors>();
+    let errors = errors.into_iter().map(SourceDiagnostic::from).collect();
 
     let StateRepr { builder, meta } = state.0;
     let tree = root.map(|root| builder.finish(root));
@@ -50,10 +47,10 @@ pub fn parse(tokens: Tokens<'_>, eoi: Span) -> ParseResult {
 
 type Output<T> = (T, TreeBuilder, MetaVec<SyntaxPhase>);
 
-pub fn try_parse_with<'src, T, P, I>(input: I, parser: P) -> Result<Output<T>, SyntaxErrors>
+pub fn try_parse_with<'t, T, P, I>(input: I, parser: P) -> SourceResult<Output<T>>
 where
-    I: ValueInput<'src, Token = Token<'src>, Span = Span>,
-    P: Parser<'src, I, T, Extra<'src>>,
+    I: ValueInput<'t, Token = Token<'t>, Span = Span>,
+    P: Parser<'t, I, T, Extra<'t>>,
 {
     let mut state = State::from(StateRepr::new());
 
@@ -62,8 +59,8 @@ where
         .into_result()
         .map_err(|errs| {
             errs.into_iter()
-                .map(SyntaxError::from)
-                .collect::<SyntaxErrors>()
+                .map(SourceDiagnostic::from)
+                .collect::<Vec<_>>()
         })?;
 
     let StateRepr { builder, meta } = state.0;

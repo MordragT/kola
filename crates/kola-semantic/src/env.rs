@@ -15,8 +15,6 @@ pub type KindEnv = IndexMap<TypeVar, Vec<Kind>>;
 /// lexical block.
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct TypeEnv {
-    // An external environment if one is provided
-    // external: ...
     /// An optional parent environment.
     parent: Option<Box<Self>>,
     /// Uses an `IndexMap` to ensure that the order that the bindings were defined in matches

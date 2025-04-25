@@ -4,7 +4,7 @@ use miette::SourceCode;
 
 use crate::Span;
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord)]
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Source {
     path: Arc<Path>,
     name: Arc<str>,
