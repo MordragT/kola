@@ -132,43 +132,43 @@ where
     }
 }
 
-impl Substitutable for Meta<SemanticPhase> {
-    fn try_apply(&self, s: &mut Substitution) -> Option<Self> {
-        match self {
-            Meta::Name(_) | Meta::PatError(()) | Meta::Branch(()) | Meta::ExprError(()) => None,
+// impl Substitutable for Meta<SemanticPhase> {
+//     fn try_apply(&self, s: &mut Substitution) -> Option<Self> {
+//         match self {
+//             Meta::Name(_) | Meta::PatError(()) | Meta::Branch(()) | Meta::ExprError(()) => None,
 
-            Meta::Property(Property { k, v }) => v
-                .try_apply(s)
-                .map(|v| Property { k: k.clone(), v })
-                .map(Meta::Property),
+//             Meta::Property(Property { k, v }) => v
+//                 .try_apply(s)
+//                 .map(|v| Property { k: k.clone(), v })
+//                 .map(Meta::Property),
 
-            Meta::Ident(t) => t.try_apply(s).map(Meta::Ident),
-            Meta::Literal(t) => t.try_apply(s).map(Meta::Literal),
-            Meta::List(t) => t.try_apply(s).map(Meta::List),
-            Meta::Record(t) => t.try_apply(s).map(Meta::Record),
-            Meta::RecordSelect(t) => t.try_apply(s).map(Meta::RecordSelect),
-            Meta::RecordExtend(t) => t.try_apply(s).map(Meta::RecordExtend),
-            Meta::RecordRestrict(t) => t.try_apply(s).map(Meta::RecordRestrict),
-            Meta::RecordUpdate(t) => t.try_apply(s).map(Meta::RecordUpdate),
-            Meta::UnaryOp(t) => t.try_apply(s).map(Meta::UnaryOp),
-            Meta::Unary(t) => t.try_apply(s).map(Meta::Unary),
-            Meta::BinaryOp(t) => t.try_apply(s).map(Meta::BinaryOp),
-            Meta::Binary(t) => t.try_apply(s).map(Meta::Binary),
-            Meta::Let(t) => t.try_apply(s).map(Meta::Let),
-            Meta::Wildcard(t) => t.try_apply(s).map(Meta::Wildcard),
-            Meta::LiteralPat(t) => t.try_apply(s).map(Meta::LiteralPat),
-            Meta::IdentPat(t) => t.try_apply(s).map(Meta::IdentPat),
-            Meta::PropertyPat(t) => t.try_apply(s).map(Meta::PropertyPat),
-            Meta::RecordPat(t) => t.try_apply(s).map(Meta::RecordPat),
-            Meta::Pat(t) => t.try_apply(s).map(Meta::Pat),
-            Meta::Case(t) => t.try_apply(s).map(Meta::Case),
-            Meta::If(t) => t.try_apply(s).map(Meta::If),
-            Meta::Func(t) => t.try_apply(s).map(Meta::Func),
-            Meta::Call(t) => t.try_apply(s).map(Meta::Call),
-            Meta::Expr(t) => t.try_apply(s).map(Meta::Expr),
-        }
-    }
-}
+//             Meta::Ident(t) => t.try_apply(s).map(Meta::Ident),
+//             Meta::Literal(t) => t.try_apply(s).map(Meta::Literal),
+//             Meta::List(t) => t.try_apply(s).map(Meta::List),
+//             Meta::Record(t) => t.try_apply(s).map(Meta::Record),
+//             Meta::RecordSelect(t) => t.try_apply(s).map(Meta::RecordSelect),
+//             Meta::RecordExtend(t) => t.try_apply(s).map(Meta::RecordExtend),
+//             Meta::RecordRestrict(t) => t.try_apply(s).map(Meta::RecordRestrict),
+//             Meta::RecordUpdate(t) => t.try_apply(s).map(Meta::RecordUpdate),
+//             Meta::UnaryOp(t) => t.try_apply(s).map(Meta::UnaryOp),
+//             Meta::Unary(t) => t.try_apply(s).map(Meta::Unary),
+//             Meta::BinaryOp(t) => t.try_apply(s).map(Meta::BinaryOp),
+//             Meta::Binary(t) => t.try_apply(s).map(Meta::Binary),
+//             Meta::Let(t) => t.try_apply(s).map(Meta::Let),
+//             Meta::Wildcard(t) => t.try_apply(s).map(Meta::Wildcard),
+//             Meta::LiteralPat(t) => t.try_apply(s).map(Meta::LiteralPat),
+//             Meta::IdentPat(t) => t.try_apply(s).map(Meta::IdentPat),
+//             Meta::PropertyPat(t) => t.try_apply(s).map(Meta::PropertyPat),
+//             Meta::RecordPat(t) => t.try_apply(s).map(Meta::RecordPat),
+//             Meta::Pat(t) => t.try_apply(s).map(Meta::Pat),
+//             Meta::Case(t) => t.try_apply(s).map(Meta::Case),
+//             Meta::If(t) => t.try_apply(s).map(Meta::If),
+//             Meta::Func(t) => t.try_apply(s).map(Meta::Func),
+//             Meta::Call(t) => t.try_apply(s).map(Meta::Call),
+//             Meta::Expr(t) => t.try_apply(s).map(Meta::Expr),
+//         }
+//     }
+// }
 
 pub fn merge<A, B, DA, DB>(
     a: Option<A>,

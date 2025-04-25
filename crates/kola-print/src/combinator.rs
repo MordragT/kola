@@ -10,6 +10,16 @@ use crate::{
     printable::Printable,
 };
 
+pub trait Repeat<'a> {
+    fn repeat(self, n: usize, arena: &'a Bump) -> Notation<'a>;
+}
+
+impl<'a> Repeat<'a> for Notation<'a> {
+    fn repeat(self, n: usize, arena: &'a Bump) -> Notation<'a> {
+        bumpalo::vec![in &arena; self; n].concat_in(arena)
+    }
+}
+
 pub trait OrNot<'a> {
     fn or_not(self, arena: &'a Bump) -> Notation<'a>;
 }

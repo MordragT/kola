@@ -30,7 +30,8 @@
 #in x
 
 {
-    module str = import std.str,
+    module str = import str,
+    module cyclic = import cyclic,
 
     type Option = forall a . < Some : a, None >,
 

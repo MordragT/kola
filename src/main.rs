@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use miette::IntoDiagnostic;
 use owo_colors::OwoColorize;
 
-// use kola_semantic::prelude::*;
+use kola_semantic::prelude::*;
 // use kola_compiler::prelude::*;
 use kola_print::prelude::*;
 use kola_syntax::prelude::*;
@@ -42,40 +42,29 @@ fn main() -> miette::Result<()> {
                 .print(options);
         }
         Cmd::Analyze { path } => {
-            let source = Source::from_path(path).into_diagnostic()?;
+            let options = DiscoverOptions {
+                // verbose: DiscoverVerboseOptions {
+                //     source: true,
+                //     tokens: true,
+                //     tree: true,
+                //     typed_tree: true,
+                // },
+                ..Default::default()
+            };
 
-            println!("{}", "Source".bold().bright_white());
-            println!("{source}");
+            let world = World::discover(path, options)?;
 
-            let (tree, spans) = try_parse(source.clone())?;
-
-            println!("\n{}", "Untyped Abstract Syntax Tree".bold().bright_white());
-            TreePrinter::new(&tree)
-                .with(SpanDecorator(spans.clone()))
-                .print(options);
-
-            // let inferer = Inferer::new(&tree, spans.clone());
-            // let types = inferer
-            //     .solve(&tree)
-            //     .map_err(|(errors, span)| SemanticReport::new(source, span, errors))?;
-
-            // println!("\n{}", "Typed Abstract Syntax Tree".bold().bright_white());
-            // TreePrinter::new(&tree)
-            //     .with(SpanDecorator(spans.clone()))
-            //     .with(TypeDecorator(types.clone()))
-            //     .print(options);
-
-            // let ir = Normalizer::normalize(&tree);
-
-            // println!("\n{}", "Intermediate Representation".bold().bright_white());
-            // ir.print(options);
+            println!("\n{}", "Module Dependency Order".bold().bright_white());
+            for file in world.order {
+                println!("{file:?}");
+            }
         }
     }
 
     Ok(())
 }
 
-fn try_parse(source: Source) -> Result<(Tree, SpanMetadata), SyntaxReport> {
+fn try_parse(source: Source) -> Result<(Tree, SpanMetadata), SourceReport> {
     let options = PrintOptions::default();
 
     let TokenizeResult { tokens, mut errors } = tokenize(source.as_str());
@@ -94,14 +83,14 @@ fn try_parse(source: Source) -> Result<(Tree, SpanMetadata), SyntaxReport> {
         tree.map(|tree| (tree, meta))
     });
 
-    if errors.has_errors() {
+    if !errors.is_empty() {
         if let Some((tree, spans)) = result {
             println!("{}", "Erroneous Abstract Syntax Tree".bold().bright_white());
             TreePrinter::new(&tree)
                 .with(SpanDecorator(spans))
                 .print(options);
         }
-        Err(SyntaxReport::new(source, errors))
+        Err(SourceReport::new(source, errors))
     } else {
         Ok(result.unwrap())
     }

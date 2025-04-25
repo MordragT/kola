@@ -56,8 +56,6 @@ impl World {
         let mut span_table = HashMap::new();
 
         while let Some(path) = stack.last().cloned() {
-            println!("Processing {path:?}");
-
             match visited.get(&path).copied().unwrap_or(VisitState::Unvisited) {
                 VisitState::Unvisited => {
                     visited.insert(path.clone(), VisitState::Visiting);

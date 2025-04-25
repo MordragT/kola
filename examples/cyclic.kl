@@ -1,0 +1,4 @@
+{
+    module str = import super.str,
+    #module str2 = import str,
+}

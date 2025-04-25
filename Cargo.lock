@@ -296,6 +296,7 @@ version = "0.1.0"
 dependencies = [
  "clap",
  "kola-print",
+ "kola-semantic",
  "kola-syntax",
  "kola-tree",
  "miette",

@@ -10,7 +10,7 @@ mod printable;
 mod printer;
 
 pub mod prelude {
-    pub use crate::combinator::{ConcatBy, ConcatIn, ConcatMap, DisplayIn, Gather, OrNot};
+    pub use crate::combinator::{ConcatBy, ConcatIn, ConcatMap, DisplayIn, Gather, OrNot, Repeat};
     pub use crate::layout;
     pub use crate::notation::{Arena, Notation};
     pub use crate::printable::Printable;

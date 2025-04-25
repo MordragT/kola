@@ -8,8 +8,8 @@
 pub mod elaborate;
 pub mod env;
 pub mod error;
-pub mod infer;
-pub mod meta;
+// pub mod infer;
+// pub mod meta;
 pub mod module;
 pub mod substitute;
 pub mod types;
@@ -19,11 +19,12 @@ pub mod world;
 pub mod prelude {
     pub use crate::env::{KindEnv, TypeEnv};
     pub use crate::error::{SemanticError, SemanticErrors, SemanticReport};
-    pub use crate::infer::{Constraint, Constraints, Inferer};
-    pub use crate::meta::{TypeDecorator, TypeMetadata};
+    // pub use crate::infer::{Constraint, Constraints, Inferer};
+    // pub use crate::meta::{TypeDecorator, TypeMetadata};
     pub use crate::substitute::{Substitutable, Substitution};
     pub use crate::types::*;
     pub use crate::unify::Unifiable;
+    pub use crate::world::{DiscoverOptions, DiscoverVerboseOptions, World};
 }
 
 use kola_tree::{meta::Phase, node::Symbol};
@@ -82,6 +83,9 @@ impl Phase for SemanticPhase {
     type ModuleTypeBind = types::MonoType;
     type Bind = types::MonoType;
     type Module = types::MonoType;
+    type ModulePath = types::MonoType;
+    type ModuleImport = types::MonoType;
+    type ModuleExpr = types::MonoType;
     type ValueSpec = types::MonoType;
     type OpaqueTypeKind = types::MonoType;
     type OpaqueTypeSpec = types::MonoType;

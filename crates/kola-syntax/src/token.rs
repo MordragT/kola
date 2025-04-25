@@ -1,7 +1,7 @@
 use bumpalo::collections::CollectIn;
 use derive_more::Display;
 use kola_print::prelude::*;
-use owo_colors::{OwoColorize, Style};
+use owo_colors::OwoColorize;
 use paste::paste;
 use std::fmt;
 
@@ -9,26 +9,47 @@ use super::span::Spanned;
 
 pub struct TokenPrinter<'t>(pub &'t Tokens<'t>);
 
-impl<'t> Printable<()> for TokenPrinter<'t> {
-    fn notate<'a>(&'a self, _with: &'a (), arena: &'a Bump) -> Notation<'a> {
+impl<'t> Printable<PrintOptions> for TokenPrinter<'t> {
+    fn notate<'a>(&'a self, with: &'a PrintOptions, arena: &'a Bump) -> Notation<'a> {
         let tokens = self
             .0
             .iter()
-            .flat_map(|(token, span)| {
-                let kind = match token {
-                    Token::Atom(_) => "atom".style(Style::new().red()),
-                    Token::Symbol(_) => "symbol".style(Style::new().blue()),
-                    Token::Literal(_) => "literal".style(Style::new().green()),
-                };
+            .map(|(token, span)| {
+                let head_str = format!("\"{token}\"");
+                let head = head_str.display_in(arena);
 
-                [
-                    format_args!("\"{token}\"\t\t\t\t({kind}, {span})").display_in(arena),
-                    arena.newline(),
-                ]
+                let kind = match token {
+                    Token::Atom(_) => "atom".red().display_in(arena),
+                    Token::Symbol(_) => "symbol".blue().display_in(arena),
+                    Token::Literal(_) => "literal".green().display_in(arena),
+                };
+                let span = span.display_in(arena);
+
+                let rhs = [kind, ", ".display_in(arena), span]
+                    .concat_in(arena)
+                    .enclose(arena.just('('), arena.just(')'), arena);
+
+                let spacing_width = (with.width as usize / 3)
+                    .checked_sub(head_str.len())
+                    .unwrap_or(1);
+                let spacing = arena.just(' ').repeat(spacing_width, arena);
+
+                let single = [spacing, rhs.clone()].concat_in(arena).flatten(arena);
+                let multi = [arena.newline(), rhs].concat_in(arena).indent(arena);
+
+                head.then(single.or(multi, arena), arena)
+                    .then(arena.newline(), arena)
             })
             .collect_in::<bumpalo::collections::Vec<_>>(arena);
 
         arena.concat(tokens.into_bump_slice())
+    }
+
+    fn print(&self, options: PrintOptions)
+    where
+        PrintOptions: Default,
+    {
+        self.print_with(&options, options);
     }
 }
 
