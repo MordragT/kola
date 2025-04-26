@@ -23,7 +23,6 @@ impl Phase for InferPhase {
     type ListExpr = types::MonoType;
     type RecordField = types::Property;
     type RecordExpr = types::MonoType;
-    type RecordFieldPath = types::MonoType;
     type RecordExtendExpr = types::MonoType;
     type RecordRestrictExpr = types::MonoType;
     type RecordUpdateOp = types::MonoType;

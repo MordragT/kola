@@ -1,3 +1,4 @@
+use derive_more::From;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
@@ -12,7 +13,7 @@ use crate::{
 /// Non-polymorphic types (e.g. `α → β`, `int → bool`)
 /// https://en.wikipedia.org/wiki/Hindley%e2%80%93Milner_type_system#Monotypes
 /// τ ::= α | gn τ1 .. τn
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, From, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum MonoType {
     Builtin(BuiltinType),
     Func(Box<FuncType>),
@@ -146,9 +147,9 @@ impl fmt::Display for MonoType {
     }
 }
 
-impl From<BuiltinType> for MonoType {
-    fn from(value: BuiltinType) -> Self {
-        Self::Builtin(value)
+impl Default for MonoType {
+    fn default() -> Self {
+        Self::variable()
     }
 }
 
@@ -167,11 +168,5 @@ impl From<FuncType> for MonoType {
 impl From<RowType> for MonoType {
     fn from(value: RowType) -> Self {
         Self::Row(Box::new(value))
-    }
-}
-
-impl From<TypeVar> for MonoType {
-    fn from(value: TypeVar) -> Self {
-        Self::Var(value)
     }
 }

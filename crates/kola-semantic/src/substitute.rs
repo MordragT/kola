@@ -179,7 +179,6 @@ impl_meta_substitutable!(
     ListExpr,
     RecordField,
     RecordExpr,
-    RecordFieldPath,
     RecordExtendExpr,
     RecordRestrictExpr,
     RecordUpdateOp,

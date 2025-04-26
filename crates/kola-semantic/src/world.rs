@@ -10,12 +10,15 @@ use std::{
 };
 use thiserror::Error;
 
+use crate::infer::{self, InferDecorator, InferMetadata, Inferer};
+
 // maybe this could use some DAG Graph for modelling dependencies which in turn allows for parallel module elaboration
 pub struct World {
     pub order: Vec<PathBuf>,
     pub sources: HashMap<PathBuf, Source>,
     pub trees: HashMap<PathBuf, Tree>,
     pub span_table: HashMap<PathBuf, SpanMetadata>,
+    pub type_table: HashMap<PathBuf, InferMetadata>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
@@ -30,7 +33,6 @@ pub struct DiscoverVerboseOptions {
     pub source: bool,
     pub tokens: bool,
     pub tree: bool,
-    pub typed_tree: bool,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -45,6 +47,7 @@ enum VisitState {
 struct CycleDetected(PathBuf);
 
 impl World {
+    /// Topological DFS Algorithm
     pub fn discover(path: impl AsRef<Path>, options: DiscoverOptions) -> Result<Self> {
         let path = path.as_ref().canonicalize().into_diagnostic()?;
 
@@ -135,14 +138,36 @@ impl World {
             }
         }
 
-        order.reverse();
+        // order.reverse();
 
         Ok(Self {
             order,
             sources,
             trees,
             span_table,
+            type_table: HashMap::new(),
         })
+    }
+
+    pub fn infer(&mut self, verbose: bool, options: PrintOptions) -> Result<(), infer::Error> {
+        for path in &self.order {
+            let tree = &self.trees[path];
+            let spans = self.span_table[path].clone();
+            let root = tree.root_id();
+
+            let types = Inferer::new(tree, spans.clone()).solve(root, tree)?;
+            self.type_table.insert(path.to_owned(), types.clone());
+
+            if verbose {
+                println!("\n{}", "Typed Abstract Syntax Tree".bold().bright_white());
+                TreePrinter::new(tree)
+                    .with(SpanDecorator(spans))
+                    .with(InferDecorator(types))
+                    .print(options);
+            }
+        }
+
+        Ok(())
     }
 }
 

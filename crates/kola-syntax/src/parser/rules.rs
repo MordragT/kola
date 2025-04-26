@@ -1,3 +1,5 @@
+use std::ops::Deref;
+
 use chumsky::{input::ValueInput, prelude::*};
 use kola_tree::prelude::*;
 
@@ -407,10 +409,10 @@ where
             .boxed();
 
         enum RecordOp {
-            Extend(Id<node::RecordFieldPath>, Id<node::Expr>),
-            Restrict(Id<node::RecordFieldPath>),
+            Extend(Vec<Id<node::Name>>, Id<node::Expr>),
+            Restrict(Vec<Id<node::Name>>),
             Update(
-                Id<node::RecordFieldPath>,
+                Vec<Id<node::Name>>,
                 Id<node::RecordUpdateOp>,
                 Id<node::Expr>,
             ),
@@ -420,7 +422,6 @@ where
             .clone()
             .separated_by(ctrl(CtrlT::DOT))
             .collect()
-            .map_to_node(node::RecordFieldPath)
             .boxed();
 
         let extend = op(OpT::ADD)
@@ -459,28 +460,99 @@ where
                 let span = e.span();
                 let tree: &mut State = e.state();
 
+                let mut source_path = source.get(&tree.0).to_path().unwrap().get(&tree.0).clone();
+
                 match op {
-                    RecordOp::Extend(field, value) => tree.insert_as::<node::Expr, _>(
-                        node::RecordExtendExpr {
-                            source,
-                            field,
-                            value,
-                        },
-                        span,
-                    ),
-                    RecordOp::Restrict(field) => tree.insert_as::<node::Expr, _>(
-                        node::RecordRestrictExpr { source, field },
-                        span,
-                    ),
-                    RecordOp::Update(field, op, value) => tree.insert_as::<node::Expr, _>(
-                        node::RecordUpdateExpr {
-                            source,
-                            field,
-                            op,
-                            value,
-                        },
-                        span,
-                    ),
+                    RecordOp::Extend(mut field_path, mut value) => {
+                        source_path.0.append(&mut field_path);
+
+                        let field = source_path.0.pop().unwrap();
+                        let source = tree.insert_as::<node::Expr, _>(source_path.clone(), span);
+                        value = tree.insert_as::<node::Expr, _>(
+                            node::RecordExtendExpr {
+                                source,
+                                field,
+                                value,
+                            },
+                            span,
+                        );
+                        while source_path.0.len() > 1 {
+                            let field = source_path.0.pop().unwrap();
+                            let op = tree.insert(node::RecordUpdateOp::Assign, span);
+                            let source = tree.insert_as::<node::Expr, _>(source_path.clone(), span);
+                            value = tree.insert_as::<node::Expr, _>(
+                                node::RecordUpdateExpr {
+                                    source,
+                                    field,
+                                    op,
+                                    value,
+                                },
+                                span,
+                            );
+                        }
+
+                        value
+                    }
+                    RecordOp::Restrict(mut field_path) => {
+                        source_path.0.append(&mut field_path);
+
+                        let field = source_path.0.pop().unwrap();
+                        let source = tree.insert_as::<node::Expr, _>(source_path.clone(), span);
+                        let mut value = tree.insert_as::<node::Expr, _>(
+                            node::RecordRestrictExpr { source, field },
+                            span,
+                        );
+
+                        while source_path.0.len() > 1 {
+                            let field = source_path.0.pop().unwrap();
+                            let op = tree.insert(node::RecordUpdateOp::Assign, span);
+                            let source = tree.insert_as::<node::Expr, _>(source_path.clone(), span);
+                            value = tree.insert_as::<node::Expr, _>(
+                                node::RecordUpdateExpr {
+                                    source,
+                                    field,
+                                    op,
+                                    value,
+                                },
+                                span,
+                            );
+                        }
+
+                        value
+                    }
+
+                    RecordOp::Update(mut field_path, op, mut value) => {
+                        source_path.0.append(&mut field_path);
+
+                        let field = source_path.0.pop().unwrap();
+                        let source = tree.insert_as::<node::Expr, _>(source_path.clone(), span);
+                        value = tree.insert_as::<node::Expr, _>(
+                            node::RecordUpdateExpr {
+                                source,
+                                field,
+                                op,
+                                value,
+                            },
+                            span,
+                        );
+
+                        while source_path.0.len() > 1 {
+                            let field = source_path.0.pop().unwrap();
+                            let op = tree.insert(node::RecordUpdateOp::Assign, span);
+                            let source = tree.insert_as::<node::Expr, _>(source_path.clone(), span);
+                            value = tree.insert_as::<node::Expr, _>(
+                                node::RecordUpdateExpr {
+                                    source,
+                                    field,
+                                    op,
+                                    value,
+                                },
+                                span,
+                            );
+                        }
+
+                        value
+                    }
                 }
             })
             .boxed();
@@ -1107,7 +1179,7 @@ mod tests {
 
         let extend = inspector.as_record_extend().unwrap();
 
-        extend.field().has_segments(1).segment_at_is(0, "x");
+        extend.field();
 
         extend
             .source()

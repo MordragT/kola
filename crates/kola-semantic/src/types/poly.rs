@@ -9,7 +9,7 @@ use crate::substitute::{Substitutable, Substitution};
 /// Types that contains variable bound by zero or more forall
 /// Polymorphic types (e.g. `∀α. α → α`, `∀α. ∀β. α → β`)
 /// https://en.wikipedia.org/wiki/Hindley%e2%80%93Milner_type_system#Polytypes
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct PolyType {
     pub(super) vars: Vec<TypeVar>,
     pub(super) ty: MonoType,
@@ -67,13 +67,16 @@ impl fmt::Display for PolyType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let Self { vars, ty } = self;
 
-        write!(f, "forall ")?;
+        if !vars.is_empty() {
+            write!(f, "forall ")?;
 
-        for tv in vars {
-            write!(f, "{tv}")?;
+            for tv in vars {
+                write!(f, "{tv}")?;
+            }
+
+            write!(f, " . ")?;
         }
 
-        write!(f, " . ")?;
         ty.fmt(f)
     }
 }

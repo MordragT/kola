@@ -1,4 +1,6 @@
 {
+    type List = forall a . { el : a },
+
     module str = import super.str,
     #module str2 = import str,
 }

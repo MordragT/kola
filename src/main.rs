@@ -48,17 +48,18 @@ fn main() -> miette::Result<()> {
                     source: false,
                     tokens: false,
                     tree: true,
-                    typed_tree: true,
                 },
                 ..Default::default()
             };
 
-            let world = World::discover(path, options)?;
+            let mut world = World::discover(path, options)?;
 
             println!("\n{}", "Module Dependency Order".bold().bright_white());
-            for file in world.order {
+            for file in &world.order {
                 println!("{file:?}");
             }
+
+            world.infer(true, Default::default()).unwrap();
         }
     }
 

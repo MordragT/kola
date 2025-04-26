@@ -44,7 +44,6 @@ impl_visitable!(
     ListExpr,
     RecordField,
     RecordExpr,
-    RecordFieldPath,
     RecordExtendExpr,
     RecordRestrictExpr,
     RecordUpdateOp,
@@ -326,28 +325,6 @@ pub trait Visitor<T: TreeAccess> {
         self.walk_record_expr(id, tree)
     }
 
-    fn walk_record_field_path(
-        &mut self,
-        id: Id<node::RecordFieldPath>,
-        tree: &T,
-    ) -> ControlFlow<Self::BreakValue> {
-        let path = id.get(tree);
-
-        for id in &path.0 {
-            self.visit_name(*id, tree)?;
-        }
-
-        ControlFlow::Continue(())
-    }
-
-    fn visit_record_field_path(
-        &mut self,
-        id: Id<node::RecordFieldPath>,
-        tree: &T,
-    ) -> ControlFlow<Self::BreakValue> {
-        self.walk_record_field_path(id, tree)
-    }
-
     fn visit_record_update_op(
         &mut self,
         _id: Id<node::RecordUpdateOp>,
@@ -368,7 +345,7 @@ pub trait Visitor<T: TreeAccess> {
         } = id.get(tree);
 
         self.visit_expr(*source, tree)?;
-        self.visit_record_field_path(*field, tree)?;
+        self.visit_name(*field, tree)?;
         self.visit_expr(*value, tree)?;
 
         ControlFlow::Continue(())
@@ -390,7 +367,7 @@ pub trait Visitor<T: TreeAccess> {
         let node::RecordRestrictExpr { source, field } = id.get(tree);
 
         self.visit_expr(*source, tree)?;
-        self.visit_record_field_path(*field, tree)?;
+        self.visit_name(*field, tree)?;
 
         ControlFlow::Continue(())
     }
@@ -416,7 +393,7 @@ pub trait Visitor<T: TreeAccess> {
         } = id.get(tree);
 
         self.visit_expr(*source, tree)?;
-        self.visit_record_field_path(*field, tree)?;
+        self.visit_name(*field, tree)?;
         self.visit_record_update_op(*op, tree)?;
         self.visit_expr(*value, tree)?;
 

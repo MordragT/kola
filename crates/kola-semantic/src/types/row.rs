@@ -10,7 +10,7 @@ use crate::{
 };
 
 /// A key-value pair representing a property type in a record.
-#[derive(Debug, Clone, Eq, PartialEq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub struct Property {
     pub k: Symbol,
     pub v: MonoType,

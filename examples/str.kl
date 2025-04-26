@@ -1,3 +1,5 @@
 {
     type Str = { ptr : Num, size : Num },
+
+    # module cyc = import super.cyclic
 }

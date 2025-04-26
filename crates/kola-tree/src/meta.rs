@@ -132,11 +132,32 @@ macro_rules! define {
             $($node(<node::$node as MetaCast<P>>::Meta),)*
         }
 
+        impl<P> Meta<P>
+        where
+            P: Phase<$($node: Default,)*>,
+        {
+            pub fn default_for(kind: node::NodeKind) -> Self {
+                match kind {
+                    $(
+                        node::NodeKind::$node => Self::$node(Default::default()),
+                    )*
+                }
+            }
+        }
+
         impl<P, M> Meta<P>
         where
             M: Clone + Debug,
             P: Phase<$($node = M,)*>,
         {
+            pub fn default_with( m: M, kind: node::NodeKind) -> Self {
+                match kind {
+                    $(
+                        node::NodeKind::$node => Self::$node(m),
+                    )*
+                }
+            }
+
             pub fn inner_ref(&self) -> &M {
                 match self {
                     $(Self::$node(m) => m,)*
@@ -194,7 +215,6 @@ define!(
     ListExpr,
     RecordField,
     RecordExpr,
-    RecordFieldPath,
     RecordExtendExpr,
     RecordRestrictExpr,
     RecordUpdateOp,

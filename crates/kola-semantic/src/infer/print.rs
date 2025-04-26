@@ -31,7 +31,6 @@ impl Decorator for InferDecorator {
             | Meta::PathExpr(t)
             | Meta::ListExpr(t)
             | Meta::RecordExpr(t)
-            | Meta::RecordFieldPath(t)
             | Meta::RecordExtendExpr(t)
             | Meta::RecordRestrictExpr(t)
             | Meta::RecordUpdateOp(t)

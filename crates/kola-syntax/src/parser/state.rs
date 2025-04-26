@@ -17,6 +17,13 @@ impl StateRepr {
         Self::default()
     }
 
+    pub fn span<T>(&self, id: Id<T>) -> Span
+    where
+        T: MetaCast<SyntaxPhase, Meta = Span>,
+    {
+        self.meta.get(id).inner_copied()
+    }
+
     pub fn insert<T>(&mut self, node: T, meta: Span) -> Id<T>
     where
         Node: From<T>,
@@ -37,5 +44,18 @@ impl StateRepr {
         let id = self.insert(node, meta.clone());
         let u = U::from(id);
         self.insert(u, meta)
+    }
+}
+
+impl TreeAccess for StateRepr {
+    fn node<T>(&self, id: Id<T>) -> &T
+    where
+        Node: kola_utils::TryAsRef<T>,
+    {
+        self.builder.node(id)
+    }
+
+    fn iter_nodes(&self) -> std::slice::Iter<'_, Node> {
+        self.builder.iter_nodes()
     }
 }

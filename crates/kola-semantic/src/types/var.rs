@@ -74,6 +74,12 @@ impl TypeVar {
     }
 }
 
+impl Default for TypeVar {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl Typed for TypeVar {
     fn constrain(&self, with: Kind, env: &mut KindEnv) -> Result<(), SemanticError> {
         env.entry(*self)

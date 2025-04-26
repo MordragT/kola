@@ -212,38 +212,11 @@ impl Printable<TreePrinter> for RecordExpr {
     }
 }
 
-#[derive(Debug, From, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
-pub struct RecordFieldPath(pub Vec<Id<Name>>);
-
-impl Printable<TreePrinter> for RecordFieldPath {
-    fn notate<'a>(&'a self, with: &'a TreePrinter, arena: &'a Bump) -> Notation<'a> {
-        let head = "RecordFieldPath".cyan().display_in(arena);
-
-        let path = self.0.gather(with, arena);
-
-        let single = path
-            .clone()
-            .concat_map(|s| arena.just(' ').then(s, arena), arena)
-            .flatten(arena);
-        let multi = path
-            .concat_map(|s| arena.newline().then(s, arena), arena)
-            .indent(arena);
-
-        head.then(single.or(multi, arena), arena)
-    }
-}
-
-impl RecordFieldPath {
-    pub fn get<'a>(&self, index: usize, tree: &'a impl TreeAccess) -> &'a Name {
-        self.0[index].get(tree)
-    }
-}
-
 // { y | +x = 10 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct RecordExtendExpr {
     pub source: Id<Expr>,
-    pub field: Id<RecordFieldPath>,
+    pub field: Id<Name>,
     pub value: Id<Expr>,
 }
 
@@ -252,7 +225,7 @@ impl RecordExtendExpr {
         *self.source.get(tree)
     }
 
-    pub fn field(self, tree: &impl TreeAccess) -> &RecordFieldPath {
+    pub fn field(self, tree: &impl TreeAccess) -> &Name {
         self.field.get(tree)
     }
 
@@ -307,7 +280,7 @@ impl Printable<TreePrinter> for RecordExtendExpr {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct RecordRestrictExpr {
     pub source: Id<Expr>,
-    pub field: Id<RecordFieldPath>,
+    pub field: Id<Name>,
 }
 
 impl RecordRestrictExpr {
@@ -315,7 +288,7 @@ impl RecordRestrictExpr {
         *self.source.get(tree)
     }
 
-    pub fn field(self, tree: &impl TreeAccess) -> &RecordFieldPath {
+    pub fn field(self, tree: &impl TreeAccess) -> &Name {
         self.field.get(tree)
     }
 }
@@ -374,7 +347,7 @@ impl Printable<TreePrinter> for RecordUpdateOp {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct RecordUpdateExpr {
     pub source: Id<Expr>,
-    pub field: Id<RecordFieldPath>,
+    pub field: Id<Name>,
     pub op: Id<RecordUpdateOp>,
     pub value: Id<Expr>,
 }
@@ -384,7 +357,7 @@ impl RecordUpdateExpr {
         *self.source.get(tree)
     }
 
-    pub fn field(self, tree: &impl TreeAccess) -> &RecordFieldPath {
+    pub fn field(self, tree: &impl TreeAccess) -> &Name {
         self.field.get(tree)
     }
 
@@ -1632,38 +1605,6 @@ mod inspector {
             NodeInspector::new(field.value, self.tree)
         }
     }
-    impl<'t> NodeInspector<'t, Id<RecordFieldPath>> {
-        /// Assert the field path has the specified number of segments
-        pub fn has_segments(self, count: usize) -> Self {
-            let segments_len = self.node.get(self.tree).0.len();
-            assert_eq!(
-                segments_len, count,
-                "Expected {} segments but found {}",
-                count, segments_len
-            );
-            self
-        }
-
-        /// Assert the field path segment at the given index has the expected name
-        pub fn segment_at_is(self, index: usize, expected: &str) -> Self {
-            let field_path = self.node.get(self.tree);
-            assert!(
-                index < field_path.0.len(),
-                "Segment index {} out of bounds (max {})",
-                index,
-                field_path.0.len() - 1
-            );
-            let segment = field_path.get(index, self.tree);
-            assert_eq!(
-                segment.as_str(),
-                expected,
-                "Expected segment '{}' but found '{}'",
-                expected,
-                segment.0
-            );
-            self
-        }
-    }
 
     impl<'t> NodeInspector<'t, Id<RecordExtendExpr>> {
         /// Get an inspector for the source record
@@ -1673,7 +1614,7 @@ mod inspector {
         }
 
         /// Get an inspector for the field path being extended
-        pub fn field(self) -> NodeInspector<'t, Id<RecordFieldPath>> {
+        pub fn field(self) -> NodeInspector<'t, Id<Name>> {
             let extend = self.node.get(self.tree);
             NodeInspector::new(extend.field, self.tree)
         }
@@ -1693,7 +1634,7 @@ mod inspector {
         }
 
         /// Get an inspector for the field path being restricted
-        pub fn field(self) -> NodeInspector<'t, Id<RecordFieldPath>> {
+        pub fn field(self) -> NodeInspector<'t, Id<Name>> {
             let restrict = self.node.get(self.tree);
             NodeInspector::new(restrict.field, self.tree)
         }
@@ -1707,7 +1648,7 @@ mod inspector {
         }
 
         /// Get an inspector for the field path being updated
-        pub fn field(self) -> NodeInspector<'t, Id<RecordFieldPath>> {
+        pub fn field(self) -> NodeInspector<'t, Id<Name>> {
             let update = self.node.get(self.tree);
             NodeInspector::new(update.field, self.tree)
         }

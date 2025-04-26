@@ -8,7 +8,6 @@ use crate::{
     env::{KindEnv, TypeEnv},
     error::SemanticError,
     substitute::{Substitutable, Substitution},
-    types,
     types::{Kind, MonoType, PolyType, Property, TypeVar, Typed},
     unify::Unifiable,
 };
@@ -18,6 +17,8 @@ mod print;
 
 pub use phase::{InferMetadata, InferPhase};
 pub use print::InferDecorator;
+
+// TODO rename to Typer ??
 
 // https://blog.stimsina.com/post/implementing-a-hindley-milner-type-system-part-2
 
@@ -35,7 +36,7 @@ pub enum Constraint {
     },
 }
 
-type Error = Spanned<Errors<SemanticError>>;
+pub type Error = Spanned<Errors<SemanticError>>;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Constraints(Vec<Constraint>);
@@ -114,67 +115,7 @@ pub struct Inferer {
 
 impl Inferer {
     pub fn new(tree: &impl TreeAccess, spans: SpanMetadata) -> Self {
-        let types = tree.metadata_with(|node| match node {
-            Node::Name(n) => Meta::Name(n.0.clone()),
-            Node::AnyPat(_) => Meta::AnyPat(MonoType::variable()),
-            Node::IdentPat(_) => Meta::IdentPat(MonoType::variable()),
-            Node::LiteralPat(_) => Meta::LiteralPat(MonoType::variable()),
-            Node::RecordFieldPat(_) => Meta::RecordFieldPat(MonoType::variable()),
-            Node::RecordPat(_) => Meta::RecordPat(MonoType::variable()),
-            Node::VariantCasePat(_) => Meta::VariantCasePat(MonoType::variable()),
-            Node::VariantPat(_) => Meta::VariantPat(MonoType::variable()),
-            Node::PatError(_) => Meta::PatError(()),
-            Node::Pat(_) => Meta::Pat(MonoType::variable()),
-            Node::LiteralExpr(_) => Meta::LiteralExpr(MonoType::variable()),
-            Node::PathExpr(_) => Meta::PathExpr(MonoType::variable()),
-            Node::ListExpr(_) => Meta::ListExpr(MonoType::variable()),
-            Node::RecordField(_) => Meta::RecordField(Property {
-                k: Default::default(),
-                v: MonoType::variable(),
-            }),
-            Node::RecordExpr(_) => Meta::RecordExpr(MonoType::variable()),
-            Node::RecordFieldPath(_) => Meta::RecordFieldPath(MonoType::variable()),
-            Node::RecordExtendExpr(_) => Meta::RecordExtendExpr(MonoType::variable()),
-            Node::RecordRestrictExpr(_) => Meta::RecordRestrictExpr(MonoType::variable()),
-            Node::RecordUpdateOp(_) => Meta::RecordUpdateOp(MonoType::variable()),
-            Node::RecordUpdateExpr(_) => Meta::RecordUpdateExpr(MonoType::variable()),
-            Node::UnaryOp(_) => Meta::UnaryOp(MonoType::variable()),
-            Node::UnaryExpr(_) => Meta::UnaryExpr(MonoType::variable()),
-            Node::BinaryOp(_) => Meta::BinaryOp(MonoType::variable()),
-            Node::BinaryExpr(_) => Meta::BinaryExpr(MonoType::variable()),
-            Node::LetExpr(_) => Meta::LetExpr(MonoType::variable()),
-            Node::CaseBranch(_) => Meta::CaseBranch(()),
-            Node::CaseExpr(_) => Meta::CaseExpr(MonoType::variable()),
-            Node::IfExpr(_) => Meta::IfExpr(MonoType::variable()),
-            Node::LambdaExpr(_) => Meta::LambdaExpr(MonoType::variable()),
-            Node::CallExpr(_) => Meta::CallExpr(MonoType::variable()),
-            Node::ExprError(_) => Meta::ExprError(()),
-            Node::Expr(_) => Meta::Expr(MonoType::variable()),
-            Node::TypePath(_) => Meta::TypePath(MonoType::variable()),
-            Node::TypeVar(_) => Meta::TypeVar(MonoType::variable()),
-            Node::RecordFieldType(_) => Meta::RecordFieldType(MonoType::variable()),
-            Node::RecordType(_) => Meta::RecordType(MonoType::variable()),
-            Node::VariantCaseType(_) => Meta::VariantCaseType(MonoType::variable()),
-            Node::VariantType(_) => Meta::VariantType(MonoType::variable()),
-            Node::FuncType(_) => Meta::FuncType(MonoType::variable()),
-            Node::TypeApplication(_) => Meta::TypeApplication(MonoType::variable()),
-            Node::TypeExpr(_) => Meta::TypeExpr(MonoType::variable()),
-            Node::TypeError(_) => Meta::TypeError(()),
-            Node::Type(_) => Meta::Type(MonoType::variable()),
-            Node::ValueBind(_) => Meta::ValueBind(MonoType::variable()),
-            Node::TypeBind(_) => Meta::TypeBind(MonoType::variable()),
-            Node::OpaqueTypeBind(_) => Meta::OpaqueTypeBind(MonoType::variable()),
-            Node::ModuleBind(_) => Meta::ModuleBind(MonoType::variable()),
-            Node::ModuleTypeBind(_) => Meta::ModuleTypeBind(MonoType::variable()),
-            Node::Bind(_) => Meta::Bind(MonoType::variable()),
-            Node::Module(_) => Meta::Module(MonoType::variable()),
-            Node::ValueSpec(_) => Meta::ValueSpec(MonoType::variable()),
-            Node::OpaqueTypeKind(_) => Meta::OpaqueTypeKind(MonoType::variable()),
-            Node::OpaqueTypeSpec(_) => Meta::OpaqueTypeSpec(MonoType::variable()),
-            Node::ModuleSpec(_) => Meta::ModuleSpec(MonoType::variable()),
-            Node::Spec(_) => Meta::Spec(MonoType::variable()),
-            Node::ModuleType(_) => Meta::ModuleType(MonoType::variable()),
-        });
+        let types = tree.metadata_with(|node| Meta::<InferPhase>::default_for(node.kind()));
 
         Self {
             subs: Substitution::empty(),
@@ -186,11 +127,14 @@ impl Inferer {
         }
     }
 
-    pub fn solve<T>(mut self, node: impl Visitable<T>, tree: &T) -> Result<TypeMetadata, Error>
+    pub fn solve<T>(mut self, node: impl Visitable<T>, tree: &T) -> Result<InferMetadata, Error>
     where
         T: TreeAccess,
     {
-        node.visit_by(&mut self, tree);
+        match node.visit_by(&mut self, tree) {
+            ControlFlow::Break(_) => unreachable!(),
+            ControlFlow::Continue(()) => (),
+        }
 
         let Self {
             mut subs,
@@ -224,8 +168,9 @@ impl Inferer {
     fn partial_restrict(
         &mut self,
         source: Id<node::Expr>,
-        field: Id<node::RecordFieldPath>,
+        field: Id<node::Name>,
         span: Span,
+        tree: &impl TreeAccess,
     ) -> MonoType {
         let t = self.types.meta(source);
 
@@ -235,7 +180,7 @@ impl Inferer {
 
         // TODO handle field path
         let head = Property {
-            k: self.types.meta(field).clone(),
+            k: field.get(tree).0.clone(),
             v: MonoType::variable(),
         };
 
@@ -301,7 +246,7 @@ impl<T: TreeAccess> Visitor<T> for Inferer {
 
         let node::RecordField { field, value } = *id.get(tree);
 
-        let k = self.types.meta(field).clone();
+        let k = field.get(tree).0.clone();
         let v = self.types.meta(value).clone();
 
         self.update_type(id, Property { k, v });
@@ -393,7 +338,7 @@ impl<T: TreeAccess> Visitor<T> for Inferer {
 
         // TODO handle record field path
         let head = Property {
-            k: self.types.meta(field).clone(),
+            k: field.get(tree).0.clone(),
             v: t0.clone(),
         };
         let row = MonoType::row(head, t1.clone());
@@ -418,7 +363,7 @@ impl<T: TreeAccess> Visitor<T> for Inferer {
 
         let node::RecordRestrictExpr { source, field } = *id.get(tree);
 
-        let t_prime = self.partial_restrict(source, field, span);
+        let t_prime = self.partial_restrict(source, field, span, tree);
 
         self.update_type(id, t_prime);
         ControlFlow::Continue(())
@@ -445,11 +390,11 @@ impl<T: TreeAccess> Visitor<T> for Inferer {
             value,
         } = *id.get(tree);
 
-        let t0 = self.partial_restrict(source, field, span);
+        let t0 = self.partial_restrict(source, field, span, tree);
         let t2 = self.types.meta(value).clone();
 
         let head = Property {
-            k: self.types.meta(field).clone(),
+            k: field.get(tree).0.clone(),
             v: t2,
         };
         let row = MonoType::row(head, t0);
@@ -584,15 +529,6 @@ impl<T: TreeAccess> Visitor<T> for Inferer {
         ControlFlow::Continue(())
     }
 
-    fn visit_let_expr(
-        &mut self,
-        _id: Id<node::LetExpr>,
-        tree: &T,
-    ) -> ControlFlow<Self::BreakValue> {
-        // handled by lower level walk_let
-        ControlFlow::Continue(())
-    }
-
     // If
     // Γ ⊢ predicate : Bool
     // Γ ⊢ e0 : τ
@@ -629,15 +565,6 @@ impl<T: TreeAccess> Visitor<T> for Inferer {
         tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
         todo!()
-    }
-
-    fn visit_lambda_expr(
-        &mut self,
-        _id: Id<node::LambdaExpr>,
-        tree: &T,
-    ) -> ControlFlow<Self::BreakValue> {
-        // handled by lower level walk_func
-        ControlFlow::Continue(())
     }
 
     // Application rule
@@ -700,7 +627,7 @@ impl<T: TreeAccess> Visitor<T> for Inferer {
     // Γ, x : Γ'(τ) ⊢ e1 : τ'
     // --------------------
     // Γ ⊢ let x = e0 in e1 : τ'
-    fn walk_let_expr(&mut self, id: Id<node::LetExpr>, tree: &T) -> ControlFlow<Self::BreakValue> {
+    fn visit_let_expr(&mut self, id: Id<node::LetExpr>, tree: &T) -> ControlFlow<Self::BreakValue> {
         let &node::LetExpr {
             name,
             value,
@@ -710,7 +637,7 @@ impl<T: TreeAccess> Visitor<T> for Inferer {
         // TODO unsure if name is already populated by init inside self.types
         // otherwise implement traverse function for name
 
-        let name = self.types.meta(name).clone();
+        let name = name.get(tree).0.clone();
 
         TypeVar::enter();
         self.visit_expr(value, tree)?;
@@ -739,7 +666,7 @@ impl<T: TreeAccess> Visitor<T> for Inferer {
     // Γ, x : τ ⊢ e : τ'
     // --------------------
     // Γ ⊢ \x -> e : t -> t'
-    fn walk_lambda_expr(
+    fn visit_lambda_expr(
         &mut self,
         id: Id<node::LambdaExpr>,
         tree: &T,
@@ -779,68 +706,8 @@ mod tests {
             end: 0,
             context: (),
         };
-        tree.metadata_with(|kind| match kind {
-            Node::Name(_) => Meta::Name(span),
-            Node::AnyPat(_) => Meta::AnyPat(span),
-            Node::LiteralPat(_) => Meta::LiteralPat(span),
-            Node::IdentPat(_) => Meta::IdentPat(span),
-            Node::RecordFieldPat(_) => Meta::RecordFieldPat(span),
-            Node::RecordPat(_) => Meta::RecordPat(span),
-            Node::VariantCasePat(_) => Meta::VariantCasePat(span),
-            Node::VariantPat(_) => Meta::VariantPat(span),
-            Node::PatError(_) => Meta::PatError(span),
-            Node::Pat(_) => Meta::Pat(span),
-            Node::LiteralExpr(_) => Meta::LiteralExpr(span),
-            Node::PathExpr(_) => Meta::PathExpr(span),
-            Node::ListExpr(_) => Meta::ListExpr(span),
-            Node::RecordField(_) => Meta::RecordField(span),
-            Node::RecordExpr(_) => Meta::RecordExpr(span),
-            Node::RecordFieldPath(_) => Meta::RecordFieldPath(span),
-            Node::RecordExtendExpr(_) => Meta::RecordExtendExpr(span),
-            Node::RecordRestrictExpr(_) => Meta::RecordRestrictExpr(span),
-            Node::RecordUpdateOp(_) => Meta::RecordUpdateOp(span),
-            Node::RecordUpdateExpr(_) => Meta::RecordUpdateExpr(span),
-            Node::UnaryOp(_) => Meta::UnaryOp(span),
-            Node::UnaryExpr(_) => Meta::UnaryExpr(span),
-            Node::BinaryOp(_) => Meta::BinaryOp(span),
-            Node::BinaryExpr(_) => Meta::BinaryExpr(span),
-            Node::LetExpr(_) => Meta::LetExpr(span),
-            Node::CaseBranch(_) => Meta::CaseBranch(span),
-            Node::CaseExpr(_) => Meta::CaseExpr(span),
-            Node::IfExpr(_) => Meta::IfExpr(span),
-            Node::LambdaExpr(_) => Meta::LambdaExpr(span),
-            Node::CallExpr(_) => Meta::CallExpr(span),
-            Node::ExprError(_) => Meta::ExprError(span),
-            Node::Expr(_) => Meta::Expr(span),
-            Node::TypePath(_) => Meta::TypePath(span),
-            Node::TypeVar(_) => Meta::TypeVar(span),
-            Node::RecordFieldType(_) => Meta::RecordFieldType(span),
-            Node::RecordType(_) => Meta::RecordType(span),
-            Node::VariantCaseType(_) => Meta::VariantCaseType(span),
-            Node::VariantType(_) => Meta::VariantType(span),
-            Node::FuncType(_) => Meta::FuncType(span),
-            Node::TypeApplication(_) => Meta::TypeApplication(span),
-            Node::TypeExpr(_) => Meta::TypeExpr(span),
-            Node::TypeError(_) => Meta::TypeError(span),
-            Node::Type(_) => Meta::Type(span),
-            Node::ValueBind(_) => Meta::ValueBind(span),
-            Node::TypeBind(_) => Meta::TypeBind(span),
-            Node::OpaqueTypeBind(_) => Meta::OpaqueTypeBind(span),
-            Node::ModuleBind(_) => Meta::ModuleBind(span),
-            Node::ModuleTypeBind(_) => Meta::ModuleTypeBind(span),
-            Node::Bind(_) => Meta::Bind(span),
-            Node::Module(_) => Meta::Module(span),
-            Node::ModulePath(_) => Meta::ModulePath(span),
-            Node::ModuleImport(_) => Meta::ModuleImport(span),
-            Node::ModuleExpr(_) => Meta::ModuleExpr(span),
-            Node::ValueSpec(_) => Meta::ValueSpec(span),
-            Node::OpaqueTypeKind(_) => Meta::OpaqueTypeKind(span),
-            Node::OpaqueTypeSpec(_) => Meta::OpaqueTypeSpec(span),
-            Node::ModuleSpec(_) => Meta::ModuleSpec(span),
-            Node::Spec(_) => Meta::Spec(span),
-            Node::ModuleType(_) => Meta::ModuleType(span),
-        })
-        .into_metadata()
+        tree.metadata_with(|node| Meta::default_with(span, node.kind()))
+            .into_metadata()
     }
 
     #[test]
