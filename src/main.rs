@@ -42,8 +42,8 @@ fn main() -> miette::Result<()> {
                 .print(options);
         }
         Cmd::Analyze { path } => {
-            let options = DiscoverOptions {
-                verbose: DiscoverVerboseOptions {
+            let options = ExploreOptions {
+                verbosity: ExploreVerbosity {
                     debug: true,
                     source: false,
                     tokens: false,
@@ -52,7 +52,8 @@ fn main() -> miette::Result<()> {
                 ..Default::default()
             };
 
-            let mut world = World::discover(path, options)?;
+            let mut world = World::new();
+            world.explore(path, options)?;
 
             println!("\n{}", "Module Dependency Order".bold().bright_white());
             for file in &world.order {
@@ -66,7 +67,7 @@ fn main() -> miette::Result<()> {
     Ok(())
 }
 
-fn try_parse(source: Source) -> Result<(Tree, SpanMetadata), SourceReport> {
+fn try_parse(source: Source) -> Result<(Tree, SpanInfo), SourceReport> {
     let options = PrintOptions::default();
 
     let TokenizeResult { tokens, mut errors } = tokenize(source.as_str());

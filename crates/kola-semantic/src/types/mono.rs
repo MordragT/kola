@@ -1,8 +1,9 @@
 use derive_more::From;
+use kola_utils::as_variant;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
-use super::{BuiltinType, FuncType, PolyType, Property, RowType, TypeVar, Typed};
+use super::{BuiltinType, FuncType, ListType, PolyType, Property, RowType, TypeVar, Typed};
 use crate::{
     env::KindEnv,
     error::SemanticError,
@@ -17,6 +18,7 @@ use crate::{
 pub enum MonoType {
     Builtin(BuiltinType),
     Func(Box<FuncType>),
+    List(Box<ListType>),
     Row(Box<RowType>),
     Var(TypeVar),
 }
@@ -37,6 +39,10 @@ impl MonoType {
         Self::Func(Box::new(FuncType::new(arg, ret)))
     }
 
+    pub fn list(el: Self) -> Self {
+        Self::List(Box::new(ListType::new(el)))
+    }
+
     pub fn row(head: Property, tail: Self) -> Self {
         Self::Row(Box::new(RowType::Extension { head, tail }))
     }
@@ -47,58 +53,64 @@ impl MonoType {
 }
 
 impl MonoType {
-    pub fn into_var(self) -> Option<TypeVar> {
-        match self {
-            Self::Var(tv) => Some(tv),
-            _ => None,
-        }
-    }
-
-    pub fn into_const(self) -> Option<BuiltinType> {
-        match self {
-            Self::Builtin(tc) => Some(tc),
-            _ => None,
-        }
+    pub fn into_builtin(self) -> Option<BuiltinType> {
+        as_variant!(self, Self::Builtin)
     }
 
     pub fn into_func(self) -> Option<FuncType> {
-        match self {
-            Self::Func(f) => Some(*f),
-            _ => None,
-        }
+        as_variant!(self, Self::Func).map(Box::into_inner)
     }
 
-    pub fn as_var(&self) -> Option<&TypeVar> {
-        match self {
-            Self::Var(tv) => Some(tv),
-            _ => None,
-        }
+    pub fn into_list(self) -> Option<ListType> {
+        as_variant!(self, Self::List).map(Box::into_inner)
     }
 
-    pub fn as_const(&self) -> Option<&BuiltinType> {
-        match self {
-            Self::Builtin(tc) => Some(tc),
-            _ => None,
-        }
+    pub fn into_row(self) -> Option<RowType> {
+        as_variant!(self, Self::Row).map(Box::into_inner)
+    }
+
+    pub fn into_var(self) -> Option<TypeVar> {
+        as_variant!(self, Self::Var)
+    }
+
+    pub fn as_builtin(&self) -> Option<&BuiltinType> {
+        as_variant!(self, Self::Builtin)
     }
 
     pub fn as_func(&self) -> Option<&FuncType> {
-        match self {
-            Self::Func(f) => Some(f),
-            _ => None,
-        }
+        as_variant!(self, Self::Func)
     }
 
-    pub fn is_var(&self) -> bool {
-        self.as_var().is_some()
+    pub fn as_list(&self) -> Option<&ListType> {
+        as_variant!(self, Self::List)
     }
 
-    pub fn is_const(&self) -> bool {
-        self.as_const().is_some()
+    pub fn as_row(&self) -> Option<&RowType> {
+        as_variant!(self, Self::Row)
+    }
+
+    pub fn as_var(&self) -> Option<&TypeVar> {
+        as_variant!(self, Self::Var)
+    }
+
+    pub fn is_builtin(&self) -> bool {
+        matches!(self, Self::Builtin(_))
     }
 
     pub fn is_func(&self) -> bool {
-        self.as_func().is_some()
+        matches!(self, Self::Func(_))
+    }
+
+    pub fn is_list(&self) -> bool {
+        matches!(self, Self::List(_))
+    }
+
+    pub fn is_row(&self) -> bool {
+        matches!(self, Self::Row(_))
+    }
+
+    pub fn is_var(&self) -> bool {
+        matches!(self, Self::Var(_))
     }
 }
 
@@ -118,9 +130,10 @@ impl Typed for MonoType {
     fn constrain(&self, with: super::Kind, env: &mut KindEnv) -> Result<(), SemanticError> {
         match self {
             Self::Builtin(b) => b.constrain(with, env),
-            Self::Func(func) => func.constrain(with, env),
+            Self::Func(f) => f.constrain(with, env),
+            Self::List(l) => l.constrain(with, env),
             Self::Row(r) => r.constrain(with, env),
-            Self::Var(tv) => tv.constrain(with, env),
+            Self::Var(v) => v.constrain(with, env),
         }
     }
 }
@@ -130,8 +143,9 @@ impl Substitutable for MonoType {
         match self {
             Self::Builtin(_) => None,
             Self::Func(f) => f.try_apply(s).map(Into::into),
+            Self::List(l) => l.try_apply(s).map(Into::into),
             Self::Row(r) => r.try_apply(s).map(Into::into),
-            Self::Var(tv) => tv.try_apply(s),
+            Self::Var(v) => v.try_apply(s),
         }
     }
 }
@@ -141,6 +155,7 @@ impl fmt::Display for MonoType {
         match self {
             Self::Builtin(b) => b.fmt(f),
             Self::Func(func) => func.fmt(f),
+            Self::List(l) => l.fmt(f),
             Self::Row(r) => r.fmt(f),
             Self::Var(tv) => tv.fmt(f),
         }
@@ -168,5 +183,11 @@ impl From<FuncType> for MonoType {
 impl From<RowType> for MonoType {
     fn from(value: RowType) -> Self {
         Self::Row(Box::new(value))
+    }
+}
+
+impl From<ListType> for MonoType {
+    fn from(value: ListType) -> Self {
+        Self::List(Box::new(value))
     }
 }

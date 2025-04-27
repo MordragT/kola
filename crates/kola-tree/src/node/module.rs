@@ -90,7 +90,7 @@ impl Printable<TreePrinter> for ModulePath {
 #[derive(
     Debug, From, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
 )]
-pub struct ModuleImport(pub Id<ModulePath>);
+pub struct ModuleImport(pub Id<Name>);
 
 impl Printable<TreePrinter> for ModuleImport {
     fn notate<'a>(&'a self, with: &'a TreePrinter, arena: &'a Bump) -> Notation<'a> {
@@ -111,6 +111,7 @@ impl Printable<TreePrinter> for ModuleImport {
 pub enum ModuleExpr {
     Module(Id<Module>),
     Import(Id<ModuleImport>),
+    Path(Id<ModulePath>),
 }
 
 impl Printable<TreePrinter> for ModuleExpr {
@@ -118,6 +119,7 @@ impl Printable<TreePrinter> for ModuleExpr {
         match *self {
             Self::Module(id) => id.get(&with.tree).notate(with, arena),
             Self::Import(id) => id.get(&with.tree).notate(with, arena),
+            Self::Path(id) => id.get(&with.tree).notate(with, arena),
         }
     }
 }
@@ -147,12 +149,13 @@ impl Printable<TreePrinter> for Bind {
 
 impl Bind {
     pub fn value_in(
+        vis: Vis,
         name: Name,
         ty: Option<Type>,
         value: Expr,
         builder: &mut TreeBuilder,
     ) -> Id<Self> {
-        let bind = ValueBind::new_in(name, ty, value, builder);
+        let bind = ValueBind::new_in(vis, name, ty, value, builder);
 
         builder.insert(Self::Value(bind))
     }
@@ -199,7 +202,23 @@ impl Bind {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+pub enum Vis {
+    Export,
+    None,
+}
+
+impl Printable<TreePrinter> for Vis {
+    fn notate<'a>(&'a self, _with: &'a TreePrinter, arena: &'a Bump) -> Notation<'a> {
+        match self {
+            Self::Export => "Export".purple().display_in(arena),
+            Self::None => arena.empty(),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct ValueBind {
+    pub vis: Id<Vis>,
     pub name: Id<Name>,
     pub ty: Option<Id<Type>>,
     pub value: Id<Expr>,
@@ -207,27 +226,38 @@ pub struct ValueBind {
 
 impl Printable<TreePrinter> for ValueBind {
     fn notate<'a>(&'a self, with: &'a TreePrinter, arena: &'a Bump) -> Notation<'a> {
-        let Self { name, ty, value } = self;
+        let Self {
+            vis,
+            name,
+            ty,
+            value,
+        } = self;
 
         let head = "ValueBind".green().display_in(arena);
 
+        let vis = vis.notate(with, arena);
         let name = name.notate(with, arena);
         let ty = ty.as_ref().map(|ty| ty.notate(with, arena));
         let value = value.notate(with, arena);
 
         let single = [
+            arena.notate(" vis = "),
+            vis.clone(),
             arena.notate(" name = "),
-            name.clone().flatten(arena),
+            name.clone(),
             ty.clone()
                 .map(|ty| arena.notate(", ty = ").then(ty, arena))
-                .or_not(arena)
-                .flatten(arena),
+                .or_not(arena),
             arena.notate(", value = "),
-            value.clone().flatten(arena),
+            value.clone(),
         ]
-        .concat_in(arena);
+        .concat_in(arena)
+        .flatten(arena);
 
         let multi = [
+            arena.newline(),
+            arena.notate("vis = "),
+            vis,
             arena.newline(),
             arena.notate("name = "),
             name,
@@ -246,16 +276,23 @@ impl Printable<TreePrinter> for ValueBind {
 
 impl ValueBind {
     pub fn new_in(
+        vis: Vis,
         name: Name,
         ty: Option<Type>,
         value: Expr,
         builder: &mut TreeBuilder,
     ) -> Id<Self> {
+        let vis = builder.insert(vis);
         let name = builder.insert(name);
         let ty = ty.map(|ty| builder.insert(ty));
         let value = builder.insert(value);
 
-        builder.insert(Self { name, ty, value })
+        builder.insert(Self {
+            vis,
+            name,
+            ty,
+            value,
+        })
     }
 }
 
@@ -337,6 +374,7 @@ impl Printable<TreePrinter> for OpaqueTypeBind {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct ModuleBind {
+    pub vis: Id<Vis>,
     pub name: Id<Name>,
     pub ty: Option<Id<ModuleType>>,
     pub value: Id<ModuleExpr>,
@@ -344,27 +382,38 @@ pub struct ModuleBind {
 
 impl Printable<TreePrinter> for ModuleBind {
     fn notate<'a>(&'a self, with: &'a TreePrinter, arena: &'a Bump) -> Notation<'a> {
-        let Self { name, ty, value } = self;
+        let Self {
+            vis,
+            name,
+            ty,
+            value,
+        } = self;
 
         let head = "ModuleBind".green().display_in(arena);
 
+        let vis = vis.notate(with, arena);
         let name = name.notate(with, arena);
         let ty = ty.as_ref().map(|ty| ty.notate(with, arena));
         let value = value.notate(with, arena);
 
         let single = [
+            arena.notate(" vis = "),
+            vis.clone(),
             arena.notate(" name = "),
-            name.clone().flatten(arena),
+            name.clone(),
             ty.clone()
                 .map(|ty| arena.notate(", ty = ").then(ty, arena))
-                .or_not(arena)
-                .flatten(arena),
+                .or_not(arena),
             arena.notate(", value = "),
-            value.clone().flatten(arena),
+            value.clone(),
         ]
-        .concat_in(arena);
+        .concat_in(arena)
+        .flatten(arena);
 
         let multi = [
+            arena.newline(),
+            arena.notate("vis = "),
+            vis,
             arena.newline(),
             arena.notate("name = "),
             name,
@@ -765,10 +814,10 @@ mod inspector {
     }
 
     impl<'t> NodeInspector<'t, Id<ModuleImport>> {
-        pub fn as_path(self) -> NodeInspector<'t, Id<ModulePath>> {
-            let path_id = self.node.get(self.tree).0;
+        pub fn as_name(self) -> NodeInspector<'t, Id<Name>> {
+            let name_id = self.node.get(self.tree).0;
 
-            NodeInspector::new(path_id, self.tree)
+            NodeInspector::new(name_id, self.tree)
         }
     }
 
@@ -783,6 +832,13 @@ mod inspector {
         pub fn as_module(self) -> Option<NodeInspector<'t, Id<Module>>> {
             match *self.node.get(self.tree) {
                 ModuleExpr::Module(id) => Some(NodeInspector::new(id, self.tree)),
+                _ => None,
+            }
+        }
+
+        pub fn as_path(self) -> Option<NodeInspector<'t, Id<ModulePath>>> {
+            match *self.node.get(self.tree) {
+                ModuleExpr::Path(id) => Some(NodeInspector::new(id, self.tree)),
                 _ => None,
             }
         }
@@ -1016,6 +1072,11 @@ mod inspector {
     }
 
     impl<'t> NodeInspector<'t, Id<ValueBind>> {
+        pub fn vis(self) -> NodeInspector<'t, Id<Vis>> {
+            let value_bind = self.node.get(self.tree);
+            NodeInspector::new(value_bind.vis, self.tree)
+        }
+
         /// Assert the value bind has the specified name
         pub fn has_name(self, expected: &str) -> Self {
             self.assert_name(expected, "value")

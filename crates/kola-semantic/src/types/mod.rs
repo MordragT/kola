@@ -1,6 +1,6 @@
 pub use builtin::*;
-pub use collection::*;
 pub use func::*;
+pub use list::*;
 pub use mono::*;
 pub use poly::*;
 pub use row::*;
@@ -8,8 +8,8 @@ pub use var::*;
 pub use visit::*;
 
 mod builtin;
-mod collection;
 mod func;
+mod list;
 mod mono;
 mod poly;
 mod row;

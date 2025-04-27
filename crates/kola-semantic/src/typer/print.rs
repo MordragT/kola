@@ -2,12 +2,12 @@ use kola_print::prelude::*;
 use kola_tree::prelude::*;
 use owo_colors::OwoColorize;
 
-use super::InferMetadata;
+use super::TypeInfo;
 
 #[derive(Debug, Clone)]
-pub struct InferDecorator(pub InferMetadata);
+pub struct TypeDecorator(pub TypeInfo);
 
-impl Decorator for InferDecorator {
+impl Decorator for TypeDecorator {
     fn decorate<'a>(
         &'a self,
         notation: Notation<'a>,
@@ -64,7 +64,8 @@ impl Decorator for InferDecorator {
             // Modules
             Meta::ValueBind(t) => t.green().display_in(arena),
             Meta::TypeBind(pt) => pt.green().display_in(arena),
-            Meta::OpaqueTypeBind(_)
+            Meta::Vis(_)
+            | Meta::OpaqueTypeBind(_)
             | Meta::ModuleBind(_)
             | Meta::ModuleTypeBind(_)
             | Meta::Bind(_)

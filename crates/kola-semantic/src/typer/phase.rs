@@ -2,12 +2,12 @@ use kola_tree::meta::*;
 
 use crate::types;
 
-pub type InferMetadata = Metadata<InferPhase>;
+pub type TypeInfo = Metadata<TypePhase>;
 
 #[derive(Clone, Copy, Debug)]
-pub struct InferPhase;
+pub struct TypePhase;
 
-impl Phase for InferPhase {
+impl Phase for TypePhase {
     type Name = Empty;
     type AnyPat = types::MonoType;
     type LiteralPat = types::MonoType;
@@ -50,6 +50,7 @@ impl Phase for InferPhase {
     type TypeExpr = Stub<types::PolyType>;
     type TypeError = Empty;
     type Type = Stub<types::PolyType>;
+    type Vis = Empty;
     type ValueBind = types::MonoType;
     type TypeBind = Stub<types::PolyType>;
     type OpaqueTypeBind = Empty;

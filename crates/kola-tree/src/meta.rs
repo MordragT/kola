@@ -244,6 +244,7 @@ define!(
     TypeError,
     Type,
     // Modules
+    Vis,
     ValueBind,
     TypeBind,
     OpaqueTypeBind,

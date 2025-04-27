@@ -881,7 +881,7 @@ pub trait Visitor<T: TreeAccess> {
         tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
         let import = id.get(tree);
-        self.visit_module_path(import.0, tree)
+        self.visit_name(import.0, tree)
     }
 
     fn visit_module_import(
@@ -900,6 +900,7 @@ pub trait Visitor<T: TreeAccess> {
         match *id.get(tree) {
             node::ModuleExpr::Import(id) => self.visit_module_import(id, tree),
             node::ModuleExpr::Module(id) => self.visit_module(id, tree),
+            node::ModuleExpr::Path(id) => self.visit_module_path(id, tree),
         }
     }
 
@@ -911,18 +912,28 @@ pub trait Visitor<T: TreeAccess> {
         self.walk_module_expr(id, tree)
     }
 
+    fn visit_vis(&mut self, _id: Id<node::Vis>, _tree: &T) -> ControlFlow<Self::BreakValue> {
+        ControlFlow::Continue(())
+    }
+
     fn walk_value_bind(
         &mut self,
         id: Id<node::ValueBind>,
         tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
-        let node::ValueBind { name, ty, value } = id.get(tree);
+        let node::ValueBind {
+            vis,
+            name,
+            ty,
+            value,
+        } = *id.get(tree);
 
-        self.visit_name(*name, tree)?;
+        self.visit_vis(vis, tree)?;
+        self.visit_name(name, tree)?;
         if let Some(ty) = ty {
-            self.visit_type(*ty, tree)?;
+            self.visit_type(ty, tree)?;
         }
-        self.visit_expr(*value, tree)?;
+        self.visit_expr(value, tree)?;
 
         ControlFlow::Continue(())
     }
@@ -940,10 +951,10 @@ pub trait Visitor<T: TreeAccess> {
         id: Id<node::TypeBind>,
         tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
-        let node::TypeBind { name, ty } = id.get(tree);
+        let node::TypeBind { name, ty } = *id.get(tree);
 
-        self.visit_name(*name, tree)?;
-        self.visit_type(*ty, tree)?;
+        self.visit_name(name, tree)?;
+        self.visit_type(ty, tree)?;
 
         ControlFlow::Continue(())
     }
@@ -961,10 +972,10 @@ pub trait Visitor<T: TreeAccess> {
         id: Id<node::OpaqueTypeBind>,
         tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
-        let node::OpaqueTypeBind { name, ty } = id.get(tree);
+        let node::OpaqueTypeBind { name, ty } = *id.get(tree);
 
-        self.visit_name(*name, tree)?;
-        self.visit_type(*ty, tree)?;
+        self.visit_name(name, tree)?;
+        self.visit_type(ty, tree)?;
 
         ControlFlow::Continue(())
     }
@@ -982,13 +993,19 @@ pub trait Visitor<T: TreeAccess> {
         id: Id<node::ModuleBind>,
         tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
-        let node::ModuleBind { name, ty, value } = id.get(tree);
+        let node::ModuleBind {
+            vis,
+            name,
+            ty,
+            value,
+        } = *id.get(tree);
 
-        self.visit_name(*name, tree)?;
+        self.visit_vis(vis, tree)?;
+        self.visit_name(name, tree)?;
         if let Some(ty) = ty {
-            self.visit_module_type(*ty, tree)?;
+            self.visit_module_type(ty, tree)?;
         }
-        self.visit_module_expr(*value, tree)?;
+        self.visit_module_expr(value, tree)?;
 
         ControlFlow::Continue(())
     }
@@ -1006,10 +1023,10 @@ pub trait Visitor<T: TreeAccess> {
         id: Id<node::ModuleTypeBind>,
         tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
-        let node::ModuleTypeBind { name, ty } = id.get(tree);
+        let node::ModuleTypeBind { name, ty } = *id.get(tree);
 
-        self.visit_name(*name, tree)?;
-        self.visit_module_type(*ty, tree)?;
+        self.visit_name(name, tree)?;
+        self.visit_module_type(ty, tree)?;
 
         ControlFlow::Continue(())
     }
@@ -1043,10 +1060,10 @@ pub trait Visitor<T: TreeAccess> {
         id: Id<node::ValueSpec>,
         tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
-        let node::ValueSpec { name, ty } = id.get(tree);
+        let node::ValueSpec { name, ty } = *id.get(tree);
 
-        self.visit_name(*name, tree)?;
-        self.visit_type(*ty, tree)?;
+        self.visit_name(name, tree)?;
+        self.visit_type(ty, tree)?;
 
         ControlFlow::Continue(())
     }
@@ -1072,10 +1089,10 @@ pub trait Visitor<T: TreeAccess> {
         id: Id<node::OpaqueTypeSpec>,
         tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
-        let node::OpaqueTypeSpec { name, kind } = id.get(tree);
+        let node::OpaqueTypeSpec { name, kind } = *id.get(tree);
 
-        self.visit_name(*name, tree)?;
-        self.visit_opaque_type_kind(*kind, tree)?;
+        self.visit_name(name, tree)?;
+        self.visit_opaque_type_kind(kind, tree)?;
 
         ControlFlow::Continue(())
     }
@@ -1093,10 +1110,10 @@ pub trait Visitor<T: TreeAccess> {
         id: Id<node::ModuleSpec>,
         tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
-        let node::ModuleSpec { name, ty } = id.get(tree);
+        let node::ModuleSpec { name, ty } = *id.get(tree);
 
-        self.visit_name(*name, tree)?;
-        self.visit_module_type(*ty, tree)?;
+        self.visit_name(name, tree)?;
+        self.visit_module_type(ty, tree)?;
 
         ControlFlow::Continue(())
     }

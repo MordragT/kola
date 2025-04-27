@@ -51,6 +51,21 @@ impl TreePrinter {
 
         notation
     }
+
+    pub fn print_at<T>(&self, id: Id<T>, options: PrintOptions)
+    where
+        Node: TryAsRef<T>,
+        T: Printable<Self>,
+    {
+        let arena = Bump::new();
+        let notation = self.decorate(id, &arena);
+
+        let mut output = String::new();
+        let mut printer = Printer::new(&notation, options, &arena);
+        printer.print(&mut output, &arena).unwrap();
+
+        println!("{output}");
+    }
 }
 
 impl Printable<()> for TreePrinter {

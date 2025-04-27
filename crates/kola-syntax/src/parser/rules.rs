@@ -67,35 +67,57 @@ where
     let module_type = module_type_parser();
 
     recursive(|module| {
-        let module_path = name_parser()
-            .separated_by(ctrl(CtrlT::DOT))
-            .collect()
-            .map_to_node(node::ModulePath);
+        let name = name_parser();
 
         let module_import = kw(KwT::IMPORT)
-            .ignore_then(module_path)
+            .ignore_then(name.clone())
             .map_to_node(node::ModuleImport)
             .to_module_expr();
 
-        let module_expr = module.clone().to_module_expr().or(module_import);
+        let module_path = name
+            .separated_by(ctrl(CtrlT::DOT))
+            .collect()
+            .map_to_node(node::ModulePath)
+            .to_module_expr();
 
-        let value_bind = name_parser()
+        let module_expr = choice((module.clone().to_module_expr(), module_import, module_path));
+
+        let vis = kw(KwT::EXPORT)
+            .to(node::Vis::Export)
+            .or_not()
+            .map_to_node(|vis| vis.unwrap_or(node::Vis::None))
+            .boxed();
+
+        let value_bind = vis
+            .clone()
+            .then(name_parser())
             .then(ctrl(CtrlT::COLON).ignore_then(type_parser()).or_not())
             .then_ignore(op(OpT::ASSIGN))
             .then(expr_parser())
-            .map_to_node(|((name, ty), value)| node::ValueBind { name, ty, value })
+            .map_to_node(|(((vis, name), ty), value)| node::ValueBind {
+                vis,
+                name,
+                ty,
+                value,
+            })
             .to_bind();
 
         let type_bind = type_bind_parser().to_bind();
 
         // TODO opaque type bind
 
-        let module_bind = kw(KwT::MODULE)
-            .ignore_then(name_parser())
+        let module_bind = vis
+            .then_ignore(kw(KwT::MODULE))
+            .then(name_parser())
             .then(ctrl(CtrlT::COLON).ignore_then(module_type.clone()).or_not())
             .then_ignore(op(OpT::ASSIGN))
             .then(module_expr)
-            .map_to_node(|((name, ty), value)| node::ModuleBind { name, ty, value })
+            .map_to_node(|(((vis, name), ty), value)| node::ModuleBind {
+                vis,
+                name,
+                ty,
+                value,
+            })
             .to_bind();
 
         let module_type_bind = kw(KwT::MODULE)

@@ -13,13 +13,13 @@ use kola_tree::prelude::*;
 use crate::{
     SyntaxPhase,
     error::{SourceDiagnostic, SourceResult},
-    span::{Span, SpanMetadata},
+    span::{Span, SpanInfo},
     token::{Token, Tokens},
 };
 
 pub struct ParseResult {
     pub tree: Option<Tree>,
-    pub spans: SpanMetadata,
+    pub spans: SpanInfo,
     pub errors: Vec<SourceDiagnostic>,
 }
 

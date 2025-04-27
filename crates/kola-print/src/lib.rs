@@ -2,7 +2,7 @@
 
 pub use notation::{Arena, Notation};
 pub use printable::Printable;
-pub use printer::PrintOptions;
+pub use printer::{PrintOptions, Printer};
 
 pub mod combinator;
 mod notation;
@@ -14,7 +14,7 @@ pub mod prelude {
     pub use crate::layout;
     pub use crate::notation::{Arena, Notation};
     pub use crate::printable::Printable;
-    pub use crate::printer::PrintOptions;
+    pub use crate::printer::{PrintOptions, Printer};
     pub use bumpalo::{self, Bump};
 }
 

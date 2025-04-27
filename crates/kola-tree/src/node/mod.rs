@@ -136,6 +136,7 @@ define_nodes!(
     TypeError,
     Type,
     // Modules
+    Vis,
     ValueBind,
     TypeBind,
     OpaqueTypeBind,

@@ -15,8 +15,8 @@ use crate::{
 mod phase;
 mod print;
 
-pub use phase::{InferMetadata, InferPhase};
-pub use print::InferDecorator;
+pub use phase::{TypeInfo, TypePhase};
+pub use print::TypeDecorator;
 
 // TODO rename to Typer ??
 
@@ -94,28 +94,24 @@ impl Constraints {
 // ∆ = Kind Environment
 // Γ = Type Environment
 
+// Generalization
+// Γ'(τ) quantifies all monotype variables not bound in Γ
+
 // TODO τ for normal types
 // r for record types ?
 
-// TODO inferer should only run over value bindings
-// so it needs some sort of intermediate results from the elaborator
-// actually module env information should also be available.
-// Therefore instead of owning TypeEnv, KindEnv, SpanMetadata and Vec<Meta<SemanticPhase>>,
-// it should take a mutable reference to the Elaborator
-//
-
-pub struct Inferer {
+pub struct Typer {
     subs: Substitution,
     cons: Constraints,
     t_env: TypeEnv,
     k_env: KindEnv,
-    spans: SpanMetadata,
-    types: Vec<Meta<InferPhase>>,
+    spans: SpanInfo,
+    types: Vec<Meta<TypePhase>>,
 }
 
-impl Inferer {
-    pub fn new(tree: &impl TreeAccess, spans: SpanMetadata) -> Self {
-        let types = tree.metadata_with(|node| Meta::<InferPhase>::default_for(node.kind()));
+impl Typer {
+    pub fn new(tree: &impl TreeAccess, spans: SpanInfo) -> Self {
+        let types = tree.metadata_with(|node| Meta::<TypePhase>::default_for(node.kind()));
 
         Self {
             subs: Substitution::empty(),
@@ -127,7 +123,7 @@ impl Inferer {
         }
     }
 
-    pub fn solve<T>(mut self, node: impl Visitable<T>, tree: &T) -> Result<InferMetadata, Error>
+    pub fn solve<T>(mut self, node: impl Visitable<T>, tree: &T) -> Result<TypeInfo, Error>
     where
         T: TreeAccess,
     {
@@ -153,7 +149,7 @@ impl Inferer {
 
     fn update_type<T>(&mut self, id: Id<T>, t: T::Meta) -> T::Meta
     where
-        T: MetaCast<InferPhase>,
+        T: MetaCast<TypePhase>,
     {
         self.types.update_meta(id, t)
     }
@@ -191,11 +187,12 @@ impl Inferer {
     }
 }
 
-impl<T: TreeAccess> Visitor<T> for Inferer {
+impl<T: TreeAccess> Visitor<T> for Typer {
     type BreakValue = !;
 
-    // Generalization
-    // Γ'(τ) quantifies all monotype variables not bound in Γ
+    // Patterns
+
+    // Expr
 
     // Unit rule
     // -----------------------
@@ -216,6 +213,31 @@ impl<T: TreeAccess> Visitor<T> for Inferer {
         ControlFlow::Continue(())
     }
 
+    fn visit_list_expr(
+        &mut self,
+        id: Id<node::ListExpr>,
+        tree: &T,
+    ) -> ControlFlow<Self::BreakValue> {
+        self.walk_list_expr(id, tree)?;
+
+        let node::ListExpr(list) = id.get(tree);
+
+        if let Some(&el) = list.first() {
+            let expected = self.types.meta(el).clone();
+
+            self.update_type(id, MonoType::list(expected.clone()));
+
+            for &el in list {
+                let span = self.span(id);
+                let actual = self.types.meta(el).clone();
+
+                self.cons.constrain(expected.clone(), actual, span);
+            }
+        }
+
+        ControlFlow::Continue(())
+    }
+
     // Var rule to infer variable 'x'
     // x : σ ∈ Γ   τ = inst(σ)
     // -----------------------
@@ -225,7 +247,8 @@ impl<T: TreeAccess> Visitor<T> for Inferer {
         id: Id<node::PathExpr>,
         tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
-        // TODO need some access to modules for inference
+        // let path = todo!();
+
         // let t = self
         //     .t_env
         //     .try_lookup(&ident.0)
@@ -233,7 +256,6 @@ impl<T: TreeAccess> Visitor<T> for Inferer {
         //     .instantiate();
 
         // self.update_type(id, t);
-        // ControlFlow::Continue(())
         ControlFlow::Continue(())
     }
 
@@ -529,6 +551,53 @@ impl<T: TreeAccess> Visitor<T> for Inferer {
         ControlFlow::Continue(())
     }
 
+    // Let rule
+    // Γ ⊢ e0 : τ
+    // Γ, x : Γ'(τ) ⊢ e1 : τ'
+    // --------------------
+    // Γ ⊢ let x = e0 in e1 : τ'
+    fn visit_let_expr(&mut self, id: Id<node::LetExpr>, tree: &T) -> ControlFlow<Self::BreakValue> {
+        let &node::LetExpr {
+            name,
+            value,
+            inside,
+        } = id.get(tree);
+
+        // TODO unsure if name is already populated by init inside self.types
+        // otherwise implement traverse function for name
+
+        let name = name.get(tree).0.clone();
+
+        TypeVar::enter();
+        self.visit_expr(value, tree)?;
+        TypeVar::exit();
+
+        // due to explicit traversal this is known
+        let t = self.types.meta(value).clone();
+
+        self.t_env.enter();
+        {
+            let pt = t.generalize(&self.t_env.bound_vars());
+            self.t_env.insert(name, pt);
+
+            self.visit_expr(inside, tree)?;
+        }
+        self.t_env.exit();
+
+        let t_prime = self.types.meta(inside).clone();
+        self.update_type(id, t_prime);
+
+        ControlFlow::Continue(())
+    }
+
+    fn visit_case_expr(
+        &mut self,
+        _id: Id<node::CaseExpr>,
+        tree: &T,
+    ) -> ControlFlow<Self::BreakValue> {
+        todo!()
+    }
+
     // If
     // Γ ⊢ predicate : Bool
     // Γ ⊢ e0 : τ
@@ -559,12 +628,34 @@ impl<T: TreeAccess> Visitor<T> for Inferer {
         ControlFlow::Continue(())
     }
 
-    fn visit_case_expr(
+    // Abstraction rule
+    // τ = newvar()
+    // Γ, x : τ ⊢ e : τ'
+    // --------------------
+    // Γ ⊢ \x -> e : t -> t'
+    fn visit_lambda_expr(
         &mut self,
-        _id: Id<node::CaseExpr>,
+        id: Id<node::LambdaExpr>,
         tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
-        todo!()
+        let node::LambdaExpr { param, body } = *id.get(tree);
+        let t = MonoType::variable();
+
+        // let name = self.types.meta(func.param).clone();
+        let name = param.get(tree).0.clone();
+
+        self.t_env.enter();
+        {
+            self.t_env.insert(name, PolyType::from(t.clone()));
+            self.visit_expr(body, tree)?;
+        }
+        self.t_env.exit();
+
+        let t_prime = self.types.meta(body).clone();
+        let func = MonoType::func(t, t_prime);
+
+        self.update_type(id, func);
+        ControlFlow::Continue(())
     }
 
     // Application rule
@@ -621,86 +712,17 @@ impl<T: TreeAccess> Visitor<T> for Inferer {
         self.update_type(id, t);
         ControlFlow::Continue(())
     }
-
-    // Let rule
-    // Γ ⊢ e0 : τ
-    // Γ, x : Γ'(τ) ⊢ e1 : τ'
-    // --------------------
-    // Γ ⊢ let x = e0 in e1 : τ'
-    fn visit_let_expr(&mut self, id: Id<node::LetExpr>, tree: &T) -> ControlFlow<Self::BreakValue> {
-        let &node::LetExpr {
-            name,
-            value,
-            inside,
-        } = id.get(tree);
-
-        // TODO unsure if name is already populated by init inside self.types
-        // otherwise implement traverse function for name
-
-        let name = name.get(tree).0.clone();
-
-        TypeVar::enter();
-        self.visit_expr(value, tree)?;
-        TypeVar::exit();
-
-        // due to explicit traversal this is known
-        let t = self.types.meta(value).clone();
-
-        self.t_env.enter();
-        {
-            let pt = t.generalize(&self.t_env.bound_vars());
-            self.t_env.insert(name, pt);
-
-            self.visit_expr(inside, tree)?;
-        }
-        self.t_env.exit();
-
-        let t_prime = self.types.meta(inside).clone();
-        self.update_type(id, t_prime);
-
-        ControlFlow::Continue(())
-    }
-
-    // Abstraction rule
-    // τ = newvar()
-    // Γ, x : τ ⊢ e : τ'
-    // --------------------
-    // Γ ⊢ \x -> e : t -> t'
-    fn visit_lambda_expr(
-        &mut self,
-        id: Id<node::LambdaExpr>,
-        tree: &T,
-    ) -> ControlFlow<Self::BreakValue> {
-        let node::LambdaExpr { param, body } = *id.get(tree);
-        let t = MonoType::variable();
-
-        // let name = self.types.meta(func.param).clone();
-        let name = param.get(tree).0.clone();
-
-        self.t_env.enter();
-        {
-            self.t_env.insert(name, PolyType::from(t.clone()));
-            self.visit_expr(body, tree)?;
-        }
-        self.t_env.exit();
-
-        let t_prime = self.types.meta(body).clone();
-        let func = MonoType::func(t, t_prime);
-
-        self.update_type(id, func);
-        ControlFlow::Continue(())
-    }
 }
 
 #[cfg(test)]
 mod tests {
-    use kola_syntax::span::{Span, SpanMetadata};
+    use kola_syntax::span::{Span, SpanInfo};
     use kola_tree::prelude::*;
 
-    use super::Inferer;
+    use super::Typer;
     use crate::{error::SemanticError, types::*};
 
-    fn mocked_spans(tree: &impl TreeAccess) -> SpanMetadata {
+    fn mocked_spans(tree: &impl TreeAccess) -> SpanInfo {
         let span = Span {
             start: 0,
             end: 0,
@@ -716,7 +738,7 @@ mod tests {
         let lit = builder.insert(node::LiteralExpr::Num(10.0));
         let root = builder.insert(node::Expr::Literal(lit));
 
-        let types = Inferer::new(&builder, mocked_spans(&builder))
+        let types = Typer::new(&builder, mocked_spans(&builder))
             .solve(root, &builder)
             .unwrap();
 
@@ -731,7 +753,7 @@ mod tests {
         let unary = node::UnaryExpr::new_in(node::UnaryOp::Neg, target.into(), &mut builder);
         let root = builder.insert(node::Expr::Unary(unary));
 
-        let types = Inferer::new(&builder, mocked_spans(&builder))
+        let types = Typer::new(&builder, mocked_spans(&builder))
             .solve(root, &builder)
             .unwrap();
 
@@ -746,7 +768,7 @@ mod tests {
         let unary = node::UnaryExpr::new_in(node::UnaryOp::Not, target.into(), &mut builder);
         let root = builder.insert(node::Expr::Unary(unary));
 
-        let (errors, _) = Inferer::new(&builder, mocked_spans(&builder))
+        let (errors, _) = Typer::new(&builder, mocked_spans(&builder))
             .solve(root, &builder)
             .unwrap_err();
 
@@ -769,7 +791,7 @@ mod tests {
             node::BinaryExpr::new_in(node::BinaryOp::Eq, left.into(), right.into(), &mut builder);
         let root = builder.insert(node::Expr::Binary(binary));
 
-        let (errors, _) = Inferer::new(&builder, mocked_spans(&builder))
+        let (errors, _) = Typer::new(&builder, mocked_spans(&builder))
             .solve(root, &builder)
             .unwrap_err();
 
@@ -797,7 +819,7 @@ mod tests {
         );
         let root = builder.insert(node::Expr::Let(let_));
 
-        let types = Inferer::new(&builder, mocked_spans(&builder))
+        let types = Typer::new(&builder, mocked_spans(&builder))
             .solve(root, &builder)
             .unwrap();
 
@@ -814,7 +836,7 @@ mod tests {
         let if_ = node::IfExpr::new_in(predicate.into(), then.into(), or.into(), &mut builder);
         let root = builder.insert(node::Expr::If(if_));
 
-        let types = Inferer::new(&builder, mocked_spans(&builder))
+        let types = Typer::new(&builder, mocked_spans(&builder))
             .solve(root, &builder)
             .unwrap();
 
@@ -831,7 +853,7 @@ mod tests {
         let if_ = node::IfExpr::new_in(predicate.into(), then.into(), or.into(), &mut builder);
         let root = builder.insert(node::Expr::If(if_));
 
-        let (errors, _) = Inferer::new(&builder, mocked_spans(&builder))
+        let (errors, _) = Typer::new(&builder, mocked_spans(&builder))
             .solve(root, &builder)
             .unwrap_err();
 

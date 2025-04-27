@@ -6,10 +6,10 @@ use crate::SyntaxPhase;
 
 pub type Span = SimpleSpan<usize>;
 pub type Spanned<T> = (T, Span);
-pub type SpanMetadata = Metadata<SyntaxPhase>;
+pub type SpanInfo = Metadata<SyntaxPhase>;
 
 #[derive(Debug, Clone)]
-pub struct SpanDecorator(pub SpanMetadata);
+pub struct SpanDecorator(pub SpanInfo);
 
 impl Decorator for SpanDecorator {
     fn decorate<'a>(

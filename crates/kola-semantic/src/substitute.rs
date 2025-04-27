@@ -208,6 +208,7 @@ impl_meta_substitutable!(
     TypeError,
     Type,
     // Modules
+    Vis,
     ValueBind,
     TypeBind,
     OpaqueTypeBind,
