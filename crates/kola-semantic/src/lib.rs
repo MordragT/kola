@@ -1,6 +1,7 @@
 #![feature(never_type)]
 #![feature(path_add_extension)]
 #![feature(box_into_inner)]
+#![feature(let_chains)]
 
 //! Algorithm W with addition in Polymoprhic Type System for Extensible Records
 //! https://github.com/miguel-nascimento/algorithm-j-rs/

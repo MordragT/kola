@@ -263,8 +263,13 @@ impl<'a, T: TreeView> Visitor<T> for Explorer<'a> {
                 (ModuleBind::new(submodule_id, vis), self.span(import_id))
             }
             node::ModuleExpr::Path(path_id) => {
-                let id = match ModuleExplorer::new(tree, &self.builder, &self.world.module_infos)
-                    .module_path(path_id)
+                let id = match ModuleExplorer::new(
+                    tree,
+                    &self.module_id,
+                    &self.builder,
+                    &self.world.module_infos,
+                )
+                .module_path(path_id)
                 {
                     Some(id) => id,
                     None => {

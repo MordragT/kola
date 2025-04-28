@@ -23,11 +23,22 @@ use kola_tree::{
     tree::TreeView,
 };
 
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum ModulePathResolution {
+    Unresolved,
+    Partial {
+        module_id: ModuleId,
+        remaining: Vec<Id<node::Name>>,
+    },
+    Resolved(ModuleId),
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct ModuleExplorer<'a, T, M> {
-    tree: &'a T,
-    module: &'a M,
-    global: &'a HashMap<ModuleId, ModuleInfo>,
+    pub tree: &'a T,
+    pub module_id: &'a ModuleId,
+    pub module: &'a M,
+    pub global: &'a HashMap<ModuleId, ModuleInfo>,
 }
 
 impl<'a, T, M> ModuleExplorer<'a, T, M>
@@ -35,23 +46,68 @@ where
     T: TreeView,
     M: ModuleInfoView,
 {
-    pub fn new(tree: &'a T, module: &'a M, global: &'a HashMap<ModuleId, ModuleInfo>) -> Self {
+    pub fn new(
+        tree: &'a T,
+        module_id: &'a ModuleId,
+        module: &'a M,
+        global: &'a HashMap<ModuleId, ModuleInfo>,
+    ) -> Self {
         Self {
             tree,
+            module_id,
             module,
             global,
         }
     }
 
-    // pub fn path_expr(self, path_id: Id<node::PathExpr>) -> Option<ModuleId> {
-    //     let path = path_id.get(self.tree);
-    //     let mut segments = path.0.iter();
+    /// Resolves as much as possible from the path expression
+    ///
+    /// * Returns `Unresolved` if the first segment was not a submodule defined in the current module.
+    /// * Returns `Partial` if some segments could be resolved but there are remaining segments.
+    /// * Returns `Resolved` if all segments could be resolved.
+    pub fn path_expr(self, path_id: Id<node::PathExpr>) -> ModulePathResolution {
+        let path = path_id.get(self.tree);
+        let mut segments = path.0.iter();
 
-    //     let first_id = segments.next()?;
-    //     let first = first_id.get(self.tree);
-    //     let mut module_id = self.module.lookup(&first.0)?.id.clone();
-    // }
+        let Some(first_id) = segments.next() else {
+            return ModulePathResolution::Unresolved;
+        };
+        let first = first_id.get(self.tree);
+        let Some(bind) = self.module.lookup(&first.0) else {
+            return ModulePathResolution::Unresolved;
+        };
+        let mut module_id = bind.id.clone();
 
+        while let Some(id) = segments.next() {
+            let s = id.get(self.tree);
+
+            if let Some(module) = self
+                .global
+                .get(&module_id)
+                .and_then(|info| info.lookup(&s.0))
+                && module.vis == Vis::Export
+            {
+                module_id = module.id.clone();
+            } else {
+                let mut remaining = segments.copied().collect::<Vec<_>>();
+                remaining.insert(0, *id);
+
+                return ModulePathResolution::Partial {
+                    module_id,
+                    remaining,
+                };
+            }
+        }
+
+        ModulePathResolution::Resolved(module_id)
+    }
+
+    /// Resolves the module path
+    /// 1. Looks for module of the first segment in the current module
+    /// 2. For every other segment looks in the corresponding module
+    ///     and checks if a module exists for it and if it is marked as `export`
+    ///
+    /// Returns None if some segment of the path could not be resolved
     pub fn module_path(self, path_id: Id<node::ModulePath>) -> Option<ModuleId> {
         let path = path_id.get(self.tree);
         let mut segments = path.0.iter();
@@ -63,8 +119,7 @@ where
         for id in segments {
             let s = id.get(self.tree);
             let module = self.global.get(&module_id)?.lookup(&s.0)?;
-            // TODO inner modules should be allowed so maybe check if Vis != Export
-            // but allow it if every module in the path is a strict child
+
             if module.vis != Vis::Export {
                 return None;
             }
@@ -132,6 +187,14 @@ impl ModuleId {
 
     pub fn id(&self) -> Id<node::Module> {
         self.0.id
+    }
+
+    pub fn is_parent_of(&self, other: &Self) -> bool {
+        other.parent().is_some_and(|parent| parent == self)
+    }
+
+    pub fn is_child_of(&self, other: &Self) -> bool {
+        self.parent().is_some_and(|parent| parent == other)
     }
 }
 

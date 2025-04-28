@@ -8,7 +8,7 @@ use crate::{
     env::{KindEnv, TypeEnv},
     error::SemanticError,
     file::FileInfo,
-    module::{ModuleId, ModuleInfo, ModuleInfoTable},
+    module::{ModuleExplorer, ModuleId, ModuleInfo, ModuleInfoTable, ModulePathResolution},
     substitute::{Substitutable, Substitution},
     types::{Kind, MonoType, PolyType, Property, TypeVar, Typed},
     unify::Unifiable,
@@ -108,7 +108,7 @@ pub struct Typer<'a> {
     t_env: TypeEnv,
     k_env: KindEnv,
     types: Vec<Meta<TypePhase>>,
-    id: ModuleId,
+    module_id: ModuleId,
     module: ModuleInfo,
     spans: SpanInfo,
     module_infos: &'a ModuleInfoTable,
@@ -117,7 +117,7 @@ pub struct Typer<'a> {
 
 impl<'a> Typer<'a> {
     pub fn new(
-        id: ModuleId,
+        module_id: ModuleId,
         module: ModuleInfo,
         spans: SpanInfo,
         module_infos: &'a ModuleInfoTable,
@@ -134,7 +134,7 @@ impl<'a> Typer<'a> {
             t_env: TypeEnv::new(),
             k_env: KindEnv::new(),
             types,
-            id,
+            module_id,
             module,
             spans,
             module_infos,
@@ -267,15 +267,55 @@ where
         id: Id<node::PathExpr>,
         tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
-        // let path = todo!();
+        // TODO either expand the ModuleExplorer to also have information about values (and types then also but not important here)
+        // or create a separate ValuePathResolver which takes the ModulePathResolution as input.
+        // Either way information about Values (and their visibility (Export or not)) has to be available here.
 
-        // let t = self
-        //     .t_env
-        //     .try_lookup(&ident.0)
-        //     .map_err(|e| e.with(self.span(id)))?
-        //     .instantiate();
+        let module_explorer =
+            ModuleExplorer::new(tree, &self.module_id, &self.module, &self.module_infos);
 
-        // self.update_type(id, t);
+        let t = match module_explorer.path_expr(id) {
+            ModulePathResolution::Unresolved => {
+                let path = id.get(tree);
+
+                if path.0.len() == 1 {
+                    let ident = path.0[0].get(tree); // TODO this could also be another tree
+
+                    self.t_env
+                        .try_lookup(&ident.0)
+                        .map_err(|e| e.with(self.span(id)))?
+                        .instantiate()
+                } else {
+                    // record select in current module
+                    todo!()
+                }
+            }
+            ModulePathResolution::Partial {
+                module_id,
+                remaining,
+            } => {
+                // if remaining is not one element then this is a record select operation
+                if remaining.len() == 1 {
+                    if module_id == self.module_id {
+                        let ident = remaining[0].get(tree); // TODO this could also be another tree
+
+                        self.t_env
+                            .try_lookup(&ident.0)
+                            .map_err(|e| e.with(self.span(id)))?
+                            .instantiate()
+                    } else {
+                        // simple value lookup in another module
+                        todo!()
+                    }
+                } else {
+                    // we have a record select here (could be in another module)
+                    todo!()
+                }
+            }
+            ModulePathResolution::Resolved(module_id) => todo!(), // error here
+        };
+
+        self.update_type(id, t);
         ControlFlow::Continue(())
     }
 
