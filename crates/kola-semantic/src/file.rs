@@ -7,55 +7,62 @@ use kola_print::prelude::*;
 use kola_syntax::prelude::*;
 use kola_tree::prelude::*;
 use log::debug;
-use miette::Diagnostic;
 use owo_colors::OwoColorize;
-use thiserror::Error;
 
-pub type FileResult = Result<FileInfo, FileError>;
-
-#[derive(Debug, Error, Diagnostic)]
-pub enum FileError {
-    #[error(transparent)]
-    Io(#[from] io::Error),
-    #[diagnostic(transparent)]
-    #[error(transparent)]
-    Source(#[from] SourceReport),
+#[derive(Debug, Clone)]
+pub struct FileExplorer {
+    pub source: Source,
+    pub tree: Tree,
+    pub spans: SpanInfo,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct FileExplorer<'a, T> {
-    pub tree: &'a T,
-    pub path: &'a Path,
+impl From<FileInfo> for FileExplorer {
+    fn from(info: FileInfo) -> Self {
+        let FileInfo {
+            source,
+            tree,
+            spans,
+        } = info;
+
+        Self {
+            source,
+            tree,
+            spans,
+        }
+    }
 }
 
-impl<'a, T> FileExplorer<'a, T>
-where
-    T: TreeAccess,
-{
+impl FileExplorer {
     pub const EXTENSION: &'static str = "kl";
 
-    pub fn new(tree: &'a T, path: &'a Path) -> Self {
-        Self { tree, path }
+    pub fn span<T>(&self, id: Id<T>) -> Span
+    where
+        T: MetaCast<SyntaxPhase, Meta = Span>,
+    {
+        self.spans.get(id).inner_copied()
     }
 
-    pub fn module_dir(self) -> PathBuf {
-        let stem = self.path.file_stem().unwrap();
-        self.path.parent().unwrap().join(stem)
+    pub fn module_dir(&self) -> PathBuf {
+        let path = self.source.path();
+
+        let stem = path.file_stem().unwrap();
+        path.parent().unwrap().join(stem)
     }
 
-    pub fn import_path_of(self, id: Id<node::ModuleImport>) -> PathBuf {
-        let name = id.get(self.tree).0.get(self.tree);
+    pub fn import_path_of(&self, id: Id<node::ModuleImport>) -> PathBuf {
+        let name = id.get(&self.tree).0.get(&self.tree);
 
         self.module_dir()
             .join(name.as_str())
             .with_extension(Self::EXTENSION)
     }
 
-    // TODO errors
-    pub fn explore_import(self, id: Id<node::ModuleImport>) -> FileResult {
+    pub fn import(&self, id: Id<node::ModuleImport>) -> Result<FileInfo, SourceReport> {
         let path = self.import_path_of(id);
 
-        let source = Source::from_path(&path)?;
+        let source = Source::from_path(&path).map_err(|e| {
+            SourceDiagnostic::error(self.span(id), e.to_string()).report(self.source.clone())
+        })?;
         let file = FileParser::new(source).try_parse()?;
         Ok(file)
     }
@@ -69,10 +76,11 @@ pub struct FileInfo {
 }
 
 impl FileInfo {
-    pub fn explore(&self) -> FileExplorer<'_, Tree> {
+    pub fn explore(&self) -> FileExplorer {
         FileExplorer {
-            tree: &self.tree,
-            path: self.source.path(),
+            source: self.source.clone(),
+            tree: self.tree.clone(),
+            spans: self.spans.clone(),
         }
     }
 }

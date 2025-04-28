@@ -129,38 +129,10 @@ pub type ModuleInfo = HashMap<Symbol, ModuleBind>;
 pub struct ModuleBind {
     pub id: ModuleId,
     pub vis: Vis,
-    pub kind: ModuleBindKind,
 }
 
 impl ModuleBind {
-    pub fn import(id: ModuleId, vis: Vis) -> Self {
-        Self {
-            id,
-            vis,
-            kind: ModuleBindKind::Import,
-        }
+    pub fn new(id: ModuleId, vis: Vis) -> Self {
+        Self { id, vis }
     }
-
-    pub fn path(id: ModuleId, vis: Vis) -> Self {
-        Self {
-            id,
-            vis,
-            kind: ModuleBindKind::Path,
-        }
-    }
-
-    pub fn module(id: ModuleId, vis: Vis) -> Self {
-        Self {
-            id,
-            vis,
-            kind: ModuleBindKind::Module,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum ModuleBindKind {
-    Import,
-    Path,
-    Module,
 }

@@ -159,6 +159,10 @@ impl SourceDiagnostic {
     pub fn is_info(&self) -> bool {
         self.severity == Severity::Advice
     }
+
+    pub fn report(self, source: Source) -> SourceReport {
+        SourceReport::new(source, vec![self])
+    }
 }
 
 /// Converts a Chumsky lexer error into a source diagnostic.

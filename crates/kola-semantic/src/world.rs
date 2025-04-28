@@ -13,7 +13,7 @@ use std::{
 use thiserror::Error;
 
 use crate::{
-    file::{FileError, FileExplorer, FileInfo, FileParser},
+    file::{FileInfo, FileParser},
     module::{ModuleBind, ModuleExplorer, ModuleId, ModuleInfo},
     typer::{self, TypeDecorator, TypeInfo, Typer},
 };
@@ -51,6 +51,10 @@ impl World {
 
 pub type ExploreResult<T> = Result<T, ExploreError>;
 
+#[derive(Debug, Error, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[error("Circular dependency detected at: {0}")]
+pub struct Cycle(PathBuf);
+
 #[derive(Debug, Error, Diagnostic)]
 pub enum ExploreError {
     #[error(transparent)]
@@ -58,19 +62,6 @@ pub enum ExploreError {
     #[diagnostic(transparent)]
     #[error(transparent)]
     Source(#[from] SourceReport),
-    #[error("Circular dependency detected at: {0}")]
-    Cycle(PathBuf),
-    #[error("Module could not be found")]
-    ModuleNotFound, // TODO better handling of error
-}
-
-impl From<FileError> for ExploreError {
-    fn from(e: FileError) -> Self {
-        match e {
-            FileError::Io(e) => Self::Io(e),
-            FileError::Source(e) => Self::Source(e),
-        }
-    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -117,15 +108,21 @@ impl World {
                 }
             }
 
-            let tree = self.file_info(&module_id).tree;
-            let mut explorer = Explorer::new(self, &mut stack, &mut visited, module_id.clone());
+            let file = self.file_info(&module_id);
+            let mut explorer = Explorer::new(
+                self,
+                &mut stack,
+                &mut visited,
+                module_id.clone(),
+                file.clone(),
+            );
 
-            match module_id.id().visit_by(&mut explorer, &tree) {
+            match module_id.id().visit_by(&mut explorer, &file.tree) {
                 ControlFlow::Continue(()) => (),
-                ControlFlow::Break(cycle) => return Err(cycle.into()),
+                ControlFlow::Break(e) => return Err(e),
             }
 
-            let info = explorer.info;
+            let info = explorer.module;
             self.module_infos.insert(module_id, info);
         }
 
@@ -166,30 +163,40 @@ struct Explorer<'a> {
     stack: &'a mut Vec<ModuleId>,
     visited: &'a mut HashMap<ModuleId, VisitState>,
     module_id: ModuleId,
-    info: ModuleInfo,
+    module: ModuleInfo,
+    file: FileInfo,
 }
 
 impl<'a> Explorer<'a> {
-    pub fn new(
+    fn new(
         world: &'a mut World,
         stack: &'a mut Vec<ModuleId>,
         visited: &'a mut HashMap<ModuleId, VisitState>,
         module_id: ModuleId,
+        file: FileInfo,
     ) -> Self {
         let mut info = ModuleInfo::new();
 
         if let Some(parent_id) = module_id.parent() {
-            let bind = ModuleBind::path(parent_id.to_owned(), Vis::None);
+            let bind = ModuleBind::new(parent_id.to_owned(), Vis::None);
             info.insert("super".into(), bind);
         }
 
         Self {
             module_id,
-            info,
+            module: info,
             world,
             stack,
             visited,
+            file,
         }
+    }
+
+    pub fn span<T>(&self, id: Id<T>) -> Span
+    where
+        T: MetaCast<SyntaxPhase, Meta = Span>,
+    {
+        self.file.spans.get(id).inner_copied()
     }
 }
 
@@ -211,17 +218,15 @@ impl<'a, T: TreeAccess> Visitor<T> for Explorer<'a> {
         let vis = *vis.get(tree);
         let name = name.get(tree).0.clone();
 
-        let submodule = match *value.get(tree) {
+        let (submodule, span) = match *value.get(tree) {
             node::ModuleExpr::Module(id) => {
                 let submodule_id = ModuleId::new(self.module_id.clone(), self.module_id.path(), id);
-                ModuleBind::module(submodule_id, vis)
+                (ModuleBind::new(submodule_id, vis), self.span(id))
             }
             node::ModuleExpr::Import(import_id) => {
                 // Because imports are file based and strictly hierarchically (a module can always only have one parent)
                 // We can just parse here and be confident that we didn't parse before.
-                let file = match FileExplorer::new(tree, self.module_id.path())
-                    .explore_import(import_id)
-                {
+                let file = match self.file.explore().import(import_id) {
                     Ok(file) => file,
                     Err(e) => return ControlFlow::Break(e.into()),
                 };
@@ -230,17 +235,25 @@ impl<'a, T: TreeAccess> Visitor<T> for Explorer<'a> {
                 self.world.file_infos.insert(path.clone(), file);
 
                 let submodule_id = ModuleId::new(self.module_id.clone(), path, id);
-                ModuleBind::import(submodule_id, vis)
+                (ModuleBind::new(submodule_id, vis), self.span(import_id))
             }
             node::ModuleExpr::Path(path_id) => {
-                let id = match ModuleExplorer::new(tree, &self.info, &self.world.module_infos)
+                let id = match ModuleExplorer::new(tree, &self.module, &self.world.module_infos)
                     .explore_path(path_id)
                 {
                     Some(id) => id,
-                    None => return ControlFlow::Break(ExploreError::ModuleNotFound),
+                    None => {
+                        return ControlFlow::Break(ExploreError::Source(
+                            SourceDiagnostic::error(
+                                self.span(path_id),
+                                "Module not found".to_owned(),
+                            )
+                            .report(self.file.source.clone()),
+                        ));
+                    }
                 };
 
-                ModuleBind::path(id, vis)
+                (ModuleBind::new(id, vis), self.span(path_id))
             }
         };
 
@@ -252,12 +265,18 @@ impl<'a, T: TreeAccess> Visitor<T> for Explorer<'a> {
         {
             VisitState::Unvisited => self.stack.push(submodule.id.clone()),
             VisitState::Visiting => {
-                return ControlFlow::Break(ExploreError::Cycle(self.module_id.path().to_owned()));
+                return ControlFlow::Break(ExploreError::Source(
+                    SourceDiagnostic::error(
+                        span,
+                        Cycle(self.module_id.path().to_owned()).to_string(),
+                    )
+                    .report(self.file.source.clone()),
+                ));
             }
             VisitState::Visited => (),
         }
 
-        self.info.insert(name, submodule);
+        self.module.insert(name, submodule);
         ControlFlow::Continue(())
     }
 }
