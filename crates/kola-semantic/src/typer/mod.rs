@@ -8,7 +8,7 @@ use crate::{
     env::{KindEnv, TypeEnv},
     error::SemanticError,
     file::FileInfo,
-    module::{ModuleExplorer, ModuleId, ModuleInfo, ModuleInfoTable, ModulePathResolution},
+    module::{ModuleExplorer, ModuleId, ModuleInfo, ModuleInfoTable, PathResolution},
     substitute::{Substitutable, Substitution},
     types::{Kind, MonoType, PolyType, Property, TypeVar, Typed},
     unify::Unifiable,
@@ -270,16 +270,18 @@ where
         // TODO either expand the ModuleExplorer to also have information about values (and types then also but not important here)
         // or create a separate ValuePathResolver which takes the ModulePathResolution as input.
         // Either way information about Values (and their visibility (Export or not)) has to be available here.
-
+        // TODO also precedence might be important here
+        // I still need to determine if I allow shadowing and if forexample locally defined variables are resolved before
+        // outer ones.
         let module_explorer =
             ModuleExplorer::new(tree, &self.module_id, &self.module, &self.module_infos);
 
         let t = match module_explorer.path_expr(id) {
-            ModulePathResolution::Unresolved => {
+            PathResolution::Unresolved => {
                 let path = id.get(tree);
 
                 if path.0.len() == 1 {
-                    let ident = path.0[0].get(tree); // TODO this could also be another tree
+                    let ident = path.0[0].get(tree);
 
                     self.t_env
                         .try_lookup(&ident.0)
@@ -290,7 +292,7 @@ where
                     todo!()
                 }
             }
-            ModulePathResolution::Partial {
+            PathResolution::Partial {
                 module_id,
                 remaining,
             } => {
@@ -312,7 +314,7 @@ where
                     todo!()
                 }
             }
-            ModulePathResolution::Resolved(module_id) => todo!(), // error here
+            PathResolution::Resolved(module_id) => todo!(), // error here
         };
 
         self.update_type(id, t);

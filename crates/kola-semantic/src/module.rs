@@ -24,7 +24,7 @@ use kola_tree::{
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum ModulePathResolution {
+pub enum PathResolution {
     Unresolved,
     Partial {
         module_id: ModuleId,
@@ -65,16 +65,16 @@ where
     /// * Returns `Unresolved` if the first segment was not a submodule defined in the current module.
     /// * Returns `Partial` if some segments could be resolved but there are remaining segments.
     /// * Returns `Resolved` if all segments could be resolved.
-    pub fn path_expr(self, path_id: Id<node::PathExpr>) -> ModulePathResolution {
+    pub fn path_expr(self, path_id: Id<node::PathExpr>) -> PathResolution {
         let path = path_id.get(self.tree);
         let mut segments = path.0.iter();
 
         let Some(first_id) = segments.next() else {
-            return ModulePathResolution::Unresolved;
+            return PathResolution::Unresolved;
         };
         let first = first_id.get(self.tree);
-        let Some(bind) = self.module.lookup(&first.0) else {
-            return ModulePathResolution::Unresolved;
+        let Some(bind) = self.module.module(&first.0) else {
+            return PathResolution::Unresolved;
         };
         let mut module_id = bind.id.clone();
 
@@ -84,7 +84,7 @@ where
             if let Some(module) = self
                 .global
                 .get(&module_id)
-                .and_then(|info| info.lookup(&s.0))
+                .and_then(|info| info.module(&s.0))
                 && module.vis == Vis::Export
             {
                 module_id = module.id.clone();
@@ -92,14 +92,14 @@ where
                 let mut remaining = segments.copied().collect::<Vec<_>>();
                 remaining.insert(0, *id);
 
-                return ModulePathResolution::Partial {
+                return PathResolution::Partial {
                     module_id,
                     remaining,
                 };
             }
         }
 
-        ModulePathResolution::Resolved(module_id)
+        PathResolution::Resolved(module_id)
     }
 
     /// Resolves the module path
@@ -114,11 +114,14 @@ where
 
         let first_id = segments.next()?;
         let first = first_id.get(self.tree);
-        let mut module_id = self.module.lookup(&first.0)?.id.clone();
+        let mut module_id = self.module.module(&first.0)?.id.clone();
 
+        // TODO should I allow access to private modules of a parent in a DIRECT child ?
+        // The way I have implemented this currently it would not work.
+        // I guess for helper modules this would be pretty usefull
         for id in segments {
             let s = id.get(self.tree);
-            let module = self.global.get(&module_id)?.lookup(&s.0)?;
+            let module = self.global.get(&module_id)?.module(&s.0)?;
 
             if module.vis != Vis::Export {
                 return None;
@@ -127,6 +130,109 @@ where
         }
 
         Some(module_id)
+    }
+}
+
+pub type ModuleInfoTable = HashMap<ModuleId, ModuleInfo>;
+
+pub trait ModuleInfoView {
+    fn module(&self, symbol: &Symbol) -> Option<&ModuleBind>;
+    fn value(&self, symbol: &Symbol) -> Option<&ValueBind>;
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ModuleInfoBuilder {
+    pub modules: HashMap<Symbol, ModuleBind>,
+    pub values: HashMap<Symbol, ValueBind>,
+}
+
+impl ModuleInfoBuilder {
+    pub fn new() -> Self {
+        Self {
+            modules: HashMap::new(),
+            values: HashMap::new(),
+        }
+    }
+
+    // TODO needs to check for special symbols
+    // E.g. "super" module defined here should not be overriden
+    // Maybe do not allow to override at all and return error then here
+    pub fn insert_module(&mut self, symbol: Symbol, bind: ModuleBind) -> Option<ModuleBind> {
+        self.modules.insert(symbol, bind)
+    }
+
+    // TODO should also probably fail on override
+    pub fn insert_value(&mut self, symbol: Symbol, bind: ValueBind) -> Option<ValueBind> {
+        self.values.insert(symbol, bind)
+    }
+
+    pub fn finish(self) -> ModuleInfo {
+        let Self { modules, values } = self;
+
+        ModuleInfo {
+            modules: Rc::new(modules),
+            values: Rc::new(values),
+        }
+    }
+}
+
+impl ModuleInfoView for ModuleInfoBuilder {
+    fn module(&self, symbol: &Symbol) -> Option<&ModuleBind> {
+        self.modules.get(symbol)
+    }
+
+    fn value(&self, symbol: &Symbol) -> Option<&ValueBind> {
+        self.values.get(symbol)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ModuleInfo {
+    pub modules: Rc<HashMap<Symbol, ModuleBind>>,
+    pub values: Rc<HashMap<Symbol, ValueBind>>,
+}
+
+impl ModuleInfoView for ModuleInfo {
+    fn module(&self, symbol: &Symbol) -> Option<&ModuleBind> {
+        self.modules.get(symbol)
+    }
+
+    fn value(&self, symbol: &Symbol) -> Option<&ValueBind> {
+        self.values.get(symbol)
+    }
+}
+
+// TODO I could include type information for values and modules
+// if they are speficically written out. Not sure if there is a huge benefit though
+// May be a bit more performant than to do determine it later in the Typer
+// But is not strictly the main goal here so might as well not do it.
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct ValueBind {
+    pub id: Id<node::Expr>,
+    pub vis: Vis,
+}
+
+impl ValueBind {
+    pub fn new(id: Id<node::Expr>, vis: Vis) -> Self {
+        Self { id, vis }
+    }
+}
+
+// // TODO visibilty
+// pub struct TypeBind {
+//     pub id: Id<node::Type>,
+// }
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct ModuleBind {
+    pub id: ModuleId,
+    pub vis: Vis,
+}
+
+impl ModuleBind {
+    pub fn new(id: ModuleId, vis: Vis) -> Self {
+        Self { id, vis }
     }
 }
 
@@ -195,69 +301,5 @@ impl ModuleId {
 
     pub fn is_child_of(&self, other: &Self) -> bool {
         self.parent().is_some_and(|parent| parent == other)
-    }
-}
-
-pub type ModuleInfoTable = HashMap<ModuleId, ModuleInfo>;
-
-pub trait ModuleInfoView {
-    fn lookup(&self, symbol: &Symbol) -> Option<&ModuleBind>;
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ModuleInfoBuilder {
-    pub binds: HashMap<Symbol, ModuleBind>,
-}
-
-impl ModuleInfoBuilder {
-    pub fn new() -> Self {
-        Self {
-            binds: HashMap::new(),
-        }
-    }
-
-    pub fn insert(&mut self, symbol: Symbol, bind: ModuleBind) -> Option<ModuleBind> {
-        self.binds.insert(symbol, bind)
-    }
-
-    pub fn finish(self) -> ModuleInfo {
-        ModuleInfo::new(self.binds)
-    }
-}
-
-impl ModuleInfoView for ModuleInfoBuilder {
-    fn lookup(&self, symbol: &Symbol) -> Option<&ModuleBind> {
-        self.binds.get(symbol)
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ModuleInfo {
-    pub binds: Rc<HashMap<Symbol, ModuleBind>>,
-}
-
-impl ModuleInfo {
-    pub fn new(binds: HashMap<Symbol, ModuleBind>) -> Self {
-        Self {
-            binds: Rc::new(binds),
-        }
-    }
-}
-
-impl ModuleInfoView for ModuleInfo {
-    fn lookup(&self, symbol: &Symbol) -> Option<&ModuleBind> {
-        self.binds.get(symbol)
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct ModuleBind {
-    pub id: ModuleId,
-    pub vis: Vis,
-}
-
-impl ModuleBind {
-    pub fn new(id: ModuleId, vis: Vis) -> Self {
-        Self { id, vis }
     }
 }

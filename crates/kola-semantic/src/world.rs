@@ -11,6 +11,7 @@ use crate::{
     file::{FileInfo, FileInfoTable, FileParser},
     module::{
         ModuleBind, ModuleExplorer, ModuleId, ModuleInfo, ModuleInfoBuilder, ModuleInfoTable,
+        ValueBind,
     },
     typer::{self, TypeDecorator, TypeInfo, TypeInfoTable, Typer},
 };
@@ -185,7 +186,7 @@ impl<'a> Explorer<'a> {
 
         if let Some(parent_id) = module_id.parent() {
             let bind = ModuleBind::new(parent_id.to_owned(), node::Vis::None);
-            builder.insert("super".into(), bind);
+            builder.insert_module("super".into(), bind);
         }
 
         Self {
@@ -222,6 +223,29 @@ impl<'a> Explorer<'a> {
 impl<'a, T: TreeView> Visitor<T> for Explorer<'a> {
     type BreakValue = ExploreError;
 
+    // This will only traverse the current module's scope,
+    // because the different module branches are not visited any further under `visit_module_bind`
+    fn visit_value_bind(
+        &mut self,
+        id: Id<node::ValueBind>,
+        tree: &T,
+    ) -> ControlFlow<Self::BreakValue> {
+        let node::ValueBind {
+            vis,
+            name,
+            ty: _,
+            value,
+        } = *id.get(tree);
+
+        let vis = *vis.get(tree);
+        let name = name.get(tree);
+
+        self.builder
+            .insert_value(name.0.clone(), ValueBind::new(value, vis));
+
+        ControlFlow::Continue(())
+    }
+
     fn visit_module_bind(
         &mut self,
         id: Id<node::ModuleBind>,
@@ -247,6 +271,8 @@ impl<'a, T: TreeView> Visitor<T> for Explorer<'a> {
                 (ModuleBind::new(submodule_id, vis), self.span(id))
             }
             node::ModuleExpr::Import(import_id) => {
+                // TODO I might want to check if I am in a nested module, because then I should disallow imports.
+                //
                 // Module files are only allowed to import from their designated module direcotry.
                 // For example a/b.kl may only import from a/b/
                 // Therefore the parsing logic inside FileExplorer::import is guaranteed to only
@@ -310,7 +336,7 @@ impl<'a, T: TreeView> Visitor<T> for Explorer<'a> {
             VisitState::Visited => (),
         }
 
-        self.builder.insert(name, submodule);
+        self.builder.insert_module(name, submodule);
         ControlFlow::Continue(())
     }
 }
