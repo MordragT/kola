@@ -8,7 +8,7 @@ use crate::{
     node::{Module, Node},
 };
 
-pub trait TreeAccess {
+pub trait TreeView {
     fn node<T>(&self, id: Id<T>) -> &T
     where
         Node: TryAsRef<T>;
@@ -34,7 +34,7 @@ impl Default for TreeBuilder {
     }
 }
 
-impl TreeAccess for TreeBuilder {
+impl TreeView for TreeBuilder {
     fn node<T>(&self, id: Id<T>) -> &T
     where
         Node: TryAsRef<T>,
@@ -95,7 +95,7 @@ pub struct Tree {
     root: Id<Module>,
 }
 
-impl TreeAccess for Tree {
+impl TreeView for Tree {
     fn node<T>(&self, id: Id<T>) -> &T
     where
         Node: TryAsRef<T>,

@@ -47,7 +47,7 @@ impl StateRepr {
     }
 }
 
-impl TreeAccess for StateRepr {
+impl TreeView for StateRepr {
     fn node<T>(&self, id: Id<T>) -> &T
     where
         Node: kola_utils::TryAsRef<T>,

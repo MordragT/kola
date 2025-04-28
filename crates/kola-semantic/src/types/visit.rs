@@ -44,7 +44,7 @@ pub trait TypeVisitor: Sized {
         }
     }
 
-    fn visit_var(&mut self, var: &super::TypeVar) -> ControlFlow<Self::BreakValue> {
+    fn visit_var(&mut self, _var: &super::TypeVar) -> ControlFlow<Self::BreakValue> {
         ControlFlow::Continue(())
     }
 }

@@ -1,7 +1,10 @@
+use std::collections::HashMap;
+
 use kola_tree::meta::*;
 
-use crate::types;
+use crate::{module::ModuleId, types};
 
+pub type TypeInfoTable = HashMap<ModuleId, TypeInfo>;
 pub type TypeInfo = Metadata<TypePhase>;
 
 #[derive(Clone, Copy, Debug)]

@@ -1,9 +1,9 @@
 use paste::paste;
 use std::ops::ControlFlow;
 
-use crate::{id::Id, node, tree::TreeAccess};
+use crate::{id::Id, node, tree::TreeView};
 
-pub trait Visitable<T: TreeAccess> {
+pub trait Visitable<T: TreeView> {
     fn visit_by<V>(&self, visitor: &mut V, tree: &T) -> ControlFlow<V::BreakValue>
     where
         V: Visitor<T>;
@@ -13,7 +13,7 @@ macro_rules! impl_visitable {
     ($($variant:ident),* $(,)?) => {
         paste!{
             $(
-                impl<T: TreeAccess> Visitable<T> for Id<node::$variant> {
+                impl<T: TreeView> Visitable<T> for Id<node::$variant> {
                     fn visit_by<V>(&self, visitor: &mut V, tree: &T) -> ControlFlow<V::BreakValue>
                     where
                         V: Visitor<T>,
@@ -88,7 +88,7 @@ impl_visitable!(
     ModuleType
 );
 
-pub trait Visitor<T: TreeAccess> {
+pub trait Visitor<T: TreeView> {
     type BreakValue;
 
     fn visit_name(&mut self, _id: Id<node::Name>, _tree: &T) -> ControlFlow<Self::BreakValue> {

@@ -132,6 +132,16 @@ macro_rules! define {
             $($node(<node::$node as MetaCast<P>>::Meta),)*
         }
 
+        impl<P: Phase> Meta<P> {
+            pub fn kind(&self) -> node::NodeKind {
+                match self {
+                    $(
+                        Self::$node(_) => node::NodeKind::$node,
+                    )*
+                }
+            }
+        }
+
         impl<P> Meta<P>
         where
             P: Phase<$($node: Default,)*>,

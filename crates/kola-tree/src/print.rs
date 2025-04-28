@@ -4,7 +4,7 @@ use kola_utils::TryAsRef;
 use crate::{
     id::Id,
     node::Node,
-    tree::{Tree, TreeAccess},
+    tree::{Tree, TreeView},
 };
 
 // This is somewhat hacky I use NodeId<()> and then only the Metadata get function

@@ -5,7 +5,7 @@ use owo_colors::OwoColorize;
 use serde::{Deserialize, Serialize};
 
 use super::{Name, Symbol};
-use crate::{id::Id, print::TreePrinter, tree::TreeAccess};
+use crate::{id::Id, print::TreePrinter, tree::TreeView};
 
 /*
 type Option = forall a . [ Some : a, None ]
@@ -44,7 +44,7 @@ impl Printable<TreePrinter> for TypeError {
 pub struct TypePath(pub Vec<Id<Name>>);
 
 impl TypePath {
-    pub fn get<'a>(&self, index: usize, tree: &'a impl TreeAccess) -> &'a Name {
+    pub fn get<'a>(&self, index: usize, tree: &'a impl TreeView) -> &'a Name {
         self.0[index].get(tree)
     }
 }
@@ -145,7 +145,7 @@ pub struct RecordType {
 }
 
 impl RecordType {
-    pub fn get(&self, index: usize, tree: &impl TreeAccess) -> RecordFieldType {
+    pub fn get(&self, index: usize, tree: &impl TreeView) -> RecordFieldType {
         *self.fields[index].get(tree)
     }
 }
@@ -235,7 +235,7 @@ pub struct VariantType {
 }
 
 impl VariantType {
-    pub fn get(&self, index: usize, tree: &impl TreeAccess) -> VariantCaseType {
+    pub fn get(&self, index: usize, tree: &impl TreeView) -> VariantCaseType {
         *self.cases[index].get(tree)
     }
 }

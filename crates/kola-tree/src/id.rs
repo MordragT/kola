@@ -7,7 +7,7 @@ use crate::{
     meta::{MetaCast, MetaContainer, Phase},
     node::Node,
     print::TreePrinter,
-    tree::TreeAccess,
+    tree::TreeView,
 };
 
 #[derive(Debug, Serialize, Deserialize)]
@@ -69,7 +69,7 @@ impl<T> Id<T> {
         self.id as usize
     }
 
-    pub fn get(self, tree: &impl TreeAccess) -> &T
+    pub fn get(self, tree: &impl TreeView) -> &T
     where
         Node: TryAsRef<T>,
     {

@@ -28,6 +28,7 @@ edition = "2024"
 clap = { version = "4.5", features = ["derive"] }
 miette = { version = "7.4.0", features = ["fancy"] }
 env_logger = "0.11"
+log.workspace = true
 owo-colors.workspace = true
 kola-print.workspace = true
 kola-tree.workspace = true

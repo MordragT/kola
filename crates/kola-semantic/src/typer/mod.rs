@@ -7,6 +7,8 @@ use kola_utils::Errors;
 use crate::{
     env::{KindEnv, TypeEnv},
     error::SemanticError,
+    file::FileInfo,
+    module::{ModuleId, ModuleInfo, ModuleInfoTable},
     substitute::{Substitutable, Substitution},
     types::{Kind, MonoType, PolyType, Property, TypeVar, Typed},
     unify::Unifiable,
@@ -15,7 +17,7 @@ use crate::{
 mod phase;
 mod print;
 
-pub use phase::{TypeInfo, TypePhase};
+pub use phase::{TypeInfo, TypeInfoTable, TypePhase};
 pub use print::TypeDecorator;
 
 // TODO rename to Typer ??
@@ -100,34 +102,50 @@ impl Constraints {
 // TODO τ for normal types
 // r for record types ?
 
-pub struct Typer {
+pub struct Typer<'a> {
     subs: Substitution,
     cons: Constraints,
     t_env: TypeEnv,
     k_env: KindEnv,
-    spans: SpanInfo,
     types: Vec<Meta<TypePhase>>,
+    id: ModuleId,
+    module: ModuleInfo,
+    spans: SpanInfo,
+    module_infos: &'a ModuleInfoTable,
+    type_infos: &'a TypeInfoTable,
 }
 
-impl Typer {
-    pub fn new(tree: &impl TreeAccess, spans: SpanInfo) -> Self {
-        let types = tree.metadata_with(|node| Meta::<TypePhase>::default_for(node.kind()));
+impl<'a> Typer<'a> {
+    pub fn new(
+        id: ModuleId,
+        module: ModuleInfo,
+        spans: SpanInfo,
+        module_infos: &'a ModuleInfoTable,
+        type_infos: &'a TypeInfoTable,
+    ) -> Self {
+        let types = spans
+            .iter()
+            .map(|m| Meta::<TypePhase>::default_for(m.kind()))
+            .collect();
 
         Self {
             subs: Substitution::empty(),
             cons: Constraints::new(),
             t_env: TypeEnv::new(),
             k_env: KindEnv::new(),
-            spans,
             types,
+            id,
+            module,
+            spans,
+            module_infos,
+            type_infos,
         }
     }
 
-    pub fn solve<T>(mut self, node: impl Visitable<T>, tree: &T) -> Result<TypeInfo, Error>
-    where
-        T: TreeAccess,
-    {
-        match node.visit_by(&mut self, tree) {
+    // pub fn solve()
+
+    pub fn solve(mut self, tree: &Tree) -> Result<TypeInfo, Error> {
+        match tree.root_id().visit_by(&mut self, tree) {
             ControlFlow::Break(_) => unreachable!(),
             ControlFlow::Continue(()) => (),
         }
@@ -135,10 +153,9 @@ impl Typer {
         let Self {
             mut subs,
             cons,
-            t_env: _,
             mut k_env,
-            spans: _,
             mut types,
+            ..
         } = self;
 
         cons.solve(&mut subs, &mut k_env)?;
@@ -166,7 +183,7 @@ impl Typer {
         source: Id<node::Expr>,
         field: Id<node::Name>,
         span: Span,
-        tree: &impl TreeAccess,
+        tree: &impl TreeView,
     ) -> MonoType {
         let t = self.types.meta(source);
 
@@ -187,7 +204,10 @@ impl Typer {
     }
 }
 
-impl<T: TreeAccess> Visitor<T> for Typer {
+impl<'a, T> Visitor<T> for Typer<'a>
+where
+    T: TreeView,
+{
     type BreakValue = !;
 
     // Patterns
@@ -296,40 +316,6 @@ impl<T: TreeAccess> Visitor<T> for Typer {
         self.update_type(id, r);
         ControlFlow::Continue(())
     }
-
-    // Rule for Record Selection of 'r' with label 'l'
-    // τ' = newvar()
-    // ∆;Γ ⊢ r : { τ0 | l : τ' } where τ0 is of kind Record
-    // -----------------------
-    // ∆;Γ ⊢ r.l : τ'
-
-    // // old: ∀rα. {l :: α | r} → α
-    // // TODO check if feasible to just iterate over record to get the selected type
-    // // and if not possible fallback to original behaviour
-    // fn visit_record_select(
-    //     &mut self,
-    //     select: &node::RecordSelect,
-    //     id: NodeId<node::RecordSelect>,
-    // ) -> ControlFlow<Self::BreakValue>  {
-    //     let span = self.span(id);
-
-    //     let t0 = self.types.meta(select.source);
-
-    //     self.cons.constrain_kind(Kind::Record, t0.clone(), span);
-
-    //     let t_prime = MonoType::variable();
-
-    //     let head = Property {
-    //         k: self.types.meta(select.field).clone(),
-    //         v: t_prime.clone(),
-    //     };
-    //     self.cons
-    //         .constrain(MonoType::row(head, MonoType::variable()), t0.clone(), span);
-
-    //     self.update_type(id, t_prime);
-    //             ControlFlow::Continue(())
-
-    // }
 
     // Rule for Record Extension of 'r' with label 'l' and Value 'v'
     // ∆;Γ ⊢ v : τ0
@@ -716,13 +702,18 @@ impl<T: TreeAccess> Visitor<T> for Typer {
 
 #[cfg(test)]
 mod tests {
+
     use kola_syntax::span::{Span, SpanInfo};
     use kola_tree::prelude::*;
 
-    use super::Typer;
-    use crate::{error::SemanticError, types::*};
+    use super::{Error, TypeInfo, TypeInfoTable, Typer};
+    use crate::{
+        error::SemanticError,
+        module::{ModuleId, ModuleInfoBuilder, ModuleInfoTable},
+        types::*,
+    };
 
-    fn mocked_spans(tree: &impl TreeAccess) -> SpanInfo {
+    fn mocked_spans(tree: &impl TreeView) -> SpanInfo {
         let span = Span {
             start: 0,
             end: 0,
@@ -731,16 +722,37 @@ mod tests {
         tree.metadata_with(|node| Meta::default_with(span, node.kind()))
             .into_metadata()
     }
+    fn solve_expr<T>(mut builder: TreeBuilder, node: Id<T>) -> Result<TypeInfo, Error>
+    where
+        node::Expr: From<Id<T>>,
+    {
+        let bind = node::Bind::value_in(
+            node::Vis::None,
+            "_".into(),
+            None,
+            node::Expr::from(node),
+            &mut builder,
+        );
+        let root = builder.insert(node::Module(vec![bind]));
+        let module_id = ModuleId::root("/mocked/path.kl", root.clone());
+        let tree = builder.finish(root);
+
+        Typer::new(
+            module_id,
+            ModuleInfoBuilder::new().finish(),
+            mocked_spans(&tree),
+            &ModuleInfoTable::new(),
+            &TypeInfoTable::new(),
+        )
+        .solve(&tree)
+    }
 
     #[test]
     fn literal() {
         let mut builder = TreeBuilder::new();
         let lit = builder.insert(node::LiteralExpr::Num(10.0));
-        let root = builder.insert(node::Expr::Literal(lit));
 
-        let types = Typer::new(&builder, mocked_spans(&builder))
-            .solve(root, &builder)
-            .unwrap();
+        let types = solve_expr(builder, lit).unwrap();
 
         assert_eq!(types.meta(lit), &MonoType::NUM);
     }
@@ -751,11 +763,8 @@ mod tests {
 
         let target = builder.insert(node::LiteralExpr::Num(10.0));
         let unary = node::UnaryExpr::new_in(node::UnaryOp::Neg, target.into(), &mut builder);
-        let root = builder.insert(node::Expr::Unary(unary));
 
-        let types = Typer::new(&builder, mocked_spans(&builder))
-            .solve(root, &builder)
-            .unwrap();
+        let types = solve_expr(builder, unary).unwrap();
 
         assert_eq!(types.meta(unary), &MonoType::NUM);
     }
@@ -766,11 +775,8 @@ mod tests {
 
         let target = builder.insert(node::LiteralExpr::Num(10.0));
         let unary = node::UnaryExpr::new_in(node::UnaryOp::Not, target.into(), &mut builder);
-        let root = builder.insert(node::Expr::Unary(unary));
 
-        let (errors, _) = Typer::new(&builder, mocked_spans(&builder))
-            .solve(root, &builder)
-            .unwrap_err();
+        let (errors, _) = solve_expr(builder, unary).unwrap_err();
 
         assert_eq!(
             errors[0],
@@ -789,11 +795,8 @@ mod tests {
         let right = builder.insert(node::LiteralExpr::Num(10.0));
         let binary =
             node::BinaryExpr::new_in(node::BinaryOp::Eq, left.into(), right.into(), &mut builder);
-        let root = builder.insert(node::Expr::Binary(binary));
 
-        let (errors, _) = Typer::new(&builder, mocked_spans(&builder))
-            .solve(root, &builder)
-            .unwrap_err();
+        let (errors, _) = solve_expr(builder, binary).unwrap_err();
 
         assert_eq!(
             errors[0],
@@ -817,11 +820,8 @@ mod tests {
             inside.into(),
             &mut builder,
         );
-        let root = builder.insert(node::Expr::Let(let_));
 
-        let types = Typer::new(&builder, mocked_spans(&builder))
-            .solve(root, &builder)
-            .unwrap();
+        let types = solve_expr(builder, let_).unwrap();
 
         assert_eq!(types.meta(let_), &MonoType::NUM);
     }
@@ -834,11 +834,8 @@ mod tests {
         let then = builder.insert(node::LiteralExpr::Num(5.0));
         let or = builder.insert(node::LiteralExpr::Num(10.0));
         let if_ = node::IfExpr::new_in(predicate.into(), then.into(), or.into(), &mut builder);
-        let root = builder.insert(node::Expr::If(if_));
 
-        let types = Typer::new(&builder, mocked_spans(&builder))
-            .solve(root, &builder)
-            .unwrap();
+        let types = solve_expr(builder, if_).unwrap();
 
         assert_eq!(types.meta(if_), &MonoType::NUM);
     }
@@ -851,11 +848,8 @@ mod tests {
         let then = builder.insert(node::LiteralExpr::Num(5.0));
         let or = builder.insert(node::LiteralExpr::Char('x'));
         let if_ = node::IfExpr::new_in(predicate.into(), then.into(), or.into(), &mut builder);
-        let root = builder.insert(node::Expr::If(if_));
 
-        let (errors, _) = Typer::new(&builder, mocked_spans(&builder))
-            .solve(root, &builder)
-            .unwrap_err();
+        let (errors, _) = solve_expr(builder, if_).unwrap_err();
 
         assert_eq!(
             errors[0],

@@ -1,38 +1,36 @@
 use kola_print::PrintOptions;
 use kola_syntax::prelude::*;
-use kola_tree::{node::Vis, prelude::*};
+use kola_tree::prelude::*;
 use log::debug;
 use miette::{Diagnostic, Result};
 use owo_colors::OwoColorize;
-use std::{
-    collections::HashMap,
-    io,
-    ops::ControlFlow,
-    path::{Path, PathBuf},
-};
+use std::{collections::HashMap, io, ops::ControlFlow, path::Path};
 use thiserror::Error;
 
 use crate::{
-    file::{FileInfo, FileParser},
-    module::{ModuleBind, ModuleExplorer, ModuleId, ModuleInfo},
-    typer::{self, TypeDecorator, TypeInfo, Typer},
+    file::{FileInfo, FileInfoTable, FileParser},
+    module::{
+        ModuleBind, ModuleExplorer, ModuleId, ModuleInfo, ModuleInfoBuilder, ModuleInfoTable,
+    },
+    typer::{self, TypeDecorator, TypeInfo, TypeInfoTable, Typer},
 };
 
-// maybe this could use some DAG Graph for modelling dependencies which in turn allows for parallel module elaboration
 pub struct World {
     pub order: Vec<ModuleId>,
-    pub file_infos: HashMap<PathBuf, FileInfo>,
-    pub module_infos: HashMap<ModuleId, ModuleInfo>,
-    pub type_infos: HashMap<ModuleId, TypeInfo>,
+    pub file_infos: FileInfoTable,
+    pub module_infos: ModuleInfoTable,
+    pub type_infos: TypeInfoTable,
+    pub options: PrintOptions,
 }
 
 impl World {
-    pub fn new() -> Self {
+    pub fn new(options: PrintOptions) -> Self {
         Self {
             order: Vec::new(),
             file_infos: HashMap::new(),
             module_infos: HashMap::new(),
             type_infos: HashMap::new(),
+            options,
         }
     }
 
@@ -40,8 +38,8 @@ impl World {
         self.file_infos[id.path()].clone()
     }
 
-    pub fn module_info(&self, id: &ModuleId) -> &ModuleInfo {
-        &self.module_infos[id]
+    pub fn module_info(&self, id: &ModuleId) -> ModuleInfo {
+        self.module_infos[id].clone()
     }
 
     pub fn type_info(&self, id: &ModuleId) -> TypeInfo {
@@ -50,10 +48,6 @@ impl World {
 }
 
 pub type ExploreResult<T> = Result<T, ExploreError>;
-
-#[derive(Debug, Error, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[error("Circular dependency detected at: {0}")]
-pub struct Cycle(PathBuf);
 
 #[derive(Debug, Error, Diagnostic)]
 pub enum ExploreError {
@@ -72,14 +66,14 @@ enum VisitState {
 }
 
 impl World {
-    // TODO module shoud only allow exports which are annotated with the "export" keyword (and prober error message should be returned)
+    // TODO what happens with nested modules ?
     // TODO external packages could be provided also via HashMap<ModuleId, ModuleInfo>
 
     /// Topological DFS Algorithm
     pub fn explore(&mut self, path: impl AsRef<Path>) -> ExploreResult<&mut Self> {
         let path = path.as_ref().canonicalize()?;
         let source = Source::from_path(&path)?;
-        let file = FileParser::new(source).try_parse()?;
+        let file = FileParser::new(source, self.options).try_parse()?;
         let id = file.tree.root_id();
         let module_id = ModuleId::root(path.clone(), id);
         self.file_infos.insert(path.clone(), file);
@@ -115,6 +109,7 @@ impl World {
                 &mut visited,
                 module_id.clone(),
                 file.clone(),
+                self.options,
             );
 
             match module_id.id().visit_by(&mut explorer, &file.tree) {
@@ -122,7 +117,7 @@ impl World {
                 ControlFlow::Break(e) => return Err(e),
             }
 
-            let info = explorer.module;
+            let info = explorer.finish();
             self.module_infos.insert(module_id, info);
         }
 
@@ -133,24 +128,33 @@ impl World {
 }
 
 impl World {
-    pub fn infer(&mut self, options: PrintOptions) -> Result<&mut Self, typer::Error> {
+    pub fn type_check(&mut self) -> Result<&mut Self, typer::Error> {
         for module_id in &self.order {
+            let module = self.module_info(module_id);
             let FileInfo {
-                source: _,
                 tree,
                 spans,
+                source,
             } = self.file_info(module_id);
 
-            let types = Typer::new(&tree, spans.clone()).solve(tree.root_id(), &tree)?;
+            let types = Typer::new(
+                module_id.clone(),
+                module,
+                spans.clone(),
+                &self.module_infos,
+                &self.type_infos,
+            )
+            .solve(&tree)?;
             self.type_infos.insert(module_id.to_owned(), types.clone());
 
-            debug!("\n{}", "Typed Abstract Syntax Tree".bold().bright_white());
             debug!(
-                "{}",
+                "{} {:?}\n{}",
+                "Typed Abstract Syntax Tree".bold().bright_white(),
+                source.path(),
                 TreePrinter::new(&tree)
                     .with(SpanDecorator(spans))
                     .with(TypeDecorator(types))
-                    .render_at(module_id.id(), options)
+                    .render_at(module_id.id(), self.options)
             );
         }
 
@@ -163,8 +167,9 @@ struct Explorer<'a> {
     stack: &'a mut Vec<ModuleId>,
     visited: &'a mut HashMap<ModuleId, VisitState>,
     module_id: ModuleId,
-    module: ModuleInfo,
+    builder: ModuleInfoBuilder,
     file: FileInfo,
+    options: PrintOptions,
 }
 
 impl<'a> Explorer<'a> {
@@ -174,33 +179,47 @@ impl<'a> Explorer<'a> {
         visited: &'a mut HashMap<ModuleId, VisitState>,
         module_id: ModuleId,
         file: FileInfo,
+        options: PrintOptions,
     ) -> Self {
-        let mut info = ModuleInfo::new();
+        let mut builder = ModuleInfoBuilder::new();
 
         if let Some(parent_id) = module_id.parent() {
-            let bind = ModuleBind::new(parent_id.to_owned(), Vis::None);
-            info.insert("super".into(), bind);
+            let bind = ModuleBind::new(parent_id.to_owned(), node::Vis::None);
+            builder.insert("super".into(), bind);
         }
 
         Self {
             module_id,
-            module: info,
+            builder,
             world,
             stack,
             visited,
             file,
+            options,
         }
     }
 
-    pub fn span<T>(&self, id: Id<T>) -> Span
+    fn span<T>(&self, id: Id<T>) -> Span
     where
         T: MetaCast<SyntaxPhase, Meta = Span>,
     {
-        self.file.spans.get(id).inner_copied()
+        *self.file.spans.meta(id)
+    }
+
+    fn report(&self, diag: SourceDiagnostic) -> ExploreError {
+        diag.report(self.file.source.clone()).into()
+    }
+
+    fn finish(self) -> ModuleInfo {
+        self.builder.finish()
     }
 }
 
-impl<'a, T: TreeAccess> Visitor<T> for Explorer<'a> {
+// TODO maybe also visit value and type binds
+// and create a mapping of Symbols to their node id's
+// then in inference the symbols can be used to look up the node id's
+// which in turn can be used to lookup the type in the type-table
+impl<'a, T: TreeView> Visitor<T> for Explorer<'a> {
     type BreakValue = ExploreError;
 
     fn visit_module_bind(
@@ -220,13 +239,19 @@ impl<'a, T: TreeAccess> Visitor<T> for Explorer<'a> {
 
         let (submodule, span) = match *value.get(tree) {
             node::ModuleExpr::Module(id) => {
+                // TODO Do I need to do something extra here for multi nested modules ?
+                // It should just be pushed to the stack and because I am not walking over it
+                // the explorer should not investigate further.
+                // So probably no ?
                 let submodule_id = ModuleId::new(self.module_id.clone(), self.module_id.path(), id);
                 (ModuleBind::new(submodule_id, vis), self.span(id))
             }
             node::ModuleExpr::Import(import_id) => {
-                // Because imports are file based and strictly hierarchically (a module can always only have one parent)
-                // We can just parse here and be confident that we didn't parse before.
-                let file = match self.file.explore().import(import_id) {
+                // Module files are only allowed to import from their designated module direcotry.
+                // For example a/b.kl may only import from a/b/
+                // Therefore the parsing logic inside FileExplorer::import is guaranteed to only
+                // run once per file.
+                let file = match self.file.explore().import(import_id, self.options) {
                     Ok(file) => file,
                     Err(e) => return ControlFlow::Break(e.into()),
                 };
@@ -238,18 +263,17 @@ impl<'a, T: TreeAccess> Visitor<T> for Explorer<'a> {
                 (ModuleBind::new(submodule_id, vis), self.span(import_id))
             }
             node::ModuleExpr::Path(path_id) => {
-                let id = match ModuleExplorer::new(tree, &self.module, &self.world.module_infos)
-                    .explore_path(path_id)
+                let id = match ModuleExplorer::new(tree, &self.builder, &self.world.module_infos)
+                    .module_path(path_id)
                 {
                     Some(id) => id,
                     None => {
-                        return ControlFlow::Break(ExploreError::Source(
-                            SourceDiagnostic::error(
-                                self.span(path_id),
-                                "Module not found".to_owned(),
-                            )
-                            .report(self.file.source.clone()),
-                        ));
+                        return ControlFlow::Break(
+                            self.report(
+                                SourceDiagnostic::error(self.span(path_id), "Module not found")
+                                    .with_help("Maybe the module is not marked to be exported."),
+                            ),
+                        );
                     }
                 };
 
@@ -265,18 +289,23 @@ impl<'a, T: TreeAccess> Visitor<T> for Explorer<'a> {
         {
             VisitState::Unvisited => self.stack.push(submodule.id.clone()),
             VisitState::Visiting => {
-                return ControlFlow::Break(ExploreError::Source(
-                    SourceDiagnostic::error(
-                        span,
-                        Cycle(self.module_id.path().to_owned()).to_string(),
-                    )
-                    .report(self.file.source.clone()),
-                ));
+                return ControlFlow::Break(
+                    self.report(
+                        SourceDiagnostic::error(
+                            span,
+                            format!(
+                                "Circular dependency detected at: {:?}",
+                                self.module_id.path()
+                            ),
+                        )
+                        .with_help("Review its imports."),
+                    ),
+                );
             }
             VisitState::Visited => (),
         }
 
-        self.module.insert(name, submodule);
+        self.builder.insert(name, submodule);
         ControlFlow::Continue(())
     }
 }

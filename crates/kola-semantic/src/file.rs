@@ -1,7 +1,4 @@
-use std::{
-    io,
-    path::{Path, PathBuf},
-};
+use std::{collections::HashMap, path::PathBuf};
 
 use kola_print::prelude::*;
 use kola_syntax::prelude::*;
@@ -39,7 +36,7 @@ impl FileExplorer {
     where
         T: MetaCast<SyntaxPhase, Meta = Span>,
     {
-        self.spans.get(id).inner_copied()
+        *self.spans.meta(id)
     }
 
     pub fn module_dir(&self) -> PathBuf {
@@ -57,16 +54,22 @@ impl FileExplorer {
             .with_extension(Self::EXTENSION)
     }
 
-    pub fn import(&self, id: Id<node::ModuleImport>) -> Result<FileInfo, SourceReport> {
+    pub fn import(
+        &self,
+        id: Id<node::ModuleImport>,
+        options: PrintOptions,
+    ) -> Result<FileInfo, SourceReport> {
         let path = self.import_path_of(id);
 
         let source = Source::from_path(&path).map_err(|e| {
             SourceDiagnostic::error(self.span(id), e.to_string()).report(self.source.clone())
         })?;
-        let file = FileParser::new(source).try_parse()?;
+        let file = FileParser::new(source, options).try_parse()?;
         Ok(file)
     }
 }
+
+pub type FileInfoTable = HashMap<PathBuf, FileInfo>;
 
 #[derive(Debug, Clone)]
 pub struct FileInfo {
@@ -92,14 +95,7 @@ pub struct FileParser {
 }
 
 impl FileParser {
-    pub fn new(source: Source) -> Self {
-        Self {
-            source,
-            options: Default::default(),
-        }
-    }
-
-    pub fn with(source: Source, options: PrintOptions) -> Self {
+    pub fn new(source: Source, options: PrintOptions) -> Self {
         Self { source, options }
     }
 
@@ -108,7 +104,12 @@ impl FileParser {
 
         let mut source_errors = Vec::new();
 
-        debug!("{}\n{}", "Source".bold().bright_white(), source);
+        debug!(
+            "{} {:?}\n{}",
+            "Source".bold().bright_white(),
+            source.path(),
+            source
+        );
 
         let TokenizeResult { tokens, mut errors } = tokenize(source.as_str());
         source_errors.append(&mut errors);
@@ -118,8 +119,9 @@ impl FileParser {
         };
 
         debug!(
-            "{}\n{}",
+            "{} {:?}\n{}",
             "Tokens".bold().bright_white(),
+            source.path(),
             TokenPrinter(&tokens).render(options)
         );
 
@@ -135,8 +137,9 @@ impl FileParser {
         };
 
         debug!(
-            "{}\n{}",
+            "{} {:?}\n{}",
             "Untyped Abstract Syntax Tree".bold().bright_white(),
+            source.path(),
             TreePrinter::new(&tree)
                 .with(SpanDecorator(spans.clone()))
                 .render(options)

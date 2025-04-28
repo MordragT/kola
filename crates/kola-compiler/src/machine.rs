@@ -14,7 +14,7 @@ pub type PureContinuationFrame = (Env, ast::Symbol, ir::ValueExpr);
 pub type PureContinuation = Vec<PureContinuationFrame>;
 
 /// Intuitively, each continuation frame δ = (σ, χ) represents the pure continuation σ,
-/// corresponding to a sequence of let bindings, inside a particular handler closure χ.
+/// corresponding to a sequence of let , inside a particular handler closure χ.
 pub struct ContinuationFrame {
     pure: PureContinuation,
     handler: Handler,

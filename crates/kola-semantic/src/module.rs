@@ -20,25 +20,22 @@ use std::{
 use kola_tree::{
     id::Id,
     node::{self, Symbol, Vis},
-    tree::TreeAccess,
+    tree::TreeView,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct ModuleExplorer<'a, T> {
+pub struct ModuleExplorer<'a, T, M> {
     tree: &'a T,
-    module: &'a ModuleInfo,
+    module: &'a M,
     global: &'a HashMap<ModuleId, ModuleInfo>,
 }
 
-impl<'a, T> ModuleExplorer<'a, T>
+impl<'a, T, M> ModuleExplorer<'a, T, M>
 where
-    T: TreeAccess,
+    T: TreeView,
+    M: ModuleInfoView,
 {
-    pub fn new(
-        tree: &'a T,
-        module: &'a ModuleInfo,
-        global: &'a HashMap<ModuleId, ModuleInfo>,
-    ) -> Self {
+    pub fn new(tree: &'a T, module: &'a M, global: &'a HashMap<ModuleId, ModuleInfo>) -> Self {
         Self {
             tree,
             module,
@@ -46,17 +43,32 @@ where
         }
     }
 
-    pub fn explore_path(self, path_id: Id<node::ModulePath>) -> Option<ModuleId> {
+    // pub fn path_expr(self, path_id: Id<node::PathExpr>) -> Option<ModuleId> {
+    //     let path = path_id.get(self.tree);
+    //     let mut segments = path.0.iter();
+
+    //     let first_id = segments.next()?;
+    //     let first = first_id.get(self.tree);
+    //     let mut module_id = self.module.lookup(&first.0)?.id.clone();
+    // }
+
+    pub fn module_path(self, path_id: Id<node::ModulePath>) -> Option<ModuleId> {
         let path = path_id.get(self.tree);
         let mut segments = path.0.iter();
 
         let first_id = segments.next()?;
         let first = first_id.get(self.tree);
-        let mut module_id = self.module.get(&first.0)?.id.clone();
+        let mut module_id = self.module.lookup(&first.0)?.id.clone();
 
         for id in segments {
             let s = id.get(self.tree);
-            module_id = self.global.get(&module_id)?.get(&s.0)?.id.clone();
+            let module = self.global.get(&module_id)?.lookup(&s.0)?;
+            // TODO inner modules should be allowed so maybe check if Vis != Export
+            // but allow it if every module in the path is a strict child
+            if module.vis != Vis::Export {
+                return None;
+            }
+            module_id = module.id.clone();
         }
 
         Some(module_id)
@@ -123,7 +135,57 @@ impl ModuleId {
     }
 }
 
-pub type ModuleInfo = HashMap<Symbol, ModuleBind>;
+pub type ModuleInfoTable = HashMap<ModuleId, ModuleInfo>;
+
+pub trait ModuleInfoView {
+    fn lookup(&self, symbol: &Symbol) -> Option<&ModuleBind>;
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ModuleInfoBuilder {
+    pub binds: HashMap<Symbol, ModuleBind>,
+}
+
+impl ModuleInfoBuilder {
+    pub fn new() -> Self {
+        Self {
+            binds: HashMap::new(),
+        }
+    }
+
+    pub fn insert(&mut self, symbol: Symbol, bind: ModuleBind) -> Option<ModuleBind> {
+        self.binds.insert(symbol, bind)
+    }
+
+    pub fn finish(self) -> ModuleInfo {
+        ModuleInfo::new(self.binds)
+    }
+}
+
+impl ModuleInfoView for ModuleInfoBuilder {
+    fn lookup(&self, symbol: &Symbol) -> Option<&ModuleBind> {
+        self.binds.get(symbol)
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct ModuleInfo {
+    pub binds: Rc<HashMap<Symbol, ModuleBind>>,
+}
+
+impl ModuleInfo {
+    pub fn new(binds: HashMap<Symbol, ModuleBind>) -> Self {
+        Self {
+            binds: Rc::new(binds),
+        }
+    }
+}
+
+impl ModuleInfoView for ModuleInfo {
+    fn lookup(&self, symbol: &Symbol) -> Option<&ModuleBind> {
+        self.binds.get(symbol)
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ModuleBind {

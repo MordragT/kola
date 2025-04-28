@@ -8,7 +8,7 @@ use super::{Name, Pat, Symbol};
 use crate::{
     id::Id,
     print::TreePrinter,
-    tree::{TreeAccess, TreeBuilder},
+    tree::{TreeBuilder, TreeView},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
@@ -105,7 +105,7 @@ impl Printable<TreePrinter> for PathExpr {
 }
 
 impl PathExpr {
-    pub fn get<'a>(&self, index: usize, tree: &'a impl TreeAccess) -> &'a Name {
+    pub fn get<'a>(&self, index: usize, tree: &'a impl TreeView) -> &'a Name {
         self.0[index].get(tree)
     }
 }
@@ -138,11 +138,11 @@ pub struct RecordField {
 }
 
 impl RecordField {
-    pub fn field(self, tree: &impl TreeAccess) -> &Name {
+    pub fn field(self, tree: &impl TreeView) -> &Name {
         self.field.get(tree)
     }
 
-    pub fn value(self, tree: &impl TreeAccess) -> Expr {
+    pub fn value(self, tree: &impl TreeView) -> Expr {
         *self.value.get(tree)
     }
 }
@@ -184,7 +184,7 @@ impl Printable<TreePrinter> for RecordField {
 pub struct RecordExpr(pub Vec<Id<RecordField>>);
 
 impl RecordExpr {
-    pub fn get(&self, name: impl AsRef<str>, tree: &impl TreeAccess) -> Option<RecordField> {
+    pub fn get(&self, name: impl AsRef<str>, tree: &impl TreeView) -> Option<RecordField> {
         self.0.iter().find_map(|id| {
             let field = id.get(tree);
             (field.field(tree) == name.as_ref())
@@ -221,15 +221,15 @@ pub struct RecordExtendExpr {
 }
 
 impl RecordExtendExpr {
-    pub fn source(self, tree: &impl TreeAccess) -> Expr {
+    pub fn source(self, tree: &impl TreeView) -> Expr {
         *self.source.get(tree)
     }
 
-    pub fn field(self, tree: &impl TreeAccess) -> &Name {
+    pub fn field(self, tree: &impl TreeView) -> &Name {
         self.field.get(tree)
     }
 
-    pub fn value(self, tree: &impl TreeAccess) -> Expr {
+    pub fn value(self, tree: &impl TreeView) -> Expr {
         *self.value.get(tree)
     }
 }
@@ -284,11 +284,11 @@ pub struct RecordRestrictExpr {
 }
 
 impl RecordRestrictExpr {
-    pub fn source(self, tree: &impl TreeAccess) -> Expr {
+    pub fn source(self, tree: &impl TreeView) -> Expr {
         *self.source.get(tree)
     }
 
-    pub fn field(self, tree: &impl TreeAccess) -> &Name {
+    pub fn field(self, tree: &impl TreeView) -> &Name {
         self.field.get(tree)
     }
 }
@@ -353,19 +353,19 @@ pub struct RecordUpdateExpr {
 }
 
 impl RecordUpdateExpr {
-    pub fn source(self, tree: &impl TreeAccess) -> Expr {
+    pub fn source(self, tree: &impl TreeView) -> Expr {
         *self.source.get(tree)
     }
 
-    pub fn field(self, tree: &impl TreeAccess) -> &Name {
+    pub fn field(self, tree: &impl TreeView) -> &Name {
         self.field.get(tree)
     }
 
-    pub fn op(self, tree: &impl TreeAccess) -> RecordUpdateOp {
+    pub fn op(self, tree: &impl TreeView) -> RecordUpdateOp {
         *self.op.get(tree)
     }
 
-    pub fn value(self, tree: &impl TreeAccess) -> Expr {
+    pub fn value(self, tree: &impl TreeView) -> Expr {
         *self.value.get(tree)
     }
 }
@@ -447,11 +447,11 @@ impl UnaryExpr {
         builder.insert(Self { op, operand })
     }
 
-    pub fn op(self, tree: &impl TreeAccess) -> UnaryOp {
+    pub fn op(self, tree: &impl TreeView) -> UnaryOp {
         *self.op.get(tree)
     }
 
-    pub fn operand(self, tree: &impl TreeAccess) -> Expr {
+    pub fn operand(self, tree: &impl TreeView) -> Expr {
         *self.operand.get(tree)
     }
 }
@@ -528,15 +528,15 @@ impl BinaryExpr {
         builder.insert(Self { op, left, right })
     }
 
-    pub fn op(self, tree: &impl TreeAccess) -> BinaryOp {
+    pub fn op(self, tree: &impl TreeView) -> BinaryOp {
         *self.op.get(tree)
     }
 
-    pub fn left(self, tree: &impl TreeAccess) -> Expr {
+    pub fn left(self, tree: &impl TreeView) -> Expr {
         *self.left.get(tree)
     }
 
-    pub fn right(self, tree: &impl TreeAccess) -> Expr {
+    pub fn right(self, tree: &impl TreeView) -> Expr {
         *self.right.get(tree)
     }
 }
@@ -596,15 +596,15 @@ impl LetExpr {
         })
     }
 
-    pub fn name(self, tree: &impl TreeAccess) -> &Name {
+    pub fn name(self, tree: &impl TreeView) -> &Name {
         self.name.get(tree)
     }
 
-    pub fn value(self, tree: &impl TreeAccess) -> Expr {
+    pub fn value(self, tree: &impl TreeView) -> Expr {
         *self.value.get(tree)
     }
 
-    pub fn inside(self, tree: &impl TreeAccess) -> Expr {
+    pub fn inside(self, tree: &impl TreeView) -> Expr {
         *self.inside.get(tree)
     }
 }
@@ -671,15 +671,15 @@ impl IfExpr {
         })
     }
 
-    pub fn predicate(self, tree: &impl TreeAccess) -> Expr {
+    pub fn predicate(self, tree: &impl TreeView) -> Expr {
         *self.predicate.get(tree)
     }
 
-    pub fn then(self, tree: &impl TreeAccess) -> Expr {
+    pub fn then(self, tree: &impl TreeView) -> Expr {
         *self.then.get(tree)
     }
 
-    pub fn or(self, tree: &impl TreeAccess) -> Expr {
+    pub fn or(self, tree: &impl TreeView) -> Expr {
         *self.or.get(tree)
     }
 }
@@ -733,11 +733,11 @@ pub struct CaseBranch {
 }
 
 impl CaseBranch {
-    pub fn pat(self, tree: &impl TreeAccess) -> Pat {
+    pub fn pat(self, tree: &impl TreeView) -> Pat {
         *self.pat.get(tree)
     }
 
-    pub fn matches(self, tree: &impl TreeAccess) -> Expr {
+    pub fn matches(self, tree: &impl TreeView) -> Expr {
         *self.matches.get(tree)
     }
 }
@@ -781,7 +781,7 @@ pub struct CaseExpr {
 }
 
 impl CaseExpr {
-    pub fn source(&self, tree: &impl TreeAccess) -> Expr {
+    pub fn source(&self, tree: &impl TreeView) -> Expr {
         *self.source.get(tree)
     }
 }
@@ -825,11 +825,11 @@ pub struct CallExpr {
 }
 
 impl CallExpr {
-    pub fn func(self, tree: &impl TreeAccess) -> Expr {
+    pub fn func(self, tree: &impl TreeView) -> Expr {
         *self.func.get(tree)
     }
 
-    pub fn arg(self, tree: &impl TreeAccess) -> Expr {
+    pub fn arg(self, tree: &impl TreeView) -> Expr {
         *self.arg.get(tree)
     }
 }
@@ -873,11 +873,11 @@ pub struct LambdaExpr {
 }
 
 impl LambdaExpr {
-    pub fn param(self, tree: &impl TreeAccess) -> &Name {
+    pub fn param(self, tree: &impl TreeView) -> &Name {
         self.param.get(tree)
     }
 
-    pub fn body(self, tree: &impl TreeAccess) -> Expr {
+    pub fn body(self, tree: &impl TreeView) -> Expr {
         *self.body.get(tree)
     }
 }

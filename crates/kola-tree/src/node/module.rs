@@ -8,7 +8,7 @@ use super::{Expr, Name, Type};
 use crate::{
     id::Id,
     print::TreePrinter,
-    tree::{TreeAccess, TreeBuilder},
+    tree::{TreeBuilder, TreeView},
 };
 
 /*
@@ -64,7 +64,7 @@ impl Printable<TreePrinter> for Module {
 pub struct ModulePath(pub Vec<Id<Name>>);
 
 impl ModulePath {
-    pub fn get<'a>(&self, index: usize, tree: &'a impl TreeAccess) -> &'a Name {
+    pub fn get<'a>(&self, index: usize, tree: &'a impl TreeView) -> &'a Name {
         self.0[index].get(tree)
     }
 }

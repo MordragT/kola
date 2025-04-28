@@ -5,7 +5,7 @@ use owo_colors::OwoColorize;
 use serde::{Deserialize, Serialize};
 
 use super::{LiteralExpr, Name, Symbol};
-use crate::{id::Id, print::TreePrinter, tree::TreeAccess};
+use crate::{id::Id, print::TreePrinter, tree::TreeView};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct PatError;
@@ -121,11 +121,11 @@ pub struct RecordFieldPat {
 }
 
 impl RecordFieldPat {
-    pub fn field(self, tree: &impl TreeAccess) -> &Name {
+    pub fn field(self, tree: &impl TreeView) -> &Name {
         self.field.get(tree)
     }
 
-    pub fn pat(self, tree: &impl TreeAccess) -> Option<Pat> {
+    pub fn pat(self, tree: &impl TreeView) -> Option<Pat> {
         self.pat.map(|id| id.get(tree)).copied()
     }
 }
@@ -166,7 +166,7 @@ impl Printable<TreePrinter> for RecordFieldPat {
 pub struct RecordPat(pub Vec<Id<RecordFieldPat>>);
 
 impl RecordPat {
-    pub fn get(&self, name: impl AsRef<str>, tree: &impl TreeAccess) -> Option<RecordFieldPat> {
+    pub fn get(&self, name: impl AsRef<str>, tree: &impl TreeView) -> Option<RecordFieldPat> {
         self.0.iter().find_map(|id| {
             let field = id.get(tree);
             (field.field(tree) == name.as_ref())
@@ -199,11 +199,11 @@ pub struct VariantCasePat {
 }
 
 impl VariantCasePat {
-    pub fn case(self, tree: &impl TreeAccess) -> &Name {
+    pub fn case(self, tree: &impl TreeView) -> &Name {
         self.case.get(tree)
     }
 
-    pub fn pat(self, tree: &impl TreeAccess) -> Option<Pat> {
+    pub fn pat(self, tree: &impl TreeView) -> Option<Pat> {
         self.pat.map(|id| id.get(tree)).copied()
     }
 }
@@ -244,7 +244,7 @@ impl Printable<TreePrinter> for VariantCasePat {
 pub struct VariantPat(pub Vec<Id<VariantCasePat>>);
 
 impl VariantPat {
-    pub fn get(&self, name: impl AsRef<str>, tree: &impl TreeAccess) -> Option<VariantCasePat> {
+    pub fn get(&self, name: impl AsRef<str>, tree: &impl TreeView) -> Option<VariantCasePat> {
         self.0.iter().find_map(|id| {
             let case = id.get(tree);
             (case.case(tree) == name.as_ref()).then_some(case).copied()
