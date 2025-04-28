@@ -23,6 +23,7 @@ pub enum Cmd {
 }
 
 fn main() -> miette::Result<()> {
+    env_logger::init();
     let cli: Cli = clap::Parser::parse();
 
     let options = PrintOptions::default().with_width(120);
@@ -42,25 +43,15 @@ fn main() -> miette::Result<()> {
                 .print(options);
         }
         Cmd::Analyze { path } => {
-            let options = ExploreOptions {
-                verbosity: ExploreVerbosity {
-                    debug: true,
-                    source: false,
-                    tokens: false,
-                    tree: true,
-                },
-                ..Default::default()
-            };
-
             let mut world = World::new();
-            world.explore(path, options)?;
+            world.explore(path)?;
 
             println!("\n{}", "Module Dependency Order".bold().bright_white());
-            for file in &world.order {
-                println!("{file:?}");
+            for module_id in &world.order {
+                println!("{module_id}");
             }
 
-            world.infer(true, Default::default()).unwrap();
+            world.infer(Default::default()).unwrap();
         }
     }
 

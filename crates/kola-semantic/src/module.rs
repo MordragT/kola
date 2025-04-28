@@ -1,10 +1,3 @@
-// use indexmap::IndexMap;
-// use kola_tree::node::Symbol;
-
-// use crate::env::{KindEnv, TypeEnv};
-
-// /*
-
 // *   For functors like `functor (S : SIG) => Body`, `S` acts precisely like a **Module Variable**.
 //     It's a name that represents an unknown module *argument* that is required to conform to the signature `SIG`.
 // *   When you *apply* this functor to a concrete module, say `MyFunctor(MyModule)`,
@@ -17,75 +10,118 @@
 //     is resolved by first looking up `S` in the environment (finding `MyModule`)
 //     and then looking up `x` or `T` within `MyModule`.
 // */
-// pub type ModuleEnv = IndexMap<Symbol, Module>;
-
-// pub struct Module {
-//     types: TypeEnv,
-//     kinds: KindEnv,
-//     modules: ModuleEnv,
-//     module_types: ModuleTypeEnv,
-// }
-
-// pub type ModuleTypeEnv = IndexMap<Symbol, ModuleType>;
-
-// pub struct ModuleType {
-//     types: TypeEnv,
-//     kinds: KindEnv,
-//     module_types: ModuleTypeEnv,
-// }
-
 use std::{
     collections::HashMap,
+    fmt,
     path::{Path, PathBuf},
+    rc::Rc,
 };
 
 use kola_tree::{
     id::Id,
     node::{self, Symbol, Vis},
+    tree::TreeAccess,
 };
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct ModuleExplorer<'a, T> {
+    tree: &'a T,
+    module: &'a ModuleInfo,
+    global: &'a HashMap<ModuleId, ModuleInfo>,
+}
+
+impl<'a, T> ModuleExplorer<'a, T>
+where
+    T: TreeAccess,
+{
+    pub fn new(
+        tree: &'a T,
+        module: &'a ModuleInfo,
+        global: &'a HashMap<ModuleId, ModuleInfo>,
+    ) -> Self {
+        Self {
+            tree,
+            module,
+            global,
+        }
+    }
+
+    pub fn explore_path(self, path_id: Id<node::ModulePath>) -> Option<ModuleId> {
+        let path = path_id.get(self.tree);
+        let mut segments = path.0.iter();
+
+        let first_id = segments.next()?;
+        let first = first_id.get(self.tree);
+        let mut module_id = self.module.get(&first.0)?.id.clone();
+
+        for id in segments {
+            let s = id.get(self.tree);
+            module_id = self.global.get(&module_id)?.get(&s.0)?.id.clone();
+        }
+
+        Some(module_id)
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct ModuleId {
-    pub parent: Option<Box<Self>>,
-    pub path: PathBuf,
-    pub id: Id<node::Module>,
+struct Repr {
+    parent: Option<ModuleId>,
+    path: PathBuf,
+    id: Id<node::Module>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct ModuleId(Rc<Repr>);
+
+impl fmt::Display for ModuleId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let parent = if let Some(parent) = &self.0.parent {
+            Some(&parent.0.path)
+        } else {
+            None
+        };
+
+        f.debug_struct("ModuleId")
+            .field("id", &self.0.id.as_usize())
+            .field("path", &self.0.path)
+            .field("parent", &parent)
+            .finish()
+    }
 }
 
 impl ModuleId {
     pub fn root(path: impl Into<PathBuf>, id: Id<node::Module>) -> Self {
-        Self {
+        let repr = Repr {
             parent: None,
             path: path.into(),
             id,
-        }
+        };
+
+        Self(Rc::new(repr))
     }
 
     pub fn new(parent: Self, path: impl Into<PathBuf>, id: Id<node::Module>) -> Self {
-        Self {
-            parent: Some(Box::new(parent)),
+        let repr = Repr {
+            parent: Some(parent),
             path: path.into(),
             id,
-        }
+        };
+
+        Self(Rc::new(repr))
     }
 
-    // TODO better name maybe import dir ?
-    // The working directory for the module e.g.
-    // a/b for a/b.kl
-    pub fn work_dir(&self) -> PathBuf {
-        let stem = self.path.file_stem().unwrap();
+    pub fn parent(&self) -> Option<&Self> {
+        self.0.parent.as_ref()
+    }
 
-        self.path.parent().unwrap().join(stem)
+    pub fn path(&self) -> &Path {
+        &self.0.path
+    }
+
+    pub fn id(&self) -> Id<node::Module> {
+        self.0.id
     }
 }
-
-/// For file-module: ModuleId's path is current path parent. For inline: ModuleId's path is current path
-/// For file-module: ModuleId's path is current path + child symbol. For inline: Cannot import files in inline modules.
-/// For file-module & inline-module: ModuleId's path is current path
-// #[derive(Debug, Clone, PartialEq, Eq)]
-// pub struct ModuleInfo {
-//     pub parent: Option<ModuleId>,
-//     pub bindings: HashMap<Symbol, ModuleBind>,
-// }
 
 pub type ModuleInfo = HashMap<Symbol, ModuleBind>;
 

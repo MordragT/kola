@@ -8,7 +8,7 @@ use super::{
 pub trait Printable<With> {
     fn notate<'a>(&'a self, with: &'a With, arena: &'a Bump) -> Notation<'a>;
 
-    fn render(&self, with: &With, options: PrintOptions) -> std::string::String {
+    fn render_with(&self, with: &With, options: PrintOptions) -> std::string::String {
         let arena = Bump::new();
 
         let notation = self.notate(with, &arena);
@@ -20,17 +20,24 @@ pub trait Printable<With> {
         return output;
     }
 
-    fn print(&self, options: PrintOptions)
+    fn render(&self, options: PrintOptions) -> std::string::String
     where
         With: Default,
     {
         let with = With::default();
-        let rendered = self.render(&with, options);
+        self.render_with(&with, options)
+    }
+
+    fn print(&self, options: PrintOptions)
+    where
+        With: Default,
+    {
+        let rendered = self.render(options);
         println!("{rendered}");
     }
 
     fn print_with(&self, with: &With, options: PrintOptions) {
-        let rendered = self.render(&with, options);
+        let rendered = self.render_with(&with, options);
         println!("{rendered}");
     }
 }

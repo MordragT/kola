@@ -13,4 +13,5 @@ miette.workspace = true
 owo-colors.workspace = true
 serde.workspace = true
 derive_more.workspace = true
+log.workspace = true
 indexmap = "2.7.1"

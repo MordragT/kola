@@ -52,7 +52,7 @@ impl TreePrinter {
         notation
     }
 
-    pub fn print_at<T>(&self, id: Id<T>, options: PrintOptions)
+    pub fn render_at<T>(&self, id: Id<T>, options: PrintOptions) -> String
     where
         Node: TryAsRef<T>,
         T: Printable<Self>,
@@ -63,8 +63,16 @@ impl TreePrinter {
         let mut output = String::new();
         let mut printer = Printer::new(&notation, options, &arena);
         printer.print(&mut output, &arena).unwrap();
+        output
+    }
 
-        println!("{output}");
+    pub fn print_at<T>(&self, id: Id<T>, options: PrintOptions)
+    where
+        Node: TryAsRef<T>,
+        T: Printable<Self>,
+    {
+        let output = self.render_at(id, options);
+        println!("{}", output);
     }
 }
 

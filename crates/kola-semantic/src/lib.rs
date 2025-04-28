@@ -9,6 +9,7 @@
 pub mod env;
 pub mod error;
 pub mod explorer;
+pub mod file;
 pub mod module;
 pub mod substitute;
 pub mod typer;
@@ -19,9 +20,10 @@ pub mod world;
 pub mod prelude {
     pub use crate::env::{KindEnv, TypeEnv};
     pub use crate::error::{SemanticError, SemanticErrors, SemanticReport};
+    pub use crate::file::{FileInfo, FileParser};
     pub use crate::substitute::{Substitutable, Substitution};
     pub use crate::typer::{Constraint, Constraints, TypeDecorator, TypeInfo, TypePhase, Typer};
     pub use crate::types::*;
     pub use crate::unify::Unifiable;
-    pub use crate::world::{ExploreOptions, ExploreVerbosity, World};
+    pub use crate::world::World;
 }

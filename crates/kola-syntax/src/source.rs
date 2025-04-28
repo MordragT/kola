@@ -32,6 +32,10 @@ impl Source {
         &self.name
     }
 
+    pub fn path(&self) -> &Path {
+        &self.path
+    }
+
     pub fn as_str(&self) -> &str {
         &self.source
     }

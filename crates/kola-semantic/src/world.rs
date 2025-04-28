@@ -1,43 +1,76 @@
-use kola_print::{PrintOptions, Printable};
+use kola_print::PrintOptions;
 use kola_syntax::prelude::*;
-use kola_tree::prelude::*;
-use kola_utils::as_variant;
-use miette::{Diagnostic, IntoDiagnostic, Result};
+use kola_tree::{node::Vis, prelude::*};
+use log::debug;
+use miette::{Diagnostic, Result};
 use owo_colors::OwoColorize;
 use std::{
     collections::HashMap,
+    io,
     ops::ControlFlow,
     path::{Path, PathBuf},
 };
 use thiserror::Error;
 
 use crate::{
-    module::{ModuleBind, ModuleId, ModuleInfo},
+    file::{FileError, FileExplorer, FileInfo, FileParser},
+    module::{ModuleBind, ModuleExplorer, ModuleId, ModuleInfo},
     typer::{self, TypeDecorator, TypeInfo, Typer},
 };
 
 // maybe this could use some DAG Graph for modelling dependencies which in turn allows for parallel module elaboration
 pub struct World {
-    pub sources: HashMap<PathBuf, Source>,
-    pub trees: HashMap<PathBuf, Tree>,
     pub order: Vec<ModuleId>,
-    pub span_infos: HashMap<PathBuf, SpanInfo>,
+    pub file_infos: HashMap<PathBuf, FileInfo>,
     pub module_infos: HashMap<ModuleId, ModuleInfo>,
     pub type_infos: HashMap<ModuleId, TypeInfo>,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
-pub struct ExploreOptions {
-    pub verbosity: ExploreVerbosity,
-    pub print: PrintOptions,
+impl World {
+    pub fn new() -> Self {
+        Self {
+            order: Vec::new(),
+            file_infos: HashMap::new(),
+            module_infos: HashMap::new(),
+            type_infos: HashMap::new(),
+        }
+    }
+
+    pub fn file_info(&self, id: &ModuleId) -> FileInfo {
+        self.file_infos[id.path()].clone()
+    }
+
+    pub fn module_info(&self, id: &ModuleId) -> &ModuleInfo {
+        &self.module_infos[id]
+    }
+
+    pub fn type_info(&self, id: &ModuleId) -> TypeInfo {
+        self.type_infos[id].clone()
+    }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
-pub struct ExploreVerbosity {
-    pub debug: bool,
-    pub source: bool,
-    pub tokens: bool,
-    pub tree: bool,
+pub type ExploreResult<T> = Result<T, ExploreError>;
+
+#[derive(Debug, Error, Diagnostic)]
+pub enum ExploreError {
+    #[error(transparent)]
+    Io(#[from] io::Error),
+    #[diagnostic(transparent)]
+    #[error(transparent)]
+    Source(#[from] SourceReport),
+    #[error("Circular dependency detected at: {0}")]
+    Cycle(PathBuf),
+    #[error("Module could not be found")]
+    ModuleNotFound, // TODO better handling of error
+}
+
+impl From<FileError> for ExploreError {
+    fn from(e: FileError) -> Self {
+        match e {
+            FileError::Io(e) => Self::Io(e),
+            FileError::Source(e) => Self::Source(e),
+        }
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -47,117 +80,18 @@ enum VisitState {
     Visited,
 }
 
-#[derive(Debug, Error, Diagnostic, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-#[error("Circular dependency detected at: {0}")]
-struct CycleDetected(PathBuf);
-
 impl World {
-    pub fn new() -> Self {
-        Self {
-            order: Vec::new(),
-            sources: HashMap::new(),
-            trees: HashMap::new(),
-            span_infos: HashMap::new(),
-            module_infos: HashMap::new(),
-            type_infos: HashMap::new(),
-        }
-    }
-
-    pub fn source(&self, id: &ModuleId) -> Source {
-        self.sources[&id.path].clone()
-    }
-
-    pub fn tree(&self, id: &ModuleId) -> Tree {
-        self.trees[&id.path].clone()
-    }
-
-    pub fn spans(&self, id: &ModuleId) -> SpanInfo {
-        self.span_infos[&id.path].clone()
-    }
-
-    pub fn module(&self, id: &ModuleId) -> &ModuleInfo {
-        &self.module_infos[id]
-    }
-
-    pub fn types(&self, id: &ModuleId) -> TypeInfo {
-        self.type_infos[id].clone()
-    }
-}
-
-pub const SUPER_MODULE_PATH_SEGMENT: &'static str = "super";
-pub const FILE_EXTENSION: &'static str = "kl";
-// pub const PRIMARY_MODULE_FILE: &'static str = "mod.kl"; // Idea just use the same name for "primaries" e.g. a/b.kl is the primary and a/b/ is its importable dir
-
-impl World {
-    fn try_parse(&mut self, path: PathBuf, options: ExploreOptions) -> Result<Id<node::Module>> {
-        let mut source_errors = Vec::new();
-
-        if options.verbosity.debug {
-            println!("\nVisiting {path:?}");
-        }
-
-        let source = Source::from_path(&path).into_diagnostic()?;
-        self.sources.insert(path.clone(), source.clone());
-
-        if options.verbosity.source {
-            println!("{}", "Source".bold().bright_white());
-            println!("{source}\n");
-        }
-
-        let TokenizeResult { tokens, mut errors } = tokenize(source.as_str());
-        source_errors.append(&mut errors);
-
-        let Some(tokens) = tokens else {
-            return Err(SourceReport::new(source, source_errors).into());
-        };
-
-        if options.verbosity.tokens {
-            println!("\n{}", "Tokens".bold().bright_white());
-            TokenPrinter(&tokens).print(options.print);
-        }
-
-        let ParseResult {
-            tree,
-            spans,
-            mut errors,
-        } = parse(tokens, source.end_of_input());
-        source_errors.append(&mut errors);
-        self.span_infos.insert(path.clone(), spans.clone());
-
-        let Some(tree) = tree else {
-            return Err(SourceReport::new(source, source_errors).into());
-        };
-        self.trees.insert(path.clone(), tree.clone());
-
-        let root = tree.root_id();
-
-        if options.verbosity.tree {
-            println!("\n{}", "Untyped Abstract Syntax Tree".bold().bright_white());
-            TreePrinter::new(&tree)
-                .with(SpanDecorator(spans.clone()))
-                .print(options.print);
-        }
-
-        if source_errors.is_empty() {
-            Ok(root)
-        } else {
-            Err(SourceReport::new(source, source_errors).into())
-        }
-    }
-
-    // TODO only one level super (maybe just create super as a module inside the moduleinfo hashmap)
     // TODO module shoud only allow exports which are annotated with the "export" keyword (and prober error message should be returned)
     // TODO external packages could be provided also via HashMap<ModuleId, ModuleInfo>
 
     /// Topological DFS Algorithm
-    pub fn explore(
-        &mut self,
-        path: impl AsRef<Path>,
-        options: ExploreOptions,
-    ) -> Result<&mut Self> {
-        let path = path.as_ref().canonicalize().into_diagnostic()?;
-        let id = self.try_parse(path.clone(), options)?;
+    pub fn explore(&mut self, path: impl AsRef<Path>) -> ExploreResult<&mut Self> {
+        let path = path.as_ref().canonicalize()?;
+        let source = Source::from_path(&path)?;
+        let file = FileParser::new(source).try_parse()?;
+        let id = file.tree.root_id();
         let module_id = ModuleId::root(path.clone(), id);
+        self.file_infos.insert(path.clone(), file);
 
         let mut stack = vec![module_id];
         let mut visited = HashMap::new();
@@ -183,11 +117,10 @@ impl World {
                 }
             }
 
-            let tree = self.tree(&module_id);
-            let mut explorer =
-                Explorer::new(self, &mut stack, &mut visited, options, module_id.clone());
+            let tree = self.file_info(&module_id).tree;
+            let mut explorer = Explorer::new(self, &mut stack, &mut visited, module_id.clone());
 
-            match module_id.id.visit_by(&mut explorer, &tree) {
+            match module_id.id().visit_by(&mut explorer, &tree) {
                 ControlFlow::Continue(()) => (),
                 ControlFlow::Break(cycle) => return Err(cycle.into()),
             }
@@ -202,11 +135,36 @@ impl World {
     }
 }
 
+impl World {
+    pub fn infer(&mut self, options: PrintOptions) -> Result<&mut Self, typer::Error> {
+        for module_id in &self.order {
+            let FileInfo {
+                source: _,
+                tree,
+                spans,
+            } = self.file_info(module_id);
+
+            let types = Typer::new(&tree, spans.clone()).solve(tree.root_id(), &tree)?;
+            self.type_infos.insert(module_id.to_owned(), types.clone());
+
+            debug!("\n{}", "Typed Abstract Syntax Tree".bold().bright_white());
+            debug!(
+                "{}",
+                TreePrinter::new(&tree)
+                    .with(SpanDecorator(spans))
+                    .with(TypeDecorator(types))
+                    .render_at(module_id.id(), options)
+            );
+        }
+
+        Ok(self)
+    }
+}
+
 struct Explorer<'a> {
     world: &'a mut World,
     stack: &'a mut Vec<ModuleId>,
     visited: &'a mut HashMap<ModuleId, VisitState>,
-    options: ExploreOptions,
     module_id: ModuleId,
     info: ModuleInfo,
 }
@@ -216,13 +174,18 @@ impl<'a> Explorer<'a> {
         world: &'a mut World,
         stack: &'a mut Vec<ModuleId>,
         visited: &'a mut HashMap<ModuleId, VisitState>,
-        options: ExploreOptions,
         module_id: ModuleId,
     ) -> Self {
+        let mut info = ModuleInfo::new();
+
+        if let Some(parent_id) = module_id.parent() {
+            let bind = ModuleBind::path(parent_id.to_owned(), Vis::None);
+            info.insert("super".into(), bind);
+        }
+
         Self {
-            options,
             module_id,
-            info: ModuleInfo::new(),
+            info,
             world,
             stack,
             visited,
@@ -231,7 +194,7 @@ impl<'a> Explorer<'a> {
 }
 
 impl<'a, T: TreeAccess> Visitor<T> for Explorer<'a> {
-    type BreakValue = CycleDetected;
+    type BreakValue = ExploreError;
 
     fn visit_module_bind(
         &mut self,
@@ -241,7 +204,7 @@ impl<'a, T: TreeAccess> Visitor<T> for Explorer<'a> {
         let node::ModuleBind {
             vis,
             name,
-            ty,
+            ty: _,
             value,
         } = *id.get(tree);
 
@@ -250,40 +213,34 @@ impl<'a, T: TreeAccess> Visitor<T> for Explorer<'a> {
 
         let submodule = match *value.get(tree) {
             node::ModuleExpr::Module(id) => {
-                let submodule_id =
-                    ModuleId::new(self.module_id.clone(), self.module_id.path.clone(), id);
+                let submodule_id = ModuleId::new(self.module_id.clone(), self.module_id.path(), id);
                 ModuleBind::module(submodule_id, vis)
             }
             node::ModuleExpr::Import(import_id) => {
                 // Because imports are file based and strictly hierarchically (a module can always only have one parent)
                 // We can just parse here and be confident that we didn't parse before.
-                let path = self
-                    .module_id
-                    .work_dir()
-                    .join(import_id.get(tree).0.get(tree).as_str())
-                    .with_extension(FILE_EXTENSION);
+                let file = match FileExplorer::new(tree, self.module_id.path())
+                    .explore_import(import_id)
+                {
+                    Ok(file) => file,
+                    Err(e) => return ControlFlow::Break(e.into()),
+                };
+                let path = file.source.path().to_owned();
+                let id = file.tree.root_id();
+                self.world.file_infos.insert(path.clone(), file);
 
-                let id = self.world.try_parse(path.clone(), self.options).unwrap(); // TODO handle error
                 let submodule_id = ModuleId::new(self.module_id.clone(), path, id);
                 ModuleBind::import(submodule_id, vis)
             }
             node::ModuleExpr::Path(path_id) => {
-                let mut segments = path_id.get(tree).0.iter();
-
-                let first = segments.next().unwrap().get(tree);
-
-                let mut id = if first.as_str() == SUPER_MODULE_PATH_SEGMENT {
-                    // TODO just create a super module for every child module by default
-                    self.module_id.parent.as_ref().unwrap() // TODO error
-                } else {
-                    &self.info.get(&first.0).unwrap().id // TODO error
+                let id = match ModuleExplorer::new(tree, &self.info, &self.world.module_infos)
+                    .explore_path(path_id)
+                {
+                    Some(id) => id,
+                    None => return ControlFlow::Break(ExploreError::ModuleNotFound),
                 };
 
-                for segment in segments {
-                    id = &self.world.module(&id).get(&segment.get(tree).0).unwrap().id; // TODO error
-                }
-
-                ModuleBind::path(id.clone(), vis)
+                ModuleBind::path(id, vis)
             }
         };
 
@@ -295,7 +252,7 @@ impl<'a, T: TreeAccess> Visitor<T> for Explorer<'a> {
         {
             VisitState::Unvisited => self.stack.push(submodule.id.clone()),
             VisitState::Visiting => {
-                return ControlFlow::Break(CycleDetected(self.module_id.path.clone()));
+                return ControlFlow::Break(ExploreError::Cycle(self.module_id.path().to_owned()));
             }
             VisitState::Visited => (),
         }
@@ -304,66 +261,3 @@ impl<'a, T: TreeAccess> Visitor<T> for Explorer<'a> {
         ControlFlow::Continue(())
     }
 }
-
-impl World {
-    pub fn infer(
-        &mut self,
-        verbose: bool,
-        options: PrintOptions,
-    ) -> Result<&mut Self, typer::Error> {
-        for module_id in &self.order {
-            let tree = self.tree(module_id);
-            let root = tree.root_id();
-            let spans = self.spans(module_id);
-
-            let types = Typer::new(&tree, spans.clone()).solve(root, &tree)?;
-            self.type_infos.insert(module_id.to_owned(), types.clone());
-
-            if verbose {
-                println!("\n{}", "Typed Abstract Syntax Tree".bold().bright_white());
-                TreePrinter::new(&tree)
-                    .with(SpanDecorator(spans))
-                    .with(TypeDecorator(types))
-                    .print_at(module_id.id, options);
-            }
-        }
-
-        Ok(self)
-    }
-}
-
-// pub fn resolve_module_path(
-//     current_path: impl Into<PathBuf>,
-//     id: Id<node::ModulePath>,
-//     tree: &impl TreeAccess,
-// ) -> PathBuf {
-//     let current_path = current_path.into();
-
-//     let file_name = current_path.file_name().unwrap();
-
-//     let mut path = if file_name == PRIMARY_MODULE_FILE {
-//         current_path.parent().unwrap().to_owned()
-//     } else {
-//         current_path
-//     };
-
-//     let module_path = id.get(tree);
-
-//     for (i, &id) in module_path.0.iter().enumerate() {
-//         let segment = id.get(tree);
-
-//         if segment == SUPER_MODULE_PATH_SEGMENT && i == 0 {
-//             path = path.parent().unwrap().to_owned();
-//         } else {
-//             path.push(segment.as_str());
-//         }
-//     }
-
-//     if path.is_dir() {
-//         path.push(PRIMARY_MODULE_FILE);
-//     } else {
-//         path.add_extension(FILE_EXTENSION);
-//     }
-
-//     path
-// }
