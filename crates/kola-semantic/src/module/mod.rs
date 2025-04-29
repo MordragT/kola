@@ -17,121 +17,15 @@ use std::{
     rc::Rc,
 };
 
+use kola_syntax::prelude::*;
 use kola_tree::{
-    id::Id,
-    node::{self, Symbol, Vis},
-    tree::TreeView,
+    node::{Symbol, Vis},
+    prelude::*,
 };
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum PathResolution {
-    Unresolved,
-    Partial {
-        module_id: ModuleId,
-        remaining: Vec<Id<node::Name>>,
-    },
-    Resolved(ModuleId),
-}
+mod explorer;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct ModuleExplorer<'a, T, M> {
-    pub tree: &'a T,
-    pub module_id: &'a ModuleId,
-    pub module: &'a M,
-    pub global: &'a HashMap<ModuleId, ModuleInfo>,
-}
-
-impl<'a, T, M> ModuleExplorer<'a, T, M>
-where
-    T: TreeView,
-    M: ModuleInfoView,
-{
-    pub fn new(
-        tree: &'a T,
-        module_id: &'a ModuleId,
-        module: &'a M,
-        global: &'a HashMap<ModuleId, ModuleInfo>,
-    ) -> Self {
-        Self {
-            tree,
-            module_id,
-            module,
-            global,
-        }
-    }
-
-    /// Resolves as much as possible from the path expression
-    ///
-    /// * Returns `Unresolved` if the first segment was not a submodule defined in the current module.
-    /// * Returns `Partial` if some segments could be resolved but there are remaining segments.
-    /// * Returns `Resolved` if all segments could be resolved.
-    pub fn path_expr(self, path_id: Id<node::PathExpr>) -> PathResolution {
-        let path = path_id.get(self.tree);
-        let mut segments = path.0.iter();
-
-        let Some(first_id) = segments.next() else {
-            return PathResolution::Unresolved;
-        };
-        let first = first_id.get(self.tree);
-        let Some(bind) = self.module.module(&first.0) else {
-            return PathResolution::Unresolved;
-        };
-        let mut module_id = bind.id.clone();
-
-        while let Some(id) = segments.next() {
-            let s = id.get(self.tree);
-
-            if let Some(module) = self
-                .global
-                .get(&module_id)
-                .and_then(|info| info.module(&s.0))
-                && module.vis == Vis::Export
-            {
-                module_id = module.id.clone();
-            } else {
-                let mut remaining = segments.copied().collect::<Vec<_>>();
-                remaining.insert(0, *id);
-
-                return PathResolution::Partial {
-                    module_id,
-                    remaining,
-                };
-            }
-        }
-
-        PathResolution::Resolved(module_id)
-    }
-
-    /// Resolves the module path
-    /// 1. Looks for module of the first segment in the current module
-    /// 2. For every other segment looks in the corresponding module
-    ///     and checks if a module exists for it and if it is marked as `export`
-    ///
-    /// Returns None if some segment of the path could not be resolved
-    pub fn module_path(self, path_id: Id<node::ModulePath>) -> Option<ModuleId> {
-        let path = path_id.get(self.tree);
-        let mut segments = path.0.iter();
-
-        let first_id = segments.next()?;
-        let first = first_id.get(self.tree);
-        let mut module_id = self.module.module(&first.0)?.id.clone();
-
-        // TODO should I allow access to private modules of a parent in a DIRECT child ?
-        // The way I have implemented this currently it would not work.
-        // I guess for helper modules this would be pretty usefull
-        for id in segments {
-            let s = id.get(self.tree);
-            let module = self.global.get(&module_id)?.module(&s.0)?;
-
-            if module.vis != Vis::Export {
-                return None;
-            }
-            module_id = module.id.clone();
-        }
-
-        Some(module_id)
-    }
-}
+pub use explorer::{ModuleExplorer, PathResolution};
 
 pub type ModuleInfoTable = HashMap<ModuleId, ModuleInfo>;
 
@@ -154,16 +48,63 @@ impl ModuleInfoBuilder {
         }
     }
 
-    // TODO needs to check for special symbols
-    // E.g. "super" module defined here should not be overriden
-    // Maybe do not allow to override at all and return error then here
-    pub fn insert_module(&mut self, symbol: Symbol, bind: ModuleBind) -> Option<ModuleBind> {
-        self.modules.insert(symbol, bind)
+    pub fn insert_module(
+        &mut self,
+        symbol: Symbol,
+        bind: ModuleBind,
+    ) -> Result<(), SourceDiagnostic> {
+        let span = bind.span;
+
+        if let Some(bind) = self.values.get(&symbol) {
+            return Err(SourceDiagnostic::error(
+                span,
+                "A value bind with the same name was defined before",
+            )
+            .with_trace([("This value bind here".to_owned(), bind.span)])
+            .with_help(
+                "Module bindings must have distinct names from value bindings. Try to rename it.",
+            ));
+        }
+
+        if let Some(other) = self.modules.insert(symbol, bind) {
+            Err(SourceDiagnostic::error(
+                span,
+                "A module bind with the same name was defined before",
+            )
+            .with_trace([("This module bind here".to_owned(), other.span)])
+            .with_help("Module bindings must have distinct names. Try to rename it."))
+        } else {
+            Ok(())
+        }
     }
 
-    // TODO should also probably fail on override
-    pub fn insert_value(&mut self, symbol: Symbol, bind: ValueBind) -> Option<ValueBind> {
-        self.values.insert(symbol, bind)
+    pub fn insert_value(
+        &mut self,
+        symbol: Symbol,
+        bind: ValueBind,
+    ) -> Result<(), SourceDiagnostic> {
+        let span = bind.span;
+
+        if let Some(bind) = self.modules.get(&symbol) {
+            return Err(SourceDiagnostic::error(
+                span,
+                "A module bind with the same name was defined before",
+            )
+            .with_trace([("This module bind here".to_owned(), bind.span)])
+            .with_help(
+                "Value bindings must have distinct names from module bindings. Try to rename it.",
+            ));
+        }
+
+        if let Some(other) = self.values.insert(symbol, bind) {
+            Err(
+                SourceDiagnostic::error(span, "A value bind with the same name was defined before")
+                    .with_trace([("This value bind here".to_owned(), other.span)])
+                    .with_help("Value bindings must have distinct names. Try to rename it."),
+            )
+        } else {
+            Ok(())
+        }
     }
 
     pub fn finish(self) -> ModuleInfo {
@@ -207,15 +148,16 @@ impl ModuleInfoView for ModuleInfo {
 // May be a bit more performant than to do determine it later in the Typer
 // But is not strictly the main goal here so might as well not do it.
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ValueBind {
-    pub id: Id<node::Expr>,
+    pub id: Id<node::ValueBind>,
     pub vis: Vis,
+    pub span: Span,
 }
 
 impl ValueBind {
-    pub fn new(id: Id<node::Expr>, vis: Vis) -> Self {
-        Self { id, vis }
+    pub fn new(id: Id<node::ValueBind>, vis: Vis, span: Span) -> Self {
+        Self { id, vis, span }
     }
 }
 
@@ -224,15 +166,16 @@ impl ValueBind {
 //     pub id: Id<node::Type>,
 // }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ModuleBind {
     pub id: ModuleId,
     pub vis: Vis,
+    pub span: Span,
 }
 
 impl ModuleBind {
-    pub fn new(id: ModuleId, vis: Vis) -> Self {
-        Self { id, vis }
+    pub fn new(id: ModuleId, vis: Vis, span: Span) -> Self {
+        Self { id, vis, span }
     }
 }
 

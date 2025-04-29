@@ -8,6 +8,7 @@ use std::{collections::HashMap, io, ops::ControlFlow, path::Path};
 use thiserror::Error;
 
 use crate::{
+    VisitState,
     file::{FileInfo, FileInfoTable, FileParser},
     module::{
         ModuleBind, ModuleExplorer, ModuleId, ModuleInfo, ModuleInfoBuilder, ModuleInfoTable,
@@ -15,6 +16,9 @@ use crate::{
     },
     typer::{self, TypeDecorator, TypeInfo, TypeInfoTable, Typer},
 };
+
+// TODO rename ModuleExplorer and FileExplorer to PathExplorer and ImportExplorer and move world
+// to a own module with them as child files.
 
 pub struct World {
     pub order: Vec<ModuleId>,
@@ -57,13 +61,6 @@ pub enum ExploreError {
     #[diagnostic(transparent)]
     #[error(transparent)]
     Source(#[from] SourceReport),
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-enum VisitState {
-    Unvisited,
-    Visiting,
-    Visited,
 }
 
 impl World {
@@ -185,8 +182,11 @@ impl<'a> Explorer<'a> {
         let mut builder = ModuleInfoBuilder::new();
 
         if let Some(parent_id) = module_id.parent() {
-            let bind = ModuleBind::new(parent_id.to_owned(), node::Vis::None);
-            builder.insert_module("super".into(), bind);
+            let span = *file.spans.meta(module_id.id());
+            let bind = ModuleBind::new(parent_id.to_owned(), node::Vis::None, span);
+            builder
+                .insert_module("super".into(), bind)
+                .expect("Whoops somehow the super module failed to be inserted");
         }
 
         Self {
@@ -230,18 +230,19 @@ impl<'a, T: TreeView> Visitor<T> for Explorer<'a> {
         id: Id<node::ValueBind>,
         tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
-        let node::ValueBind {
-            vis,
-            name,
-            ty: _,
-            value,
-        } = *id.get(tree);
+        let span = self.span(id);
+
+        let node::ValueBind { vis, name, .. } = *id.get(tree);
 
         let vis = *vis.get(tree);
         let name = name.get(tree);
 
-        self.builder
-            .insert_value(name.0.clone(), ValueBind::new(value, vis));
+        if let Err(diag) = self
+            .builder
+            .insert_value(name.0.clone(), ValueBind::new(id, vis, span))
+        {
+            return ControlFlow::Break(self.report(diag));
+        }
 
         ControlFlow::Continue(())
     }
@@ -261,14 +262,14 @@ impl<'a, T: TreeView> Visitor<T> for Explorer<'a> {
         let vis = *vis.get(tree);
         let name = name.get(tree).0.clone();
 
-        let (submodule, span) = match *value.get(tree) {
+        let submodule = match *value.get(tree) {
             node::ModuleExpr::Module(id) => {
                 // TODO Do I need to do something extra here for multi nested modules ?
                 // It should just be pushed to the stack and because I am not walking over it
                 // the explorer should not investigate further.
                 // So probably no ?
                 let submodule_id = ModuleId::new(self.module_id.clone(), self.module_id.path(), id);
-                (ModuleBind::new(submodule_id, vis), self.span(id))
+                ModuleBind::new(submodule_id, vis, self.span(id))
             }
             node::ModuleExpr::Import(import_id) => {
                 // TODO I might want to check if I am in a nested module, because then I should disallow imports.
@@ -286,11 +287,12 @@ impl<'a, T: TreeView> Visitor<T> for Explorer<'a> {
                 self.world.file_infos.insert(path.clone(), file);
 
                 let submodule_id = ModuleId::new(self.module_id.clone(), path, id);
-                (ModuleBind::new(submodule_id, vis), self.span(import_id))
+                ModuleBind::new(submodule_id, vis, self.span(import_id))
             }
             node::ModuleExpr::Path(path_id) => {
                 let id = match ModuleExplorer::new(
                     tree,
+                    &self.file.spans,
                     &self.module_id,
                     &self.builder,
                     &self.world.module_infos,
@@ -308,7 +310,7 @@ impl<'a, T: TreeView> Visitor<T> for Explorer<'a> {
                     }
                 };
 
-                (ModuleBind::new(id, vis), self.span(path_id))
+                ModuleBind::new(id, vis, self.span(path_id))
             }
         };
 
@@ -323,7 +325,7 @@ impl<'a, T: TreeView> Visitor<T> for Explorer<'a> {
                 return ControlFlow::Break(
                     self.report(
                         SourceDiagnostic::error(
-                            span,
+                            submodule.span,
                             format!(
                                 "Circular dependency detected at: {:?}",
                                 self.module_id.path()
@@ -336,7 +338,9 @@ impl<'a, T: TreeView> Visitor<T> for Explorer<'a> {
             VisitState::Visited => (),
         }
 
-        self.builder.insert_module(name, submodule);
+        if let Err(diag) = self.builder.insert_module(name, submodule) {
+            return ControlFlow::Break(self.report(diag));
+        }
         ControlFlow::Continue(())
     }
 }

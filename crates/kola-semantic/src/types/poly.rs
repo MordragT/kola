@@ -1,4 +1,4 @@
-use std::fmt;
+use std::{collections::HashMap, fmt};
 
 use serde::{Deserialize, Serialize};
 
@@ -9,7 +9,7 @@ use crate::substitute::{Substitutable, Substitution};
 /// Types that contains variable bound by zero or more forall
 /// Polymorphic types (e.g. `∀α. α → α`, `∀α. ∀β. α → β`)
 /// https://en.wikipedia.org/wiki/Hindley%e2%80%93Milner_type_system#Polytypes
-#[derive(Debug, Default, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, Default, Clone, Hash, Serialize, Deserialize)]
 pub struct PolyType {
     pub(super) vars: Vec<TypeVar>,
     pub(super) ty: MonoType,
@@ -54,6 +54,31 @@ impl PolyType {
         ty.apply_mut(&mut substitution);
 
         ty
+    }
+
+    /// Two `PolyType`s are considered equivalent,
+    /// if they differ only in the names of their type variables.
+    pub fn alpha_equivalent(&self, other: &Self) -> bool {
+        if self.vars.len() != other.vars.len() {
+            return false;
+        }
+
+        let mut sub_self = HashMap::new();
+        let mut sub_other = HashMap::new();
+
+        for (l, r) in self.vars.iter().zip(&other.vars) {
+            let fresh = MonoType::variable();
+            sub_self.insert(*l, fresh.clone());
+            sub_other.insert(*r, fresh);
+        }
+
+        let mut lhs = self.ty.clone();
+        lhs.apply_mut(&mut Substitution::new(sub_self));
+
+        let mut rhs = other.ty.clone();
+        rhs.apply_mut(&mut Substitution::new(sub_other));
+
+        lhs == rhs
     }
 }
 

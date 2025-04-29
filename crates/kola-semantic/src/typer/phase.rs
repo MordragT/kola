@@ -54,7 +54,7 @@ impl Phase for TypePhase {
     type TypeError = Empty;
     type Type = Stub<types::PolyType>;
     type Vis = Empty;
-    type ValueBind = types::MonoType;
+    type ValueBind = Empty;
     type TypeBind = Stub<types::PolyType>;
     type OpaqueTypeBind = Empty;
     type ModuleBind = Empty;

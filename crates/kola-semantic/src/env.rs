@@ -13,7 +13,7 @@ pub type KindEnv = IndexMap<TypeVar, Vec<Kind>>;
 /// Type environments are implemented as a stack where each
 /// frame holds the bindings for the identifiers declared in a particular
 /// lexical block.
-#[derive(Debug, Clone, PartialEq, Eq, Default)]
+#[derive(Debug, Clone, Default)]
 pub struct TypeEnv {
     /// An optional parent environment.
     parent: Option<Box<Self>>,

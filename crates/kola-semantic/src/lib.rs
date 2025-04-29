@@ -33,3 +33,10 @@ pub mod prelude {
     pub use crate::unify::Unifiable;
     pub use crate::world::World;
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum VisitState {
+    Unvisited,
+    Visiting,
+    Visited,
+}

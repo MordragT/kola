@@ -1,10 +1,11 @@
-use std::ops::ControlFlow;
+use std::{collections::HashMap, ops::ControlFlow};
 
 use kola_syntax::prelude::*;
 use kola_tree::prelude::*;
 use kola_utils::Errors;
 
 use crate::{
+    VisitState,
     env::{KindEnv, TypeEnv},
     error::SemanticError,
     file::FileInfo,
@@ -111,6 +112,7 @@ pub struct Typer<'a> {
     module_id: ModuleId,
     module: ModuleInfo,
     spans: SpanInfo,
+    visited: HashMap<Id<node::ValueBind>, VisitState>,
     module_infos: &'a ModuleInfoTable,
     type_infos: &'a TypeInfoTable,
 }
@@ -128,6 +130,12 @@ impl<'a> Typer<'a> {
             .map(|m| Meta::<TypePhase>::default_for(m.kind()))
             .collect();
 
+        let visited = module
+            .values
+            .values()
+            .map(|bind| (bind.id, VisitState::Unvisited))
+            .collect();
+
         Self {
             subs: Substitution::empty(),
             cons: Constraints::new(),
@@ -137,6 +145,7 @@ impl<'a> Typer<'a> {
             module_id,
             module,
             spans,
+            visited,
             module_infos,
             type_infos,
         }
@@ -145,7 +154,7 @@ impl<'a> Typer<'a> {
     // pub fn solve()
 
     pub fn solve(mut self, tree: &Tree) -> Result<TypeInfo, Error> {
-        match tree.root_id().visit_by(&mut self, tree) {
+        match self.module_id.id().visit_by(&mut self, tree) {
             ControlFlow::Break(_) => unreachable!(),
             ControlFlow::Continue(()) => (),
         }
@@ -208,7 +217,64 @@ impl<'a, T> Visitor<T> for Typer<'a>
 where
     T: TreeView,
 {
-    type BreakValue = !;
+    type BreakValue = SourceDiagnostic;
+
+    fn visit_module_bind(
+        &mut self,
+        _id: Id<node::ModuleBind>,
+        _tree: &T,
+    ) -> ControlFlow<Self::BreakValue> {
+        // Skip module binds altogether
+        ControlFlow::Continue(())
+    }
+
+    fn visit_value_bind(
+        &mut self,
+        id: Id<node::ValueBind>,
+        tree: &T,
+    ) -> ControlFlow<Self::BreakValue> {
+        match self.visited[&id] {
+            VisitState::Unvisited => {
+                let node::ValueBind {
+                    vis: _,
+                    name,
+                    ty,
+                    value,
+                } = *id.get(tree);
+                let name = name.get(tree).0.clone();
+
+                TypeVar::enter();
+                self.visit_expr(value, tree)?;
+                TypeVar::exit();
+
+                // due to explicit traversal this is known
+                let t = self.types.meta(value).clone();
+                // generalize with no bound type vars because this is a top-level binding.
+                let pt = t.generalize(&[]);
+
+                if let Some(ty) = ty {
+                    self.visit_type(ty, tree)?;
+                    let expected_pt = self.types.meta(ty);
+
+                    if !pt.alpha_equivalent(&expected_pt.0) {
+                        return ControlFlow::Break(SourceDiagnostic::error(
+                            self.span(id),
+                            format!("Type mismatch: expected {}, found {}", expected_pt, pt),
+                        ));
+                    }
+                }
+
+                self.t_env.insert(name, pt);
+                self.visited.insert(id, VisitState::Visited);
+                ControlFlow::Continue(())
+            }
+            VisitState::Visiting => {
+                let span = self.span(id);
+                ControlFlow::Break(SourceDiagnostic::error(span, "Recursive call detected"))
+            }
+            VisitState::Visited => ControlFlow::Continue(()),
+        }
+    }
 
     // Patterns
 
@@ -258,6 +324,12 @@ where
         ControlFlow::Continue(())
     }
 
+    // Rule for Record Selection of 'r' with label 'l'
+    // τ' = newvar()
+    // ∆;Γ ⊢ r : { τ0 | l : τ' } where τ0 is of kind Record
+    // -----------------------
+    // ∆;Γ ⊢ r.l : τ'
+    //
     // Var rule to infer variable 'x'
     // x : σ ∈ Γ   τ = inst(σ)
     // -----------------------
@@ -267,54 +339,81 @@ where
         id: Id<node::PathExpr>,
         tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
-        // TODO either expand the ModuleExplorer to also have information about values (and types then also but not important here)
-        // or create a separate ValuePathResolver which takes the ModulePathResolution as input.
-        // Either way information about Values (and their visibility (Export or not)) has to be available here.
-        // TODO also precedence might be important here
-        // I still need to determine if I allow shadowing and if forexample locally defined variables are resolved before
-        // outer ones.
-        let module_explorer =
-            ModuleExplorer::new(tree, &self.module_id, &self.module, &self.module_infos);
+        let span = self.span(id);
 
-        let t = match module_explorer.path_expr(id) {
-            PathResolution::Unresolved => {
-                let path = id.get(tree);
+        let module_explorer = ModuleExplorer::new(
+            tree,
+            &self.spans,
+            &self.module_id,
+            &self.module,
+            &self.module_infos,
+        );
 
-                if path.0.len() == 1 {
-                    let ident = path.0[0].get(tree);
+        let resolution = match module_explorer.path_expr(id, &self.t_env) {
+            Ok(resolution) => resolution,
+            Err(diag) => return ControlFlow::Break(diag),
+        };
 
-                    self.t_env
-                        .try_lookup(&ident.0)
-                        .map_err(|e| e.with(self.span(id)))?
-                        .instantiate()
-                } else {
-                    // record select in current module
-                    todo!()
-                }
+        let t = match resolution {
+            PathResolution::LocalValue(pt) => pt.instantiate(),
+            PathResolution::LocalRecordAccess { pt, remaining } => {
+                dbg!(remaining.iter().map(|s| s.get(tree)).collect::<Vec<_>>());
+
+                let t = pt.instantiate();
+                let field_t = remaining.into_iter().fold(t, |t, field| {
+                    self.cons.constrain_kind(Kind::Record, t.clone(), span);
+
+                    let field_t = MonoType::variable();
+
+                    let head = Property {
+                        k: field.get(tree).0.clone(),
+                        v: field_t.clone(),
+                    };
+
+                    self.cons
+                        .constrain(MonoType::row(head, MonoType::variable()), t.clone(), span);
+
+                    field_t
+                });
+
+                field_t
+
+                // let mut t = pt.instantiate();
+                // let mut t_prime = MonoType::variable();
+                // let mut t0 = t_prime.clone();
+
+                // for field in remaining {
+                //     self.cons.constrain_kind(Kind::Record, t.clone(), span);
+
+                //     let head = Property {
+                //         k: field.get(tree).0.clone(),
+                //         v: t0.clone(),
+                //     };
+
+                //     self.cons
+                //         .constrain(MonoType::row(head, MonoType::variable()), t.clone(), span);
+
+                //     t_prime = t;
+                //     t = t0;
+                //     t0 = MonoType::variable();
+                // }
+
+                // t_prime
             }
-            PathResolution::Partial {
-                module_id,
+            PathResolution::ScopeValue(id) => todo!(),
+            PathResolution::ScopeRecordAccess {
+                value_id,
                 remaining,
-            } => {
-                // if remaining is not one element then this is a record select operation
-                if remaining.len() == 1 {
-                    if module_id == self.module_id {
-                        let ident = remaining[0].get(tree); // TODO this could also be another tree
-
-                        self.t_env
-                            .try_lookup(&ident.0)
-                            .map_err(|e| e.with(self.span(id)))?
-                            .instantiate()
-                    } else {
-                        // simple value lookup in another module
-                        todo!()
-                    }
-                } else {
-                    // we have a record select here (could be in another module)
-                    todo!()
-                }
-            }
-            PathResolution::Resolved(module_id) => todo!(), // error here
+            } => todo!(),
+            PathResolution::ModuleValue {
+                module_id,
+                value_id,
+            } => todo!(),
+            PathResolution::ModuleRecordAccess {
+                module_id,
+                value_id,
+                remaining,
+            } => todo!(),
         };
 
         self.update_type(id, t);
