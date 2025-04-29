@@ -62,9 +62,8 @@ impl Decorator for TypeDecorator {
             Meta::TypeVar(_) | Meta::TypeError(_) => return notation,
 
             // Modules
-            Meta::TypeBind(pt) => pt.green().display_in(arena),
-            Meta::ValueBind(_)
-            | Meta::Vis(_)
+            Meta::ValueBind(pt) | Meta::TypeBind(pt) => pt.green().display_in(arena),
+            Meta::Vis(_)
             | Meta::OpaqueTypeBind(_)
             | Meta::ModuleBind(_)
             | Meta::ModuleTypeBind(_)

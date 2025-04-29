@@ -1,4 +1,4 @@
-use std::{collections::HashMap, ops::ControlFlow};
+use std::{any::Any, collections::HashMap, ops::ControlFlow};
 
 use kola_syntax::prelude::*;
 use kola_tree::prelude::*;
@@ -9,7 +9,9 @@ use crate::{
     env::{KindEnv, TypeEnv},
     error::SemanticError,
     file::FileInfo,
-    module::{ModuleExplorer, ModuleId, ModuleInfo, ModuleInfoTable, PathResolution},
+    module::{
+        ModuleExplorer, ModuleId, ModuleInfo, ModuleInfoTable, ModuleInfoView, PathResolution,
+    },
     substitute::{Substitutable, Substitution},
     types::{Kind, MonoType, PolyType, Property, TypeVar, Typed},
     unify::Unifiable,
@@ -155,7 +157,10 @@ impl<'a> Typer<'a> {
 
     pub fn solve(mut self, tree: &Tree) -> Result<TypeInfo, Error> {
         match self.module_id.id().visit_by(&mut self, tree) {
-            ControlFlow::Break(_) => unreachable!(),
+            ControlFlow::Break(e) => {
+                eprintln!("{e}");
+                panic!()
+            }
             ControlFlow::Continue(()) => (),
         }
 
@@ -264,7 +269,7 @@ where
                     }
                 }
 
-                self.t_env.insert(name, pt);
+                self.update_type(id, Stub(pt));
                 self.visited.insert(id, VisitState::Visited);
                 ControlFlow::Continue(())
             }
@@ -357,7 +362,7 @@ where
         let t = match resolution {
             PathResolution::LocalValue(pt) => pt.instantiate(),
             PathResolution::LocalRecordAccess { pt, remaining } => {
-                dbg!(remaining.iter().map(|s| s.get(tree)).collect::<Vec<_>>());
+                // dbg!(remaining.iter().map(|s| s.get(tree)).collect::<Vec<_>>());
 
                 let t = pt.instantiate();
                 let field_t = remaining.into_iter().fold(t, |t, field| {
@@ -377,38 +382,46 @@ where
                 });
 
                 field_t
-
-                // let mut t = pt.instantiate();
-                // let mut t_prime = MonoType::variable();
-                // let mut t0 = t_prime.clone();
-
-                // for field in remaining {
-                //     self.cons.constrain_kind(Kind::Record, t.clone(), span);
-
-                //     let head = Property {
-                //         k: field.get(tree).0.clone(),
-                //         v: t0.clone(),
-                //     };
-
-                //     self.cons
-                //         .constrain(MonoType::row(head, MonoType::variable()), t.clone(), span);
-
-                //     t_prime = t;
-                //     t = t0;
-                //     t0 = MonoType::variable();
-                // }
-
-                // t_prime
             }
-            PathResolution::ScopeValue(id) => todo!(),
+            PathResolution::ScopeValue(id) => {
+                self.visit_value_bind(id, tree)?;
+                let pt = &self.types.meta(id).0;
+
+                pt.instantiate()
+            }
             PathResolution::ScopeRecordAccess {
                 value_id,
                 remaining,
-            } => todo!(),
+            } => {
+                self.visit_value_bind(value_id, tree)?;
+                let pt = &self.types.meta(value_id).0;
+
+                let t = pt.instantiate();
+                let field_t = remaining.into_iter().fold(t, |t, field| {
+                    self.cons.constrain_kind(Kind::Record, t.clone(), span);
+
+                    let field_t = MonoType::variable();
+
+                    let head = Property {
+                        k: field.get(tree).0.clone(),
+                        v: field_t.clone(),
+                    };
+
+                    self.cons
+                        .constrain(MonoType::row(head, MonoType::variable()), t.clone(), span);
+
+                    field_t
+                });
+
+                field_t
+            }
             PathResolution::ModuleValue {
                 module_id,
                 value_id,
-            } => todo!(),
+            } => {
+                let pt = self.type_infos[&module_id].meta(value_id);
+                pt.0.instantiate()
+            }
             PathResolution::ModuleRecordAccess {
                 module_id,
                 value_id,

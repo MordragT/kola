@@ -8,9 +8,6 @@ use crate::{env::TypeEnv, types::PolyType};
 
 #[derive(Debug, Clone, Hash)]
 pub enum PathResolution {
-    // TODO I am currently using the Local* variants for both top-level value binds
-    // which have already beeen evaluated as well as local let binds.
-    // This should work but might be a bit surprising name wise.
     LocalValue(PolyType),
     LocalRecordAccess {
         pt: PolyType,
@@ -134,10 +131,6 @@ where
         let mut seg = seg_id.get(self.tree);
 
         // First I need to check the local scope because it might shadow top-level module or value-binds.
-        // Because top-level binds are only inserted after all their dependent top-level binds are type-checked,
-        // it's okay when I encounter a top-level bind which was already inserted into the scope here, because
-        // it is essentially finished.
-        // This can be thought of a bit like path compression in union find.
 
         if let Some(pt) = scope.lookup(&seg.0) {
             if path.is_empty() {
@@ -202,12 +195,14 @@ where
                 unreachable!()
             }
         } else if module_id.is_parent_of(self.module_id) {
+            let module = &self.global[module_id];
+
             // direct parent of this module
             // access to private value binds is allowed here
             if let &[id] = path {
                 let s_span = self.span(id);
                 let s = id.get(self.tree);
-                let value = self.module.value(&s.0).ok_or(
+                let value = module.value(&s.0).ok_or(
                     SourceDiagnostic::error(s_span, "Value binding not found in the parent scope")
                         .with_trace([("In this expression".to_owned(), span)]),
                 )?;
@@ -216,7 +211,7 @@ where
             } else if let Some((id, remaining)) = path.split_first() {
                 let s_span = self.span(*id);
                 let s = id.get(self.tree);
-                let value = self.module.value(&s.0).ok_or(
+                let value = module.value(&s.0).ok_or(
                     SourceDiagnostic::error(
                         s_span,
                         "Record value binding not found in the parent scope",
@@ -239,11 +234,13 @@ where
                 .with_trace([("In this expression".to_owned(), span)]))
             }
         } else {
+            let module = &self.global[module_id];
+
             // sibling or cousing modules, need to enforce visibilty here
             if let &[id] = path {
                 let s_span = self.span(id);
                 let s = id.get(self.tree);
-                let value = self.module.value(&s.0).ok_or(
+                let value = module.value(&s.0).ok_or(
                     SourceDiagnostic::error(s_span, "Value binding not found.").with_trace([
                         ("In this scope".to_owned(), self.span(*seg_id)),
                         ("In this expression".to_owned(), span),
@@ -266,7 +263,7 @@ where
             } else if let Some((id, remaining)) = path.split_first() {
                 let s_span = self.span(*id);
                 let s = id.get(self.tree);
-                let value = self.module.value(&s.0).ok_or(
+                let value = module.value(&s.0).ok_or(
                     SourceDiagnostic::error(s_span, "Record value binding not found.").with_trace(
                         [
                             ("In this scope".to_owned(), self.span(*seg_id)),
