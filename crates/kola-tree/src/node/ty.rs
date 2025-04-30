@@ -1,4 +1,4 @@
-use derive_more::From;
+use derive_more::{From, IntoIterator};
 use kola_print::prelude::*;
 use kola_utils::as_variant;
 use owo_colors::OwoColorize;
@@ -40,7 +40,10 @@ impl Printable<TreePrinter> for TypeError {
     }
 }
 
-#[derive(Debug, From, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[derive(
+    Debug, From, IntoIterator, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+)]
+#[into_iterator(owned, ref)]
 pub struct TypePath(pub Vec<Id<Name>>);
 
 impl TypePath {

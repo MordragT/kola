@@ -1,14 +1,13 @@
-use std::fmt;
-
 use chumsky::error::Rich;
-use miette::{Diagnostic, LabeledSpan, Severity};
-use thiserror::Error;
-
-use crate::{
-    source::Source,
+use kola_syntax::{
     span::{Span, Spanned},
     token::Token,
 };
+use miette::{Diagnostic, LabeledSpan, Severity};
+use std::fmt;
+use thiserror::Error;
+
+use crate::source::Source;
 
 /// A type alias for results that may contain source diagnostics.
 ///

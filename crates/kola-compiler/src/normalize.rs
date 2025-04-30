@@ -130,7 +130,7 @@ impl Normalizer {
 
                 let res = self.normalize_expr(inside.get(tree), hole, ctx, tree);
 
-                let bind = self.symbols.lookup(&name.get(tree).0);
+                let bind = self.symbols.lookup(name.get(tree));
                 let res = self.normalize_expr(value.get(tree), bind, res, tree);
                 res
             }
@@ -148,7 +148,7 @@ impl Normalizer {
                 let atom = self.builder.push(ir::Atom::from(bind));
 
                 // TODO scope
-                let param = self.symbols.lookup(&param.get(tree).0);
+                let param = self.symbols.lookup(param.get(tree));
                 let body = self.normalize_with(body.get(tree), tree);
                 let func = self.builder.push(ir::Atom::Func { param, body });
 

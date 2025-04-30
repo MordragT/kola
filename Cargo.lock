@@ -119,6 +119,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1628fb46dfa0b37568d12e5edd512553eccf6a22a78e8bde00bb4aed84d5bdbf"
 
 [[package]]
+name = "camino"
+version = "1.1.9"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "8b96ec4966b5813e2c0507c1f86115c8c5abaadc3980879c3424042a02fd1ad3"
+
+[[package]]
 name = "cc"
 version = "1.2.19"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -373,12 +379,14 @@ dependencies = [
 name = "kola-semantic"
 version = "0.1.0"
 dependencies = [
+ "camino",
  "derive_more",
  "indexmap",
  "kola-print",
  "kola-syntax",
  "kola-tree",
  "kola-utils",
+ "kola-vfs",
  "log",
  "miette",
  "owo-colors",
@@ -419,6 +427,22 @@ dependencies = [
 [[package]]
 name = "kola-utils"
 version = "0.1.0"
+
+[[package]]
+name = "kola-vfs"
+version = "0.1.0"
+dependencies = [
+ "camino",
+ "chumsky",
+ "derive_more",
+ "kola-print",
+ "kola-syntax",
+ "kola-tree",
+ "log",
+ "miette",
+ "owo-colors",
+ "thiserror 2.0.12",
+]
 
 [[package]]
 name = "libc"

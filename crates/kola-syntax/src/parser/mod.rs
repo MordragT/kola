@@ -12,19 +12,18 @@ use kola_tree::prelude::*;
 
 use crate::{
     SyntaxPhase,
-    error::{SourceDiagnostic, SourceResult},
     span::{Span, SpanInfo},
-    token::{Token, Tokens},
+    token::{Token, TokenSlice},
 };
 
-pub struct ParseResult {
+pub struct ParseResult<'t> {
     pub tree: Option<Tree>,
     pub spans: SpanInfo,
-    pub errors: Vec<SourceDiagnostic>,
+    pub errors: Vec<Rich<'t, Token<'t>>>,
 }
 
-pub fn parse(tokens: Tokens<'_>, eoi: Span) -> ParseResult {
-    let input = tokens.as_slice().map(eoi, |(t, s)| (t, s));
+pub fn parse<'t>(tokens: TokenSlice<'t>, eoi: Span) -> ParseResult<'t> {
+    let input = tokens.map(eoi, |(t, s)| (t, s));
     let parser = rules::module_parser();
 
     let mut state = State::from(StateRepr::new());
@@ -33,7 +32,7 @@ pub fn parse(tokens: Tokens<'_>, eoi: Span) -> ParseResult {
         .parse_with_state(input, &mut state)
         .into_output_errors();
 
-    let errors = errors.into_iter().map(SourceDiagnostic::from).collect();
+    // let errors = errors.into_iter().map(SourceDiagnostic::from).collect();
 
     let StateRepr { builder, meta } = state.0;
     let tree = root.map(|root| builder.finish(root));
@@ -47,21 +46,17 @@ pub fn parse(tokens: Tokens<'_>, eoi: Span) -> ParseResult {
 
 type Output<T> = (T, TreeBuilder, MetaVec<SyntaxPhase>);
 
-pub fn try_parse_with<'t, T, P, I>(input: I, parser: P) -> SourceResult<Output<T>>
+pub fn try_parse_with<'t, T, P, I>(
+    input: I,
+    parser: P,
+) -> Result<Output<T>, Vec<Rich<'t, Token<'t>>>>
 where
     I: ValueInput<'t, Token = Token<'t>, Span = Span>,
     P: Parser<'t, I, T, Extra<'t>>,
 {
     let mut state = State::from(StateRepr::new());
 
-    let node = parser
-        .parse_with_state(input, &mut state)
-        .into_result()
-        .map_err(|errs| {
-            errs.into_iter()
-                .map(SourceDiagnostic::from)
-                .collect::<Vec<_>>()
-        })?;
+    let node = parser.parse_with_state(input, &mut state).into_result()?;
 
     let StateRepr { builder, meta } = state.0;
     Ok((node, builder, meta))

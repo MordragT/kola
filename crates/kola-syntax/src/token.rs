@@ -84,6 +84,7 @@ pub enum Literal<'t> {
 }
 
 pub type Tokens<'t> = Vec<Spanned<Token<'t>>>;
+pub type TokenSlice<'t> = &'t [Spanned<Token<'t>>];
 
 #[derive(Debug, Display, Clone, Copy, PartialEq)]
 pub enum Token<'t> {

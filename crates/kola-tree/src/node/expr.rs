@@ -1,4 +1,4 @@
-use derive_more::{Display, From};
+use derive_more::{Display, From, IntoIterator};
 use kola_print::prelude::*;
 use kola_utils::as_variant;
 use owo_colors::OwoColorize;
@@ -82,7 +82,10 @@ impl Printable<TreePrinter> for LiteralExpr {
 }
 
 /// Path segments can be modules but the result must allways be a value
-#[derive(Debug, From, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[derive(
+    Debug, From, IntoIterator, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+)]
+#[into_iterator(owned, ref)]
 #[from(forward)]
 pub struct PathExpr(pub Vec<Id<Name>>);
 
@@ -110,7 +113,10 @@ impl PathExpr {
     }
 }
 
-#[derive(Debug, From, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[derive(
+    Debug, From, IntoIterator, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+)]
+#[into_iterator(owned, ref)]
 pub struct ListExpr(pub Vec<Id<Expr>>);
 
 impl Printable<TreePrinter> for ListExpr {
@@ -180,7 +186,10 @@ impl Printable<TreePrinter> for RecordField {
 }
 
 // { x = 10, y = 20 }
-#[derive(Debug, From, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[derive(
+    Debug, From, IntoIterator, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+)]
+#[into_iterator(owned, ref)]
 pub struct RecordExpr(pub Vec<Id<RecordField>>);
 
 impl RecordExpr {
@@ -1308,11 +1317,9 @@ mod inspector {
             );
             let segment = path.get(index, self.tree);
             assert_eq!(
-                segment.as_str(),
-                expected,
+                segment, expected,
                 "Expected segment '{}' but found '{}'",
-                expected,
-                segment.0
+                expected, segment.0
             );
             self
         }
@@ -1378,12 +1385,9 @@ mod inspector {
         fn assert_name(self, expected: &str, node_type: &str) -> Self {
             let name = self.node.get(self.tree).name(self.tree);
             assert_eq!(
-                name.as_str(),
-                expected,
+                name, expected,
                 "Expected {} name '{}' but found '{}'",
-                node_type,
-                expected,
-                name.0
+                node_type, expected, name.0
             );
             self
         }
@@ -1571,7 +1575,7 @@ mod inspector {
                 let field_id = record
                     .0
                     .iter()
-                    .find(|id| id.get(self.tree).field(self.tree).as_str() == name)
+                    .find(|id| id.get(self.tree).field(self.tree) == name)
                     .unwrap();
                 NodeInspector::new(*field_id, self.tree)
             })
@@ -1582,12 +1586,9 @@ mod inspector {
         fn assert_name(self, expected: &str, node_type: &str) -> Self {
             let name = self.node.get(self.tree).field(self.tree);
             assert_eq!(
-                name.as_str(),
-                expected,
+                name, expected,
                 "Expected {} name '{}' but found '{}'",
-                node_type,
-                expected,
-                name.0
+                node_type, expected, name.0
             );
             self
         }

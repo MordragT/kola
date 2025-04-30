@@ -3,12 +3,12 @@ use std::{any::Any, collections::HashMap, ops::ControlFlow};
 use kola_syntax::prelude::*;
 use kola_tree::prelude::*;
 use kola_utils::Errors;
+use kola_vfs::error::SourceDiagnostic;
 
 use crate::{
     VisitState,
     env::{KindEnv, TypeEnv},
     error::SemanticError,
-    file::FileInfo,
     module::{
         ModuleExplorer, ModuleId, ModuleInfo, ModuleInfoTable, ModuleInfoView, PathResolution,
     },
@@ -22,8 +22,6 @@ mod print;
 
 pub use phase::{TypeInfo, TypeInfoTable, TypePhase};
 pub use print::TypeDecorator;
-
-// TODO rename to Typer ??
 
 // https://blog.stimsina.com/post/implementing-a-hindley-milner-type-system-part-2
 
@@ -462,7 +460,7 @@ where
 
         let mut r = MonoType::empty_row();
 
-        for &field in &id.get(tree).0 {
+        for &field in id.get(tree) {
             let head = self.types.meta(field).clone();
             r = MonoType::row(head, r);
         }

@@ -1,21 +1,20 @@
 use chumsky::prelude::*;
 
 use crate::{
-    error::SourceDiagnostic,
     span::{Span, Spanned},
     token::{Literal, Token, Tokens},
 };
 
 pub struct TokenizeResult<'t> {
     pub tokens: Option<Tokens<'t>>,
-    pub errors: Vec<SourceDiagnostic>,
+    pub errors: Vec<Rich<'t, char>>,
 }
 
 pub fn tokenize(input: &str) -> TokenizeResult<'_> {
     let lexer = lexer();
     let (tokens, errors) = lexer.parse(input).into_output_errors();
 
-    let errors = errors.into_iter().map(SourceDiagnostic::from).collect();
+    // let errors = errors.into_iter().map(SourceDiagnostic::from).collect();
     TokenizeResult { tokens, errors }
 }
 

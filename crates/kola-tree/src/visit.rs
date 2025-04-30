@@ -145,7 +145,7 @@ pub trait Visitor<T: TreeView> {
     ) -> ControlFlow<Self::BreakValue> {
         let record_pat = id.get(tree);
 
-        for id in &record_pat.0 {
+        for id in record_pat {
             self.visit_record_field_pat(*id, tree)?;
         }
 
@@ -190,7 +190,7 @@ pub trait Visitor<T: TreeView> {
     ) -> ControlFlow<Self::BreakValue> {
         let variant_pat = id.get(tree);
 
-        for id in &variant_pat.0 {
+        for id in variant_pat {
             self.visit_variant_case_pat(*id, tree)?;
         }
 
@@ -245,7 +245,7 @@ pub trait Visitor<T: TreeView> {
     ) -> ControlFlow<Self::BreakValue> {
         let list = id.get(tree);
 
-        for id in &list.0 {
+        for id in list {
             self.visit_expr(*id, tree)?;
         }
 
@@ -267,7 +267,7 @@ pub trait Visitor<T: TreeView> {
     ) -> ControlFlow<Self::BreakValue> {
         let path = id.get(tree);
 
-        for id in &path.0 {
+        for id in path {
             self.visit_name(*id, tree)?;
         }
 
@@ -310,7 +310,7 @@ pub trait Visitor<T: TreeView> {
     ) -> ControlFlow<Self::BreakValue> {
         let record = id.get(tree);
 
-        for id in &record.0 {
+        for id in record {
             self.visit_record_field(*id, tree)?;
         }
 
@@ -630,7 +630,7 @@ pub trait Visitor<T: TreeView> {
     ) -> ControlFlow<Self::BreakValue> {
         let type_path = id.get(tree);
 
-        for id in &type_path.0 {
+        for id in type_path {
             self.visit_name(*id, tree)?;
         }
 
@@ -842,7 +842,7 @@ pub trait Visitor<T: TreeView> {
     fn walk_module(&mut self, id: Id<node::Module>, tree: &T) -> ControlFlow<Self::BreakValue> {
         let module = id.get(tree);
 
-        for id in &module.0 {
+        for id in module {
             self.visit_bind(*id, tree)?;
         }
 
@@ -860,7 +860,7 @@ pub trait Visitor<T: TreeView> {
     ) -> ControlFlow<Self::BreakValue> {
         let module_path = id.get(tree);
 
-        for id in &module_path.0 {
+        for id in module_path {
             self.visit_name(*id, tree)?;
         }
 
@@ -1148,7 +1148,7 @@ pub trait Visitor<T: TreeView> {
     ) -> ControlFlow<Self::BreakValue> {
         let module_type = id.get(tree);
 
-        for id in &module_type.0 {
+        for id in module_type {
             self.visit_spec(*id, tree)?;
         }
 

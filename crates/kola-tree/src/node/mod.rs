@@ -1,3 +1,5 @@
+use std::{borrow::Borrow, ops::Deref};
+
 use crate::{id::Id, print::TreePrinter};
 
 use derive_more::{From, TryInto};
@@ -23,20 +25,63 @@ pub type Symbol = ecow::EcoString;
 pub struct Name(pub Symbol);
 
 impl Name {
+    #[inline]
     pub fn as_str(&self) -> &str {
+        self.0.as_str()
+    }
+
+    pub fn as_symbol(&self) -> &Symbol {
+        &self.0
+    }
+}
+
+impl AsRef<str> for Name {
+    #[inline]
+    fn as_ref(&self) -> &str {
         self.0.as_str()
     }
 }
 
-impl PartialEq<Symbol> for Name {
-    fn eq(&self, other: &Symbol) -> bool {
-        &self.0 == other
+impl Borrow<str> for Name {
+    #[inline]
+    fn borrow(&self) -> &str {
+        self.0.as_str()
     }
 }
 
 impl PartialEq<str> for Name {
+    #[inline]
     fn eq(&self, other: &str) -> bool {
-        self.as_str() == other
+        self == other
+    }
+}
+
+impl Deref for Name {
+    type Target = Symbol;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl AsRef<Symbol> for Name {
+    #[inline]
+    fn as_ref(&self) -> &Symbol {
+        &self.0
+    }
+}
+
+impl Borrow<Symbol> for Name {
+    #[inline]
+    fn borrow(&self) -> &Symbol {
+        &self.0
+    }
+}
+
+impl PartialEq<Symbol> for Name {
+    #[inline]
+    fn eq(&self, other: &Symbol) -> bool {
+        self == other
     }
 }
 

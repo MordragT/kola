@@ -8,12 +8,7 @@ thiserror.workspace = true
 miette.workspace = true
 owo-colors.workspace = true
 ecow.workspace = true
-chumsky = { version = "0.10", features = [
-    # "label",
-    "nightly",
-    "unstable",
-    "serde",
-] }
+chumsky.workspace = true
 kola-tree.workspace = true
 kola-utils.workspace = true
 kola-print.workspace = true

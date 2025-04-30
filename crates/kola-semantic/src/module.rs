@@ -13,6 +13,7 @@
 use std::{
     collections::HashMap,
     fmt,
+    hash::Hash,
     path::{Path, PathBuf},
     rc::Rc,
 };
@@ -22,22 +23,21 @@ use kola_tree::{
     node::{Symbol, Vis},
     prelude::*,
 };
-
-mod explorer;
-
-pub use explorer::{ModuleExplorer, PathResolution};
+use kola_vfs::error::SourceDiagnostic;
 
 pub type ModuleInfoTable = HashMap<ModuleId, ModuleInfo>;
 
 pub trait ModuleInfoView {
     fn module(&self, symbol: &Symbol) -> Option<&ModuleBind>;
     fn value(&self, symbol: &Symbol) -> Option<&ValueBind>;
+    fn ty(&self, symbol: &Symbol) -> Option<&TypeBind>;
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ModuleInfoBuilder {
     pub modules: HashMap<Symbol, ModuleBind>,
     pub values: HashMap<Symbol, ValueBind>,
+    pub types: HashMap<Symbol, TypeBind>,
 }
 
 impl ModuleInfoBuilder {
@@ -45,6 +45,7 @@ impl ModuleInfoBuilder {
         Self {
             modules: HashMap::new(),
             values: HashMap::new(),
+            types: HashMap::new(),
         }
     }
 
@@ -107,12 +108,21 @@ impl ModuleInfoBuilder {
         }
     }
 
+    pub fn insert_type(&mut self, symbol: Symbol, bind: TypeBind) -> Result<(), SourceDiagnostic> {
+        todo!()
+    }
+
     pub fn finish(self) -> ModuleInfo {
-        let Self { modules, values } = self;
+        let Self {
+            modules,
+            values,
+            types,
+        } = self;
 
         ModuleInfo {
             modules: Rc::new(modules),
             values: Rc::new(values),
+            types: Rc::new(types),
         }
     }
 }
@@ -125,12 +135,17 @@ impl ModuleInfoView for ModuleInfoBuilder {
     fn value(&self, symbol: &Symbol) -> Option<&ValueBind> {
         self.values.get(symbol)
     }
+
+    fn ty(&self, symbol: &Symbol) -> Option<&TypeBind> {
+        self.types.get(symbol)
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ModuleInfo {
     pub modules: Rc<HashMap<Symbol, ModuleBind>>,
     pub values: Rc<HashMap<Symbol, ValueBind>>,
+    pub types: Rc<HashMap<Symbol, TypeBind>>,
 }
 
 impl ModuleInfoView for ModuleInfo {
@@ -140,6 +155,10 @@ impl ModuleInfoView for ModuleInfo {
 
     fn value(&self, symbol: &Symbol) -> Option<&ValueBind> {
         self.values.get(symbol)
+    }
+
+    fn ty(&self, symbol: &Symbol) -> Option<&TypeBind> {
+        self.types.get(symbol)
     }
 }
 
@@ -161,10 +180,18 @@ impl ValueBind {
     }
 }
 
-// // TODO visibilty
-// pub struct TypeBind {
-//     pub id: Id<node::Type>,
-// }
+// TODO visibilty
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct TypeBind {
+    pub id: Id<node::TypeBind>,
+    pub span: Span,
+}
+
+impl TypeBind {
+    pub fn new(id: Id<node::TypeBind>, span: Span) -> Self {
+        Self { id, span }
+    }
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ModuleBind {
@@ -206,19 +233,19 @@ impl fmt::Display for ModuleId {
 }
 
 impl ModuleId {
-    pub fn root(path: impl Into<PathBuf>, id: Id<node::Module>) -> Self {
-        let repr = Repr {
-            parent: None,
-            path: path.into(),
-            id,
-        };
+    // pub fn root(path: impl Into<PathBuf>, id: Id<node::Module>) -> Self {
+    //     let repr = Repr {
+    //         parent: None,
+    //         path: path.into(),
+    //         id,
+    //     };
 
-        Self(Rc::new(repr))
-    }
+    //     Self(Rc::new(repr))
+    // }
 
-    pub fn new(parent: Self, path: impl Into<PathBuf>, id: Id<node::Module>) -> Self {
+    pub fn new(parent: Option<Self>, path: impl Into<PathBuf>, id: Id<node::Module>) -> Self {
         let repr = Repr {
-            parent: Some(parent),
+            parent,
             path: path.into(),
             id,
         };

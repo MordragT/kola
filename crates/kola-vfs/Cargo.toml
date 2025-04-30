@@ -1,0 +1,17 @@
+[package]
+name = "kola-vfs"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+kola-syntax.workspace = true
+kola-tree.workspace = true
+kola-print.workspace = true
+miette.workspace = true
+# cap-std.workspace = true
+camino.workspace = true
+thiserror.workspace = true
+chumsky.workspace = true
+derive_more.workspace = true
+log.workspace = true
+owo-colors.workspace = true

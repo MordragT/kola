@@ -1,4 +1,4 @@
-use derive_more::From;
+use derive_more::{From, IntoIterator};
 use kola_print::prelude::*;
 use kola_utils::as_variant;
 use owo_colors::OwoColorize;
@@ -38,7 +38,10 @@ module safe-stack = functor (s : Stack) => {
 }
 */
 
-#[derive(Debug, From, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[derive(
+    Debug, From, IntoIterator, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+)]
+#[into_iterator(owned, ref)]
 pub struct Module(pub Vec<Id<Bind>>); // TODO maybe should know its parent ?
 
 impl Printable<TreePrinter> for Module {
@@ -60,7 +63,10 @@ impl Printable<TreePrinter> for Module {
     }
 }
 
-#[derive(Debug, From, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[derive(
+    Debug, From, IntoIterator, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+)]
+#[into_iterator(owned, ref)]
 pub struct ModulePath(pub Vec<Id<Name>>);
 
 impl ModulePath {
@@ -470,7 +476,10 @@ impl Printable<TreePrinter> for ModuleTypeBind {
 
 // cannot infact contain another module type bind
 // only submodules can be defined
-#[derive(Debug, From, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[derive(
+    Debug, From, IntoIterator, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+)]
+#[into_iterator(owned, ref)]
 pub struct ModuleType(pub Vec<Id<Spec>>); // TODO functor ?
 
 impl Printable<TreePrinter> for ModuleType {
