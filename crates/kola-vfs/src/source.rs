@@ -1,19 +1,19 @@
 use kola_syntax::span::Span;
 use std::{fmt, fs, io, sync::Arc};
 
-use crate::path::{FilePath, ModulePath};
+use crate::path::{FilePath, ImportPath};
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Source {
     file_path: FilePath,
-    import_path: Option<ModulePath>,
+    import_path: Option<ImportPath>,
     content: Arc<str>,
 }
 
 impl Source {
     pub fn new(
         file_path: FilePath,
-        import_path: Option<ModulePath>,
+        import_path: Option<ImportPath>,
         content: impl AsRef<str>,
     ) -> Self {
         Self {
@@ -23,7 +23,7 @@ impl Source {
         }
     }
 
-    pub fn from_path(file_path: FilePath, import_path: Option<ModulePath>) -> io::Result<Self> {
+    pub fn from_path(file_path: FilePath, import_path: Option<ImportPath>) -> io::Result<Self> {
         let content = fs::read_to_string(file_path.path.as_std_path())?;
 
         Ok(Self::new(file_path, import_path, content))
@@ -40,8 +40,20 @@ impl Source {
     }
 
     #[inline]
-    pub fn import_path(&self) -> Option<ModulePath> {
+    pub fn import_path(&self) -> Option<ImportPath> {
         self.import_path.clone()
+    }
+
+    #[inline]
+    pub fn try_import_path(&self) -> io::Result<ImportPath> {
+        if let Some(path) = self.import_path() {
+            Ok(path)
+        } else {
+            Err(io::Error::new(
+                io::ErrorKind::NotFound,
+                "import path not found",
+            ))
+        }
     }
 
     #[inline]

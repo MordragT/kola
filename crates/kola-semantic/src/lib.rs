@@ -21,7 +21,7 @@ pub mod prelude {
     pub use crate::env::{KindEnv, TypeEnv};
     pub use crate::error::{SemanticError, SemanticErrors, SemanticReport};
     pub use crate::module::{
-        ModuleBind, ModuleId, ModuleInfo, ModuleInfoBuilder, ModuleInfoTable, ModuleInfoView,
+        ModuleBind, ModuleInfo, ModuleInfoBuilder, ModuleInfoTable, ModuleInfoView, ModulePath,
         TypeBind, ValueBind,
     };
     pub use crate::substitute::{Substitutable, Substitution};

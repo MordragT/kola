@@ -347,12 +347,14 @@ dependencies = [
 name = "kola"
 version = "0.1.0"
 dependencies = [
+ "camino",
  "clap",
  "env_logger",
  "kola-print",
  "kola-semantic",
  "kola-syntax",
  "kola-tree",
+ "kola-vfs",
  "log",
  "miette",
  "owo-colors",

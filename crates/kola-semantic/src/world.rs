@@ -1,19 +1,17 @@
 use kola_print::PrintOptions;
 use kola_syntax::prelude::*;
 use kola_tree::prelude::*;
+use kola_vfs::prelude::*;
+
+use camino::Utf8Path;
 use log::debug;
-use miette::{Diagnostic, Result};
+use miette::Result;
 use owo_colors::OwoColorize;
-use std::{collections::HashMap, io, ops::ControlFlow, path::Path};
-use thiserror::Error;
+use std::collections::HashMap;
 
 use crate::{
-    VisitState,
-    file::{FileInfo, FileInfoTable, FileParser},
-    module::{
-        ModuleBind, ModuleExplorer, ModuleId, ModuleInfo, ModuleInfoBuilder, ModuleInfoTable,
-        TypeBind, ValueBind,
-    },
+    explorer::{ExploreError, ExploreErrors, ExploreReport, explore},
+    module::{ModuleInfo, ModuleInfoTable, ModulePath},
     typer::{self, TypeDecorator, TypeInfo, TypeInfoTable, Typer},
 };
 
@@ -21,9 +19,10 @@ use crate::{
 // to a own module with them as child files.
 
 pub struct World {
-    pub order: Vec<ModuleId>,
+    pub order: Vec<ModulePath>,
     pub file_infos: FileInfoTable,
     pub module_infos: ModuleInfoTable,
+    pub module_parents: HashMap<ModulePath, ModulePath>,
     pub type_infos: TypeInfoTable,
     pub options: PrintOptions,
 }
@@ -34,125 +33,86 @@ impl World {
             order: Vec::new(),
             file_infos: HashMap::new(),
             module_infos: HashMap::new(),
+            module_parents: HashMap::new(),
             type_infos: HashMap::new(),
             options,
         }
     }
 
-    pub fn file_info(&self, id: &ModuleId) -> FileInfo {
-        self.file_infos[id.path()].clone()
+    pub fn file_info(&self, id: &ModulePath) -> FileInfo {
+        self.file_infos[&id.file_path].clone()
     }
 
-    pub fn module_info(&self, id: &ModuleId) -> ModuleInfo {
+    pub fn module_info(&self, id: &ModulePath) -> ModuleInfo {
         self.module_infos[id].clone()
     }
 
-    pub fn type_info(&self, id: &ModuleId) -> TypeInfo {
+    pub fn type_info(&self, id: &ModulePath) -> TypeInfo {
         self.type_infos[id].clone()
     }
 }
 
-pub type ExploreResult<T> = Result<T, ExploreError>;
-
-#[derive(Debug, Error, Diagnostic)]
-pub enum ExploreError {
-    #[error(transparent)]
-    Io(#[from] io::Error),
-    #[diagnostic(transparent)]
-    #[error(transparent)]
-    Source(#[from] SourceReport),
-}
-
 impl World {
-    // TODO what happens with nested modules ?
-    // TODO external packages could be provided also via HashMap<ModuleId, ModuleInfo>
+    pub fn explore(
+        path: impl AsRef<Utf8Path>,
+        options: PrintOptions,
+    ) -> Result<Self, ExploreErrors> {
+        let (file_path, import_path) =
+            FilePath::open(path).map_err(|e| ExploreErrors(vec![e.into()]))?;
 
-    /// Topological DFS Algorithm
-    pub fn explore(&mut self, path: impl AsRef<Path>) -> ExploreResult<&mut Self> {
-        let path = path.as_ref().canonicalize()?;
-        let source = Source::from_path(&path)?;
-        let file = FileParser::new(source, self.options).try_parse()?;
-        let id = file.tree.root_id();
-        let module_id = ModuleId::root(path.clone(), id);
-        self.file_infos.insert(path.clone(), file);
+        let ExploreReport {
+            order,
+            module_parents,
+            file_infos,
+            module_infos,
+            errors,
+        } = explore(file_path, import_path, options);
 
-        let mut stack = vec![module_id];
-        let mut visited = HashMap::new();
-
-        while let Some(module_id) = stack.last().cloned() {
-            match visited
-                .get(&module_id)
-                .copied()
-                .unwrap_or(VisitState::Unvisited)
-            {
-                VisitState::Unvisited => {
-                    visited.insert(module_id.clone(), VisitState::Visiting);
-                }
-                VisitState::Visiting => {
-                    visited.insert(module_id.clone(), VisitState::Visited);
-                    self.order.push(module_id.clone());
-                    stack.pop();
-                    continue;
-                }
-                VisitState::Visited => {
-                    stack.pop();
-                    continue;
-                }
-            }
-
-            let file = self.file_info(&module_id);
-            let mut explorer = Explorer::new(
-                self,
-                &mut stack,
-                &mut visited,
-                module_id.clone(),
-                file.clone(),
-                self.options,
-            );
-
-            match module_id.id().visit_by(&mut explorer, &file.tree) {
-                ControlFlow::Continue(()) => (),
-                ControlFlow::Break(e) => return Err(e),
-            }
-
-            let info = explorer.finish();
-            self.module_infos.insert(module_id, info);
+        if !errors.0.is_empty() {
+            return Err(errors);
         }
 
-        // order.reverse();
-
-        Ok(self)
+        Ok(Self {
+            order,
+            file_infos,
+            module_infos,
+            module_parents,
+            type_infos: TypeInfoTable::new(),
+            options,
+        })
     }
 }
 
 impl World {
     pub fn type_check(&mut self) -> Result<&mut Self, typer::Error> {
-        for module_id in &self.order {
-            let module = self.module_info(module_id);
+        for module_path in &self.order {
+            let module = self.module_info(module_path);
             let FileInfo {
                 tree,
                 spans,
                 source,
-            } = self.file_info(module_id);
+            } = self.file_info(module_path);
 
             let types = Typer::new(
-                module_id.clone(),
+                module_path.clone(),
                 module,
                 spans.clone(),
                 &self.module_infos,
+                &self.module_parents,
                 &self.type_infos,
             )
             .solve(&tree)?;
-            self.type_infos.insert(module_id.to_owned(), types.clone());
+            self.type_infos
+                .insert(module_path.to_owned(), types.clone());
 
             debug!(
                 "{} {:?}\n{}",
                 "Typed Abstract Syntax Tree".bold().bright_white(),
-                source.path(),
+                source.file_path(),
                 TreePrinter::new(&tree)
                     .with(SpanDecorator(spans))
                     .with(TypeDecorator(types))
-                    .render_at(module_id.id(), self.options)
+                    .render_at(module_path.id, self.options)
             );
         }
 

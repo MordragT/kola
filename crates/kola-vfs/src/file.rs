@@ -1,6 +1,6 @@
 use log::debug;
 use owo_colors::OwoColorize;
-use std::collections::HashMap;
+use std::{collections::HashMap, io};
 
 use kola_print::prelude::*;
 use kola_syntax::prelude::*;
@@ -8,7 +8,7 @@ use kola_tree::prelude::*;
 
 use crate::{
     error::{SourceDiagnostic, SourceReport},
-    path::FilePath,
+    path::{FilePath, ImportPath},
     source::Source,
 };
 
@@ -28,6 +28,10 @@ impl FileInfo {
         T: MetaCast<SyntaxPhase, Meta = Span>,
     {
         *self.spans.meta(id)
+    }
+
+    pub fn try_import_path(&self) -> io::Result<ImportPath> {
+        self.source.try_import_path()
     }
 }
 

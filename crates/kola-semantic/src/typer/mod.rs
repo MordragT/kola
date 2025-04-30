@@ -1,4 +1,4 @@
-use std::{any::Any, collections::HashMap, ops::ControlFlow};
+use std::{collections::HashMap, ops::ControlFlow};
 
 use kola_syntax::prelude::*;
 use kola_tree::prelude::*;
@@ -9,9 +9,7 @@ use crate::{
     VisitState,
     env::{KindEnv, TypeEnv},
     error::SemanticError,
-    module::{
-        ModuleExplorer, ModuleId, ModuleInfo, ModuleInfoTable, ModuleInfoView, PathResolution,
-    },
+    module::{ModuleInfo, ModuleInfoTable, ModulePath},
     substitute::{Substitutable, Substitution},
     types::{Kind, MonoType, PolyType, Property, TypeVar, Typed},
     unify::Unifiable,
@@ -19,9 +17,11 @@ use crate::{
 
 mod phase;
 mod print;
+mod resolver;
 
 pub use phase::{TypeInfo, TypeInfoTable, TypePhase};
 pub use print::TypeDecorator;
+pub use resolver::{PathResolution, PathResolver};
 
 // https://blog.stimsina.com/post/implementing-a-hindley-milner-type-system-part-2
 
@@ -109,20 +109,22 @@ pub struct Typer<'a> {
     t_env: TypeEnv,
     k_env: KindEnv,
     types: Vec<Meta<TypePhase>>,
-    module_id: ModuleId,
+    module_path: ModulePath,
     module: ModuleInfo,
     spans: SpanInfo,
     visited: HashMap<Id<node::ValueBind>, VisitState>,
     module_infos: &'a ModuleInfoTable,
+    module_parents: &'a HashMap<ModulePath, ModulePath>,
     type_infos: &'a TypeInfoTable,
 }
 
 impl<'a> Typer<'a> {
     pub fn new(
-        module_id: ModuleId,
+        module_path: ModulePath,
         module: ModuleInfo,
         spans: SpanInfo,
         module_infos: &'a ModuleInfoTable,
+        module_parents: &'a HashMap<ModulePath, ModulePath>,
         type_infos: &'a TypeInfoTable,
     ) -> Self {
         let types = spans
@@ -142,19 +144,20 @@ impl<'a> Typer<'a> {
             t_env: TypeEnv::new(),
             k_env: KindEnv::new(),
             types,
-            module_id,
+            module_path,
             module,
             spans,
             visited,
             module_infos,
+            module_parents,
             type_infos,
         }
     }
 
-    // pub fn solve()
-
     pub fn solve(mut self, tree: &Tree) -> Result<TypeInfo, Error> {
-        match self.module_id.id().visit_by(&mut self, tree) {
+        let id = self.module_path.id;
+
+        match id.visit_by(&mut self, tree) {
             ControlFlow::Break(e) => {
                 eprintln!("{e}");
                 panic!()
@@ -344,12 +347,13 @@ where
     ) -> ControlFlow<Self::BreakValue> {
         let span = self.span(id);
 
-        let module_explorer = ModuleExplorer::new(
+        let module_explorer = PathResolver::new(
             tree,
             &self.spans,
-            &self.module_id,
             &self.module,
+            &self.module_path,
             &self.module_infos,
+            &self.module_parents,
         );
 
         let resolution = match module_explorer.path_expr(id, &self.t_env) {
@@ -414,14 +418,14 @@ where
                 field_t
             }
             PathResolution::ModuleValue {
-                module_id,
+                module_path,
                 value_id,
             } => {
-                let pt = self.type_infos[&module_id].meta(value_id);
+                let pt = self.type_infos[&module_path].meta(value_id);
                 pt.0.instantiate()
             }
             PathResolution::ModuleRecordAccess {
-                module_id,
+                module_path,
                 value_id,
                 remaining,
             } => todo!(),
@@ -855,13 +859,16 @@ where
 #[cfg(test)]
 mod tests {
 
+    use std::collections::HashMap;
+
     use kola_syntax::span::{Span, SpanInfo};
     use kola_tree::prelude::*;
+    use kola_vfs::path::FilePath;
 
     use super::{Error, TypeInfo, TypeInfoTable, Typer};
     use crate::{
         error::SemanticError,
-        module::{ModuleId, ModuleInfoBuilder, ModuleInfoTable},
+        module::{ModuleInfoBuilder, ModuleInfoTable, ModulePath},
         types::*,
     };
 
@@ -886,14 +893,18 @@ mod tests {
             &mut builder,
         );
         let root = builder.insert(node::Module(vec![bind]));
-        let module_id = ModuleId::root("/mocked/path.kl", root.clone());
+        let module_path = ModulePath::new(
+            root.clone(),
+            FilePath::new_unchecked("/mocked/path.kl", "path.kl"),
+        );
         let tree = builder.finish(root);
 
         Typer::new(
-            module_id,
+            module_path,
             ModuleInfoBuilder::new().finish(),
             mocked_spans(&tree),
             &ModuleInfoTable::new(),
+            &HashMap::new(),
             &TypeInfoTable::new(),
         )
         .solve(&tree)

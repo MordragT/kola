@@ -1,3 +1,4 @@
+use camino::Utf8PathBuf;
 use log::info;
 use miette::IntoDiagnostic;
 use owo_colors::OwoColorize;
@@ -6,7 +7,7 @@ use std::path::PathBuf;
 use kola_semantic::prelude::*;
 // use kola_compiler::prelude::*;
 use kola_print::prelude::*;
-use kola_syntax::prelude::*;
+use kola_vfs::prelude::*;
 
 #[derive(Debug, clap::Parser)]
 #[command(author, version, about, long_about = None)]
@@ -17,8 +18,8 @@ pub struct Cli {
 
 #[derive(clap::Subcommand, Debug)]
 pub enum Cmd {
-    Parse { path: PathBuf },
-    Analyze { path: PathBuf },
+    Parse { path: Utf8PathBuf },
+    Analyze { path: Utf8PathBuf },
 }
 
 fn main() -> miette::Result<()> {
@@ -33,12 +34,12 @@ fn main() -> miette::Result<()> {
 
     match cli.command {
         Cmd::Parse { path } => {
-            let source = Source::from_path(path).into_diagnostic()?;
+            let (file_path, import_path) = FilePath::open(path).into_diagnostic()?;
+            let source = Source::from_path(file_path, import_path).into_diagnostic()?;
             let _file = FileParser::new(source, options).try_parse()?;
         }
         Cmd::Analyze { path } => {
-            let mut world = World::new(options);
-            world.explore(path)?;
+            let mut world = World::explore(path, options)?;
 
             info!(
                 "{}\n{}",

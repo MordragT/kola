@@ -10,22 +10,17 @@
 //     is resolved by first looking up `S` in the environment (finding `MyModule`)
 //     and then looking up `x` or `T` within `MyModule`.
 // */
-use std::{
-    collections::HashMap,
-    fmt,
-    hash::Hash,
-    path::{Path, PathBuf},
-    rc::Rc,
-};
+use std::{collections::HashMap, fmt, hash::Hash, rc::Rc};
 
+use derive_more::Display;
 use kola_syntax::prelude::*;
 use kola_tree::{
     node::{Symbol, Vis},
     prelude::*,
 };
-use kola_vfs::error::SourceDiagnostic;
+use kola_vfs::{error::SourceDiagnostic, path::FilePath};
 
-pub type ModuleInfoTable = HashMap<ModuleId, ModuleInfo>;
+pub type ModuleInfoTable = HashMap<ModulePath, ModuleInfo>;
 
 pub trait ModuleInfoView {
     fn module(&self, symbol: &Symbol) -> Option<&ModuleBind>;
@@ -195,81 +190,34 @@ impl TypeBind {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ModuleBind {
-    pub id: ModuleId,
+    pub path: ModulePath,
     pub vis: Vis,
     pub span: Span,
 }
 
 impl ModuleBind {
-    pub fn new(id: ModuleId, vis: Vis, span: Span) -> Self {
-        Self { id, vis, span }
+    pub fn new(path: ModulePath, vis: Vis, span: Span) -> Self {
+        Self { path, vis, span }
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-struct Repr {
-    parent: Option<ModuleId>,
-    path: PathBuf,
-    id: Id<node::Module>,
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct ModulePath {
+    pub id: Id<node::Module>,
+    pub file_path: FilePath,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct ModuleId(Rc<Repr>);
+impl ModulePath {
+    pub fn new(id: Id<node::Module>, file_path: FilePath) -> Self {
+        Self { id, file_path }
+    }
+}
 
-impl fmt::Display for ModuleId {
+impl fmt::Display for ModulePath {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let parent = if let Some(parent) = &self.0.parent {
-            Some(&parent.0.path)
-        } else {
-            None
-        };
-
-        f.debug_struct("ModuleId")
-            .field("id", &self.0.id.as_usize())
-            .field("path", &self.0.path)
-            .field("parent", &parent)
+        f.debug_struct("ModulePath")
+            .field("id", &self.id.as_usize())
+            .field("path", &self.file_path)
             .finish()
-    }
-}
-
-impl ModuleId {
-    // pub fn root(path: impl Into<PathBuf>, id: Id<node::Module>) -> Self {
-    //     let repr = Repr {
-    //         parent: None,
-    //         path: path.into(),
-    //         id,
-    //     };
-
-    //     Self(Rc::new(repr))
-    // }
-
-    pub fn new(parent: Option<Self>, path: impl Into<PathBuf>, id: Id<node::Module>) -> Self {
-        let repr = Repr {
-            parent,
-            path: path.into(),
-            id,
-        };
-
-        Self(Rc::new(repr))
-    }
-
-    pub fn parent(&self) -> Option<&Self> {
-        self.0.parent.as_ref()
-    }
-
-    pub fn path(&self) -> &Path {
-        &self.0.path
-    }
-
-    pub fn id(&self) -> Id<node::Module> {
-        self.0.id
-    }
-
-    pub fn is_parent_of(&self, other: &Self) -> bool {
-        other.parent().is_some_and(|parent| parent == self)
-    }
-
-    pub fn is_child_of(&self, other: &Self) -> bool {
-        self.parent().is_some_and(|parent| parent == other)
     }
 }

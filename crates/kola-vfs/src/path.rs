@@ -11,19 +11,66 @@ pub struct FilePath {
 }
 
 impl FilePath {
+    pub fn new_unchecked(path: impl AsRef<Utf8Path>, name: impl AsRef<str>) -> Self {
+        Self {
+            path: path.as_ref().into(),
+            name: name.as_ref().into(),
+        }
+    }
+
+    pub fn open(file_path: impl AsRef<Utf8Path>) -> io::Result<(Self, Option<ImportPath>)> {
+        let path = file_path.as_ref().canonicalize_utf8()?;
+
+        if path.is_dir() {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "Path is a directory",
+            ));
+        }
+
+        let name = path
+            .file_stem()
+            .ok_or_else(|| io::Error::new(io::ErrorKind::InvalidInput, "Path has no file name"))?;
+
+        let import_path = if let Some(parent) = path.parent() {
+            ImportPath::open(parent.join(name)).ok()
+        } else {
+            None
+        };
+
+        Ok((
+            Self {
+                name: name.into(),
+                path: path.into(),
+            },
+            import_path,
+        ))
+    }
+
     pub fn name(&self) -> Arc<str> {
         self.name.clone()
     }
 }
 
 #[derive(Debug, Display, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct ModulePath(Arc<Utf8Path>);
+pub struct ImportPath(Arc<Utf8Path>);
 
-impl ModulePath {
+impl ImportPath {
     pub const EXTENSION: &'static str = "kl";
+
+    pub fn new_unchecked(path: impl AsRef<Utf8Path>) -> Self {
+        Self(path.as_ref().into())
+    }
 
     pub fn open(path: impl AsRef<Utf8Path>) -> io::Result<Self> {
         let path = path.as_ref().canonicalize_utf8()?;
+
+        if path.is_file() {
+            return Err(io::Error::new(
+                io::ErrorKind::InvalidInput,
+                "Path is a file",
+            ));
+        }
 
         Ok(Self(path.into()))
     }
