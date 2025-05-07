@@ -1,5 +1,5 @@
 pub use ext::ParserExt;
-pub use state::{Extra, State, StateRepr};
+pub use state::{Error, Extra, State, StateRepr};
 
 pub mod primitives;
 pub mod rules;
@@ -19,7 +19,7 @@ use crate::{
 pub struct ParseResult<'t> {
     pub tree: Option<Tree>,
     pub spans: SpanInfo,
-    pub errors: Vec<Rich<'t, Token<'t>>>,
+    pub errors: Vec<Error<'t>>,
 }
 
 pub fn parse<'t>(tokens: TokenSlice<'t>, eoi: Span) -> ParseResult<'t> {
@@ -46,10 +46,7 @@ pub fn parse<'t>(tokens: TokenSlice<'t>, eoi: Span) -> ParseResult<'t> {
 
 type Output<T> = (T, TreeBuilder, MetaVec<SyntaxPhase>);
 
-pub fn try_parse_with<'t, T, P, I>(
-    input: I,
-    parser: P,
-) -> Result<Output<T>, Vec<Rich<'t, Token<'t>>>>
+pub fn try_parse_with<'t, T, P, I>(input: I, parser: P) -> Result<Output<T>, Vec<Error<'t>>>
 where
     I: ValueInput<'t, Token = Token<'t>, Span = Span>,
     P: Parser<'t, I, T, Extra<'t>>,

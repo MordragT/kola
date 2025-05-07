@@ -4,7 +4,8 @@ use kola_tree::prelude::*;
 use crate::{Span, SyntaxPhase, token::Token};
 
 pub type State = extra::SimpleState<StateRepr>;
-pub type Extra<'src> = extra::Full<Rich<'src, Token<'src>, Span>, State, ()>;
+pub type Error<'t> = Rich<'t, Token<'t>, Span>;
+pub type Extra<'t> = extra::Full<Error<'t>, State, ()>;
 
 #[derive(Debug, Default)]
 pub struct StateRepr {

@@ -2,6 +2,8 @@ use camino::Utf8Path;
 use derive_more::Display;
 use std::{io, sync::Arc};
 
+// TODO explicit errors?
+
 // TODO maybe with Repr pattern only one Arc
 #[derive(Debug, Display, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 #[display("{path}")]
@@ -19,6 +21,8 @@ impl FilePath {
     }
 
     pub fn open(file_path: impl AsRef<Utf8Path>) -> io::Result<(Self, Option<ImportPath>)> {
+        // TODO this throws an error if file does not exist,
+        // but maybe check that explictely with a better error message ?
         let path = file_path.as_ref().canonicalize_utf8()?;
 
         if path.is_dir() {
@@ -63,6 +67,8 @@ impl ImportPath {
     }
 
     pub fn open(path: impl AsRef<Utf8Path>) -> io::Result<Self> {
+        // TODO this throws an error if dir does not exist,
+        // but maybe check that explictely with a better error message ?
         let path = path.as_ref().canonicalize_utf8()?;
 
         if path.is_file() {

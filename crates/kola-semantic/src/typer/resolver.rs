@@ -2,7 +2,7 @@ use std::collections::HashMap;
 
 use kola_syntax::prelude::*;
 use kola_tree::{node::Vis, prelude::*};
-use kola_vfs::error::SourceDiagnostic;
+use kola_vfs::diag::SourceDiagnostic;
 
 use crate::{
     env::TypeEnv,

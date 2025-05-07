@@ -24,6 +24,7 @@ impl Source {
     }
 
     pub fn from_path(file_path: FilePath, import_path: Option<ImportPath>) -> io::Result<Self> {
+        // this should only fail if file is not valid utf8, because FilePath already checks for existence
         let content = fs::read_to_string(file_path.path.as_std_path())?;
 
         Ok(Self::new(file_path, import_path, content))
@@ -51,7 +52,7 @@ impl Source {
         } else {
             Err(io::Error::new(
                 io::ErrorKind::NotFound,
-                "import path not found",
+                "Import Path not found",
             ))
         }
     }
@@ -73,11 +74,7 @@ impl Source {
 
     #[inline]
     pub fn end_of_input(&self) -> Span {
-        Span {
-            start: self.len(),
-            end: self.len(),
-            context: (),
-        }
+        Span::new(self.len(), self.len())
     }
 }
 

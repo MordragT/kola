@@ -10,6 +10,7 @@
 pub mod env;
 pub mod error;
 pub mod explorer;
+pub mod explorer2;
 pub mod module;
 pub mod substitute;
 pub mod typer;
@@ -19,10 +20,9 @@ pub mod world;
 
 pub mod prelude {
     pub use crate::env::{KindEnv, TypeEnv};
-    pub use crate::error::{SemanticError, SemanticErrors, SemanticReport};
+    pub use crate::error::{SemanticError, SemanticErrors};
     pub use crate::module::{
-        ModuleBind, ModuleInfo, ModuleInfoBuilder, ModuleInfoTable, ModuleInfoView, ModulePath,
-        TypeBind, ValueBind,
+        ModuleBind, ModuleInfo, ModuleInfoBuilder, ModuleInfoView, TypeBind, ValueBind,
     };
     pub use crate::substitute::{Substitutable, Substitution};
     pub use crate::typer::{

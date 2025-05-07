@@ -3,7 +3,7 @@ use std::{collections::HashMap, ops::ControlFlow};
 use kola_syntax::prelude::*;
 use kola_tree::prelude::*;
 use kola_utils::Errors;
-use kola_vfs::error::SourceDiagnostic;
+use kola_vfs::diag::SourceDiagnostic;
 
 use crate::{
     VisitState,
@@ -873,11 +873,7 @@ mod tests {
     };
 
     fn mocked_spans(tree: &impl TreeView) -> SpanInfo {
-        let span = Span {
-            start: 0,
-            end: 0,
-            context: (),
-        };
+        let span = Span::new(0, 0);
         tree.metadata_with(|node| Meta::default_with(span, node.kind()))
             .into_metadata()
     }
@@ -893,16 +889,21 @@ mod tests {
             &mut builder,
         );
         let root = builder.insert(node::Module(vec![bind]));
-        let module_path = ModulePath::new(
-            root.clone(),
-            FilePath::new_unchecked("/mocked/path.kl", "path.kl"),
-        );
         let tree = builder.finish(root);
+
+        let spans = mocked_spans(&tree);
+
+        let span = *spans.meta(root);
+        let module_path = ModulePath::new(
+            root,
+            FilePath::new_unchecked("/mocked/path.kl", "path.kl"),
+            span,
+        );
 
         Typer::new(
             module_path,
             ModuleInfoBuilder::new().finish(),
-            mocked_spans(&tree),
+            spans,
             &ModuleInfoTable::new(),
             &HashMap::new(),
             &TypeInfoTable::new(),

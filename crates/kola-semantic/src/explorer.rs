@@ -2,36 +2,57 @@ use kola_print::PrintOptions;
 use kola_syntax::prelude::*;
 use kola_tree::{node::Vis, prelude::*};
 use kola_vfs::prelude::*;
-
-use miette::{Diagnostic, Result};
-use std::{collections::HashMap, io, ops::ControlFlow};
+use miette::Diagnostic;
 use thiserror::Error;
+
+use std::{collections::HashMap, io, ops::ControlFlow};
 
 use crate::{
     VisitState,
     module::{
-        ModuleBind, ModuleInfoBuilder, ModuleInfoTable, ModuleInfoView, ModulePath, TypeBind,
-        ValueBind,
+        ModuleBind, ModuleInfo, ModuleInfoBuilder, ModuleInfoTable, ModuleInfoView, ModulePath,
+        TypeBind, ValueBind,
     },
 };
 
-pub type ExploreResult<T> = Result<T, ExploreError>;
-
-#[derive(Debug, Error, Diagnostic)]
-pub enum ExploreError {
-    #[error(transparent)]
-    Io(#[from] io::Error),
-    #[diagnostic(transparent)]
-    #[error(transparent)]
-    Source(#[from] SourceReport),
+#[derive(Error, Debug, Diagnostic)]
+#[error("Module Report:")]
+pub struct ModuleReport {
+    #[label = "In this module"]
+    pub span: Option<Span>,
+    #[source_code]
+    pub src: Source,
+    #[related]
+    pub related: Vec<SourceDiagnostic>,
 }
 
-#[derive(Debug, Error, Diagnostic)]
-#[error("Errors:")]
-pub struct ExploreErrors(#[related] pub Vec<ExploreError>);
+impl ModuleReport {
+    pub fn new(report: SourceReport, span: Option<Span>) -> Self {
+        Self {
+            span,
+            src: report.src,
+            related: report.related,
+        }
+    }
+}
 
+impl From<SourceReport> for ModuleReport {
+    fn from(report: SourceReport) -> Self {
+        Self {
+            span: None,
+            src: report.src,
+            related: report.related,
+        }
+    }
+}
+
+#[derive(Error, Debug, Default, Diagnostic)]
+#[error("Module Reports:")]
+pub struct ModuleReports(#[related] Vec<ModuleReport>);
+
+#[derive(Debug, Default)]
 pub struct ExploreReport {
-    pub errors: ExploreErrors,
+    pub reports: ModuleReports,
     pub order: Vec<ModulePath>,
     pub file_infos: FileInfoTable,
     pub module_parents: HashMap<ModulePath, ModulePath>,
@@ -80,46 +101,32 @@ pub fn try_explore_path(
     )
 }
 
-pub fn init_file(
-    file_path: FilePath,
-    import_path: Option<ImportPath>,
-    options: PrintOptions,
-) -> ExploreResult<(ModulePath, FileInfo)> {
-    let source = Source::from_path(file_path.clone(), import_path)?;
-    let file = FileParser::new(source, options).try_parse()?;
-
-    let id = file.tree.root_id();
-    let module_path = ModulePath::new(id, file_path);
-
-    Ok((module_path, file))
-}
-
 /// Topological DFS Algorithm
 pub fn explore(
     file_path: FilePath,
     import_path: Option<ImportPath>,
     options: PrintOptions,
-) -> ExploreReport {
+) -> io::Result<ExploreReport> {
     let mut order = Vec::new();
     let mut stack = Vec::new();
     let mut visited = HashMap::new();
     let mut file_infos = FileInfoTable::new();
     let mut module_parents = HashMap::new();
     let mut module_infos = ModuleInfoTable::new();
-    let mut errors = Vec::new();
+    let mut reports = Vec::new();
 
-    let (module_path, file) = match init_file(file_path.clone(), import_path, options) {
-        Ok(tuple) => tuple,
-        Err(e) => {
-            return ExploreReport {
-                errors: ExploreErrors(vec![e]),
-                order,
-                module_parents,
-                file_infos,
-                module_infos,
-            };
+    let source = Source::from_path(file_path.clone(), import_path)?;
+    let file = match FileParser::new(source, options).try_parse() {
+        Ok(file) => file,
+        Err(report) => {
+            reports.push(report.into());
+            return Ok(ExploreReport {
+                reports: ModuleReports(reports),
+                ..Default::default()
+            });
         }
     };
+    let module_path = ModulePath::new(file.tree.root_id(), file_path.clone(), None);
 
     file_infos.insert(file_path.clone(), file);
     stack.push(module_path);
@@ -154,28 +161,29 @@ pub fn explore(
             &module_infos,
             &file,
             &module_path,
+            &mut reports,
             options,
         );
 
         match module_path.id.visit_by(&mut explorer, &file.tree) {
             ControlFlow::Continue(()) => (),
             ControlFlow::Break(e) => {
-                errors.push(e);
+                reports.push(e);
                 continue;
             }
         }
 
-        let module_info = explorer.builder.finish();
+        let module_info = explorer.finish();
         module_infos.insert(module_path.clone(), module_info);
     }
 
-    ExploreReport {
-        errors: ExploreErrors(errors),
+    Ok(ExploreReport {
+        reports: ModuleReports(reports),
         order,
         module_parents,
         file_infos,
         module_infos,
-    }
+    })
 }
 
 struct Explorer<'a> {
@@ -186,6 +194,8 @@ struct Explorer<'a> {
     module_infos: &'a ModuleInfoTable,
     file: &'a FileInfo,
     module_path: &'a ModulePath,
+    reports: &'a mut Vec<ModuleReport>,
+    errors: Vec<SourceDiagnostic>,
     builder: ModuleInfoBuilder,
     options: PrintOptions,
 }
@@ -199,6 +209,7 @@ impl<'a> Explorer<'a> {
         module_infos: &'a ModuleInfoTable,
         file: &'a FileInfo,
         module_path: &'a ModulePath,
+        reports: &'a mut Vec<ModuleReport>,
         options: PrintOptions,
     ) -> Self {
         let mut builder = ModuleInfoBuilder::new();
@@ -219,6 +230,8 @@ impl<'a> Explorer<'a> {
             module_infos,
             file,
             module_path,
+            errors: Vec::new(),
+            reports,
             builder,
             options,
         }
@@ -235,13 +248,34 @@ impl<'a> Explorer<'a> {
     }
 
     #[inline]
-    fn report(&self, diag: SourceDiagnostic) -> ExploreError {
-        diag.report(self.file.source.clone()).into()
+    fn report(&mut self, diag: impl Into<SourceDiagnostic>) {
+        self.errors.push(diag.into())
+    }
+
+    #[inline]
+    fn report_with(&mut self, err: impl IntoSourceDiagnostic, span: Span) {
+        let diag = err.into_source_diagnostic(span);
+        self.report(diag);
+    }
+
+    #[inline]
+    fn finish(self) -> ModuleInfo {
+        if !self.errors.is_empty() {
+            let report = ModuleReport {
+                span: self.module_path.span,
+                src: self.file.source.clone(),
+                related: self.errors,
+            };
+
+            self.reports.push(report);
+        }
+
+        self.builder.finish()
     }
 }
 
 impl<'a, T: TreeView> Visitor<T> for Explorer<'a> {
-    type BreakValue = ExploreError;
+    type BreakValue = ModuleReport;
 
     // This will only traverse the current module's scope,
     // because the different module branches are not visited any further under `visit_module_bind`
@@ -261,7 +295,7 @@ impl<'a, T: TreeView> Visitor<T> for Explorer<'a> {
             .builder
             .insert_value(name, ValueBind::new(id, vis, span))
         {
-            return ControlFlow::Break(self.report(diag));
+            self.report(diag);
         }
 
         ControlFlow::Continue(())
@@ -279,7 +313,7 @@ impl<'a, T: TreeView> Visitor<T> for Explorer<'a> {
         let name = name.get(tree).0.clone();
 
         if let Err(diag) = self.builder.insert_type(name, TypeBind::new(id, span)) {
-            return ControlFlow::Break(self.report(diag));
+            self.report(diag);
         }
         ControlFlow::Continue(())
     }
@@ -303,12 +337,14 @@ impl<'a, T: TreeView> Visitor<T> for Explorer<'a> {
         let bind = match *value.get(tree) {
             node::ModuleExpr::Module(id) => {
                 let span = self.span(id);
-                let module_path = ModulePath::new(id, self.module_path.file_path.clone());
+                let module_path =
+                    ModulePath::new(id, self.module_path.file_path.clone(), Some(span));
 
                 self.module_parents.insert(module_path.clone(), parent_path);
                 ModuleBind::new(module_path, vis, span)
             }
             node::ModuleExpr::Import(import_id) => {
+                let span = self.span(import_id);
                 let name = import_id.get(tree).0.get(tree);
 
                 // TODO when inside a nested module this will still return Ok
@@ -316,23 +352,40 @@ impl<'a, T: TreeView> Visitor<T> for Explorer<'a> {
                 // It should however return an error
                 let import_path = match self.file.try_import_path() {
                     Ok(path) => path,
-                    Err(e) => return ControlFlow::Break(e.into()),
+                    Err(err) => {
+                        self.report_with(err, span);
+                        return ControlFlow::Continue(());
+                    }
                 };
 
                 let (file_path, import_path) = match import_path.discover(name) {
                     Ok(tuple) => tuple,
-                    Err(e) => return ControlFlow::Break(e.into()),
+                    Err(err) => {
+                        self.report_with(err, span);
+                        return ControlFlow::Continue(());
+                    }
                 };
 
                 // Module files are only allowed to import from their designated module direcotry.
                 // For example a/b.kl may only import from a/b/
                 // Therefore the parsing logic inside `explore_file` is guaranteed to only
                 // run once per file.
-                let (module_path, file) =
-                    match init_file(file_path.clone(), import_path, self.options) {
-                        Ok(tuple) => tuple,
-                        Err(e) => return ControlFlow::Break(e),
-                    };
+                let source = match Source::from_path(file_path.clone(), import_path) {
+                    Ok(source) => source,
+                    Err(err) => {
+                        self.report_with(err, span);
+                        return ControlFlow::Continue(());
+                    }
+                };
+                let file = match FileParser::new(source, self.options).try_parse() {
+                    Ok(file) => file,
+                    Err(report) => {
+                        self.reports.push(report.into());
+                        return ControlFlow::Continue(());
+                    }
+                };
+                let module_path = ModulePath::new(file.tree.root_id(), file_path.clone(), None);
+
                 self.module_parents.insert(module_path.clone(), parent_path);
                 self.file_infos.insert(file_path, file);
 
@@ -349,7 +402,10 @@ impl<'a, T: TreeView> Visitor<T> for Explorer<'a> {
                     &self.module_infos,
                 ) {
                     Ok(path) => path,
-                    Err(diag) => return ControlFlow::Break(self.report(diag)),
+                    Err(diag) => {
+                        self.report(diag);
+                        return ControlFlow::Continue(());
+                    }
                 };
 
                 ModuleBind::new(path, vis, span)
@@ -364,21 +420,20 @@ impl<'a, T: TreeView> Visitor<T> for Explorer<'a> {
         {
             VisitState::Unvisited => self.stack.push(bind.path.clone()),
             VisitState::Visiting => {
-                return ControlFlow::Break(
-                    self.report(
-                        SourceDiagnostic::error(
-                            bind.span,
-                            format!("Circular dependency detected at: {:?}", self.module_path),
-                        )
-                        .with_help("Review its imports."),
-                    ),
+                self.report(
+                    SourceDiagnostic::error(
+                        bind.span,
+                        format!("Circular dependency detected at: {:?}", self.module_path),
+                    )
+                    .with_help("Review its imports."),
                 );
+                return ControlFlow::Continue(());
             }
             VisitState::Visited => (),
         }
 
         if let Err(diag) = self.builder.insert_module(name, bind) {
-            return ControlFlow::Break(self.report(diag));
+            self.report(diag);
         }
         ControlFlow::Continue(())
     }

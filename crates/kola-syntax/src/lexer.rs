@@ -1,4 +1,4 @@
-use chumsky::prelude::*;
+use chumsky::{input::StrInput, prelude::*};
 
 use crate::{
     span::{Span, Spanned},
@@ -7,15 +7,23 @@ use crate::{
 
 pub struct TokenizeResult<'t> {
     pub tokens: Option<Tokens<'t>>,
-    pub errors: Vec<Rich<'t, char>>,
+    pub errors: Vec<Rich<'t, char, Span>>,
 }
 
 pub fn tokenize(input: &str) -> TokenizeResult<'_> {
+    let input = input.map_span(|s| Span::new(s.start, s.end));
+
     let lexer = lexer();
     let (tokens, errors) = lexer.parse(input).into_output_errors();
 
-    // let errors = errors.into_iter().map(SourceDiagnostic::from).collect();
     TokenizeResult { tokens, errors }
+}
+
+pub fn try_tokenize(input: &str) -> Result<Tokens<'_>, Vec<Rich<'_, char, Span>>> {
+    let input = input.map_span(|s| Span::new(s.start, s.end));
+
+    let lexer = lexer();
+    lexer.parse(input).into_result()
 }
 
 pub type Extra<'t> = extra::Full<Rich<'t, char, Span>, (), ()>;
@@ -42,7 +50,10 @@ pub type Extra<'t> = extra::Full<Rich<'t, char, Span>, (), ()>;
  * unexpected runtime behavior or parse failures!
  */
 
-pub fn lexer<'t>() -> impl Parser<'t, &'t str, Vec<Spanned<Token<'t>>>, Extra<'t>> {
+pub fn lexer<'t, I>() -> impl Parser<'t, I, Vec<Spanned<Token<'t>>>, Extra<'t>>
+where
+    I: StrInput<'t, Token = char, Slice = &'t str, Span = Span>,
+{
     // Define a common escape sequence parser
     let escape = just('\\').ignore_then(
         just('\\')
@@ -421,38 +432,10 @@ mod test {
         let input = "let x = 42";
         let tokens = tokenize_str(input);
 
-        assert_eq!(
-            tokens[0].1,
-            Span {
-                start: 0,
-                end: 3,
-                context: ()
-            }
-        ); // "let"
-        assert_eq!(
-            tokens[1].1,
-            Span {
-                start: 4,
-                end: 5,
-                context: ()
-            }
-        ); // "x"
-        assert_eq!(
-            tokens[2].1,
-            Span {
-                start: 6,
-                end: 7,
-                context: ()
-            }
-        ); // "="
-        assert_eq!(
-            tokens[3].1,
-            Span {
-                start: 8,
-                end: 10,
-                context: ()
-            }
-        ); // "42"
+        assert_eq!(tokens[0].1, Span::new(0, 3)); // "let"
+        assert_eq!(tokens[1].1, Span::new(4, 5)); // "x"
+        assert_eq!(tokens[2].1, Span::new(6, 7)); // "="
+        assert_eq!(tokens[3].1, Span::new(8, 10)); // "42"
     }
 
     // #[test]

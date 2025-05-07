@@ -1,8 +1,8 @@
 use kola_syntax::prelude::*;
 use kola_tree::node::Symbol;
 use kola_utils::Errors;
-use kola_vfs::source::Source;
-use miette::{Diagnostic, SourceSpan};
+use kola_vfs::diag::{IntoSourceDiagnostic, SourceDiagnostic};
+use miette::Diagnostic;
 use thiserror::Error;
 
 use crate::types::{Kind, MonoType, TypeVar};
@@ -20,12 +20,12 @@ pub enum SemanticError {
         expected: MonoType,
         actual: MonoType,
     },
-    #[error("Cannot Unify Label: {label} : {expected} with {actual} because {cause:?}")]
+    #[error("Cannot Unify Label: {label} : {expected} with {actual} because\n{cause}")]
     CannotUnifyLabel {
         label: Symbol,
         expected: MonoType,
         actual: MonoType,
-        cause: Vec<SemanticError>,
+        cause: SemanticErrors,
     },
     #[error("Cannot Constrain: {expected:?} {actual}")]
     CannotConstrain { expected: Kind, actual: MonoType },
@@ -42,23 +42,11 @@ impl SemanticError {
     }
 }
 
-#[derive(Debug, Clone, Error, Diagnostic, PartialEq, Eq)]
-#[error("Inference failed with:")]
-pub struct SemanticReport {
-    #[source_code]
-    pub src: Source,
-    #[label("This here")]
-    pub span: SourceSpan,
-    #[related]
-    pub related: SemanticErrors,
-}
-
-impl SemanticReport {
-    pub fn new(source: Source, span: Span, related: SemanticErrors) -> Self {
-        Self {
-            src: source,
-            span: SourceSpan::from(span.into_range()),
-            related,
+impl IntoSourceDiagnostic for SemanticError {
+    fn into_source_diagnostic(self, span: Span) -> SourceDiagnostic {
+        // TODO maybe improve ?
+        match self {
+            other => SourceDiagnostic::error(span, other.to_string()),
         }
     }
 }

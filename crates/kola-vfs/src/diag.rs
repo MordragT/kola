@@ -4,7 +4,7 @@ use kola_syntax::{
     token::Token,
 };
 use miette::{Diagnostic, LabeledSpan, Severity};
-use std::fmt;
+use std::{fmt, io};
 use thiserror::Error;
 
 use crate::source::Source;
@@ -16,7 +16,11 @@ use crate::source::Source;
 pub type SourceResult<T> = Result<T, Vec<SourceDiagnostic>>;
 
 #[derive(Error, Debug, Diagnostic)]
-#[error("Reporting Source Diagnostics:")]
+#[error("Source Reports:")]
+pub struct SourceReports(#[related] Vec<SourceReport>);
+
+#[derive(Error, Debug, Diagnostic)]
+#[error("Source Report:")]
 pub struct SourceReport {
     #[source_code]
     pub src: Source,
@@ -32,6 +36,16 @@ impl SourceReport {
         }
     }
 }
+
+/// Converts a type into a source diagnostic.
+pub trait IntoSourceDiagnostic: fmt::Display + Sized {
+    /// Converts the type into a source diagnostic.
+    fn into_source_diagnostic(self, span: Span) -> SourceDiagnostic {
+        SourceDiagnostic::error(span, self.to_string())
+    }
+}
+
+impl IntoSourceDiagnostic for io::Error {}
 
 /// Represents a diagnostic message with source location information.
 ///
@@ -165,8 +179,8 @@ impl SourceDiagnostic {
 }
 
 /// Converts a Chumsky lexer error into a source diagnostic.
-impl<'t> From<Rich<'t, char>> for SourceDiagnostic {
-    fn from(e: Rich<'t, char>) -> Self {
+impl<'t> From<Rich<'t, char, Span>> for SourceDiagnostic {
+    fn from(e: Rich<'t, char, Span>) -> Self {
         let message = e.to_string();
         let span = *e.span();
         let trace = e

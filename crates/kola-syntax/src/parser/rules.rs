@@ -997,13 +997,13 @@ mod tests {
         expr_parser, module_parser, module_type_parser, pat_parser, type_bind_parser,
         type_expr_parser, type_parser,
     };
-    use crate::{lexer::lexer, parser::try_parse_with};
+    use crate::{lexer::try_tokenize, parser::try_parse_with, span::Span};
 
     #[test]
     fn pat() {
         let src = "{ a: x, b: { y }, c: _, d }";
-        let tokens = lexer().parse(src).into_result().unwrap();
-        let eoi = (src.len()..src.len()).into();
+        let tokens = try_tokenize(src).unwrap();
+        let eoi = Span::new(src.len(), src.len());
         let input = tokens.as_slice().map(eoi, |(t, s)| (t, s));
 
         let (pat, tree, _spans) = try_parse_with(input, pat_parser()).unwrap();
@@ -1049,8 +1049,8 @@ mod tests {
     #[test]
     fn case_expr() {
         let src = "case x of 1 => true, _ => false";
-        let tokens = lexer().parse(src).into_result().unwrap();
-        let eoi = (src.len()..src.len()).into();
+        let tokens = try_tokenize(src).unwrap();
+        let eoi = Span::new(src.len(), src.len());
         let input = tokens.as_slice().map(eoi, |(t, s)| (t, s));
 
         let (expr, tree, _spans) = try_parse_with(input, expr_parser()).unwrap();
@@ -1086,8 +1086,8 @@ mod tests {
     #[test]
     fn func_expr() {
         let src = "fn name => \"Hello\" + name";
-        let tokens = lexer().parse(src).into_result().unwrap();
-        let eoi = (src.len()..src.len()).into();
+        let tokens = try_tokenize(src).unwrap();
+        let eoi = Span::new(src.len(), src.len());
         let input = tokens.as_slice().map(eoi, |(t, s)| (t, s));
 
         let (expr, tree, _spans) = try_parse_with(input, expr_parser()).unwrap();
@@ -1107,8 +1107,8 @@ mod tests {
     fn arithmetic_expr() {
         // ((-4 * 10) + (40 / 4)) + 30 = 0
         let src = "-4 * 10 + 40 / 4 + 30 == 0";
-        let tokens = lexer().parse(src).into_result().unwrap();
-        let eoi = (src.len()..src.len()).into();
+        let tokens = try_tokenize(src).unwrap();
+        let eoi = Span::new(src.len(), src.len());
         let input = tokens.as_slice().map(eoi, |(t, s)| (t, s));
 
         let (expr, tree, _spans) = try_parse_with(input, expr_parser()).unwrap();
@@ -1144,8 +1144,8 @@ mod tests {
     #[test]
     fn if_expr() {
         let src = "if y then x else 0";
-        let tokens = lexer().parse(src).into_result().unwrap();
-        let eoi = (src.len()..src.len()).into();
+        let tokens = try_tokenize(src).unwrap();
+        let eoi = Span::new(src.len(), src.len());
         let input = tokens.as_slice().map(eoi, |(t, s)| (t, s));
 
         let (expr, tree, _spans) = try_parse_with(input, expr_parser()).unwrap();
@@ -1173,8 +1173,8 @@ mod tests {
     #[test]
     fn path_expr() {
         let src = "x.y.z";
-        let tokens = lexer().parse(src).into_result().unwrap();
-        let eoi = (src.len()..src.len()).into();
+        let tokens = try_tokenize(src).unwrap();
+        let eoi = Span::new(src.len(), src.len());
         let input = tokens.as_slice().map(eoi, |(t, s)| (t, s));
 
         let (expr, tree, _spans) = try_parse_with(input, expr_parser()).unwrap();
@@ -1192,8 +1192,8 @@ mod tests {
     #[test]
     fn record_extension() {
         let src = "{ y | +x = 10 }";
-        let tokens = lexer().parse(src).into_result().unwrap();
-        let eoi = (src.len()..src.len()).into();
+        let tokens = try_tokenize(src).unwrap();
+        let eoi = Span::new(src.len(), src.len());
         let input = tokens.as_slice().map(eoi, |(t, s)| (t, s));
 
         let (expr, tree, _spans) = try_parse_with(input, expr_parser()).unwrap();
@@ -1216,8 +1216,8 @@ mod tests {
     #[test]
     fn record() {
         let src = "{ x = 10, y = 20 }";
-        let tokens = lexer().parse(src).into_result().unwrap();
-        let eoi = (src.len()..src.len()).into();
+        let tokens = try_tokenize(src).unwrap();
+        let eoi = Span::new(src.len(), src.len());
         let input = tokens.as_slice().map(eoi, |(t, s)| (t, s));
 
         let (expr, tree, _spans) = try_parse_with(input, expr_parser()).unwrap();
@@ -1248,8 +1248,8 @@ mod tests {
     #[test]
     fn type_expr() {
         let src = "Num -> { a : Num, b : Num -> Num } -> Str";
-        let tokens = lexer().parse(src).into_result().unwrap();
-        let eoi = (src.len()..src.len()).into();
+        let tokens = try_tokenize(src).unwrap();
+        let eoi = Span::new(src.len(), src.len());
         let input = tokens.as_slice().map(eoi, |(t, s)| (t, s));
 
         let (ty, tree, _spans) = try_parse_with(input, type_expr_parser()).unwrap();
@@ -1297,8 +1297,8 @@ mod tests {
     #[test]
     fn type_application() {
         let src = "Map (Num -> Str) (std.List Str)";
-        let tokens = lexer().parse(src).into_result().unwrap();
-        let eoi = (src.len()..src.len()).into();
+        let tokens = try_tokenize(src).unwrap();
+        let eoi = Span::new(src.len(), src.len());
         let input = tokens.as_slice().map(eoi, |(t, s)| (t, s));
 
         let (ty, tree, _spans) = try_parse_with(input, type_expr_parser()).unwrap();
@@ -1330,8 +1330,8 @@ mod tests {
     #[test]
     fn type_() {
         let src = "forall a b . { left : a, right : Num -> b }";
-        let tokens = lexer().parse(src).into_result().unwrap();
-        let eoi = (src.len()..src.len()).into();
+        let tokens = try_tokenize(src).unwrap();
+        let eoi = Span::new(src.len(), src.len());
         let input = tokens.as_slice().map(eoi, |(t, s)| (t, s));
 
         let (pty, tree, _spans) = try_parse_with(input, type_parser()).unwrap();
@@ -1383,8 +1383,8 @@ mod tests {
     #[test]
     fn type_bind() {
         let src = "type Person = forall a . { id : a, name : Str, age : Num }";
-        let tokens = lexer().parse(src).into_result().unwrap();
-        let eoi = (src.len()..src.len()).into();
+        let tokens = try_tokenize(src).unwrap();
+        let eoi = Span::new(src.len(), src.len());
         let input = tokens.as_slice().map(eoi, |(t, s)| (t, s));
 
         let (alias, tree, _spans) = try_parse_with(input, type_bind_parser()).unwrap();
@@ -1402,8 +1402,8 @@ mod tests {
     #[test]
     fn variant_type_bind() {
         let src = "type Option = forall a b . < Some : a, None | b >";
-        let tokens = lexer().parse(src).into_result().unwrap();
-        let eoi = (src.len()..src.len()).into();
+        let tokens = try_tokenize(src).unwrap();
+        let eoi = Span::new(src.len(), src.len());
         let input = tokens.as_slice().map(eoi, |(t, s)| (t, s));
 
         let (bind, tree, _spans) = try_parse_with(input, type_bind_parser()).unwrap();
@@ -1446,8 +1446,8 @@ mod tests {
     #[test]
     fn module() {
         let src = "{ x = 10, type T = Num }";
-        let tokens = lexer().parse(src).into_result().unwrap();
-        let eoi = (src.len()..src.len()).into();
+        let tokens = try_tokenize(src).unwrap();
+        let eoi = Span::new(src.len(), src.len());
         let input = tokens.as_slice().map(eoi, |(t, s)| (t, s));
 
         let (module, tree, _spans) = try_parse_with(input, module_parser()).unwrap();
@@ -1481,8 +1481,8 @@ mod tests {
     #[test]
     fn module_type() {
         let src = "{ x : Num, type T = Str }";
-        let tokens = lexer().parse(src).into_result().unwrap();
-        let eoi = (src.len()..src.len()).into();
+        let tokens = try_tokenize(src).unwrap();
+        let eoi = Span::new(src.len(), src.len());
         let input = tokens.as_slice().map(eoi, |(t, s)| (t, s));
 
         let (module_type, tree, _spans) = try_parse_with(input, module_type_parser()).unwrap();
@@ -1518,8 +1518,8 @@ mod tests {
     #[test]
     fn nested_module() {
         let src = "{ module M = { x = 10 } }";
-        let tokens = lexer().parse(src).into_result().unwrap();
-        let eoi = (src.len()..src.len()).into();
+        let tokens = try_tokenize(src).unwrap();
+        let eoi = Span::new(src.len(), src.len());
         let input = tokens.as_slice().map(eoi, |(t, s)| (t, s));
 
         let (module, tree, _spans) = try_parse_with(input, module_parser()).unwrap();
@@ -1549,8 +1549,8 @@ mod tests {
     #[test]
     fn nested_module_with_type() {
         let src = "{ module M : { x : Num } = { x = 10 } }";
-        let tokens = lexer().parse(src).into_result().unwrap();
-        let eoi = (src.len()..src.len()).into();
+        let tokens = try_tokenize(src).unwrap();
+        let eoi = Span::new(src.len(), src.len());
         let input = tokens.as_slice().map(eoi, |(t, s)| (t, s));
 
         let (module, tree, _spans) = try_parse_with(input, module_parser()).unwrap();

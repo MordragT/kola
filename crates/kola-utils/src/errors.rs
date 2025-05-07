@@ -1,4 +1,5 @@
 use std::{
+    fmt::{self, Display},
     ops::{Index, IndexMut},
     slice, vec,
 };
@@ -72,6 +73,18 @@ impl<T> Errors<T> {
         range: impl std::ops::RangeBounds<usize>,
     ) -> impl Iterator<Item = T> + '_ {
         self.errors.drain(range)
+    }
+}
+
+impl<T> fmt::Display for Errors<T>
+where
+    T: Display,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        for err in &self.errors {
+            writeln!(f, "{}", err)?;
+        }
+        Ok(())
     }
 }
 

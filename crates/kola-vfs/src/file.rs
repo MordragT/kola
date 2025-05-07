@@ -7,7 +7,7 @@ use kola_syntax::prelude::*;
 use kola_tree::prelude::*;
 
 use crate::{
-    error::{SourceDiagnostic, SourceReport},
+    diag::{IntoSourceDiagnostic, SourceDiagnostic, SourceReport},
     path::{FilePath, ImportPath},
     source::Source,
 };
@@ -28,6 +28,15 @@ impl FileInfo {
         T: MetaCast<SyntaxPhase, Meta = Span>,
     {
         *self.spans.meta(id)
+    }
+
+    #[inline]
+    pub fn report<T>(&self, id: Id<T>, diag: impl IntoSourceDiagnostic) -> SourceReport
+    where
+        T: MetaCast<SyntaxPhase, Meta = Span>,
+    {
+        diag.into_source_diagnostic(self.span(id))
+            .report(self.source.clone())
     }
 
     pub fn try_import_path(&self) -> io::Result<ImportPath> {
