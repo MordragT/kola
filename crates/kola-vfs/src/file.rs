@@ -1,3 +1,4 @@
+use kola_utils::TryAsRef;
 use log::debug;
 use owo_colors::OwoColorize;
 use std::{collections::HashMap, io};
@@ -25,7 +26,7 @@ impl FileInfo {
     #[inline]
     pub fn span<T>(&self, id: Id<T>) -> Span
     where
-        T: MetaCast<SyntaxPhase, Meta = Span>,
+        T: MetaCast<SpanPhase, Meta = Span>,
     {
         *self.spans.meta(id)
     }
@@ -33,7 +34,7 @@ impl FileInfo {
     #[inline]
     pub fn report<T>(&self, id: Id<T>, diag: impl IntoSourceDiagnostic) -> SourceReport
     where
-        T: MetaCast<SyntaxPhase, Meta = Span>,
+        T: MetaCast<SpanPhase, Meta = Span>,
     {
         diag.into_source_diagnostic(self.span(id))
             .report(self.source.clone())
@@ -41,6 +42,19 @@ impl FileInfo {
 
     pub fn try_import_path(&self) -> io::Result<ImportPath> {
         self.source.try_import_path()
+    }
+}
+
+impl TreeView for FileInfo {
+    fn node<T>(&self, id: Id<T>) -> &T
+    where
+        Node: TryAsRef<T>,
+    {
+        self.tree.node(id)
+    }
+
+    fn iter_nodes(&self) -> std::slice::Iter<'_, Node> {
+        self.tree.iter_nodes()
     }
 }
 
@@ -83,8 +97,10 @@ impl FileParser {
 
         let ParseResult {
             tree,
+            interner,
             spans,
             errors,
+            ..
         } = parse(tokens.as_slice(), source.end_of_input());
         source_errors.extend(errors.into_iter().map(SourceDiagnostic::from));
 
@@ -96,7 +112,7 @@ impl FileParser {
             "{} {:?}\n{}",
             "Untyped Abstract Syntax Tree".bold().bright_white(),
             source.file_path(),
-            TreePrinter::new(&tree)
+            TreePrinter::new(tree.clone(), interner)
                 .with(SpanDecorator(spans.clone()))
                 .render(options)
         );

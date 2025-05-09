@@ -1,12 +1,11 @@
+use derive_more::{From, TryInto};
+use serde::{Deserialize, Serialize};
 use std::{borrow::Borrow, ops::Deref};
 
-use crate::{id::Id, print::TreePrinter};
-
-use derive_more::{From, TryInto};
 use kola_print::prelude::*;
-use kola_utils::impl_try_as;
-use owo_colors::OwoColorize;
-use serde::{Deserialize, Serialize};
+use kola_utils::{StrKey, impl_try_as};
+
+use crate::{id::Id, print::TreePrinter};
 
 mod expr;
 mod module;
@@ -18,79 +17,56 @@ pub use module::*;
 pub use pat::*;
 pub use ty::*;
 
-pub type Symbol = ecow::EcoString;
-
-#[derive(Debug, From, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[derive(
+    Debug, From, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+)]
 #[from(forward)]
-pub struct Name(pub Symbol);
+pub struct Name(pub StrKey);
 
 impl Name {
     #[inline]
-    pub fn as_str(&self) -> &str {
-        self.0.as_str()
-    }
-
-    pub fn as_symbol(&self) -> &Symbol {
+    pub fn as_str_key(&self) -> &StrKey {
         &self.0
     }
 }
 
-impl AsRef<str> for Name {
-    #[inline]
-    fn as_ref(&self) -> &str {
-        self.0.as_str()
-    }
-}
-
-impl Borrow<str> for Name {
-    #[inline]
-    fn borrow(&self) -> &str {
-        self.0.as_str()
-    }
-}
-
-impl PartialEq<str> for Name {
-    #[inline]
-    fn eq(&self, other: &str) -> bool {
-        self == other
-    }
-}
-
 impl Deref for Name {
-    type Target = Symbol;
+    type Target = StrKey;
 
     fn deref(&self) -> &Self::Target {
         &self.0
     }
 }
 
-impl AsRef<Symbol> for Name {
+impl AsRef<StrKey> for Name {
     #[inline]
-    fn as_ref(&self) -> &Symbol {
+    fn as_ref(&self) -> &StrKey {
         &self.0
     }
 }
 
-impl Borrow<Symbol> for Name {
+impl Borrow<StrKey> for Name {
     #[inline]
-    fn borrow(&self) -> &Symbol {
+    fn borrow(&self) -> &StrKey {
         &self.0
     }
 }
 
-impl PartialEq<Symbol> for Name {
+impl PartialEq<StrKey> for Name {
     #[inline]
-    fn eq(&self, other: &Symbol) -> bool {
+    fn eq(&self, other: &StrKey) -> bool {
         self == other
     }
 }
 
 impl Printable<TreePrinter> for Name {
-    fn notate<'a>(&'a self, _with: &'a TreePrinter, arena: &'a Bump) -> Notation<'a> {
+    fn notate<'a>(&'a self, with: &'a TreePrinter, arena: &'a Bump) -> Notation<'a> {
         let head = "Name".cyan().display_in(arena);
 
-        let name = self
-            .0
+        let name = with
+            .interner
+            .get(self.0)
+            .unwrap()
             .yellow()
             .display_in(arena)
             .enclose_by(arena.just('"'), arena);
@@ -114,7 +90,7 @@ macro_rules! define_nodes {
             $($variant(Id<$variant>)),*
         }
 
-        #[derive(Clone, Debug, PartialEq, From, TryInto)]
+        #[derive(Clone, Debug, PartialEq, From, TryInto, Serialize, Deserialize)]
         pub enum Node {
             $($variant($variant)),*
         }

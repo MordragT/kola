@@ -15,7 +15,11 @@ pub mod prelude {
     pub use crate::notation::{Arena, Notation};
     pub use crate::printable::Printable;
     pub use crate::printer::{PrintOptions, Printer};
-    pub use bumpalo::{self, Bump};
+    pub use bumpalo::{
+        self, Bump,
+        collections::{CollectIn, FromIteratorIn},
+    };
+    pub use owo_colors::{self, OwoColorize};
 }
 
 // https://justinpombrio.net/2024/02/23/a-twist-on-Wadlers-printer.html

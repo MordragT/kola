@@ -114,7 +114,7 @@ where
 
     fn span<U>(&self, id: Id<U>) -> Span
     where
-        U: MetaCast<SyntaxPhase, Meta = Span>,
+        U: MetaCast<SpanPhase, Meta = Span>,
     {
         *self.spans.meta(id)
     }

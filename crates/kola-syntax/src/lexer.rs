@@ -1,9 +1,8 @@
 use chumsky::{input::StrInput, prelude::*};
 
-use crate::{
-    span::{Span, Spanned},
-    token::{Literal, Token, Tokens},
-};
+use kola_span::Span;
+
+use crate::token::{LiteralT, Token, Tokens};
 
 pub struct TokenizeResult<'t> {
     pub tokens: Option<Tokens<'t>>,
@@ -50,7 +49,7 @@ pub type Extra<'t> = extra::Full<Rich<'t, char, Span>, (), ()>;
  * unexpected runtime behavior or parse failures!
  */
 
-pub fn lexer<'t, I>() -> impl Parser<'t, I, Vec<Spanned<Token<'t>>>, Extra<'t>>
+pub fn lexer<'t, I>() -> impl Parser<'t, I, Tokens<'t>, Extra<'t>>
 where
     I: StrInput<'t, Token = char, Slice = &'t str, Span = Span>,
 {
@@ -75,12 +74,12 @@ where
             .to_slice()
             .from_str()
             .unwrapped()
-            .map(Literal::Num),
+            .map(LiteralT::Num),
         // Character literals
         just('\'')
             .ignore_then(any().filter(|c| *c != '\\' && *c != '\'').or(escape))
             .then_ignore(just('\''))
-            .map(Literal::Char),
+            .map(LiteralT::Char),
         // String literals
         just('"')
             .ignore_then(
@@ -91,10 +90,10 @@ where
                     .to_slice(),
             )
             .then_ignore(just('"'))
-            .map(Literal::Str),
+            .map(LiteralT::Str),
         // Boolean literals
-        just("true").to(Literal::Bool(true)),
-        just("false").to(Literal::Bool(false)),
+        just("true").to(LiteralT::Bool(true)),
+        just("false").to(LiteralT::Bool(false)),
     ))
     .map(Token::Literal)
     .boxed();
@@ -263,39 +262,39 @@ mod test {
     fn test_numeric_literals() {
         let tokens = tokenize_str("123 45.67 0 0.0");
         assert_eq!(tokens.len(), 4);
-        assert_eq!(tokens[0].0, Token::Literal(Literal::Num(123.0)));
-        assert_eq!(tokens[1].0, Token::Literal(Literal::Num(45.67)));
-        assert_eq!(tokens[2].0, Token::Literal(Literal::Num(0.0)));
-        assert_eq!(tokens[3].0, Token::Literal(Literal::Num(0.0)));
+        assert_eq!(tokens[0].0, Token::Literal(LiteralT::Num(123.0)));
+        assert_eq!(tokens[1].0, Token::Literal(LiteralT::Num(45.67)));
+        assert_eq!(tokens[2].0, Token::Literal(LiteralT::Num(0.0)));
+        assert_eq!(tokens[3].0, Token::Literal(LiteralT::Num(0.0)));
     }
 
     #[test]
     fn test_boolean_literals() {
         let tokens = tokenize_str("true false");
         assert_eq!(tokens.len(), 2);
-        assert_eq!(tokens[0].0, Token::Literal(Literal::Bool(true)));
-        assert_eq!(tokens[1].0, Token::Literal(Literal::Bool(false)));
+        assert_eq!(tokens[0].0, Token::Literal(LiteralT::Bool(true)));
+        assert_eq!(tokens[1].0, Token::Literal(LiteralT::Bool(false)));
     }
 
     #[test]
     fn test_char_literals() {
         let tokens = tokenize_str("'a' 'b' '\\n' '\\t' '\\''");
         assert_eq!(tokens.len(), 5);
-        assert_eq!(tokens[0].0, Token::Literal(Literal::Char('a')));
-        assert_eq!(tokens[1].0, Token::Literal(Literal::Char('b')));
-        assert_eq!(tokens[2].0, Token::Literal(Literal::Char('\n')));
-        assert_eq!(tokens[3].0, Token::Literal(Literal::Char('\t')));
-        assert_eq!(tokens[4].0, Token::Literal(Literal::Char('\'')));
+        assert_eq!(tokens[0].0, Token::Literal(LiteralT::Char('a')));
+        assert_eq!(tokens[1].0, Token::Literal(LiteralT::Char('b')));
+        assert_eq!(tokens[2].0, Token::Literal(LiteralT::Char('\n')));
+        assert_eq!(tokens[3].0, Token::Literal(LiteralT::Char('\t')));
+        assert_eq!(tokens[4].0, Token::Literal(LiteralT::Char('\'')));
     }
 
     #[test]
     fn test_string_literals() {
         let tokens = tokenize_str(r#""hello" "world" "\"quoted\"" "\n\t""#);
         assert_eq!(tokens.len(), 4);
-        assert_eq!(tokens[0].0, Token::Literal(Literal::Str("hello")));
-        assert_eq!(tokens[1].0, Token::Literal(Literal::Str("world")));
-        assert_eq!(tokens[2].0, Token::Literal(Literal::Str("\\\"quoted\\\"")));
-        assert_eq!(tokens[3].0, Token::Literal(Literal::Str("\\n\\t")));
+        assert_eq!(tokens[0].0, Token::Literal(LiteralT::Str("hello")));
+        assert_eq!(tokens[1].0, Token::Literal(LiteralT::Str("world")));
+        assert_eq!(tokens[2].0, Token::Literal(LiteralT::Str("\\\"quoted\\\"")));
+        assert_eq!(tokens[3].0, Token::Literal(LiteralT::Str("\\n\\t")));
     }
 
     #[test]
@@ -358,11 +357,11 @@ mod test {
         assert_eq!(tokens[0].0, Token::Atom("let"));
         assert_eq!(tokens[1].0, Token::Symbol("x"));
         assert_eq!(tokens[2].0, Token::Atom("="));
-        assert_eq!(tokens[3].0, Token::Literal(Literal::Num(42.0)));
+        assert_eq!(tokens[3].0, Token::Literal(LiteralT::Num(42.0)));
         assert_eq!(tokens[4].0, Token::Atom("in"));
         assert_eq!(tokens[5].0, Token::Symbol("x"));
         assert_eq!(tokens[6].0, Token::Atom("+"));
-        assert_eq!(tokens[7].0, Token::Literal(Literal::Num(10.0)));
+        assert_eq!(tokens[7].0, Token::Literal(LiteralT::Num(10.0)));
 
         let input = "fn x => x * 2";
         let tokens = tokenize_str(input);
@@ -372,7 +371,7 @@ mod test {
         assert_eq!(tokens[2].0, Token::Atom("=>"));
         assert_eq!(tokens[3].0, Token::Symbol("x"));
         assert_eq!(tokens[4].0, Token::Atom("*"));
-        assert_eq!(tokens[5].0, Token::Literal(Literal::Num(2.0)));
+        assert_eq!(tokens[5].0, Token::Literal(LiteralT::Num(2.0)));
 
         let input = "if a == b then \"equal\" else \"not equal\"";
         let tokens = tokenize_str(input);
@@ -382,9 +381,9 @@ mod test {
         assert_eq!(tokens[2].0, Token::Atom("=="));
         assert_eq!(tokens[3].0, Token::Symbol("b"));
         assert_eq!(tokens[4].0, Token::Atom("then"));
-        assert_eq!(tokens[5].0, Token::Literal(Literal::Str("equal")));
+        assert_eq!(tokens[5].0, Token::Literal(LiteralT::Str("equal")));
         assert_eq!(tokens[6].0, Token::Atom("else"));
-        assert_eq!(tokens[7].0, Token::Literal(Literal::Str("not equal")));
+        assert_eq!(tokens[7].0, Token::Literal(LiteralT::Str("not equal")));
     }
 
     #[test]

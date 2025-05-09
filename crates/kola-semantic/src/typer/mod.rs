@@ -188,7 +188,7 @@ impl<'a> Typer<'a> {
 
     fn span<T>(&self, id: Id<T>) -> Span
     where
-        T: MetaCast<SyntaxPhase, Meta = Span>,
+        T: MetaCast<SpanPhase, Meta = Span>,
     {
         *self.spans.meta(id)
     }

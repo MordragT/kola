@@ -1,10 +1,11 @@
 use derive_more::{From, IntoIterator};
-use kola_print::prelude::*;
-use kola_utils::as_variant;
-use owo_colors::OwoColorize;
 use serde::{Deserialize, Serialize};
+use std::{borrow::Borrow, ops::Deref};
 
-use super::{LiteralExpr, Name, Symbol};
+use kola_print::prelude::*;
+use kola_utils::{StrKey, as_variant};
+
+use super::{LiteralExpr, Name};
 use crate::{id::Id, print::TreePrinter, tree::TreeView};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
@@ -25,7 +26,7 @@ impl Printable<TreePrinter> for AnyPat {
     }
 }
 
-#[derive(Debug, From, Clone, PartialEq, PartialOrd, Serialize, Deserialize)]
+#[derive(Debug, From, Clone, Copy, PartialEq, PartialOrd, Serialize, Deserialize)]
 pub struct LiteralPat(pub LiteralExpr);
 
 // impl LiteralPat {
@@ -63,14 +64,19 @@ pub struct LiteralPat(pub LiteralExpr);
 // }
 
 impl Printable<TreePrinter> for LiteralPat {
-    fn notate<'a>(&'a self, _with: &'a TreePrinter, arena: &'a Bump) -> Notation<'a> {
+    fn notate<'a>(&'a self, with: &'a TreePrinter, arena: &'a Bump) -> Notation<'a> {
         let kind = "LiteralPat".purple().display_in(arena);
 
         let lit = match &self.0 {
             LiteralExpr::Bool(b) => b.yellow().display_in(arena),
             LiteralExpr::Num(n) => n.yellow().display_in(arena),
             LiteralExpr::Char(c) => c.yellow().display_in(arena),
-            LiteralExpr::Str(s) => s.yellow().display_in(arena),
+            LiteralExpr::Str(s) => with
+                .interner
+                .get(*s)
+                .expect("Symbol not found")
+                .yellow()
+                .display_in(arena),
         }
         .enclose_by(arena.just('"'), arena);
 
@@ -81,28 +87,56 @@ impl Printable<TreePrinter> for LiteralPat {
     }
 }
 
-#[derive(Debug, From, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[derive(
+    Debug, From, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+)]
 #[from(forward)]
-pub struct IdentPat(pub Symbol);
+pub struct IdentPat(pub StrKey);
 
-impl PartialEq<Symbol> for IdentPat {
-    fn eq(&self, other: &Symbol) -> bool {
-        &self.0 == other
+impl IdentPat {
+    #[inline]
+    pub fn as_str_key(&self) -> &StrKey {
+        &self.0
     }
 }
 
-impl PartialEq<str> for IdentPat {
-    fn eq(&self, other: &str) -> bool {
-        self.0.as_str() == other
+impl Deref for IdentPat {
+    type Target = StrKey;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
+    }
+}
+
+impl AsRef<StrKey> for IdentPat {
+    #[inline]
+    fn as_ref(&self) -> &StrKey {
+        &self.0
+    }
+}
+
+impl Borrow<StrKey> for IdentPat {
+    #[inline]
+    fn borrow(&self) -> &StrKey {
+        &self.0
+    }
+}
+
+impl PartialEq<StrKey> for IdentPat {
+    #[inline]
+    fn eq(&self, other: &StrKey) -> bool {
+        self == other
     }
 }
 
 impl Printable<TreePrinter> for IdentPat {
-    fn notate<'a>(&'a self, _with: &'a TreePrinter, arena: &'a Bump) -> Notation<'a> {
+    fn notate<'a>(&'a self, with: &'a TreePrinter, arena: &'a Bump) -> Notation<'a> {
         let head = "IdentPat".cyan().display_in(arena);
 
-        let ident = self
-            .0
+        let ident = with
+            .interner
+            .get(self.0)
+            .expect("Symbol not found")
             .yellow()
             .display_in(arena)
             .enclose_by(arena.just('"'), arena);
@@ -168,16 +202,16 @@ impl Printable<TreePrinter> for RecordFieldPat {
 #[into_iterator(owned, ref)]
 pub struct RecordPat(pub Vec<Id<RecordFieldPat>>);
 
-impl RecordPat {
-    pub fn get(&self, name: impl AsRef<str>, tree: &impl TreeView) -> Option<RecordFieldPat> {
-        self.0.iter().find_map(|id| {
-            let field = id.get(tree);
-            (field.field(tree) == name.as_ref())
-                .then_some(field)
-                .copied()
-        })
-    }
-}
+// impl RecordPat {
+//     pub fn get(&self, name: impl AsRef<str>, tree: &impl TreeView) -> Option<RecordFieldPat> {
+//         self.0.iter().find_map(|id| {
+//             let field = id.get(tree);
+//             (field.field(tree) == name.as_ref())
+//                 .then_some(field)
+//                 .copied()
+//         })
+//     }
+// }
 
 impl Printable<TreePrinter> for RecordPat {
     fn notate<'a>(&'a self, with: &'a TreePrinter, arena: &'a Bump) -> Notation<'a> {
@@ -249,14 +283,14 @@ impl Printable<TreePrinter> for VariantCasePat {
 #[into_iterator(owned, ref)]
 pub struct VariantPat(pub Vec<Id<VariantCasePat>>);
 
-impl VariantPat {
-    pub fn get(&self, name: impl AsRef<str>, tree: &impl TreeView) -> Option<VariantCasePat> {
-        self.0.iter().find_map(|id| {
-            let case = id.get(tree);
-            (case.case(tree) == name.as_ref()).then_some(case).copied()
-        })
-    }
-}
+// impl VariantPat {
+//     pub fn get(&self, name: impl AsRef<str>, tree: &impl TreeView) -> Option<VariantCasePat> {
+//         self.0.iter().find_map(|id| {
+//             let case = id.get(tree);
+//             (case.case(tree) == name.as_ref()).then_some(case).copied()
+//         })
+//     }
+// }
 
 impl Printable<TreePrinter> for VariantPat {
     fn notate<'a>(&'a self, with: &'a TreePrinter, arena: &'a Bump) -> Notation<'a> {
@@ -358,42 +392,42 @@ mod inspector {
         pub fn as_error(self) -> Option<NodeInspector<'t, Id<PatError>>> {
             let pat = self.node.get(self.tree);
             pat.to_error()
-                .map(|err_id| NodeInspector::new(err_id, self.tree))
+                .map(|err_id| NodeInspector::new(err_id, self.tree, self.interner))
         }
 
         /// Check if this pattern is a wildcard pattern
         pub fn as_any(self) -> Option<NodeInspector<'t, Id<AnyPat>>> {
             let pat = self.node.get(self.tree);
             pat.to_wildcard()
-                .map(|wild_id| NodeInspector::new(wild_id, self.tree))
+                .map(|wild_id| NodeInspector::new(wild_id, self.tree, self.interner))
         }
 
         /// Check if this pattern is a literal pattern
         pub fn as_literal(self) -> Option<NodeInspector<'t, Id<LiteralPat>>> {
             let pat = self.node.get(self.tree);
             pat.to_literal()
-                .map(|lit_id| NodeInspector::new(lit_id, self.tree))
+                .map(|lit_id| NodeInspector::new(lit_id, self.tree, self.interner))
         }
 
         /// Check if this pattern is an identifier pattern
         pub fn as_ident(self) -> Option<NodeInspector<'t, Id<IdentPat>>> {
             let pat = self.node.get(self.tree);
             pat.to_ident()
-                .map(|id_id| NodeInspector::new(id_id, self.tree))
+                .map(|id_id| NodeInspector::new(id_id, self.tree, self.interner))
         }
 
         /// Check if this pattern is a record pattern
         pub fn as_record(self) -> Option<NodeInspector<'t, Id<RecordPat>>> {
             let pat = self.node.get(self.tree);
             pat.to_record()
-                .map(|rec_id| NodeInspector::new(rec_id, self.tree))
+                .map(|rec_id| NodeInspector::new(rec_id, self.tree, self.interner))
         }
 
         /// Check if this pattern is a variant pattern
         pub fn as_variant(self) -> Option<NodeInspector<'t, Id<VariantPat>>> {
             let pat = self.node.get(self.tree);
             match pat {
-                Pat::Variant(v) => Some(NodeInspector::new(*v, self.tree)),
+                Pat::Variant(v) => Some(NodeInspector::new(*v, self.tree, self.interner)),
                 _ => None,
             }
         }
@@ -459,12 +493,12 @@ mod inspector {
             let lit_pat = self.node.get(self.tree);
             match &lit_pat.0 {
                 LiteralExpr::Str(value) => {
+                    let value = self.interner.get(*value).expect("Symbol not found");
+
                     assert_eq!(
-                        value.as_str(),
-                        expected,
+                        value, expected,
                         "Expected string \"{}\" but found \"{}\"",
-                        expected,
-                        value
+                        expected, value
                     );
                 }
                 _ => panic!("Expected string literal pattern but found {:?}", lit_pat),
@@ -477,12 +511,12 @@ mod inspector {
         /// Assert the identifier pattern has the expected name
         pub fn has_name(self, expected: &str) -> Self {
             let ident = self.node.get(self.tree);
+            let s = self.interner.get(ident.0).expect("Symbol not found");
+
             assert_eq!(
-                ident.0.as_str(),
-                expected,
+                s, expected,
                 "Expected identifier pattern '{}' but found '{}'",
-                expected,
-                ident.0
+                expected, s
             );
             self
         }
@@ -510,33 +544,32 @@ mod inspector {
                 record_pat.0.len() - 1
             );
             let field_id = record_pat.0[index];
-            NodeInspector::new(field_id, self.tree)
+            NodeInspector::new(field_id, self.tree, self.interner)
         }
 
         /// Get an inspector for the field with the given name, if it exists
         pub fn field_named(self, name: &str) -> Option<NodeInspector<'t, Id<RecordFieldPat>>> {
             let record_pat = self.node.get(self.tree);
-            record_pat.get(name, self.tree).map(|_| {
-                let field_id = record_pat
-                    .0
-                    .iter()
-                    .find(|id| id.get(self.tree).field(self.tree).as_str() == name)
-                    .unwrap();
-                NodeInspector::new(*field_id, self.tree)
-            })
+            record_pat
+                .0
+                .iter()
+                .find(|id| {
+                    let field = id.get(self.tree).field(self.tree);
+                    self.interner.get(field.0).expect("Symbol not found") == name
+                })
+                .map(|field_id| NodeInspector::new(*field_id, self.tree, self.interner))
         }
     }
 
     impl<'t> NamedNode for NodeInspector<'t, Id<RecordFieldPat>> {
         fn assert_name(self, expected: &str, node_type: &str) -> Self {
             let name = self.node.get(self.tree).field(self.tree);
+            let value = self.interner.get(name.0).expect("Symbol not found");
+
             assert_eq!(
-                name.as_str(),
-                expected,
+                value, expected,
                 "Expected {} name '{}' but found '{}'",
-                node_type,
-                expected,
-                name.0
+                node_type, expected, value
             );
             self
         }
@@ -553,7 +586,7 @@ mod inspector {
             let field_pat = self.node.get(self.tree);
             field_pat
                 .pat
-                .map(|pat_id| NodeInspector::new(pat_id, self.tree))
+                .map(|pat_id| NodeInspector::new(pat_id, self.tree, self.interner))
         }
     }
 
@@ -579,33 +612,32 @@ mod inspector {
                 variant_pat.0.len() - 1
             );
             let case_id = variant_pat.0[index];
-            NodeInspector::new(case_id, self.tree)
+            NodeInspector::new(case_id, self.tree, self.interner)
         }
 
         /// Get an inspector for the case with the given name, if it exists
         pub fn case_named(self, name: &str) -> Option<NodeInspector<'t, Id<VariantCasePat>>> {
             let variant_pat = self.node.get(self.tree);
-            variant_pat.get(name, self.tree).map(|_| {
-                let case_id = variant_pat
-                    .0
-                    .iter()
-                    .find(|id| id.get(self.tree).case(self.tree).as_str() == name)
-                    .unwrap();
-                NodeInspector::new(*case_id, self.tree)
-            })
+            variant_pat
+                .0
+                .iter()
+                .find(|id| {
+                    let variant = id.get(self.tree).case(self.tree);
+                    self.interner.get(variant.0).expect("Symbol not found") == name
+                })
+                .map(|case_id| NodeInspector::new(*case_id, self.tree, self.interner))
         }
     }
 
     impl<'t> NamedNode for NodeInspector<'t, Id<VariantCasePat>> {
         fn assert_name(self, expected: &str, node_type: &str) -> Self {
             let name = self.node.get(self.tree).case(self.tree);
+            let value = self.interner.get(name.0).expect("Symbol not found");
+
             assert_eq!(
-                name.as_str(),
-                expected,
+                value, expected,
                 "Expected {} name '{}' but found '{}'",
-                node_type,
-                expected,
-                name.0
+                node_type, expected, value
             );
             self
         }
@@ -622,7 +654,7 @@ mod inspector {
             let case_pat = self.node.get(self.tree);
             case_pat
                 .pat
-                .map(|pat_id| NodeInspector::new(pat_id, self.tree))
+                .map(|pat_id| NodeInspector::new(pat_id, self.tree, self.interner))
         }
     }
 }

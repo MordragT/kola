@@ -10,119 +10,144 @@
 //     is resolved by first looking up `S` in the environment (finding `MyModule`)
 //     and then looking up `x` or `T` within `MyModule`.
 // */
-use std::{collections::HashMap, fmt, hash::Hash, rc::Rc};
+use std::{collections::HashMap, hash::Hash, ops::ControlFlow, rc::Rc};
 
 use kola_syntax::prelude::*;
 use kola_tree::{node::Vis, prelude::*};
-use kola_vfs::{diag::SourceDiagnostic, file::FileInfo, path::FilePath};
+use kola_vfs::{
+    diag::{SourceDiagnostic, SourceReport},
+    file::FileInfo,
+};
 
-pub type ModuleInfoTable = HashMap<ModulePath, ModuleInfo>;
+use crate::error::NameCollision;
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct ModulePath {
-    pub id: Id<node::Module>,
-    pub file_path: FilePath,
-    pub span: Span,
+pub struct BindDiscoverer {
+    builder: BindInfoBuilder,
+    errors: Vec<SourceDiagnostic>,
+    file: FileInfo,
 }
 
-impl ModulePath {
-    pub fn new(id: Id<node::Module>, file_path: FilePath, span: Span) -> Self {
+impl BindDiscoverer {
+    pub fn new(file: FileInfo) -> Self {
         Self {
-            id,
-            file_path,
-            span,
+            builder: BindInfoBuilder::new(),
+            errors: Vec::new(),
+            file,
         }
     }
 
-    pub fn from_file(file: &FileInfo) -> Self {
-        let id = file.tree.root_id();
-        let span = file.span(id);
+    #[inline]
+    fn span<T>(&self, id: Id<T>) -> Span
+    where
+        T: MetaCast<SpanPhase, Meta = Span>,
+    {
+        self.file.span(id)
+    }
 
-        Self {
-            id,
-            file_path: file.source.file_path(),
-            span,
+    #[inline]
+    fn report(&mut self, diag: impl Into<SourceDiagnostic>) {
+        self.errors.push(diag.into())
+    }
+
+    pub fn finish(self) -> Result<BindInfo, SourceReport> {
+        let Self {
+            builder,
+            errors,
+            file,
+        } = self;
+
+        if errors.is_empty() {
+            Ok(builder.finish())
+        } else {
+            let report = SourceReport::new(file.source.clone(), errors);
+            Err(report)
         }
     }
 }
 
-impl fmt::Display for ModulePath {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("ModulePath")
-            .field("id", &self.id.as_usize())
-            .field("path", &self.file_path)
-            .field("span", &self.span)
-            .finish()
+impl<T> Visitor<T> for BindDiscoverer
+where
+    T: TreeView,
+{
+    type BreakValue = ();
+
+    // This will only traverse the current module's scope,
+    // because the different module branches are not visited any further under `visit_module_bind`
+    fn visit_value_bind(
+        &mut self,
+        id: Id<node::ValueBind>,
+        tree: &T,
+    ) -> ControlFlow<Self::BreakValue> {
+        let span = self.span(id);
+
+        let node::ValueBind { vis, name, .. } = *id.get(tree);
+
+        let vis = *vis.get(tree);
+        let name = name.get(tree).0.clone();
+
+        if let Err(diag) = self
+            .builder
+            .insert_value(name, ValueBind::new(id, vis, span))
+        {
+            self.report(diag);
+        }
+
+        ControlFlow::Continue(())
+    }
+
+    fn visit_type_bind(
+        &mut self,
+        id: Id<node::TypeBind>,
+        tree: &T,
+    ) -> ControlFlow<Self::BreakValue> {
+        let span = self.span(id);
+
+        let node::TypeBind { name, .. } = *id.get(tree);
+
+        let name = name.get(tree).0.clone();
+
+        if let Err(diag) = self.builder.insert_type(name, TypeBind::new(id, span)) {
+            self.report(diag);
+        }
+        ControlFlow::Continue(())
+    }
+
+    fn visit_module_bind(
+        &mut self,
+        id: Id<node::ModuleBind>,
+        tree: &T,
+    ) -> ControlFlow<Self::BreakValue> {
+        let span = self.span(id);
+
+        let node::ModuleBind { vis, name, .. } = *id.get(tree);
+
+        let vis = *vis.get(tree);
+        let name = name.get(tree).0.clone();
+
+        if let Err(diag) = self
+            .builder
+            .insert_module(name, ModuleBind::new(id, vis, span))
+        {
+            self.report(diag);
+        }
+        ControlFlow::Continue(())
     }
 }
 
-pub trait ModuleInfoView {
+pub trait BindInfoView {
     fn module(&self, symbol: StrKey) -> Option<&ModuleBind>;
     fn value(&self, symbol: StrKey) -> Option<&ValueBind>;
     fn ty(&self, symbol: StrKey) -> Option<&TypeBind>;
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum NameCollision {
-    ValueBind {
-        span: Span,
-        bind: Span,
-        help: &'static str,
-    },
-    ModuleBind {
-        span: Span,
-        bind: Span,
-        help: &'static str,
-    },
-    TypeBind {
-        span: Span,
-        bind: Span,
-        help: &'static str,
-    },
-}
-
-impl NameCollision {
-    pub fn value_bind(span: Span, bind: Span, help: &'static str) -> Self {
-        NameCollision::ValueBind { span, bind, help }
-    }
-    pub fn module_bind(span: Span, bind: Span, help: &'static str) -> Self {
-        NameCollision::ModuleBind { span, bind, help }
-    }
-    pub fn type_bind(span: Span, bind: Span, help: &'static str) -> Self {
-        NameCollision::TypeBind { span, bind, help }
-    }
-}
-
-impl From<NameCollision> for SourceDiagnostic {
-    fn from(value: NameCollision) -> Self {
-        match value {
-            NameCollision::ValueBind { span, bind, help } => {
-                SourceDiagnostic::error(span, "A value bind with the same name was defined before")
-                    .with_trace([("This value bind here".to_owned(), bind)])
-                    .with_help(help)
-            }
-            NameCollision::ModuleBind { span, bind, help } => {
-                SourceDiagnostic::error(span, "A module bind with the same name was defined before")
-                    .with_trace([("This module bind here".to_owned(), bind)])
-                    .with_help(help)
-            }
-            NameCollision::TypeBind { span, bind, help } => {
-                SourceDiagnostic::error(span, "A type bind with the same name was defined before")
-                    .with_trace([("This type bind here".to_owned(), bind)])
-                    .with_help(help)
-            }
-        }
-    }
-}
-
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ModuleInfoBuilder {
+pub struct BindInfoBuilder {
     pub modules: HashMap<StrKey, ModuleBind>,
     pub values: HashMap<StrKey, ValueBind>,
     pub types: HashMap<StrKey, TypeBind>,
 }
 
-impl ModuleInfoBuilder {
+impl BindInfoBuilder {
     pub fn new() -> Self {
         Self {
             modules: HashMap::new(),
@@ -175,19 +200,17 @@ impl ModuleInfoBuilder {
     }
 
     pub fn insert_type(&mut self, symbol: StrKey, bind: TypeBind) -> Result<(), NameCollision> {
-        // TODO name collision
-        self.types.insert(symbol, bind);
-        Ok(())
+        todo!()
     }
 
-    pub fn finish(self) -> ModuleInfo {
+    pub fn finish(self) -> BindInfo {
         let Self {
             modules,
             values,
             types,
         } = self;
 
-        ModuleInfo {
+        BindInfo {
             modules: Rc::new(modules),
             values: Rc::new(values),
             types: Rc::new(types),
@@ -195,7 +218,7 @@ impl ModuleInfoBuilder {
     }
 }
 
-impl ModuleInfoView for ModuleInfoBuilder {
+impl BindInfoView for BindInfoBuilder {
     fn module(&self, symbol: StrKey) -> Option<&ModuleBind> {
         self.modules.get(symbol)
     }
@@ -210,13 +233,13 @@ impl ModuleInfoView for ModuleInfoBuilder {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq)]
-pub struct ModuleInfo {
+pub struct BindInfo {
     pub modules: Rc<HashMap<StrKey, ModuleBind>>,
     pub values: Rc<HashMap<StrKey, ValueBind>>,
     pub types: Rc<HashMap<StrKey, TypeBind>>,
 }
 
-impl ModuleInfoView for ModuleInfo {
+impl BindInfoView for BindInfo {
     fn module(&self, symbol: StrKey) -> Option<&ModuleBind> {
         self.modules.get(symbol)
     }
@@ -263,13 +286,13 @@ impl TypeBind {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ModuleBind {
-    pub path: ModulePath,
+    pub id: Id<node::ModuleBind>,
     pub vis: Vis,
     pub span: Span,
 }
 
 impl ModuleBind {
-    pub fn new(path: ModulePath, vis: Vis, span: Span) -> Self {
-        Self { path, vis, span }
+    pub fn new(id: Id<node::ModuleBind>, vis: Vis, span: Span) -> Self {
+        Self { id, vis, span }
     }
 }

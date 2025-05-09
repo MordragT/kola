@@ -1,5 +1,5 @@
 use kola_print::prelude::*;
-use kola_utils::TryAsRef;
+use kola_utils::{StrInterner, TryAsRef};
 
 use crate::{
     id::Id,
@@ -22,13 +22,15 @@ pub trait Decorator {
 
 pub struct TreePrinter {
     pub tree: Tree,
+    pub interner: StrInterner,
     pub decorators: Vec<Box<dyn Decorator>>,
 }
 
 impl TreePrinter {
-    pub fn new(tree: &Tree) -> Self {
+    pub fn new(tree: Tree, interner: StrInterner) -> Self {
         Self {
-            tree: tree.clone(),
+            tree,
+            interner,
             decorators: Vec::new(),
         }
     }

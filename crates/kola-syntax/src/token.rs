@@ -1,11 +1,10 @@
-use bumpalo::collections::CollectIn;
 use derive_more::Display;
-use kola_print::prelude::*;
-use owo_colors::OwoColorize;
 use paste::paste;
+use serde::{Deserialize, Serialize};
 use std::fmt;
 
-use super::span::Spanned;
+use kola_print::prelude::*;
+use kola_span::Spanned;
 
 pub struct TokenPrinter<'t>(pub &'t Tokens<'t>);
 
@@ -76,7 +75,7 @@ Actually it might be possible to use newtype structs over leave nodes.
 */
 
 #[derive(Debug, Display, Clone, Copy, PartialEq)]
-pub enum Literal<'t> {
+pub enum LiteralT<'t> {
     Num(f64),
     Bool(bool),
     Char(char),
@@ -93,7 +92,7 @@ pub enum Token<'t> {
     #[display("{_0}")]
     Symbol(&'t str),
     #[display("{_0}")]
-    Literal(Literal<'t>),
+    Literal(LiteralT<'t>),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]
@@ -137,7 +136,7 @@ macro_rules! define_token_type {
             }
 
             // Define the semantic enum (Op, Kw, Ctrl, etc.)
-            #[derive(Debug, Display, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+            #[derive(Debug, Display, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
             pub enum $name {
                 $(
                     #[display($atom)]
@@ -156,14 +155,14 @@ macro_rules! define_token_type {
             }
 
             // Implement conversion from semantic type to SemanticToken
-            impl<'t> From<$name> for SemanticToken<'t> {
+            impl<'t> From<$name> for SemanticToken {
                 fn from(value: $name) -> Self {
                     Self::$name(value)
                 }
             }
 
             // Implement conversion from wrapper to SemanticToken
-            impl<'t> From<[<$name T>]<'t>> for SemanticToken<'t> {
+            impl<'t> From<[<$name T>]<'t>> for SemanticToken {
                 fn from(value: [<$name T>]<'t>) -> Self {
                     Self::$name(value.into())
                 }
@@ -230,7 +229,9 @@ define_token_type!(Ctrl {
     DoubleArrow => "=>",
 });
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(
+    Debug, Display, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+)]
 pub enum Delim {
     Paren,
     Bracket,
@@ -238,25 +239,41 @@ pub enum Delim {
     Angle,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(
+    Debug, Display, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+)]
 pub enum DelimSide {
     Open,
     Close,
 }
 
-#[derive(Debug, Display, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum SemanticTokenKind {
-    Symbol,
-    Operator,
-    Literal,
-    Keyword,
-    Control,
+pub type SemanticTokens = Vec<Spanned<SemanticToken>>;
+
+#[derive(
+    Debug, Display, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+)]
+pub enum Literal {
+    Num,
+    Bool,
+    Char,
+    Str,
 }
 
-#[derive(Clone, Debug, PartialEq)]
-pub enum SemanticToken<'t> {
-    Symbol(&'t str),
-    Literal(Literal<'t>),
+impl<'t> From<LiteralT<'t>> for Literal {
+    fn from(value: LiteralT<'t>) -> Self {
+        match value {
+            LiteralT::Num(_) => Literal::Num,
+            LiteralT::Str(_) => Literal::Str,
+            LiteralT::Bool(_) => Literal::Bool,
+            LiteralT::Char(_) => Literal::Char,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+pub enum SemanticToken {
+    Symbol,
+    Literal(Literal),
     Kw(Kw),
     Op(Op),
     Ctrl(Ctrl),
@@ -264,19 +281,7 @@ pub enum SemanticToken<'t> {
     Close(Delim),
 }
 
-impl<'t> SemanticToken<'t> {
-    pub fn kind(&self) -> SemanticTokenKind {
-        match self {
-            Self::Symbol(_) => SemanticTokenKind::Symbol,
-            Self::Op(_) => SemanticTokenKind::Operator,
-            Self::Literal(_) => SemanticTokenKind::Literal,
-            Self::Kw(_) => SemanticTokenKind::Keyword,
-            Self::Open(_) | Self::Close(_) | Self::Ctrl(_) => SemanticTokenKind::Control,
-        }
-    }
-}
-
-impl<'t> From<OpenT<'t>> for SemanticToken<'t> {
+impl<'t> From<OpenT<'t>> for SemanticToken {
     fn from(value: OpenT<'t>) -> Self {
         if value == OpenT::PAREN {
             SemanticToken::Open(Delim::Paren)
@@ -292,7 +297,7 @@ impl<'t> From<OpenT<'t>> for SemanticToken<'t> {
     }
 }
 
-impl<'t> From<CloseT<'t>> for SemanticToken<'t> {
+impl<'t> From<CloseT<'t>> for SemanticToken {
     fn from(value: CloseT<'t>) -> Self {
         if value == CloseT::PAREN {
             SemanticToken::Close(Delim::Paren)
@@ -308,10 +313,16 @@ impl<'t> From<CloseT<'t>> for SemanticToken<'t> {
     }
 }
 
-impl<'t> fmt::Display for SemanticToken<'t> {
+impl<'t> From<LiteralT<'t>> for SemanticToken {
+    fn from(value: LiteralT<'t>) -> Self {
+        Self::Literal(value.into())
+    }
+}
+
+impl<'t> fmt::Display for SemanticToken {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Symbol(s) => write!(f, "{s}"),
+            Self::Symbol => write!(f, "Symbol"),
             Self::Literal(l) => write!(f, "{l}"),
             Self::Kw(kw) => write!(f, "{kw}"),
             Self::Op(op) => write!(f, "{op}"),
@@ -325,11 +336,5 @@ impl<'t> fmt::Display for SemanticToken<'t> {
             Self::Close(Delim::Brace) => write!(f, "}}"),
             Self::Close(Delim::Angle) => write!(f, ">"),
         }
-    }
-}
-
-impl<'t> From<Literal<'t>> for SemanticToken<'t> {
-    fn from(value: Literal<'t>) -> Self {
-        Self::Literal(value)
     }
 }

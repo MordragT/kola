@@ -10,7 +10,6 @@
 pub mod env;
 pub mod error;
 pub mod explorer;
-pub mod explorer2;
 pub mod module;
 pub mod substitute;
 pub mod typer;

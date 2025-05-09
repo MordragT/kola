@@ -10,7 +10,7 @@ use owo_colors::OwoColorize;
 use std::collections::HashMap;
 
 use crate::{
-    explorer::{ExploreError, ExploreErrors, ExploreReport, explore},
+    explorer::{ExploreReport, ModuleReports, explore},
     module::{ModuleInfo, ModuleInfoTable, ModulePath},
     typer::{self, TypeDecorator, TypeInfo, TypeInfoTable, Typer},
 };
@@ -56,20 +56,19 @@ impl World {
     pub fn explore(
         path: impl AsRef<Utf8Path>,
         options: PrintOptions,
-    ) -> Result<Self, ExploreErrors> {
-        let (file_path, import_path) =
-            FilePath::open(path).map_err(|e| ExploreErrors(vec![e.into()]))?;
+    ) -> Result<Self, ModuleReports> {
+        let (file_path, import_path) = FilePath::open(path).unwrap();
 
         let ExploreReport {
             order,
             module_parents,
             file_infos,
             module_infos,
-            errors,
-        } = explore(file_path, import_path, options);
+            reports,
+        } = explore(file_path, import_path, options).unwrap();
 
-        if !errors.0.is_empty() {
-            return Err(errors);
+        if !reports.0.is_empty() {
+            return Err(reports);
         }
 
         Ok(Self {

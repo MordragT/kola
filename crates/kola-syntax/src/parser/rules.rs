@@ -1,12 +1,12 @@
-use std::ops::Deref;
-
 use chumsky::{input::ValueInput, prelude::*};
+
+use kola_span::Span;
 use kola_tree::prelude::*;
 
 use super::{Extra, ParserExt, State, primitives::*};
 use crate::{
-    Span, SyntaxPhase,
-    token::{CloseT, CtrlT, Delim, KwT, Literal, OpT, OpenT, Token},
+    span::SpanPhase,
+    token::{CloseT, CtrlT, Delim, KwT, LiteralT, OpT, OpenT, Token},
 };
 
 /*
@@ -192,11 +192,14 @@ pub fn literal_parser<'t, I>() -> impl Parser<'t, I, node::LiteralExpr, Extra<'t
 where
     I: ValueInput<'t, Token = Token<'t>, Span = Span>,
 {
-    literal().map(|l| match l {
-        Literal::Num(n) => node::LiteralExpr::Num(n),
-        Literal::Bool(b) => node::LiteralExpr::Bool(b),
-        Literal::Char(c) => node::LiteralExpr::Char(c),
-        Literal::Str(s) => node::LiteralExpr::Str(node::Symbol::from(s)),
+    literal().map_with(|l, e| {
+        let state: &mut State = e.state();
+        match l {
+            LiteralT::Num(n) => node::LiteralExpr::Num(n),
+            LiteralT::Bool(b) => node::LiteralExpr::Bool(b),
+            LiteralT::Char(c) => node::LiteralExpr::Char(c),
+            LiteralT::Str(s) => node::LiteralExpr::Str(state.intern(s)),
+        }
     })
 }
 
@@ -335,9 +338,7 @@ where
     I: ValueInput<'t, Token = Token<'t>, Span = Span>,
 {
     recursive(|pat| {
-        let ident = select! { Token::Symbol(s) => node::Symbol::from(s) }
-            .map_to_node(node::IdentPat)
-            .to_pat();
+        let ident = symbol().map_to_node(node::IdentPat).to_pat();
         let wildcard = ctrl(CtrlT::UNDERSCORE).to(node::AnyPat).to_node().to_pat();
         let literal = literal_parser().map_to_node(node::LiteralPat).to_pat();
 
@@ -942,8 +943,8 @@ pub fn nested_parser<'t, I, T, U>(
 ) -> impl Parser<'t, I, Id<T>, Extra<'t>> + Clone
 where
     Node: From<T> + From<U>,
-    T: From<Id<U>> + MetaCast<SyntaxPhase, Meta = Span> + 't,
-    U: MetaCast<SyntaxPhase, Meta = Span> + 't,
+    T: From<Id<U>> + MetaCast<SpanPhase, Meta = Span> + 't,
+    U: MetaCast<SpanPhase, Meta = Span> + 't,
     I: ValueInput<'t, Token = Token<'t>, Span = Span>,
 {
     let (open, close) = match delim {
@@ -964,8 +965,8 @@ pub fn nested_in_parser<'t, I, T, U>(
 ) -> impl Parser<'t, I, Id<T>, Extra<'t>> + Clone
 where
     Node: From<T> + From<U>,
-    T: From<Id<U>> + MetaCast<SyntaxPhase, Meta = Span> + 't,
-    U: MetaCast<SyntaxPhase, Meta = Span> + 't,
+    T: From<Id<U>> + MetaCast<SpanPhase, Meta = Span> + 't,
+    U: MetaCast<SpanPhase, Meta = Span> + 't,
     I: ValueInput<'t, Token = Token<'t>, Span = Span>,
 {
     parser
@@ -991,13 +992,17 @@ where
 mod tests {
     use chumsky::prelude::*;
 
+    use kola_span::Span;
     use kola_tree::{inspector::NodeInspector, prelude::*};
 
     use super::{
         expr_parser, module_parser, module_type_parser, pat_parser, type_bind_parser,
         type_expr_parser, type_parser,
     };
-    use crate::{lexer::try_tokenize, parser::try_parse_with, span::Span};
+    use crate::{
+        lexer::try_tokenize,
+        parser::{ParseOutput, try_parse_with},
+    };
 
     #[test]
     fn pat() {
@@ -1006,8 +1011,13 @@ mod tests {
         let eoi = Span::new(src.len(), src.len());
         let input = tokens.as_slice().map(eoi, |(t, s)| (t, s));
 
-        let (pat, tree, _spans) = try_parse_with(input, pat_parser()).unwrap();
-        let inspector = NodeInspector::new(pat, &tree);
+        let ParseOutput {
+            node,
+            interner,
+            builder,
+            ..
+        } = try_parse_with(input, pat_parser()).unwrap();
+        let inspector = NodeInspector::new(node, &builder, &interner);
 
         let record = inspector.as_record().unwrap();
 
@@ -1053,8 +1063,13 @@ mod tests {
         let eoi = Span::new(src.len(), src.len());
         let input = tokens.as_slice().map(eoi, |(t, s)| (t, s));
 
-        let (expr, tree, _spans) = try_parse_with(input, expr_parser()).unwrap();
-        let inspector = NodeInspector::new(expr, &tree);
+        let ParseOutput {
+            node,
+            interner,
+            builder,
+            ..
+        } = try_parse_with(input, expr_parser()).unwrap();
+        let inspector = NodeInspector::new(node, &builder, &interner);
 
         let case = inspector.as_case().unwrap();
 
@@ -1090,8 +1105,13 @@ mod tests {
         let eoi = Span::new(src.len(), src.len());
         let input = tokens.as_slice().map(eoi, |(t, s)| (t, s));
 
-        let (expr, tree, _spans) = try_parse_with(input, expr_parser()).unwrap();
-        let inspector = NodeInspector::new(expr, &tree);
+        let ParseOutput {
+            node,
+            interner,
+            builder,
+            ..
+        } = try_parse_with(input, expr_parser()).unwrap();
+        let inspector = NodeInspector::new(node, &builder, &interner);
 
         inspector
             .as_lambda()
@@ -1111,8 +1131,13 @@ mod tests {
         let eoi = Span::new(src.len(), src.len());
         let input = tokens.as_slice().map(eoi, |(t, s)| (t, s));
 
-        let (expr, tree, _spans) = try_parse_with(input, expr_parser()).unwrap();
-        let inspector = NodeInspector::new(expr, &tree);
+        let ParseOutput {
+            node,
+            interner,
+            builder,
+            ..
+        } = try_parse_with(input, expr_parser()).unwrap();
+        let inspector = NodeInspector::new(node, &builder, &interner);
 
         // _ == 0
         let eq = inspector.as_binary().unwrap();
@@ -1148,8 +1173,13 @@ mod tests {
         let eoi = Span::new(src.len(), src.len());
         let input = tokens.as_slice().map(eoi, |(t, s)| (t, s));
 
-        let (expr, tree, _spans) = try_parse_with(input, expr_parser()).unwrap();
-        let inspector = NodeInspector::new(expr, &tree);
+        let ParseOutput {
+            node,
+            interner,
+            builder,
+            ..
+        } = try_parse_with(input, expr_parser()).unwrap();
+        let inspector = NodeInspector::new(node, &builder, &interner);
 
         let if_expr = inspector.as_if().unwrap();
 
@@ -1177,8 +1207,13 @@ mod tests {
         let eoi = Span::new(src.len(), src.len());
         let input = tokens.as_slice().map(eoi, |(t, s)| (t, s));
 
-        let (expr, tree, _spans) = try_parse_with(input, expr_parser()).unwrap();
-        let inspector = NodeInspector::new(expr, &tree);
+        let ParseOutput {
+            node,
+            interner,
+            builder,
+            ..
+        } = try_parse_with(input, expr_parser()).unwrap();
+        let inspector = NodeInspector::new(node, &builder, &interner);
 
         inspector
             .as_path()
@@ -1196,8 +1231,13 @@ mod tests {
         let eoi = Span::new(src.len(), src.len());
         let input = tokens.as_slice().map(eoi, |(t, s)| (t, s));
 
-        let (expr, tree, _spans) = try_parse_with(input, expr_parser()).unwrap();
-        let inspector = NodeInspector::new(expr, &tree);
+        let ParseOutput {
+            node,
+            interner,
+            builder,
+            ..
+        } = try_parse_with(input, expr_parser()).unwrap();
+        let inspector = NodeInspector::new(node, &builder, &interner);
 
         let extend = inspector.as_record_extend().unwrap();
 
@@ -1220,8 +1260,13 @@ mod tests {
         let eoi = Span::new(src.len(), src.len());
         let input = tokens.as_slice().map(eoi, |(t, s)| (t, s));
 
-        let (expr, tree, _spans) = try_parse_with(input, expr_parser()).unwrap();
-        let inspector = NodeInspector::new(expr, &tree);
+        let ParseOutput {
+            node,
+            interner,
+            builder,
+            ..
+        } = try_parse_with(input, expr_parser()).unwrap();
+        let inspector = NodeInspector::new(node, &builder, &interner);
 
         let record = inspector.as_record().unwrap();
         record.has_fields(2);
@@ -1252,8 +1297,13 @@ mod tests {
         let eoi = Span::new(src.len(), src.len());
         let input = tokens.as_slice().map(eoi, |(t, s)| (t, s));
 
-        let (ty, tree, _spans) = try_parse_with(input, type_expr_parser()).unwrap();
-        let inspector = NodeInspector::new(ty, &tree);
+        let ParseOutput {
+            node,
+            interner,
+            builder,
+            ..
+        } = try_parse_with(input, type_expr_parser()).unwrap();
+        let inspector = NodeInspector::new(node, &builder, &interner);
 
         // Num -> (...)
         let func = inspector.as_function().unwrap();
@@ -1301,8 +1351,13 @@ mod tests {
         let eoi = Span::new(src.len(), src.len());
         let input = tokens.as_slice().map(eoi, |(t, s)| (t, s));
 
-        let (ty, tree, _spans) = try_parse_with(input, type_expr_parser()).unwrap();
-        let inspector = NodeInspector::new(ty, &tree);
+        let ParseOutput {
+            node,
+            interner,
+            builder,
+            ..
+        } = try_parse_with(input, type_expr_parser()).unwrap();
+        let inspector = NodeInspector::new(node, &builder, &interner);
 
         // Map (Num -> Str) @@ (std.List Str)
         let app = inspector.as_application().unwrap();
@@ -1334,18 +1389,23 @@ mod tests {
         let eoi = Span::new(src.len(), src.len());
         let input = tokens.as_slice().map(eoi, |(t, s)| (t, s));
 
-        let (pty, tree, _spans) = try_parse_with(input, type_parser()).unwrap();
-        let inspector = NodeInspector::new(pty, &tree);
+        let ParseOutput {
+            node,
+            interner,
+            builder,
+            ..
+        } = try_parse_with(input, type_parser()).unwrap();
+        let inspector = NodeInspector::new(node, &builder, &interner);
 
         inspector
             .has_type_vars(2)
             .type_var_at(0)
             .inspect(|name, tree| {
-                assert_eq!(name.get(tree), "a");
+                assert_eq!(interner.get(name.get(tree).0).unwrap(), "a");
             });
 
         inspector.type_var_at(1).inspect(|name, tree| {
-            assert_eq!(name.get(tree), "b");
+            assert_eq!(interner.get(name.get(tree).0).unwrap(), "b");
         });
 
         let record = inspector.type_expr().as_record().unwrap();
@@ -1387,8 +1447,13 @@ mod tests {
         let eoi = Span::new(src.len(), src.len());
         let input = tokens.as_slice().map(eoi, |(t, s)| (t, s));
 
-        let (alias, tree, _spans) = try_parse_with(input, type_bind_parser()).unwrap();
-        let inspector = NodeInspector::new(alias, &tree);
+        let ParseOutput {
+            node,
+            interner,
+            builder,
+            ..
+        } = try_parse_with(input, type_bind_parser()).unwrap();
+        let inspector = NodeInspector::new(node, &builder, &interner);
 
         inspector.has_name("Person");
 
@@ -1406,8 +1471,13 @@ mod tests {
         let eoi = Span::new(src.len(), src.len());
         let input = tokens.as_slice().map(eoi, |(t, s)| (t, s));
 
-        let (bind, tree, _spans) = try_parse_with(input, type_bind_parser()).unwrap();
-        let inspector = NodeInspector::new(bind, &tree);
+        let ParseOutput {
+            node,
+            interner,
+            builder,
+            ..
+        } = try_parse_with(input, type_bind_parser()).unwrap();
+        let inspector = NodeInspector::new(node, &builder, &interner);
 
         inspector.has_name("Option");
 
@@ -1416,7 +1486,7 @@ mod tests {
             .has_type_vars(2)
             .type_var_at(0)
             .inspect(|name, tree| {
-                assert_eq!(name.get(tree), "a");
+                assert_eq!(interner.get(name.get(tree).0).unwrap(), "a");
             });
 
         let variant = type_node.type_expr().as_variant().unwrap();
@@ -1450,8 +1520,13 @@ mod tests {
         let eoi = Span::new(src.len(), src.len());
         let input = tokens.as_slice().map(eoi, |(t, s)| (t, s));
 
-        let (module, tree, _spans) = try_parse_with(input, module_parser()).unwrap();
-        let inspector = NodeInspector::new(module, &tree);
+        let ParseOutput {
+            node,
+            interner,
+            builder,
+            ..
+        } = try_parse_with(input, module_parser()).unwrap();
+        let inspector = NodeInspector::new(node, &builder, &interner);
 
         inspector.has_binds(2);
 
@@ -1485,8 +1560,13 @@ mod tests {
         let eoi = Span::new(src.len(), src.len());
         let input = tokens.as_slice().map(eoi, |(t, s)| (t, s));
 
-        let (module_type, tree, _spans) = try_parse_with(input, module_type_parser()).unwrap();
-        let inspector = NodeInspector::new(module_type, &tree);
+        let ParseOutput {
+            node,
+            interner,
+            builder,
+            ..
+        } = try_parse_with(input, module_type_parser()).unwrap();
+        let inspector = NodeInspector::new(node, &builder, &interner);
 
         inspector.has_specs(2);
 
@@ -1522,8 +1602,13 @@ mod tests {
         let eoi = Span::new(src.len(), src.len());
         let input = tokens.as_slice().map(eoi, |(t, s)| (t, s));
 
-        let (module, tree, _spans) = try_parse_with(input, module_parser()).unwrap();
-        let inspector = NodeInspector::new(module, &tree);
+        let ParseOutput {
+            node,
+            interner,
+            builder,
+            ..
+        } = try_parse_with(input, module_parser()).unwrap();
+        let inspector = NodeInspector::new(node, &builder, &interner);
 
         inspector.has_binds(1);
 
@@ -1553,8 +1638,13 @@ mod tests {
         let eoi = Span::new(src.len(), src.len());
         let input = tokens.as_slice().map(eoi, |(t, s)| (t, s));
 
-        let (module, tree, _spans) = try_parse_with(input, module_parser()).unwrap();
-        let inspector = NodeInspector::new(module, &tree);
+        let ParseOutput {
+            node,
+            interner,
+            builder,
+            ..
+        } = try_parse_with(input, module_parser()).unwrap();
+        let inspector = NodeInspector::new(node, &builder, &interner);
 
         inspector.has_binds(1);
 

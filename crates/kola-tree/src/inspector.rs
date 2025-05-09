@@ -1,3 +1,5 @@
+use kola_utils::StrInterner;
+
 use crate::tree::TreeBuilder;
 
 /// A fluent API for inspecting and making assertions about nodes in a syntax tree.
@@ -6,12 +8,17 @@ use crate::tree::TreeBuilder;
 pub struct NodeInspector<'t, T> {
     pub node: T,
     pub tree: &'t TreeBuilder,
+    pub interner: &'t StrInterner,
 }
 
 impl<'t, T> NodeInspector<'t, T> {
     /// Create a new inspector from a node and tree
-    pub fn new(node: T, tree: &'t TreeBuilder) -> Self {
-        Self { node, tree }
+    pub fn new(node: T, tree: &'t TreeBuilder, interner: &'t StrInterner) -> Self {
+        Self {
+            node,
+            tree,
+            interner,
+        }
     }
 
     /// Map the current node to another node type
@@ -22,6 +29,7 @@ impl<'t, T> NodeInspector<'t, T> {
         NodeInspector {
             node: f(self.node, self.tree),
             tree: self.tree,
+            interner: self.interner,
         }
     }
 

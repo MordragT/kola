@@ -1,0 +1,69 @@
+{
+    module a = { module f = {}, },
+    module b = import b, # parse/b.kl
+    module c = a.f,
+
+    module d = super.a
+
+    export module f = b.h
+
+    module type Stack = {
+        type Stack = forall a . { inner : List a },
+        push : forall a . a -> Stack a -> Stack a,
+    },
+
+    List a
+    list = [ a b ]
+
+    case
+        a :: b
+        [ a, ...tail ] =>
+        [ a, ..., b ] =>
+
+    module A = {
+        opaque type A = { ... }
+
+        new  = fn {} => A { .. },
+
+        get =
+
+        test x = ...
+    }
+
+    f : forall a . a -> a = fn a => a,
+
+    # inferred
+    g = fn a => a + a,
+
+    type Option = forall a . < Some : a, None >,
+
+    opaque type Person = { name : Str, age : Num },
+
+    f = fn x => fn b => ...,
+
+    f = fn { x, y } => ...,
+
+    let Person { name, age } = person in
+
+    f = fn x => x.name x.age
+
+    f = fn { name, age } =>
+
+    let x = Person { name = ..., age = ... }
+
+    let x = { name = ..., age .. } : Person { name : Str, age : }
+
+
+
+    h = fn x => let
+        y = x + x
+    in
+        if y == 10 then 0
+        else if y == 20 then 1
+        else y,
+
+    main = let person = { name = "peter", age = 25, cars = {} }
+    in
+        let a = { person | +cars.bmw = "bmw" }
+        in { a.cars | +audi = "audi" } # { bmw = "bmw", audi = "audi" },
+}

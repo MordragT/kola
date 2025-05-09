@@ -1,8 +1,8 @@
 use derive_more::{From, IntoIterator};
+use serde::{Deserialize, Serialize};
+
 use kola_print::prelude::*;
 use kola_utils::as_variant;
-use owo_colors::OwoColorize;
-use serde::{Deserialize, Serialize};
 
 use super::{Expr, Name, Type};
 use crate::{
@@ -785,7 +785,7 @@ mod inspector {
                 module.0.len() - 1
             );
             let bind_id = module.0[index];
-            NodeInspector::new(bind_id, self.tree)
+            NodeInspector::new(bind_id, self.tree, self.interner)
         }
     }
 
@@ -811,12 +811,12 @@ mod inspector {
                 path.0.len() - 1
             );
             let segment = path.get(index, self.tree);
+            let name = self.interner.get(segment.0).expect("Symbol not found");
+
             assert_eq!(
-                segment.as_str(),
-                expected,
+                name, expected,
                 "Expected segment '{}' but found '{}'",
-                expected,
-                segment.0
+                expected, name
             );
             self
         }
@@ -826,28 +826,28 @@ mod inspector {
         pub fn as_name(self) -> NodeInspector<'t, Id<Name>> {
             let name_id = self.node.get(self.tree).0;
 
-            NodeInspector::new(name_id, self.tree)
+            NodeInspector::new(name_id, self.tree, self.interner)
         }
     }
 
     impl<'t> NodeInspector<'t, Id<ModuleExpr>> {
         pub fn as_import(self) -> Option<NodeInspector<'t, Id<ModuleImport>>> {
             match *self.node.get(self.tree) {
-                ModuleExpr::Import(id) => Some(NodeInspector::new(id, self.tree)),
+                ModuleExpr::Import(id) => Some(NodeInspector::new(id, self.tree, self.interner)),
                 _ => None,
             }
         }
 
         pub fn as_module(self) -> Option<NodeInspector<'t, Id<Module>>> {
             match *self.node.get(self.tree) {
-                ModuleExpr::Module(id) => Some(NodeInspector::new(id, self.tree)),
+                ModuleExpr::Module(id) => Some(NodeInspector::new(id, self.tree, self.interner)),
                 _ => None,
             }
         }
 
         pub fn as_path(self) -> Option<NodeInspector<'t, Id<ModulePath>>> {
             match *self.node.get(self.tree) {
-                ModuleExpr::Path(id) => Some(NodeInspector::new(id, self.tree)),
+                ModuleExpr::Path(id) => Some(NodeInspector::new(id, self.tree, self.interner)),
                 _ => None,
             }
         }
@@ -858,48 +858,47 @@ mod inspector {
         pub fn as_module(self) -> Option<NodeInspector<'t, Id<ModuleBind>>> {
             let bind = self.node.get(self.tree);
             bind.to_module()
-                .map(|module_id| NodeInspector::new(module_id, self.tree))
+                .map(|module_id| NodeInspector::new(module_id, self.tree, self.interner))
         }
 
         /// Check if this bind is a value bind and return an inspector for it
         pub fn as_value(self) -> Option<NodeInspector<'t, Id<ValueBind>>> {
             let bind = self.node.get(self.tree);
             bind.to_value()
-                .map(|value_id| NodeInspector::new(value_id, self.tree))
+                .map(|value_id| NodeInspector::new(value_id, self.tree, self.interner))
         }
 
         /// Check if this bind is a type bind and return an inspector for it
         pub fn as_type(self) -> Option<NodeInspector<'t, Id<TypeBind>>> {
             let bind = self.node.get(self.tree);
             bind.to_type()
-                .map(|type_id| NodeInspector::new(type_id, self.tree))
+                .map(|type_id| NodeInspector::new(type_id, self.tree, self.interner))
         }
 
         /// Check if this bind is a module type bind and return an inspector for it
         pub fn as_module_type(self) -> Option<NodeInspector<'t, Id<ModuleTypeBind>>> {
             let bind = self.node.get(self.tree);
             bind.to_module_type()
-                .map(|mt_id| NodeInspector::new(mt_id, self.tree))
+                .map(|mt_id| NodeInspector::new(mt_id, self.tree, self.interner))
         }
 
         /// Check if this bind is an opaque type bind and return an inspector for it
         pub fn as_opaque_type(self) -> Option<NodeInspector<'t, Id<OpaqueTypeBind>>> {
             let bind = self.node.get(self.tree);
             bind.to_opaque_type()
-                .map(|ot_id| NodeInspector::new(ot_id, self.tree))
+                .map(|ot_id| NodeInspector::new(ot_id, self.tree, self.interner))
         }
     }
 
     impl<'t> NamedNode for NodeInspector<'t, Id<ModuleBind>> {
         fn assert_name(self, expected: &str, node_type: &str) -> Self {
             let name = self.node.get(self.tree).name.get(self.tree);
+            let name = self.interner.get(name.0).expect("Symbol not found");
+
             assert_eq!(
-                name.as_str(),
-                expected,
+                name, expected,
                 "Expected {} name '{}' but found '{}'",
-                node_type,
-                expected,
-                name.0
+                node_type, expected, name
             );
             self
         }
@@ -914,7 +913,7 @@ mod inspector {
         /// Get an inspector for the module's implementation
         pub fn value(self) -> NodeInspector<'t, Id<ModuleExpr>> {
             let module_bind = self.node.get(self.tree);
-            NodeInspector::new(module_bind.value, self.tree)
+            NodeInspector::new(module_bind.value, self.tree, self.interner)
         }
 
         /// Get an inspector for the module's interface if it has one
@@ -922,20 +921,19 @@ mod inspector {
             let module_bind = self.node.get(self.tree);
             module_bind
                 .ty
-                .map(|ty_id| NodeInspector::new(ty_id, self.tree))
+                .map(|ty_id| NodeInspector::new(ty_id, self.tree, self.interner))
         }
     }
 
     impl<'t> NamedNode for NodeInspector<'t, Id<OpaqueTypeBind>> {
         fn assert_name(self, expected: &str, node_type: &str) -> Self {
             let name = self.node.get(self.tree).name.get(self.tree);
+            let name = self.interner.get(name.0).expect("Symbol not found");
+
             assert_eq!(
-                name.as_str(),
-                expected,
+                name, expected,
                 "Expected {} name '{}' but found '{}'",
-                node_type,
-                expected,
-                name.0
+                node_type, expected, name
             );
             self
         }
@@ -950,20 +948,19 @@ mod inspector {
         /// Get an inspector for the opaque type's implementation
         pub fn type_node(self) -> NodeInspector<'t, Id<Type>> {
             let opaque_type_bind = self.node.get(self.tree);
-            NodeInspector::new(opaque_type_bind.ty, self.tree)
+            NodeInspector::new(opaque_type_bind.ty, self.tree, self.interner)
         }
     }
 
     impl<'t> NamedNode for NodeInspector<'t, Id<ModuleTypeBind>> {
         fn assert_name(self, expected: &str, node_type: &str) -> Self {
             let name = self.node.get(self.tree).name.get(self.tree);
+            let name = self.interner.get(name.0).expect("Symbol not found");
+
             assert_eq!(
-                name.as_str(),
-                expected,
+                name, expected,
                 "Expected {} name '{}' but found '{}'",
-                node_type,
-                expected,
-                name.0
+                node_type, expected, name
             );
             self
         }
@@ -978,7 +975,7 @@ mod inspector {
         /// Get an inspector for the module type
         pub fn type_node(self) -> NodeInspector<'t, Id<ModuleType>> {
             let module_type_bind = self.node.get(self.tree);
-            NodeInspector::new(module_type_bind.ty, self.tree)
+            NodeInspector::new(module_type_bind.ty, self.tree, self.interner)
         }
     }
 
@@ -1004,7 +1001,7 @@ mod inspector {
                 module_type.0.len() - 1
             );
             let spec_id = module_type.0[index];
-            NodeInspector::new(spec_id, self.tree)
+            NodeInspector::new(spec_id, self.tree, self.interner)
         }
     }
 
@@ -1013,41 +1010,40 @@ mod inspector {
         pub fn as_value(self) -> Option<NodeInspector<'t, Id<ValueSpec>>> {
             let spec = self.node.get(self.tree);
             spec.to_value()
-                .map(|value_id| NodeInspector::new(value_id, self.tree))
+                .map(|value_id| NodeInspector::new(value_id, self.tree, self.interner))
         }
 
         /// Check if this spec is a type bind and return an inspector for it
         pub fn as_type_bind(self) -> Option<NodeInspector<'t, Id<TypeBind>>> {
             let spec = self.node.get(self.tree);
             spec.to_type_bind()
-                .map(|type_id| NodeInspector::new(type_id, self.tree))
+                .map(|type_id| NodeInspector::new(type_id, self.tree, self.interner))
         }
 
         /// Check if this spec is a module spec and return an inspector for it
         pub fn as_module(self) -> Option<NodeInspector<'t, Id<ModuleSpec>>> {
             let spec = self.node.get(self.tree);
             spec.to_module()
-                .map(|module_id| NodeInspector::new(module_id, self.tree))
+                .map(|module_id| NodeInspector::new(module_id, self.tree, self.interner))
         }
 
         /// Check if this spec is an opaque type spec and return an inspector for it
         pub fn as_opaque_type(self) -> Option<NodeInspector<'t, Id<OpaqueTypeSpec>>> {
             let spec = self.node.get(self.tree);
             spec.to_opaque_type()
-                .map(|opaque_id| NodeInspector::new(opaque_id, self.tree))
+                .map(|opaque_id| NodeInspector::new(opaque_id, self.tree, self.interner))
         }
     }
 
     impl<'t> NamedNode for NodeInspector<'t, Id<ValueSpec>> {
         fn assert_name(self, expected: &str, node_type: &str) -> Self {
             let name = self.node.get(self.tree).name.get(self.tree);
+            let name = self.interner.get(name.0).expect("Symbol not found");
+
             assert_eq!(
-                name.as_str(),
-                expected,
+                name, expected,
                 "Expected {} name '{}' but found '{}'",
-                node_type,
-                expected,
-                name.0
+                node_type, expected, name
             );
             self
         }
@@ -1061,20 +1057,19 @@ mod inspector {
 
         pub fn type_node(self) -> NodeInspector<'t, Id<Type>> {
             let value_spec = self.node.get(self.tree);
-            NodeInspector::new(value_spec.ty, self.tree)
+            NodeInspector::new(value_spec.ty, self.tree, self.interner)
         }
     }
 
     impl<'t> NamedNode for NodeInspector<'t, Id<ValueBind>> {
         fn assert_name(self, expected: &str, node_type: &str) -> Self {
             let name = self.node.get(self.tree).name.get(self.tree);
+            let name = self.interner.get(name.0).expect("Symbol not found");
+
             assert_eq!(
-                name.as_str(),
-                expected,
+                name, expected,
                 "Expected {} name '{}' but found '{}'",
-                node_type,
-                expected,
-                name.0
+                node_type, expected, name
             );
             self
         }
@@ -1083,7 +1078,7 @@ mod inspector {
     impl<'t> NodeInspector<'t, Id<ValueBind>> {
         pub fn vis(self) -> NodeInspector<'t, Id<Vis>> {
             let value_bind = self.node.get(self.tree);
-            NodeInspector::new(value_bind.vis, self.tree)
+            NodeInspector::new(value_bind.vis, self.tree, self.interner)
         }
 
         /// Assert the value bind has the specified name
@@ -1096,26 +1091,25 @@ mod inspector {
             let value_bind = self.node.get(self.tree);
             value_bind
                 .ty
-                .map(|ty_id| NodeInspector::new(ty_id, self.tree))
+                .map(|ty_id| NodeInspector::new(ty_id, self.tree, self.interner))
         }
 
         /// Get an inspector for the value's expression
         pub fn value(self) -> NodeInspector<'t, Id<Expr>> {
             let value_bind = self.node.get(self.tree);
-            NodeInspector::new(value_bind.value, self.tree)
+            NodeInspector::new(value_bind.value, self.tree, self.interner)
         }
     }
 
     impl<'t> NamedNode for NodeInspector<'t, Id<TypeBind>> {
         fn assert_name(self, expected: &str, node_type: &str) -> Self {
             let name = self.node.get(self.tree).name.get(self.tree);
+            let name = self.interner.get(name.0).expect("Symbol not found");
+
             assert_eq!(
-                name.as_str(),
-                expected,
+                name, expected,
                 "Expected {} name '{}' but found '{}'",
-                node_type,
-                expected,
-                name.0
+                node_type, expected, name
             );
             self
         }
@@ -1130,20 +1124,19 @@ mod inspector {
         /// Get an inspector for the type definition
         pub fn type_node(self) -> NodeInspector<'t, Id<Type>> {
             let type_bind = self.node.get(self.tree);
-            NodeInspector::new(type_bind.ty, self.tree)
+            NodeInspector::new(type_bind.ty, self.tree, self.interner)
         }
     }
 
     impl<'t> NamedNode for NodeInspector<'t, Id<ModuleSpec>> {
         fn assert_name(self, expected: &str, node_type: &str) -> Self {
             let name = self.node.get(self.tree).name.get(self.tree);
+            let name = self.interner.get(name.0).expect("Symbol not found");
+
             assert_eq!(
-                name.as_str(),
-                expected,
+                name, expected,
                 "Expected {} name '{}' but found '{}'",
-                node_type,
-                expected,
-                name.0
+                node_type, expected, name
             );
             self
         }
@@ -1158,20 +1151,19 @@ mod inspector {
         /// Get an inspector for the module spec's type
         pub fn module_type(self) -> NodeInspector<'t, Id<ModuleType>> {
             let module_spec = self.node.get(self.tree);
-            NodeInspector::new(module_spec.ty, self.tree)
+            NodeInspector::new(module_spec.ty, self.tree, self.interner)
         }
     }
 
     impl<'t> NamedNode for NodeInspector<'t, Id<OpaqueTypeSpec>> {
         fn assert_name(self, expected: &str, node_type: &str) -> Self {
             let name = self.node.get(self.tree).name.get(self.tree);
+            let name = self.interner.get(name.0).expect("Symbol not found");
+
             assert_eq!(
-                name.as_str(),
-                expected,
+                name, expected,
                 "Expected {} name '{}' but found '{}'",
-                node_type,
-                expected,
-                name.0
+                node_type, expected, name
             );
             self
         }
@@ -1186,7 +1178,7 @@ mod inspector {
         /// Get an inspector for the opaque type's kind
         pub fn kind(self) -> NodeInspector<'t, Id<OpaqueTypeKind>> {
             let opaque_type_spec = self.node.get(self.tree);
-            NodeInspector::new(opaque_type_spec.kind, self.tree)
+            NodeInspector::new(opaque_type_spec.kind, self.tree, self.interner)
         }
     }
 

@@ -19,7 +19,7 @@ use crate::{
 #[error("Module Report:")]
 pub struct ModuleReport {
     #[label = "In this module"]
-    pub span: Option<Span>,
+    pub span: Span,
     #[source_code]
     pub src: Source,
     #[related]
@@ -27,7 +27,7 @@ pub struct ModuleReport {
 }
 
 impl ModuleReport {
-    pub fn new(report: SourceReport, span: Option<Span>) -> Self {
+    pub fn new(report: SourceReport, span: Span) -> Self {
         Self {
             span,
             src: report.src,
@@ -39,7 +39,7 @@ impl ModuleReport {
 impl From<SourceReport> for ModuleReport {
     fn from(report: SourceReport) -> Self {
         Self {
-            span: None,
+            span: report.src.end_of_input(),
             src: report.src,
             related: report.related,
         }
@@ -48,7 +48,7 @@ impl From<SourceReport> for ModuleReport {
 
 #[derive(Error, Debug, Default, Diagnostic)]
 #[error("Module Reports:")]
-pub struct ModuleReports(#[related] Vec<ModuleReport>);
+pub struct ModuleReports(#[related] pub Vec<ModuleReport>);
 
 #[derive(Debug, Default)]
 pub struct ExploreReport {
@@ -126,7 +126,7 @@ pub fn explore(
             });
         }
     };
-    let module_path = ModulePath::new(file.tree.root_id(), file_path.clone(), None);
+    let module_path = ModulePath::from_file(&file);
 
     file_infos.insert(file_path.clone(), file);
     stack.push(module_path);
@@ -242,7 +242,7 @@ impl<'a> Explorer<'a> {
     #[inline]
     fn span<T>(&self, id: Id<T>) -> Span
     where
-        T: MetaCast<SyntaxPhase, Meta = Span>,
+        T: MetaCast<SpanPhase, Meta = Span>,
     {
         self.file.span(id)
     }
@@ -337,8 +337,7 @@ impl<'a, T: TreeView> Visitor<T> for Explorer<'a> {
         let bind = match *value.get(tree) {
             node::ModuleExpr::Module(id) => {
                 let span = self.span(id);
-                let module_path =
-                    ModulePath::new(id, self.module_path.file_path.clone(), Some(span));
+                let module_path = ModulePath::new(id, self.module_path.file_path.clone(), span);
 
                 self.module_parents.insert(module_path.clone(), parent_path);
                 ModuleBind::new(module_path, vis, span)
@@ -384,7 +383,7 @@ impl<'a, T: TreeView> Visitor<T> for Explorer<'a> {
                         return ControlFlow::Continue(());
                     }
                 };
-                let module_path = ModulePath::new(file.tree.root_id(), file_path.clone(), None);
+                let module_path = ModulePath::from_file(&file);
 
                 self.module_parents.insert(module_path.clone(), parent_path);
                 self.file_infos.insert(file_path, file);

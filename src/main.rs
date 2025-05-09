@@ -1,7 +1,6 @@
 use camino::Utf8PathBuf;
 use log::info;
 use miette::IntoDiagnostic;
-use owo_colors::OwoColorize;
 use std::path::PathBuf;
 
 use kola_semantic::prelude::*;

@@ -1,5 +1,4 @@
 use kola_syntax::prelude::*;
-use kola_tree::node::Symbol;
 use kola_utils::Errors;
 use kola_vfs::diag::{IntoSourceDiagnostic, SourceDiagnostic};
 use miette::Diagnostic;
@@ -12,7 +11,7 @@ pub type SemanticErrors = Errors<SemanticError>;
 #[derive(Debug, Clone, Error, Diagnostic, PartialEq, Eq)]
 pub enum SemanticError {
     #[error("Unbound: {0}")]
-    Unbound(Symbol),
+    Unbound(String),
     #[error("Occurs: {0}")]
     Occurs(TypeVar),
     #[error("Cannot Unify: Expected `{expected}` but got `{actual}`")]
@@ -22,7 +21,7 @@ pub enum SemanticError {
     },
     #[error("Cannot Unify Label: {label} : {expected} with {actual} because\n{cause}")]
     CannotUnifyLabel {
-        label: Symbol,
+        label: String,
         expected: MonoType,
         actual: MonoType,
         cause: SemanticErrors,
@@ -30,9 +29,9 @@ pub enum SemanticError {
     #[error("Cannot Constrain: {expected:?} {actual}")]
     CannotConstrain { expected: Kind, actual: MonoType },
     #[error("Extra Label: {0}")]
-    ExtraLabel(Symbol),
+    ExtraLabel(String),
     #[error("Missing Label: {0}")]
-    MissingLabel(Symbol),
+    MissingLabel(String),
 }
 
 impl SemanticError {

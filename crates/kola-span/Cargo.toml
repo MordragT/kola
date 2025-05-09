@@ -1,0 +1,12 @@
+[package]
+name = "kola-span"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+kola-utils.workspace = true
+chumsky.workspace = true
+camino.workspace = true
+derive_more.workspace = true
+owo-colors.workspace = true
+ariadne = { version = "0.5.1", features = ["auto-color"] }

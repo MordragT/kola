@@ -1,8 +1,10 @@
 use chumsky::{input::ValueInput, prelude::*};
+
+use kola_span::Span;
 use kola_tree::prelude::*;
 
 use super::{Extra, State};
-use crate::{Span, SyntaxPhase, token::Token};
+use crate::{span::SpanPhase, token::Token};
 
 pub trait ParserExt<'t, I, T>: Parser<'t, I, T, Extra<'t>> + Sized
 where
@@ -12,7 +14,7 @@ where
     fn to_node(self) -> impl Parser<'t, I, Id<T>, Extra<'t>>
     where
         Node: From<T>,
-        T: MetaCast<SyntaxPhase, Meta = Span>,
+        T: MetaCast<SpanPhase, Meta = Span>,
     {
         self.map_with(|node, e| {
             let span = e.span();
@@ -25,7 +27,7 @@ where
     fn map_to_node<F, U>(self, f: F) -> impl Parser<'t, I, Id<U>, Extra<'t>>
     where
         F: Fn(T) -> U,
-        U: MetaCast<SyntaxPhase, Meta = Span>,
+        U: MetaCast<SpanPhase, Meta = Span>,
         Node: From<U>,
     {
         self.map(f).to_node()

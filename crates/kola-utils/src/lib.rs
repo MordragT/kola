@@ -1,8 +1,10 @@
 pub use convert::{TryAsMut, TryAsRef};
 pub use errors::Errors;
+pub use interner::{Interner, PathInterner, PathKey, StrInterner, StrKey};
 
 mod convert;
 mod errors;
+mod interner;
 
 #[macro_export]
 macro_rules! as_variant {

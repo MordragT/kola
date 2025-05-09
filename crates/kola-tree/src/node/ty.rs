@@ -1,10 +1,11 @@
 use derive_more::{From, IntoIterator};
-use kola_print::prelude::*;
-use kola_utils::as_variant;
-use owo_colors::OwoColorize;
 use serde::{Deserialize, Serialize};
+use std::{borrow::Borrow, ops::Deref};
 
-use super::{Name, Symbol};
+use kola_print::prelude::*;
+use kola_utils::{StrKey, as_variant};
+
+use super::Name;
 use crate::{id::Id, print::TreePrinter, tree::TreeView};
 
 /*
@@ -70,31 +71,56 @@ impl Printable<TreePrinter> for TypePath {
     }
 }
 
-#[derive(Debug, From, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
-pub struct TypeVar(pub Symbol);
+#[derive(
+    Debug, From, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+)]
+pub struct TypeVar(pub StrKey);
 
 impl TypeVar {
-    pub fn as_str(&self) -> &str {
-        self.0.as_str()
+    #[inline]
+    pub fn as_str_key(&self) -> &StrKey {
+        &self.0
     }
 }
 
-impl PartialEq<Symbol> for TypeVar {
-    fn eq(&self, other: &Symbol) -> bool {
-        &self.0 == other
+impl Deref for TypeVar {
+    type Target = StrKey;
+
+    fn deref(&self) -> &Self::Target {
+        &self.0
     }
 }
 
-impl PartialEq<str> for TypeVar {
-    fn eq(&self, other: &str) -> bool {
-        self.as_str() == other
+impl AsRef<StrKey> for TypeVar {
+    #[inline]
+    fn as_ref(&self) -> &StrKey {
+        &self.0
+    }
+}
+
+impl Borrow<StrKey> for TypeVar {
+    #[inline]
+    fn borrow(&self) -> &StrKey {
+        &self.0
+    }
+}
+
+impl PartialEq<StrKey> for TypeVar {
+    #[inline]
+    fn eq(&self, other: &StrKey) -> bool {
+        self == other
     }
 }
 
 impl Printable<TreePrinter> for TypeVar {
-    fn notate<'a>(&'a self, _with: &'a TreePrinter, arena: &'a Bump) -> Notation<'a> {
+    fn notate<'a>(&'a self, with: &'a TreePrinter, arena: &'a Bump) -> Notation<'a> {
         let head = "TypeVar".magenta().display_in(arena);
-        let value = self.0.magenta().display_in(arena);
+        let value = with
+            .interner
+            .get(self.0)
+            .expect("Symbol not found")
+            .magenta()
+            .display_in(arena);
 
         let single = arena.just(' ').then(value.clone(), arena);
         let multi = arena.newline().then(value, arena).indent(arena);
@@ -509,7 +535,7 @@ mod inspector {
             ty.ty
                 .get(self.tree)
                 .to_type_path()
-                .map(|path_id| NodeInspector::new(path_id, self.tree))
+                .map(|path_id| NodeInspector::new(path_id, self.tree, self.interner))
         }
 
         /// Check if this type is a function type and return an inspector for it
@@ -518,7 +544,7 @@ mod inspector {
             ty.ty
                 .get(self.tree)
                 .to_func_type()
-                .map(|fn_id| NodeInspector::new(fn_id, self.tree))
+                .map(|fn_id| NodeInspector::new(fn_id, self.tree, self.interner))
         }
 
         /// Check if this type is a record type and return an inspector for it
@@ -527,7 +553,7 @@ mod inspector {
             ty.ty
                 .get(self.tree)
                 .to_record_type()
-                .map(|record_id| NodeInspector::new(record_id, self.tree))
+                .map(|record_id| NodeInspector::new(record_id, self.tree, self.interner))
         }
 
         /// Check if this type is a variant type and return an inspector for it
@@ -536,7 +562,7 @@ mod inspector {
             ty.ty
                 .get(self.tree)
                 .to_variant_type()
-                .map(|variant_id| NodeInspector::new(variant_id, self.tree))
+                .map(|variant_id| NodeInspector::new(variant_id, self.tree, self.interner))
         }
 
         /// Check if this type is a type application and return an inspector for it
@@ -545,7 +571,7 @@ mod inspector {
             ty.ty
                 .get(self.tree)
                 .to_type_application()
-                .map(|app_id| NodeInspector::new(app_id, self.tree))
+                .map(|app_id| NodeInspector::new(app_id, self.tree, self.interner))
         }
 
         /// Assert the type has the specified number of type variables
@@ -569,13 +595,13 @@ mod inspector {
                 ty.vars.len() - 1
             );
             let var_id = ty.vars[index];
-            NodeInspector::new(var_id, self.tree)
+            NodeInspector::new(var_id, self.tree, self.interner)
         }
 
         /// Get an inspector for the type expression
         pub fn type_expr(self) -> NodeInspector<'t, Id<TypeExpr>> {
             let ty = self.node.get(self.tree);
-            NodeInspector::new(ty.ty, self.tree)
+            NodeInspector::new(ty.ty, self.tree, self.interner)
         }
     }
 
@@ -601,12 +627,12 @@ mod inspector {
                 type_path.0.len() - 1
             );
             let segment = type_path.0[index].get(self.tree);
+            let name = self.interner.get(segment.0).expect("Symbol not found");
+
             assert_eq!(
-                segment.as_str(),
-                expected,
+                name, expected,
                 "Expected segment '{}' but found '{}'",
-                expected,
-                segment.0
+                expected, name
             );
             self
         }
@@ -616,12 +642,12 @@ mod inspector {
         /// Assert the type variable has the specified name
         pub fn has_name(self, expected: &str) -> Self {
             let type_var = self.node.get(self.tree);
+            let name = self.interner.get(type_var.0).expect("Symbol not found");
+
             assert_eq!(
-                type_var.as_str(),
-                expected,
+                name, expected,
                 "Expected type variable name '{}' but found '{}'",
-                expected,
-                type_var.0
+                expected, name
             );
             self
         }
@@ -631,13 +657,13 @@ mod inspector {
         /// Get an inspector for the function's parameter type
         pub fn input(self) -> NodeInspector<'t, Id<TypeExpr>> {
             let function_type = self.node.get(self.tree);
-            NodeInspector::new(function_type.input, self.tree)
+            NodeInspector::new(function_type.input, self.tree, self.interner)
         }
 
         /// Get an inspector for the function's return type
         pub fn output(self) -> NodeInspector<'t, Id<TypeExpr>> {
             let function_type = self.node.get(self.tree);
-            NodeInspector::new(function_type.output, self.tree)
+            NodeInspector::new(function_type.output, self.tree, self.interner)
         }
     }
 
@@ -663,7 +689,7 @@ mod inspector {
                 record_type.fields.len() - 1
             );
             let field_id = record_type.fields[index];
-            NodeInspector::new(field_id, self.tree)
+            NodeInspector::new(field_id, self.tree, self.interner)
         }
 
         /// Get an inspector for the record type extension if it has one
@@ -671,20 +697,19 @@ mod inspector {
             let record_type = self.node.get(self.tree);
             record_type
                 .extension
-                .map(|ext_id| NodeInspector::new(ext_id, self.tree))
+                .map(|ext_id| NodeInspector::new(ext_id, self.tree, self.interner))
         }
     }
 
     impl<'t> NamedNode for NodeInspector<'t, Id<RecordFieldType>> {
         fn assert_name(self, expected: &str, node_type: &str) -> Self {
             let name = self.node.get(self.tree).name.get(self.tree);
+            let name = self.interner.get(name.0).expect("Symbol not found");
+
             assert_eq!(
-                name.as_str(),
-                expected,
+                name, expected,
                 "Expected {} name '{}' but found '{}'",
-                node_type,
-                expected,
-                name.0
+                node_type, expected, name
             );
             self
         }
@@ -698,7 +723,7 @@ mod inspector {
 
         pub fn type_expr(self) -> NodeInspector<'t, Id<TypeExpr>> {
             let field = self.node.get(self.tree);
-            NodeInspector::new(field.ty, self.tree)
+            NodeInspector::new(field.ty, self.tree, self.interner)
         }
     }
 
@@ -724,7 +749,7 @@ mod inspector {
                 variant_type.cases.len() - 1
             );
             let case_id = variant_type.cases[index];
-            NodeInspector::new(case_id, self.tree)
+            NodeInspector::new(case_id, self.tree, self.interner)
         }
 
         /// Check if this variant type has an extension and return an inspector for it
@@ -732,20 +757,19 @@ mod inspector {
             let variant_type = self.node.get(self.tree);
             variant_type
                 .extension
-                .map(|ext_id| NodeInspector::new(ext_id, self.tree))
+                .map(|ext_id| NodeInspector::new(ext_id, self.tree, self.interner))
         }
     }
 
     impl<'t> NamedNode for NodeInspector<'t, Id<VariantCaseType>> {
         fn assert_name(self, expected: &str, node_type: &str) -> Self {
             let name = self.node.get(self.tree).name.get(self.tree);
+            let name = self.interner.get(name.0).expect("Symbol not found");
+
             assert_eq!(
-                name.as_str(),
-                expected,
+                name, expected,
                 "Expected {} name '{}' but found '{}'",
-                node_type,
-                expected,
-                name.0
+                node_type, expected, name
             );
             self
         }
@@ -760,7 +784,8 @@ mod inspector {
         /// Get an inspector for the case's type if it has one
         pub fn type_expr(self) -> Option<NodeInspector<'t, Id<TypeExpr>>> {
             let case = self.node.get(self.tree);
-            case.ty.map(|ty_id| NodeInspector::new(ty_id, self.tree))
+            case.ty
+                .map(|ty_id| NodeInspector::new(ty_id, self.tree, self.interner))
         }
     }
 
@@ -770,7 +795,7 @@ mod inspector {
             let type_expr = self.node.get(self.tree);
             type_expr
                 .to_error()
-                .map(|err_id| NodeInspector::new(err_id, self.tree))
+                .map(|err_id| NodeInspector::new(err_id, self.tree, self.interner))
         }
 
         /// Check if this type expression is a type path
@@ -778,7 +803,7 @@ mod inspector {
             let type_expr = self.node.get(self.tree);
             type_expr
                 .to_type_path()
-                .map(|path_id| NodeInspector::new(path_id, self.tree))
+                .map(|path_id| NodeInspector::new(path_id, self.tree, self.interner))
         }
 
         /// Check if this type expression is a record type
@@ -786,7 +811,7 @@ mod inspector {
             let type_expr = self.node.get(self.tree);
             type_expr
                 .to_record_type()
-                .map(|rec_id| NodeInspector::new(rec_id, self.tree))
+                .map(|rec_id| NodeInspector::new(rec_id, self.tree, self.interner))
         }
 
         /// Check if this type expression is a variant type
@@ -794,7 +819,7 @@ mod inspector {
             let type_expr = self.node.get(self.tree);
             type_expr
                 .to_variant_type()
-                .map(|var_id| NodeInspector::new(var_id, self.tree))
+                .map(|var_id| NodeInspector::new(var_id, self.tree, self.interner))
         }
 
         /// Check if this type expression is a function type
@@ -802,7 +827,7 @@ mod inspector {
             let type_expr = self.node.get(self.tree);
             type_expr
                 .to_func_type()
-                .map(|fn_id| NodeInspector::new(fn_id, self.tree))
+                .map(|fn_id| NodeInspector::new(fn_id, self.tree, self.interner))
         }
 
         /// Check if this type expression is a type application
@@ -810,7 +835,7 @@ mod inspector {
             let type_expr = self.node.get(self.tree);
             type_expr
                 .to_type_application()
-                .map(|app_id| NodeInspector::new(app_id, self.tree))
+                .map(|app_id| NodeInspector::new(app_id, self.tree, self.interner))
         }
     }
 
@@ -818,13 +843,13 @@ mod inspector {
         /// Get an inspector for the type constructor
         pub fn constructor(self) -> NodeInspector<'t, Id<TypeExpr>> {
             let type_app = self.node.get(self.tree);
-            NodeInspector::new(type_app.constructor, self.tree)
+            NodeInspector::new(type_app.constructor, self.tree, self.interner)
         }
 
         /// Get an inspector for the type argument
         pub fn arg(self) -> NodeInspector<'t, Id<TypeExpr>> {
             let type_app = self.node.get(self.tree);
-            NodeInspector::new(type_app.arg, self.tree)
+            NodeInspector::new(type_app.arg, self.tree, self.interner)
         }
     }
 }

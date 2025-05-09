@@ -1,8 +1,5 @@
 use chumsky::error::Rich;
-use kola_syntax::{
-    span::{Span, Spanned},
-    token::Token,
-};
+use kola_syntax::span::{Span, Spanned};
 use miette::{Diagnostic, LabeledSpan, Severity};
 use std::{fmt, io};
 use thiserror::Error;
@@ -178,29 +175,12 @@ impl SourceDiagnostic {
     }
 }
 
-/// Converts a Chumsky lexer error into a source diagnostic.
-impl<'t> From<Rich<'t, char, Span>> for SourceDiagnostic {
-    fn from(e: Rich<'t, char, Span>) -> Self {
-        let message = e.to_string();
-        let span = *e.span();
-        let trace = e
-            .contexts()
-            .map(|(label, span)| (label.to_string(), *span))
-            .collect();
-
-        Self {
-            message,
-            help: None,
-            severity: Severity::Error,
-            span,
-            trace,
-        }
-    }
-}
-
 /// Converts a Chumsky parser error into a source diagnostic.
-impl<'t> From<Rich<'t, Token<'t>, Span>> for SourceDiagnostic {
-    fn from(e: Rich<'t, Token<'t>, Span>) -> Self {
+impl<'t, T> From<Rich<'t, T, Span>> for SourceDiagnostic
+where
+    T: fmt::Display,
+{
+    fn from(e: Rich<'t, T, Span>) -> Self {
         let message = e.to_string();
         let span = *e.span();
         let trace = e

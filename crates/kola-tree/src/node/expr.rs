@@ -1,10 +1,9 @@
 use derive_more::{Display, From, IntoIterator};
 use kola_print::prelude::*;
-use kola_utils::as_variant;
-use owo_colors::OwoColorize;
+use kola_utils::{StrKey, as_variant};
 use serde::{Deserialize, Serialize};
 
-use super::{Name, Pat, Symbol};
+use super::{Name, Pat};
 use crate::{
     id::Id,
     print::TreePrinter,
@@ -20,12 +19,12 @@ impl Printable<TreePrinter> for ExprError {
     }
 }
 
-#[derive(Debug, From, Clone, PartialEq, PartialOrd, Serialize, Deserialize)]
+#[derive(Debug, From, Clone, Copy, PartialEq, PartialOrd, Serialize, Deserialize)]
 pub enum LiteralExpr {
     Bool(bool),
     Num(f64),
     Char(char),
-    Str(Symbol),
+    Str(StrKey),
 }
 
 impl LiteralExpr {
@@ -41,7 +40,7 @@ impl LiteralExpr {
         as_variant!(self, Self::Char).copied()
     }
 
-    pub fn to_str(&self) -> Option<&Symbol> {
+    pub fn to_str(&self) -> Option<&StrKey> {
         as_variant!(self, Self::Str)
     }
 
@@ -63,14 +62,19 @@ impl LiteralExpr {
 }
 
 impl Printable<TreePrinter> for LiteralExpr {
-    fn notate<'a>(&'a self, _with: &'a TreePrinter, arena: &'a Bump) -> Notation<'a> {
+    fn notate<'a>(&'a self, with: &'a TreePrinter, arena: &'a Bump) -> Notation<'a> {
         let head = "LiteralExpr".purple().display_in(arena);
 
         let lit = match self {
             Self::Bool(b) => b.yellow().display_in(arena),
             Self::Num(n) => n.yellow().display_in(arena),
             Self::Char(c) => c.yellow().display_in(arena),
-            Self::Str(s) => s.yellow().display_in(arena),
+            Self::Str(s) => with
+                .interner
+                .get(*s)
+                .expect("Symbol not found")
+                .yellow()
+                .display_in(arena),
         }
         .enclose_by(arena.just('"'), arena);
 
@@ -192,16 +196,16 @@ impl Printable<TreePrinter> for RecordField {
 #[into_iterator(owned, ref)]
 pub struct RecordExpr(pub Vec<Id<RecordField>>);
 
-impl RecordExpr {
-    pub fn get(&self, name: impl AsRef<str>, tree: &impl TreeView) -> Option<RecordField> {
-        self.0.iter().find_map(|id| {
-            let field = id.get(tree);
-            (field.field(tree) == name.as_ref())
-                .then_some(field)
-                .copied()
-        })
-    }
-}
+// impl RecordExpr {
+//     pub fn get(&self, name: impl AsRef<str>, tree: &impl TreeView) -> Option<RecordField> {
+//         self.0.iter().find_map(|id| {
+//             let field = id.get(tree);
+//             (field.field(tree) == name.as_ref())
+//                 .then_some(field)
+//                 .copied()
+//         })
+//     }
+// }
 
 impl Printable<TreePrinter> for RecordExpr {
     fn notate<'a>(&'a self, with: &'a TreePrinter, arena: &'a Bump) -> Notation<'a> {
@@ -1127,105 +1131,105 @@ mod inspector {
         pub fn as_error(self) -> Option<NodeInspector<'t, Id<ExprError>>> {
             let expr = self.node.get(self.tree);
             expr.to_error()
-                .map(|err_id| NodeInspector::new(err_id, self.tree))
+                .map(|err_id| NodeInspector::new(err_id, self.tree, self.interner))
         }
 
         /// Check if this expression is a literal
         pub fn as_literal(self) -> Option<NodeInspector<'t, Id<LiteralExpr>>> {
             let expr = self.node.get(self.tree);
             expr.to_literal()
-                .map(|lit_id| NodeInspector::new(lit_id, self.tree))
+                .map(|lit_id| NodeInspector::new(lit_id, self.tree, self.interner))
         }
 
         /// Check if this expression is a path
         pub fn as_path(self) -> Option<NodeInspector<'t, Id<PathExpr>>> {
             let expr = self.node.get(self.tree);
             expr.to_path()
-                .map(|path_id| NodeInspector::new(path_id, self.tree))
+                .map(|path_id| NodeInspector::new(path_id, self.tree, self.interner))
         }
 
         /// Check if this expression is a list
         pub fn as_list(self) -> Option<NodeInspector<'t, Id<ListExpr>>> {
             let expr = self.node.get(self.tree);
             expr.to_list()
-                .map(|list_id| NodeInspector::new(list_id, self.tree))
+                .map(|list_id| NodeInspector::new(list_id, self.tree, self.interner))
         }
 
         /// Check if this expression is a record
         pub fn as_record(self) -> Option<NodeInspector<'t, Id<RecordExpr>>> {
             let expr = self.node.get(self.tree);
             expr.to_record()
-                .map(|rec_id| NodeInspector::new(rec_id, self.tree))
+                .map(|rec_id| NodeInspector::new(rec_id, self.tree, self.interner))
         }
 
         /// Check if this expression is a record extend
         pub fn as_record_extend(self) -> Option<NodeInspector<'t, Id<RecordExtendExpr>>> {
             let expr = self.node.get(self.tree);
             expr.to_record_extend()
-                .map(|ext_id| NodeInspector::new(ext_id, self.tree))
+                .map(|ext_id| NodeInspector::new(ext_id, self.tree, self.interner))
         }
 
         /// Check if this expression is a record restrict
         pub fn as_record_restrict(self) -> Option<NodeInspector<'t, Id<RecordRestrictExpr>>> {
             let expr = self.node.get(self.tree);
             expr.to_record_restrict()
-                .map(|res_id| NodeInspector::new(res_id, self.tree))
+                .map(|res_id| NodeInspector::new(res_id, self.tree, self.interner))
         }
 
         /// Check if this expression is a record update
         pub fn as_record_update(self) -> Option<NodeInspector<'t, Id<RecordUpdateExpr>>> {
             let expr = self.node.get(self.tree);
             expr.to_record_update()
-                .map(|upd_id| NodeInspector::new(upd_id, self.tree))
+                .map(|upd_id| NodeInspector::new(upd_id, self.tree, self.interner))
         }
 
         /// Check if this expression is a unary operation
         pub fn as_unary(self) -> Option<NodeInspector<'t, Id<UnaryExpr>>> {
             let expr = self.node.get(self.tree);
             expr.to_unary()
-                .map(|un_id| NodeInspector::new(un_id, self.tree))
+                .map(|un_id| NodeInspector::new(un_id, self.tree, self.interner))
         }
 
         /// Check if this expression is a binary operation
         pub fn as_binary(self) -> Option<NodeInspector<'t, Id<BinaryExpr>>> {
             let expr = self.node.get(self.tree);
             expr.to_binary()
-                .map(|bin_id| NodeInspector::new(bin_id, self.tree))
+                .map(|bin_id| NodeInspector::new(bin_id, self.tree, self.interner))
         }
 
         /// Check if this expression is a let binding
         pub fn as_let(self) -> Option<NodeInspector<'t, Id<LetExpr>>> {
             let expr = self.node.get(self.tree);
             expr.to_let()
-                .map(|let_id| NodeInspector::new(let_id, self.tree))
+                .map(|let_id| NodeInspector::new(let_id, self.tree, self.interner))
         }
 
         /// Check if this expression is an if condition
         pub fn as_if(self) -> Option<NodeInspector<'t, Id<IfExpr>>> {
             let expr = self.node.get(self.tree);
             expr.to_if()
-                .map(|if_id| NodeInspector::new(if_id, self.tree))
+                .map(|if_id| NodeInspector::new(if_id, self.tree, self.interner))
         }
 
         /// Check if this expression is a case expression
         pub fn as_case(self) -> Option<NodeInspector<'t, Id<CaseExpr>>> {
             let expr = self.node.get(self.tree);
             expr.to_case()
-                .map(|case_id| NodeInspector::new(case_id, self.tree))
+                .map(|case_id| NodeInspector::new(case_id, self.tree, self.interner))
         }
 
         /// Check if this expression is a lambda
         pub fn as_lambda(self) -> Option<NodeInspector<'t, Id<LambdaExpr>>> {
             let expr = self.node.get(self.tree);
             expr.to_lambda()
-                .map(|lambda_id| NodeInspector::new(lambda_id, self.tree))
+                .map(|lambda_id| NodeInspector::new(lambda_id, self.tree, self.interner))
         }
 
         /// Check if this expression is a function call
         pub fn as_call(self) -> Option<NodeInspector<'t, Id<CallExpr>>> {
             let expr = self.node.get(self.tree);
             expr.to_call()
-                .map(|call_id| NodeInspector::new(call_id, self.tree))
+                .map(|call_id| NodeInspector::new(call_id, self.tree, self.interner))
         }
     }
 
@@ -1280,12 +1284,12 @@ mod inspector {
             let lit = self.node.get(self.tree);
             match lit {
                 LiteralExpr::Str(value) => {
+                    let s = self.interner.get(*value).expect("Symbol not found");
+
                     assert_eq!(
-                        value.as_str(),
-                        expected,
+                        s, expected,
                         "Expected string \"{}\" but found \"{}\"",
-                        expected,
-                        value
+                        expected, s,
                     );
                 }
                 _ => panic!("Expected string literal but found {:?}", lit),
@@ -1316,10 +1320,12 @@ mod inspector {
                 path.0.len() - 1
             );
             let segment = path.get(index, self.tree);
+            let s = self.interner.get(segment.0).expect("Symbol not found");
+
             assert_eq!(
-                segment, expected,
+                s, expected,
                 "Expected segment '{}' but found '{}'",
-                expected, segment.0
+                expected, s
             );
             self
         }
@@ -1346,7 +1352,7 @@ mod inspector {
         /// Get an inspector for the operand
         pub fn operand(self) -> NodeInspector<'t, Id<Expr>> {
             let unary = self.node.get(self.tree);
-            NodeInspector::new(unary.operand, self.tree)
+            NodeInspector::new(unary.operand, self.tree, self.interner)
         }
     }
 
@@ -1371,23 +1377,25 @@ mod inspector {
         /// Get an inspector for the left operand
         pub fn left(self) -> NodeInspector<'t, Id<Expr>> {
             let binary = self.node.get(self.tree);
-            NodeInspector::new(binary.left, self.tree)
+            NodeInspector::new(binary.left, self.tree, self.interner)
         }
 
         /// Get an inspector for the right operand
         pub fn right(self) -> NodeInspector<'t, Id<Expr>> {
             let binary = self.node.get(self.tree);
-            NodeInspector::new(binary.right, self.tree)
+            NodeInspector::new(binary.right, self.tree, self.interner)
         }
     }
 
     impl<'t> NamedNode for NodeInspector<'t, Id<LetExpr>> {
         fn assert_name(self, expected: &str, node_type: &str) -> Self {
             let name = self.node.get(self.tree).name(self.tree);
+            let s = self.interner.get(name.0).expect("Symbol not found");
+
             assert_eq!(
-                name, expected,
+                s, expected,
                 "Expected {} name '{}' but found '{}'",
-                node_type, expected, name.0
+                node_type, expected, s
             );
             self
         }
@@ -1402,13 +1410,13 @@ mod inspector {
         /// Get an inspector for the value expression
         pub fn value(self) -> NodeInspector<'t, Id<Expr>> {
             let let_expr = self.node.get(self.tree);
-            NodeInspector::new(let_expr.value, self.tree)
+            NodeInspector::new(let_expr.value, self.tree, self.interner)
         }
 
         /// Get an inspector for the inside expression
         pub fn inside(self) -> NodeInspector<'t, Id<Expr>> {
             let let_expr = self.node.get(self.tree);
-            NodeInspector::new(let_expr.inside, self.tree)
+            NodeInspector::new(let_expr.inside, self.tree, self.interner)
         }
     }
 
@@ -1416,19 +1424,19 @@ mod inspector {
         /// Get an inspector for the predicate expression
         pub fn predicate(self) -> NodeInspector<'t, Id<Expr>> {
             let if_expr = self.node.get(self.tree);
-            NodeInspector::new(if_expr.predicate, self.tree)
+            NodeInspector::new(if_expr.predicate, self.tree, self.interner)
         }
 
         /// Get an inspector for the then branch
         pub fn then(self) -> NodeInspector<'t, Id<Expr>> {
             let if_expr = self.node.get(self.tree);
-            NodeInspector::new(if_expr.then, self.tree)
+            NodeInspector::new(if_expr.then, self.tree, self.interner)
         }
 
         /// Get an inspector for the else branch
         pub fn or(self) -> NodeInspector<'t, Id<Expr>> {
             let if_expr = self.node.get(self.tree);
-            NodeInspector::new(if_expr.or, self.tree)
+            NodeInspector::new(if_expr.or, self.tree, self.interner)
         }
     }
 
@@ -1436,7 +1444,7 @@ mod inspector {
         /// Get an inspector for the case source expression
         pub fn source(self) -> NodeInspector<'t, Id<Expr>> {
             let case_expr = self.node.get(self.tree);
-            NodeInspector::new(case_expr.source, self.tree)
+            NodeInspector::new(case_expr.source, self.tree, self.interner)
         }
 
         /// Assert the case has the specified number of branches
@@ -1460,7 +1468,7 @@ mod inspector {
                 case_expr.branches.len() - 1
             );
             let branch_id = case_expr.branches[index];
-            NodeInspector::new(branch_id, self.tree)
+            NodeInspector::new(branch_id, self.tree, self.interner)
         }
     }
 
@@ -1468,13 +1476,13 @@ mod inspector {
         /// Get an inspector for the pattern in this branch
         pub fn pat(self) -> NodeInspector<'t, Id<Pat>> {
             let branch = self.node.get(self.tree);
-            NodeInspector::new(branch.pat, self.tree)
+            NodeInspector::new(branch.pat, self.tree, self.interner)
         }
 
         /// Get an inspector for the result expression in this branch
         pub fn matches(self) -> NodeInspector<'t, Id<Expr>> {
             let branch = self.node.get(self.tree);
-            NodeInspector::new(branch.matches, self.tree)
+            NodeInspector::new(branch.matches, self.tree, self.interner)
         }
     }
 
@@ -1482,7 +1490,8 @@ mod inspector {
         /// Get the parameter name of this lambda
         pub fn param_name(self) -> &'t str {
             let lambda = self.node.get(self.tree);
-            lambda.param(self.tree).as_str()
+            let symbol = lambda.param(self.tree);
+            self.interner.get(symbol.0).expect("Symbol not found")
         }
 
         /// Assert the parameter has the expected name
@@ -1499,7 +1508,7 @@ mod inspector {
         /// Get an inspector for the lambda body
         pub fn body(self) -> NodeInspector<'t, Id<Expr>> {
             let lambda = self.node.get(self.tree);
-            NodeInspector::new(lambda.body, self.tree)
+            NodeInspector::new(lambda.body, self.tree, self.interner)
         }
     }
 
@@ -1507,13 +1516,13 @@ mod inspector {
         /// Get an inspector for the function expression
         pub fn func(self) -> NodeInspector<'t, Id<Expr>> {
             let call = self.node.get(self.tree);
-            NodeInspector::new(call.func, self.tree)
+            NodeInspector::new(call.func, self.tree, self.interner)
         }
 
         /// Get an inspector for the argument expression
         pub fn arg(self) -> NodeInspector<'t, Id<Expr>> {
             let call = self.node.get(self.tree);
-            NodeInspector::new(call.arg, self.tree)
+            NodeInspector::new(call.arg, self.tree, self.interner)
         }
     }
 
@@ -1539,7 +1548,7 @@ mod inspector {
                 list.0.len() - 1
             );
             let element_id = list.0[index];
-            NodeInspector::new(element_id, self.tree)
+            NodeInspector::new(element_id, self.tree, self.interner)
         }
     }
 
@@ -1565,30 +1574,32 @@ mod inspector {
                 record.0.len() - 1
             );
             let field_id = record.0[index];
-            NodeInspector::new(field_id, self.tree)
+            NodeInspector::new(field_id, self.tree, self.interner)
         }
 
         /// Get an inspector for the field with the given name, if it exists
         pub fn field_named(self, name: &str) -> Option<NodeInspector<'t, Id<RecordField>>> {
             let record = self.node.get(self.tree);
-            record.get(name, self.tree).map(|_| {
-                let field_id = record
-                    .0
-                    .iter()
-                    .find(|id| id.get(self.tree).field(self.tree) == name)
-                    .unwrap();
-                NodeInspector::new(*field_id, self.tree)
-            })
+            record
+                .0
+                .iter()
+                .find(|id| {
+                    let field = id.get(self.tree).field(self.tree);
+                    self.interner.get(field.0).expect("Symbol not found") == name
+                })
+                .map(|field_id| NodeInspector::new(*field_id, self.tree, self.interner))
         }
     }
 
     impl<'t> NamedNode for NodeInspector<'t, Id<RecordField>> {
         fn assert_name(self, expected: &str, node_type: &str) -> Self {
             let name = self.node.get(self.tree).field(self.tree);
+            let s = self.interner.get(name.0).expect("Symbol not found");
+
             assert_eq!(
-                name, expected,
+                s, expected,
                 "Expected {} name '{}' but found '{}'",
-                node_type, expected, name.0
+                node_type, expected, s
             );
             self
         }
@@ -1603,7 +1614,7 @@ mod inspector {
         /// Get an inspector for the field value
         pub fn value(self) -> NodeInspector<'t, Id<Expr>> {
             let field = self.node.get(self.tree);
-            NodeInspector::new(field.value, self.tree)
+            NodeInspector::new(field.value, self.tree, self.interner)
         }
     }
 
@@ -1611,19 +1622,19 @@ mod inspector {
         /// Get an inspector for the source record
         pub fn source(self) -> NodeInspector<'t, Id<Expr>> {
             let extend = self.node.get(self.tree);
-            NodeInspector::new(extend.source, self.tree)
+            NodeInspector::new(extend.source, self.tree, self.interner)
         }
 
         /// Get an inspector for the field path being extended
         pub fn field(self) -> NodeInspector<'t, Id<Name>> {
             let extend = self.node.get(self.tree);
-            NodeInspector::new(extend.field, self.tree)
+            NodeInspector::new(extend.field, self.tree, self.interner)
         }
 
         /// Get an inspector for the value being added
         pub fn value(self) -> NodeInspector<'t, Id<Expr>> {
             let extend = self.node.get(self.tree);
-            NodeInspector::new(extend.value, self.tree)
+            NodeInspector::new(extend.value, self.tree, self.interner)
         }
     }
 
@@ -1631,13 +1642,13 @@ mod inspector {
         /// Get an inspector for the source record
         pub fn source(self) -> NodeInspector<'t, Id<Expr>> {
             let restrict = self.node.get(self.tree);
-            NodeInspector::new(restrict.source, self.tree)
+            NodeInspector::new(restrict.source, self.tree, self.interner)
         }
 
         /// Get an inspector for the field path being restricted
         pub fn field(self) -> NodeInspector<'t, Id<Name>> {
             let restrict = self.node.get(self.tree);
-            NodeInspector::new(restrict.field, self.tree)
+            NodeInspector::new(restrict.field, self.tree, self.interner)
         }
     }
 
@@ -1645,13 +1656,13 @@ mod inspector {
         /// Get an inspector for the source record
         pub fn source(self) -> NodeInspector<'t, Id<Expr>> {
             let update = self.node.get(self.tree);
-            NodeInspector::new(update.source, self.tree)
+            NodeInspector::new(update.source, self.tree, self.interner)
         }
 
         /// Get an inspector for the field path being updated
         pub fn field(self) -> NodeInspector<'t, Id<Name>> {
             let update = self.node.get(self.tree);
-            NodeInspector::new(update.field, self.tree)
+            NodeInspector::new(update.field, self.tree, self.interner)
         }
 
         /// Get the update operation
@@ -1674,7 +1685,7 @@ mod inspector {
         /// Get an inspector for the new value
         pub fn value(self) -> NodeInspector<'t, Id<Expr>> {
             let update = self.node.get(self.tree);
-            NodeInspector::new(update.value, self.tree)
+            NodeInspector::new(update.value, self.tree, self.interner)
         }
     }
 }

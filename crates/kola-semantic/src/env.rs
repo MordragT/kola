@@ -1,5 +1,4 @@
 use indexmap::IndexMap;
-use kola_tree::node::Symbol;
 
 use crate::{
     error::SemanticError,
@@ -19,7 +18,7 @@ pub struct TypeEnv {
     parent: Option<Box<Self>>,
     /// Uses an `IndexMap` to ensure that the order that the bindings were defined in matches
     /// the iteration order
-    scope: IndexMap<Symbol, PolyType>,
+    scope: IndexMap<StrKey, PolyType>,
 }
 
 impl TypeEnv {
@@ -31,7 +30,7 @@ impl TypeEnv {
         self.scope.clear();
     }
 
-    pub fn lookup(&self, name: &Symbol) -> Option<&PolyType> {
+    pub fn lookup(&self, name: StrKey) -> Option<&PolyType> {
         if let Some(t) = self.scope.get(name) {
             Some(t)
         } else if let Some(t) = self.parent.as_ref().and_then(|env| env.lookup(name)) {
@@ -41,12 +40,12 @@ impl TypeEnv {
         }
     }
 
-    pub fn try_lookup(&self, name: &Symbol) -> Result<&PolyType, SemanticError> {
+    pub fn try_lookup(&self, name: StrKey) -> Result<&PolyType, SemanticError> {
         self.lookup(name)
             .ok_or(SemanticError::Unbound(name.clone()))
     }
 
-    pub fn insert(&mut self, name: Symbol, t: PolyType) {
+    pub fn insert(&mut self, name: StrKey, t: PolyType) {
         self.scope.insert(name, t);
     }
 
