@@ -3,7 +3,7 @@ pub mod rules;
 
 pub use ext::ParserExt;
 pub use input::ParseInput;
-pub use state::{Error, Extra, INTERNER, State};
+pub use state::{Error, Extra, State};
 
 mod ext;
 mod input;
@@ -20,10 +20,9 @@ pub struct ParseOutput {
     pub tokens: SemanticTokens,
     pub tree: Option<Tree>,
     pub spans: Locations,
-    pub report: Report,
 }
 
-pub fn parse(input: ParseInput<'_>) -> ParseOutput {
+pub fn parse(input: ParseInput<'_>, report: &mut Report) -> ParseOutput {
     let parser = rules::module_parser();
 
     let mut state = State::new();
@@ -32,7 +31,6 @@ pub fn parse(input: ParseInput<'_>) -> ParseOutput {
         .parse_with_state(input, &mut state)
         .into_output_errors();
 
-    let mut report = Report::new();
     report.extend_diagnostics(errors.into_iter().map(Diagnostic::from));
 
     let State {
@@ -46,7 +44,6 @@ pub fn parse(input: ParseInput<'_>) -> ParseOutput {
         tokens,
         tree,
         spans,
-        report,
     }
 }
 

@@ -1,6 +1,6 @@
 use chumsky::{input::StrInput, prelude::*};
 
-use kola_span::Loc;
+use kola_span::{Diagnostic, Loc, Report};
 use kola_utils::interner::PathKey;
 
 use crate::token::{LiteralT, Token, Tokens};
@@ -69,18 +69,14 @@ pub type Extra<'t> = extra::Err<Error<'t>>;
 //     }
 // }
 
-pub struct TokenizeResult<'t> {
-    pub tokens: Option<Tokens<'t>>,
-    pub errors: Vec<Error<'t>>,
-}
-
-pub fn tokenize(key: PathKey, input: &str) -> TokenizeResult<'_> {
+pub fn tokenize<'t>(key: PathKey, input: &'t str, report: &mut Report) -> Option<Tokens<'t>> {
     let input = input.with_context::<Loc>(key);
 
     let lexer = lexer();
     let (tokens, errors) = lexer.parse(input).into_output_errors();
+    report.extend_diagnostics(errors.into_iter().map(Diagnostic::from));
 
-    TokenizeResult { tokens, errors }
+    tokens
 }
 
 pub fn try_tokenize(key: PathKey, input: &str) -> Result<Tokens<'_>, Vec<Error<'_>>> {
@@ -255,17 +251,20 @@ where
 #[cfg(test)]
 mod test {
     use camino::Utf8PathBuf;
-    use kola_span::{Located, Span};
+    use kola_span::{Located, Report, Span};
     use kola_utils::interner::PathInterner;
 
-    use super::*;
+    use super::tokenize;
+    use crate::token::{LiteralT, Token};
 
     fn tokenize_str(input: &str) -> Vec<Located<Token<'_>>> {
         let mut interner = PathInterner::new();
         let key = interner.intern(Utf8PathBuf::from("test"));
 
-        let TokenizeResult { tokens, errors } = tokenize(key, input);
-        assert!(errors.is_empty(), "Unexpected errors: {:?}", errors);
+        let mut report = Report::new();
+
+        let tokens = tokenize(key, input, &mut report);
+        assert!(report.is_empty(), "Unexpected errors: {:?}", report);
         tokens.expect("Tokenization failed")
     }
 
@@ -490,11 +489,12 @@ mod test {
     fn test_recovery() {
         let mut interner = PathInterner::new();
         let key = interner.intern(Utf8PathBuf::from("test"));
+        let mut report = Report::new();
         // Invalid tokens should be skipped and lexing should continue
-        let result = tokenize(key, "let x = @ 42");
-        assert!(result.errors.len() == 1); // Should have one error for the @
-        assert!(result.tokens.is_some());
-        let tokens = result.tokens.unwrap();
+        let tokens = tokenize(key, "let x = @ 42", &mut report);
+        assert!(report.diagnostics.len() == 1); // Should have one error for the @
+        assert!(tokens.is_some());
+        let tokens = tokens.unwrap();
         assert_eq!(tokens.len(), 4); // let, x, =, 42
     }
 

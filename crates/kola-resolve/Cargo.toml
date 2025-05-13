@@ -4,9 +4,12 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-camino.workspace = true
 kola-utils.workspace = true
 kola-span.workspace = true
 kola-tree.workspace = true
 kola-syntax.workspace = true
+kola-print.workspace = true
 indexmap.workspace = true
+camino.workspace = true
+log.workspace = true
+owo-colors.workspace = true

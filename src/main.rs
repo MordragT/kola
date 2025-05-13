@@ -1,12 +1,9 @@
 use camino::Utf8PathBuf;
 use log::info;
-use miette::IntoDiagnostic;
 use std::path::PathBuf;
 
-use kola_semantic::prelude::*;
 // use kola_compiler::prelude::*;
 use kola_print::prelude::*;
-use kola_vfs::prelude::*;
 
 #[derive(Debug, clap::Parser)]
 #[command(author, version, about, long_about = None)]

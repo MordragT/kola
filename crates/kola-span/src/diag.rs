@@ -9,6 +9,7 @@ use std::{
 use crate::{Loc, Located, SourceManager};
 
 /// Represents a report containing multiple issues and diagnostics.
+#[derive(Debug, Clone)]
 pub struct Report {
     pub issues: Vec<Issue>,
     pub diagnostics: Vec<Diagnostic>,
@@ -41,6 +42,11 @@ impl Report {
     /// Adds multiple diagnostics to the report.
     pub fn extend_diagnostics(&mut self, diagnostics: impl IntoIterator<Item = Diagnostic>) {
         self.diagnostics.extend(diagnostics);
+    }
+
+    /// Checks if the report contains any issues or diagnostics.
+    pub fn is_empty(&self) -> bool {
+        self.issues.is_empty() && self.diagnostics.is_empty()
     }
 
     /// Writes the report to the specified writer.

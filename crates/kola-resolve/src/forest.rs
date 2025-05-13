@@ -1,9 +1,10 @@
 use std::{collections::HashMap, rc::Rc};
 
-use kola_span::SourceManager;
-use kola_syntax::loc::Locations;
+use kola_span::{Loc, Report, SourceManager};
+use kola_syntax::loc::{LocPhase, Locations};
 use kola_tree::{
     id::Id,
+    meta::{MetaCast, MetaView},
     node::{self, Node},
     tree::{Tree, TreeView},
 };
@@ -11,7 +12,7 @@ use kola_utils::{
     bimap::BiMap, convert::TryAsRef, dependency::DependencyGraph, interner::PathKey, io::FileSystem,
 };
 
-use crate::module::ModuleKey;
+use crate::module::{ModuleKey, ModuleScope};
 
 // pub type Ptr<T> = Arc<T>;
 pub type Ptr<T> = Rc<T>;
@@ -22,6 +23,8 @@ pub struct Forest<Io> {
     pub topography: HashMap<PathKey, Ptr<Locations>>,
     pub mappings: BiMap<ModuleKey, (PathKey, Id<node::Module>)>,
     pub dependencies: DependencyGraph<ModuleKey>,
+    pub scopes: HashMap<ModuleKey, ModuleScope>,
+    pub report: Report,
 }
 
 impl<Io: FileSystem> Forest<Io> {
@@ -32,6 +35,8 @@ impl<Io: FileSystem> Forest<Io> {
             topography: HashMap::new(),
             mappings: BiMap::new(),
             dependencies: DependencyGraph::new(),
+            scopes: HashMap::new(),
+            report: Report::new(),
         }
     }
 
@@ -55,5 +60,13 @@ impl<Io: FileSystem> Forest<Io> {
     pub fn node_count(&self, path: PathKey) -> usize {
         let tree = &self.trees[&path];
         tree.count()
+    }
+
+    pub fn span<T>(&self, path: PathKey, id: Id<T>) -> Loc
+    where
+        T: MetaCast<LocPhase, Meta = Loc>,
+    {
+        let topography = &self.topography[&path];
+        *topography.meta(id)
     }
 }

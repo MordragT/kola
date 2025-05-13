@@ -2,19 +2,20 @@
 members = ["crates/*"]
 
 [workspace.dependencies]
-kola-span = { path = "crates/kola-span" }
-kola-print = { path = "crates/kola-print" }
-kola-tree = { path = "crates/kola-tree" }
-kola-syntax = { path = "crates/kola-syntax" }
-# kola-vfs = { path = "crates/kola-vfs" }
-kola-modules = { path = "crates/kola-modules" }
+# Kola Crates
 kola-driver = { path = "crates/kola-driver" }
-kola-utils = { path = "crates/kola-utils" }
+kola-ir = { path = "crates/kola-ir" }
+kola-lowerer = { path = "crates/kola-lowerer" }
+kola-print = { path = "crates/kola-print" }
+kola-resolve = { path = "crates/kola-resolve" }
+kola-span = { path = "crates/kola-span" }
+kola-syntax = { path = "crates/kola-syntax" }
+kola-tree = { path = "crates/kola-tree" }
 kola-typer = { path = "crates/kola-typer" }
-kola-compiler = { path = "crates/kola-compiler" }
+kola-utils = { path = "crates/kola-utils" }
+kola-vm = { path = "crates/kola-vm" }
+
 camino = "1.1"
-# grax = { git = "https://github.com/MordragT/grax.git" }
-# cap-std = { version = "3.4", features = ["fs_utf8"] }
 chumsky = { version = "0.10", features = [
     # "label",
     "nightly",
@@ -43,13 +44,13 @@ edition = "2024"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+kola-print.workspace = true
+kola-resolve.workspace = true
+kola-syntax.workspace = true
+kola-tree.workspace = true
+# kola-typer.workspace = true
+
+camino.workspace = true
+log.workspace = true
 clap = { version = "4.5", features = ["derive"] }
 env_logger = "0.11"
-log.workspace = true
-kola-print.workspace = true
-kola-tree.workspace = true
-# kola-vfs.workspace = true
-kola-syntax.workspace = true
-kola-typer.workspace = true
-# kola-compiler.workspace = true
-camino.workspace = true

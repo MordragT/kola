@@ -981,7 +981,7 @@ mod tests {
     use chumsky::Parser;
 
     use kola_tree::{inspector::NodeInspector, prelude::*};
-    use kola_utils::interner::{PathInterner, PathKey};
+    use kola_utils::interner::{PathInterner, PathKey, STR_INTERNER};
 
     use super::{
         expr_parser, module_parser, module_type_parser, pat_parser, type_bind_parser,
@@ -989,7 +989,7 @@ mod tests {
     };
     use crate::{
         lexer::try_tokenize,
-        parser::{Extra, ParseInput, ParseResult, state::INTERNER, try_parse_with},
+        parser::{Extra, ParseInput, ParseResult, try_parse_with},
     };
 
     fn mocked_key() -> PathKey {
@@ -1013,7 +1013,7 @@ mod tests {
         let ParseResult { node, builder, .. } =
             try_parse_str_with("{ a: x, b: { y }, c: _, d }", pat_parser());
 
-        let interner = INTERNER.read().unwrap();
+        let interner = STR_INTERNER.read().unwrap();
         let inspector = NodeInspector::new(node, &builder, &interner);
 
         let record = inspector.as_record().unwrap();
@@ -1057,7 +1057,7 @@ mod tests {
     fn case_expr() {
         let ParseResult { node, builder, .. } =
             try_parse_str_with("case x of 1 => true, _ => false", expr_parser());
-        let interner = INTERNER.read().unwrap();
+        let interner = STR_INTERNER.read().unwrap();
         let inspector = NodeInspector::new(node, &builder, &interner);
 
         let case = inspector.as_case().unwrap();
@@ -1092,7 +1092,7 @@ mod tests {
         let ParseResult { node, builder, .. } =
             try_parse_str_with("fn name => \"Hello\" + name", expr_parser());
 
-        let interner = INTERNER.read().unwrap();
+        let interner = STR_INTERNER.read().unwrap();
         let inspector = NodeInspector::new(node, &builder, &interner);
 
         inspector
@@ -1111,7 +1111,7 @@ mod tests {
         let ParseResult { node, builder, .. } =
             try_parse_str_with("-4 * 10 + 40 / 4 + 30 == 0", expr_parser());
 
-        let interner = INTERNER.read().unwrap();
+        let interner = STR_INTERNER.read().unwrap();
         let inspector = NodeInspector::new(node, &builder, &interner);
 
         // _ == 0
@@ -1146,7 +1146,7 @@ mod tests {
         let ParseResult { node, builder, .. } =
             try_parse_str_with("if y then x else 0", expr_parser());
 
-        let interner = INTERNER.read().unwrap();
+        let interner = STR_INTERNER.read().unwrap();
         let inspector = NodeInspector::new(node, &builder, &interner);
 
         let if_expr = inspector.as_if().unwrap();
@@ -1172,7 +1172,7 @@ mod tests {
     fn path_expr() {
         let ParseResult { node, builder, .. } = try_parse_str_with("x.y.z", expr_parser());
 
-        let interner = INTERNER.read().unwrap();
+        let interner = STR_INTERNER.read().unwrap();
         let inspector = NodeInspector::new(node, &builder, &interner);
 
         inspector
@@ -1189,7 +1189,7 @@ mod tests {
         let ParseResult { node, builder, .. } =
             try_parse_str_with("{ y | +x = 10 }", expr_parser());
 
-        let interner = INTERNER.read().unwrap();
+        let interner = STR_INTERNER.read().unwrap();
         let inspector = NodeInspector::new(node, &builder, &interner);
 
         let extend = inspector.as_record_extend().unwrap();
@@ -1211,7 +1211,7 @@ mod tests {
         let ParseResult { node, builder, .. } =
             try_parse_str_with("{ x = 10, y = 20 }", expr_parser());
 
-        let interner = INTERNER.read().unwrap();
+        let interner = STR_INTERNER.read().unwrap();
         let inspector = NodeInspector::new(node, &builder, &interner);
 
         let record = inspector.as_record().unwrap();
@@ -1243,7 +1243,7 @@ mod tests {
             type_expr_parser(),
         );
 
-        let interner = INTERNER.read().unwrap();
+        let interner = STR_INTERNER.read().unwrap();
         let inspector = NodeInspector::new(node, &builder, &interner);
 
         // Num -> (...)
@@ -1290,7 +1290,7 @@ mod tests {
         let ParseResult { node, builder, .. } =
             try_parse_str_with("Map (Num -> Str) (std.List Str)", type_expr_parser());
 
-        let interner = INTERNER.read().unwrap();
+        let interner = STR_INTERNER.read().unwrap();
         let inspector = NodeInspector::new(node, &builder, &interner);
 
         // Map (Num -> Str) @@ (std.List Str)
@@ -1321,7 +1321,7 @@ mod tests {
         let ParseResult { node, builder, .. } =
             try_parse_str_with("forall a b . { left : a, right : Num -> b }", type_parser());
 
-        let interner = INTERNER.read().unwrap();
+        let interner = STR_INTERNER.read().unwrap();
         let inspector = NodeInspector::new(node, &builder, &interner);
 
         inspector
@@ -1374,7 +1374,7 @@ mod tests {
             type_bind_parser(),
         );
 
-        let interner = INTERNER.read().unwrap();
+        let interner = STR_INTERNER.read().unwrap();
         let inspector = NodeInspector::new(node, &builder, &interner);
 
         inspector.has_name("Person");
@@ -1393,7 +1393,7 @@ mod tests {
             type_bind_parser(),
         );
 
-        let interner = INTERNER.read().unwrap();
+        let interner = STR_INTERNER.read().unwrap();
         let inspector = NodeInspector::new(node, &builder, &&interner);
 
         inspector.has_name("Option");
@@ -1435,7 +1435,7 @@ mod tests {
         let ParseResult { node, builder, .. } =
             try_parse_str_with("{ x = 10, type T = Num }", module_parser());
 
-        let interner = INTERNER.read().unwrap();
+        let interner = STR_INTERNER.read().unwrap();
         let inspector = NodeInspector::new(node, &builder, &interner);
 
         inspector.has_binds(2);
@@ -1468,7 +1468,7 @@ mod tests {
         let ParseResult { node, builder, .. } =
             try_parse_str_with("{ x : Num, type T = Str }", module_type_parser());
 
-        let interner = INTERNER.read().unwrap();
+        let interner = STR_INTERNER.read().unwrap();
         let inspector = NodeInspector::new(node, &builder, &interner);
 
         inspector.has_specs(2);
@@ -1503,7 +1503,7 @@ mod tests {
         let ParseResult { node, builder, .. } =
             try_parse_str_with("{ module M = { x = 10 } }", module_parser());
 
-        let interner = INTERNER.read().unwrap();
+        let interner = STR_INTERNER.read().unwrap();
         let inspector = NodeInspector::new(node, &builder, &interner);
 
         inspector.has_binds(1);
@@ -1532,7 +1532,7 @@ mod tests {
         let ParseResult { node, builder, .. } =
             try_parse_str_with("{ module M : { x : Num } = { x = 10 } }", module_parser());
 
-        let interner = INTERNER.read().unwrap();
+        let interner = STR_INTERNER.read().unwrap();
         let inspector = NodeInspector::new(node, &builder, &interner);
 
         inspector.has_binds(1);

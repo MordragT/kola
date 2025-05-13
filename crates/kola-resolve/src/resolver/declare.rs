@@ -1,73 +1,20 @@
-use kola_tree::{
-    id::Id,
-    node,
-    tree::TreeView,
-    visit::{Visitable, Visitor},
+use kola_print::prelude::*;
+use kola_span::IntoDiagnostic;
+use kola_syntax::prelude::*;
+use kola_tree::prelude::*;
+use kola_utils::{interner::PathKey, io::FileSystem};
+use log::debug;
+use owo_colors::OwoColorize;
+use std::{
+    ops::{ControlFlow, Deref},
+    rc::Rc,
 };
-use kola_utils::{
-    bimap::BiMap,
-    interner::{PathKey, StrKey},
-    io::FileSystem,
+
+use crate::{
+    forest::Forest,
+    module::{ModuleKey, ModuleScope, ScopeStack},
+    resolver::Resolver,
 };
-use std::ops::{ControlFlow, Deref};
-
-use crate::{forest::Forest, module::ModuleKey};
-
-#[derive(Debug, Clone)]
-pub struct Scope {
-    pub module_key: ModuleKey,
-    pub modules: BiMap<StrKey, Id<node::ModuleBind>>,
-    pub values: BiMap<StrKey, Id<node::ValueBind>>,
-    pub types: BiMap<StrKey, Id<node::TypeBind>>,
-}
-
-impl Scope {
-    pub fn new(module_key: ModuleKey) -> Self {
-        Self {
-            module_key,
-            modules: BiMap::new(),
-            values: BiMap::new(),
-            types: BiMap::new(),
-        }
-    }
-}
-
-#[derive(Debug, Clone, Default)]
-pub struct ScopeStack {
-    pub reverse: Vec<Scope>,
-    pub scopes: Vec<Scope>,
-}
-
-impl ScopeStack {
-    pub fn new() -> Self {
-        Self {
-            reverse: Vec::new(),
-            scopes: Vec::new(),
-        }
-    }
-
-    pub fn push(&mut self, scope: Scope) {
-        self.scopes.push(scope);
-    }
-
-    pub fn pop(&mut self) -> Option<Scope> {
-        if let Some(scope) = self.scopes.pop() {
-            // Store the scope in reverse order for later use
-            self.reverse.push(scope.clone());
-            Some(scope)
-        } else {
-            None
-        }
-    }
-
-    pub fn current(&self) -> Option<&Scope> {
-        self.scopes.last()
-    }
-
-    pub fn current_mut(&mut self) -> &mut Scope {
-        self.scopes.last_mut().unwrap()
-    }
-}
 
 #[derive(Debug, Clone)]
 pub struct Declare {
@@ -83,7 +30,7 @@ impl Declare {
         }
     }
 
-    pub fn declare<Io>(&mut self, forest: &mut Forest<Io>)
+    pub fn declare<Io>(mut self, forest: &mut Forest<Io>) -> ModuleKey
     where
         Io: FileSystem,
     {
@@ -92,13 +39,22 @@ impl Declare {
         // Create a visitor to walk the tree and collect declarations
         let mut declarer = Declarer {
             forest,
-            state: self,
+            state: &mut self,
         };
 
         match tree.root_id().visit_by(&mut declarer, tree.deref()) {
             ControlFlow::Continue(()) => (),
             ControlFlow::Break(_) => unreachable!(),
         }
+
+        // After visiting the tree, we need to finalize the declaration
+        let module_key = self.scopes.reverse.last().unwrap().module_key;
+
+        for scope in self.scopes.reverse {
+            forest.scopes.insert(scope.module_key, scope);
+        }
+
+        module_key
     }
 }
 
@@ -130,7 +86,7 @@ where
         }
 
         // Create a new scope for this module
-        self.state.scopes.push(Scope::new(module_key));
+        self.state.scopes.push(ModuleScope::new(module_key));
 
         // Walk through children nodes
         self.walk_module(id, tree)?;
@@ -146,6 +102,84 @@ where
         id: Id<node::ModuleImport>,
         tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
+        let import = tree.node(id);
+        let name = tree.node(import.0);
+
+        let path = match self
+            .forest
+            .sources
+            .resolve_import(self.state.path_key, name.0)
+        {
+            Ok(path) => path,
+            Err(e) => {
+                self.forest
+                    .report
+                    .add_diagnostic(e.into_diagnostic(self.forest.span(self.state.path_key, id)));
+                return ControlFlow::Continue(());
+            }
+        };
+
+        let (path_key, source) = match self.forest.sources.fetch(path.as_path()) {
+            Ok(tuple) => tuple,
+            Err(e) => {
+                self.forest
+                    .report
+                    .add_diagnostic(e.into_diagnostic(self.forest.span(self.state.path_key, id)));
+                return ControlFlow::Continue(());
+            }
+        };
+
+        debug!(
+            "{} {}\n{}",
+            "Source".bold().bright_white(),
+            &path,
+            source.text()
+        );
+
+        let Some(tokens) = tokenize(path_key, source.text(), &mut self.forest.report) else {
+            return ControlFlow::Continue(());
+        };
+
+        debug!(
+            "{} {:?}\n{}",
+            "Tokens".bold().bright_white(),
+            &path,
+            TokenPrinter(&tokens).render(PrintOptions::default())
+        );
+
+        let input = ParseInput::new(path_key, tokens);
+
+        let ParseOutput { tree, spans, .. } = parse(input, &mut self.forest.report);
+
+        let Some(tree) = tree else {
+            return ControlFlow::Continue(());
+        };
+
+        self.forest.trees.insert(path_key, Rc::new(tree));
+        self.forest.topography.insert(path_key, Rc::new(spans));
+
+        // let interner = STR_INTERNER.read().unwrap();
+
+        // debug!(
+        //     "{} {:?}\n{}",
+        //     "Untyped Abstract Syntax Tree".bold().bright_white(),
+        //     &path,
+        //     TreePrinter::new(tree.clone(), &interner)
+        //         .with(LocDecorator(spans.clone()))
+        //         .render(PrintOptions::default())
+        // );
+
+        // drop(interner);
+
+        let module_key = Resolver::declare(path_key, self.forest).state.module_key;
+        let current_module_key = self.state.scopes.current().unwrap().module_key;
+
+        // Add dependency from current module to this new module
+        self.forest
+            .dependencies
+            .add_dependency(current_module_key, module_key);
+
+        ControlFlow::Continue(())
     }
 
     fn visit_module_bind(
@@ -173,7 +207,8 @@ where
         // Register the value binding in the current scope
         self.state.scopes.current_mut().values.insert(name.0, id);
 
-        self.walk_value_bind(id, tree)
+        // self.walk_value_bind(id, tree)
+        ControlFlow::Continue(()) // nothing to do here anyways
     }
 
     fn visit_type_bind(
@@ -187,6 +222,7 @@ where
         // Register the type binding in the current scope
         self.state.scopes.current_mut().types.insert(name.0, id);
 
-        self.walk_type_bind(id, tree)
+        // self.walk_type_bind(id, tree)
+        ControlFlow::Continue(()) // nothing to do here anyways
     }
 }

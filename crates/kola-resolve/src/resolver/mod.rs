@@ -52,7 +52,7 @@ use crate::{forest::Forest, module::ModuleKey};
 mod declare;
 mod define;
 
-pub use declare::{Declare, Scope};
+pub use declare::Declare;
 pub use define::Define;
 
 /// The Resolver struct contains the context needed for resolving
@@ -63,17 +63,21 @@ pub struct Resolver<S> {
     state: S,
 }
 
-pub struct Declared;
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct Declared {
+    pub module_key: ModuleKey,
+}
 
 impl Resolver<Declare> {
     pub fn declare<Io>(path_key: PathKey, forest: &mut Forest<Io>) -> Resolver<Declared>
     where
         Io: FileSystem,
     {
-        let mut declare = Declare::new(path_key);
-        declare.declare(forest);
+        let module_key = Declare::new(path_key).declare(forest);
 
-        Resolver { state: Declared }
+        Resolver {
+            state: Declared { module_key },
+        }
     }
 }
 

@@ -335,9 +335,9 @@ dependencies = [
  "clap",
  "env_logger",
  "kola-print",
+ "kola-resolve",
  "kola-syntax",
  "kola-tree",
- "kola-typer",
  "log",
 ]
 
@@ -354,22 +354,7 @@ dependencies = [
 name = "kola-driver"
 version = "0.1.0"
 dependencies = [
- "camino",
- "kola-span",
- "kola-syntax",
- "kola-tree",
- "kola-utils",
- "thiserror",
-]
-
-[[package]]
-name = "kola-expand"
-version = "0.1.0"
-dependencies = [
- "kola-span",
- "kola-syntax",
- "kola-tree",
- "kola-utils",
+ "kola-resolve",
 ]
 
 [[package]]
@@ -379,17 +364,6 @@ version = "0.1.0"
 [[package]]
 name = "kola-lowerer"
 version = "0.1.0"
-
-[[package]]
-name = "kola-modules"
-version = "0.1.0"
-dependencies = [
- "kola-span",
- "kola-syntax",
- "kola-tree",
- "kola-utils",
- "thiserror",
-]
 
 [[package]]
 name = "kola-print"
@@ -405,10 +379,13 @@ version = "0.1.0"
 dependencies = [
  "camino",
  "indexmap",
+ "kola-print",
  "kola-span",
  "kola-syntax",
  "kola-tree",
  "kola-utils",
+ "log",
+ "owo-colors",
 ]
 
 [[package]]
@@ -420,6 +397,7 @@ dependencies = [
  "chumsky",
  "derive_more",
  "kola-utils",
+ "log",
  "owo-colors",
 ]
 
@@ -474,21 +452,6 @@ dependencies = [
  "camino",
  "pathdiff",
  "serde",
- "thiserror",
-]
-
-[[package]]
-name = "kola-vfs"
-version = "0.1.0"
-dependencies = [
- "camino",
- "chumsky",
- "derive_more",
- "kola-print",
- "kola-syntax",
- "kola-tree",
- "kola-utils",
- "log",
  "thiserror",
 ]
 

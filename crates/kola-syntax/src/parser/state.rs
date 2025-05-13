@@ -1,14 +1,10 @@
-use std::{
-    borrow::{Borrow, Cow},
-    hash::{BuildHasherDefault, DefaultHasher},
-    sync::RwLock,
-};
+use std::borrow::{Borrow, Cow};
 
 use chumsky::{inspector::Inspector, prelude::*};
 
 use kola_span::Loc;
 use kola_tree::prelude::*;
-use kola_utils::interner::{StrInterner, StrKey};
+use kola_utils::interner::{STR_INTERNER, StrKey};
 
 use crate::{
     loc::{LocPhase, Locations},
@@ -17,9 +13,6 @@ use crate::{
 
 pub type Error<'t> = Rich<'t, Token<'t>, Loc>;
 pub type Extra<'t> = extra::Full<Error<'t>, State, ()>;
-
-pub static INTERNER: RwLock<StrInterner<BuildHasherDefault<DefaultHasher>>> =
-    RwLock::new(StrInterner::with_hasher(BuildHasherDefault::new()));
 
 #[derive(Debug, Default)]
 pub struct State {
@@ -63,7 +56,7 @@ impl State {
     }
 
     pub fn intern<'a>(&mut self, value: impl Into<Cow<'a, str>>) -> StrKey {
-        INTERNER.write().unwrap().intern(value)
+        STR_INTERNER.write().unwrap().intern(value)
     }
 
     pub fn insert_token(&mut self, token: impl Into<SemanticToken>, span: Loc) {
