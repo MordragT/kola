@@ -1,14 +1,12 @@
-use kola_syntax::prelude::*;
+use kola_span::IntoDiagnostic;
 use kola_utils::errors::Errors;
-use kola_vfs::diag::{IntoSourceDiagnostic, SourceDiagnostic};
-use miette::Diagnostic;
 use thiserror::Error;
 
 use crate::types::{Kind, MonoType, TypeVar};
 
 pub type SemanticErrors = Errors<SemanticError>;
 
-#[derive(Debug, Clone, Error, Diagnostic, PartialEq, Eq)]
+#[derive(Debug, Clone, Error, PartialEq, Eq)]
 pub enum SemanticError {
     #[error("Unbound: {0}")]
     Unbound(String),
@@ -34,18 +32,4 @@ pub enum SemanticError {
     MissingLabel(String),
 }
 
-impl SemanticError {
-    pub fn with(self, span: Span) -> Spanned<SemanticErrors> {
-        let related = Errors::from(vec![self]);
-        (related, span)
-    }
-}
-
-impl IntoSourceDiagnostic for SemanticError {
-    fn into_source_diagnostic(self, span: Span) -> SourceDiagnostic {
-        // TODO maybe improve ?
-        match self {
-            other => SourceDiagnostic::error(span, other.to_string()),
-        }
-    }
-}
+impl IntoDiagnostic for SemanticError {}

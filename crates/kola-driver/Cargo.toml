@@ -5,3 +5,5 @@ edition = "2024"
 
 [dependencies]
 kola-resolve.workspace = true
+kola-syntax.workspace = true
+kola-utils.workspace = true

@@ -1,4 +1,5 @@
 use indexmap::IndexMap;
+use kola_utils::interner::StrKey;
 
 use crate::{
     error::SemanticError,
@@ -31,7 +32,7 @@ impl TypeEnv {
     }
 
     pub fn lookup(&self, name: StrKey) -> Option<&PolyType> {
-        if let Some(t) = self.scope.get(name) {
+        if let Some(t) = self.scope.get(&name) {
             Some(t)
         } else if let Some(t) = self.parent.as_ref().and_then(|env| env.lookup(name)) {
             Some(t)

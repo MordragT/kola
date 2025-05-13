@@ -1,9 +1,9 @@
 use std::{collections::HashMap, ops::ControlFlow};
 
+use kola_span::{Diagnostic, Loc, Located};
 use kola_syntax::prelude::*;
 use kola_tree::prelude::*;
-use kola_utils::Errors;
-use kola_vfs::diag::SourceDiagnostic;
+use kola_utils::errors::Errors;
 
 use crate::{
     VisitState,
@@ -30,16 +30,16 @@ pub enum Constraint {
     Kind {
         expected: Kind,
         actual: MonoType,
-        span: Span,
+        span: Loc,
     },
     Ty {
         expected: MonoType,
         actual: MonoType,
-        span: Span,
+        span: Loc,
     },
 }
 
-pub type Error = Spanned<Errors<SemanticError>>;
+pub type Error = Located<Errors<SemanticError>>;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Constraints(Vec<Constraint>);
@@ -49,7 +49,7 @@ impl Constraints {
         Self(Vec::new())
     }
 
-    pub fn constrain(&mut self, expected: MonoType, actual: MonoType, span: Span) {
+    pub fn constrain(&mut self, expected: MonoType, actual: MonoType, span: Loc) {
         let c = Constraint::Ty {
             expected,
             actual,
@@ -58,7 +58,7 @@ impl Constraints {
         self.0.push(c);
     }
 
-    pub fn constrain_kind(&mut self, expected: Kind, actual: MonoType, span: Span) {
+    pub fn constrain_kind(&mut self, expected: Kind, actual: MonoType, span: Loc) {
         let c = Constraint::Kind {
             expected,
             actual,
@@ -186,9 +186,9 @@ impl<'a> Typer<'a> {
         self.types.update_meta(id, t)
     }
 
-    fn span<T>(&self, id: Id<T>) -> Span
+    fn span<T>(&self, id: Id<T>) -> Loc
     where
-        T: MetaCast<LocPhase, Meta = Span>,
+        T: MetaCast<LocPhase, Meta = Loc>,
     {
         *self.spans.meta(id)
     }
@@ -197,7 +197,7 @@ impl<'a> Typer<'a> {
         &mut self,
         source: Id<node::Expr>,
         field: Id<node::Name>,
-        span: Span,
+        span: Loc,
         tree: &impl TreeView,
     ) -> MonoType {
         let t = self.types.meta(source);
@@ -861,7 +861,7 @@ mod tests {
 
     use std::collections::HashMap;
 
-    use kola_syntax::loc::{Locations, Span};
+    use kola_syntax::loc::{Loc, Locations};
     use kola_tree::prelude::*;
     use kola_vfs::path::FilePath;
 
@@ -873,7 +873,7 @@ mod tests {
     };
 
     fn mocked_spans(tree: &impl TreeView) -> Locations {
-        let span = Span::new(0, 0);
+        let span = Loc::new(0, 0);
         tree.metadata_with(|node| Meta::default_with(span, node.kind()))
             .into_metadata()
     }

@@ -1,3 +1,4 @@
+use kola_utils::interner::StrKey;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
