@@ -39,7 +39,7 @@ impl StrInterner {
 
 impl<S: BuildHasher> StrInterner<S> {
     /// Creates a new `StrInterner` with the given hasher.
-    pub fn with_hasher(hasher: S) -> Self {
+    pub const fn with_hasher(hasher: S) -> Self {
         Self(Interner::with_hasher(hasher))
     }
 
@@ -61,6 +61,11 @@ impl<S: BuildHasher> StrInterner<S> {
     /// Returns `None` if the key is invalid.
     pub fn get(&self, key: StrKey) -> Option<&str> {
         self.0.get(key.0).map(|s| s.as_str())
+    }
+
+    /// Checks if the interner contains a string with the given key.
+    pub fn contains(&self, value: &str) -> bool {
+        self.0.contains(value)
     }
 
     /// Looks up a string in the interner.

@@ -1,0 +1,12 @@
+[package]
+name = "kola-driver"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+kola-utils.workspace = true
+kola-span.workspace = true
+kola-tree.workspace = true
+kola-syntax.workspace = true
+thiserror.workspace = true
+camino.workspace = true

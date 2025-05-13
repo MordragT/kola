@@ -1,10 +1,11 @@
 use derive_more::Display;
+use kola_utils::interner::PathKey;
 use paste::paste;
 use serde::{Deserialize, Serialize};
-use std::fmt;
+use std::{collections::HashMap, fmt, ops::Index};
 
 use kola_print::prelude::*;
-use kola_span::Spanned;
+use kola_span::Located;
 
 pub struct TokenPrinter<'t>(pub &'t Tokens<'t>);
 
@@ -82,8 +83,39 @@ pub enum LiteralT<'t> {
     Str(&'t str),
 }
 
-pub type Tokens<'t> = Vec<Spanned<Token<'t>>>;
-pub type TokenSlice<'t> = &'t [Spanned<Token<'t>>];
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct TokenCache<'t> {
+    cache: HashMap<PathKey, Tokens<'t>>,
+}
+
+impl<'t> TokenCache<'t> {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn get(&self, path: &PathKey) -> Option<&Tokens> {
+        self.cache.get(path)
+    }
+
+    pub fn get_mut(&mut self, path: &PathKey) -> Option<&mut Tokens<'t>> {
+        self.cache.get_mut(path)
+    }
+
+    pub fn insert(&mut self, path: PathKey, tokens: Tokens<'t>) {
+        self.cache.insert(path, tokens);
+    }
+}
+
+impl<'t> Index<PathKey> for TokenCache<'t> {
+    type Output = Tokens<'t>;
+
+    fn index(&self, index: PathKey) -> &Self::Output {
+        self.cache.get(&index).unwrap()
+    }
+}
+
+pub type Tokens<'t> = Vec<Located<Token<'t>>>;
+pub type TokenSlice<'t> = &'t [Located<Token<'t>>];
 
 #[derive(Debug, Display, Clone, Copy, PartialEq)]
 pub enum Token<'t> {
@@ -247,7 +279,7 @@ pub enum DelimSide {
     Close,
 }
 
-pub type SemanticTokens = Vec<Spanned<SemanticToken>>;
+pub type SemanticTokens = Vec<Located<SemanticToken>>;
 
 #[derive(
     Debug, Display, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,

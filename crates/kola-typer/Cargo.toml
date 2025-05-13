@@ -1,0 +1,19 @@
+[package]
+name = "kola-typer"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+kola-tree.workspace = true
+kola-syntax.workspace = true
+kola-utils.workspace = true
+kola-print.workspace = true
+# kola-vfs.workspace = true
+thiserror.workspace = true
+serde.workspace = true
+derive_more.workspace = true
+log.workspace = true
+camino.workspace = true
+# grax.workspace = true
+indexmap.workspace = true
+either.workspace = true

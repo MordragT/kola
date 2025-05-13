@@ -40,7 +40,7 @@ impl PathInterner {
 
 impl<S: BuildHasher> PathInterner<S> {
     /// Creates a new `PathInterner` with the given hasher.
-    pub fn with_hasher(hasher: S) -> Self {
+    pub const fn with_hasher(hasher: S) -> Self {
         Self(Interner::with_hasher(hasher))
     }
 
@@ -62,6 +62,11 @@ impl<S: BuildHasher> PathInterner<S> {
     /// Returns `None` if the key is invalid.
     pub fn get(&self, key: PathKey) -> Option<&Utf8Path> {
         self.0.get(key.0).map(|p| p.as_path())
+    }
+
+    /// Checks if the interner contains a path.
+    pub fn contains(&self, value: &Utf8Path) -> bool {
+        self.0.contains(value)
     }
 
     /// Looks up a path in the interner.

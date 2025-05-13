@@ -1,4 +1,4 @@
-use kola_utils::PathKey;
+use kola_utils::interner::PathKey;
 use std::{fmt, ops::Range};
 
 use crate::Span;
@@ -26,14 +26,22 @@ impl fmt::Display for Loc {
 }
 
 impl Loc {
+    #[inline]
     pub fn new(path: PathKey, span: Span) -> Self {
         Self { path, span }
     }
 
+    #[inline]
+    pub fn from_range(path: PathKey, range: Range<usize>) -> Self {
+        Self::new(path, Span::from(range))
+    }
+
+    #[inline]
     pub fn source(&self) -> PathKey {
         self.path
     }
 
+    #[inline]
     pub fn span(&self) -> Span {
         self.span
     }

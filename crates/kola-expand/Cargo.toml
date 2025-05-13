@@ -1,0 +1,10 @@
+[package]
+name = "kola-expand"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+kola-syntax.workspace = true
+kola-span.workspace = true
+kola-tree.workspace = true
+kola-utils.workspace = true

@@ -73,6 +73,7 @@ impl_visitable!(
     TypeError,
     Type,
     // Modules
+    Vis,
     ValueBind,
     TypeBind,
     OpaqueTypeBind,
@@ -80,6 +81,9 @@ impl_visitable!(
     ModuleTypeBind,
     Bind,
     Module,
+    ModulePath,
+    ModuleImport,
+    ModuleExpr,
     ValueSpec,
     OpaqueTypeKind,
     OpaqueTypeSpec,

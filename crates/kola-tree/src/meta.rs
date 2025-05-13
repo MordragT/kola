@@ -1,43 +1,20 @@
-use std::{fmt::Debug, marker::PhantomData, ops::Deref, rc::Rc};
-
-use derive_more::Display;
-
 use crate::{id::Id, node};
-
-#[derive(Debug, Clone)]
-pub struct Metadata<P, C = MetaVec<P>>
-where
-    P: Phase,
-    C: MetaContainer<P>,
-{
-    container: Rc<C>,
-    phase: PhantomData<P>,
-}
-
-impl<P, C> Deref for Metadata<P, C>
-where
-    P: Phase,
-    C: MetaContainer<P>,
-{
-    type Target = Rc<C>;
-
-    fn deref(&self) -> &Self::Target {
-        &self.container
-    }
-}
+use derive_more::Display;
+use std::{collections::HashMap, fmt::Debug};
 
 pub type MetaVec<P> = Vec<Meta<P>>;
+pub type MetaMap<P> = HashMap<usize, Meta<P>>;
 
-pub trait MetaContainer<P: Phase>: Sized {
-    fn get<T>(&self, id: Id<T>) -> &Meta<P>;
+pub trait MetaView<P: Phase>: Sized {
+    fn get(&self, id: usize) -> &Meta<P>;
 
-    fn get_mut<T>(&mut self, id: Id<T>) -> &mut Meta<P>;
+    fn get_mut(&mut self, id: usize) -> &mut Meta<P>;
 
     fn meta<T>(&self, id: Id<T>) -> &T::Meta
     where
         T: MetaCast<P>,
     {
-        let meta = self.get(id);
+        let meta = self.get(id.as_usize());
         T::try_downcast_ref(meta).unwrap()
     }
 
@@ -45,7 +22,7 @@ pub trait MetaContainer<P: Phase>: Sized {
     where
         T: MetaCast<P>,
     {
-        let meta = self.get_mut(id);
+        let meta = self.get_mut(id.as_usize());
         T::try_downcast_mut(meta).unwrap()
     }
 
@@ -55,23 +32,25 @@ pub trait MetaContainer<P: Phase>: Sized {
     {
         std::mem::replace(self.meta_mut(id), meta)
     }
+}
 
-    // TODO better implement From trait
-    fn into_metadata(self) -> Metadata<P, Self> {
-        Metadata {
-            container: Rc::new(self),
-            phase: PhantomData,
-        }
+impl<P: Phase> MetaView<P> for MetaVec<P> {
+    fn get(&self, id: usize) -> &Meta<P> {
+        &self[id]
+    }
+
+    fn get_mut(&mut self, id: usize) -> &mut Meta<P> {
+        &mut self[id]
     }
 }
 
-impl<P: Phase> MetaContainer<P> for MetaVec<P> {
-    fn get<T>(&self, id: Id<T>) -> &Meta<P> {
-        &self[id.as_usize()]
+impl<P: Phase> MetaView<P> for MetaMap<P> {
+    fn get(&self, id: usize) -> &Meta<P> {
+        self.get(&id).unwrap()
     }
 
-    fn get_mut<T>(&mut self, id: Id<T>) -> &mut Meta<P> {
-        &mut self[id.as_usize()]
+    fn get_mut(&mut self, id: usize) -> &mut Meta<P> {
+        self.get_mut(&id).unwrap()
     }
 }
 

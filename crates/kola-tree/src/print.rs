@@ -1,5 +1,5 @@
 use kola_print::prelude::*;
-use kola_utils::{StrInterner, TryAsRef};
+use kola_utils::{convert::TryAsRef, interner::StrInterner};
 
 use crate::{
     id::Id,
@@ -7,17 +7,9 @@ use crate::{
     tree::{Tree, TreeView},
 };
 
-// This is somewhat hacky I use NodeId<()> and then only the Metadata get function
-// so that there is no type safety for the NodeId and what Node I get,
-// but it allows to make the Decorator trait dyn safe.
-
 pub trait Decorator {
-    fn decorate<'a>(
-        &'a self,
-        notation: Notation<'a>,
-        with: Id<()>,
-        arena: &'a Bump,
-    ) -> Notation<'a>;
+    fn decorate<'a>(&'a self, notation: Notation<'a>, with: usize, arena: &'a Bump)
+    -> Notation<'a>;
 }
 
 pub struct TreePrinter {
@@ -48,7 +40,7 @@ impl TreePrinter {
         let mut notation = self.tree.node::<T>(id).notate(&self, arena);
 
         for decorator in &self.decorators {
-            notation = decorator.decorate(notation, id.cast(), arena);
+            notation = decorator.decorate(notation, id.as_usize(), arena);
         }
 
         notation

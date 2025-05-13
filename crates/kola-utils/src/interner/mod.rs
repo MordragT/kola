@@ -127,7 +127,7 @@ where
     S: BuildHasher,
 {
     /// Creates a new empty interner with the specified hasher.
-    pub fn with_hasher(hasher: S) -> Self {
+    pub const fn with_hasher(hasher: S) -> Self {
         Self {
             values: Vec::new(),
             map: HashMap::with_hasher(hasher),
@@ -184,6 +184,11 @@ where
     /// Returns `None` if the index is out of bounds.
     pub fn get(&self, idx: usize) -> Option<&<B as ToOwned>::Owned> {
         self.values.get(idx)
+    }
+
+    /// Checks if the interner contains a value.
+    pub fn contains(&self, value: &B) -> bool {
+        self.map.contains_key(value)
     }
 
     /// Looks up a value in the interner.

@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use std::{borrow::Borrow, ops::Deref};
 
 use kola_print::prelude::*;
-use kola_utils::{StrKey, impl_try_as};
+use kola_utils::{impl_try_as, interner::StrKey};
 
 use crate::{id::Id, print::TreePrinter};
 
@@ -88,6 +88,20 @@ macro_rules! define_nodes {
         #[derive(Debug, From, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
         pub enum NodeId {
             $($variant(Id<$variant>)),*
+        }
+
+        impl NodeId {
+            pub(crate) fn from_usize(id: usize, kind: NodeKind) -> Self {
+                match kind{
+                    $(NodeKind::$variant => Self::$variant(Id::unchecked_from_usize(id)),)*
+                }
+            }
+
+            pub fn kind(&self) -> NodeKind {
+                match self {
+                    $(Self::$variant(_) => NodeKind::$variant,)*
+                }
+            }
         }
 
         #[derive(Clone, Debug, PartialEq, From, TryInto, Serialize, Deserialize)]

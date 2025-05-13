@@ -1,56 +1,61 @@
-use std::borrow::Cow;
+use std::{
+    borrow::{Borrow, Cow},
+    hash::{BuildHasherDefault, DefaultHasher},
+    sync::RwLock,
+};
 
-use chumsky::prelude::*;
+use chumsky::{inspector::Inspector, prelude::*};
 
-use kola_span::Span;
+use kola_span::Loc;
 use kola_tree::prelude::*;
-use kola_utils::{StrInterner, StrKey};
+use kola_utils::interner::{StrInterner, StrKey};
 
 use crate::{
-    span::SpanPhase,
+    loc::{LocPhase, Locations},
     token::{SemanticToken, SemanticTokens, Token},
 };
 
-pub type State = extra::SimpleState<StateRepr>;
-pub type Error<'t> = Rich<'t, Token<'t>, Span>;
+pub type Error<'t> = Rich<'t, Token<'t>, Loc>;
 pub type Extra<'t> = extra::Full<Error<'t>, State, ()>;
 
+pub static INTERNER: RwLock<StrInterner<BuildHasherDefault<DefaultHasher>>> =
+    RwLock::new(StrInterner::with_hasher(BuildHasherDefault::new()));
+
 #[derive(Debug, Default)]
-pub struct StateRepr {
+pub struct State {
     pub tokens: SemanticTokens,
-    pub interner: StrInterner,
     pub builder: TreeBuilder,
-    pub meta: Vec<Meta<SpanPhase>>,
+    pub spans: Locations,
 }
 
-impl StateRepr {
+impl State {
     pub fn new() -> Self {
         Self::default()
     }
 
-    pub fn span<T>(&self, id: Id<T>) -> Span
+    pub fn span<T>(&self, id: Id<T>) -> Loc
     where
-        T: MetaCast<SpanPhase, Meta = Span>,
+        T: MetaCast<LocPhase, Meta = Loc>,
     {
-        self.meta.get(id).inner_copied()
+        *self.spans.meta(id)
     }
 
-    pub fn insert<T>(&mut self, node: T, meta: Span) -> Id<T>
+    pub fn insert<T>(&mut self, node: T, meta: Loc) -> Id<T>
     where
         Node: From<T>,
-        T: MetaCast<SpanPhase, Meta = Span>,
+        T: MetaCast<LocPhase, Meta = Loc>,
     {
         let id = self.builder.insert(node);
-        self.meta.push(T::upcast(meta));
+        self.spans.push(T::upcast(meta));
 
         id
     }
 
-    pub fn insert_as<U, T>(&mut self, node: T, meta: Span) -> Id<U>
+    pub fn insert_as<U, T>(&mut self, node: T, meta: Loc) -> Id<U>
     where
         Node: From<T> + From<U>,
-        T: MetaCast<SpanPhase, Meta = Span>,
-        U: From<Id<T>> + MetaCast<SpanPhase, Meta = Span>,
+        T: MetaCast<LocPhase, Meta = Loc>,
+        U: From<Id<T>> + MetaCast<LocPhase, Meta = Loc>,
     {
         let id = self.insert(node, meta.clone());
         let u = U::from(id);
@@ -58,23 +63,33 @@ impl StateRepr {
     }
 
     pub fn intern<'a>(&mut self, value: impl Into<Cow<'a, str>>) -> StrKey {
-        self.interner.intern(value)
+        INTERNER.write().unwrap().intern(value)
     }
 
-    pub fn insert_token(&mut self, token: impl Into<SemanticToken>, span: Span) {
+    pub fn insert_token(&mut self, token: impl Into<SemanticToken>, span: Loc) {
         self.tokens.push((token.into(), span))
     }
 }
 
-impl TreeView for StateRepr {
-    fn node<T>(&self, id: Id<T>) -> &T
-    where
-        Node: kola_utils::TryAsRef<T>,
-    {
-        self.builder.node(id)
+impl Borrow<TreeBuilder> for State {
+    fn borrow(&self) -> &TreeBuilder {
+        &self.builder
+    }
+}
+
+impl<'t, I: Input<'t>> Inspector<'t, I> for State {
+    type Checkpoint = ();
+    #[inline(always)]
+    fn on_token(&mut self, _token: &<I as Input<'t>>::Token) {}
+
+    #[inline(always)]
+    fn on_save<'parse>(&self, _cursor: &chumsky::input::Cursor<'t, 'parse, I>) -> Self::Checkpoint {
     }
 
-    fn iter_nodes(&self) -> std::slice::Iter<'_, Node> {
-        self.builder.iter_nodes()
+    #[inline(always)]
+    fn on_rewind<'parse>(
+        &mut self,
+        _marker: &chumsky::input::Checkpoint<'t, 'parse, I, Self::Checkpoint>,
+    ) {
     }
 }

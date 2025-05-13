@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use std::{borrow::Borrow, ops::Deref};
 
 use kola_print::prelude::*;
-use kola_utils::{StrKey, as_variant};
+use kola_utils::{as_variant, interner::StrKey};
 
 use super::{LiteralExpr, Name};
 use crate::{id::Id, print::TreePrinter, tree::TreeView};
@@ -384,47 +384,48 @@ impl Pat {
 }
 
 mod inspector {
+    use std::hash::BuildHasher;
+
     use super::*;
     use crate::inspector::*;
-
-    impl<'t> NodeInspector<'t, Id<Pat>> {
+    impl<'t, S: BuildHasher> NodeInspector<'t, Id<Pat>, S> {
         /// Check if this pattern is an error pattern
-        pub fn as_error(self) -> Option<NodeInspector<'t, Id<PatError>>> {
+        pub fn as_error(self) -> Option<NodeInspector<'t, Id<PatError>, S>> {
             let pat = self.node.get(self.tree);
             pat.to_error()
                 .map(|err_id| NodeInspector::new(err_id, self.tree, self.interner))
         }
 
         /// Check if this pattern is a wildcard pattern
-        pub fn as_any(self) -> Option<NodeInspector<'t, Id<AnyPat>>> {
+        pub fn as_any(self) -> Option<NodeInspector<'t, Id<AnyPat>, S>> {
             let pat = self.node.get(self.tree);
             pat.to_wildcard()
                 .map(|wild_id| NodeInspector::new(wild_id, self.tree, self.interner))
         }
 
         /// Check if this pattern is a literal pattern
-        pub fn as_literal(self) -> Option<NodeInspector<'t, Id<LiteralPat>>> {
+        pub fn as_literal(self) -> Option<NodeInspector<'t, Id<LiteralPat>, S>> {
             let pat = self.node.get(self.tree);
             pat.to_literal()
                 .map(|lit_id| NodeInspector::new(lit_id, self.tree, self.interner))
         }
 
         /// Check if this pattern is an identifier pattern
-        pub fn as_ident(self) -> Option<NodeInspector<'t, Id<IdentPat>>> {
+        pub fn as_ident(self) -> Option<NodeInspector<'t, Id<IdentPat>, S>> {
             let pat = self.node.get(self.tree);
             pat.to_ident()
                 .map(|id_id| NodeInspector::new(id_id, self.tree, self.interner))
         }
 
         /// Check if this pattern is a record pattern
-        pub fn as_record(self) -> Option<NodeInspector<'t, Id<RecordPat>>> {
+        pub fn as_record(self) -> Option<NodeInspector<'t, Id<RecordPat>, S>> {
             let pat = self.node.get(self.tree);
             pat.to_record()
                 .map(|rec_id| NodeInspector::new(rec_id, self.tree, self.interner))
         }
 
         /// Check if this pattern is a variant pattern
-        pub fn as_variant(self) -> Option<NodeInspector<'t, Id<VariantPat>>> {
+        pub fn as_variant(self) -> Option<NodeInspector<'t, Id<VariantPat>, S>> {
             let pat = self.node.get(self.tree);
             match pat {
                 Pat::Variant(v) => Some(NodeInspector::new(*v, self.tree, self.interner)),
@@ -433,7 +434,7 @@ mod inspector {
         }
     }
 
-    impl<'t> NodeInspector<'t, Id<AnyPat>> {
+    impl<'t, S: BuildHasher> NodeInspector<'t, Id<AnyPat>, S> {
         /// Simple assertion that this is indeed a wildcard pattern
         pub fn is_any(self) -> Self {
             // Just verify that we have a valid any pattern
@@ -442,7 +443,7 @@ mod inspector {
         }
     }
 
-    impl<'t> NodeInspector<'t, Id<LiteralPat>> {
+    impl<'t, S: BuildHasher> NodeInspector<'t, Id<LiteralPat>, S> {
         /// Check what kind of literal pattern this is
         pub fn is_bool(self, expected: bool) -> Self {
             let lit_pat = self.node.get(self.tree);
@@ -507,7 +508,7 @@ mod inspector {
         }
     }
 
-    impl<'t> NodeInspector<'t, Id<IdentPat>> {
+    impl<'t, S: BuildHasher> NodeInspector<'t, Id<IdentPat>, S> {
         /// Assert the identifier pattern has the expected name
         pub fn has_name(self, expected: &str) -> Self {
             let ident = self.node.get(self.tree);
@@ -522,7 +523,7 @@ mod inspector {
         }
     }
 
-    impl<'t> NodeInspector<'t, Id<RecordPat>> {
+    impl<'t, S: BuildHasher> NodeInspector<'t, Id<RecordPat>, S> {
         /// Assert the record pattern has the specified number of fields
         pub fn has_fields(self, count: usize) -> Self {
             let fields_len = self.node.get(self.tree).0.len();
@@ -535,7 +536,7 @@ mod inspector {
         }
 
         /// Get an inspector for the field at the given index
-        pub fn field_at(self, index: usize) -> NodeInspector<'t, Id<RecordFieldPat>> {
+        pub fn field_at(self, index: usize) -> NodeInspector<'t, Id<RecordFieldPat>, S> {
             let record_pat = self.node.get(self.tree);
             assert!(
                 index < record_pat.0.len(),
@@ -548,7 +549,7 @@ mod inspector {
         }
 
         /// Get an inspector for the field with the given name, if it exists
-        pub fn field_named(self, name: &str) -> Option<NodeInspector<'t, Id<RecordFieldPat>>> {
+        pub fn field_named(self, name: &str) -> Option<NodeInspector<'t, Id<RecordFieldPat>, S>> {
             let record_pat = self.node.get(self.tree);
             record_pat
                 .0
@@ -561,7 +562,7 @@ mod inspector {
         }
     }
 
-    impl<'t> NamedNode for NodeInspector<'t, Id<RecordFieldPat>> {
+    impl<'t, S: BuildHasher> NamedNode for NodeInspector<'t, Id<RecordFieldPat>, S> {
         fn assert_name(self, expected: &str, node_type: &str) -> Self {
             let name = self.node.get(self.tree).field(self.tree);
             let value = self.interner.get(name.0).expect("Symbol not found");
@@ -575,14 +576,14 @@ mod inspector {
         }
     }
 
-    impl<'t> NodeInspector<'t, Id<RecordFieldPat>> {
+    impl<'t, S: BuildHasher> NodeInspector<'t, Id<RecordFieldPat>, S> {
         /// Assert the record field pattern has the specified name
         pub fn has_field_name(self, expected: &str) -> Self {
             self.assert_name(expected, "field pattern")
         }
 
         /// Get an inspector for the pattern if it has one
-        pub fn pattern(self) -> Option<NodeInspector<'t, Id<Pat>>> {
+        pub fn pattern(self) -> Option<NodeInspector<'t, Id<Pat>, S>> {
             let field_pat = self.node.get(self.tree);
             field_pat
                 .pat
@@ -590,7 +591,7 @@ mod inspector {
         }
     }
 
-    impl<'t> NodeInspector<'t, Id<VariantPat>> {
+    impl<'t, S: BuildHasher> NodeInspector<'t, Id<VariantPat>, S> {
         /// Assert the variant pattern has the specified number of cases
         pub fn has_cases(self, count: usize) -> Self {
             let cases_len = self.node.get(self.tree).0.len();
@@ -603,7 +604,7 @@ mod inspector {
         }
 
         /// Get an inspector for the case at the given index
-        pub fn case_at(self, index: usize) -> NodeInspector<'t, Id<VariantCasePat>> {
+        pub fn case_at(self, index: usize) -> NodeInspector<'t, Id<VariantCasePat>, S> {
             let variant_pat = self.node.get(self.tree);
             assert!(
                 index < variant_pat.0.len(),
@@ -616,7 +617,7 @@ mod inspector {
         }
 
         /// Get an inspector for the case with the given name, if it exists
-        pub fn case_named(self, name: &str) -> Option<NodeInspector<'t, Id<VariantCasePat>>> {
+        pub fn case_named(self, name: &str) -> Option<NodeInspector<'t, Id<VariantCasePat>, S>> {
             let variant_pat = self.node.get(self.tree);
             variant_pat
                 .0
@@ -629,7 +630,7 @@ mod inspector {
         }
     }
 
-    impl<'t> NamedNode for NodeInspector<'t, Id<VariantCasePat>> {
+    impl<'t, S: BuildHasher> NamedNode for NodeInspector<'t, Id<VariantCasePat>, S> {
         fn assert_name(self, expected: &str, node_type: &str) -> Self {
             let name = self.node.get(self.tree).case(self.tree);
             let value = self.interner.get(name.0).expect("Symbol not found");
@@ -643,14 +644,14 @@ mod inspector {
         }
     }
 
-    impl<'t> NodeInspector<'t, Id<VariantCasePat>> {
+    impl<'t, S: BuildHasher> NodeInspector<'t, Id<VariantCasePat>, S> {
         /// Assert the variant case pattern has the specified name
         pub fn has_case_name(self, expected: &str) -> Self {
             self.assert_name(expected, "variant case")
         }
 
         /// Get an inspector for the pattern if it has one
-        pub fn pattern(self) -> Option<NodeInspector<'t, Id<Pat>>> {
+        pub fn pattern(self) -> Option<NodeInspector<'t, Id<Pat>, S>> {
             let case_pat = self.node.get(self.tree);
             case_pat
                 .pat

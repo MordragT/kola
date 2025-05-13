@@ -1,27 +1,60 @@
 use ariadne::Cache;
 use camino::Utf8Path;
-use kola_utils::{PathInterner, PathKey};
-use std::{collections::HashMap, fmt, fs, io, sync::Arc};
+use kola_utils::{
+    interner::{PathInterner, PathKey},
+    io::{FileSystem, RealFileSystem},
+};
+use std::{collections::HashMap, fmt, io, ops::Index, sync::Arc};
 
 pub type Source = ariadne::Source<Arc<str>>;
 
 #[derive(Debug, Clone, Default)]
-pub struct SourceCache {
+pub struct SourceManager<Io = RealFileSystem> {
+    io: Io,
     interner: PathInterner,
     sources: HashMap<PathKey, Source>,
 }
 
-impl Cache<Utf8Path> for SourceCache {
+impl<Io> SourceManager<Io>
+where
+    Io: FileSystem,
+{
+    pub fn new(io: Io) -> Self {
+        Self {
+            io,
+            interner: PathInterner::new(),
+            sources: HashMap::new(),
+        }
+    }
+
+    pub fn fetch(&mut self, path: &Utf8Path) -> io::Result<&Source> {
+        if let Some(key) = self.interner.lookup(path) {
+            Ok(&self.sources[&key])
+        } else {
+            let text: Arc<str> = self.io.read_file(path)?.into();
+            let key = self.interner.intern(path);
+            Ok(self.sources.entry(key).or_insert(Source::from(text)))
+        }
+    }
+
+    pub fn lookup(&self, path: &Utf8Path) -> Option<PathKey> {
+        self.interner.lookup(path)
+    }
+
+    pub fn contains(&self, path: &Utf8Path) -> bool {
+        self.interner.contains(path)
+    }
+
+    pub fn get(&self, path: PathKey) -> Option<&Source> {
+        self.sources.get(&path)
+    }
+}
+
+impl<Io: FileSystem> Cache<Utf8Path> for SourceManager<Io> {
     type Storage = Arc<str>;
 
     fn fetch(&mut self, path: &Utf8Path) -> Result<&Source, impl fmt::Debug> {
-        if let Some(key) = self.interner.lookup(path) {
-            Ok::<_, io::Error>(&self.sources[&key])
-        } else {
-            let key = self.interner.intern(path);
-            let text: Arc<str> = fs::read_to_string(path)?.into();
-            Ok(self.sources.entry(key).or_insert(Source::from(text)))
-        }
+        SourceManager::fetch(self, path)
     }
 
     fn display<'a>(&self, id: &'a Utf8Path) -> Option<impl fmt::Display + 'a> {
@@ -29,7 +62,7 @@ impl Cache<Utf8Path> for SourceCache {
     }
 }
 
-impl Cache<PathKey> for &SourceCache {
+impl<Io: FileSystem> Cache<PathKey> for &SourceManager<Io> {
     type Storage = Arc<str>;
 
     fn fetch(&mut self, path: &PathKey) -> Result<&Source, impl fmt::Debug> {
@@ -41,8 +74,10 @@ impl Cache<PathKey> for &SourceCache {
     }
 }
 
-impl SourceCache {
-    pub fn new() -> Self {
-        Self::default()
+impl<Io: FileSystem> Index<PathKey> for SourceManager<Io> {
+    type Output = Source;
+
+    fn index(&self, index: PathKey) -> &Self::Output {
+        self.sources.get(&index).unwrap()
     }
 }

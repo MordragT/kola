@@ -6,7 +6,7 @@ use std::{
     io::{self, Write},
 };
 
-use crate::{Loc, Located, SourceCache};
+use crate::{Loc, Located, SourceManager};
 
 /// Represents a report containing multiple issues and diagnostics.
 pub struct Report {
@@ -33,26 +33,35 @@ impl Report {
         self.diagnostics.push(diagnostic);
     }
 
-    /// Prints the report to the standard output.
-    pub fn print(self, cache: &SourceCache) -> io::Result<()> {
+    /// Adds multiple issues to the report.
+    pub fn extend_issues(&mut self, issues: impl IntoIterator<Item = Issue>) {
+        self.issues.extend(issues);
+    }
+
+    /// Adds multiple diagnostics to the report.
+    pub fn extend_diagnostics(&mut self, diagnostics: impl IntoIterator<Item = Diagnostic>) {
+        self.diagnostics.extend(diagnostics);
+    }
+
+    /// Writes the report to the specified writer.
+    pub fn write(self, mut w: impl Write, cache: &SourceManager) -> io::Result<()> {
         for issue in self.issues {
-            issue.print()?;
+            issue.write(&mut w)?;
         }
         for diagnostic in self.diagnostics {
-            diagnostic.print(cache)?;
+            diagnostic.write(&mut w, cache)?;
         }
         Ok(())
     }
 
+    /// Prints the report to the standard output.
+    pub fn print(self, cache: &SourceManager) -> io::Result<()> {
+        self.write(io::stdout(), cache)
+    }
+
     /// Prints the report to the standard error output.
-    pub fn eprint(self, cache: &SourceCache) -> io::Result<()> {
-        for issue in self.issues {
-            issue.eprint()?;
-        }
-        for diagnostic in self.diagnostics {
-            diagnostic.eprint(cache)?;
-        }
-        Ok(())
+    pub fn eprint(self, cache: &SourceManager) -> io::Result<()> {
+        self.write(io::stderr(), cache)
     }
 }
 
@@ -341,16 +350,20 @@ impl Diagnostic {
         self.severity == Severity::Info
     }
 
-    /// Prints the diagnostic to the standard output.
-    pub fn print(self, cache: &SourceCache) -> io::Result<()> {
+    /// Writes the diagnostic to the specified writer.
+    pub fn write(self, w: impl Write, cache: &SourceManager) -> io::Result<()> {
         let report = ariadne::Report::from(self);
-        report.print(cache)
+        report.write(cache, w)
+    }
+
+    /// Prints the diagnostic to the standard output.
+    pub fn print(self, cache: &SourceManager) -> io::Result<()> {
+        self.write(io::stdout(), cache)
     }
 
     /// Prints the diagnostic to the standard error output.
-    pub fn eprint(self, cache: &SourceCache) -> io::Result<()> {
-        let report = ariadne::Report::from(self);
-        report.eprint(cache)
+    pub fn eprint(self, cache: &SourceManager) -> io::Result<()> {
+        self.write(io::stderr(), cache)
     }
 }
 

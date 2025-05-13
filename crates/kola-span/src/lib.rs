@@ -12,5 +12,5 @@ mod span;
 
 pub use diag::{Diagnostic, IntoDiagnostic, IntoIssue, Issue, Report, Severity};
 pub use loc::{Loc, Located};
-pub use source::{Source, SourceCache};
+pub use source::{Source, SourceManager};
 pub use span::{Span, Spanned};

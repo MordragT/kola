@@ -1,7 +1,7 @@
 use chumsky::{input::ValueInput, prelude::*};
 
-use kola_span::Span;
-use kola_utils::StrKey;
+use kola_span::Loc;
+use kola_utils::interner::StrKey;
 
 use super::{Extra, State};
 use crate::token::{CloseT, Ctrl, CtrlT, Kw, KwT, LiteralT, Op, OpT, OpenT, SemanticToken, Token};
@@ -10,7 +10,7 @@ use crate::token::{CloseT, Ctrl, CtrlT, Kw, KwT, LiteralT, Op, OpT, OpenT, Seman
 
 pub fn op<'t, I>(op: OpT<'t>) -> impl Parser<'t, I, Op, Extra<'t>> + Clone
 where
-    I: ValueInput<'t, Token = Token<'t>, Span = Span>,
+    I: ValueInput<'t, Token = Token<'t>, Span = Loc>,
 {
     just(op.0).to(Op::from(op)).map_with(|op, e| {
         let span = e.span();
@@ -23,7 +23,7 @@ where
 
 pub fn ctrl<'t, I>(ctrl: CtrlT<'t>) -> impl Parser<'t, I, Ctrl, Extra<'t>> + Clone
 where
-    I: ValueInput<'t, Token = Token<'t>, Span = Span>,
+    I: ValueInput<'t, Token = Token<'t>, Span = Loc>,
 {
     just(ctrl.0).to(Ctrl::from(ctrl)).map_with(|ctrl, e| {
         let span = e.span();
@@ -36,7 +36,7 @@ where
 
 pub fn kw<'t, I>(kw: KwT<'t>) -> impl Parser<'t, I, Kw, Extra<'t>> + Clone
 where
-    I: ValueInput<'t, Token = Token<'t>, Span = Span>,
+    I: ValueInput<'t, Token = Token<'t>, Span = Loc>,
 {
     just(kw.0).to(Kw::from(kw)).map_with(|kw, e| {
         let span = e.span();
@@ -49,7 +49,7 @@ where
 
 pub fn open_delim<'t, I>(delim: OpenT<'t>) -> impl Parser<'t, I, SemanticToken, Extra<'t>> + Clone
 where
-    I: ValueInput<'t, Token = Token<'t>, Span = Span>,
+    I: ValueInput<'t, Token = Token<'t>, Span = Loc>,
 {
     just(delim.0)
         .to(SemanticToken::from(delim))
@@ -64,7 +64,7 @@ where
 
 pub fn close_delim<'t, I>(delim: CloseT<'t>) -> impl Parser<'t, I, SemanticToken, Extra<'t>> + Clone
 where
-    I: ValueInput<'t, Token = Token<'t>, Span = Span>,
+    I: ValueInput<'t, Token = Token<'t>, Span = Loc>,
 {
     just(delim.0)
         .to(SemanticToken::from(delim))
@@ -79,7 +79,7 @@ where
 
 pub fn literal<'t, I>() -> impl Parser<'t, I, LiteralT<'t>, Extra<'t>> + Sized
 where
-    I: ValueInput<'t, Token = Token<'t>, Span = Span>,
+    I: ValueInput<'t, Token = Token<'t>, Span = Loc>,
 {
     select! { Token::Literal(l) => l }.map_with(|lit, e| {
         let span = e.span();
@@ -92,7 +92,7 @@ where
 
 pub fn symbol<'t, I>() -> impl Parser<'t, I, StrKey, Extra<'t>> + Clone
 where
-    I: ValueInput<'t, Token = Token<'t>, Span = Span>,
+    I: ValueInput<'t, Token = Token<'t>, Span = Loc>,
 {
     select! { Token::Symbol(s) => s }.map_with(|s, e| {
         let span = e.span();

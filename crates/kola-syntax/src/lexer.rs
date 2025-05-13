@@ -1,16 +1,81 @@
 use chumsky::{input::StrInput, prelude::*};
 
-use kola_span::Span;
+use kola_span::Loc;
+use kola_utils::interner::PathKey;
 
 use crate::token::{LiteralT, Token, Tokens};
 
+pub type Error<'t> = Rich<'t, char, Loc>;
+pub type Extra<'t> = extra::Err<Error<'t>>;
+
+// pub struct LexerInput<'t> {
+//     pub key: PathKey,
+//     pub cache: &'t SourceCache,
+// }
+
+// impl<'t> Input<'t> for LexerInput<'t> {
+//     type Span = Loc;
+//     type Token = char;
+//     type MaybeToken = char;
+//     type Cursor = usize;
+//     type Cache = (&'t str, PathKey);
+
+//     fn begin(self) -> (Self::Cursor, Self::Cache) {
+//         let Self { key, cache } = self;
+//         (0, (cache[key].text(), key))
+//     }
+
+//     fn cursor_location(cursor: &Self::Cursor) -> usize {
+//         *cursor
+//     }
+
+//     unsafe fn next_maybe(
+//         cache: &mut Self::Cache,
+//         cursor: &mut Self::Cursor,
+//     ) -> Option<Self::MaybeToken> {
+//         unsafe { <&'t str as Input>::next_maybe(&mut cache.0, cursor) }
+//     }
+
+//     unsafe fn span(cache: &mut Self::Cache, range: Range<&Self::Cursor>) -> Self::Span {
+//         Loc::from_range(cache.1, *range.start..*range.end)
+//     }
+// }
+
+// impl<'t> ValueInput<'t> for LexerInput<'t> {
+//     unsafe fn next(cache: &mut Self::Cache, cursor: &mut Self::Cursor) -> Option<Self::Token> {
+//         unsafe { Self::next_maybe(cache, cursor) }
+//     }
+// }
+
+// impl<'t> ExactSizeInput<'t> for LexerInput<'t> {
+//     unsafe fn span_from(cache: &mut Self::Cache, range: RangeFrom<&Self::Cursor>) -> Self::Span {
+//         Loc::from_range(cache.1, *range.start..cache.0.len())
+//     }
+// }
+
+// impl<'t> SliceInput<'t> for LexerInput<'t> {
+//     type Slice = &'t str;
+
+//     fn full_slice(cache: &mut Self::Cache) -> Self::Slice {
+//         cache.0
+//     }
+
+//     unsafe fn slice(cache: &mut Self::Cache, range: Range<&Self::Cursor>) -> Self::Slice {
+//         unsafe { <&'t str as SliceInput>::slice(&mut cache.0, range) }
+//     }
+
+//     unsafe fn slice_from(cache: &mut Self::Cache, from: RangeFrom<&Self::Cursor>) -> Self::Slice {
+//         unsafe { <&'t str as SliceInput>::slice_from(&mut cache.0, from) }
+//     }
+// }
+
 pub struct TokenizeResult<'t> {
     pub tokens: Option<Tokens<'t>>,
-    pub errors: Vec<Rich<'t, char, Span>>,
+    pub errors: Vec<Error<'t>>,
 }
 
-pub fn tokenize(input: &str) -> TokenizeResult<'_> {
-    let input = input.map_span(|s| Span::new(s.start, s.end));
+pub fn tokenize(key: PathKey, input: &str) -> TokenizeResult<'_> {
+    let input = input.with_context::<Loc>(key);
 
     let lexer = lexer();
     let (tokens, errors) = lexer.parse(input).into_output_errors();
@@ -18,14 +83,12 @@ pub fn tokenize(input: &str) -> TokenizeResult<'_> {
     TokenizeResult { tokens, errors }
 }
 
-pub fn try_tokenize(input: &str) -> Result<Tokens<'_>, Vec<Rich<'_, char, Span>>> {
-    let input = input.map_span(|s| Span::new(s.start, s.end));
+pub fn try_tokenize(key: PathKey, input: &str) -> Result<Tokens<'_>, Vec<Error<'_>>> {
+    let input = input.with_context::<Loc>(key);
 
     let lexer = lexer();
     lexer.parse(input).into_result()
 }
-
-pub type Extra<'t> = extra::Full<Rich<'t, char, Span>, (), ()>;
 
 /*
  *  ######     #     #     #  #######  ###  #######  #     #
@@ -51,7 +114,7 @@ pub type Extra<'t> = extra::Full<Rich<'t, char, Span>, (), ()>;
 
 pub fn lexer<'t, I>() -> impl Parser<'t, I, Tokens<'t>, Extra<'t>>
 where
-    I: StrInput<'t, Token = char, Slice = &'t str, Span = Span>,
+    I: StrInput<'t, Token = char, Slice = &'t str, Span = Loc>,
 {
     // Define a common escape sequence parser
     let escape = just('\\').ignore_then(
@@ -191,10 +254,17 @@ where
 
 #[cfg(test)]
 mod test {
+    use camino::Utf8PathBuf;
+    use kola_span::{Located, Span};
+    use kola_utils::interner::PathInterner;
+
     use super::*;
 
-    fn tokenize_str(input: &str) -> Vec<Spanned<Token<'_>>> {
-        let TokenizeResult { tokens, errors } = tokenize(input);
+    fn tokenize_str(input: &str) -> Vec<Located<Token<'_>>> {
+        let mut interner = PathInterner::new();
+        let key = interner.intern(Utf8PathBuf::from("test"));
+
+        let TokenizeResult { tokens, errors } = tokenize(key, input);
         assert!(errors.is_empty(), "Unexpected errors: {:?}", errors);
         tokens.expect("Tokenization failed")
     }
@@ -418,8 +488,10 @@ mod test {
 
     #[test]
     fn test_recovery() {
+        let mut interner = PathInterner::new();
+        let key = interner.intern(Utf8PathBuf::from("test"));
         // Invalid tokens should be skipped and lexing should continue
-        let result = tokenize("let x = @ 42");
+        let result = tokenize(key, "let x = @ 42");
         assert!(result.errors.len() == 1); // Should have one error for the @
         assert!(result.tokens.is_some());
         let tokens = result.tokens.unwrap();
@@ -431,10 +503,10 @@ mod test {
         let input = "let x = 42";
         let tokens = tokenize_str(input);
 
-        assert_eq!(tokens[0].1, Span::new(0, 3)); // "let"
-        assert_eq!(tokens[1].1, Span::new(4, 5)); // "x"
-        assert_eq!(tokens[2].1, Span::new(6, 7)); // "="
-        assert_eq!(tokens[3].1, Span::new(8, 10)); // "42"
+        assert_eq!(tokens[0].1.span, Span::new(0, 3)); // "let"
+        assert_eq!(tokens[1].1.span, Span::new(4, 5)); // "x"
+        assert_eq!(tokens[2].1.span, Span::new(6, 7)); // "="
+        assert_eq!(tokens[3].1.span, Span::new(8, 10)); // "42"
     }
 
     // #[test]

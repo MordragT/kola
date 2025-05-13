@@ -13,3 +13,4 @@ chumsky.workspace = true
 derive_more.workspace = true
 paste.workspace = true
 serde.workspace = true
+camino.workspace = true

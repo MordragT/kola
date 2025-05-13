@@ -1,11 +1,11 @@
 use chumsky::{input::ValueInput, prelude::*};
 
-use kola_span::Span;
+use kola_span::Loc;
 use kola_tree::prelude::*;
 
-use super::{Extra, ParserExt, State, primitives::*};
+use super::{Extra, ParseInput, ParserExt, State, primitives::*};
 use crate::{
-    span::SpanPhase,
+    loc::LocPhase,
     token::{CloseT, CtrlT, Delim, KwT, LiteralT, OpT, OpenT, Token},
 };
 
@@ -50,7 +50,7 @@ CallExpr := '(' Callable Expr ')'
 
 // pub fn file_module_parser<'t, I>() -> impl Parser<'t, I, NodeId<node::Module>, Extra<'t>> + Clone
 // where
-//     I: ValueInput<'t, Token = Token<'t>, Span = Span>,
+//     I: ValueInput<'t, Token = Token<'t>, Span = Loc>,
 // {
 //     bind_parser()
 //         .separated_by(ctrl(CtrlT::COMMA))
@@ -60,10 +60,7 @@ CallExpr := '(' Callable Expr ')'
 //         .boxed()
 // }
 
-pub fn module_parser<'t, I>() -> impl Parser<'t, I, Id<node::Module>, Extra<'t>> + Clone
-where
-    I: ValueInput<'t, Token = Token<'t>, Span = Span>,
-{
+pub fn module_parser<'t>() -> impl Parser<'t, ParseInput<'t>, Id<node::Module>, Extra<'t>> + Clone {
     let module_type = module_type_parser();
 
     recursive(|module| {
@@ -71,6 +68,13 @@ where
 
         let module_import = kw(KwT::IMPORT)
             .ignore_then(name.clone())
+            .try_map_with(|n, e| {
+                // let state: &mut State = e.state();
+
+                // let parent = e.ctx();
+                // let path = n.get(state)
+                todo!()
+            })
             .map_to_node(node::ModuleImport)
             .to_module_expr();
 
@@ -139,10 +143,8 @@ where
     })
 }
 
-pub fn module_type_parser<'t, I>() -> impl Parser<'t, I, Id<node::ModuleType>, Extra<'t>> + Clone
-where
-    I: ValueInput<'t, Token = Token<'t>, Span = Span>,
-{
+pub fn module_type_parser<'t>()
+-> impl Parser<'t, ParseInput<'t>, Id<node::ModuleType>, Extra<'t>> + Clone {
     recursive(|module_type| {
         let value_spec = name_parser()
             .then_ignore(ctrl(CtrlT::COLON))
@@ -172,10 +174,7 @@ where
     })
 }
 
-pub fn name_parser<'t, I>() -> impl Parser<'t, I, Id<node::Name>, Extra<'t>> + Clone
-where
-    I: ValueInput<'t, Token = Token<'t>, Span = Span>,
-{
+pub fn name_parser<'t>() -> impl Parser<'t, ParseInput<'t>, Id<node::Name>, Extra<'t>> + Clone {
     symbol().map(node::Name).to_node().boxed()
 }
 
@@ -188,9 +187,7 @@ where
 ///                | char
 ///                | str
 /// ```
-pub fn literal_parser<'t, I>() -> impl Parser<'t, I, node::LiteralExpr, Extra<'t>> + Sized
-where
-    I: ValueInput<'t, Token = Token<'t>, Span = Span>,
+pub fn literal_parser<'t>() -> impl Parser<'t, ParseInput<'t>, node::LiteralExpr, Extra<'t>> + Sized
 {
     literal().map_with(|l, e| {
         let state: &mut State = e.state();
@@ -333,10 +330,7 @@ data scheme Machine : { ip : Str, cmd : Str }
 /// variant_pat    ::= '<' (variant_case_pat (',' variant_case_pat)*)? '>'
 /// variant_case_pat ::= name (':' pat)?
 /// ```
-pub fn pat_parser<'t, I>() -> impl Parser<'t, I, Id<node::Pat>, Extra<'t>> + Clone
-where
-    I: ValueInput<'t, Token = Token<'t>, Span = Span>,
-{
+pub fn pat_parser<'t>() -> impl Parser<'t, ParseInput<'t>, Id<node::Pat>, Extra<'t>> + Clone {
     recursive(|pat| {
         let ident = symbol().map_to_node(node::IdentPat).to_pat();
         let wildcard = ctrl(CtrlT::UNDERSCORE).to(node::AnyPat).to_node().to_pat();
@@ -376,10 +370,7 @@ where
     .boxed()
 }
 
-pub fn expr_parser<'t, I>() -> impl Parser<'t, I, Id<node::Expr>, Extra<'t>> + Clone
-where
-    I: ValueInput<'t, Token = Token<'t>, Span = Span>,
-{
+pub fn expr_parser<'t>() -> impl Parser<'t, ParseInput<'t>, Id<node::Expr>, Extra<'t>> + Clone {
     recursive(|expr| {
         let name = name_parser();
 
@@ -483,7 +474,12 @@ where
                 let span = e.span();
                 let tree: &mut State = e.state();
 
-                let mut source_path = source.get(&tree.0).to_path().unwrap().get(&tree.0).clone();
+                let mut source_path = source
+                    .get(&tree.builder)
+                    .to_path()
+                    .unwrap()
+                    .get(&tree.builder)
+                    .clone();
 
                 match op {
                     RecordOp::Extend(mut field_path, mut value) => {
@@ -799,10 +795,8 @@ where
 ///
 /// type_path       ::= name ('.' name)*  // Path to a type (like Num or std.List)
 /// ```
-pub fn type_expr_parser<'t, I>() -> impl Parser<'t, I, Id<node::TypeExpr>, Extra<'t>> + Clone
-where
-    I: ValueInput<'t, Token = Token<'t>, Span = Span>,
-{
+pub fn type_expr_parser<'t>()
+-> impl Parser<'t, ParseInput<'t>, Id<node::TypeExpr>, Extra<'t>> + Clone {
     recursive(|ty| {
         let name = name_parser();
 
@@ -900,10 +894,7 @@ where
 /// type      ::= 'forall' name+ '.' type_expression
 ///             | type_expression
 /// ```
-pub fn type_parser<'t, I>() -> impl Parser<'t, I, Id<node::Type>, Extra<'t>> + Clone
-where
-    I: ValueInput<'t, Token = Token<'t>, Span = Span>,
-{
+pub fn type_parser<'t>() -> impl Parser<'t, ParseInput<'t>, Id<node::Type>, Extra<'t>> + Clone {
     // hindley milner only allows standard polymorphism (top-level forall)
     // higher-rank polymorphism (nested forall) is undecidable for full type-inference
     kw(KwT::FORALL)
@@ -924,10 +915,8 @@ where
 /// ```bnf
 /// type_bind ::= 'type' name '=' type
 /// ```
-pub fn type_bind_parser<'t, I>() -> impl Parser<'t, I, Id<node::TypeBind>, Extra<'t>> + Clone
-where
-    I: ValueInput<'t, Token = Token<'t>, Span = Span>,
-{
+pub fn type_bind_parser<'t>()
+-> impl Parser<'t, ParseInput<'t>, Id<node::TypeBind>, Extra<'t>> + Clone {
     kw(KwT::TYPE)
         .ignore_then(name_parser())
         .then_ignore(op(OpT::ASSIGN))
@@ -936,16 +925,15 @@ where
         .boxed()
 }
 
-pub fn nested_parser<'t, I, T, U>(
-    parser: impl Parser<'t, I, Id<T>, Extra<'t>> + 't,
+pub fn nested_parser<'t, T, U>(
+    parser: impl Parser<'t, ParseInput<'t>, Id<T>, Extra<'t>> + 't,
     delim: Delim,
-    fallback: impl Fn(Span) -> U + Clone + 't,
-) -> impl Parser<'t, I, Id<T>, Extra<'t>> + Clone
+    fallback: impl Fn(Loc) -> U + Clone + 't,
+) -> impl Parser<'t, ParseInput<'t>, Id<T>, Extra<'t>> + Clone
 where
     Node: From<T> + From<U>,
-    T: From<Id<U>> + MetaCast<SpanPhase, Meta = Span> + 't,
-    U: MetaCast<SpanPhase, Meta = Span> + 't,
-    I: ValueInput<'t, Token = Token<'t>, Span = Span>,
+    T: From<Id<U>> + MetaCast<LocPhase, Meta = Loc> + 't,
+    U: MetaCast<LocPhase, Meta = Loc> + 't,
 {
     let (open, close) = match delim {
         Delim::Paren => (OpenT::PAREN, CloseT::PAREN),
@@ -957,17 +945,16 @@ where
     nested_in_parser(open, close, parser, fallback)
 }
 
-pub fn nested_in_parser<'t, I, T, U>(
+pub fn nested_in_parser<'t, T, U>(
     open: OpenT<'t>,
     close: CloseT<'t>,
-    parser: impl Parser<'t, I, Id<T>, Extra<'t>> + 't,
-    fallback: impl Fn(Span) -> U + Clone + 't,
-) -> impl Parser<'t, I, Id<T>, Extra<'t>> + Clone
+    parser: impl Parser<'t, ParseInput<'t>, Id<T>, Extra<'t>> + 't,
+    fallback: impl Fn(Loc) -> U + Clone + 't,
+) -> impl Parser<'t, ParseInput<'t>, Id<T>, Extra<'t>> + Clone
 where
     Node: From<T> + From<U>,
-    T: From<Id<U>> + MetaCast<SpanPhase, Meta = Span> + 't,
-    U: MetaCast<SpanPhase, Meta = Span> + 't,
-    I: ValueInput<'t, Token = Token<'t>, Span = Span>,
+    T: From<Id<U>> + MetaCast<LocPhase, Meta = Loc> + 't,
+    U: MetaCast<LocPhase, Meta = Loc> + 't,
 {
     parser
         .delimited_by(open_delim(open), close_delim(close))
@@ -990,10 +977,11 @@ where
 }
 #[cfg(test)]
 mod tests {
-    use chumsky::prelude::*;
+    use camino::Utf8PathBuf;
+    use chumsky::Parser;
 
-    use kola_span::Span;
     use kola_tree::{inspector::NodeInspector, prelude::*};
+    use kola_utils::interner::{PathInterner, PathKey};
 
     use super::{
         expr_parser, module_parser, module_type_parser, pat_parser, type_bind_parser,
@@ -1001,22 +989,31 @@ mod tests {
     };
     use crate::{
         lexer::try_tokenize,
-        parser::{ParseOutput, try_parse_with},
+        parser::{Extra, ParseInput, ParseResult, state::INTERNER, try_parse_with},
     };
+
+    fn mocked_key() -> PathKey {
+        let mut interner = PathInterner::new();
+        interner.intern(Utf8PathBuf::from("test"))
+    }
+
+    fn try_parse_str_with<'t, T>(
+        src: &'t str,
+        parser: impl Parser<'t, ParseInput<'t>, T, Extra<'t>>,
+    ) -> ParseResult<T> {
+        let key = mocked_key();
+        let tokens = try_tokenize(key, src).unwrap();
+        let input = ParseInput::new(key, tokens);
+
+        try_parse_with(input, parser).unwrap()
+    }
 
     #[test]
     fn pat() {
-        let src = "{ a: x, b: { y }, c: _, d }";
-        let tokens = try_tokenize(src).unwrap();
-        let eoi = Span::new(src.len(), src.len());
-        let input = tokens.as_slice().map(eoi, |(t, s)| (t, s));
+        let ParseResult { node, builder, .. } =
+            try_parse_str_with("{ a: x, b: { y }, c: _, d }", pat_parser());
 
-        let ParseOutput {
-            node,
-            interner,
-            builder,
-            ..
-        } = try_parse_with(input, pat_parser()).unwrap();
+        let interner = INTERNER.read().unwrap();
         let inspector = NodeInspector::new(node, &builder, &interner);
 
         let record = inspector.as_record().unwrap();
@@ -1058,17 +1055,9 @@ mod tests {
 
     #[test]
     fn case_expr() {
-        let src = "case x of 1 => true, _ => false";
-        let tokens = try_tokenize(src).unwrap();
-        let eoi = Span::new(src.len(), src.len());
-        let input = tokens.as_slice().map(eoi, |(t, s)| (t, s));
-
-        let ParseOutput {
-            node,
-            interner,
-            builder,
-            ..
-        } = try_parse_with(input, expr_parser()).unwrap();
+        let ParseResult { node, builder, .. } =
+            try_parse_str_with("case x of 1 => true, _ => false", expr_parser());
+        let interner = INTERNER.read().unwrap();
         let inspector = NodeInspector::new(node, &builder, &interner);
 
         let case = inspector.as_case().unwrap();
@@ -1100,17 +1089,10 @@ mod tests {
 
     #[test]
     fn func_expr() {
-        let src = "fn name => \"Hello\" + name";
-        let tokens = try_tokenize(src).unwrap();
-        let eoi = Span::new(src.len(), src.len());
-        let input = tokens.as_slice().map(eoi, |(t, s)| (t, s));
+        let ParseResult { node, builder, .. } =
+            try_parse_str_with("fn name => \"Hello\" + name", expr_parser());
 
-        let ParseOutput {
-            node,
-            interner,
-            builder,
-            ..
-        } = try_parse_with(input, expr_parser()).unwrap();
+        let interner = INTERNER.read().unwrap();
         let inspector = NodeInspector::new(node, &builder, &interner);
 
         inspector
@@ -1126,17 +1108,10 @@ mod tests {
     #[test]
     fn arithmetic_expr() {
         // ((-4 * 10) + (40 / 4)) + 30 = 0
-        let src = "-4 * 10 + 40 / 4 + 30 == 0";
-        let tokens = try_tokenize(src).unwrap();
-        let eoi = Span::new(src.len(), src.len());
-        let input = tokens.as_slice().map(eoi, |(t, s)| (t, s));
+        let ParseResult { node, builder, .. } =
+            try_parse_str_with("-4 * 10 + 40 / 4 + 30 == 0", expr_parser());
 
-        let ParseOutput {
-            node,
-            interner,
-            builder,
-            ..
-        } = try_parse_with(input, expr_parser()).unwrap();
+        let interner = INTERNER.read().unwrap();
         let inspector = NodeInspector::new(node, &builder, &interner);
 
         // _ == 0
@@ -1168,17 +1143,10 @@ mod tests {
 
     #[test]
     fn if_expr() {
-        let src = "if y then x else 0";
-        let tokens = try_tokenize(src).unwrap();
-        let eoi = Span::new(src.len(), src.len());
-        let input = tokens.as_slice().map(eoi, |(t, s)| (t, s));
+        let ParseResult { node, builder, .. } =
+            try_parse_str_with("if y then x else 0", expr_parser());
 
-        let ParseOutput {
-            node,
-            interner,
-            builder,
-            ..
-        } = try_parse_with(input, expr_parser()).unwrap();
+        let interner = INTERNER.read().unwrap();
         let inspector = NodeInspector::new(node, &builder, &interner);
 
         let if_expr = inspector.as_if().unwrap();
@@ -1202,17 +1170,9 @@ mod tests {
 
     #[test]
     fn path_expr() {
-        let src = "x.y.z";
-        let tokens = try_tokenize(src).unwrap();
-        let eoi = Span::new(src.len(), src.len());
-        let input = tokens.as_slice().map(eoi, |(t, s)| (t, s));
+        let ParseResult { node, builder, .. } = try_parse_str_with("x.y.z", expr_parser());
 
-        let ParseOutput {
-            node,
-            interner,
-            builder,
-            ..
-        } = try_parse_with(input, expr_parser()).unwrap();
+        let interner = INTERNER.read().unwrap();
         let inspector = NodeInspector::new(node, &builder, &interner);
 
         inspector
@@ -1226,17 +1186,10 @@ mod tests {
 
     #[test]
     fn record_extension() {
-        let src = "{ y | +x = 10 }";
-        let tokens = try_tokenize(src).unwrap();
-        let eoi = Span::new(src.len(), src.len());
-        let input = tokens.as_slice().map(eoi, |(t, s)| (t, s));
+        let ParseResult { node, builder, .. } =
+            try_parse_str_with("{ y | +x = 10 }", expr_parser());
 
-        let ParseOutput {
-            node,
-            interner,
-            builder,
-            ..
-        } = try_parse_with(input, expr_parser()).unwrap();
+        let interner = INTERNER.read().unwrap();
         let inspector = NodeInspector::new(node, &builder, &interner);
 
         let extend = inspector.as_record_extend().unwrap();
@@ -1255,17 +1208,10 @@ mod tests {
 
     #[test]
     fn record() {
-        let src = "{ x = 10, y = 20 }";
-        let tokens = try_tokenize(src).unwrap();
-        let eoi = Span::new(src.len(), src.len());
-        let input = tokens.as_slice().map(eoi, |(t, s)| (t, s));
+        let ParseResult { node, builder, .. } =
+            try_parse_str_with("{ x = 10, y = 20 }", expr_parser());
 
-        let ParseOutput {
-            node,
-            interner,
-            builder,
-            ..
-        } = try_parse_with(input, expr_parser()).unwrap();
+        let interner = INTERNER.read().unwrap();
         let inspector = NodeInspector::new(node, &builder, &interner);
 
         let record = inspector.as_record().unwrap();
@@ -1292,17 +1238,12 @@ mod tests {
 
     #[test]
     fn type_expr() {
-        let src = "Num -> { a : Num, b : Num -> Num } -> Str";
-        let tokens = try_tokenize(src).unwrap();
-        let eoi = Span::new(src.len(), src.len());
-        let input = tokens.as_slice().map(eoi, |(t, s)| (t, s));
+        let ParseResult { node, builder, .. } = try_parse_str_with(
+            "Num -> { a : Num, b : Num -> Num } -> Str",
+            type_expr_parser(),
+        );
 
-        let ParseOutput {
-            node,
-            interner,
-            builder,
-            ..
-        } = try_parse_with(input, type_expr_parser()).unwrap();
+        let interner = INTERNER.read().unwrap();
         let inspector = NodeInspector::new(node, &builder, &interner);
 
         // Num -> (...)
@@ -1346,17 +1287,10 @@ mod tests {
 
     #[test]
     fn type_application() {
-        let src = "Map (Num -> Str) (std.List Str)";
-        let tokens = try_tokenize(src).unwrap();
-        let eoi = Span::new(src.len(), src.len());
-        let input = tokens.as_slice().map(eoi, |(t, s)| (t, s));
+        let ParseResult { node, builder, .. } =
+            try_parse_str_with("Map (Num -> Str) (std.List Str)", type_expr_parser());
 
-        let ParseOutput {
-            node,
-            interner,
-            builder,
-            ..
-        } = try_parse_with(input, type_expr_parser()).unwrap();
+        let interner = INTERNER.read().unwrap();
         let inspector = NodeInspector::new(node, &builder, &interner);
 
         // Map (Num -> Str) @@ (std.List Str)
@@ -1384,17 +1318,10 @@ mod tests {
 
     #[test]
     fn type_() {
-        let src = "forall a b . { left : a, right : Num -> b }";
-        let tokens = try_tokenize(src).unwrap();
-        let eoi = Span::new(src.len(), src.len());
-        let input = tokens.as_slice().map(eoi, |(t, s)| (t, s));
+        let ParseResult { node, builder, .. } =
+            try_parse_str_with("forall a b . { left : a, right : Num -> b }", type_parser());
 
-        let ParseOutput {
-            node,
-            interner,
-            builder,
-            ..
-        } = try_parse_with(input, type_parser()).unwrap();
+        let interner = INTERNER.read().unwrap();
         let inspector = NodeInspector::new(node, &builder, &interner);
 
         inspector
@@ -1442,17 +1369,12 @@ mod tests {
 
     #[test]
     fn type_bind() {
-        let src = "type Person = forall a . { id : a, name : Str, age : Num }";
-        let tokens = try_tokenize(src).unwrap();
-        let eoi = Span::new(src.len(), src.len());
-        let input = tokens.as_slice().map(eoi, |(t, s)| (t, s));
+        let ParseResult { node, builder, .. } = try_parse_str_with(
+            "type Person = forall a . { id : a, name : Str, age : Num }",
+            type_bind_parser(),
+        );
 
-        let ParseOutput {
-            node,
-            interner,
-            builder,
-            ..
-        } = try_parse_with(input, type_bind_parser()).unwrap();
+        let interner = INTERNER.read().unwrap();
         let inspector = NodeInspector::new(node, &builder, &interner);
 
         inspector.has_name("Person");
@@ -1466,18 +1388,13 @@ mod tests {
 
     #[test]
     fn variant_type_bind() {
-        let src = "type Option = forall a b . < Some : a, None | b >";
-        let tokens = try_tokenize(src).unwrap();
-        let eoi = Span::new(src.len(), src.len());
-        let input = tokens.as_slice().map(eoi, |(t, s)| (t, s));
+        let ParseResult { node, builder, .. } = try_parse_str_with(
+            "type Option = forall a b . < Some : a, None | b >",
+            type_bind_parser(),
+        );
 
-        let ParseOutput {
-            node,
-            interner,
-            builder,
-            ..
-        } = try_parse_with(input, type_bind_parser()).unwrap();
-        let inspector = NodeInspector::new(node, &builder, &interner);
+        let interner = INTERNER.read().unwrap();
+        let inspector = NodeInspector::new(node, &builder, &&interner);
 
         inspector.has_name("Option");
 
@@ -1515,17 +1432,10 @@ mod tests {
 
     #[test]
     fn module() {
-        let src = "{ x = 10, type T = Num }";
-        let tokens = try_tokenize(src).unwrap();
-        let eoi = Span::new(src.len(), src.len());
-        let input = tokens.as_slice().map(eoi, |(t, s)| (t, s));
+        let ParseResult { node, builder, .. } =
+            try_parse_str_with("{ x = 10, type T = Num }", module_parser());
 
-        let ParseOutput {
-            node,
-            interner,
-            builder,
-            ..
-        } = try_parse_with(input, module_parser()).unwrap();
+        let interner = INTERNER.read().unwrap();
         let inspector = NodeInspector::new(node, &builder, &interner);
 
         inspector.has_binds(2);
@@ -1555,17 +1465,10 @@ mod tests {
 
     #[test]
     fn module_type() {
-        let src = "{ x : Num, type T = Str }";
-        let tokens = try_tokenize(src).unwrap();
-        let eoi = Span::new(src.len(), src.len());
-        let input = tokens.as_slice().map(eoi, |(t, s)| (t, s));
+        let ParseResult { node, builder, .. } =
+            try_parse_str_with("{ x : Num, type T = Str }", module_type_parser());
 
-        let ParseOutput {
-            node,
-            interner,
-            builder,
-            ..
-        } = try_parse_with(input, module_type_parser()).unwrap();
+        let interner = INTERNER.read().unwrap();
         let inspector = NodeInspector::new(node, &builder, &interner);
 
         inspector.has_specs(2);
@@ -1597,17 +1500,10 @@ mod tests {
 
     #[test]
     fn nested_module() {
-        let src = "{ module M = { x = 10 } }";
-        let tokens = try_tokenize(src).unwrap();
-        let eoi = Span::new(src.len(), src.len());
-        let input = tokens.as_slice().map(eoi, |(t, s)| (t, s));
+        let ParseResult { node, builder, .. } =
+            try_parse_str_with("{ module M = { x = 10 } }", module_parser());
 
-        let ParseOutput {
-            node,
-            interner,
-            builder,
-            ..
-        } = try_parse_with(input, module_parser()).unwrap();
+        let interner = INTERNER.read().unwrap();
         let inspector = NodeInspector::new(node, &builder, &interner);
 
         inspector.has_binds(1);
@@ -1633,17 +1529,10 @@ mod tests {
 
     #[test]
     fn nested_module_with_type() {
-        let src = "{ module M : { x : Num } = { x = 10 } }";
-        let tokens = try_tokenize(src).unwrap();
-        let eoi = Span::new(src.len(), src.len());
-        let input = tokens.as_slice().map(eoi, |(t, s)| (t, s));
+        let ParseResult { node, builder, .. } =
+            try_parse_str_with("{ module M : { x : Num } = { x = 10 } }", module_parser());
 
-        let ParseOutput {
-            node,
-            interner,
-            builder,
-            ..
-        } = try_parse_with(input, module_parser()).unwrap();
+        let interner = INTERNER.read().unwrap();
         let inspector = NodeInspector::new(node, &builder, &interner);
 
         inspector.has_binds(1);

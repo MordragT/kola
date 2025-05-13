@@ -3,7 +3,7 @@ use serde::{Deserialize, Serialize};
 use std::{borrow::Borrow, ops::Deref};
 
 use kola_print::prelude::*;
-use kola_utils::{StrKey, as_variant};
+use kola_utils::{as_variant, interner::StrKey};
 
 use super::Name;
 use crate::{id::Id, print::TreePrinter, tree::TreeView};
@@ -525,12 +525,13 @@ impl Printable<TreePrinter> for Type {
 }
 
 mod inspector {
+    use std::hash::BuildHasher;
+
     use super::*;
     use crate::inspector::*;
-
-    impl<'t> NodeInspector<'t, Id<Type>> {
+    impl<'t, S: BuildHasher> NodeInspector<'t, Id<Type>, S> {
         /// Check if this type is a type path and return an inspector for it
-        pub fn as_type_path(self) -> Option<NodeInspector<'t, Id<TypePath>>> {
+        pub fn as_type_path(self) -> Option<NodeInspector<'t, Id<TypePath>, S>> {
             let ty = self.node.get(self.tree);
             ty.ty
                 .get(self.tree)
@@ -539,7 +540,7 @@ mod inspector {
         }
 
         /// Check if this type is a function type and return an inspector for it
-        pub fn as_function(self) -> Option<NodeInspector<'t, Id<FuncType>>> {
+        pub fn as_function(self) -> Option<NodeInspector<'t, Id<FuncType>, S>> {
             let ty = self.node.get(self.tree);
             ty.ty
                 .get(self.tree)
@@ -548,7 +549,7 @@ mod inspector {
         }
 
         /// Check if this type is a record type and return an inspector for it
-        pub fn as_record(self) -> Option<NodeInspector<'t, Id<RecordType>>> {
+        pub fn as_record(self) -> Option<NodeInspector<'t, Id<RecordType>, S>> {
             let ty = self.node.get(self.tree);
             ty.ty
                 .get(self.tree)
@@ -557,7 +558,7 @@ mod inspector {
         }
 
         /// Check if this type is a variant type and return an inspector for it
-        pub fn as_variant(self) -> Option<NodeInspector<'t, Id<VariantType>>> {
+        pub fn as_variant(self) -> Option<NodeInspector<'t, Id<VariantType>, S>> {
             let ty = self.node.get(self.tree);
             ty.ty
                 .get(self.tree)
@@ -566,7 +567,7 @@ mod inspector {
         }
 
         /// Check if this type is a type application and return an inspector for it
-        pub fn as_type_application(self) -> Option<NodeInspector<'t, Id<TypeApplication>>> {
+        pub fn as_type_application(self) -> Option<NodeInspector<'t, Id<TypeApplication>, S>> {
             let ty = self.node.get(self.tree);
             ty.ty
                 .get(self.tree)
@@ -586,7 +587,7 @@ mod inspector {
         }
 
         /// Get an inspector for the type variable at the given index
-        pub fn type_var_at(self, index: usize) -> NodeInspector<'t, Id<Name>> {
+        pub fn type_var_at(self, index: usize) -> NodeInspector<'t, Id<Name>, S> {
             let ty = self.node.get(self.tree);
             assert!(
                 index < ty.vars.len(),
@@ -599,13 +600,13 @@ mod inspector {
         }
 
         /// Get an inspector for the type expression
-        pub fn type_expr(self) -> NodeInspector<'t, Id<TypeExpr>> {
+        pub fn type_expr(self) -> NodeInspector<'t, Id<TypeExpr>, S> {
             let ty = self.node.get(self.tree);
             NodeInspector::new(ty.ty, self.tree, self.interner)
         }
     }
 
-    impl<'t> NodeInspector<'t, Id<TypePath>> {
+    impl<'t, S: BuildHasher> NodeInspector<'t, Id<TypePath>, S> {
         /// Assert the type path has the specified number of segments
         pub fn has_segments(self, count: usize) -> Self {
             let segments_len = self.node.get(self.tree).0.len();
@@ -638,7 +639,7 @@ mod inspector {
         }
     }
 
-    impl<'t> NodeInspector<'t, Id<TypeVar>> {
+    impl<'t, S: BuildHasher> NodeInspector<'t, Id<TypeVar>, S> {
         /// Assert the type variable has the specified name
         pub fn has_name(self, expected: &str) -> Self {
             let type_var = self.node.get(self.tree);
@@ -653,21 +654,21 @@ mod inspector {
         }
     }
 
-    impl<'t> NodeInspector<'t, Id<FuncType>> {
+    impl<'t, S: BuildHasher> NodeInspector<'t, Id<FuncType>, S> {
         /// Get an inspector for the function's parameter type
-        pub fn input(self) -> NodeInspector<'t, Id<TypeExpr>> {
+        pub fn input(self) -> NodeInspector<'t, Id<TypeExpr>, S> {
             let function_type = self.node.get(self.tree);
             NodeInspector::new(function_type.input, self.tree, self.interner)
         }
 
         /// Get an inspector for the function's return type
-        pub fn output(self) -> NodeInspector<'t, Id<TypeExpr>> {
+        pub fn output(self) -> NodeInspector<'t, Id<TypeExpr>, S> {
             let function_type = self.node.get(self.tree);
             NodeInspector::new(function_type.output, self.tree, self.interner)
         }
     }
 
-    impl<'t> NodeInspector<'t, Id<RecordType>> {
+    impl<'t, S: BuildHasher> NodeInspector<'t, Id<RecordType>, S> {
         /// Assert the record type has the specified number of fields
         pub fn has_fields(self, count: usize) -> Self {
             let fields_len = self.node.get(self.tree).fields.len();
@@ -680,7 +681,7 @@ mod inspector {
         }
 
         /// Get an inspector for the record field at the given index
-        pub fn field_at(self, index: usize) -> NodeInspector<'t, Id<RecordFieldType>> {
+        pub fn field_at(self, index: usize) -> NodeInspector<'t, Id<RecordFieldType>, S> {
             let record_type = self.node.get(self.tree);
             assert!(
                 index < record_type.fields.len(),
@@ -693,7 +694,7 @@ mod inspector {
         }
 
         /// Get an inspector for the record type extension if it has one
-        pub fn extension(self) -> Option<NodeInspector<'t, Id<TypeVar>>> {
+        pub fn extension(self) -> Option<NodeInspector<'t, Id<TypeVar>, S>> {
             let record_type = self.node.get(self.tree);
             record_type
                 .extension
@@ -701,7 +702,7 @@ mod inspector {
         }
     }
 
-    impl<'t> NamedNode for NodeInspector<'t, Id<RecordFieldType>> {
+    impl<'t, S: BuildHasher> NamedNode for NodeInspector<'t, Id<RecordFieldType>, S> {
         fn assert_name(self, expected: &str, node_type: &str) -> Self {
             let name = self.node.get(self.tree).name.get(self.tree);
             let name = self.interner.get(name.0).expect("Symbol not found");
@@ -715,19 +716,19 @@ mod inspector {
         }
     }
 
-    impl<'t> NodeInspector<'t, Id<RecordFieldType>> {
+    impl<'t, S: BuildHasher> NodeInspector<'t, Id<RecordFieldType>, S> {
         /// Assert the record field has the specified name
         pub fn has_field_name(self, expected: &str) -> Self {
             self.assert_name(expected, "field")
         }
 
-        pub fn type_expr(self) -> NodeInspector<'t, Id<TypeExpr>> {
+        pub fn type_expr(self) -> NodeInspector<'t, Id<TypeExpr>, S> {
             let field = self.node.get(self.tree);
             NodeInspector::new(field.ty, self.tree, self.interner)
         }
     }
 
-    impl<'t> NodeInspector<'t, Id<VariantType>> {
+    impl<'t, S: BuildHasher> NodeInspector<'t, Id<VariantType>, S> {
         /// Assert the variant type has the specified number of cases
         pub fn has_cases(self, count: usize) -> Self {
             let cases_len = self.node.get(self.tree).cases.len();
@@ -740,7 +741,7 @@ mod inspector {
         }
 
         /// Get an inspector for the variant case at the given index
-        pub fn case_at(self, index: usize) -> NodeInspector<'t, Id<VariantCaseType>> {
+        pub fn case_at(self, index: usize) -> NodeInspector<'t, Id<VariantCaseType>, S> {
             let variant_type = self.node.get(self.tree);
             assert!(
                 index < variant_type.cases.len(),
@@ -753,7 +754,7 @@ mod inspector {
         }
 
         /// Check if this variant type has an extension and return an inspector for it
-        pub fn extension(self) -> Option<NodeInspector<'t, Id<TypeVar>>> {
+        pub fn extension(self) -> Option<NodeInspector<'t, Id<TypeVar>, S>> {
             let variant_type = self.node.get(self.tree);
             variant_type
                 .extension
@@ -761,7 +762,7 @@ mod inspector {
         }
     }
 
-    impl<'t> NamedNode for NodeInspector<'t, Id<VariantCaseType>> {
+    impl<'t, S: BuildHasher> NamedNode for NodeInspector<'t, Id<VariantCaseType>, S> {
         fn assert_name(self, expected: &str, node_type: &str) -> Self {
             let name = self.node.get(self.tree).name.get(self.tree);
             let name = self.interner.get(name.0).expect("Symbol not found");
@@ -775,23 +776,23 @@ mod inspector {
         }
     }
 
-    impl<'t> NodeInspector<'t, Id<VariantCaseType>> {
+    impl<'t, S: BuildHasher> NodeInspector<'t, Id<VariantCaseType>, S> {
         /// Assert the variant case has the specified name
         pub fn has_case_name(self, expected: &str) -> Self {
             self.assert_name(expected, "case")
         }
 
         /// Get an inspector for the case's type if it has one
-        pub fn type_expr(self) -> Option<NodeInspector<'t, Id<TypeExpr>>> {
+        pub fn type_expr(self) -> Option<NodeInspector<'t, Id<TypeExpr>, S>> {
             let case = self.node.get(self.tree);
             case.ty
                 .map(|ty_id| NodeInspector::new(ty_id, self.tree, self.interner))
         }
     }
 
-    impl<'t> NodeInspector<'t, Id<TypeExpr>> {
+    impl<'t, S: BuildHasher> NodeInspector<'t, Id<TypeExpr>, S> {
         /// Check if this type expression is an error type
-        pub fn as_error(self) -> Option<NodeInspector<'t, Id<TypeError>>> {
+        pub fn as_error(self) -> Option<NodeInspector<'t, Id<TypeError>, S>> {
             let type_expr = self.node.get(self.tree);
             type_expr
                 .to_error()
@@ -799,7 +800,7 @@ mod inspector {
         }
 
         /// Check if this type expression is a type path
-        pub fn as_path(self) -> Option<NodeInspector<'t, Id<TypePath>>> {
+        pub fn as_path(self) -> Option<NodeInspector<'t, Id<TypePath>, S>> {
             let type_expr = self.node.get(self.tree);
             type_expr
                 .to_type_path()
@@ -807,7 +808,7 @@ mod inspector {
         }
 
         /// Check if this type expression is a record type
-        pub fn as_record(self) -> Option<NodeInspector<'t, Id<RecordType>>> {
+        pub fn as_record(self) -> Option<NodeInspector<'t, Id<RecordType>, S>> {
             let type_expr = self.node.get(self.tree);
             type_expr
                 .to_record_type()
@@ -815,7 +816,7 @@ mod inspector {
         }
 
         /// Check if this type expression is a variant type
-        pub fn as_variant(self) -> Option<NodeInspector<'t, Id<VariantType>>> {
+        pub fn as_variant(self) -> Option<NodeInspector<'t, Id<VariantType>, S>> {
             let type_expr = self.node.get(self.tree);
             type_expr
                 .to_variant_type()
@@ -823,7 +824,7 @@ mod inspector {
         }
 
         /// Check if this type expression is a function type
-        pub fn as_function(self) -> Option<NodeInspector<'t, Id<FuncType>>> {
+        pub fn as_function(self) -> Option<NodeInspector<'t, Id<FuncType>, S>> {
             let type_expr = self.node.get(self.tree);
             type_expr
                 .to_func_type()
@@ -831,7 +832,7 @@ mod inspector {
         }
 
         /// Check if this type expression is a type application
-        pub fn as_application(self) -> Option<NodeInspector<'t, Id<TypeApplication>>> {
+        pub fn as_application(self) -> Option<NodeInspector<'t, Id<TypeApplication>, S>> {
             let type_expr = self.node.get(self.tree);
             type_expr
                 .to_type_application()
@@ -839,15 +840,15 @@ mod inspector {
         }
     }
 
-    impl<'t> NodeInspector<'t, Id<TypeApplication>> {
+    impl<'t, S: BuildHasher> NodeInspector<'t, Id<TypeApplication>, S> {
         /// Get an inspector for the type constructor
-        pub fn constructor(self) -> NodeInspector<'t, Id<TypeExpr>> {
+        pub fn constructor(self) -> NodeInspector<'t, Id<TypeExpr>, S> {
             let type_app = self.node.get(self.tree);
             NodeInspector::new(type_app.constructor, self.tree, self.interner)
         }
 
         /// Get an inspector for the type argument
-        pub fn arg(self) -> NodeInspector<'t, Id<TypeExpr>> {
+        pub fn arg(self) -> NodeInspector<'t, Id<TypeExpr>, S> {
             let type_app = self.node.get(self.tree);
             NodeInspector::new(type_app.arg, self.tree, self.interner)
         }

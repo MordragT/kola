@@ -40,7 +40,7 @@ pub trait TryAsMut<T> {
 macro_rules! impl_try_as {
     ($enum_type:ident, $($variant:ident($variant_type:ty)),*) => {
         $(
-            impl $crate::TryAsRef<$variant_type> for $enum_type {
+            impl $crate::convert::TryAsRef<$variant_type> for $enum_type {
                 fn try_as_ref(&self) -> Option<&$variant_type> {
                     match self {
                         $enum_type::$variant(val) => Some(val),
@@ -49,7 +49,7 @@ macro_rules! impl_try_as {
                 }
             }
 
-            impl $crate::TryAsMut<$variant_type> for $enum_type {
+            impl $crate::convert::TryAsMut<$variant_type> for $enum_type {
                 fn try_as_mut(&mut self) -> Option<&mut $variant_type> {
                     match self {
                         $enum_type::$variant(val) => Some(val),
@@ -69,7 +69,7 @@ macro_rules! impl_try_as {
 macro_rules! impl_try_as_ref {
     ($enum_type:ident, $($variant:ident($variant_type:ty)),*) => {
         $(
-            impl $crate::TryAsRef<$variant_type> for $enum_type {
+            impl $crate::convert::TryAsRef<$variant_type> for $enum_type {
                 fn try_as_ref(&self) -> Option<&$variant_type> {
                     match self {
                         $enum_type::$variant(val) => Some(val),
@@ -89,7 +89,7 @@ macro_rules! impl_try_as_ref {
 macro_rules! impl_try_as_mut {
     ($enum_type:ident, $($variant:ident($variant_type:ty)),*) => {
         $(
-            impl $crate::TryAsMut<$variant_type> for $enum_type {
+            impl $crate::convert::TryAsMut<$variant_type> for $enum_type {
                 fn try_as_mut(&mut self) -> Option<&mut $variant_type> {
                     match self {
                         $enum_type::$variant(val) => Some(val),

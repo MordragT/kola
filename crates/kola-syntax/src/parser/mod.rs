@@ -1,89 +1,80 @@
-pub use ext::ParserExt;
-pub use state::{Error, Extra, State, StateRepr};
-
 pub mod primitives;
 pub mod rules;
 
+pub use ext::ParserExt;
+pub use input::ParseInput;
+pub use state::{Error, Extra, INTERNER, State};
+
 mod ext;
+mod input;
 mod state;
 
-use chumsky::{input::ValueInput, prelude::*};
+use chumsky::prelude::*;
 
-use kola_span::Span;
+use kola_span::{Diagnostic, Report};
 use kola_tree::prelude::*;
-use kola_utils::StrInterner;
 
-use crate::{
-    span::{SpanInfo, SpanPhase},
-    token::{SemanticTokens, Token, TokenSlice},
-};
+use crate::{loc::Locations, token::SemanticTokens};
 
-pub struct ParseResult<'t> {
+pub struct ParseOutput {
     pub tokens: SemanticTokens,
-    pub interner: StrInterner,
     pub tree: Option<Tree>,
-    pub spans: SpanInfo,
-    pub errors: Vec<Error<'t>>,
+    pub spans: Locations,
+    pub report: Report,
 }
 
-pub fn parse<'t>(tokens: TokenSlice<'t>, eoi: Span) -> ParseResult<'t> {
-    let input = tokens.map(eoi, |(t, s)| (t, s));
+pub fn parse(input: ParseInput<'_>) -> ParseOutput {
     let parser = rules::module_parser();
 
-    let mut state = State::from(StateRepr::new());
+    let mut state = State::new();
 
     let (root, errors) = parser
         .parse_with_state(input, &mut state)
         .into_output_errors();
 
-    // let errors = errors.into_iter().map(SourceDiagnostic::from).collect();
+    let mut report = Report::new();
+    report.extend_diagnostics(errors.into_iter().map(Diagnostic::from));
 
-    let StateRepr {
+    let State {
         tokens,
         builder,
-        meta,
-        interner,
-    } = state.0;
+        spans,
+    } = state;
     let tree = root.map(|root| builder.finish(root));
 
-    ParseResult {
+    ParseOutput {
         tokens,
-        interner,
         tree,
-        spans: meta.into_metadata(),
-        errors,
+        spans,
+        report,
     }
 }
 
-pub struct ParseOutput<T> {
+pub struct ParseResult<T> {
     pub node: T,
     pub tokens: SemanticTokens,
-    pub interner: StrInterner,
     pub builder: TreeBuilder,
-    pub spans: MetaVec<SpanPhase>,
+    pub spans: Locations,
 }
 
-pub fn try_parse_with<'t, T, P, I>(input: I, parser: P) -> Result<ParseOutput<T>, Vec<Error<'t>>>
-where
-    I: ValueInput<'t, Token = Token<'t>, Span = Span>,
-    P: Parser<'t, I, T, Extra<'t>>,
-{
-    let mut state = State::from(StateRepr::new());
+pub fn try_parse_with<'t, T>(
+    input: ParseInput<'t>,
+    parser: impl Parser<'t, ParseInput<'t>, T, Extra<'t>>,
+) -> Result<ParseResult<T>, Vec<Error<'t>>> {
+    let mut state = State::new();
 
     let node = parser.parse_with_state(input, &mut state).into_result()?;
 
-    let StateRepr {
+    let State {
         tokens,
         builder,
-        meta,
-        interner,
-    } = state.0;
+        spans,
+    } = state;
 
-    Ok(ParseOutput {
+    Ok(ParseResult {
         node,
         tokens,
-        interner,
         builder,
-        spans: meta,
+        spans,
     })
 }

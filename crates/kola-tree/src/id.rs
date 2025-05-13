@@ -1,10 +1,10 @@
 use kola_print::prelude::*;
-use kola_utils::TryAsRef;
+use kola_utils::convert::TryAsRef;
 use serde::{Deserialize, Serialize};
-use std::{hash::Hash, marker::PhantomData};
+use std::{collections::HashMap, hash::Hash, marker::PhantomData};
 
 use crate::{
-    meta::{MetaCast, MetaContainer, Phase},
+    meta::{MetaCast, MetaView, Phase},
     node::Node,
     print::TreePrinter,
     tree::TreeView,
@@ -54,7 +54,7 @@ impl<T> Hash for Id<T> {
 }
 
 impl<T> Id<T> {
-    pub(crate) fn from_usize(id: usize) -> Self {
+    pub fn unchecked_from_usize(id: usize) -> Self {
         Self {
             id: id as u32,
             t: PhantomData,
@@ -76,7 +76,7 @@ impl<T> Id<T> {
         tree.node(self)
     }
 
-    pub fn meta<P>(self, metadata: &impl MetaContainer<P>) -> &T::Meta
+    pub fn meta<P>(self, metadata: &impl MetaView<P>) -> &T::Meta
     where
         P: Phase,
         T: MetaCast<P>,
@@ -84,7 +84,7 @@ impl<T> Id<T> {
         metadata.meta(self)
     }
 
-    pub fn meta_mut<P, M>(self, metadata: &mut impl MetaContainer<P>) -> &mut T::Meta
+    pub fn meta_mut<P, M>(self, metadata: &mut impl MetaView<P>) -> &mut T::Meta
     where
         P: Phase,
         T: MetaCast<P>,

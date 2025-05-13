@@ -335,9 +335,9 @@ dependencies = [
  "clap",
  "env_logger",
  "kola-print",
- "kola-semantic",
  "kola-syntax",
  "kola-tree",
+ "kola-typer",
  "log",
 ]
 
@@ -351,6 +351,47 @@ dependencies = [
 ]
 
 [[package]]
+name = "kola-driver"
+version = "0.1.0"
+dependencies = [
+ "camino",
+ "kola-span",
+ "kola-syntax",
+ "kola-tree",
+ "kola-utils",
+ "thiserror",
+]
+
+[[package]]
+name = "kola-expand"
+version = "0.1.0"
+dependencies = [
+ "kola-span",
+ "kola-syntax",
+ "kola-tree",
+ "kola-utils",
+]
+
+[[package]]
+name = "kola-ir"
+version = "0.1.0"
+
+[[package]]
+name = "kola-lowerer"
+version = "0.1.0"
+
+[[package]]
+name = "kola-modules"
+version = "0.1.0"
+dependencies = [
+ "kola-span",
+ "kola-syntax",
+ "kola-tree",
+ "kola-utils",
+ "thiserror",
+]
+
+[[package]]
 name = "kola-print"
 version = "0.1.0"
 dependencies = [
@@ -359,37 +400,15 @@ dependencies = [
 ]
 
 [[package]]
-name = "kola-resolver"
+name = "kola-resolve"
 version = "0.1.0"
 dependencies = [
  "camino",
- "derive_more",
- "either",
  "indexmap",
- "kola-print",
+ "kola-span",
  "kola-syntax",
  "kola-tree",
  "kola-utils",
- "log",
- "serde",
- "thiserror",
-]
-
-[[package]]
-name = "kola-semantic"
-version = "0.1.0"
-dependencies = [
- "camino",
- "derive_more",
- "either",
- "indexmap",
- "kola-print",
- "kola-syntax",
- "kola-tree",
- "kola-utils",
- "log",
- "serde",
- "thiserror",
 ]
 
 [[package]]
@@ -408,6 +427,7 @@ dependencies = [
 name = "kola-syntax"
 version = "0.1.0"
 dependencies = [
+ "camino",
  "chumsky",
  "derive_more",
  "kola-print",
@@ -431,11 +451,30 @@ dependencies = [
 ]
 
 [[package]]
+name = "kola-typer"
+version = "0.1.0"
+dependencies = [
+ "camino",
+ "derive_more",
+ "either",
+ "indexmap",
+ "kola-print",
+ "kola-syntax",
+ "kola-tree",
+ "kola-utils",
+ "log",
+ "serde",
+ "thiserror",
+]
+
+[[package]]
 name = "kola-utils"
 version = "0.1.0"
 dependencies = [
  "camino",
+ "pathdiff",
  "serde",
+ "thiserror",
 ]
 
 [[package]]
@@ -452,6 +491,10 @@ dependencies = [
  "log",
  "thiserror",
 ]
+
+[[package]]
+name = "kola-vm"
+version = "0.1.0"
 
 [[package]]
 name = "libc"
@@ -488,6 +531,15 @@ name = "paste"
 version = "1.0.15"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "57c0d7b74b563b49d38dae00a0c37d4d6de9b432382b2892f0574ddcae73fd0a"
+
+[[package]]
+name = "pathdiff"
+version = "0.2.3"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "df94ce210e5bc13cb6651479fa48d14f601d9858cfe0467f43ae157023b938d3"
+dependencies = [
+ "camino",
+]
 
 [[package]]
 name = "portable-atomic"

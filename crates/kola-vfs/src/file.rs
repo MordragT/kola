@@ -19,14 +19,14 @@ pub type FileInfoTable = HashMap<FilePath, FileInfo>;
 pub struct FileInfo {
     pub source: Source,
     pub tree: Tree,
-    pub spans: SpanInfo,
+    pub spans: Locations,
 }
 
 impl FileInfo {
     #[inline]
     pub fn span<T>(&self, id: Id<T>) -> Span
     where
-        T: MetaCast<SpanPhase, Meta = Span>,
+        T: MetaCast<LocPhase, Meta = Span>,
     {
         *self.spans.meta(id)
     }
@@ -34,7 +34,7 @@ impl FileInfo {
     #[inline]
     pub fn report<T>(&self, id: Id<T>, diag: impl IntoSourceDiagnostic) -> SourceReport
     where
-        T: MetaCast<SpanPhase, Meta = Span>,
+        T: MetaCast<LocPhase, Meta = Span>,
     {
         diag.into_source_diagnostic(self.span(id))
             .report(self.source.clone())
@@ -95,7 +95,7 @@ impl FileParser {
             TokenPrinter(&tokens).render(options)
         );
 
-        let ParseResult {
+        let ParseOutput {
             tree,
             interner,
             spans,
@@ -113,7 +113,7 @@ impl FileParser {
             "Untyped Abstract Syntax Tree".bold().bright_white(),
             source.file_path(),
             TreePrinter::new(tree.clone(), interner)
-                .with(SpanDecorator(spans.clone()))
+                .with(LocDecorator(spans.clone()))
                 .render(options)
         );
 
