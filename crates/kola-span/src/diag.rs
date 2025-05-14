@@ -1,5 +1,6 @@
 use chumsky::error::Rich;
 use derive_more::Display;
+use kola_utils::io::FileSystem;
 use owo_colors::{OwoColorize, Style};
 use std::{
     fmt,
@@ -50,7 +51,10 @@ impl Report {
     }
 
     /// Writes the report to the specified writer.
-    pub fn write(self, mut w: impl Write, cache: &SourceManager) -> io::Result<()> {
+    pub fn write<Io>(self, mut w: impl Write, cache: &SourceManager<Io>) -> io::Result<()>
+    where
+        Io: FileSystem,
+    {
         for issue in self.issues {
             issue.write(&mut w)?;
         }
@@ -61,12 +65,18 @@ impl Report {
     }
 
     /// Prints the report to the standard output.
-    pub fn print(self, cache: &SourceManager) -> io::Result<()> {
+    pub fn print<Io>(self, cache: &SourceManager<Io>) -> io::Result<()>
+    where
+        Io: FileSystem,
+    {
         self.write(io::stdout(), cache)
     }
 
     /// Prints the report to the standard error output.
-    pub fn eprint(self, cache: &SourceManager) -> io::Result<()> {
+    pub fn eprint<Io>(self, cache: &SourceManager<Io>) -> io::Result<()>
+    where
+        Io: FileSystem,
+    {
         self.write(io::stderr(), cache)
     }
 }
@@ -357,18 +367,27 @@ impl Diagnostic {
     }
 
     /// Writes the diagnostic to the specified writer.
-    pub fn write(self, w: impl Write, cache: &SourceManager) -> io::Result<()> {
+    pub fn write<Io>(self, w: impl Write, cache: &SourceManager<Io>) -> io::Result<()>
+    where
+        Io: FileSystem,
+    {
         let report = ariadne::Report::from(self);
         report.write(cache, w)
     }
 
     /// Prints the diagnostic to the standard output.
-    pub fn print(self, cache: &SourceManager) -> io::Result<()> {
+    pub fn print<Io>(self, cache: &SourceManager<Io>) -> io::Result<()>
+    where
+        Io: FileSystem,
+    {
         self.write(io::stdout(), cache)
     }
 
     /// Prints the diagnostic to the standard error output.
-    pub fn eprint(self, cache: &SourceManager) -> io::Result<()> {
+    pub fn eprint<Io>(self, cache: &SourceManager<Io>) -> io::Result<()>
+    where
+        Io: FileSystem,
+    {
         self.write(io::stderr(), cache)
     }
 }
@@ -404,9 +423,12 @@ impl From<Diagnostic> for ariadne::Report<'_, Loc> {
             help,
             severity,
             loc,
-            trace,
+            mut trace,
             notes,
         } = diag;
+
+        // TODO why the hell must I do this ??
+        trace.push(("".into(), loc));
 
         let mut builder = ariadne::Report::build(severity.into(), loc)
             .with_message(message)

@@ -7,3 +7,7 @@ edition = "2024"
 kola-resolve.workspace = true
 kola-syntax.workspace = true
 kola-utils.workspace = true
+kola-print.workspace = true
+camino.workspace = true
+log.workspace = true
+owo-colors.workspace = true

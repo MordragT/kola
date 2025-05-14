@@ -95,7 +95,7 @@ impl Resolver<Define> {
     where
         Io: FileSystem,
     {
-        Define::new(self.state.module_key, forest).define(forest);
+        self.state.define(forest);
 
         Resolver { state: Defined }
     }

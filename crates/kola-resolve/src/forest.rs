@@ -1,5 +1,6 @@
 use std::{
     collections::{HashMap, HashSet},
+    io,
     rc::Rc,
 };
 
@@ -17,6 +18,7 @@ use kola_utils::{
 
 use crate::module::{ModuleKey, ModuleScope, UnresolvedModuleScope};
 
+#[derive(Debug, Clone)]
 pub struct Forest<Io> {
     pub sources: SourceManager<Io>,
     pub trees: HashMap<PathKey, Rc<Tree>>,
@@ -72,5 +74,13 @@ impl<Io: FileSystem> Forest<Io> {
     {
         let topography = &self.topography[&path];
         *topography.meta(id)
+    }
+
+    pub fn print_report(self) -> io::Result<()> {
+        self.report.print(&self.sources)
+    }
+
+    pub fn eprint_report(self) -> io::Result<()> {
+        self.report.eprint(&self.sources)
     }
 }

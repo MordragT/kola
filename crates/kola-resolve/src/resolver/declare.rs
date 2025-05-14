@@ -32,17 +32,14 @@ impl ScopeStack {
         }
     }
 
-    pub fn push(&mut self, scope: UnresolvedModuleScope) {
+    pub fn start(&mut self, scope: UnresolvedModuleScope) {
         self.scopes.push(scope);
     }
 
-    pub fn pop(&mut self) -> Option<UnresolvedModuleScope> {
+    pub fn finish(&mut self) {
         if let Some(scope) = self.scopes.pop() {
             // Store the scope in reverse order for later use
-            self.reverse.push(scope.clone());
-            Some(scope)
-        } else {
-            None
+            self.reverse.push(scope);
         }
     }
 
@@ -138,13 +135,13 @@ where
         }
 
         // Create a new scope for this module
-        self.state.scopes.push(ModuleScope::new(module_key));
+        self.state.scopes.start(ModuleScope::new(module_key));
 
         // Walk through children nodes
         self.walk_module(id, tree)?;
 
         // Pop the scope now that we're done with this module
-        self.state.scopes.pop();
+        self.state.scopes.finish();
 
         ControlFlow::Continue(())
     }
@@ -166,7 +163,25 @@ where
             Err(e) => {
                 self.forest
                     .report
-                    .add_diagnostic(e.into_diagnostic(self.span(id)));
+                    .add_diagnostic(e.into_diagnostic(self.span(id)).with_help("resolve_import"));
+
+                // TODO make this more elegant
+                // Mock key for now
+                let module_key = ModuleKey::new();
+                let current_module_key = self.state.scopes.current().unwrap().module_key();
+
+                self.forest
+                    .dependencies
+                    .add_dependency(current_module_key, module_key);
+                self.state
+                    .scopes
+                    .current_mut()
+                    .insert_import(id, module_key);
+                // Mock end
+                // I am doing this because I am not fatally returning here,
+                // so that later on the module key can be resolved even if it is faulty itsself.
+                // Also doing the same for every other `return`
+
                 return ControlFlow::Continue(());
             }
         };
@@ -176,7 +191,20 @@ where
             Err(e) => {
                 self.forest
                     .report
-                    .add_diagnostic(e.into_diagnostic(self.span(id)));
+                    .add_diagnostic(e.into_diagnostic(self.span(id)).with_help("fetch"));
+
+                // Mock key for now
+                let module_key = ModuleKey::new();
+                let current_module_key = self.state.scopes.current().unwrap().module_key();
+
+                self.forest
+                    .dependencies
+                    .add_dependency(current_module_key, module_key);
+                self.state
+                    .scopes
+                    .current_mut()
+                    .insert_import(id, module_key);
+
                 return ControlFlow::Continue(());
             }
         };
@@ -189,6 +217,18 @@ where
         );
 
         let Some(tokens) = tokenize(path_key, source.text(), &mut self.forest.report) else {
+            // Mock key for now
+            let module_key = ModuleKey::new();
+            let current_module_key = self.state.scopes.current().unwrap().module_key();
+
+            self.forest
+                .dependencies
+                .add_dependency(current_module_key, module_key);
+            self.state
+                .scopes
+                .current_mut()
+                .insert_import(id, module_key);
+
             return ControlFlow::Continue(());
         };
 
@@ -204,6 +244,18 @@ where
         let ParseOutput { tree, spans, .. } = parse(input, &mut self.forest.report);
 
         let Some(tree) = tree else {
+            // Mock key for now
+            let module_key = ModuleKey::new();
+            let current_module_key = self.state.scopes.current().unwrap().module_key();
+
+            self.forest
+                .dependencies
+                .add_dependency(current_module_key, module_key);
+            self.state
+                .scopes
+                .current_mut()
+                .insert_import(id, module_key);
+
             return ControlFlow::Continue(());
         };
 
@@ -230,6 +282,10 @@ where
         self.forest
             .dependencies
             .add_dependency(current_module_key, module_key);
+        self.state
+            .scopes
+            .current_mut()
+            .insert_import(id, module_key);
 
         ControlFlow::Continue(())
     }

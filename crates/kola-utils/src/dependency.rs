@@ -21,6 +21,7 @@ impl<T> CycleError<T> {
 }
 
 /// Graph of dependencies between modules
+#[derive(Debug, Clone)]
 pub struct DependencyGraph<T> {
     /// Forward dependencies (module -> dependencies)
     forward: HashMap<T, Vec<T>>,

@@ -67,7 +67,8 @@ where
             .import_dirs
             .get(&from)
             .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "Import path not found"))?
-            .join(&STR_INTERNER.read().unwrap()[name]);
+            .join(&STR_INTERNER.read().unwrap()[name])
+            .with_extension(Self::EXTENSION);
 
         Ok(path)
     }

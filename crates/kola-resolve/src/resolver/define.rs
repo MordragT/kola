@@ -48,6 +48,8 @@ impl Define {
             state: _,
         } = self.scope;
 
+        dbg!(&imports);
+
         // TODO I should probably track insertion order, to make the whole algorithm predictable
         let mut paths = HashMap::new();
 
@@ -75,8 +77,14 @@ impl Define {
             bind.set_module_key(module_key);
         }
 
-        let [parent] = *forest.dependencies.dependents_of(module_key) else {
-            panic!("At this point every module must only have one parent")
+        let dependents = forest.dependencies.dependents_of(module_key);
+
+        let parent = if dependents.is_empty() {
+            None
+        } else if let [parent] = dependents {
+            Some(*parent)
+        } else {
+            panic!("At this point every module must only have one parent or none")
         };
 
         for (name, segments) in paths {
@@ -116,7 +124,7 @@ impl Define {
 // was declared after this alias was declared.
 fn define_path<Io>(
     segments: &[StrKey],
-    parent: ModuleKey,
+    parent: Option<ModuleKey>,
     modules: &HashMap<StrKey, ModuleBindInfo>,
     forest: &mut Forest<Io>,
 ) -> Option<ModuleKey>
@@ -127,7 +135,7 @@ where
 
     let (name, path) = segments.split_first()?;
     let mut module_key = if *name == sup {
-        parent
+        parent?
     } else {
         let info = modules.get(name)?;
         if info.vis == Vis::Export {

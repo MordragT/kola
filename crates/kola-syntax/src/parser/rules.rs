@@ -68,13 +68,6 @@ pub fn module_parser<'t>() -> impl Parser<'t, ParseInput<'t>, Id<node::Module>, 
 
         let module_import = kw(KwT::IMPORT)
             .ignore_then(name.clone())
-            .try_map_with(|n, e| {
-                // let state: &mut State = e.state();
-
-                // let parent = e.ctx();
-                // let path = n.get(state)
-                todo!()
-            })
             .map_to_node(node::ModuleImport)
             .to_module_expr();
 

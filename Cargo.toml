@@ -45,10 +45,7 @@ edition = "2024"
 
 [dependencies]
 kola-print.workspace = true
-kola-resolve.workspace = true
-kola-syntax.workspace = true
-kola-tree.workspace = true
-# kola-typer.workspace = true
+kola-driver.workspace = true
 
 camino.workspace = true
 log.workspace = true
