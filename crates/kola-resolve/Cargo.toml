@@ -13,3 +13,4 @@ indexmap.workspace = true
 camino.workspace = true
 log.workspace = true
 owo-colors.workspace = true
+derive_more.workspace = true

@@ -40,11 +40,6 @@
 //     Defined,
 // }
 
-use kola_tree::{
-    id::Id,
-    node::{self, Node},
-    tree::TreeView,
-};
 use kola_utils::{interner::PathKey, io::FileSystem};
 
 use crate::{forest::Forest, module::ModuleKey};
@@ -68,24 +63,40 @@ pub struct Declared {
     pub module_key: ModuleKey,
 }
 
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct Defined;
+
 impl Resolver<Declare> {
     pub fn declare<Io>(path_key: PathKey, forest: &mut Forest<Io>) -> Resolver<Declared>
     where
         Io: FileSystem,
     {
-        let module_key = Declare::new(path_key).declare(forest);
+        let state = Declared {
+            module_key: Declare::new(path_key).declare(forest),
+        };
 
-        Resolver {
-            state: Declared { module_key },
-        }
+        Resolver { state }
     }
 }
 
 impl Resolver<Declared> {
-    pub fn define<Io>(self, forest: &mut Forest<Io>) -> Resolver<Define>
+    pub fn to_define<Io>(self, forest: &mut Forest<Io>) -> Resolver<Define>
     where
         Io: FileSystem,
     {
-        todo!()
+        let state = Define::new(self.state.module_key, forest);
+
+        Resolver { state }
+    }
+}
+
+impl Resolver<Define> {
+    pub fn define<Io>(self, forest: &mut Forest<Io>) -> Resolver<Defined>
+    where
+        Io: FileSystem,
+    {
+        Define::new(self.state.module_key, forest).define(forest);
+
+        Resolver { state: Defined }
     }
 }

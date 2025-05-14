@@ -6,8 +6,8 @@ use std::{
 
 #[derive(Debug, Clone)]
 pub struct BiMap<K, V, S: BuildHasher = RandomState> {
-    pub forward: HashMap<K, V, S>,
-    pub backward: HashMap<V, K, S>,
+    forward: HashMap<K, V, S>,
+    backward: HashMap<V, K, S>,
 }
 
 impl<K, V> Default for BiMap<K, V> {

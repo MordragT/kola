@@ -1,4 +1,7 @@
-use std::{collections::HashMap, rc::Rc};
+use std::{
+    collections::{HashMap, HashSet},
+    rc::Rc,
+};
 
 use kola_span::{Loc, Report, SourceManager};
 use kola_syntax::loc::{LocPhase, Locations};
@@ -12,17 +15,16 @@ use kola_utils::{
     bimap::BiMap, convert::TryAsRef, dependency::DependencyGraph, interner::PathKey, io::FileSystem,
 };
 
-use crate::module::{ModuleKey, ModuleScope};
-
-// pub type Ptr<T> = Arc<T>;
-pub type Ptr<T> = Rc<T>;
+use crate::module::{ModuleKey, ModuleScope, UnresolvedModuleScope};
 
 pub struct Forest<Io> {
     pub sources: SourceManager<Io>,
-    pub trees: HashMap<PathKey, Ptr<Tree>>,
-    pub topography: HashMap<PathKey, Ptr<Locations>>,
+    pub trees: HashMap<PathKey, Rc<Tree>>,
+    pub topography: HashMap<PathKey, Rc<Locations>>,
     pub mappings: BiMap<ModuleKey, (PathKey, Id<node::Module>)>,
     pub dependencies: DependencyGraph<ModuleKey>,
+    pub unresolved_scopes: HashMap<ModuleKey, UnresolvedModuleScope>,
+    pub in_progress: HashSet<ModuleKey>,
     pub scopes: HashMap<ModuleKey, ModuleScope>,
     pub report: Report,
 }
@@ -35,12 +37,14 @@ impl<Io: FileSystem> Forest<Io> {
             topography: HashMap::new(),
             mappings: BiMap::new(),
             dependencies: DependencyGraph::new(),
+            unresolved_scopes: HashMap::new(),
+            in_progress: HashSet::new(),
             scopes: HashMap::new(),
             report: Report::new(),
         }
     }
 
-    pub fn tree(&self, path: PathKey) -> Ptr<Tree> {
+    pub fn tree(&self, path: PathKey) -> Rc<Tree> {
         self.trees[&path].clone()
     }
 

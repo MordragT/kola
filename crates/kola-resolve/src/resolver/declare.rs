@@ -1,5 +1,5 @@
 use kola_print::prelude::*;
-use kola_span::IntoDiagnostic;
+use kola_span::{IntoDiagnostic, Loc};
 use kola_syntax::prelude::*;
 use kola_tree::prelude::*;
 use kola_utils::{interner::PathKey, io::FileSystem};
@@ -12,9 +12,48 @@ use std::{
 
 use crate::{
     forest::Forest,
-    module::{ModuleKey, ModuleScope, ScopeStack},
+    module::{
+        ModuleBindInfo, ModuleKey, ModuleScope, TypeBindInfo, UnresolvedModuleScope, ValueBindInfo,
+    },
     resolver::Resolver,
 };
+
+#[derive(Debug, Clone, Default)]
+pub struct ScopeStack {
+    pub reverse: Vec<UnresolvedModuleScope>,
+    pub scopes: Vec<UnresolvedModuleScope>,
+}
+
+impl ScopeStack {
+    pub fn new() -> Self {
+        Self {
+            reverse: Vec::new(),
+            scopes: Vec::new(),
+        }
+    }
+
+    pub fn push(&mut self, scope: UnresolvedModuleScope) {
+        self.scopes.push(scope);
+    }
+
+    pub fn pop(&mut self) -> Option<UnresolvedModuleScope> {
+        if let Some(scope) = self.scopes.pop() {
+            // Store the scope in reverse order for later use
+            self.reverse.push(scope.clone());
+            Some(scope)
+        } else {
+            None
+        }
+    }
+
+    pub fn current(&self) -> Option<&UnresolvedModuleScope> {
+        self.scopes.last()
+    }
+
+    pub fn current_mut(&mut self) -> &mut UnresolvedModuleScope {
+        self.scopes.last_mut().unwrap()
+    }
+}
 
 #[derive(Debug, Clone)]
 pub struct Declare {
@@ -37,10 +76,7 @@ impl Declare {
         let tree = forest.tree(self.path_key);
 
         // Create a visitor to walk the tree and collect declarations
-        let mut declarer = Declarer {
-            forest,
-            state: &mut self,
-        };
+        let mut declarer = Declarer::new(forest, &mut self);
 
         match tree.root_id().visit_by(&mut declarer, tree.deref()) {
             ControlFlow::Continue(()) => (),
@@ -48,10 +84,10 @@ impl Declare {
         }
 
         // After visiting the tree, we need to finalize the declaration
-        let module_key = self.scopes.reverse.last().unwrap().module_key;
+        let module_key = self.scopes.reverse.last().unwrap().module_key();
 
         for scope in self.scopes.reverse {
-            forest.scopes.insert(scope.module_key, scope);
+            forest.unresolved_scopes.insert(scope.module_key(), scope);
         }
 
         module_key
@@ -61,6 +97,22 @@ impl Declare {
 pub struct Declarer<'a, Io> {
     pub forest: &'a mut Forest<Io>,
     pub state: &'a mut Declare,
+}
+
+impl<'a, Io> Declarer<'a, Io>
+where
+    Io: FileSystem,
+{
+    pub fn new(forest: &'a mut Forest<Io>, state: &'a mut Declare) -> Self {
+        Self { forest, state }
+    }
+
+    pub fn span<T>(&self, id: Id<T>) -> Loc
+    where
+        T: MetaCast<LocPhase, Meta = Loc>,
+    {
+        self.forest.span(self.state.path_key, id)
+    }
 }
 
 impl<'a, T, Io> Visitor<T> for Declarer<'a, Io>
@@ -82,7 +134,7 @@ where
         if let Some(current_scope) = self.state.scopes.current() {
             self.forest
                 .dependencies
-                .add_dependency(current_scope.module_key, module_key);
+                .add_dependency(current_scope.module_key(), module_key);
         }
 
         // Create a new scope for this module
@@ -114,7 +166,7 @@ where
             Err(e) => {
                 self.forest
                     .report
-                    .add_diagnostic(e.into_diagnostic(self.forest.span(self.state.path_key, id)));
+                    .add_diagnostic(e.into_diagnostic(self.span(id)));
                 return ControlFlow::Continue(());
             }
         };
@@ -124,7 +176,7 @@ where
             Err(e) => {
                 self.forest
                     .report
-                    .add_diagnostic(e.into_diagnostic(self.forest.span(self.state.path_key, id)));
+                    .add_diagnostic(e.into_diagnostic(self.span(id)));
                 return ControlFlow::Continue(());
             }
         };
@@ -172,7 +224,7 @@ where
         // drop(interner);
 
         let module_key = Resolver::declare(path_key, self.forest).state.module_key;
-        let current_module_key = self.state.scopes.current().unwrap().module_key;
+        let current_module_key = self.state.scopes.current().unwrap().module_key();
 
         // Add dependency from current module to this new module
         self.forest
@@ -187,11 +239,27 @@ where
         id: Id<node::ModuleBind>,
         tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
-        let bind = tree.node(id);
-        let name = tree.node(bind.name);
+        let node::ModuleBind {
+            vis,
+            name,
+            ty,
+            value,
+        } = *tree.node(id);
+
+        let name = tree.node(name);
+        let vis = tree.node(vis);
+
+        let span = self.span(id);
 
         // Register the module binding in the current scope
-        self.state.scopes.current_mut().modules.insert(name.0, id);
+        if let Err(e) = self
+            .state
+            .scopes
+            .current_mut()
+            .insert_module(name.0, ModuleBindInfo::new(id, value, span, *vis))
+        {
+            self.forest.report.add_diagnostic(e.into());
+        }
 
         self.walk_module_bind(id, tree)
     }
@@ -201,11 +269,27 @@ where
         id: Id<node::ValueBind>,
         tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
-        let bind = tree.node(id);
-        let name = tree.node(bind.name);
+        let node::ValueBind {
+            vis,
+            name,
+            ty,
+            value,
+        } = *tree.node(id);
+
+        let name = tree.node(name);
+        let vis = tree.node(vis);
+
+        let span = self.span(id);
 
         // Register the value binding in the current scope
-        self.state.scopes.current_mut().values.insert(name.0, id);
+        if let Err(e) = self
+            .state
+            .scopes
+            .current_mut()
+            .insert_value(name.0, ValueBindInfo::new(id, value, span, *vis))
+        {
+            self.forest.report.add_diagnostic(e.into());
+        }
 
         // self.walk_value_bind(id, tree)
         ControlFlow::Continue(()) // nothing to do here anyways
@@ -216,11 +300,20 @@ where
         id: Id<node::TypeBind>,
         tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
-        let bind = tree.node(id);
-        let name = tree.node(bind.name);
+        let node::TypeBind { name, ty } = *tree.node(id);
+        let name = tree.node(name);
+
+        let span = self.span(id);
 
         // Register the type binding in the current scope
-        self.state.scopes.current_mut().types.insert(name.0, id);
+        if let Err(e) = self
+            .state
+            .scopes
+            .current_mut()
+            .insert_type(name.0, TypeBindInfo::new(id, ty, span))
+        {
+            self.forest.report.add_diagnostic(e.into());
+        }
 
         // self.walk_type_bind(id, tree)
         ControlFlow::Continue(()) // nothing to do here anyways

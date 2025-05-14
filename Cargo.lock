@@ -380,6 +380,7 @@ name = "kola-resolve"
 version = "0.1.0"
 dependencies = [
  "camino",
+ "derive_more",
  "indexmap",
  "kola-print",
  "kola-span",
