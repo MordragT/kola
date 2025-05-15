@@ -66,10 +66,7 @@ impl Declare {
         }
     }
 
-    pub fn declare<Io>(mut self, forest: &mut Forest<Io>) -> ModuleKey
-    where
-        Io: FileSystem,
-    {
+    pub fn declare(mut self, forest: &mut Forest) -> ModuleKey {
         let tree = forest.tree(self.path_key);
 
         // Create a visitor to walk the tree and collect declarations
@@ -91,16 +88,13 @@ impl Declare {
     }
 }
 
-pub struct Declarer<'a, Io> {
-    pub forest: &'a mut Forest<Io>,
+pub struct Declarer<'a> {
+    pub forest: &'a mut Forest,
     pub state: &'a mut Declare,
 }
 
-impl<'a, Io> Declarer<'a, Io>
-where
-    Io: FileSystem,
-{
-    pub fn new(forest: &'a mut Forest<Io>, state: &'a mut Declare) -> Self {
+impl<'a> Declarer<'a> {
+    pub fn new(forest: &'a mut Forest, state: &'a mut Declare) -> Self {
         Self { forest, state }
     }
 
@@ -112,10 +106,9 @@ where
     }
 }
 
-impl<'a, T, Io> Visitor<T> for Declarer<'a, Io>
+impl<'a, T> Visitor<T> for Declarer<'a>
 where
     T: TreeView,
-    Io: FileSystem,
 {
     type BreakValue = !;
 
@@ -216,7 +209,8 @@ where
             source.text()
         );
 
-        let Some(tokens) = tokenize(path_key, source.text(), &mut self.forest.report) else {
+        let input = LexInput::new(path_key, source.text());
+        let Some(tokens) = tokenize(input, &mut self.forest.report) else {
             // Mock key for now
             let module_key = ModuleKey::new();
             let current_module_key = self.state.scopes.current().unwrap().module_key();

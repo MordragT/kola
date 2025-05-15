@@ -9,11 +9,33 @@ use std::{
 
 use crate::{Loc, Located, SourceManager};
 
+pub trait HasReport {
+    /// Returns the report associated with this type.
+    fn report(&self) -> &Report;
+}
+
+pub trait HasMutReport: HasReport {
+    /// Returns a mutable reference to the report associated with this type.
+    fn report_mut(&mut self) -> &mut Report;
+}
+
 /// Represents a report containing multiple issues and diagnostics.
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct Report {
     pub issues: Vec<Issue>,
     pub diagnostics: Vec<Diagnostic>,
+}
+
+impl HasReport for Report {
+    fn report(&self) -> &Report {
+        self
+    }
+}
+
+impl HasMutReport for Report {
+    fn report_mut(&mut self) -> &mut Report {
+        self
+    }
 }
 
 impl Report {
@@ -51,10 +73,7 @@ impl Report {
     }
 
     /// Writes the report to the specified writer.
-    pub fn write<Io>(self, mut w: impl Write, cache: &SourceManager<Io>) -> io::Result<()>
-    where
-        Io: FileSystem,
-    {
+    pub fn write(self, mut w: impl Write, cache: &SourceManager) -> io::Result<()> {
         for issue in self.issues {
             issue.write(&mut w)?;
         }
@@ -65,18 +84,12 @@ impl Report {
     }
 
     /// Prints the report to the standard output.
-    pub fn print<Io>(self, cache: &SourceManager<Io>) -> io::Result<()>
-    where
-        Io: FileSystem,
-    {
+    pub fn print(self, cache: &SourceManager) -> io::Result<()> {
         self.write(io::stdout(), cache)
     }
 
     /// Prints the report to the standard error output.
-    pub fn eprint<Io>(self, cache: &SourceManager<Io>) -> io::Result<()>
-    where
-        Io: FileSystem,
-    {
+    pub fn eprint(self, cache: &SourceManager) -> io::Result<()> {
         self.write(io::stderr(), cache)
     }
 }
@@ -367,27 +380,18 @@ impl Diagnostic {
     }
 
     /// Writes the diagnostic to the specified writer.
-    pub fn write<Io>(self, w: impl Write, cache: &SourceManager<Io>) -> io::Result<()>
-    where
-        Io: FileSystem,
-    {
+    pub fn write(self, w: impl Write, cache: &SourceManager) -> io::Result<()> {
         let report = ariadne::Report::from(self);
         report.write(cache, w)
     }
 
     /// Prints the diagnostic to the standard output.
-    pub fn print<Io>(self, cache: &SourceManager<Io>) -> io::Result<()>
-    where
-        Io: FileSystem,
-    {
+    pub fn print(self, cache: &SourceManager) -> io::Result<()> {
         self.write(io::stdout(), cache)
     }
 
     /// Prints the diagnostic to the standard error output.
-    pub fn eprint<Io>(self, cache: &SourceManager<Io>) -> io::Result<()>
-    where
-        Io: FileSystem,
-    {
+    pub fn eprint(self, cache: &SourceManager) -> io::Result<()> {
         self.write(io::stderr(), cache)
     }
 }

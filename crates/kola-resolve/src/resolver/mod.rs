@@ -67,10 +67,7 @@ pub struct Declared {
 pub struct Defined;
 
 impl Resolver<Declare> {
-    pub fn declare<Io>(path_key: PathKey, forest: &mut Forest<Io>) -> Resolver<Declared>
-    where
-        Io: FileSystem,
-    {
+    pub fn declare(path_key: PathKey, forest: &mut Forest) -> Resolver<Declared> {
         let state = Declared {
             module_key: Declare::new(path_key).declare(forest),
         };
@@ -80,10 +77,7 @@ impl Resolver<Declare> {
 }
 
 impl Resolver<Declared> {
-    pub fn to_define<Io>(self, forest: &mut Forest<Io>) -> Resolver<Define>
-    where
-        Io: FileSystem,
-    {
+    pub fn to_define(self, forest: &mut Forest) -> Resolver<Define> {
         let state = Define::new(self.state.module_key, forest);
 
         Resolver { state }
@@ -91,10 +85,7 @@ impl Resolver<Declared> {
 }
 
 impl Resolver<Define> {
-    pub fn define<Io>(self, forest: &mut Forest<Io>) -> Resolver<Defined>
-    where
-        Io: FileSystem,
-    {
+    pub fn define(self, forest: &mut Forest) -> Resolver<Defined> {
         self.state.define(forest);
 
         Resolver { state: Defined }

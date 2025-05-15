@@ -12,15 +12,13 @@ use kola_tree::{
     node::{self, Node},
     tree::{Tree, TreeView},
 };
-use kola_utils::{
-    bimap::BiMap, convert::TryAsRef, dependency::DependencyGraph, interner::PathKey, io::FileSystem,
-};
+use kola_utils::{bimap::BiMap, convert::TryAsRef, dependency::DependencyGraph, interner::PathKey};
 
 use crate::module::{ModuleKey, ModuleScope, UnresolvedModuleScope};
 
-#[derive(Debug, Clone)]
-pub struct Forest<Io> {
-    pub sources: SourceManager<Io>,
+#[derive(Debug, Clone, Default)]
+pub struct Forest {
+    pub sources: SourceManager,
     pub trees: HashMap<PathKey, Rc<Tree>>,
     pub topography: HashMap<PathKey, Rc<Locations>>,
     pub mappings: BiMap<ModuleKey, (PathKey, Id<node::Module>)>,
@@ -31,19 +29,9 @@ pub struct Forest<Io> {
     pub report: Report,
 }
 
-impl<Io: FileSystem> Forest<Io> {
-    pub fn new(io: Io) -> Self {
-        Self {
-            sources: SourceManager::new(io),
-            trees: HashMap::new(),
-            topography: HashMap::new(),
-            mappings: BiMap::new(),
-            dependencies: DependencyGraph::new(),
-            unresolved_scopes: HashMap::new(),
-            in_progress: HashSet::new(),
-            scopes: HashMap::new(),
-            report: Report::new(),
-        }
+impl Forest {
+    pub fn new() -> Self {
+        Self::default()
     }
 
     pub fn tree(&self, path: PathKey) -> Rc<Tree> {

@@ -5,10 +5,7 @@ use kola_tree::{
     node::{self, Vis},
     tree::TreeView,
 };
-use kola_utils::{
-    interner::{STR_INTERNER, StrKey},
-    io::FileSystem,
-};
+use kola_utils::{interner::StrKey, io::FileSystem};
 
 use crate::{
     forest::Forest,
@@ -22,19 +19,13 @@ pub struct Define {
 }
 
 impl Define {
-    pub fn new<Io>(module_key: ModuleKey, forest: &mut Forest<Io>) -> Self
-    where
-        Io: FileSystem,
-    {
+    pub fn new(module_key: ModuleKey, forest: &mut Forest) -> Self {
         let scope = forest.unresolved_scopes.remove(&module_key).unwrap();
         forest.in_progress.insert(module_key);
         Self { module_key, scope }
     }
 
-    pub fn define<Io>(self, forest: &mut Forest<Io>)
-    where
-        Io: FileSystem,
-    {
+    pub fn define(self, forest: &mut Forest) {
         let (path_key, node_id) = forest.mappings[self.module_key];
         let span = forest.span(path_key, node_id);
         let tree = forest.tree(path_key);
@@ -122,15 +113,12 @@ impl Define {
 // It doesnt handle visibility errors, therefore the error is too generic (can be not found or visibilty error).
 // Secondly it doesnt handle the case where the target is a alias itsself that,
 // was declared after this alias was declared.
-fn define_path<Io>(
+fn define_path(
     segments: &[StrKey],
     parent: Option<ModuleKey>,
     modules: &HashMap<StrKey, ModuleBindInfo>,
-    forest: &mut Forest<Io>,
-) -> Option<ModuleKey>
-where
-    Io: FileSystem,
-{
+    forest: &mut Forest,
+) -> Option<ModuleKey> {
     let sup = STR_INTERNER.write().unwrap().intern("super");
 
     let (name, path) = segments.split_first()?;
@@ -168,5 +156,3 @@ where
 
     Some(module_key)
 }
-
-// in_progress inside Forest ?? then recursively call define on module scopes ??

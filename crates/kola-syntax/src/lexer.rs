@@ -1,6 +1,6 @@
 use chumsky::{input::StrInput, prelude::*};
 
-use kola_span::{Diagnostic, Loc, Report};
+use kola_span::{Diagnostic, HasMutReport, Loc};
 use kola_utils::interner::PathKey;
 
 use crate::token::{LiteralT, Token, Tokens};
@@ -69,18 +69,34 @@ pub type Extra<'t> = extra::Err<Error<'t>>;
 //     }
 // }
 
-pub fn tokenize<'t>(key: PathKey, input: &'t str, report: &mut Report) -> Option<Tokens<'t>> {
-    let input = input.with_context::<Loc>(key);
+pub struct LexInput<'t> {
+    pub key: PathKey,
+    pub text: &'t str,
+}
+
+impl<'t> LexInput<'t> {
+    pub fn new(key: PathKey, text: &'t str) -> Self {
+        Self { key, text }
+    }
+}
+
+pub fn tokenize<'t>(input: LexInput<'t>, ctx: &mut impl HasMutReport) -> Option<Tokens<'t>> {
+    let LexInput { key, text } = input;
+
+    let input = text.with_context::<Loc>(key);
 
     let lexer = lexer();
     let (tokens, errors) = lexer.parse(input).into_output_errors();
-    report.extend_diagnostics(errors.into_iter().map(Diagnostic::from));
+    ctx.report_mut()
+        .extend_diagnostics(errors.into_iter().map(Diagnostic::from));
 
     tokens
 }
 
-pub fn try_tokenize(key: PathKey, input: &str) -> Result<Tokens<'_>, Vec<Error<'_>>> {
-    let input = input.with_context::<Loc>(key);
+pub fn try_tokenize(input: LexInput<'_>) -> Result<Tokens<'_>, Vec<Error<'_>>> {
+    let LexInput { key, text } = input;
+
+    let input = text.with_context::<Loc>(key);
 
     let lexer = lexer();
     lexer.parse(input).into_result()
@@ -255,15 +271,20 @@ mod test {
     use kola_utils::interner::PathInterner;
 
     use super::tokenize;
-    use crate::token::{LiteralT, Token};
+    use crate::{
+        lexer::LexInput,
+        token::{LiteralT, Token},
+    };
 
-    fn tokenize_str(input: &str) -> Vec<Located<Token<'_>>> {
+    fn tokenize_str(text: &str) -> Vec<Located<Token<'_>>> {
         let mut interner = PathInterner::new();
         let key = interner.intern(Utf8PathBuf::from("test"));
 
+        let input = LexInput { key, text };
+
         let mut report = Report::new();
 
-        let tokens = tokenize(key, input, &mut report);
+        let tokens = tokenize(input, &mut report);
         assert!(report.is_empty(), "Unexpected errors: {:?}", report);
         tokens.expect("Tokenization failed")
     }
@@ -490,8 +511,14 @@ mod test {
         let mut interner = PathInterner::new();
         let key = interner.intern(Utf8PathBuf::from("test"));
         let mut report = Report::new();
+
+        let input = LexInput {
+            key,
+            text: "let x = @ 42",
+        };
+
         // Invalid tokens should be skipped and lexing should continue
-        let tokens = tokenize(key, "let x = @ 42", &mut report);
+        let tokens = tokenize(input, &mut report);
         assert!(report.diagnostics.len() == 1); // Should have one error for the @
         assert!(tokens.is_some());
         let tokens = tokens.unwrap();

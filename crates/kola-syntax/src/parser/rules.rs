@@ -1,12 +1,13 @@
-use chumsky::{input::ValueInput, prelude::*};
+use chumsky::prelude::*;
 
 use kola_span::Loc;
 use kola_tree::prelude::*;
+use kola_utils::interner::HasMutStrInterner;
 
-use super::{Extra, ParseInput, ParserExt, State, primitives::*};
+use super::{Extra, KolaParser, ParseInput, State, primitives::*};
 use crate::{
     loc::LocPhase,
-    token::{CloseT, CtrlT, Delim, KwT, LiteralT, OpT, OpenT, Token},
+    token::{CloseT, CtrlT, Delim, KwT, LiteralT, OpT, OpenT},
 };
 
 /*
@@ -60,7 +61,10 @@ CallExpr := '(' Callable Expr ')'
 //         .boxed()
 // }
 
-pub fn module_parser<'t>() -> impl Parser<'t, ParseInput<'t>, Id<node::Module>, Extra<'t>> + Clone {
+pub fn module_parser<'t, C>() -> impl KolaParser<'t, Id<node::Module>, C> + Clone
+where
+    C: HasMutStrInterner + 't,
+{
     let module_type = module_type_parser();
 
     recursive(|module| {
@@ -136,8 +140,10 @@ pub fn module_parser<'t>() -> impl Parser<'t, ParseInput<'t>, Id<node::Module>, 
     })
 }
 
-pub fn module_type_parser<'t>()
--> impl Parser<'t, ParseInput<'t>, Id<node::ModuleType>, Extra<'t>> + Clone {
+pub fn module_type_parser<'t, C>() -> impl KolaParser<'t, Id<node::ModuleType>, C> + Clone
+where
+    C: HasMutStrInterner + 't,
+{
     recursive(|module_type| {
         let value_spec = name_parser()
             .then_ignore(ctrl(CtrlT::COLON))
@@ -167,7 +173,10 @@ pub fn module_type_parser<'t>()
     })
 }
 
-pub fn name_parser<'t>() -> impl Parser<'t, ParseInput<'t>, Id<node::Name>, Extra<'t>> + Clone {
+pub fn name_parser<'t, C>() -> impl KolaParser<'t, Id<node::Name>, C> + Clone
+where
+    C: HasMutStrInterner + 't,
+{
     symbol().map(node::Name).to_node().boxed()
 }
 
@@ -180,10 +189,12 @@ pub fn name_parser<'t>() -> impl Parser<'t, ParseInput<'t>, Id<node::Name>, Extr
 ///                | char
 ///                | str
 /// ```
-pub fn literal_parser<'t>() -> impl Parser<'t, ParseInput<'t>, node::LiteralExpr, Extra<'t>> + Sized
+pub fn literal_parser<'t, C>() -> impl KolaParser<'t, node::LiteralExpr, C> + Sized
+where
+    C: HasMutStrInterner + 't,
 {
     literal().map_with(|l, e| {
-        let state: &mut State = e.state();
+        let state: &mut State<C> = e.state();
         match l {
             LiteralT::Num(n) => node::LiteralExpr::Num(n),
             LiteralT::Bool(b) => node::LiteralExpr::Bool(b),
@@ -323,7 +334,10 @@ data scheme Machine : { ip : Str, cmd : Str }
 /// variant_pat    ::= '<' (variant_case_pat (',' variant_case_pat)*)? '>'
 /// variant_case_pat ::= name (':' pat)?
 /// ```
-pub fn pat_parser<'t>() -> impl Parser<'t, ParseInput<'t>, Id<node::Pat>, Extra<'t>> + Clone {
+pub fn pat_parser<'t, C>() -> impl KolaParser<'t, Id<node::Pat>, C> + Clone
+where
+    C: HasMutStrInterner + 't,
+{
     recursive(|pat| {
         let ident = symbol().map_to_node(node::IdentPat).to_pat();
         let wildcard = ctrl(CtrlT::UNDERSCORE).to(node::AnyPat).to_node().to_pat();
@@ -363,7 +377,10 @@ pub fn pat_parser<'t>() -> impl Parser<'t, ParseInput<'t>, Id<node::Pat>, Extra<
     .boxed()
 }
 
-pub fn expr_parser<'t>() -> impl Parser<'t, ParseInput<'t>, Id<node::Expr>, Extra<'t>> + Clone {
+pub fn expr_parser<'t, C>() -> impl KolaParser<'t, Id<node::Expr>, C> + Clone
+where
+    C: HasMutStrInterner + 't,
+{
     recursive(|expr| {
         let name = name_parser();
 
@@ -465,7 +482,7 @@ pub fn expr_parser<'t>() -> impl Parser<'t, ParseInput<'t>, Id<node::Expr>, Extr
             .clone()
             .foldl_with(inner_op, |source, op, e| {
                 let span = e.span();
-                let tree: &mut State = e.state();
+                let tree: &mut State<C> = e.state();
 
                 let mut source_path = source
                     .get(&tree.builder)
@@ -682,7 +699,7 @@ pub fn expr_parser<'t>() -> impl Parser<'t, ParseInput<'t>, Id<node::Expr>, Extr
             .repeated()
             .foldr_with(atom, |op, target, e| {
                 let span = e.span();
-                let tree: &mut State = e.state();
+                let tree: &mut State<C> = e.state();
                 tree.insert_as::<node::Expr, _>(
                     node::UnaryExpr {
                         op,
@@ -703,7 +720,7 @@ pub fn expr_parser<'t>() -> impl Parser<'t, ParseInput<'t>, Id<node::Expr>, Extr
             .clone()
             .foldl_with(product_op.then(unary).repeated(), |left, (op, right), e| {
                 let span = e.span();
-                let tree: &mut State = e.state();
+                let tree: &mut State<C> = e.state();
                 tree.insert_as::<node::Expr, _>(node::BinaryExpr { op, left, right }, span)
             })
             .boxed();
@@ -716,7 +733,7 @@ pub fn expr_parser<'t>() -> impl Parser<'t, ParseInput<'t>, Id<node::Expr>, Extr
             .clone()
             .foldl_with(sum_op.then(product).repeated(), |left, (op, right), e| {
                 let span = e.span();
-                let tree: &mut State = e.state();
+                let tree: &mut State<C> = e.state();
                 tree.insert_as::<node::Expr, _>(node::BinaryExpr { op, left, right }, span)
             })
             .boxed();
@@ -736,7 +753,7 @@ pub fn expr_parser<'t>() -> impl Parser<'t, ParseInput<'t>, Id<node::Expr>, Extr
                 comparison_op.then(sum).repeated(),
                 |left, (op, right), e| {
                     let span = e.span();
-                    let tree: &mut State = e.state();
+                    let tree: &mut State<C> = e.state();
                     tree.insert_as::<node::Expr, _>(node::BinaryExpr { op, left, right }, span)
                 },
             )
@@ -754,7 +771,7 @@ pub fn expr_parser<'t>() -> impl Parser<'t, ParseInput<'t>, Id<node::Expr>, Extr
                 logical_op.then(comparison).repeated(),
                 |left, (op, right), e| {
                     let span = e.span();
-                    let tree: &mut State = e.state();
+                    let tree: &mut State<C> = e.state();
                     tree.insert_as::<node::Expr, _>(node::BinaryExpr { op, left, right }, span)
                 },
             )
@@ -788,8 +805,10 @@ pub fn expr_parser<'t>() -> impl Parser<'t, ParseInput<'t>, Id<node::Expr>, Extr
 ///
 /// type_path       ::= name ('.' name)*  // Path to a type (like Num or std.List)
 /// ```
-pub fn type_expr_parser<'t>()
--> impl Parser<'t, ParseInput<'t>, Id<node::TypeExpr>, Extra<'t>> + Clone {
+pub fn type_expr_parser<'t, C>() -> impl KolaParser<'t, Id<node::TypeExpr>, C> + Clone
+where
+    C: HasMutStrInterner + 't,
+{
     recursive(|ty| {
         let name = name_parser();
 
@@ -854,7 +873,7 @@ pub fn type_expr_parser<'t>()
             .clone()
             .foldl_with(atom.clone().repeated(), |constructor, arg, e| {
                 let span = e.span();
-                let tree: &mut State = e.state();
+                let tree: &mut State<C> = e.state();
 
                 tree.insert_as::<node::TypeExpr, _>(
                     node::TypeApplication { constructor, arg },
@@ -869,7 +888,7 @@ pub fn type_expr_parser<'t>()
                 ctrl(CtrlT::ARROW).ignore_then(ty.clone()).repeated(),
                 |input, output, e| {
                     let span = e.span();
-                    let tree: &mut State = e.state();
+                    let tree: &mut State<C> = e.state();
 
                     tree.insert_as::<node::TypeExpr, _>(node::FuncType { input, output }, span)
                 },
@@ -887,7 +906,10 @@ pub fn type_expr_parser<'t>()
 /// type      ::= 'forall' name+ '.' type_expression
 ///             | type_expression
 /// ```
-pub fn type_parser<'t>() -> impl Parser<'t, ParseInput<'t>, Id<node::Type>, Extra<'t>> + Clone {
+pub fn type_parser<'t, C>() -> impl KolaParser<'t, Id<node::Type>, C> + Clone
+where
+    C: HasMutStrInterner + 't,
+{
     // hindley milner only allows standard polymorphism (top-level forall)
     // higher-rank polymorphism (nested forall) is undecidable for full type-inference
     kw(KwT::FORALL)
@@ -908,8 +930,10 @@ pub fn type_parser<'t>() -> impl Parser<'t, ParseInput<'t>, Id<node::Type>, Extr
 /// ```bnf
 /// type_bind ::= 'type' name '=' type
 /// ```
-pub fn type_bind_parser<'t>()
--> impl Parser<'t, ParseInput<'t>, Id<node::TypeBind>, Extra<'t>> + Clone {
+pub fn type_bind_parser<'t, C>() -> impl KolaParser<'t, Id<node::TypeBind>, C> + Clone
+where
+    C: HasMutStrInterner + 't,
+{
     kw(KwT::TYPE)
         .ignore_then(name_parser())
         .then_ignore(op(OpT::ASSIGN))
@@ -918,12 +942,13 @@ pub fn type_bind_parser<'t>()
         .boxed()
 }
 
-pub fn nested_parser<'t, T, U>(
-    parser: impl Parser<'t, ParseInput<'t>, Id<T>, Extra<'t>> + 't,
+pub fn nested_parser<'t, T, U, C>(
+    parser: impl KolaParser<'t, Id<T>, C> + 't,
     delim: Delim,
     fallback: impl Fn(Loc) -> U + Clone + 't,
-) -> impl Parser<'t, ParseInput<'t>, Id<T>, Extra<'t>> + Clone
+) -> impl KolaParser<'t, Id<T>, C> + Clone
 where
+    C: HasMutStrInterner + 't,
     Node: From<T> + From<U>,
     T: From<Id<U>> + MetaCast<LocPhase, Meta = Loc> + 't,
     U: MetaCast<LocPhase, Meta = Loc> + 't,
@@ -938,13 +963,14 @@ where
     nested_in_parser(open, close, parser, fallback)
 }
 
-pub fn nested_in_parser<'t, T, U>(
+pub fn nested_in_parser<'t, T, U, C>(
     open: OpenT<'t>,
     close: CloseT<'t>,
-    parser: impl Parser<'t, ParseInput<'t>, Id<T>, Extra<'t>> + 't,
+    parser: impl KolaParser<'t, Id<T>, C> + 't,
     fallback: impl Fn(Loc) -> U + Clone + 't,
-) -> impl Parser<'t, ParseInput<'t>, Id<T>, Extra<'t>> + Clone
+) -> impl KolaParser<'t, Id<T>, C> + Clone
 where
+    C: HasMutStrInterner + 't,
     Node: From<T> + From<U>,
     T: From<Id<U>> + MetaCast<LocPhase, Meta = Loc> + 't,
     U: MetaCast<LocPhase, Meta = Loc> + 't,
@@ -971,18 +997,17 @@ where
 #[cfg(test)]
 mod tests {
     use camino::Utf8PathBuf;
-    use chumsky::Parser;
 
     use kola_tree::{inspector::NodeInspector, prelude::*};
-    use kola_utils::interner::{PathInterner, PathKey, STR_INTERNER};
+    use kola_utils::interner::{PathInterner, PathKey, StrInterner};
 
     use super::{
         expr_parser, module_parser, module_type_parser, pat_parser, type_bind_parser,
         type_expr_parser, type_parser,
     };
     use crate::{
-        lexer::try_tokenize,
-        parser::{Extra, ParseInput, ParseResult, try_parse_with},
+        lexer::{LexInput, try_tokenize},
+        parser::{KolaParser, ParseInput, ParseResult, try_parse_with},
     };
 
     fn mocked_key() -> PathKey {
@@ -991,22 +1016,24 @@ mod tests {
     }
 
     fn try_parse_str_with<'t, T>(
-        src: &'t str,
-        parser: impl Parser<'t, ParseInput<'t>, T, Extra<'t>>,
+        text: &'t str,
+        parser: impl KolaParser<'t, T, StrInterner> + 't,
+        interner: &'t mut StrInterner,
     ) -> ParseResult<T> {
         let key = mocked_key();
-        let tokens = try_tokenize(key, src).unwrap();
+        let input = LexInput { key, text };
+        let tokens = try_tokenize(input).unwrap();
         let input = ParseInput::new(key, tokens);
 
-        try_parse_with(input, parser).unwrap()
+        try_parse_with(input, parser, interner).unwrap()
     }
-
     #[test]
     fn pat() {
-        let ParseResult { node, builder, .. } =
-            try_parse_str_with("{ a: x, b: { y }, c: _, d }", pat_parser());
+        let mut interner = StrInterner::new();
 
-        let interner = STR_INTERNER.read().unwrap();
+        let ParseResult { node, builder, .. } =
+            try_parse_str_with("{ a: x, b: { y }, c: _, d }", pat_parser(), &mut interner);
+
         let inspector = NodeInspector::new(node, &builder, &interner);
 
         let record = inspector.as_record().unwrap();
@@ -1048,9 +1075,14 @@ mod tests {
 
     #[test]
     fn case_expr() {
-        let ParseResult { node, builder, .. } =
-            try_parse_str_with("case x of 1 => true, _ => false", expr_parser());
-        let interner = STR_INTERNER.read().unwrap();
+        let mut interner = StrInterner::new();
+
+        let ParseResult { node, builder, .. } = try_parse_str_with(
+            "case x of 1 => true, _ => false",
+            expr_parser(),
+            &mut interner,
+        );
+
         let inspector = NodeInspector::new(node, &builder, &interner);
 
         let case = inspector.as_case().unwrap();
@@ -1082,10 +1114,11 @@ mod tests {
 
     #[test]
     fn func_expr() {
-        let ParseResult { node, builder, .. } =
-            try_parse_str_with("fn name => \"Hello\" + name", expr_parser());
+        let mut interner = StrInterner::new();
 
-        let interner = STR_INTERNER.read().unwrap();
+        let ParseResult { node, builder, .. } =
+            try_parse_str_with("fn name => \"Hello\" + name", expr_parser(), &mut interner);
+
         let inspector = NodeInspector::new(node, &builder, &interner);
 
         inspector
@@ -1100,11 +1133,12 @@ mod tests {
 
     #[test]
     fn arithmetic_expr() {
+        let mut interner = StrInterner::new();
+
         // ((-4 * 10) + (40 / 4)) + 30 = 0
         let ParseResult { node, builder, .. } =
-            try_parse_str_with("-4 * 10 + 40 / 4 + 30 == 0", expr_parser());
+            try_parse_str_with("-4 * 10 + 40 / 4 + 30 == 0", expr_parser(), &mut interner);
 
-        let interner = STR_INTERNER.read().unwrap();
         let inspector = NodeInspector::new(node, &builder, &interner);
 
         // _ == 0
@@ -1136,10 +1170,11 @@ mod tests {
 
     #[test]
     fn if_expr() {
-        let ParseResult { node, builder, .. } =
-            try_parse_str_with("if y then x else 0", expr_parser());
+        let mut interner = StrInterner::new();
 
-        let interner = STR_INTERNER.read().unwrap();
+        let ParseResult { node, builder, .. } =
+            try_parse_str_with("if y then x else 0", expr_parser(), &mut interner);
+
         let inspector = NodeInspector::new(node, &builder, &interner);
 
         let if_expr = inspector.as_if().unwrap();
@@ -1163,9 +1198,11 @@ mod tests {
 
     #[test]
     fn path_expr() {
-        let ParseResult { node, builder, .. } = try_parse_str_with("x.y.z", expr_parser());
+        let mut interner = StrInterner::new();
 
-        let interner = STR_INTERNER.read().unwrap();
+        let ParseResult { node, builder, .. } =
+            try_parse_str_with("x.y.z", expr_parser(), &mut interner);
+
         let inspector = NodeInspector::new(node, &builder, &interner);
 
         inspector
@@ -1179,10 +1216,11 @@ mod tests {
 
     #[test]
     fn record_extension() {
-        let ParseResult { node, builder, .. } =
-            try_parse_str_with("{ y | +x = 10 }", expr_parser());
+        let mut interner = StrInterner::new();
 
-        let interner = STR_INTERNER.read().unwrap();
+        let ParseResult { node, builder, .. } =
+            try_parse_str_with("{ y | +x = 10 }", expr_parser(), &mut interner);
+
         let inspector = NodeInspector::new(node, &builder, &interner);
 
         let extend = inspector.as_record_extend().unwrap();
@@ -1201,10 +1239,11 @@ mod tests {
 
     #[test]
     fn record() {
-        let ParseResult { node, builder, .. } =
-            try_parse_str_with("{ x = 10, y = 20 }", expr_parser());
+        let mut interner = StrInterner::new();
 
-        let interner = STR_INTERNER.read().unwrap();
+        let ParseResult { node, builder, .. } =
+            try_parse_str_with("{ x = 10, y = 20 }", expr_parser(), &mut interner);
+
         let inspector = NodeInspector::new(node, &builder, &interner);
 
         let record = inspector.as_record().unwrap();
@@ -1231,12 +1270,14 @@ mod tests {
 
     #[test]
     fn type_expr() {
+        let mut interner = StrInterner::new();
+
         let ParseResult { node, builder, .. } = try_parse_str_with(
             "Num -> { a : Num, b : Num -> Num } -> Str",
             type_expr_parser(),
+            &mut interner,
         );
 
-        let interner = STR_INTERNER.read().unwrap();
         let inspector = NodeInspector::new(node, &builder, &interner);
 
         // Num -> (...)
@@ -1280,10 +1321,14 @@ mod tests {
 
     #[test]
     fn type_application() {
-        let ParseResult { node, builder, .. } =
-            try_parse_str_with("Map (Num -> Str) (std.List Str)", type_expr_parser());
+        let mut interner = StrInterner::new();
 
-        let interner = STR_INTERNER.read().unwrap();
+        let ParseResult { node, builder, .. } = try_parse_str_with(
+            "Map (Num -> Str) (std.List Str)",
+            type_expr_parser(),
+            &mut interner,
+        );
+
         let inspector = NodeInspector::new(node, &builder, &interner);
 
         // Map (Num -> Str) @@ (std.List Str)
@@ -1311,10 +1356,14 @@ mod tests {
 
     #[test]
     fn type_() {
-        let ParseResult { node, builder, .. } =
-            try_parse_str_with("forall a b . { left : a, right : Num -> b }", type_parser());
+        let mut interner = StrInterner::new();
 
-        let interner = STR_INTERNER.read().unwrap();
+        let ParseResult { node, builder, .. } = try_parse_str_with(
+            "forall a b . { left : a, right : Num -> b }",
+            type_parser(),
+            &mut interner,
+        );
+
         let inspector = NodeInspector::new(node, &builder, &interner);
 
         inspector
@@ -1362,12 +1411,14 @@ mod tests {
 
     #[test]
     fn type_bind() {
+        let mut interner = StrInterner::new();
+
         let ParseResult { node, builder, .. } = try_parse_str_with(
             "type Person = forall a . { id : a, name : Str, age : Num }",
             type_bind_parser(),
+            &mut interner,
         );
 
-        let interner = STR_INTERNER.read().unwrap();
         let inspector = NodeInspector::new(node, &builder, &interner);
 
         inspector.has_name("Person");
@@ -1381,13 +1432,15 @@ mod tests {
 
     #[test]
     fn variant_type_bind() {
+        let mut interner = StrInterner::new();
+
         let ParseResult { node, builder, .. } = try_parse_str_with(
             "type Option = forall a b . < Some : a, None | b >",
             type_bind_parser(),
+            &mut interner,
         );
 
-        let interner = STR_INTERNER.read().unwrap();
-        let inspector = NodeInspector::new(node, &builder, &&interner);
+        let inspector = NodeInspector::new(node, &builder, &interner);
 
         inspector.has_name("Option");
 
@@ -1425,10 +1478,11 @@ mod tests {
 
     #[test]
     fn module() {
-        let ParseResult { node, builder, .. } =
-            try_parse_str_with("{ x = 10, type T = Num }", module_parser());
+        let mut interner = StrInterner::new();
 
-        let interner = STR_INTERNER.read().unwrap();
+        let ParseResult { node, builder, .. } =
+            try_parse_str_with("{ x = 10, type T = Num }", module_parser(), &mut interner);
+
         let inspector = NodeInspector::new(node, &builder, &interner);
 
         inspector.has_binds(2);
@@ -1458,10 +1512,14 @@ mod tests {
 
     #[test]
     fn module_type() {
-        let ParseResult { node, builder, .. } =
-            try_parse_str_with("{ x : Num, type T = Str }", module_type_parser());
+        let mut interner = StrInterner::new();
 
-        let interner = STR_INTERNER.read().unwrap();
+        let ParseResult { node, builder, .. } = try_parse_str_with(
+            "{ x : Num, type T = Str }",
+            module_type_parser(),
+            &mut interner,
+        );
+
         let inspector = NodeInspector::new(node, &builder, &interner);
 
         inspector.has_specs(2);
@@ -1493,10 +1551,11 @@ mod tests {
 
     #[test]
     fn nested_module() {
-        let ParseResult { node, builder, .. } =
-            try_parse_str_with("{ module M = { x = 10 } }", module_parser());
+        let mut interner = StrInterner::new();
 
-        let interner = STR_INTERNER.read().unwrap();
+        let ParseResult { node, builder, .. } =
+            try_parse_str_with("{ module M = { x = 10 } }", module_parser(), &mut interner);
+
         let inspector = NodeInspector::new(node, &builder, &interner);
 
         inspector.has_binds(1);
@@ -1522,10 +1581,14 @@ mod tests {
 
     #[test]
     fn nested_module_with_type() {
-        let ParseResult { node, builder, .. } =
-            try_parse_str_with("{ module M : { x : Num } = { x = 10 } }", module_parser());
+        let mut interner = StrInterner::new();
 
-        let interner = STR_INTERNER.read().unwrap();
+        let ParseResult { node, builder, .. } = try_parse_str_with(
+            "{ module M : { x : Num } = { x = 10 } }",
+            module_parser(),
+            &mut interner,
+        );
+
         let inspector = NodeInspector::new(node, &builder, &interner);
 
         inspector.has_binds(1);

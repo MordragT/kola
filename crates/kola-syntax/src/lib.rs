@@ -4,7 +4,7 @@ pub mod parser;
 pub mod token;
 
 pub mod prelude {
-    pub use crate::lexer::tokenize;
+    pub use crate::lexer::{LexInput, tokenize};
     pub use crate::loc::{LocDecorator, LocPhase, Locations};
     pub use crate::parser::{ParseInput, ParseOutput, parse};
     pub use crate::token::{

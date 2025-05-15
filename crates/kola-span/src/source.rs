@@ -1,41 +1,34 @@
 use ariadne::Cache;
 use camino::{Utf8Path, Utf8PathBuf};
-use kola_utils::{
-    interner::{PathInterner, PathKey, STR_INTERNER, StrKey},
-    io::{FileSystem, RealFileSystem},
-};
-use log::debug;
-use owo_colors::OwoColorize;
 use std::{borrow::Cow, collections::HashMap, fmt, io, ops::Index, sync::Arc};
+
+use kola_utils::{
+    interner::{HasStrInterner, PathInterner, PathKey, StrKey},
+    io::HasFileSystem,
+};
 
 pub type Source = ariadne::Source<Arc<str>>;
 
+// TODO move Io out of SourceManager and make it a parameter
+
 #[derive(Debug, Clone, Default)]
-pub struct SourceManager<Io = RealFileSystem> {
-    io: Io,
+pub struct SourceManager {
     interner: PathInterner,
     sources: HashMap<PathKey, Source>,
     import_dirs: HashMap<PathKey, Utf8PathBuf>,
 }
 
-impl<Io> SourceManager<Io>
-where
-    Io: FileSystem,
-{
+impl SourceManager {
     pub const EXTENSION: &'static str = "kl";
 
-    pub fn new(io: Io) -> Self {
-        Self {
-            io,
-            interner: PathInterner::new(),
-            sources: HashMap::new(),
-            import_dirs: HashMap::new(),
-        }
+    pub fn new() -> Self {
+        Self::default()
     }
 
     pub fn fetch<'p>(
         &mut self,
         path: impl Into<Cow<'p, Utf8Path>>,
+        ctx: &impl HasFileSystem,
     ) -> io::Result<(PathKey, &Source)> {
         let path = path.into();
         assert!(path.is_absolute());
@@ -46,10 +39,10 @@ where
             let name = path.file_stem().unwrap(); // TODO assert that files have the right Extension
             let import_path = path.parent().unwrap().join(name); // path is absolute so this mustn't panic
 
-            let text: Arc<str> = self.io.read_file(&path)?.into();
+            let text: Arc<str> = ctx.io().read_file(&path)?.into();
             let key = self.interner.intern(path);
 
-            if self.io.is_dir(&import_path) {
+            if ctx.io().is_dir(&import_path) {
                 self.import_dirs.insert(key, import_path);
             }
 
@@ -57,17 +50,30 @@ where
         }
     }
 
-    pub fn fetch_import(&mut self, from: PathKey, name: StrKey) -> io::Result<(PathKey, &Source)> {
-        let path = self.resolve_import(from, name)?;
-        self.fetch(path)
+    pub fn fetch_import<C>(
+        &mut self,
+        from: PathKey,
+        name: StrKey,
+        ctx: &C,
+    ) -> io::Result<(PathKey, &Source)>
+    where
+        C: HasStrInterner + HasFileSystem,
+    {
+        let path = self.resolve_import(from, name, ctx)?;
+        self.fetch(path, ctx)
     }
 
-    pub fn resolve_import(&mut self, from: PathKey, name: StrKey) -> io::Result<Utf8PathBuf> {
+    pub fn resolve_import(
+        &mut self,
+        from: PathKey,
+        name: StrKey,
+        ctx: &impl HasStrInterner,
+    ) -> io::Result<Utf8PathBuf> {
         let path = self
             .import_dirs
             .get(&from)
             .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "Import path not found"))?
-            .join(&STR_INTERNER.read().unwrap()[name])
+            .join(&ctx.str_interner()[name])
             .with_extension(Self::EXTENSION);
 
         Ok(path)
@@ -85,6 +91,10 @@ where
         self.interner.contains(path)
     }
 
+    pub fn contains_key(&self, path: PathKey) -> bool {
+        self.sources.contains_key(&path)
+    }
+
     pub fn get(&self, path: PathKey) -> Option<&Source> {
         self.sources.get(&path)
     }
@@ -94,19 +104,7 @@ where
     }
 }
 
-impl<Io: FileSystem> Cache<Utf8Path> for SourceManager<Io> {
-    type Storage = Arc<str>;
-
-    fn fetch(&mut self, path: &Utf8Path) -> Result<&Source, impl fmt::Debug> {
-        SourceManager::fetch(self, path).map(|(_key, source)| source)
-    }
-
-    fn display<'a>(&self, id: &'a Utf8Path) -> Option<impl fmt::Display + 'a> {
-        Some(id)
-    }
-}
-
-impl<Io: FileSystem> Cache<PathKey> for &SourceManager<Io> {
+impl Cache<PathKey> for &SourceManager {
     type Storage = Arc<str>;
 
     fn fetch(&mut self, path: &PathKey) -> Result<&Source, impl fmt::Debug> {
@@ -118,7 +116,7 @@ impl<Io: FileSystem> Cache<PathKey> for &SourceManager<Io> {
     }
 }
 
-impl<Io: FileSystem> Index<PathKey> for SourceManager<Io> {
+impl Index<PathKey> for SourceManager {
     type Output = Source;
 
     fn index(&self, index: PathKey) -> &Self::Output {

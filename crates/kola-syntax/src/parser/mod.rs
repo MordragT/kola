@@ -1,8 +1,9 @@
 pub mod primitives;
 pub mod rules;
 
-pub use ext::ParserExt;
+pub use ext::KolaParser;
 pub use input::ParseInput;
+use kola_utils::interner::HasMutStrInterner;
 pub use state::{Error, Extra, State};
 
 mod ext;
@@ -11,7 +12,7 @@ mod state;
 
 use chumsky::prelude::*;
 
-use kola_span::{Diagnostic, Report};
+use kola_span::{Diagnostic, HasMutReport};
 use kola_tree::prelude::*;
 
 use crate::{loc::Locations, token::SemanticTokens};
@@ -22,22 +23,28 @@ pub struct ParseOutput {
     pub spans: Locations,
 }
 
-pub fn parse(input: ParseInput<'_>, report: &mut Report) -> ParseOutput {
+pub fn parse<C>(input: ParseInput<'_>, ctx: &mut C) -> ParseOutput
+where
+    C: HasMutReport + HasMutStrInterner,
+{
     let parser = rules::module_parser();
 
-    let mut state = State::new();
+    let mut state = State::new(ctx);
 
     let (root, errors) = parser
         .parse_with_state(input, &mut state)
         .into_output_errors();
 
-    report.extend_diagnostics(errors.into_iter().map(Diagnostic::from));
-
     let State {
         tokens,
         builder,
         spans,
+        ctx,
     } = state;
+
+    ctx.report_mut()
+        .extend_diagnostics(errors.into_iter().map(Diagnostic::from));
+
     let tree = root.map(|root| builder.finish(root));
 
     ParseOutput {
@@ -54,11 +61,16 @@ pub struct ParseResult<T> {
     pub spans: Locations,
 }
 
-pub fn try_parse_with<'t, T>(
+pub fn try_parse_with<'t, T, C, P>(
     input: ParseInput<'t>,
-    parser: impl Parser<'t, ParseInput<'t>, T, Extra<'t>>,
-) -> Result<ParseResult<T>, Vec<Error<'t>>> {
-    let mut state = State::new();
+    parser: P,
+    ctx: &'t mut C,
+) -> Result<ParseResult<T>, Vec<Error<'t>>>
+where
+    P: KolaParser<'t, T, C>,
+    C: HasMutStrInterner + 't,
+{
+    let mut state = State::new(ctx);
 
     let node = parser.parse_with_state(input, &mut state).into_result()?;
 
@@ -66,6 +78,7 @@ pub fn try_parse_with<'t, T>(
         tokens,
         builder,
         spans,
+        ..
     } = state;
 
     Ok(ParseResult {

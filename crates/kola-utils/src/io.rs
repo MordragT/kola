@@ -65,6 +65,28 @@ impl DirWalker {
     }
 }
 
+pub trait HasFileSystem {
+    fn io(&self) -> &dyn FileSystem;
+}
+
+impl HasFileSystem for dyn FileSystem {
+    fn io(&self) -> &dyn FileSystem {
+        self
+    }
+}
+
+impl HasFileSystem for RealFileSystem {
+    fn io(&self) -> &dyn FileSystem {
+        self
+    }
+}
+
+impl HasFileSystem for MockFileSystem {
+    fn io(&self) -> &dyn FileSystem {
+        self
+    }
+}
+
 pub type ReadDir = Vec<io::Result<Utf8PathBuf>>;
 
 pub trait FileSystem {

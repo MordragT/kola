@@ -1,0 +1,156 @@
+use crate::env::Env;
+use kola_ir::{
+    id::InstrId,
+    instr::{Atom, Expr, Symbol},
+};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum ReturnClause {
+    /// Built-in identity function (x -> x)
+    Identity,
+    /// User-defined function from IR
+    Function(InstrId<Atom>),
+}
+
+/// Contains the behavior of the handler, which is a set of clauses.
+///
+/// ```
+/// handle
+///  some_computation()
+/// with
+///   return x -> x + 1       // This is the return clause
+///   operation1 x k -> ...   // This is an operation clause
+///   operation2 x k -> ...   // Another operation clause
+/// ```
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct Handler {
+    // The return clause handles the normal result when no effects are performed.
+    pub return_clause: ReturnClause,
+    pub op_clauses: Vec<(Symbol, InstrId<Atom>)>,
+}
+
+impl Handler {
+    pub fn new(return_clause: InstrId<Atom>) -> Self {
+        Self {
+            return_clause: ReturnClause::Function(return_clause),
+            op_clauses: Vec::new(),
+        }
+    }
+
+    pub fn identity() -> Self {
+        Self {
+            return_clause: ReturnClause::Identity,
+            op_clauses: Vec::new(),
+        }
+    }
+
+    pub fn add_operation(&mut self, op: Symbol, handler: InstrId<Atom>) {
+        self.op_clauses.push((op, handler));
+    }
+
+    pub fn find_operation(&self, op: &Symbol) -> Option<InstrId<Atom>> {
+        self.op_clauses
+            .iter()
+            .find(|(name, _)| name == op)
+            .map(|(_, handler)| *handler)
+    }
+}
+
+/// A pure continuation frame (γ, x, N) closes a let-binding
+/// let x : Symbol = [ ] in N : Expr, over environment γ.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PureContFrame {
+    pub var: Symbol,
+    pub body: InstrId<Expr>,
+    pub env: Env,
+}
+
+/// A pure continuation is a stack of pure continuation frames.
+#[derive(Debug, Clone, PartialEq)]
+pub struct PureCont {
+    pub frames: Vec<PureContFrame>,
+}
+
+impl PureCont {
+    pub fn empty() -> Self {
+        Self { frames: Vec::new() }
+    }
+
+    pub fn push(&mut self, frame: PureContFrame) {
+        self.frames.push(frame);
+    }
+
+    pub fn pop(&mut self) -> Option<PureContFrame> {
+        self.frames.pop()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.frames.is_empty()
+    }
+}
+
+/// A handler closure (γ, H) closes a handler definition H over environment γ.
+///
+/// Multiple handler closures might use the same handler definition but with different environments.
+#[derive(Debug, Clone, PartialEq)]
+pub struct HandlerClosure {
+    pub handler: Handler,
+    pub env: Env,
+}
+
+/// Intuitively, each continuation frame δ = (σ, χ) represents the pure continuation σ,
+/// corresponding to a sequence of let , inside a particular handler closure χ.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ContFrame {
+    pub pure: PureCont,
+    pub handler: HandlerClosure,
+}
+
+/// A continuation κ consists of a stack of continuation frames
+/// We choose to annotate captured continuations with their input type
+#[derive(Debug, Clone, PartialEq)]
+pub struct Cont {
+    pub frames: Vec<ContFrame>,
+    // TODO type info ?
+}
+
+impl Cont {
+    pub fn empty() -> Self {
+        Self { frames: Vec::new() }
+    }
+
+    /// Creates the identity continuation κ0 = [([ ], (∅, {return x → x}))]
+    pub fn identity() -> Self {
+        // Create an empty handler with just the identity return clause
+        let identity_handler = Handler::identity();
+
+        // Create handler closure
+        let handler_closure = HandlerClosure {
+            handler: identity_handler,
+            env: Env::empty(),
+        };
+
+        // Create continuation frame with empty pure continuation
+        let frame = ContFrame {
+            pure: PureCont::empty(),
+            handler: handler_closure,
+        };
+
+        // Return continuation with single frame
+        Self {
+            frames: vec![frame],
+        }
+    }
+
+    pub fn push(&mut self, frame: ContFrame) {
+        self.frames.push(frame);
+    }
+
+    pub fn pop(&mut self) -> Option<ContFrame> {
+        self.frames.pop()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.frames.is_empty()
+    }
+}

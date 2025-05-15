@@ -30,6 +30,15 @@ pub struct DependencyGraph<T> {
     reverse: HashMap<T, Vec<T>>,
 }
 
+impl<T> Default for DependencyGraph<T> {
+    fn default() -> Self {
+        Self {
+            forward: HashMap::default(),
+            reverse: HashMap::default(),
+        }
+    }
+}
+
 impl<T> DependencyGraph<T> {
     /// Create a new empty dependency graph
     pub fn new() -> Self {

@@ -296,15 +296,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "kola-compiler"
-version = "0.1.0"
-dependencies = [
- "kola-print",
- "kola-syntax",
- "kola-tree",
-]
-
-[[package]]
 name = "kola-driver"
 version = "0.1.0"
 dependencies = [
@@ -320,10 +311,19 @@ dependencies = [
 [[package]]
 name = "kola-ir"
 version = "0.1.0"
+dependencies = [
+ "derive_more",
+ "kola-print",
+ "kola-utils",
+]
 
 [[package]]
 name = "kola-lowerer"
 version = "0.1.0"
+dependencies = [
+ "kola-ir",
+ "kola-tree",
+]
 
 [[package]]
 name = "kola-print"
@@ -420,6 +420,11 @@ dependencies = [
 [[package]]
 name = "kola-vm"
 version = "0.1.0"
+dependencies = [
+ "derive_more",
+ "kola-ir",
+ "kola-utils",
+]
 
 [[package]]
 name = "libc"

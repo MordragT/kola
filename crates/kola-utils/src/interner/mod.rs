@@ -1,21 +1,14 @@
 use std::borrow::{Borrow, Cow, ToOwned};
 use std::collections::HashMap;
 use std::fmt;
-use std::hash::{BuildHasher, BuildHasherDefault, DefaultHasher, Hash, RandomState};
+use std::hash::{BuildHasher, Hash, RandomState};
 use std::ops::Index;
-use std::sync::RwLock;
 
 mod path;
 mod str;
 
-pub use path::{PathInterner, PathKey};
-pub use str::{StrInterner, StrKey};
-
-pub static STR_INTERNER: RwLock<StrInterner<BuildHasherDefault<DefaultHasher>>> =
-    RwLock::new(StrInterner::with_hasher(BuildHasherDefault::new()));
-
-pub static PATH_INTERNER: RwLock<PathInterner<BuildHasherDefault<DefaultHasher>>> =
-    RwLock::new(PathInterner::with_hasher(BuildHasherDefault::new()));
+pub use path::{HasMutPathInterner, HasPathInterner, PathInterner, PathKey};
+pub use str::{HasMutStrInterner, HasStrInterner, StrInterner, StrKey};
 
 /// A flexible interner that efficiently stores unique values.
 ///

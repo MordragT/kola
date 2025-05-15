@@ -1,14 +1,9 @@
-pub fn add(left: u64, right: u64) -> u64 {
-    left + right
-}
+//! Liberating Effects with Rows and Handlers (4. Abstract Machine Semantics)
+// https://matt.might.net/articles/cek-machines/
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-
-    #[test]
-    fn it_works() {
-        let result = add(2, 2);
-        assert_eq!(result, 4);
-    }
-}
+pub mod config;
+pub mod cont;
+pub mod env;
+pub mod eval;
+// pub mod machine;
+pub mod value;
