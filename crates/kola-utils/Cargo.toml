@@ -8,3 +8,4 @@ camino.workspace = true
 serde.workspace = true
 thiserror.workspace = true
 pathdiff = { version = "0.2.3", features = ["camino"] }
+typenum = "1.18.0"

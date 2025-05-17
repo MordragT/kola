@@ -10,13 +10,13 @@ use serde::{Deserialize, Serialize};
 
 use super::Interner;
 
-pub trait HasStrInterner {
-    fn str_interner(&self) -> &StrInterner;
-}
+// pub trait HasStrInterner {
+//     fn str_interner(&self) -> &StrInterner;
+// }
 
-pub trait HasMutStrInterner: HasStrInterner {
-    fn str_interner_mut(&mut self) -> &mut StrInterner;
-}
+// pub trait HasMutStrInterner: HasStrInterner {
+//     fn str_interner_mut(&mut self) -> &mut StrInterner;
+// }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct StrKey(usize);
@@ -30,17 +30,17 @@ impl fmt::Display for StrKey {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StrInterner<S: BuildHasher = RandomState>(Interner<str, S>);
 
-impl HasStrInterner for StrInterner {
-    fn str_interner(&self) -> &StrInterner {
-        self
-    }
-}
+// impl HasStrInterner for StrInterner {
+//     fn str_interner(&self) -> &StrInterner {
+//         self
+//     }
+// }
 
-impl HasMutStrInterner for StrInterner {
-    fn str_interner_mut(&mut self) -> &mut StrInterner {
-        self
-    }
-}
+// impl HasMutStrInterner for StrInterner {
+//     fn str_interner_mut(&mut self) -> &mut StrInterner {
+//         self
+//     }
+// }
 
 impl Default for StrInterner {
     fn default() -> Self {

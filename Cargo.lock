@@ -296,6 +296,10 @@ dependencies = [
 ]
 
 [[package]]
+name = "kola-context"
+version = "0.1.0"
+
+[[package]]
 name = "kola-driver"
 version = "0.1.0"
 dependencies = [
@@ -340,6 +344,7 @@ dependencies = [
  "camino",
  "derive_more",
  "indexmap",
+ "kola-context",
  "kola-print",
  "kola-span",
  "kola-syntax",
@@ -415,6 +420,7 @@ dependencies = [
  "pathdiff",
  "serde",
  "thiserror",
+ "typenum",
 ]
 
 [[package]]
@@ -634,6 +640,12 @@ dependencies = [
  "quote",
  "syn",
 ]
+
+[[package]]
+name = "typenum"
+version = "1.18.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "1dccffe3ce07af9386bfd29e80c0ab1a8205a2fc34e4bcd40364df902cfa8f3f"
 
 [[package]]
 name = "unicode-ident"

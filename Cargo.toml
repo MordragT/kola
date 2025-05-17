@@ -3,6 +3,7 @@ members = ["crates/*"]
 
 [workspace.dependencies]
 # Kola Crates
+kola-context = { path = "crates/kola-context" }
 kola-driver = { path = "crates/kola-driver" }
 kola-ir = { path = "crates/kola-ir" }
 kola-lowerer = { path = "crates/kola-lowerer" }

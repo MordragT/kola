@@ -11,13 +11,13 @@ use super::Interner;
 // pub static PATH_INTERNER: RwLock<PathInterner<BuildHasherDefault<DefaultHasher>>> =
 //     RwLock::new(PathInterner::with_hasher(BuildHasherDefault::new()));
 
-pub trait HasPathInterner {
-    fn path_interner(&self) -> &PathInterner;
-}
+// pub trait HasPathInterner {
+//     fn path_interner(&self) -> &PathInterner;
+// }
 
-pub trait HasMutPathInterner: HasPathInterner {
-    fn path_interner_mut(&mut self) -> &mut PathInterner;
-}
+// pub trait HasMutPathInterner: HasPathInterner {
+//     fn path_interner_mut(&mut self) -> &mut PathInterner;
+// }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct PathKey(usize);
@@ -31,17 +31,17 @@ impl fmt::Display for PathKey {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct PathInterner<S: BuildHasher = RandomState>(Interner<Utf8Path, S>);
 
-impl HasPathInterner for PathInterner {
-    fn path_interner(&self) -> &PathInterner {
-        self
-    }
-}
+// impl HasPathInterner for PathInterner {
+//     fn path_interner(&self) -> &PathInterner {
+//         self
+//     }
+// }
 
-impl HasMutPathInterner for PathInterner {
-    fn path_interner_mut(&mut self) -> &mut PathInterner {
-        self
-    }
-}
+// impl HasMutPathInterner for PathInterner {
+//     fn path_interner_mut(&mut self) -> &mut PathInterner {
+//         self
+//     }
+// }
 
 impl Default for PathInterner {
     fn default() -> Self {

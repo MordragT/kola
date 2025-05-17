@@ -40,9 +40,14 @@
 //     Defined,
 // }
 
+use std::collections::{HashMap, HashSet};
+
 use kola_utils::{interner::PathKey, io::FileSystem};
 
-use crate::{forest::Forest, module::ModuleKey};
+use crate::{
+    forest::Forest,
+    module::{ModuleKey, UnresolvedModuleScope},
+};
 
 mod declare;
 mod define;
@@ -67,9 +72,12 @@ pub struct Declared {
 pub struct Defined;
 
 impl Resolver<Declare> {
-    pub fn declare(path_key: PathKey, forest: &mut Forest) -> Resolver<Declared> {
+    pub fn declare<C>(path_key: PathKey, ctx: C) -> Resolver<Declared> {
+        let mut unresolved = HashMap::new();
+        let mut in_progress = HashSet::new();
+
         let state = Declared {
-            module_key: Declare::new(path_key).declare(forest),
+            module_key: Declare::new(path_key).declare(ctx),
         };
 
         Resolver { state }

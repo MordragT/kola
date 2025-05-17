@@ -3,13 +3,55 @@ use camino::{Utf8Path, Utf8PathBuf};
 use std::{borrow::Cow, collections::HashMap, fmt, io, ops::Index, sync::Arc};
 
 use kola_utils::{
-    interner::{HasStrInterner, PathInterner, PathKey, StrKey},
-    io::HasFileSystem,
+    interner::{PathInterner, PathKey, StrInterner, StrKey},
+    io::FileSystem,
 };
 
 pub type Source = ariadne::Source<Arc<str>>;
 
-// TODO move Io out of SourceManager and make it a parameter
+// TODO create newtype over PathKey: SourceKey
+
+// pub trait HasSourceManager {
+//     fn source_manager(&self) -> &SourceManager;
+
+//     fn resolve_import(&mut self, from: PathKey, name: StrKey) -> io::Result<Utf8PathBuf>
+//     where
+//         Self: HasStrInterner + Sized,
+//     {
+//         self.source_manager().resolve_import(from, name, self)
+//     }
+// }
+
+// pub trait HasMutSourceManager: HasSourceManager {
+//     fn source_manager_mut(&mut self) -> &mut SourceManager;
+
+//     fn fetch_import(&mut self, from: PathKey, name: StrKey) -> io::Result<(PathKey, &Source)>
+//     where
+//         Self: HasStrInterner + HasFileSystem + Sized,
+//     {
+//         let path = self.source_manager().resolve_import(from, name, self)?;
+
+//         self.source_manager_mut().fetch(path, self)
+//     }
+// }
+
+// pub trait SourceManagerExt<I> {
+//     fn fetch_import(&mut self, from: PathKey, name: StrKey) -> io::Result<(PathKey, &Source)>;
+//     fn resolve_import(&self, from: PathKey, name: StrKey) -> io::Result<Utf8PathBuf>;
+// }
+
+// impl<I: ManyIndex, C: ToRef> SourceManagerExt<I> for World<C> {
+//     fn fetch_import(&mut self, from: PathKey, name: StrKey) -> io::Result<(PathKey, &Source)>
+//     where
+//         C: GetMany<Cons![SourceManager, StrInterner, Box<dyn FileSystem>], I>,
+//     {
+//         todo!()
+//     }
+
+//     fn resolve_import(&self, from: PathKey, name: StrKey) -> io::Result<Utf8PathBuf> {
+//         todo!()
+//     }
+// }
 
 #[derive(Debug, Clone, Default)]
 pub struct SourceManager {
@@ -28,7 +70,7 @@ impl SourceManager {
     pub fn fetch<'p>(
         &mut self,
         path: impl Into<Cow<'p, Utf8Path>>,
-        ctx: &impl HasFileSystem,
+        io: &dyn FileSystem,
     ) -> io::Result<(PathKey, &Source)> {
         let path = path.into();
         assert!(path.is_absolute());
@@ -39,10 +81,10 @@ impl SourceManager {
             let name = path.file_stem().unwrap(); // TODO assert that files have the right Extension
             let import_path = path.parent().unwrap().join(name); // path is absolute so this mustn't panic
 
-            let text: Arc<str> = ctx.io().read_file(&path)?.into();
+            let text: Arc<str> = io.read_file(&path)?.into();
             let key = self.interner.intern(path);
 
-            if ctx.io().is_dir(&import_path) {
+            if io.is_dir(&import_path) {
                 self.import_dirs.insert(key, import_path);
             }
 
@@ -50,30 +92,28 @@ impl SourceManager {
         }
     }
 
-    pub fn fetch_import<C>(
+    pub fn fetch_import(
         &mut self,
         from: PathKey,
         name: StrKey,
-        ctx: &C,
-    ) -> io::Result<(PathKey, &Source)>
-    where
-        C: HasStrInterner + HasFileSystem,
-    {
-        let path = self.resolve_import(from, name, ctx)?;
-        self.fetch(path, ctx)
+        interner: &StrInterner,
+        io: &dyn FileSystem,
+    ) -> io::Result<(PathKey, &Source)> {
+        let path = self.resolve_import(from, name, interner)?;
+        self.fetch(path, io)
     }
 
     pub fn resolve_import(
-        &mut self,
+        &self,
         from: PathKey,
         name: StrKey,
-        ctx: &impl HasStrInterner,
+        interner: &StrInterner,
     ) -> io::Result<Utf8PathBuf> {
         let path = self
             .import_dirs
             .get(&from)
             .ok_or_else(|| io::Error::new(io::ErrorKind::NotFound, "Import path not found"))?
-            .join(&ctx.str_interner()[name])
+            .join(&interner[name])
             .with_extension(Self::EXTENSION);
 
         Ok(path)

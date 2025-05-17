@@ -2,9 +2,8 @@ use chumsky::prelude::*;
 
 use kola_span::Loc;
 use kola_tree::prelude::*;
-use kola_utils::interner::HasMutStrInterner;
 
-use super::{Extra, KolaParser, ParseInput, State, primitives::*};
+use super::{KolaParser, State, primitives::*};
 use crate::{
     loc::LocPhase,
     token::{CloseT, CtrlT, Delim, KwT, LiteralT, OpT, OpenT},
@@ -50,7 +49,7 @@ CallExpr := '(' Callable Expr ')'
 // Therefore replace the "case x of 10 => ..., 5 => ...," with something different.
 
 // pub fn file_module_parser<'t, I>() -> impl Parser<'t, I, NodeId<node::Module>, Extra<'t>> + Clone
-// where
+//
 //     I: ValueInput<'t, Token = Token<'t>, Span = Loc>,
 // {
 //     bind_parser()
@@ -61,10 +60,7 @@ CallExpr := '(' Callable Expr ')'
 //         .boxed()
 // }
 
-pub fn module_parser<'t, C>() -> impl KolaParser<'t, Id<node::Module>, C> + Clone
-where
-    C: HasMutStrInterner + 't,
-{
+pub fn module_parser<'t>() -> impl KolaParser<'t, Id<node::Module>> + Clone {
     let module_type = module_type_parser();
 
     recursive(|module| {
@@ -140,10 +136,7 @@ where
     })
 }
 
-pub fn module_type_parser<'t, C>() -> impl KolaParser<'t, Id<node::ModuleType>, C> + Clone
-where
-    C: HasMutStrInterner + 't,
-{
+pub fn module_type_parser<'t>() -> impl KolaParser<'t, Id<node::ModuleType>> + Clone {
     recursive(|module_type| {
         let value_spec = name_parser()
             .then_ignore(ctrl(CtrlT::COLON))
@@ -173,10 +166,7 @@ where
     })
 }
 
-pub fn name_parser<'t, C>() -> impl KolaParser<'t, Id<node::Name>, C> + Clone
-where
-    C: HasMutStrInterner + 't,
-{
+pub fn name_parser<'t>() -> impl KolaParser<'t, Id<node::Name>> + Clone {
     symbol().map(node::Name).to_node().boxed()
 }
 
@@ -189,12 +179,9 @@ where
 ///                | char
 ///                | str
 /// ```
-pub fn literal_parser<'t, C>() -> impl KolaParser<'t, node::LiteralExpr, C> + Sized
-where
-    C: HasMutStrInterner + 't,
-{
+pub fn literal_parser<'t>() -> impl KolaParser<'t, node::LiteralExpr> + Sized {
     literal().map_with(|l, e| {
-        let state: &mut State<C> = e.state();
+        let state: &mut State = e.state();
         match l {
             LiteralT::Num(n) => node::LiteralExpr::Num(n),
             LiteralT::Bool(b) => node::LiteralExpr::Bool(b),
@@ -334,10 +321,7 @@ data scheme Machine : { ip : Str, cmd : Str }
 /// variant_pat    ::= '<' (variant_case_pat (',' variant_case_pat)*)? '>'
 /// variant_case_pat ::= name (':' pat)?
 /// ```
-pub fn pat_parser<'t, C>() -> impl KolaParser<'t, Id<node::Pat>, C> + Clone
-where
-    C: HasMutStrInterner + 't,
-{
+pub fn pat_parser<'t>() -> impl KolaParser<'t, Id<node::Pat>> + Clone {
     recursive(|pat| {
         let ident = symbol().map_to_node(node::IdentPat).to_pat();
         let wildcard = ctrl(CtrlT::UNDERSCORE).to(node::AnyPat).to_node().to_pat();
@@ -377,10 +361,7 @@ where
     .boxed()
 }
 
-pub fn expr_parser<'t, C>() -> impl KolaParser<'t, Id<node::Expr>, C> + Clone
-where
-    C: HasMutStrInterner + 't,
-{
+pub fn expr_parser<'t>() -> impl KolaParser<'t, Id<node::Expr>> + Clone {
     recursive(|expr| {
         let name = name_parser();
 
@@ -482,7 +463,7 @@ where
             .clone()
             .foldl_with(inner_op, |source, op, e| {
                 let span = e.span();
-                let tree: &mut State<C> = e.state();
+                let tree: &mut State = e.state();
 
                 let mut source_path = source
                     .get(&tree.builder)
@@ -699,7 +680,7 @@ where
             .repeated()
             .foldr_with(atom, |op, target, e| {
                 let span = e.span();
-                let tree: &mut State<C> = e.state();
+                let tree: &mut State = e.state();
                 tree.insert_as::<node::Expr, _>(
                     node::UnaryExpr {
                         op,
@@ -720,7 +701,7 @@ where
             .clone()
             .foldl_with(product_op.then(unary).repeated(), |left, (op, right), e| {
                 let span = e.span();
-                let tree: &mut State<C> = e.state();
+                let tree: &mut State = e.state();
                 tree.insert_as::<node::Expr, _>(node::BinaryExpr { op, left, right }, span)
             })
             .boxed();
@@ -733,7 +714,7 @@ where
             .clone()
             .foldl_with(sum_op.then(product).repeated(), |left, (op, right), e| {
                 let span = e.span();
-                let tree: &mut State<C> = e.state();
+                let tree: &mut State = e.state();
                 tree.insert_as::<node::Expr, _>(node::BinaryExpr { op, left, right }, span)
             })
             .boxed();
@@ -753,7 +734,7 @@ where
                 comparison_op.then(sum).repeated(),
                 |left, (op, right), e| {
                     let span = e.span();
-                    let tree: &mut State<C> = e.state();
+                    let tree: &mut State = e.state();
                     tree.insert_as::<node::Expr, _>(node::BinaryExpr { op, left, right }, span)
                 },
             )
@@ -771,7 +752,7 @@ where
                 logical_op.then(comparison).repeated(),
                 |left, (op, right), e| {
                     let span = e.span();
-                    let tree: &mut State<C> = e.state();
+                    let tree: &mut State = e.state();
                     tree.insert_as::<node::Expr, _>(node::BinaryExpr { op, left, right }, span)
                 },
             )
@@ -805,10 +786,7 @@ where
 ///
 /// type_path       ::= name ('.' name)*  // Path to a type (like Num or std.List)
 /// ```
-pub fn type_expr_parser<'t, C>() -> impl KolaParser<'t, Id<node::TypeExpr>, C> + Clone
-where
-    C: HasMutStrInterner + 't,
-{
+pub fn type_expr_parser<'t>() -> impl KolaParser<'t, Id<node::TypeExpr>> + Clone {
     recursive(|ty| {
         let name = name_parser();
 
@@ -873,7 +851,7 @@ where
             .clone()
             .foldl_with(atom.clone().repeated(), |constructor, arg, e| {
                 let span = e.span();
-                let tree: &mut State<C> = e.state();
+                let tree: &mut State = e.state();
 
                 tree.insert_as::<node::TypeExpr, _>(
                     node::TypeApplication { constructor, arg },
@@ -888,7 +866,7 @@ where
                 ctrl(CtrlT::ARROW).ignore_then(ty.clone()).repeated(),
                 |input, output, e| {
                     let span = e.span();
-                    let tree: &mut State<C> = e.state();
+                    let tree: &mut State = e.state();
 
                     tree.insert_as::<node::TypeExpr, _>(node::FuncType { input, output }, span)
                 },
@@ -906,10 +884,7 @@ where
 /// type      ::= 'forall' name+ '.' type_expression
 ///             | type_expression
 /// ```
-pub fn type_parser<'t, C>() -> impl KolaParser<'t, Id<node::Type>, C> + Clone
-where
-    C: HasMutStrInterner + 't,
-{
+pub fn type_parser<'t>() -> impl KolaParser<'t, Id<node::Type>> + Clone {
     // hindley milner only allows standard polymorphism (top-level forall)
     // higher-rank polymorphism (nested forall) is undecidable for full type-inference
     kw(KwT::FORALL)
@@ -930,10 +905,7 @@ where
 /// ```bnf
 /// type_bind ::= 'type' name '=' type
 /// ```
-pub fn type_bind_parser<'t, C>() -> impl KolaParser<'t, Id<node::TypeBind>, C> + Clone
-where
-    C: HasMutStrInterner + 't,
-{
+pub fn type_bind_parser<'t>() -> impl KolaParser<'t, Id<node::TypeBind>> + Clone {
     kw(KwT::TYPE)
         .ignore_then(name_parser())
         .then_ignore(op(OpT::ASSIGN))
@@ -942,13 +914,12 @@ where
         .boxed()
 }
 
-pub fn nested_parser<'t, T, U, C>(
-    parser: impl KolaParser<'t, Id<T>, C> + 't,
+pub fn nested_parser<'t, T, U>(
+    parser: impl KolaParser<'t, Id<T>> + 't,
     delim: Delim,
     fallback: impl Fn(Loc) -> U + Clone + 't,
-) -> impl KolaParser<'t, Id<T>, C> + Clone
+) -> impl KolaParser<'t, Id<T>> + Clone
 where
-    C: HasMutStrInterner + 't,
     Node: From<T> + From<U>,
     T: From<Id<U>> + MetaCast<LocPhase, Meta = Loc> + 't,
     U: MetaCast<LocPhase, Meta = Loc> + 't,
@@ -963,14 +934,13 @@ where
     nested_in_parser(open, close, parser, fallback)
 }
 
-pub fn nested_in_parser<'t, T, U, C>(
+pub fn nested_in_parser<'t, T, U>(
     open: OpenT<'t>,
     close: CloseT<'t>,
-    parser: impl KolaParser<'t, Id<T>, C> + 't,
+    parser: impl KolaParser<'t, Id<T>> + 't,
     fallback: impl Fn(Loc) -> U + Clone + 't,
-) -> impl KolaParser<'t, Id<T>, C> + Clone
+) -> impl KolaParser<'t, Id<T>> + Clone
 where
-    C: HasMutStrInterner + 't,
     Node: From<T> + From<U>,
     T: From<Id<U>> + MetaCast<LocPhase, Meta = Loc> + 't,
     U: MetaCast<LocPhase, Meta = Loc> + 't,
@@ -1014,10 +984,9 @@ mod tests {
         let mut interner = PathInterner::new();
         interner.intern(Utf8PathBuf::from("test"))
     }
-
     fn try_parse_str_with<'t, T>(
         text: &'t str,
-        parser: impl KolaParser<'t, T, StrInterner> + 't,
+        parser: impl KolaParser<'t, T> + 't,
         interner: &'t mut StrInterner,
     ) -> ParseResult<T> {
         let key = mocked_key();

@@ -4,7 +4,7 @@ use chumsky::{inspector::Inspector, prelude::*};
 
 use kola_span::Loc;
 use kola_tree::prelude::*;
-use kola_utils::interner::{HasMutStrInterner, StrKey};
+use kola_utils::interner::{StrInterner, StrKey};
 
 use crate::{
     loc::{LocPhase, Locations},
@@ -12,23 +12,23 @@ use crate::{
 };
 
 pub type Error<'t> = Rich<'t, Token<'t>, Loc>;
-pub type Extra<'t, C> = extra::Full<Error<'t>, State<'t, C>, ()>;
+pub type Extra<'t> = extra::Full<Error<'t>, State<'t>, ()>;
 
 #[derive(Debug)]
-pub struct State<'c, C: HasMutStrInterner> {
+pub struct State<'t> {
     pub tokens: SemanticTokens,
     pub builder: TreeBuilder,
     pub spans: Locations,
-    pub ctx: &'c mut C,
+    pub interner: &'t mut StrInterner,
 }
 
-impl<'c, C: HasMutStrInterner> State<'c, C> {
-    pub fn new(ctx: &'c mut C) -> Self {
+impl<'t> State<'t> {
+    pub fn new(interner: &'t mut StrInterner) -> Self {
         Self {
             tokens: SemanticTokens::default(),
             builder: TreeBuilder::default(),
             spans: Locations::default(),
-            ctx,
+            interner,
         }
     }
 
@@ -62,7 +62,7 @@ impl<'c, C: HasMutStrInterner> State<'c, C> {
     }
 
     pub fn intern<'a>(&mut self, value: impl Into<Cow<'a, str>>) -> StrKey {
-        self.ctx.str_interner_mut().intern(value)
+        self.interner.intern(value)
     }
 
     pub fn insert_token(&mut self, token: impl Into<SemanticToken>, span: Loc) {
@@ -70,19 +70,15 @@ impl<'c, C: HasMutStrInterner> State<'c, C> {
     }
 }
 
-impl<'c, C> Borrow<TreeBuilder> for State<'c, C>
-where
-    C: HasMutStrInterner,
-{
+impl<'t> Borrow<TreeBuilder> for State<'t> {
     fn borrow(&self) -> &TreeBuilder {
         &self.builder
     }
 }
 
-impl<'t, 'c, I, C> Inspector<'t, I> for State<'c, C>
+impl<'t, I> Inspector<'t, I> for State<'t>
 where
     I: Input<'t>,
-    C: HasMutStrInterner,
 {
     type Checkpoint = ();
     #[inline(always)]

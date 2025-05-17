@@ -1,6 +1,6 @@
 use chumsky::{input::StrInput, prelude::*};
 
-use kola_span::{Diagnostic, HasMutReport, Loc};
+use kola_span::{Diagnostic, Loc, Report};
 use kola_utils::interner::PathKey;
 
 use crate::token::{LiteralT, Token, Tokens};
@@ -80,15 +80,14 @@ impl<'t> LexInput<'t> {
     }
 }
 
-pub fn tokenize<'t>(input: LexInput<'t>, ctx: &mut impl HasMutReport) -> Option<Tokens<'t>> {
+pub fn tokenize<'t>(input: LexInput<'t>, report: &mut Report) -> Option<Tokens<'t>> {
     let LexInput { key, text } = input;
 
     let input = text.with_context::<Loc>(key);
 
     let lexer = lexer();
     let (tokens, errors) = lexer.parse(input).into_output_errors();
-    ctx.report_mut()
-        .extend_diagnostics(errors.into_iter().map(Diagnostic::from));
+    report.extend_diagnostics(errors.into_iter().map(Diagnostic::from));
 
     tokens
 }
@@ -511,6 +510,7 @@ mod test {
         let mut interner = PathInterner::new();
         let key = interner.intern(Utf8PathBuf::from("test"));
         let mut report = Report::new();
+        let world = World::new().with(&mut report);
 
         let input = LexInput {
             key,
@@ -518,7 +518,7 @@ mod test {
         };
 
         // Invalid tokens should be skipped and lexing should continue
-        let tokens = tokenize(input, &mut report);
+        let tokens = tokenize(input, world);
         assert!(report.diagnostics.len() == 1); // Should have one error for the @
         assert!(tokens.is_some());
         let tokens = tokens.unwrap();

@@ -1,33 +1,22 @@
-use std::{
-    collections::{HashMap, HashSet},
-    io,
-    rc::Rc,
-};
+use std::{collections::HashMap, rc::Rc};
 
-use kola_span::{Loc, Report, SourceManager};
-use kola_syntax::loc::{LocPhase, Locations};
 use kola_tree::{
     id::Id,
-    meta::{MetaCast, MetaView},
-    node::{self, Node},
+    node::Node,
     tree::{Tree, TreeView},
 };
-use kola_utils::{bimap::BiMap, convert::TryAsRef, dependency::DependencyGraph, interner::PathKey};
+use kola_utils::{convert::TryAsRef, interner::PathKey};
 
-use crate::module::{ModuleKey, ModuleScope, UnresolvedModuleScope};
+// pub trait HasForest {
+//     fn forest(&self) -> &Forest;
+// }
+
+// pub trait HasForestMut: HasForest {
+//     fn forest_mut(&mut self) -> &mut Forest;
+// }
 
 #[derive(Debug, Clone, Default)]
-pub struct Forest {
-    pub sources: SourceManager,
-    pub trees: HashMap<PathKey, Rc<Tree>>,
-    pub topography: HashMap<PathKey, Rc<Locations>>,
-    pub mappings: BiMap<ModuleKey, (PathKey, Id<node::Module>)>,
-    pub dependencies: DependencyGraph<ModuleKey>,
-    pub unresolved_scopes: HashMap<ModuleKey, UnresolvedModuleScope>,
-    pub in_progress: HashSet<ModuleKey>,
-    pub scopes: HashMap<ModuleKey, ModuleScope>,
-    pub report: Report,
-}
+pub struct Forest(HashMap<PathKey, Rc<Tree>>);
 
 impl Forest {
     pub fn new() -> Self {
@@ -35,40 +24,24 @@ impl Forest {
     }
 
     pub fn tree(&self, path: PathKey) -> Rc<Tree> {
-        self.trees[&path].clone()
+        self.0[&path].clone()
     }
 
     pub fn node<T>(&self, path: PathKey, id: Id<T>) -> &T
     where
         Node: TryAsRef<T>,
     {
-        let tree = &self.trees[&path];
+        let tree = &self.0[&path];
         tree.node(id)
     }
 
     pub fn iter_nodes(&self, path: PathKey) -> std::slice::Iter<'_, Node> {
-        let tree = &self.trees[&path];
+        let tree = &self.0[&path];
         tree.iter_nodes()
     }
 
     pub fn node_count(&self, path: PathKey) -> usize {
-        let tree = &self.trees[&path];
+        let tree = &self.0[&path];
         tree.count()
-    }
-
-    pub fn span<T>(&self, path: PathKey, id: Id<T>) -> Loc
-    where
-        T: MetaCast<LocPhase, Meta = Loc>,
-    {
-        let topography = &self.topography[&path];
-        *topography.meta(id)
-    }
-
-    pub fn print_report(self) -> io::Result<()> {
-        self.report.print(&self.sources)
-    }
-
-    pub fn eprint_report(self) -> io::Result<()> {
-        self.report.eprint(&self.sources)
     }
 }

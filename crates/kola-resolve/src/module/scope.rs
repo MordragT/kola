@@ -1,8 +1,4 @@
-use std::{
-    collections::HashMap,
-    marker::PhantomData,
-    sync::atomic::{AtomicU32, Ordering},
-};
+use std::{collections::HashMap, marker::PhantomData, ops::Index};
 
 use derive_more::{Display, From};
 use kola_span::Loc;
@@ -12,17 +8,39 @@ use kola_tree::{
 };
 use kola_utils::interner::StrKey;
 
+use super::ModuleKey;
 use crate::error::NameCollision;
 
-static GENERATOR: AtomicU32 = AtomicU32::new(0);
+// pub trait HasModuleScopes {
+//     fn module_scopes(&self) -> &ModuleScopes;
+// }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct ModuleKey(u32);
+// pub trait HasMutModuleScopes: HasModuleScopes {
+//     fn module_scopes_mut(&mut self) -> &mut ModuleScopes;
+// }
 
-impl ModuleKey {
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct ModuleScopes(HashMap<ModuleKey, ModuleScope>);
+
+impl ModuleScopes {
     pub fn new() -> Self {
-        let id = GENERATOR.fetch_add(1, Ordering::Relaxed);
-        Self(id)
+        Self(HashMap::new())
+    }
+
+    pub fn insert(&mut self, module_key: ModuleKey, scope: ModuleScope) {
+        self.0.insert(module_key, scope);
+    }
+
+    pub fn get(&self, module_key: ModuleKey) -> Option<&ModuleScope> {
+        self.0.get(&module_key)
+    }
+}
+
+impl Index<ModuleKey> for ModuleScopes {
+    type Output = ModuleScope;
+
+    fn index(&self, index: ModuleKey) -> &Self::Output {
+        self.0.get(&index).unwrap()
     }
 }
 

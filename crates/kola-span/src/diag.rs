@@ -1,6 +1,5 @@
 use chumsky::error::Rich;
 use derive_more::Display;
-use kola_utils::io::FileSystem;
 use owo_colors::{OwoColorize, Style};
 use std::{
     fmt,
@@ -9,33 +8,38 @@ use std::{
 
 use crate::{Loc, Located, SourceManager};
 
-pub trait HasReport {
-    /// Returns the report associated with this type.
-    fn report(&self) -> &Report;
-}
+// pub trait HasMutReport: HasReport {
+//     /// Returns a mutable reference to the report associated with this type.
+//     fn report_mut(&mut self) -> &mut Report;
 
-pub trait HasMutReport: HasReport {
-    /// Returns a mutable reference to the report associated with this type.
-    fn report_mut(&mut self) -> &mut Report;
-}
+//     fn write_report(&self, w: impl Write) -> io::Result<()>
+//     where
+//         Self: HasSourceManager,
+//     {
+//         // TODO eliminate clone
+//         self.report().clone().write(w, self.source_manager())
+//     }
+
+//     fn print_report(&self) -> io::Result<()>
+//     where
+//         Self: HasSourceManager,
+//     {
+//         self.write_report(io::stdout())
+//     }
+
+//     fn eprint_report(&self) -> io::Result<()>
+//     where
+//         Self: HasSourceManager,
+//     {
+//         self.write_report(io::stderr())
+//     }
+// }
 
 /// Represents a report containing multiple issues and diagnostics.
 #[derive(Debug, Clone, Default)]
 pub struct Report {
     pub issues: Vec<Issue>,
     pub diagnostics: Vec<Diagnostic>,
-}
-
-impl HasReport for Report {
-    fn report(&self) -> &Report {
-        self
-    }
-}
-
-impl HasMutReport for Report {
-    fn report_mut(&mut self) -> &mut Report {
-        self
-    }
 }
 
 impl Report {

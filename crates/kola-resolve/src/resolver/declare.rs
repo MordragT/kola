@@ -1,21 +1,29 @@
-use kola_print::prelude::*;
-use kola_span::{IntoDiagnostic, Loc};
-use kola_syntax::prelude::*;
-use kola_tree::prelude::*;
-use kola_utils::{interner::PathKey, io::FileSystem};
 use log::debug;
 use owo_colors::OwoColorize;
 use std::{
+    collections::{HashMap, HashSet},
     ops::{ControlFlow, Deref},
     rc::Rc,
+};
+
+use kola_context::prelude::*;
+use kola_print::prelude::*;
+use kola_span::{IntoDiagnostic, Loc, SourceManager};
+use kola_syntax::prelude::*;
+use kola_tree::prelude::*;
+use kola_utils::{
+    dependency::DependencyGraph,
+    interner::{PathKey, StrInterner},
 };
 
 use crate::{
     forest::Forest,
     module::{
-        ModuleBindInfo, ModuleKey, ModuleScope, TypeBindInfo, UnresolvedModuleScope, ValueBindInfo,
+        ModuleBindInfo, ModuleKey, ModuleKeyMapping, ModuleScope, TypeBindInfo,
+        UnresolvedModuleScope, ValueBindInfo,
     },
     resolver::Resolver,
+    topography::Topography,
 };
 
 #[derive(Debug, Clone, Default)]
@@ -52,6 +60,28 @@ impl ScopeStack {
     }
 }
 
+// pub struct DeclareCtx<'a> {
+//     pub interner: &'a mut StrInterner,
+//     pub source_manager: &'a mut SourceManager,
+//     pub forest: &'a mut Forest,
+//     pub topography: &'a Topography,
+//     pub module_mapping: &'a mut ModuleKeyMapping,
+//     pub dependencies: &'a mut DependencyGraph<ModuleKey>,
+//     pub unresolved_modules: &'a mut HashMap<ModuleKey, UnresolvedModuleScope>,
+//     pub in_progress: &'a mut HashSet<ModuleKey>,
+// }
+
+pub type DeclareCtx<'a> = Ctx![
+    &'a mut StrInterner,
+    &'a mut SourceManager,
+    &'a mut Forest,
+    &'a Topography,
+    &'a mut ModuleKeyMapping,
+    &'a mut DependencyGraph<ModuleKey>,
+    &'a mut HashMap<ModuleKey, UnresolvedModuleScope>,
+    &'a mut HashSet<ModuleKey>
+];
+
 #[derive(Debug, Clone)]
 pub struct Declare {
     pub path_key: PathKey,
@@ -66,11 +96,11 @@ impl Declare {
         }
     }
 
-    pub fn declare(mut self, forest: &mut Forest) -> ModuleKey {
-        let tree = forest.tree(self.path_key);
+    pub fn declare(mut self, mut ctx: DeclareCtx<'_>) -> ModuleKey {
+        let tree = ctx.get_mut::<&mut Forest, _>().tree(self.path_key);
 
         // Create a visitor to walk the tree and collect declarations
-        let mut declarer = Declarer::new(forest, &mut self);
+        let mut declarer = Declarer::new(&mut self, ctx);
 
         match tree.root_id().visit_by(&mut declarer, tree.deref()) {
             ControlFlow::Continue(()) => (),
@@ -81,7 +111,8 @@ impl Declare {
         let module_key = self.scopes.reverse.last().unwrap().module_key();
 
         for scope in self.scopes.reverse {
-            forest.unresolved_scopes.insert(scope.module_key(), scope);
+            ctx.get_mut::<&mut HashMap<_, _>, _>()
+                .insert(scope.module_key(), scope);
         }
 
         module_key
@@ -89,20 +120,22 @@ impl Declare {
 }
 
 pub struct Declarer<'a> {
-    pub forest: &'a mut Forest,
     pub state: &'a mut Declare,
+    pub ctx: DeclareCtx<'a>,
 }
 
 impl<'a> Declarer<'a> {
-    pub fn new(forest: &'a mut Forest, state: &'a mut Declare) -> Self {
-        Self { forest, state }
+    pub fn new(state: &'a mut Declare, ctx: DeclareCtx<'a>) -> Self {
+        Self { state, ctx }
     }
 
     pub fn span<T>(&self, id: Id<T>) -> Loc
     where
         T: MetaCast<LocPhase, Meta = Loc>,
     {
-        self.forest.span(self.state.path_key, id)
+        self.ctx
+            .get::<&Topography, _>()
+            .span(self.state.path_key, id)
     }
 }
 
@@ -116,14 +149,14 @@ where
         let module_key = ModuleKey::new();
 
         // Store the new module in our modules mapping
-        self.forest
-            .mappings
-            .insert(module_key, (self.state.path_key, id));
+        self.ctx
+            .get_mut::<&mut ModuleKeyMapping, _>()
+            .insert(module_key, self.state.path_key, id);
 
         // Add dependency from current module to this new module
         if let Some(current_scope) = self.state.scopes.current() {
-            self.forest
-                .dependencies
+            self.ctx
+                .get_mut::<&mut DependencyGraph<_>, _>()
                 .add_dependency(current_scope.module_key(), module_key);
         }
 
@@ -148,8 +181,8 @@ where
         let name = tree.node(import.0);
 
         let path = match self
-            .forest
-            .sources
+            .ctx
+            .get::<&mut SourceManager, _>()
             .resolve_import(self.state.path_key, name.0)
         {
             Ok(path) => path,

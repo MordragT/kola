@@ -7,8 +7,8 @@ use std::ops::Index;
 mod path;
 mod str;
 
-pub use path::{HasMutPathInterner, HasPathInterner, PathInterner, PathKey};
-pub use str::{HasMutStrInterner, HasStrInterner, StrInterner, StrKey};
+pub use path::{PathInterner, PathKey};
+pub use str::{StrInterner, StrKey};
 
 /// A flexible interner that efficiently stores unique values.
 ///
