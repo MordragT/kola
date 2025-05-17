@@ -1,8 +1,8 @@
 use crate::{cont::Cont, env::Env, value::Value};
 use derive_more::From;
 use kola_ir::{
-    id::InstrId,
-    instr::{Atom, Expr, Symbol},
+    id::Id,
+    instr::{Atom, Expr, Instr, Symbol},
 };
 
 /// The standard configuration in the CEK machine
@@ -13,11 +13,11 @@ use kola_ir::{
 #[derive(Debug, Clone, PartialEq)]
 pub struct StandardConfig {
     /// M - The expression currently being evaluated
-    pub control: InstrId<Expr>,
+    pub control: Expr,
     /// γ - Environment binding free variables
     pub env: Env,
     /// κ - Continuation instructing what to do next
-    pub continuation: Cont,
+    pub cont: Cont,
 }
 
 /// The operation handling configuration in the CEK machine
@@ -29,15 +29,15 @@ pub struct StandardConfig {
 #[derive(Debug, Clone, PartialEq)]
 pub struct OperationConfig {
     /// The operation name being performed
-    pub operation: Symbol,
+    pub op: Symbol,
     /// The argument to the operation
-    pub argument: InstrId<Atom>,
+    pub arg: Id<Atom>,
     /// Environment for the operation
     pub env: Env,
     /// κ - Current continuation
-    pub continuation: Cont,
+    pub cont: Cont,
     /// κ0 - Forwarding continuation (handlers already tried)
-    pub forwarding: Cont,
+    pub forward: Cont,
 }
 
 /// Machine states represent the different configurations of the CEK machine
@@ -51,4 +51,6 @@ pub enum MachineState {
     Value(Value),
     /// The machine has encountered an error
     Error(String),
+    /// The machine is in the middle of an operation
+    InProgress,
 }

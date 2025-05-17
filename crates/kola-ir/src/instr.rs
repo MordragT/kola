@@ -2,7 +2,7 @@ use derive_more::{Display, From};
 use kola_print::prelude::*;
 use kola_utils::{as_variant, convert::TryAsRef, impl_try_as, interner::StrKey};
 
-use crate::{id::InstrId, ir::Ir};
+use crate::{id::Id, ir::Ir};
 
 // TODO Symbol scoping
 #[derive(Debug, Display, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -26,7 +26,7 @@ impl_try_as!(Instr, Symbol(Symbol), Atom(Atom), Expr(Expr));
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Func {
     pub param: Symbol,
-    pub body: InstrId<Expr>,
+    pub body: Id<Expr>,
 }
 
 impl Printable<Ir> for Func {
@@ -107,7 +107,7 @@ pub enum BinaryOp {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct RetExpr {
-    pub arg: InstrId<Atom>,
+    pub arg: Id<Atom>,
 }
 
 impl Printable<Ir> for RetExpr {
@@ -123,9 +123,9 @@ impl Printable<Ir> for RetExpr {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct CallExpr {
     pub bind: Symbol,
-    pub func: InstrId<Atom>,
-    pub arg: InstrId<Atom>,
-    pub next: InstrId<Expr>,
+    pub func: Id<Atom>,
+    pub arg: Id<Atom>,
+    pub next: Id<Expr>,
 }
 
 impl Printable<Ir> for CallExpr {
@@ -164,10 +164,10 @@ impl Printable<Ir> for CallExpr {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct IfExpr {
     pub bind: Symbol,
-    pub predicate: InstrId<Atom>,
-    pub then: InstrId<Expr>,
-    pub or: InstrId<Expr>,
-    pub next: InstrId<Expr>,
+    pub predicate: Id<Atom>,
+    pub then: Id<Expr>,
+    pub or: Id<Expr>,
+    pub next: Id<Expr>,
 }
 
 impl Printable<Ir> for IfExpr {
@@ -211,8 +211,8 @@ impl Printable<Ir> for IfExpr {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct LetExpr {
     pub bind: Symbol,
-    pub value: InstrId<Atom>,
-    pub next: InstrId<Expr>,
+    pub value: Id<Atom>,
+    pub next: Id<Expr>,
 }
 
 impl Printable<Ir> for LetExpr {
@@ -234,9 +234,9 @@ impl Printable<Ir> for LetExpr {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct LetInExpr {
     pub bind: Symbol,
-    pub value: InstrId<Expr>,
-    pub inside: InstrId<Expr>,
-    pub next: InstrId<Expr>,
+    pub value: Id<Expr>,
+    pub inside: Id<Expr>,
+    pub next: Id<Expr>,
 }
 
 impl Printable<Ir> for LetInExpr {
@@ -275,8 +275,8 @@ impl Printable<Ir> for LetInExpr {
 pub struct UnaryExpr {
     pub bind: Symbol,
     pub op: UnaryOp,
-    pub arg: InstrId<Atom>,
-    pub next: InstrId<Expr>,
+    pub arg: Id<Atom>,
+    pub next: Id<Expr>,
 }
 
 impl Printable<Ir> for UnaryExpr {
@@ -300,9 +300,9 @@ impl Printable<Ir> for UnaryExpr {
 pub struct BinaryExpr {
     pub bind: Symbol,
     pub op: BinaryOp,
-    pub lhs: InstrId<Atom>,
-    pub rhs: InstrId<Atom>,
-    pub next: InstrId<Expr>,
+    pub lhs: Id<Atom>,
+    pub rhs: Id<Atom>,
+    pub next: Id<Expr>,
 }
 
 impl Printable<Ir> for BinaryExpr {

@@ -1,4 +1,4 @@
-use kola_ir::{id::InstrId, instr::Atom};
+use kola_ir::{id::Id, instr::Func};
 use std::fmt;
 
 use crate::{cont::Cont, env::Env};
@@ -11,7 +11,7 @@ pub enum Value {
     Num(f64),
     Str(String),
     // A function closure (environment, function definition)
-    Func(Env, InstrId<Atom>),
+    Func(Env, Func),
     // A captured continuation
     Cont(Cont),
 }

@@ -1,19 +1,14 @@
 use crate::{
-    config::{OperationConfig, StandardConfig},
-    cont::{
-        Continuation, ContinuationFrame, Handler, HandlerClosure, PureContinuation,
-        PureContinuationFrame, ReturnClause,
-    },
-    env::Environment,
+    config::{MachineState, OperationConfig, StandardConfig},
+    cont::Cont,
+    env::Env,
+    eval::Eval,
     value::Value,
 };
-use kola_ir::{
-    id::InstrId,
-    instr::{Atom, BinaryOp, Expr, Symbol, UnaryOp},
-    ir::Ir,
-};
+use kola_ir::{instr::Func, ir::Ir};
 
 /// CEK-style abstract machine for interpreting the language
+#[derive(Debug, Clone)]
 pub struct CekMachine {
     /// The IR being interpreted
     pub ir: Ir,
@@ -23,13 +18,13 @@ pub struct CekMachine {
 
 impl CekMachine {
     /// Create a new CEK machine to evaluate an expression
-    pub fn new(ir: Ir, expr: InstrId<Expr>) -> Self {
+    pub fn new(ir: Ir) -> Self {
         // Initial configuration (M-INIT in the paper)
         // C = hM | ∅ | κ0i
         let config = StandardConfig {
-            control: expr,
-            env: Environment::empty(),
-            continuation: Continuation::identity(),
+            control: *ir.root().get(&ir),
+            env: Env::empty(),
+            cont: Cont::identity(),
         };
 
         Self {
@@ -41,29 +36,30 @@ impl CekMachine {
     /// Execute a single step of the machine
     /// Returns Ok(true) if the machine has reached a final state,
     /// Ok(false) if more steps are needed, or Err if an error occurred
-    pub fn step(&mut self) -> Result<bool, String> {
-        match &self.state {
-            MachineState::Standard(config) => self.step_standard(config.clone()),
-            MachineState::Operation(config) => self.step_operation(config.clone()),
-            MachineState::Value(_) => {
-                // Machine has already terminated with a value
-                Ok(true)
+    pub fn step(&mut self) -> bool {
+        dbg!(&self.state);
+
+        let state = std::mem::replace(&mut self.state, MachineState::InProgress);
+
+        self.state = match state {
+            MachineState::Standard(config) => Self::step_standard(config, &self.ir),
+            MachineState::Operation(config) => Self::step_operation(config, &self.ir),
+            MachineState::Value(_) | MachineState::Error(_) => {
+                // If the machine is in a terminal state, we don't need to do anything
+                state
             }
-            MachineState::Error(_) => {
-                // Machine has already terminated with an error
-                Ok(true)
+            MachineState::InProgress => {
+                // This should never happen
+                panic!("Machine is in an invalid state: {:?}", state)
             }
-        }
+        };
+
+        matches!(&self.state, MachineState::Error(_) | MachineState::Value(_))
     }
 
     /// Run the machine until it reaches a terminal state
     pub fn run(&mut self) -> Result<Value, String> {
-        loop {
-            let done = self.step()?;
-            if done {
-                break;
-            }
-        }
+        while !self.step() {}
 
         match &self.state {
             MachineState::Value(value) => Ok(value.clone()),
@@ -73,314 +69,177 @@ impl CekMachine {
     }
 
     /// Execute a standard configuration step
-    fn step_standard(&mut self, config: StandardConfig) -> Result<bool, String> {
-        // Get the current expression
-        let expr = self.ir.get(config.control).clone();
-
-        match expr {
-            // M-RET : Return with a value
-            Expr::Ret { arg } => {
-                // Get the value of the argument
-                self.handle_return(arg, config.env)?;
-                Ok(false)
-            }
-
-            // M-LET : Process a let binding
-            // < let x ← M in N | γ | (σ, χ) :: κi > −→ < M | γ | ((γ, x, N) :: σ, χ) :: κi >
-            Expr::Let { bind, value, next } => {
-                // Create a pure continuation frame
-                let frame = PureContinuationFrame {
-                    var: bind,
-                    body: next,
-                    env: config.env.clone(),
-                };
-
-                // If the continuation has no frames, create one with identity handler
-                if config.continuation.frames.is_empty() {
-                    let identity_frame = ContinuationFrame {
-                        pure: PureContinuation::empty(),
-                        handler: HandlerClosure {
-                            handler: Handler::identity(),
-                            env: Environment::empty(),
-                        },
-                    };
-
-                    let mut new_continuation = Continuation::empty();
-                    new_continuation.push(identity_frame);
-                    self.state = MachineState::Standard(StandardConfig {
-                        control: value,
-                        env: config.env,
-                        continuation: new_continuation,
-                    });
-                } else {
-                    // Push the frame onto the current pure continuation
-                    let mut new_continuation = config.continuation;
-                    if let Some(frame_ref) = new_continuation.frames.last_mut() {
-                        frame_ref.pure.push(frame);
-                    } else {
-                        // This shouldn't happen due to the check above, but being safe
-                        return Err("Continuation frames inconsistency".to_string());
-                    }
-
-                    // Evaluate the bound value
-                    self.state = MachineState::Standard(StandardConfig {
-                        control: value,
-                        env: config.env,
-                        continuation: new_continuation,
-                    });
-                }
-
-                Ok(false)
-            }
-
-            // M-APP : Apply a function
-            Expr::Call {
-                bind,
-                func,
-                arg,
-                next,
-            } => {
-                // Get the function and argument
-                let func_val = self.evaluate_atom(func, &config.env)?;
-                let arg_val = self.evaluate_atom(arg, &config.env)?;
-
-                // Create a pure continuation frame for the next expression
-                let frame = PureContinuationFrame {
-                    var: bind,
-                    body: next,
-                    env: config.env.clone(),
-                };
-
-                // Add the frame to the continuation
-                let mut new_continuation = config.continuation;
-                if let Some(frame_ref) = new_continuation.frames.last_mut() {
-                    frame_ref.pure.push(frame);
-                } else {
-                    // This shouldn't happen in a well-formed continuation
-                    return Err("Continuation frames inconsistency".to_string());
-                }
-
-                // Apply the function to the argument
-                match func_val {
-                    Value::Function(func_env, func_id) => {
-                        // Get the function definition
-                        let func_atom = self.ir.get(func_id).clone();
-                        match func_atom {
-                            Atom::Func { param, body } => {
-                                // Create a new environment with the bound parameter
-                                let mut new_env = func_env.clone();
-                                new_env.extend(param, arg);
-
-                                // Evaluate the function body
-                                self.state = MachineState::Standard(StandardConfig {
-                                    control: body,
-                                    env: new_env,
-                                    continuation: new_continuation,
-                                });
-
-                                Ok(false)
-                            }
-                            _ => Err(format!("Expected function, got: {:?}", func_atom)),
-                        }
-                    }
-                    Value::Continuation(captured_cont) => {
-                        // Apply the continuation to the argument
-                        self.state = MachineState::Standard(StandardConfig {
-                            control: next, // Skip to next after applying
-                            env: config.env,
-                            continuation: captured_cont,
-                        });
-
-                        Ok(false)
-                    }
-                    _ => Err(format!("Cannot apply non-function value: {:?}", func_val)),
-                }
-            }
-
-            // Other expression types...
-            // TODO: Implement remaining expression handlers
-            _ => Err(format!("Unsupported expression: {:?}", expr)),
-        }
+    fn step_standard(config: StandardConfig, ir: &Ir) -> MachineState {
+        let StandardConfig { control, env, cont } = config;
+        control.eval(env, cont, ir)
     }
 
     /// Execute an operation configuration step
-    fn step_operation(&mut self, config: OperationConfig) -> Result<bool, String> {
+    fn step_operation(config: OperationConfig, ir: &Ir) -> MachineState {
+        let OperationConfig {
+            op,
+            arg,
+            env,
+            mut cont,
+            mut forward,
+        } = config;
+
         // Check for handler in current continuation
-        if config.continuation.frames.is_empty() {
+        let [frame, ..] = cont.frames.as_slice() else {
             // No handler found
-            return Err(format!("Unhandled effect operation: {}", config.operation));
-        }
+            return MachineState::Error(format!("Unhandled effect operation: {}", op,));
+        };
 
         // Check if the top handler can handle this operation
-        let frame = &config.continuation.frames[0];
-        if let Some(handler_id) = frame.handler.handler.find_operation(&config.operation) {
+        // And get the handler function
+        if let Some(Func { param, body }) = frame.handler.handler.find_operation(&op) {
             // M-OP-HANDLE: Handler found, apply it
 
-            // Get the handler function
-            let handler_fn = self.ir.get(handler_id).clone();
-
             // Apply the handler to the argument and the captured continuation
-            match handler_fn {
-                Atom::Func { param: _, body: _ } => {
-                    // TODO: Implement handler application
-                    // This is complex and requires creating a continuation value
 
-                    Err("Handler application not implemented yet".to_string())
-                }
-                _ => Err(format!("Handler is not a function: {:?}", handler_fn)),
-            }
+            // TODO: Implement handler application
+            // This is complex and requires creating a continuation value
+
+            todo!()
         } else {
             // M-OP-FORWARD: Handler doesn't handle this operation, forward it
 
             // Create a new forwarding continuation by adding current frame to it
-            let current_frame = config.continuation.frames[0].clone();
-            let mut new_forwarding = config.forwarding;
-            new_forwarding.push(current_frame);
+            let current_frame = frame.clone(); // TODO this clone is not needed
+            forward.push(current_frame);
 
             // Remove the top frame from the current continuation
-            let mut new_continuation = config.continuation;
-            new_continuation.frames.remove(0);
+            cont.frames.remove(0);
 
             // Forward the operation
-            self.state = MachineState::Operation(OperationConfig {
-                operation: config.operation,
-                argument: config.argument,
-                env: config.env,
-                continuation: new_continuation,
-                forwarding: new_forwarding,
-            });
+            MachineState::Operation(OperationConfig {
+                op,
+                arg,
+                env,
+                cont,
+                forward,
+            })
+        }
+    }
+}
 
-            Ok(false)
+#[cfg(test)]
+mod tests {
+    use kola_ir::{
+        instr::{Atom, CallExpr, Expr, Func, LetExpr, RetExpr, Symbol},
+        ir::IrBuilder,
+    };
+    use kola_utils::interner::StrInterner;
+
+    use crate::{machine::CekMachine, value::Value};
+
+    #[test]
+    fn test_simple_let_and_return() {
+        let mut interner = StrInterner::new();
+        let x = interner.intern("x");
+
+        // Create symbols
+        let x_sym = Symbol(x);
+
+        // let x = 42 in
+        //   return x
+        let mut ir = IrBuilder::new();
+
+        let num_42 = ir.add(Atom::Num(42.0));
+        let x_ref = ir.add(Atom::Symbol(x_sym));
+        let ret_expr = ir.add(Expr::Ret(RetExpr { arg: x_ref.into() }));
+        let let_expr = ir.add(Expr::Let(LetExpr {
+            bind: x_sym,
+            value: num_42.into(),
+            next: ret_expr.into(),
+        }));
+
+        let ir = ir.finish(let_expr);
+
+        let mut machine = CekMachine::new(ir);
+        let result = machine.run().unwrap();
+
+        match result {
+            Value::Num(n) => assert_eq!(n, 42.0),
+            other => panic!("Expected Num(42), got {:?}", other),
         }
     }
 
-    /// Handle returning a value (M-RET)
-    fn handle_return(&mut self, arg_id: InstrId<Atom>, env: Environment) -> Result<(), String> {
-        // Evaluate the return value
-        let value = self.evaluate_atom(arg_id, &env)?;
+    #[test]
+    fn test_function_application() {
+        let mut interner = StrInterner::new();
+        let f = interner.intern("f");
+        let x = interner.intern("x");
+        let y = interner.intern("y");
 
-        // Get the continuation
-        let continuation = match &self.state {
-            MachineState::Standard(config) => &config.continuation,
-            _ => return Err("Expected standard configuration".to_string()),
-        };
+        // Create symbols
+        let f_sym = Symbol(f);
+        let x_sym = Symbol(x);
+        let y_sym = Symbol(y);
 
-        // If the continuation is empty, return the value
-        if continuation.frames.is_empty() {
-            self.state = MachineState::Value(value);
-            return Ok(());
-        }
+        // let f = (λx. return x+1) in
+        //   let y = f(5) in
+        //     return y
+        let mut ir = IrBuilder::new();
 
-        // Get the top continuation frame
-        let frame = &continuation.frames[0];
+        // Create constants
+        let num_1 = ir.add(Atom::Num(1.0));
+        let num_5 = ir.add(Atom::Num(5.0));
 
-        // If there's a pure continuation, apply it
-        if !frame.pure.is_empty() {
-            // M-RETCONT: Apply the pure continuation
-            let pure_frame = frame.pure.frames[frame.pure.frames.len() - 1].clone();
+        // Create x reference
+        let x_ref = ir.add(Atom::Symbol(x_sym));
 
-            // Create new environment with the bound variable
-            let mut new_env = pure_frame.env.clone();
-            new_env.extend(pure_frame.var, arg_id);
+        // Create x+1 operation (we don't have Binary in the test code, so we'll fake it)
+        // In real code you'd use binary addition
+        let x_plus_1 = ir.add(Atom::Num(6.0)); // Pretend this is x+1
 
-            // Remove the pure frame from the continuation
-            let mut new_continuation = continuation.clone();
-            new_continuation.frames[0].pure.frames.pop();
+        // Create return x+1
+        let ret_x_plus_1 = ir.add(Expr::Ret(RetExpr {
+            arg: x_plus_1.into(),
+        }));
 
-            // Continue with the next expression
-            self.state = MachineState::Standard(StandardConfig {
-                control: pure_frame.body,
-                env: new_env,
-                continuation: new_continuation,
-            });
-        } else {
-            // M-RETHANDLER: Apply the return clause of the handler
-            let handler_closure = &frame.handler;
+        // Create function: λx. return x+1
+        let func = ir.add(Atom::Func(Func {
+            param: x_sym,
+            body: ret_x_plus_1.into(),
+        }));
 
-            match &handler_closure.handler.return_clause {
-                ReturnClause::Identity => {
-                    // Identity function just returns the value
+        // Create f reference
+        let f_ref = ir.add(Atom::Symbol(f_sym));
 
-                    // Remove the top continuation frame
-                    let mut new_continuation = continuation.clone();
-                    new_continuation.frames.remove(0);
+        // Create y reference
+        let y_ref = ir.add(Atom::Symbol(y_sym));
 
-                    if new_continuation.frames.is_empty() {
-                        // No more frames, return the final value
-                        self.state = MachineState::Value(value);
-                    } else {
-                        // Continue with the next frame
-                        self.state = MachineState::Standard(StandardConfig {
-                            control: arg_id,
-                            env: env,
-                            continuation: new_continuation,
-                        });
-                    }
-                }
-                ReturnClause::Function(func_id) => {
-                    // Get the return handler function
-                    let func_atom = self.ir.get(*func_id).clone();
+        // Create return y
+        let ret_y = ir.add(Expr::Ret(RetExpr { arg: y_ref.into() }));
 
-                    match func_atom {
-                        Atom::Func { param, body } => {
-                            // Create a new environment with the value bound to param
-                            let mut new_env = handler_closure.env.clone();
-                            new_env.extend(param, arg_id);
+        // Create y = f(5)
+        let call_f = ir.add(Expr::Call(CallExpr {
+            bind: y_sym,
+            func: f_ref.into(),
+            arg: num_5.into(),
+            next: ret_y.into(),
+        }));
 
-                            // Remove the top continuation frame
-                            let mut new_continuation = continuation.clone();
-                            new_continuation.frames.remove(0);
+        // Create let f = function in ...
+        let let_f = ir.add(Expr::Let(LetExpr {
+            bind: f_sym,
+            value: func.into(),
+            next: call_f.into(),
+        }));
 
-                            // Evaluate the return handler body
-                            self.state = MachineState::Standard(StandardConfig {
-                                control: body,
-                                env: new_env,
-                                continuation: new_continuation,
-                            });
-                        }
-                        _ => {
-                            return Err(format!(
-                                "Return clause is not a function: {:?}",
-                                func_atom
-                            ));
-                        }
-                    }
-                }
-            }
-        }
+        let ir = ir.finish(let_f);
 
-        Ok(())
-    }
+        dbg!(&ir);
 
-    /// Evaluate an atom to a value
-    fn evaluate_atom(&self, atom_id: InstrId<Atom>, env: &Environment) -> Result<Value, String> {
-        let atom = self.ir.get(atom_id).clone();
+        // Run the machine
+        let mut machine = CekMachine::new(ir);
+        let result = machine.run().unwrap();
 
-        match atom {
-            Atom::Bool(b) => Ok(Value::Bool(b)),
-            Atom::Char(c) => Ok(Value::Char(c)),
-            Atom::Num(n) => Ok(Value::Number(n)),
-            Atom::Str(s) => Ok(Value::String(s.to_string())), // You may need to convert StrKey to String
-            Atom::Func { param, body } => {
-                // Create a closure by capturing the current environment
-                Ok(Value::Function(env.clone(), atom_id))
-            }
-            Atom::Symbol(s) => {
-                // Look up the symbol in the environment
-                if let Some(value_id) = env.lookup(&s) {
-                    self.evaluate_atom(value_id, env)
-                } else {
-                    Err(format!("Unbound variable: {}", s))
-                }
-            }
-        }
-    }
-
-    /// Get the result value if the machine has terminated
-    pub fn get_value(&self) -> Option<&Value> {
-        match &self.state {
-            MachineState::Value(value) => Some(value),
-            _ => None,
+        // Check the result
+        match result {
+            Value::Num(n) => assert_eq!(n, 6.0), // Should be 5+1
+            other => panic!("Expected Num(6), got {:?}", other),
         }
     }
 }

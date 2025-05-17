@@ -2,7 +2,7 @@ use kola_print::prelude::*;
 use kola_utils::convert::TryAsRef;
 
 use crate::{
-    id::InstrId,
+    id::Id,
     instr::{Expr, Instr},
 };
 
@@ -18,7 +18,7 @@ impl IrBuilder {
         }
     }
 
-    pub fn push<T>(&mut self, instr: T) -> InstrId<T>
+    pub fn add<T>(&mut self, instr: T) -> Id<T>
     where
         T: Into<Instr>,
     {
@@ -27,10 +27,10 @@ impl IrBuilder {
         let instr = instr.into();
         self.instructions.push(instr);
 
-        InstrId::new(id)
+        Id::new(id)
     }
 
-    pub fn finish(self, root: InstrId<Expr>) -> Ir {
+    pub fn finish(self, root: Id<Expr>) -> Ir {
         let Self { instructions } = self;
         Ir { instructions, root }
     }
@@ -39,16 +39,24 @@ impl IrBuilder {
 #[derive(Debug, Clone)]
 pub struct Ir {
     instructions: Vec<Instr>,
-    root: InstrId<Expr>,
+    root: Id<Expr>,
 }
 
 impl Ir {
-    pub fn get<T>(&self, id: InstrId<T>) -> &T
+    pub fn get(&self, id: usize) -> Instr {
+        self.instructions[id]
+    }
+
+    pub fn instr<T>(&self, id: Id<T>) -> &T
     where
         Instr: TryAsRef<T>,
     {
         let instr = &self.instructions[id.as_usize()];
         instr.try_as_ref().unwrap()
+    }
+
+    pub fn root(&self) -> Id<Expr> {
+        self.root
     }
 }
 

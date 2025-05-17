@@ -42,11 +42,17 @@
 
 use std::collections::{HashMap, HashSet};
 
-use kola_utils::{interner::PathKey, io::FileSystem};
+use kola_span::SourceManager;
+use kola_utils::{
+    dependency::DependencyGraph,
+    interner::{PathKey, StrInterner},
+    io::FileSystem,
+};
 
 use crate::{
     forest::Forest,
-    module::{ModuleKey, UnresolvedModuleScope},
+    module::{ModuleKey, ModuleKeyMapping, UnresolvedModuleScope},
+    prelude::Topography,
 };
 
 mod declare;
@@ -61,6 +67,38 @@ pub use define::Define;
 #[derive(Debug, Clone)]
 pub struct Resolver<S> {
     state: S,
+    interner: StrInterner,
+    source_manager: SourceManager,
+    forest: Forest,
+    topography: Topography,
+    mapping: ModuleKeyMapping,
+    dependencies: DependencyGraph<ModuleKey>,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct Start;
+
+impl Resolver<Start> {
+    pub fn new(
+        path_key: PathKey,
+        interner: StrInterner,
+        source_manager: SourceManager,
+        forest: Forest,
+        topography: Topography,
+        mapping: ModuleKeyMapping,
+    ) -> Resolver<Declare> {
+        let dependencies = DependencyGraph::new();
+
+        Resolver {
+            state: Start,
+            interner,
+            source_manager,
+            forest,
+            topography,
+            mapping,
+            dependencies,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]

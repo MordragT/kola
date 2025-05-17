@@ -20,15 +20,8 @@ impl<T> CycleError<T> {
     }
 }
 
-// pub trait HasDependencyGraph {
-//     type Item;
-//     /// Get the dependency graph
 //     fn dependency_graph(&self) -> &DependencyGraph<Self::Item>;
-// }
 
-// pub trait HasMutDependencyGraph: HasDependencyGraph {
-//     /// Get a mutable reference to the dependency graph
-//     fn dependency_graph_mut(&mut self) -> &mut DependencyGraph<Self::Item>;
 // }
 
 /// Graph of dependencies between modules

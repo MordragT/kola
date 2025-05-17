@@ -7,14 +7,6 @@ use kola_tree::{
 };
 use kola_utils::{convert::TryAsRef, interner::PathKey};
 
-// pub trait HasForest {
-//     fn forest(&self) -> &Forest;
-// }
-
-// pub trait HasForestMut: HasForest {
-//     fn forest_mut(&mut self) -> &mut Forest;
-// }
-
 #[derive(Debug, Clone, Default)]
 pub struct Forest(HashMap<PathKey, Rc<Tree>>);
 

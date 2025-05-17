@@ -7,14 +7,6 @@ use kola_tree::{
 use kola_utils::interner::PathKey;
 use std::{collections::HashMap, ops::Index, rc::Rc};
 
-// pub trait HasTopography {
-//     fn topography(&self) -> &Topography;
-// }
-
-// pub trait HasMutTopography: HasTopography {
-//     fn topography_mut(&mut self) -> &mut Topography;
-// }
-
 #[derive(Debug, Clone, Default)]
 pub struct Topography(HashMap<PathKey, Rc<Locations>>);
 

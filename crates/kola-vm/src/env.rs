@@ -1,14 +1,13 @@
-use kola_ir::{
-    id::InstrId,
-    instr::{Atom, Symbol},
-};
+use kola_ir::instr::Symbol;
 use std::collections::HashMap;
+
+use crate::value::Value;
 
 /// Values in the environment should be fully evaluated (Atom)
 #[derive(Debug, Clone, PartialEq)]
 pub struct Env {
     pub parent: Option<Box<Env>>,
-    pub bindings: HashMap<Symbol, InstrId<Atom>>,
+    pub bindings: HashMap<Symbol, Value>,
 }
 
 impl Env {
@@ -26,9 +25,9 @@ impl Env {
         }
     }
 
-    pub fn lookup(&self, name: &Symbol) -> Option<InstrId<Atom>> {
+    pub fn lookup(&self, name: &Symbol) -> Option<&Value> {
         if let Some(value) = self.bindings.get(name) {
-            Some(*value)
+            Some(value)
         } else if let Some(parent) = &self.parent {
             parent.lookup(name)
         } else {
@@ -36,7 +35,7 @@ impl Env {
         }
     }
 
-    pub fn extend(&mut self, name: Symbol, value: InstrId<Atom>) {
+    pub fn extend(&mut self, name: Symbol, value: Value) {
         self.bindings.insert(name, value);
     }
 }

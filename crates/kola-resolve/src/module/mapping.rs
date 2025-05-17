@@ -3,14 +3,6 @@ use kola_utils::{bimap::BiMap, interner::PathKey};
 
 use super::ModuleKey;
 
-// pub trait HasModuleKeyMapping {
-//     fn module_key_mapping(&self) -> &ModuleKeyMapping;
-// }
-
-// pub trait HasMutModuleKeyMapping: HasModuleKeyMapping {
-//     fn module_key_mapping_mut(&mut self) -> &mut ModuleKeyMapping;
-// }
-
 #[derive(Debug, Clone, Default)]
 pub struct ModuleKeyMapping(BiMap<ModuleKey, (PathKey, Id<node::Module>)>);
 

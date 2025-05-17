@@ -1,7 +1,7 @@
 use crate::env::Env;
 use kola_ir::{
-    id::InstrId,
-    instr::{Atom, Expr, Symbol},
+    id::Id,
+    instr::{Atom, Expr, Func, Symbol},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -9,7 +9,7 @@ pub enum ReturnClause {
     /// Built-in identity function (x -> x)
     Identity,
     /// User-defined function from IR
-    Function(InstrId<Atom>),
+    Function(Func),
 }
 
 /// Contains the behavior of the handler, which is a set of clauses.
@@ -26,11 +26,11 @@ pub enum ReturnClause {
 pub struct Handler {
     // The return clause handles the normal result when no effects are performed.
     pub return_clause: ReturnClause,
-    pub op_clauses: Vec<(Symbol, InstrId<Atom>)>,
+    pub op_clauses: Vec<(Symbol, Func)>,
 }
 
 impl Handler {
-    pub fn new(return_clause: InstrId<Atom>) -> Self {
+    pub fn new(return_clause: Func) -> Self {
         Self {
             return_clause: ReturnClause::Function(return_clause),
             op_clauses: Vec::new(),
@@ -44,11 +44,11 @@ impl Handler {
         }
     }
 
-    pub fn add_operation(&mut self, op: Symbol, handler: InstrId<Atom>) {
+    pub fn add_operation(&mut self, op: Symbol, handler: Func) {
         self.op_clauses.push((op, handler));
     }
 
-    pub fn find_operation(&self, op: &Symbol) -> Option<InstrId<Atom>> {
+    pub fn find_operation(&self, op: &Symbol) -> Option<Func> {
         self.op_clauses
             .iter()
             .find(|(name, _)| name == op)
@@ -61,7 +61,7 @@ impl Handler {
 #[derive(Debug, Clone, PartialEq)]
 pub struct PureContFrame {
     pub var: Symbol,
-    pub body: InstrId<Expr>,
+    pub body: Id<Expr>,
     pub env: Env,
 }
 

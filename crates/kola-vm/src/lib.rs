@@ -5,5 +5,5 @@ pub mod config;
 pub mod cont;
 pub mod env;
 pub mod eval;
-// pub mod machine;
+pub mod machine;
 pub mod value;

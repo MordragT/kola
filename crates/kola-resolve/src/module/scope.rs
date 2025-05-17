@@ -11,14 +11,6 @@ use kola_utils::interner::StrKey;
 use super::ModuleKey;
 use crate::error::NameCollision;
 
-// pub trait HasModuleScopes {
-//     fn module_scopes(&self) -> &ModuleScopes;
-// }
-
-// pub trait HasMutModuleScopes: HasModuleScopes {
-//     fn module_scopes_mut(&mut self) -> &mut ModuleScopes;
-// }
-
 #[derive(Debug, Clone, Default, PartialEq, Eq)]
 pub struct ModuleScopes(HashMap<ModuleKey, ModuleScope>);
 
