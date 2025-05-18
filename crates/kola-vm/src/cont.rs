@@ -68,7 +68,7 @@ pub struct PureContFrame {
 /// A pure continuation is a stack of pure continuation frames.
 #[derive(Debug, Clone, PartialEq)]
 pub struct PureCont {
-    pub frames: Vec<PureContFrame>,
+    frames: Vec<PureContFrame>,
 }
 
 impl PureCont {
@@ -84,8 +84,24 @@ impl PureCont {
         self.frames.pop()
     }
 
+    pub fn top(&self) -> Option<&PureContFrame> {
+        self.frames.last()
+    }
+
+    pub fn top_mut(&mut self) -> Option<&mut PureContFrame> {
+        self.frames.last_mut()
+    }
+
+    pub fn append(&mut self, cont: &mut PureCont) {
+        self.frames.append(&mut cont.frames);
+    }
+
     pub fn is_empty(&self) -> bool {
         self.frames.is_empty()
+    }
+
+    pub fn len(&self) -> usize {
+        self.frames.len()
     }
 }
 
@@ -103,7 +119,7 @@ pub struct HandlerClosure {
 #[derive(Debug, Clone, PartialEq)]
 pub struct ContFrame {
     pub pure: PureCont,
-    pub handler: HandlerClosure,
+    pub handler_closure: HandlerClosure,
 }
 
 impl ContFrame {
@@ -111,7 +127,7 @@ impl ContFrame {
     pub fn identity() -> Self {
         Self {
             pure: PureCont::empty(),
-            handler: HandlerClosure {
+            handler_closure: HandlerClosure {
                 handler: Handler::identity(),
                 env: Env::empty(),
             },
@@ -123,7 +139,7 @@ impl ContFrame {
 /// We choose to annotate captured continuations with their input type
 #[derive(Debug, Clone, PartialEq)]
 pub struct Cont {
-    pub frames: Vec<ContFrame>,
+    frames: Vec<ContFrame>,
     // TODO type info ?
 }
 
@@ -144,12 +160,24 @@ impl Cont {
         self.frames.push(frame);
     }
 
-    pub fn append(&mut self, cont: &mut Cont) {
-        self.frames.append(&mut cont.frames);
-    }
-
     pub fn pop(&mut self) -> Option<ContFrame> {
         self.frames.pop()
+    }
+
+    pub fn pop_or_identity(&mut self) -> ContFrame {
+        self.frames.pop().unwrap_or_else(ContFrame::identity)
+    }
+
+    pub fn top(&self) -> Option<&ContFrame> {
+        self.frames.last()
+    }
+
+    pub fn top_mut(&mut self) -> Option<&mut ContFrame> {
+        self.frames.last_mut()
+    }
+
+    pub fn append(&mut self, cont: &mut Cont) {
+        self.frames.append(&mut cont.frames);
     }
 
     pub fn is_empty(&self) -> bool {

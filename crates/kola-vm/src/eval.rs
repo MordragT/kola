@@ -1,13 +1,13 @@
 use crate::{
     config::{MachineState, StandardConfig},
-    cont::{Cont, ContFrame, PureContFrame, ReturnClause},
+    cont::{Cont, ContFrame, HandlerClosure, PureContFrame, ReturnClause},
     env::Env,
     value::Value,
 };
 use kola_ir::{
     instr::{
-        Atom, BinaryExpr, CallExpr, Expr, Func, IfExpr, LetExpr, LetInExpr, RetExpr, Symbol,
-        UnaryExpr,
+        Atom, BinaryExpr, BinaryOp, CallExpr, Expr, Func, IfExpr, LetExpr, LetInExpr, RetExpr,
+        Symbol, UnaryExpr, UnaryOp,
     },
     ir::Ir,
 };
@@ -51,6 +51,8 @@ impl Eval for Expr {
     }
 }
 
+// pub fn eval_return_value
+
 // M-RET : Return with a value
 impl Eval for RetExpr {
     fn eval(&self, env: Env, mut cont: Cont, ir: &Ir) -> MachineState {
@@ -60,14 +62,18 @@ impl Eval for RetExpr {
             Err(err) => return MachineState::Error(err),
         };
 
-        // Get the top continuation frame
-        let [frame, ..] = cont.frames.as_slice() else {
+        // Remove the top continuation frame
+        let Some(ContFrame {
+            mut pure,
+            handler_closure,
+        }) = cont.pop()
+        else {
             // If the continuation is empty, return the value
             return MachineState::Value(value);
         };
 
         // If there's a pure continuation, apply it
-        let [.., pure_frame] = frame.pure.frames.as_slice() else {
+        let Some(PureContFrame { var, body, mut env }) = pure.pop() else {
             // M-RETHANDLER: <return V | γ | ([], (γ', H)) :: κ> --> <M | γ'[x ↦ V] | κ>,
             // if H(return) = {return x ↦ M}
             //
@@ -77,16 +83,13 @@ impl Eval for RetExpr {
             // 2. Bind the returned value V to parameter x in the handler's environment γ'
             // 3. Continue by evaluating the return handler's body M with the updated environment
             // 4. Use the continuation κ below the current handler frame
-            let handler_closure = &frame.handler;
 
-            return match &handler_closure.handler.return_clause {
+            let HandlerClosure { handler, mut env } = handler_closure;
+
+            return match handler.return_clause {
                 ReturnClause::Identity => {
                     // Identity function just returns the value
-
-                    // Remove the top continuation frame
-                    cont.frames.remove(0);
-
-                    if cont.frames.is_empty() {
+                    if cont.is_empty() {
                         // No more frames, return the final value
                         MachineState::Value(value)
                     } else {
@@ -100,18 +103,12 @@ impl Eval for RetExpr {
                 }
                 ReturnClause::Function(Func { param, body }) => {
                     // Create a new environment with the value bound to param
-                    let mut new_env = handler_closure.env.clone();
-                    new_env.extend(*param, value);
-
-                    let control = *body.get(ir);
-
-                    // Remove the top continuation frame
-                    cont.frames.remove(0);
+                    env.extend(param, value);
 
                     // Evaluate the return handler body
                     MachineState::Standard(StandardConfig {
-                        control,
-                        env: new_env,
+                        control: *body.get(ir),
+                        env,
                         cont,
                     })
                 }
@@ -127,19 +124,13 @@ impl Eval for RetExpr {
         // 4. We continue by evaluating N in this updated environment
         // 5. The continuation stack is updated by removing the top pure frame
 
-        let control = *pure_frame.body.get(ir);
-
         // Create new environment with the bound variable
-        let mut new_env = pure_frame.env.clone();
-        new_env.extend(pure_frame.var, value);
-
-        // Remove the pure frame from the continuation
-        cont.frames[0].pure.frames.pop();
+        env.extend(var, value);
 
         // Continue with the next expression
         MachineState::Standard(StandardConfig {
-            control,
-            env: new_env,
+            control: *body.get(ir),
+            env,
             cont,
         })
     }
@@ -155,7 +146,7 @@ impl Eval for RetExpr {
 // 4. When M evaluates to a value, it will be bound to x via the continuation mechanism,
 //    which will then evaluate N with the extended environment
 impl Eval for LetExpr {
-    fn eval(&self, env: Env, mut cont: Cont, ir: &Ir) -> MachineState {
+    fn eval(&self, env: Env, mut cont: Cont, _ir: &Ir) -> MachineState {
         // Create a pure continuation frame
         let pure_frame = PureContFrame {
             var: self.bind,
@@ -163,7 +154,7 @@ impl Eval for LetExpr {
             env: env.clone(),
         };
 
-        let mut frame = cont.frames.pop().unwrap_or(ContFrame::identity());
+        let mut frame = cont.pop_or_identity();
         frame.pure.push(pure_frame);
         cont.push(frame);
 
@@ -219,7 +210,7 @@ impl Eval for CallExpr {
         };
 
         // Add the frame to the continuation
-        let mut frame = cont.frames.pop().unwrap_or(ContFrame::identity());
+        let mut frame = cont.pop_or_identity();
         frame.pure.push(pure_frame);
         cont.push(frame);
 
@@ -280,7 +271,7 @@ impl Eval for IfExpr {
         } = *self;
 
         // Evaluate the predicate
-        let predicate_val = match eval_atom(*predicate.get(ir), &env) {
+        let pred_val = match eval_atom(*predicate.get(ir), &env) {
             Ok(value) => value,
             Err(err) => return MachineState::Error(err),
         };
@@ -293,43 +284,154 @@ impl Eval for IfExpr {
         };
 
         // Add the frame to the continuation
-        let mut frame = cont.frames.pop().unwrap_or(ContFrame::identity());
+        let mut frame = cont.pop_or_identity();
         frame.pure.push(pure_frame);
         cont.push(frame);
 
-        // Check the predicate value
-        if let Value::Bool(true) = predicate_val {
-            // If true, evaluate the "then" branch
-            MachineState::Standard(StandardConfig {
-                control: *then.get(ir),
-                env,
-                cont,
-            })
-        } else if let Value::Bool(false) = predicate_val {
-            // If false, evaluate the "else" branch
-            MachineState::Standard(StandardConfig {
-                control: *or.get(ir),
-                env,
-                cont,
-            })
-        } else {
-            // Error if the predicate is not a boolean
-            MachineState::Error(format!(
-                "Predicate must be a boolean, found: {:?}",
-                predicate_val
-            ))
-        }
+        // Determine which branch to evaluate based on the predicate
+        let branch = match pred_val {
+            Value::Bool(true) => then,
+            Value::Bool(false) => or,
+            _ => {
+                return MachineState::Error(format!(
+                    "Predicate must be a boolean, got: {:?}",
+                    pred_val
+                ));
+            }
+        };
+
+        // Evaluate the selected branch
+        MachineState::Standard(StandardConfig {
+            control: *branch.get(ir),
+            env,
+            cont,
+        })
     }
 }
 
+pub fn eval_unary_op(op: UnaryOp, value: Value) -> Result<Value, String> {
+    match op {
+        UnaryOp::Neg => match value {
+            Value::Num(n) => Ok(Value::Num(-n)),
+            _ => Err(format!("Cannot apply negate to: {:?}", value)),
+        },
+        UnaryOp::Not => match value {
+            Value::Bool(b) => Ok(Value::Bool(!b)),
+            _ => Err(format!("Cannot apply not to: {:?}", value)),
+        },
+    }
+}
+
+// M-UNARY: <x = op V; N | γ | κ> --> <N | γ[x ↦ op(V)] | κ>
+//
+// This rule describes unary operations in the CEK machine:
+// 1. We evaluate the operand V in the current environment γ
+// 2. The unary operation op is applied to the evaluated value V
+// 3. The result of the operation is bound to variable x in the environment
+// 4. The machine transitions directly to evaluating the next expression N
+// 5. The continuation κ remains unchanged during this transition
 impl Eval for UnaryExpr {
-    fn eval(&self, env: Env, cont: Cont, ir: &Ir) -> MachineState {
-        todo!()
+    fn eval(&self, mut env: Env, cont: Cont, ir: &Ir) -> MachineState {
+        let Self {
+            bind,
+            op,
+            arg,
+            next,
+        } = *self;
+
+        // Evaluate the operand
+        let arg_val = match eval_atom(*arg.get(ir), &env) {
+            Ok(value) => value,
+            Err(err) => return MachineState::Error(err),
+        };
+
+        // Apply the unary operation
+        let result = match eval_unary_op(op, arg_val) {
+            Ok(value) => value,
+            Err(err) => return MachineState::Error(err),
+        };
+
+        // Create a new environment with the result bound to the variable
+        env.extend(bind, result);
+
+        // Continue directly with the next expression
+        MachineState::Standard(StandardConfig {
+            control: *next.get(ir),
+            env,
+            cont,
+        })
     }
 }
 
+pub fn eval_binary_op(op: BinaryOp, left: Value, right: Value) -> Result<Value, String> {
+    match (op, left, right) {
+        // TODO:
+        // - String concatenation (Add?)
+        (BinaryOp::Add, Value::Num(l), Value::Num(r)) => Ok(Value::Num(l + r)),
+        (BinaryOp::Sub, Value::Num(l), Value::Num(r)) => Ok(Value::Num(l - r)),
+        (BinaryOp::Mul, Value::Num(l), Value::Num(r)) => Ok(Value::Num(l * r)),
+        (BinaryOp::Div, Value::Num(l), Value::Num(r)) => Ok(Value::Num(l / r)), // TODO check for division by zero?
+        (BinaryOp::Rem, Value::Num(l), Value::Num(r)) => Ok(Value::Num(l % r)),
+        (BinaryOp::Less, Value::Num(l), Value::Num(r)) => Ok(Value::Bool(l < r)),
+        (BinaryOp::LessEq, Value::Num(l), Value::Num(r)) => Ok(Value::Bool(l <= r)),
+        (BinaryOp::Greater, Value::Num(l), Value::Num(r)) => Ok(Value::Bool(l > r)),
+        (BinaryOp::GreaterEq, Value::Num(l), Value::Num(r)) => Ok(Value::Bool(l >= r)),
+        (BinaryOp::And, Value::Bool(l), Value::Bool(r)) => Ok(Value::Bool(l && r)),
+        (BinaryOp::Or, Value::Bool(l), Value::Bool(r)) => Ok(Value::Bool(l || r)),
+        (BinaryOp::Xor, Value::Bool(l), Value::Bool(r)) => Ok(Value::Bool(l ^ r)),
+        (BinaryOp::Eq, l, r) => Ok(Value::Bool(l == r)), // TODO: might need special handling
+        (BinaryOp::NotEq, l, r) => Ok(Value::Bool(l != r)), // TODO: might need special handling
+        (BinaryOp::Merge, l, r) => todo!(),              // TODO: Merge records
+        (op, left, right) => Err(format!(
+            "Cannot apply binary operation {:?} to: {:?} and {:?}",
+            op, left, right
+        )),
+    }
+}
+
+// M-BINARY: <x = V1 op V2; N | γ | κ> --> <N | γ[x ↦ op(V1, V2)] | κ>
+//
+// This rule describes binary operations in the CEK machine:
+// 1. We evaluate both operands V1 and V2 in the current environment γ
+// 2. The binary operation op is applied to the evaluated values
+// 3. The result is bound to variable x in the environment
+// 4. The machine transitions directly to evaluating the next expression N
 impl Eval for BinaryExpr {
-    fn eval(&self, env: Env, cont: Cont, ir: &Ir) -> MachineState {
-        todo!()
+    fn eval(&self, mut env: Env, cont: Cont, ir: &Ir) -> MachineState {
+        let Self {
+            bind,
+            op,
+            lhs,
+            rhs,
+            next,
+        } = *self;
+
+        // Evaluate the left operand
+        let left_val = match eval_atom(*lhs.get(ir), &env) {
+            Ok(value) => value,
+            Err(err) => return MachineState::Error(err),
+        };
+
+        // Evaluate the right operand
+        let right_val = match eval_atom(*rhs.get(ir), &env) {
+            Ok(value) => value,
+            Err(err) => return MachineState::Error(err),
+        };
+
+        // Apply the binary operation
+        let result = match eval_binary_op(op, left_val, right_val) {
+            Ok(value) => value,
+            Err(err) => return MachineState::Error(err),
+        };
+
+        // Create a new environment with the result bound to the variable
+        env.extend(bind, result);
+
+        // Continue directly with the next expression
+        MachineState::Standard(StandardConfig {
+            control: *next.get(ir),
+            env,
+            cont,
+        })
     }
 }

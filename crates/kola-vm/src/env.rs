@@ -7,7 +7,7 @@ use crate::value::Value;
 #[derive(Debug, Clone, PartialEq)]
 pub struct Env {
     pub parent: Option<Box<Env>>,
-    pub bindings: HashMap<Symbol, Value>,
+    pub bindings: HashMap<Symbol, Value>, // Use imbl::HashMap for better cloning performance (HAMT algorithm)
 }
 
 impl Env {

@@ -92,7 +92,7 @@ impl CekMachine {
 
         // Check if the top handler can handle this operation
         // And get the handler function
-        if let Some(Func { param, body }) = frame.handler.handler.find_operation(&op) {
+        if let Some(Func { param, body }) = frame.handler_closure.handler.find_operation(&op) {
             // M-OP-HANDLE: Handler found, apply it
 
             // Apply the handler to the argument and the captured continuation
