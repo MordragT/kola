@@ -176,6 +176,7 @@ impl Eval for LetExpr {
     }
 }
 
+// TODO maybe remove `LetInExpr` altogether and just use `LetExpr`
 impl Eval for LetInExpr {
     fn eval(&self, env: Env, mut cont: Cont, ir: &Ir) -> MachineState {
         todo!()
@@ -259,9 +260,65 @@ impl Eval for CallExpr {
     }
 }
 
+// M-IF: <if V then M else N | γ | κ> --> <M | γ | κ>, if V evaluates to true
+//                                     --> <N | γ | κ>, if V evaluates to false
+//
+// This rule describes conditional branching in the CEK machine:
+// 1. We evaluate the condition V in the current environment γ
+// 2. If the condition evaluates to true, we continue by evaluating the "then" branch M
+// 3. If the condition evaluates to false, we continue by evaluating the "else" branch N
+// 4. In both cases, we maintain the same environment γ and continuation κ
+// 5. The machine state transitions directly to evaluating the selected branch
 impl Eval for IfExpr {
     fn eval(&self, env: Env, mut cont: Cont, ir: &Ir) -> MachineState {
-        todo!()
+        let Self {
+            bind,
+            predicate,
+            then,
+            or,
+            next,
+        } = *self;
+
+        // Evaluate the predicate
+        let predicate_val = match eval_atom(*predicate.get(ir), &env) {
+            Ok(value) => value,
+            Err(err) => return MachineState::Error(err),
+        };
+
+        // Create a pure continuation frame for the next expression
+        let pure_frame = PureContFrame {
+            var: bind,
+            body: next,
+            env: env.clone(),
+        };
+
+        // Add the frame to the continuation
+        let mut frame = cont.frames.pop().unwrap_or(ContFrame::identity());
+        frame.pure.push(pure_frame);
+        cont.push(frame);
+
+        // Check the predicate value
+        if let Value::Bool(true) = predicate_val {
+            // If true, evaluate the "then" branch
+            MachineState::Standard(StandardConfig {
+                control: *then.get(ir),
+                env,
+                cont,
+            })
+        } else if let Value::Bool(false) = predicate_val {
+            // If false, evaluate the "else" branch
+            MachineState::Standard(StandardConfig {
+                control: *or.get(ir),
+                env,
+                cont,
+            })
+        } else {
+            // Error if the predicate is not a boolean
+            MachineState::Error(format!(
+                "Predicate must be a boolean, found: {:?}",
+                predicate_val
+            ))
+        }
     }
 }
 
