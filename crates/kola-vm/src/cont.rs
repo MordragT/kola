@@ -129,7 +129,7 @@ impl ContFrame {
             pure: PureCont::empty(),
             handler_closure: HandlerClosure {
                 handler: Handler::identity(),
-                env: Env::empty(),
+                env: Env::new(),
             },
         }
     }

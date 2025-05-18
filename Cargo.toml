@@ -3,7 +3,7 @@ members = ["crates/*"]
 
 [workspace.dependencies]
 # Kola Crates
-kola-context = { path = "crates/kola-context" }
+kola-collections = { path = "crates/kola-collections" }
 kola-driver = { path = "crates/kola-driver" }
 kola-ir = { path = "crates/kola-ir" }
 kola-lowerer = { path = "crates/kola-lowerer" }
@@ -36,6 +36,8 @@ thiserror = "2.0"
 paste = "1.0"
 log = "0.4"
 either = "1.15"
+imbl = "5.0"
+
 
 [package]
 name = "kola"

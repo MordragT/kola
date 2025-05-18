@@ -43,9 +43,9 @@ pub struct Ir {
 }
 
 impl Ir {
-    pub fn get(&self, id: usize) -> Instr {
-        self.instructions[id]
-    }
+    // pub fn get(&self, id: usize) -> Instr {
+    //     self.instructions[id]
+    // }
 
     pub fn instr<T>(&self, id: Id<T>) -> &T
     where

@@ -2,19 +2,21 @@ use crate::{
     config::{MachineState, StandardConfig},
     cont::{Cont, ContFrame, HandlerClosure, PureContFrame, ReturnClause},
     env::Env,
-    value::Value,
+    value::{Record, Value},
 };
+use kola_collections::shadow_map::ShadowMap;
 use kola_ir::{
     instr::{
-        Atom, BinaryExpr, BinaryOp, CallExpr, Expr, Func, IfExpr, LetExpr, LetInExpr, RetExpr,
-        Symbol, UnaryExpr, UnaryOp,
+        Atom, BinaryExpr, BinaryOp, CallExpr, Expr, Func, IfExpr, LetExpr, LetInExpr,
+        RecordAccessExpr, RecordExpr, RecordExtendExpr, RecordField, RecordRestrictExpr,
+        RecordUpdateExpr, RecordUpdateOp, RetExpr, Symbol, UnaryExpr, UnaryOp,
     },
     ir::Ir,
 };
 
 pub fn eval_symbol(symbol: Symbol, env: &Env) -> Result<Value, String> {
     // Look up the symbol in the environment
-    env.lookup(&symbol)
+    env.get(&symbol)
         .cloned()
         .ok_or(format!("Unbound variable: {}", symbol))
 }
@@ -47,11 +49,15 @@ impl Eval for Expr {
             Expr::If(if_expr) => if_expr.eval(env, cont, ir),
             Expr::Unary(unary_expr) => unary_expr.eval(env, cont, ir),
             Expr::Binary(binary_expr) => binary_expr.eval(env, cont, ir),
+            Expr::Record(record_expr) => record_expr.eval(env, cont, ir),
+            Expr::RecordExtend(record_extend_expr) => record_extend_expr.eval(env, cont, ir),
+            Expr::RecordRestrict(record_restrict_expr) => record_restrict_expr.eval(env, cont, ir),
+            Expr::RecordUpdate(record_update_expr) => record_update_expr.eval(env, cont, ir),
+            Expr::RecordAccess(record_access_expr) => record_access_expr.eval(env, cont, ir),
+            // _ => todo!(),
         }
     }
 }
-
-// pub fn eval_return_value
 
 // M-RET : Return with a value
 impl Eval for RetExpr {
@@ -103,7 +109,7 @@ impl Eval for RetExpr {
                 }
                 ReturnClause::Function(Func { param, body }) => {
                     // Create a new environment with the value bound to param
-                    env.extend(param, value);
+                    env.insert(param, value);
 
                     // Evaluate the return handler body
                     MachineState::Standard(StandardConfig {
@@ -125,7 +131,7 @@ impl Eval for RetExpr {
         // 5. The continuation stack is updated by removing the top pure frame
 
         // Create new environment with the bound variable
-        env.extend(var, value);
+        env.insert(var, value);
 
         // Continue with the next expression
         MachineState::Standard(StandardConfig {
@@ -217,7 +223,7 @@ impl Eval for CallExpr {
         // Apply the function to the argument
         if let Value::Func(mut env, Func { param, body }) = func_val {
             // Create a new environment with the bound parameter
-            env.extend(param, arg_val);
+            env.insert(param, arg_val);
 
             // Evaluate the function body
             MachineState::Standard(StandardConfig {
@@ -352,7 +358,7 @@ impl Eval for UnaryExpr {
         };
 
         // Create a new environment with the result bound to the variable
-        env.extend(bind, result);
+        env.insert(bind, result);
 
         // Continue directly with the next expression
         MachineState::Standard(StandardConfig {
@@ -425,9 +431,262 @@ impl Eval for BinaryExpr {
         };
 
         // Create a new environment with the result bound to the variable
-        env.extend(bind, result);
+        env.insert(bind, result);
 
         // Continue directly with the next expression
+        MachineState::Standard(StandardConfig {
+            control: *next.get(ir),
+            env,
+            cont,
+        })
+    }
+}
+
+// M-RECORD: <x = {l1=V1, ..., ln=Vn}; N | γ | κ> --> <N | γ[x ↦ {l1=V1, ..., ln=Vn}] | κ>
+//
+// This rule describes record creation in the CEK machine:
+// 1. When creating a record, we evaluate all field values in the current environment γ
+// 2. We then construct a new record value with the evaluated fields
+// 3. The record value is bound to the variable specified in the RecordExpr
+// 4. We continue with the next expression
+impl Eval for RecordExpr {
+    fn eval(&self, mut env: Env, cont: Cont, ir: &Ir) -> MachineState {
+        let Self { bind, fields, next } = *self;
+
+        let mut record = ShadowMap::new();
+
+        // Evaluate each field value
+        for RecordField { label, value } in fields.get(ir) {
+            match eval_atom(*value.get(ir), &env) {
+                Ok(value) => record.insert(*label, value),
+                Err(err) => return MachineState::Error(err),
+            }
+        }
+
+        // Create a record value from the evaluated fields
+        let record_value = Value::Record(Record::new(record));
+
+        // Bind the record to the variable in the environment
+        env.insert(bind, record_value);
+
+        // Continue with the next expression
+        MachineState::Standard(StandardConfig {
+            control: *next.get(ir),
+            env,
+            cont,
+        })
+    }
+}
+
+// M-RECORDEXTEND: <x = R.{l=V}; N | γ | κ> --> <N | γ[x ↦ (γ(R) ⊕ {l=V})] | κ>
+//
+// This rule describes record extension in the CEK machine:
+// 1. We evaluate the base record R and the value V in the current environment γ
+// 2. We extend the record with the new field l=V
+// 3. The resulting extended record is bound to variable x in the environment
+// 4. The machine transitions directly to evaluating the next expression N
+impl Eval for RecordExtendExpr {
+    fn eval(&self, mut env: Env, cont: Cont, ir: &Ir) -> MachineState {
+        let Self {
+            bind,
+            base,
+            label,
+            value,
+            next,
+        } = *self;
+
+        // Evaluate the base record
+        let record_val = match eval_atom(*base.get(ir), &env) {
+            Ok(value) => value,
+            Err(err) => return MachineState::Error(err),
+        };
+
+        // Evaluate the value to extend with
+        let value = match eval_atom(*value.get(ir), &env) {
+            Ok(value) => value,
+            Err(err) => return MachineState::Error(err),
+        };
+
+        // Extract the record from the value
+        let Value::Record(mut record) = record_val else {
+            return MachineState::Error(format!(
+                "Cannot extend non-record value: {:?}",
+                record_val
+            ));
+        };
+
+        record.insert(label, value);
+
+        // Bind the extended record to the variable in the environment
+        env.insert(bind, record.into());
+
+        // Continue with the next expression
+        MachineState::Standard(StandardConfig {
+            control: *next.get(ir),
+            env,
+            cont,
+        })
+    }
+}
+
+// M-RECORDRESTRICT: <x = R\l; N | γ | κ> --> <N | γ[x ↦ (γ(R) - l)] | κ>
+//
+// This rule describes record restriction in the CEK machine:
+// 1. We evaluate the base record R in the current environment γ
+// 2. We remove the field with label l from the record
+// 3. The resulting restricted record is bound to variable x in the environment
+// 4. The machine transitions directly to evaluating the next expression N
+impl Eval for RecordRestrictExpr {
+    fn eval(&self, mut env: Env, cont: Cont, ir: &Ir) -> MachineState {
+        let Self {
+            bind,
+            base,
+            label,
+            next,
+        } = *self;
+
+        // Evaluate the base record
+        let value = match eval_atom(*base.get(ir), &env) {
+            Ok(value) => value,
+            Err(err) => return MachineState::Error(err),
+        };
+
+        // Extract the record from the value
+        let Value::Record(mut record) = value else {
+            return MachineState::Error(format!("Cannot restrict non-record value: {:?}", value));
+        };
+
+        // Remove the specified field from the record
+        record.remove(&label);
+
+        // Bind the restricted record to the variable in the environment
+        env.insert(bind, record.into());
+
+        // Continue with the next expression
+        MachineState::Standard(StandardConfig {
+            control: *next.get(ir),
+            env,
+            cont,
+        })
+    }
+}
+
+pub fn eval_record_op(op: RecordUpdateOp, left: Value, right: Value) -> Result<Value, String> {
+    match (op, left, right) {
+        (RecordUpdateOp::Assign, _, r) => Ok(r),
+        // TODO str concatenation ?
+        (RecordUpdateOp::AddAssign, Value::Num(l), Value::Num(r)) => Ok(Value::Num(l + r)),
+        (RecordUpdateOp::SubAssign, Value::Num(l), Value::Num(r)) => Ok(Value::Num(l - r)),
+        (RecordUpdateOp::MulAssign, Value::Num(l), Value::Num(r)) => Ok(Value::Num(l * r)),
+        (RecordUpdateOp::DivAssign, Value::Num(l), Value::Num(r)) => Ok(Value::Num(l / r)), // TODO check for division by zero?
+        (RecordUpdateOp::RemAssign, Value::Num(l), Value::Num(r)) => Ok(Value::Num(l % r)),
+        (op, left, right) => Err(format!(
+            "Cannot apply record update operation {:?} to: {:?} and {:?}",
+            op, left, right
+        )),
+    }
+}
+
+// M-RECORDUPDATE: <x = R.{l←V}; N | γ | κ> --> <N | γ[x ↦ (γ(R)[l←V])] | κ>
+//
+// This rule describes record update in the CEK machine:
+// 1. We evaluate the base record R and the value V in the current environment γ
+// 2. We update the field with label l to have the new value V
+// 3. The resulting updated record is bound to variable x in the environment
+// 4. The machine transitions directly to evaluating the next expression N
+impl Eval for RecordUpdateExpr {
+    fn eval(&self, mut env: Env, cont: Cont, ir: &Ir) -> MachineState {
+        let Self {
+            bind,
+            base,
+            label,
+            op,
+            value,
+            next,
+        } = *self;
+
+        // Evaluate the base record
+        let record_val = match eval_atom(*base.get(ir), &env) {
+            Ok(value) => value,
+            Err(err) => return MachineState::Error(err),
+        };
+
+        // Evaluate the value to update with
+        let update_val = match eval_atom(*value.get(ir), &env) {
+            Ok(value) => value,
+            Err(err) => return MachineState::Error(err),
+        };
+
+        // Extract the record from the value
+        let Value::Record(mut record) = record_val else {
+            return MachineState::Error(format!(
+                "Cannot update non-record value: {:?}",
+                record_val
+            ));
+        };
+
+        let Some(current_val) = record.get(&label).cloned() else {
+            return MachineState::Error(format!("Cannot update non-existing field: {:?}", label));
+        };
+
+        // Update the specified field in the record
+        let value = match eval_record_op(op, current_val, update_val) {
+            Ok(value) => value,
+            Err(err) => return MachineState::Error(err),
+        };
+        record.insert(label, value);
+
+        // Bind the updated record to the variable in the environment
+        env.insert(bind, record.into());
+
+        // Continue with the next expression
+        MachineState::Standard(StandardConfig {
+            control: *next.get(ir),
+            env,
+            cont,
+        })
+    }
+}
+
+// M-RECORDACCESS: <x = R.l; N | γ | κ> --> <N | γ[x ↦ (γ(R).l)] | κ>
+//
+// This rule describes record field access in the CEK machine:
+// 1. We evaluate the record R in the current environment γ
+// 2. We access the field with label l from the record
+// 3. The resulting field value is bound to variable x in the environment
+// 4. The machine transitions directly to evaluating the next expression N
+impl Eval for RecordAccessExpr {
+    fn eval(&self, mut env: Env, cont: Cont, ir: &Ir) -> MachineState {
+        let Self {
+            bind,
+            base,
+            label,
+            next,
+        } = *self;
+
+        // Evaluate the record
+        let record_val = match eval_atom(*base.get(ir), &env) {
+            Ok(value) => value,
+            Err(err) => return MachineState::Error(err),
+        };
+
+        // Extract the record from the value
+        let Value::Record(record) = record_val else {
+            return MachineState::Error(format!(
+                "Cannot access field from non-record value: {:?}",
+                record_val
+            ));
+        };
+
+        // Access the specified field from the record
+        let Some(value) = record.get(&label).cloned() else {
+            return MachineState::Error(format!("Field {:?} not found in record", label));
+        };
+
+        // Bind the field value to the variable in the environment
+        env.insert(bind, value);
+
+        // Continue with the next expression
         MachineState::Standard(StandardConfig {
             control: *next.get(ir),
             env,

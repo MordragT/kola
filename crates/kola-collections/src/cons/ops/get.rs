@@ -1,5 +1,5 @@
-use crate::{
-    Ctx,
+use crate::cons::{
+    Cons,
     index::{Here, Index, There},
 };
 
@@ -12,7 +12,7 @@ where
     fn get_mut(&mut self) -> &mut T;
 }
 
-impl<Head, Tail> Get<Head, Here> for Ctx<Head, Tail> {
+impl<Head, Tail> Get<Head, Here> for Cons<Head, Tail> {
     fn get(&self) -> &Head {
         &self.0
     }
@@ -22,7 +22,7 @@ impl<Head, Tail> Get<Head, Here> for Ctx<Head, Tail> {
     }
 }
 
-impl<Head, Tail, FromTail, TailIndex> Get<FromTail, There<TailIndex>> for Ctx<Head, Tail>
+impl<Head, Tail, FromTail, TailIndex> Get<FromTail, There<TailIndex>> for Cons<Head, Tail>
 where
     Tail: Get<FromTail, TailIndex> + ?Sized,
     TailIndex: Index,

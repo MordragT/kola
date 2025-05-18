@@ -1,4 +1,4 @@
-use crate::{Ctx, Empty};
+use crate::cons::{Cons, Nil};
 
 pub trait Len {
     fn len(&self) -> usize;
@@ -8,13 +8,13 @@ pub trait Len {
     }
 }
 
-impl Len for Empty {
+impl Len for Nil {
     fn len(&self) -> usize {
         0
     }
 }
 
-impl<Head, Tail> Len for Ctx<Head, Tail>
+impl<Head, Tail> Len for Cons<Head, Tail>
 where
     Tail: Len,
 {

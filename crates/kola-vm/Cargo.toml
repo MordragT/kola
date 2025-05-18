@@ -6,4 +6,6 @@ edition = "2024"
 [dependencies]
 kola-ir.workspace = true
 kola-utils.workspace = true
+kola-collections.workspace = true
 derive_more.workspace = true
+imbl.workspace = true

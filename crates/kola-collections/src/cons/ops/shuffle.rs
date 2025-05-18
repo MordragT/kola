@@ -1,7 +1,7 @@
 use super::Split;
-use crate::{Empty, index::ManyIndex};
+use crate::cons::{Nil, index::ManyIndex};
 
-pub trait Shuffle<T, I>: Split<T, I, Remainder = Empty>
+pub trait Shuffle<T, I>: Split<T, I, Remainder = Nil>
 where
     I: ManyIndex,
 {
@@ -10,7 +10,7 @@ where
 
 impl<T, L, I> Shuffle<L, I> for T
 where
-    T: Split<L, I, Remainder = Empty>,
+    T: Split<L, I, Remainder = Nil>,
     I: ManyIndex,
 {
     fn shuffle(self) -> L {

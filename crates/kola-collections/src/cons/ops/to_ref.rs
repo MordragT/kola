@@ -1,4 +1,4 @@
-use crate::{Ctx, Empty};
+use crate::cons::{Cons, Nil};
 
 pub trait ToRef {
     type Ref<'a>
@@ -12,7 +12,7 @@ pub trait ToRef {
     fn to_mut(&mut self) -> Self::Mut<'_>;
 }
 
-impl ToRef for Empty {
+impl ToRef for Nil {
     type Ref<'a> = Self;
     type Mut<'a> = Self;
 
@@ -25,26 +25,26 @@ impl ToRef for Empty {
     }
 }
 
-impl<Head, Tail> ToRef for Ctx<Head, Tail>
+impl<Head, Tail> ToRef for Cons<Head, Tail>
 where
     Tail: ToRef,
 {
     type Ref<'a>
-        = Ctx<&'a Head, Tail::Ref<'a>>
+        = Cons<&'a Head, Tail::Ref<'a>>
     where
         Self: 'a;
     type Mut<'a>
-        = Ctx<&'a mut Head, Tail::Mut<'a>>
+        = Cons<&'a mut Head, Tail::Mut<'a>>
     where
         Self: 'a;
 
     fn to_ref(&self) -> Self::Ref<'_> {
-        let Ctx(head, tail) = self;
-        Ctx(head, tail.to_ref())
+        let Cons(head, tail) = self;
+        Cons(head, tail.to_ref())
     }
 
     fn to_mut(&mut self) -> Self::Mut<'_> {
-        let Ctx(head, tail) = self;
-        Ctx(head, tail.to_mut())
+        let Cons(head, tail) = self;
+        Cons(head, tail.to_mut())
     }
 }

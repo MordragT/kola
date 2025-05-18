@@ -1,4 +1,4 @@
-use crate::Ctx;
+use crate::cons::Cons;
 
 // A trait for getting a component at a specific position
 pub trait GetAt<T, const N: usize> {
@@ -7,7 +7,7 @@ pub trait GetAt<T, const N: usize> {
 }
 
 // Implement for Cons at position 0 (head)
-impl<Head, Tail> GetAt<Head, 0> for Ctx<Head, Tail> {
+impl<Head, Tail> GetAt<Head, 0> for Cons<Head, Tail> {
     fn get_at(&self) -> &Head {
         &self.0
     }
@@ -22,7 +22,7 @@ impl<Head, Tail> GetAt<Head, 0> for Ctx<Head, Tail> {
 macro_rules! generate_get_at_impls {
     ($($n:expr),*) => {
         $(
-            impl<Head, Tail, T> GetAt<T, $n> for Ctx<Head, Tail>
+            impl<Head, Tail, T> GetAt<T, $n> for Cons<Head, Tail>
             where
                 Tail: GetAt<T, {$n - 1}>,
             {

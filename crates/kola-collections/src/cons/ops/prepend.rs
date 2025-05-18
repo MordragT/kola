@@ -1,4 +1,4 @@
-use crate::Ctx;
+use crate::cons::Cons;
 
 pub trait Prepend {
     type Output<T>;
@@ -7,9 +7,9 @@ pub trait Prepend {
 }
 
 impl<L> Prepend for L {
-    type Output<T> = Ctx<T, L>;
+    type Output<T> = Cons<T, L>;
 
     fn prepend<T>(self, item: T) -> Self::Output<T> {
-        Ctx(item, self)
+        Cons(item, self)
     }
 }

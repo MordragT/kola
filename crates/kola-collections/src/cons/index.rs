@@ -22,9 +22,9 @@ impl<T> Index for There<T> where T: Index {}
 /// Essentially another cons list but composed of `Index`es.
 pub trait ManyIndex {}
 
-impl ManyIndex for super::Empty {}
+impl ManyIndex for super::Nil {}
 
-impl<Head, Tail> ManyIndex for super::Ctx<Head, Tail>
+impl<Head, Tail> ManyIndex for super::Cons<Head, Tail>
 where
     Head: Index,
     Tail: ManyIndex,

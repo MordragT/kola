@@ -1,4 +1,4 @@
-use crate::{Ctx, Empty};
+use crate::cons::{Cons, Nil};
 
 pub trait Append {
     type Output<T>;
@@ -6,23 +6,23 @@ pub trait Append {
     fn append<T>(self, item: T) -> Self::Output<T>;
 }
 
-impl Append for Empty {
-    type Output<T> = Ctx<T, Empty>;
+impl Append for Nil {
+    type Output<T> = Cons<T, Nil>;
 
     fn append<T>(self, item: T) -> Self::Output<T> {
-        Ctx(item, Empty)
+        Cons(item, Nil)
     }
 }
 
-impl<Head, Tail> Append for Ctx<Head, Tail>
+impl<Head, Tail> Append for Cons<Head, Tail>
 where
     Tail: Append,
 {
-    type Output<T> = Ctx<Head, Tail::Output<T>>;
+    type Output<T> = Cons<Head, Tail::Output<T>>;
 
     fn append<T>(self, item: T) -> Self::Output<T> {
-        let Ctx(head, tail) = self;
+        let Cons(head, tail) = self;
         let tail = tail.append(item);
-        Ctx(head, tail)
+        Cons(head, tail)
     }
 }

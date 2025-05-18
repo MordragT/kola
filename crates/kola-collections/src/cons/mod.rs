@@ -2,57 +2,51 @@ pub mod convert;
 pub mod index;
 pub mod ops;
 
-pub mod prelude {
-    pub use crate::index::*;
-    pub use crate::ops::*;
-    pub use crate::{Ctx, Empty};
-}
-
 #[macro_export]
-macro_rules! Ctx {
+macro_rules! Cons {
     () => {
-        $crate::Empty
+        $crate::cons::Nil
     };
 
     ($first:ty $(, $rest:ty)* $(,)?) => {
-        $crate::Ctx<$first, $crate::Ctx!($($rest),*)>
+        $crate::cons::Cons<$first, $crate::Cons!($($rest),*)>
     };
 
 }
 
 #[macro_export]
-macro_rules! ctx {
+macro_rules! cons {
     () => {
-        $crate::Empty
+        $crate::cons::Nil
     };
 
     ($first:ident $(, $rest:ident)* $(,)?) => {
-        $crate::Ctx($first, $crate::ctx!($($rest),*))
+        $crate::cons::Cons($first, $crate::cons!($($rest),*))
     };
 
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
-pub struct Empty;
+pub struct Nil;
 
-impl Empty {
+impl Nil {
     pub const fn new() -> Self {
-        Empty
+        Nil
     }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Default)]
-pub struct Ctx<Head, Tail>(pub Head, pub Tail)
+pub struct Cons<Head, Tail>(pub Head, pub Tail)
 where
     Tail: ?Sized;
 
-impl<Head> Ctx<Head, Empty> {
+impl<Head> Cons<Head, Nil> {
     pub const fn new(head: Head) -> Self {
-        Ctx(head, Empty)
+        Cons(head, Nil)
     }
 }
 
-impl<Head, Tail> Ctx<Head, Tail> {
+impl<Head, Tail> Cons<Head, Tail> {
     pub const fn head(&self) -> &Head {
         &self.0
     }

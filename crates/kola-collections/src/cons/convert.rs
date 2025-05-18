@@ -1,9 +1,9 @@
 macro_rules! tuple_from_ctx {
     ($($types:ident),*) => {
-        impl<$($types),*> From<$crate::Ctx!($($types,)*)> for ($($types,)*) {
+        impl<$($types),*> From<$crate::Cons!($($types,)*)> for ($($types,)*) {
             #[allow(non_snake_case, clippy::unused_unit)]
-            fn from(value: $crate::Ctx!($($types,)*)) -> Self {
-                let $crate::ctx!($($types,)*) = value;
+            fn from(value: $crate::Cons!($($types,)*)) -> Self {
+                let $crate::cons!($($types,)*) = value;
                 ($($types,)*)
             }
         }
@@ -28,11 +28,11 @@ tuple_from_ctx!();
 
 macro_rules! ctx_from_tuple {
     ($($types:ident),*) => {
-        impl<$($types),*> From<($($types,)*)> for $crate::Ctx!($($types,)*) {
+        impl<$($types),*> From<($($types,)*)> for $crate::Cons!($($types,)*) {
             #[allow(non_snake_case)]
             fn from(value: ($($types,)*)) -> Self {
                 let ($($types,)*) = value;
-                $crate::ctx!($($types,)*)
+                $crate::cons!($($types,)*)
             }
         }
     };

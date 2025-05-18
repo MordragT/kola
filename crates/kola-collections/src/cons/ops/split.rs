@@ -1,6 +1,6 @@
 use super::Remove;
-use crate::{
-    Ctx, Empty,
+use crate::cons::{
+    Cons, Nil,
     index::{Index, ManyIndex},
 };
 
@@ -13,16 +13,16 @@ where
     fn split(self) -> (T, Self::Remainder);
 }
 
-impl<T> Split<Empty, Empty> for T {
+impl<T> Split<Nil, Nil> for T {
     type Remainder = Self;
 
-    fn split(self) -> (Empty, Self::Remainder) {
-        (Empty, self)
+    fn split(self) -> (Nil, Self::Remainder) {
+        (Nil, self)
     }
 }
 
 impl<Head, Tail, OtherHead, OtherTail, IndexHead, IndexTail>
-    Split<Ctx<OtherHead, OtherTail>, Ctx<IndexHead, IndexTail>> for Ctx<Head, Tail>
+    Split<Cons<OtherHead, OtherTail>, Cons<IndexHead, IndexTail>> for Cons<Head, Tail>
 where
     IndexHead: Index,
     IndexTail: ManyIndex,
@@ -34,9 +34,9 @@ where
         IndexTail,
     >>::Remainder;
 
-    fn split(self) -> (Ctx<OtherHead, OtherTail>, Self::Remainder) {
+    fn split(self) -> (Cons<OtherHead, OtherTail>, Self::Remainder) {
         let (head, remainder) = self.remove();
         let (tail, final_remainder) = remainder.split();
-        (Ctx(head, tail), final_remainder)
+        (Cons(head, tail), final_remainder)
     }
 }

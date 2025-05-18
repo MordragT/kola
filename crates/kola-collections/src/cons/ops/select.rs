@@ -1,5 +1,5 @@
 use super::{Split, ToRef};
-use crate::index::ManyIndex;
+use crate::cons::index::ManyIndex;
 
 pub trait Select<T, I>
 where
