@@ -106,6 +106,19 @@ pub struct ContFrame {
     pub handler: HandlerClosure,
 }
 
+impl ContFrame {
+    /// Creates the identity continuation frame  ([ ], (∅, {return x → x}))
+    pub fn identity() -> Self {
+        Self {
+            pure: PureCont::empty(),
+            handler: HandlerClosure {
+                handler: Handler::identity(),
+                env: Env::empty(),
+            },
+        }
+    }
+}
+
 /// A continuation κ consists of a stack of continuation frames
 /// We choose to annotate captured continuations with their input type
 #[derive(Debug, Clone, PartialEq)]
@@ -121,29 +134,18 @@ impl Cont {
 
     /// Creates the identity continuation κ0 = [([ ], (∅, {return x → x}))]
     pub fn identity() -> Self {
-        // Create an empty handler with just the identity return clause
-        let identity_handler = Handler::identity();
-
-        // Create handler closure
-        let handler_closure = HandlerClosure {
-            handler: identity_handler,
-            env: Env::empty(),
-        };
-
-        // Create continuation frame with empty pure continuation
-        let frame = ContFrame {
-            pure: PureCont::empty(),
-            handler: handler_closure,
-        };
-
         // Return continuation with single frame
         Self {
-            frames: vec![frame],
+            frames: vec![ContFrame::identity()],
         }
     }
 
     pub fn push(&mut self, frame: ContFrame) {
         self.frames.push(frame);
+    }
+
+    pub fn append(&mut self, cont: &mut Cont) {
+        self.frames.append(&mut cont.frames);
     }
 
     pub fn pop(&mut self) -> Option<ContFrame> {

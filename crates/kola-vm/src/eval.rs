@@ -1,11 +1,14 @@
 use crate::{
     config::{MachineState, StandardConfig},
-    cont::{Cont, ContFrame, Handler, HandlerClosure, PureCont, PureContFrame, ReturnClause},
+    cont::{Cont, ContFrame, PureContFrame, ReturnClause},
     env::Env,
     value::Value,
 };
 use kola_ir::{
-    instr::{Atom, CallExpr, Expr, Func, Instr, LetExpr, RetExpr, Symbol},
+    instr::{
+        Atom, BinaryExpr, CallExpr, Expr, Func, IfExpr, LetExpr, LetInExpr, RetExpr, Symbol,
+        UnaryExpr,
+    },
     ir::Ir,
 };
 
@@ -34,29 +37,16 @@ pub trait Eval {
     fn eval(&self, env: Env, cont: Cont, ir: &Ir) -> MachineState;
 }
 
-impl Eval for Instr {
-    fn eval(&self, env: Env, cont: Cont, ir: &Ir) -> MachineState {
-        match self {
-            Instr::Expr(expr) => expr.eval(env, cont, ir),
-            Instr::Atom(atom) => match eval_atom(*atom, &env) {
-                Ok(value) => MachineState::Value(value),
-                Err(err) => MachineState::Error(err),
-            },
-            Instr::Symbol(symbol) => match eval_symbol(*symbol, &env) {
-                Ok(value) => MachineState::Value(value),
-                Err(err) => MachineState::Error(err),
-            },
-        }
-    }
-}
-
 impl Eval for Expr {
     fn eval(&self, env: Env, cont: Cont, ir: &Ir) -> MachineState {
         match self {
-            Expr::Call(call) => call.eval(env, cont, ir),
-            Expr::Let(let_expr) => let_expr.eval(env, cont, ir),
             Expr::Ret(ret_expr) => ret_expr.eval(env, cont, ir),
-            _ => todo!(),
+            Expr::Let(let_expr) => let_expr.eval(env, cont, ir),
+            Expr::LetIn(let_in_expr) => let_in_expr.eval(env, cont, ir),
+            Expr::Call(call) => call.eval(env, cont, ir),
+            Expr::If(if_expr) => if_expr.eval(env, cont, ir),
+            Expr::Unary(unary_expr) => unary_expr.eval(env, cont, ir),
+            Expr::Binary(binary_expr) => binary_expr.eval(env, cont, ir),
         }
     }
 }
@@ -78,7 +68,15 @@ impl Eval for RetExpr {
 
         // If there's a pure continuation, apply it
         let [.., pure_frame] = frame.pure.frames.as_slice() else {
-            // M-RETHANDLER: Apply the return clause of the handler
+            // M-RETHANDLER: <return V | γ | ([], (γ', H)) :: κ> --> <M | γ'[x ↦ V] | κ>,
+            // if H(return) = {return x ↦ M}
+            //
+            // When a return expression with value V reaches a handler frame with
+            // an empty pure continuation, we:
+            // 1. Extract the return clause from the handler H
+            // 2. Bind the returned value V to parameter x in the handler's environment γ'
+            // 3. Continue by evaluating the return handler's body M with the updated environment
+            // 4. Use the continuation κ below the current handler frame
             let handler_closure = &frame.handler;
 
             return match &handler_closure.handler.return_clause {
@@ -120,7 +118,14 @@ impl Eval for RetExpr {
             };
         };
 
-        // M-RETCONT: Apply the pure continuation
+        // M-RETCONT: <return V | γ | ((γ', x, N) :: σ, χ) :: κ> --> <N | γ'[x ↦ V] | (σ, χ) :: κ>
+        //
+        // When a return expression with value V reaches a pure continuation frame:
+        // 1. The value V is evaluated in the current environment γ
+        // 2. We extract the pure continuation frame containing variable x, body N, and environment γ'
+        // 3. We bind the value V to variable x in the environment γ'
+        // 4. We continue by evaluating N in this updated environment
+        // 5. The continuation stack is updated by removing the top pure frame
 
         let control = *pure_frame.body.get(ir);
 
@@ -140,8 +145,15 @@ impl Eval for RetExpr {
     }
 }
 
-// M-LET : Process a let binding
-// < let x ← M in N | γ | (σ, χ) :: κ > −→ < M | γ | ((γ, x, N) :: σ, χ) :: κi >
+// M-LET : <let x ← M in N | γ | (σ, χ) :: κ> --> <M | γ | ((γ, x, N) :: σ, χ) :: κ>
+//
+// This rule handles let-bindings in the CEK machine. When evaluating a let-expression:
+// 1. We push a pure continuation frame onto the current continuation stack
+// 2. The pure frame captures: the current environment (γ), the variable to be bound (x),
+//    and the body expression (N) to evaluate after binding
+// 3. We then proceed to evaluate the right-hand-side expression (M) with the current environment
+// 4. When M evaluates to a value, it will be bound to x via the continuation mechanism,
+//    which will then evaluate N with the extended environment
 impl Eval for LetExpr {
     fn eval(&self, env: Env, mut cont: Cont, ir: &Ir) -> MachineState {
         // Create a pure continuation frame
@@ -151,28 +163,9 @@ impl Eval for LetExpr {
             env: env.clone(),
         };
 
-        let [.., frame] = cont.frames.as_mut_slice() else {
-            // If the continuation has no frames, create one with identity handler
-            let identity_frame = ContFrame {
-                pure: PureCont::empty(),
-                handler: HandlerClosure {
-                    handler: Handler::identity(),
-                    env: Env::empty(),
-                },
-            };
-
-            cont.push(identity_frame);
-
-            // TODO does the pure_frame need to be pushed here?
-
-            return MachineState::Standard(StandardConfig {
-                control: Expr::from(RetExpr { arg: self.value }),
-                env,
-                cont,
-            });
-        };
-
+        let mut frame = cont.frames.pop().unwrap_or(ContFrame::identity());
         frame.pure.push(pure_frame);
+        cont.push(frame);
 
         // Evaluate the bound value
         MachineState::Standard(StandardConfig {
@@ -183,57 +176,103 @@ impl Eval for LetExpr {
     }
 }
 
-// M-APP : Apply a function
-// V W | γ | κ => M | γ'[x -> [| W |] γ ] | κ
+impl Eval for LetInExpr {
+    fn eval(&self, env: Env, mut cont: Cont, ir: &Ir) -> MachineState {
+        todo!()
+    }
+}
+
+// M-APP: <V W | γ | κ> --> <M | γ'[x ↦ W] | κ> if V = (γ', λx.M)
+//
+// This rule describes function application in the CEK machine:
+// 1. V is a function value evaluating to a closure with environment γ' and function body M with parameter x
+// 2. W is the argument value being passed to the function
+// 3. The machine transitions to evaluating the function body M
+// 4. Using an extended environment that adds the binding [x ↦ W] to the function's captured environment γ'
+// 5. The continuation κ remains unchanged during function application
 impl Eval for CallExpr {
     fn eval(&self, env: Env, mut cont: Cont, ir: &Ir) -> MachineState {
+        let Self {
+            bind,
+            func,
+            arg,
+            next,
+        } = *self;
+
         // Get the function and argument
-        let func_val = match eval_atom(*self.func.get(ir), &env) {
+        let func_val = match eval_atom(*func.get(ir), &env) {
             Ok(value) => value,
             Err(err) => return MachineState::Error(err),
         };
 
-        let arg_val = match eval_atom(*self.arg.get(ir), &env) {
+        let arg_val = match eval_atom(*arg.get(ir), &env) {
             Ok(value) => value,
             Err(err) => return MachineState::Error(err),
         };
 
         // Create a pure continuation frame for the next expression
-        let frame = PureContFrame {
-            var: self.bind,
-            body: self.next,
+        let pure_frame = PureContFrame {
+            var: bind,
+            body: next,
             env: env.clone(),
         };
 
         // Add the frame to the continuation
-        if let Some(frame_ref) = cont.frames.last_mut() {
-            frame_ref.pure.push(frame);
-        } else {
-            // This shouldn't happen in a well-formed continuation
-            return MachineState::Error("Continuation frames inconsistency".to_string());
-        }
+        let mut frame = cont.frames.pop().unwrap_or(ContFrame::identity());
+        frame.pure.push(pure_frame);
+        cont.push(frame);
 
         // Apply the function to the argument
-        if let Value::Func(func_env, Func { param, body }) = func_val {
+        if let Value::Func(mut env, Func { param, body }) = func_val {
             // Create a new environment with the bound parameter
-            let mut new_env = func_env.clone();
-            new_env.extend(param, arg_val);
+            env.extend(param, arg_val);
 
             // Evaluate the function body
             MachineState::Standard(StandardConfig {
                 control: *body.get(ir),
-                env: new_env,
+                env,
                 cont,
             })
-        } else if let Value::Cont(captured_cont) = func_val {
-            // Apply the continuation to the argument
+        } else if let Value::Cont(mut captured) = func_val {
+            // M-APPCONT: <V W | γ | κ> --> <return W | γ | κ' ++ κ>  if V = κ'
+            //
+            // This rule handles continuation application in the CEK machine:
+            // 1. When we apply a captured continuation value (V = κ') to an argument W
+            // 2. We transition to returning the argument value W
+            // 3. The environment γ remains unchanged
+            // 4. We prepend the captured continuation κ' to the current continuation κ,
+            //    effectively composing the continuations
+            // 5. This allows control to transfer to the point where the continuation was captured,
+            //    with the argument W becoming the returned value at that point
+
+            captured.append(&mut cont);
+
+            // Apply the captured continuation to the argument
             MachineState::Standard(StandardConfig {
-                control: *self.next.get(ir), // Skip to next after applying
+                control: Expr::from(RetExpr { arg }),
                 env,
-                cont: captured_cont,
+                cont: captured,
             })
         } else {
             MachineState::Error(format!("Cannot apply non-function value: {:?}", func_val))
         }
+    }
+}
+
+impl Eval for IfExpr {
+    fn eval(&self, env: Env, mut cont: Cont, ir: &Ir) -> MachineState {
+        todo!()
+    }
+}
+
+impl Eval for UnaryExpr {
+    fn eval(&self, env: Env, cont: Cont, ir: &Ir) -> MachineState {
+        todo!()
+    }
+}
+
+impl Eval for BinaryExpr {
+    fn eval(&self, env: Env, cont: Cont, ir: &Ir) -> MachineState {
+        todo!()
     }
 }
