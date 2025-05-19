@@ -70,7 +70,7 @@ impl SourceManager {
     pub fn fetch<'p>(
         &mut self,
         path: impl Into<Cow<'p, Utf8Path>>,
-        io: &dyn FileSystem,
+        io: &impl FileSystem,
     ) -> io::Result<(PathKey, &Source)> {
         let path = path.into();
         assert!(path.is_absolute());
@@ -97,7 +97,7 @@ impl SourceManager {
         from: PathKey,
         name: StrKey,
         interner: &StrInterner,
-        io: &dyn FileSystem,
+        io: &impl FileSystem,
     ) -> io::Result<(PathKey, &Source)> {
         let path = self.resolve_import(from, name, interner)?;
         self.fetch(path, io)

@@ -19,6 +19,10 @@ impl Forest {
         self.0[&path].clone()
     }
 
+    pub fn insert(&mut self, path: PathKey, tree: Tree) {
+        self.0.insert(path, Rc::new(tree));
+    }
+
     pub fn node<T>(&self, path: PathKey, id: Id<T>) -> &T
     where
         Node: TryAsRef<T>,

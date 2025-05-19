@@ -1,13 +1,13 @@
-use kola_tree::prelude::*;
+use kola_tree::prelude::{Id as TreeId, *};
 use std::collections::HashMap;
 
-use kola_ir::{self as ir, InstrId, IrBuilder};
+use kola_ir::prelude::{Id as InstrId, *};
 
 // TODO scoping
 #[derive(Debug, Clone, Default)]
 pub struct SymbolEnv {
     generator: u32,
-    table: HashMap<node::Symbol, ir::Symbol>,
+    table: HashMap<node::Symbol, instr::Symbol>,
 }
 
 impl SymbolEnv {
@@ -15,13 +15,13 @@ impl SymbolEnv {
         Self::default()
     }
 
-    pub fn next(&mut self) -> ir::Symbol {
-        let symbol = ir::Symbol(self.generator);
+    pub fn next(&mut self) -> instr::Symbol {
+        let symbol = instr::Symbol(self.generator);
         self.generator += 1;
         symbol
     }
 
-    pub fn lookup(&mut self, symbol: &node::Symbol) -> ir::Symbol {
+    pub fn lookup(&mut self, symbol: &node::Symbol) -> instr::Symbol {
         if let Some(sym) = self.table.get(symbol) {
             *sym
         } else {
@@ -33,8 +33,12 @@ impl SymbolEnv {
 }
 
 // subst(expr,hole,atom) ~= let hole = atom; expr
-pub fn subst(expr: InstrId<ir::Expr>, hole: ir::Symbol, atom: InstrId<ir::Atom>) -> ir::Expr {
-    ir::Expr::Let {
+pub fn subst(
+    expr: InstrId<instr::Expr>,
+    hole: instr::Symbol,
+    atom: InstrId<instr::Atom>,
+) -> instr::Expr {
+    instr::Expr::Let {
         bind: hole,
         value: atom,
         next: expr,
@@ -57,16 +61,16 @@ impl Normalizer {
         }
     }
 
-    // fn fresh_symbol(&mut self, symbol: &Symbol) -> ir::Symbol {
+    // fn fresh_symbol(&mut self, symbol: &Symbol) -> instr::Symbol {
     //     let next = self.symbols.len() as u32;
 
     //     *self
     //         .symbols
     //         .entry(symbol.clone())
-    //         .or_insert(ir::Symbol(next))
+    //         .or_insert(instr::Symbol(next))
     // }
 
-    pub fn normalize(tree: &Tree) -> ir::Ir {
+    pub fn normalize(tree: &Tree) -> instr::Ir {
         let mut normalizer = Self::new();
 
         let root = tree.root_id().get(tree);
@@ -76,10 +80,10 @@ impl Normalizer {
     }
 
     // TODO better name that a function body is normalized here
-    fn normalize_with(&mut self, expr: &node::Expr, tree: &Tree) -> InstrId<ir::Expr> {
+    fn normalize_with(&mut self, expr: &node::Expr, tree: &Tree) -> InstrId<instr::Expr> {
         let bind = self.symbols.next();
-        let arg = self.builder.push(ir::Atom::Symbol(bind));
-        let ret = self.builder.push(ir::Expr::Ret { arg });
+        let arg = self.builder.push(instr::Atom::Symbol(bind));
+        let ret = self.builder.push(instr::Expr::Ret { arg });
 
         self.normalize_expr(expr, bind, ret, tree)
     }
@@ -87,23 +91,23 @@ impl Normalizer {
     fn normalize_expr(
         &mut self,
         expr: &node::Expr,
-        hole: ir::Symbol,
-        ctx: InstrId<ir::Expr>,
+        hole: instr::Symbol,
+        ctx: InstrId<instr::Expr>,
         tree: &Tree,
-    ) -> InstrId<ir::Expr> {
+    ) -> InstrId<instr::Expr> {
         use node::Expr::*;
 
         match expr {
             Error(_) => panic!(),
             Literal(id) => {
                 let lit = id.get(tree);
-                let atom = self.builder.push(ir::Atom::from(lit.clone()));
+                let atom = self.builder.push(instr::Atom::from(lit.clone()));
                 self.builder.push(subst(ctx, hole, atom))
             }
             Ident(id) => {
                 let ident = id.get(tree);
                 let symbol = self.symbols.lookup(&ident.0);
-                let atom = self.builder.push(ir::Atom::from(symbol));
+                let atom = self.builder.push(instr::Atom::from(symbol));
                 self.builder.push(subst(ctx, hole, atom))
             }
 
@@ -145,16 +149,16 @@ impl Normalizer {
                 let node::LambdaExpr { param, body } = id.get(tree);
 
                 let bind = self.symbols.next();
-                let atom = self.builder.push(ir::Atom::from(bind));
+                let atom = self.builder.push(instr::Atom::from(bind));
 
                 // TODO scope
                 let param = self.symbols.lookup(param.get(tree));
                 let body = self.normalize_with(body.get(tree), tree);
-                let func = self.builder.push(ir::Atom::Func { param, body });
+                let func = self.builder.push(instr::Atom::Func { param, body });
 
                 let next = self.builder.push(subst(ctx, hole, atom));
 
-                self.builder.push(ir::Expr::Let {
+                self.builder.push(instr::Expr::Let {
                     bind,
                     value: func,
                     next,
@@ -166,11 +170,11 @@ impl Normalizer {
                 let node::CallExpr { func, arg } = id.get(tree);
 
                 let f = self.symbols.next();
-                let f_atom = self.builder.push(ir::Atom::from(f));
+                let f_atom = self.builder.push(instr::Atom::from(f));
                 let x = self.symbols.next();
-                let x_atom = self.builder.push(ir::Atom::from(x));
+                let x_atom = self.builder.push(instr::Atom::from(x));
 
-                let res = self.builder.push(ir::Expr::Call {
+                let res = self.builder.push(instr::Expr::Call {
                     bind: hole,
                     func: f_atom,
                     arg: x_atom,

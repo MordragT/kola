@@ -23,3 +23,9 @@ https://matt.might.net/articles/a-normalization/
 pub mod id;
 pub mod instr;
 pub mod ir;
+
+pub mod prelude {
+    pub use crate::id::Id;
+    pub use crate::instr;
+    pub use crate::ir::{Ir, IrBuilder};
+}

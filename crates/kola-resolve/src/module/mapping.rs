@@ -1,3 +1,5 @@
+use std::ops::Index;
+
 use kola_tree::{id::Id, node};
 use kola_utils::{bimap::BiMap, interner::PathKey};
 
@@ -21,5 +23,13 @@ impl ModuleKeyMapping {
 
     pub fn get_by_key(&self, key: &ModuleKey) -> Option<&(PathKey, Id<node::Module>)> {
         self.0.get_by_key(key)
+    }
+}
+
+impl Index<ModuleKey> for ModuleKeyMapping {
+    type Output = (PathKey, Id<node::Module>);
+
+    fn index(&self, key: ModuleKey) -> &Self::Output {
+        self.0.get_by_key(&key).unwrap()
     }
 }

@@ -174,3 +174,25 @@ impl FileSystem for MockFileSystem {
         Ok(path.to_owned())
     }
 }
+
+impl FileSystem for Box<dyn FileSystem> {
+    fn read_dir(&self, path: &Utf8Path) -> io::Result<ReadDir> {
+        (**self).read_dir(path)
+    }
+
+    fn read_file(&self, path: &Utf8Path) -> io::Result<String> {
+        (**self).read_file(path)
+    }
+
+    fn is_dir(&self, path: &Utf8Path) -> bool {
+        (**self).is_dir(path)
+    }
+
+    fn is_file(&self, path: &Utf8Path) -> bool {
+        (**self).is_file(path)
+    }
+
+    fn canonicalize(&self, path: &Utf8Path) -> io::Result<Utf8PathBuf> {
+        (**self).canonicalize(path)
+    }
+}

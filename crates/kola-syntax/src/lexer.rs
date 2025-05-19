@@ -510,7 +510,6 @@ mod test {
         let mut interner = PathInterner::new();
         let key = interner.intern(Utf8PathBuf::from("test"));
         let mut report = Report::new();
-        let world = World::new().with(&mut report);
 
         let input = LexInput {
             key,
@@ -518,7 +517,7 @@ mod test {
         };
 
         // Invalid tokens should be skipped and lexing should continue
-        let tokens = tokenize(input, world);
+        let tokens = tokenize(input, &mut report);
         assert!(report.diagnostics.len() == 1); // Should have one error for the @
         assert!(tokens.is_some());
         let tokens = tokens.unwrap();

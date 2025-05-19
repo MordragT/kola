@@ -39,7 +39,7 @@ where
     ///
     /// If the key is found, returns the index of the first occurrence.
     /// If the key is not found, returns the index where it can be inserted.
-    pub fn binary_search_by_key(&self, key: &K) -> Result<usize, usize> {
+    pub fn binary_search(&self, key: &K) -> Result<usize, usize> {
         let mut idx = self.entries.binary_search_by(|(k, _)| k.cmp(key))?;
         while idx > 0 && self.entries[idx - 1].0 == *key {
             idx -= 1; // Move to the first occurrence
@@ -51,7 +51,7 @@ where
     ///
     /// The key is inserted at its correct position to maintain ordering.
     pub fn insert(&mut self, key: K, value: V) {
-        let idx = match self.binary_search_by_key(&key) {
+        let idx = match self.binary_search(&key) {
             Ok(idx) => idx,  // Key exists, insert after the last occurrence
             Err(idx) => idx, // Key doesn't exist, insert at computed position
         };
@@ -62,7 +62,7 @@ where
     ///
     /// If there are multiple values with the same key, returns the first one found.
     pub fn get(&self, key: &K) -> Option<&V> {
-        match self.binary_search_by_key(key) {
+        match self.binary_search(key) {
             Ok(idx) => Some(&self.entries[idx].1),
             Err(_) => None,
         }
@@ -72,7 +72,7 @@ where
     ///
     /// If there are multiple values with the same key, returns the first one found.
     pub fn get_mut(&mut self, key: &K) -> Option<&mut V> {
-        match self.binary_search_by_key(key) {
+        match self.binary_search(key) {
             Ok(idx) => Some(&mut self.entries[idx].1),
             Err(_) => None,
         }
@@ -80,7 +80,7 @@ where
 
     /// Returns `true` if the map contains the specified key.
     pub fn contains_key(&self, key: &K) -> bool {
-        self.binary_search_by_key(key).is_ok()
+        self.binary_search(key).is_ok()
     }
 
     /// Removes a key-value pair from the map.
@@ -88,7 +88,7 @@ where
     /// If the map contains multiple pairs with the same key, removes the first one.
     /// Returns the value associated with the key if it was present in the map.
     pub fn remove(&mut self, key: &K) -> Option<V> {
-        match self.binary_search_by_key(key) {
+        match self.binary_search(key) {
             Ok(idx) => Some(self.entries.remove(idx).1),
             Err(_) => None,
         }

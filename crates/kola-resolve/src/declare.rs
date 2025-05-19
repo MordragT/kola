@@ -1,29 +1,18 @@
 use log::debug;
 use owo_colors::OwoColorize;
-use std::{
-    collections::{HashMap, HashSet},
-    ops::{ControlFlow, Deref},
-    rc::Rc,
-};
+use std::ops::{ControlFlow, Deref};
 
-use kola_context::prelude::*;
 use kola_print::prelude::*;
-use kola_span::{IntoDiagnostic, Loc, SourceManager};
+use kola_span::{IntoDiagnostic, Loc};
 use kola_syntax::prelude::*;
 use kola_tree::prelude::*;
-use kola_utils::{
-    dependency::DependencyGraph,
-    interner::{PathKey, StrInterner},
-};
+use kola_utils::interner::PathKey;
 
 use crate::{
-    forest::Forest,
+    context::ResolveContext,
     module::{
-        ModuleBindInfo, ModuleKey, ModuleKeyMapping, ModuleScope, TypeBindInfo,
-        UnresolvedModuleScope, ValueBindInfo,
+        ModuleBindInfo, ModuleKey, ModuleScope, TypeBindInfo, UnresolvedModuleScope, ValueBindInfo,
     },
-    resolver::Resolver,
-    topography::Topography,
 };
 
 #[derive(Debug, Clone, Default)]
@@ -60,82 +49,49 @@ impl ScopeStack {
     }
 }
 
-// pub struct DeclareCtx<'a> {
-//     pub interner: &'a mut StrInterner,
-//     pub source_manager: &'a mut SourceManager,
-//     pub forest: &'a mut Forest,
-//     pub topography: &'a Topography,
-//     pub module_mapping: &'a mut ModuleKeyMapping,
-//     pub dependencies: &'a mut DependencyGraph<ModuleKey>,
-//     pub unresolved_modules: &'a mut HashMap<ModuleKey, UnresolvedModuleScope>,
-//     pub in_progress: &'a mut HashSet<ModuleKey>,
-// }
+pub fn declare(path_key: PathKey, ctx: &mut ResolveContext) -> ModuleKey {
+    let mut scopes = ScopeStack::new();
 
-pub type DeclareCtx<'a> = Ctx![
-    &'a mut StrInterner,
-    &'a mut SourceManager,
-    &'a mut Forest,
-    &'a Topography,
-    &'a mut ModuleKeyMapping,
-    &'a mut DependencyGraph<ModuleKey>,
-    &'a mut HashMap<ModuleKey, UnresolvedModuleScope>,
-    &'a mut HashSet<ModuleKey>
-];
+    let tree = ctx.forest.tree(path_key);
 
-#[derive(Debug, Clone)]
-pub struct Declare {
-    pub path_key: PathKey,
-    pub scopes: ScopeStack,
-}
+    // Create a visitor to walk the tree and collect declarations
+    let mut declarer = Declarer::new(path_key, &mut scopes, ctx);
 
-impl Declare {
-    pub fn new(path_key: PathKey) -> Self {
-        Self {
-            path_key,
-            scopes: ScopeStack::new(),
-        }
+    match tree.root_id().visit_by(&mut declarer, tree.deref()) {
+        ControlFlow::Continue(()) => (),
+        ControlFlow::Break(_) => unreachable!(),
     }
 
-    pub fn declare(mut self, mut ctx: DeclareCtx<'_>) -> ModuleKey {
-        let tree = ctx.get_mut::<&mut Forest, _>().tree(self.path_key);
+    // After visiting the tree, we need to finalize the declaration
+    let module_key = scopes.reverse.last().unwrap().module_key();
 
-        // Create a visitor to walk the tree and collect declarations
-        let mut declarer = Declarer::new(&mut self, ctx);
-
-        match tree.root_id().visit_by(&mut declarer, tree.deref()) {
-            ControlFlow::Continue(()) => (),
-            ControlFlow::Break(_) => unreachable!(),
-        }
-
-        // After visiting the tree, we need to finalize the declaration
-        let module_key = self.scopes.reverse.last().unwrap().module_key();
-
-        for scope in self.scopes.reverse {
-            ctx.get_mut::<&mut HashMap<_, _>, _>()
-                .insert(scope.module_key(), scope);
-        }
-
-        module_key
+    for scope in scopes.reverse {
+        ctx.unresolved.insert(scope.module_key(), scope);
     }
+
+    module_key
 }
 
 pub struct Declarer<'a> {
-    pub state: &'a mut Declare,
-    pub ctx: DeclareCtx<'a>,
+    pub path_key: PathKey,
+    pub scopes: &'a mut ScopeStack,
+    pub ctx: &'a mut ResolveContext,
 }
 
 impl<'a> Declarer<'a> {
-    pub fn new(state: &'a mut Declare, ctx: DeclareCtx<'a>) -> Self {
-        Self { state, ctx }
+    pub fn new(path_key: PathKey, scopes: &'a mut ScopeStack, ctx: &'a mut ResolveContext) -> Self {
+        Self {
+            path_key,
+            scopes,
+            ctx,
+        }
     }
 
     pub fn span<T>(&self, id: Id<T>) -> Loc
     where
         T: MetaCast<LocPhase, Meta = Loc>,
     {
-        self.ctx
-            .get::<&Topography, _>()
-            .span(self.state.path_key, id)
+        self.ctx.topography.span(self.path_key, id)
     }
 }
 
@@ -149,25 +105,23 @@ where
         let module_key = ModuleKey::new();
 
         // Store the new module in our modules mapping
-        self.ctx
-            .get_mut::<&mut ModuleKeyMapping, _>()
-            .insert(module_key, self.state.path_key, id);
+        self.ctx.mapping.insert(module_key, self.path_key, id);
 
         // Add dependency from current module to this new module
-        if let Some(current_scope) = self.state.scopes.current() {
+        if let Some(current_scope) = self.scopes.current() {
             self.ctx
-                .get_mut::<&mut DependencyGraph<_>, _>()
+                .dependencies
                 .add_dependency(current_scope.module_key(), module_key);
         }
 
         // Create a new scope for this module
-        self.state.scopes.start(ModuleScope::new(module_key));
+        self.scopes.start(ModuleScope::new(module_key));
 
         // Walk through children nodes
         self.walk_module(id, tree)?;
 
         // Pop the scope now that we're done with this module
-        self.state.scopes.finish();
+        self.scopes.finish();
 
         ControlFlow::Continue(())
     }
@@ -180,56 +134,51 @@ where
         let import = tree.node(id);
         let name = tree.node(import.0);
 
-        let path = match self
-            .ctx
-            .get::<&mut SourceManager, _>()
-            .resolve_import(self.state.path_key, name.0)
-        {
-            Ok(path) => path,
-            Err(e) => {
-                self.forest
-                    .report
-                    .add_diagnostic(e.into_diagnostic(self.span(id)).with_help("resolve_import"));
+        let path =
+            match self
+                .ctx
+                .source_manager
+                .resolve_import(self.path_key, name.0, &self.ctx.interner)
+            {
+                Ok(path) => path,
+                Err(e) => {
+                    self.ctx.report.add_diagnostic(
+                        e.into_diagnostic(self.span(id)).with_help("resolve_import"),
+                    );
 
-                // TODO make this more elegant
-                // Mock key for now
-                let module_key = ModuleKey::new();
-                let current_module_key = self.state.scopes.current().unwrap().module_key();
+                    // TODO make this more elegant
+                    // Mock key for now
+                    let module_key = ModuleKey::new();
+                    let current_module_key = self.scopes.current().unwrap().module_key();
 
-                self.forest
-                    .dependencies
-                    .add_dependency(current_module_key, module_key);
-                self.state
-                    .scopes
-                    .current_mut()
-                    .insert_import(id, module_key);
-                // Mock end
-                // I am doing this because I am not fatally returning here,
-                // so that later on the module key can be resolved even if it is faulty itsself.
-                // Also doing the same for every other `return`
+                    self.ctx
+                        .dependencies
+                        .add_dependency(current_module_key, module_key);
+                    self.scopes.current_mut().insert_import(id, module_key);
+                    // Mock end
+                    // I am doing this because I am not fatally returning here,
+                    // so that later on the module key can be resolved even if it is faulty itsself.
+                    // Also doing the same for every other `return`
 
-                return ControlFlow::Continue(());
-            }
-        };
+                    return ControlFlow::Continue(());
+                }
+            };
 
-        let (path_key, source) = match self.forest.sources.fetch(path.as_path()) {
+        let (path_key, source) = match self.ctx.source_manager.fetch(path.as_path(), &self.ctx.io) {
             Ok(tuple) => tuple,
             Err(e) => {
-                self.forest
+                self.ctx
                     .report
                     .add_diagnostic(e.into_diagnostic(self.span(id)).with_help("fetch"));
 
                 // Mock key for now
                 let module_key = ModuleKey::new();
-                let current_module_key = self.state.scopes.current().unwrap().module_key();
+                let current_module_key = self.scopes.current().unwrap().module_key();
 
-                self.forest
+                self.ctx
                     .dependencies
                     .add_dependency(current_module_key, module_key);
-                self.state
-                    .scopes
-                    .current_mut()
-                    .insert_import(id, module_key);
+                self.scopes.current_mut().insert_import(id, module_key);
 
                 return ControlFlow::Continue(());
             }
@@ -243,18 +192,15 @@ where
         );
 
         let input = LexInput::new(path_key, source.text());
-        let Some(tokens) = tokenize(input, &mut self.forest.report) else {
+        let Some(tokens) = tokenize(input, &mut self.ctx.report) else {
             // Mock key for now
             let module_key = ModuleKey::new();
-            let current_module_key = self.state.scopes.current().unwrap().module_key();
+            let current_module_key = self.scopes.current().unwrap().module_key();
 
-            self.forest
+            self.ctx
                 .dependencies
                 .add_dependency(current_module_key, module_key);
-            self.state
-                .scopes
-                .current_mut()
-                .insert_import(id, module_key);
+            self.scopes.current_mut().insert_import(id, module_key);
 
             return ControlFlow::Continue(());
         };
@@ -268,26 +214,24 @@ where
 
         let input = ParseInput::new(path_key, tokens);
 
-        let ParseOutput { tree, spans, .. } = parse(input, &mut self.forest.report);
+        let ParseOutput { tree, spans, .. } =
+            parse(input, &mut self.ctx.interner, &mut self.ctx.report);
 
         let Some(tree) = tree else {
             // Mock key for now
             let module_key = ModuleKey::new();
-            let current_module_key = self.state.scopes.current().unwrap().module_key();
+            let current_module_key = self.scopes.current().unwrap().module_key();
 
-            self.forest
+            self.ctx
                 .dependencies
                 .add_dependency(current_module_key, module_key);
-            self.state
-                .scopes
-                .current_mut()
-                .insert_import(id, module_key);
+            self.scopes.current_mut().insert_import(id, module_key);
 
             return ControlFlow::Continue(());
         };
 
-        self.forest.trees.insert(path_key, Rc::new(tree));
-        self.forest.topography.insert(path_key, Rc::new(spans));
+        self.ctx.forest.insert(path_key, tree);
+        self.ctx.topography.insert(path_key, spans);
 
         // let interner = STR_INTERNER.read().unwrap();
 
@@ -302,17 +246,14 @@ where
 
         // drop(interner);
 
-        let module_key = Resolver::declare(path_key, self.forest).state.module_key;
-        let current_module_key = self.state.scopes.current().unwrap().module_key();
+        let module_key = declare(path_key, &mut self.ctx);
+        let current_module_key = self.scopes.current().unwrap().module_key();
 
         // Add dependency from current module to this new module
-        self.forest
+        self.ctx
             .dependencies
             .add_dependency(current_module_key, module_key);
-        self.state
-            .scopes
-            .current_mut()
-            .insert_import(id, module_key);
+        self.scopes.current_mut().insert_import(id, module_key);
 
         ControlFlow::Continue(())
     }
@@ -336,12 +277,11 @@ where
 
         // Register the module binding in the current scope
         if let Err(e) = self
-            .state
             .scopes
             .current_mut()
             .insert_module(name.0, ModuleBindInfo::new(id, value, span, *vis))
         {
-            self.forest.report.add_diagnostic(e.into());
+            self.ctx.report.add_diagnostic(e.into());
         }
 
         self.walk_module_bind(id, tree)
@@ -366,12 +306,11 @@ where
 
         // Register the value binding in the current scope
         if let Err(e) = self
-            .state
             .scopes
             .current_mut()
             .insert_value(name.0, ValueBindInfo::new(id, value, span, *vis))
         {
-            self.forest.report.add_diagnostic(e.into());
+            self.ctx.report.add_diagnostic(e.into());
         }
 
         // self.walk_value_bind(id, tree)
@@ -390,12 +329,11 @@ where
 
         // Register the type binding in the current scope
         if let Err(e) = self
-            .state
             .scopes
             .current_mut()
             .insert_type(name.0, TypeBindInfo::new(id, ty, span))
         {
-            self.forest.report.add_diagnostic(e.into());
+            self.ctx.report.add_diagnostic(e.into());
         }
 
         // self.walk_type_bind(id, tree)

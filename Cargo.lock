@@ -327,6 +327,7 @@ dependencies = [
  "env_logger",
  "kola-driver",
  "kola-print",
+ "kola-utils",
  "log",
 ]
 
