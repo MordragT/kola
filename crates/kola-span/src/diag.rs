@@ -1,3 +1,4 @@
+use ariadne::{Config, IndexType};
 use chumsky::error::Rich;
 use derive_more::Display;
 use owo_colors::{OwoColorize, Style};
@@ -436,10 +437,12 @@ impl From<Diagnostic> for ariadne::Report<'_, Loc> {
         } = diag;
 
         // TODO why the hell must I do this ??
-        trace.push(("".into(), loc));
+        // This is a workaround for weird behavior in ariadne,
+        // where it doesnt render if the trace is empty.
+        trace.push((message, loc));
 
         let mut builder = ariadne::Report::build(severity.into(), loc)
-            .with_message(message)
+            // .with_message(message)
             .with_labels(
                 trace
                     .into_iter()

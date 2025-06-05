@@ -10,5 +10,5 @@ camino.workspace = true
 derive_more.workspace = true
 owo-colors.workspace = true
 log.workspace = true
-# ariadne = { version = "0.5.1", features = ["auto-color"] }
-ariadne = "0.5.1"
+ariadne = { version = "0.5.1", features = ["concolor"] }
+# ariadne = "0.5.1"

@@ -2,12 +2,12 @@
 #![feature(negative_impls)]
 
 pub mod bimap;
-// pub mod context;
 pub mod convert;
 pub mod dependency;
 pub mod errors;
 pub mod interner;
 pub mod io;
+pub mod tracker;
 
 #[macro_export]
 macro_rules! as_variant {

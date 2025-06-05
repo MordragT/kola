@@ -10,18 +10,21 @@ use kola_utils::io::FileSystem;
 use log::debug;
 use owo_colors::OwoColorize;
 
+use crate::symbol::ModuleSymbol;
+
 pub mod context;
 pub mod declare;
 pub mod define;
 pub mod error;
 pub mod forest;
-pub mod module;
+pub mod info;
+pub mod scope;
+pub mod symbol;
 pub mod topography;
 
 pub mod prelude {
     pub use crate::context::ResolveContext;
     pub use crate::forest::Forest;
-    pub use crate::module::ModuleScopes;
     pub use crate::resolve;
     pub use crate::topography::Topography;
 }
@@ -80,14 +83,16 @@ pub fn resolve(
 
     // drop(interner);
 
-    let module_key = declare::declare(path_key, &mut ctx);
+    let module_sym = ModuleSymbol::new();
+
+    declare::declare(path_key, module_sym, &mut ctx);
 
     if !ctx.report.is_empty() {
         return Ok(ctx);
     }
 
-    let scope = ctx.unresolved.remove(&module_key).unwrap();
-    define::define(module_key, scope, &mut ctx);
+    let scope = ctx.module_scopes.remove(&module_sym).unwrap();
+    define::define(scope, &mut ctx);
 
     Ok(ctx)
 }

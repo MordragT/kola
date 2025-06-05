@@ -22,11 +22,6 @@ impl fmt::Display for StrKey {
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct StrInterner<S: BuildHasher = RandomState>(Interner<str, S>);
 
-//     }
-
-//     }
-// }
-
 impl Default for StrInterner {
     fn default() -> Self {
         Self(Interner::default())

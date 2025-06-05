@@ -55,3 +55,4 @@ camino.workspace = true
 log.workspace = true
 clap = { version = "4.5", features = ["derive"] }
 env_logger = "0.11"
+concolor = { version = "0.1", features = ["auto"] }

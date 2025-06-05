@@ -184,7 +184,7 @@ mod tests {
         let y_sym = Symbol(y);
         let t_sym = Symbol(t);
 
-        // let f = (λx. return x+1) in
+        // let f = (x => return x+1) in
         //   let y = f(5) in
         //     return y
         let mut ir = IrBuilder::new();
@@ -197,7 +197,7 @@ mod tests {
         let x_ref = Atom::Symbol(x_sym);
         let x_plus_1 = BinaryExpr::new(t_sym, BinaryOp::Add, x_ref, Atom::Num(1.0), ret_t, &mut ir);
 
-        // Function: λx. x + 1
+        // Function: x => x + 1
         let func = Func::new(x_sym, x_plus_1, &mut ir);
 
         // Return y
@@ -208,7 +208,7 @@ mod tests {
         let f_ref = Atom::Symbol(f_sym);
         let call_f = CallExpr::new(y_sym, f_ref, Atom::Num(5.0), ret_y, &mut ir);
 
-        // Let binding: let f = λx. x + 1
+        // Let binding: let f = x => x + 1
         let let_f = LetExpr::new(f_sym, Atom::Func(func), call_f, &mut ir);
 
         let root = ir.add(let_f.into());
@@ -350,7 +350,7 @@ mod tests {
 
         // This test creates and tests the following program:
         // let r1 = {x: 10} in
-        //   let r2 = r1.{x = 20} in  // Update the x field from 10 to 20
+        //   let r2 = { r1 | x = 20 } in  // Update the x field from 10 to 20
         //     let x = r2.x in        // Access the updated field
         //       return x             // Should return 20
 

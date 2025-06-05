@@ -269,9 +269,19 @@ pub trait Visitor<T: TreeView> {
         id: Id<node::PathExpr>,
         tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
-        let path = id.get(tree);
+        let node::PathExpr {
+            path,
+            binding,
+            select,
+        } = id.get(tree);
 
-        for id in path {
+        if let Some(path) = path {
+            self.visit_module_path(*path, tree)?;
+        }
+
+        self.visit_name(*binding, tree)?;
+
+        for id in select {
             self.visit_name(*id, tree)?;
         }
 

@@ -65,13 +65,6 @@ impl DirWalker {
     }
 }
 
-//     }
-
-//     }
-
-//     }
-// }
-
 pub type ReadDir = Vec<io::Result<Utf8PathBuf>>;
 
 pub trait FileSystem {

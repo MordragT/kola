@@ -47,7 +47,11 @@ impl<'t> Input<'t> for ParseInput<'t> {
     }
 
     unsafe fn span(cache: &mut Self::Cache, range: Range<&Self::Cursor>) -> Self::Span {
-        Loc::from_range(cache.1, *range.start..*range.end)
+        Loc::from_range(
+            cache.1,
+            // TODO is this correct?
+            cache.0[*range.start].1.span.start..cache.0[*range.end - 1].1.span.end,
+        )
     }
 }
 

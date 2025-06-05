@@ -82,6 +82,14 @@ where
             None
         }
     }
+
+    pub fn contains_key(&self, key: &K) -> bool {
+        self.forward.contains_key(key)
+    }
+
+    pub fn contains_value(&self, value: &V) -> bool {
+        self.backward.contains_key(value)
+    }
 }
 
 impl<K, V, S> Index<K> for BiMap<K, V, S>

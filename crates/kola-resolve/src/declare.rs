@@ -5,84 +5,58 @@ use std::ops::{ControlFlow, Deref};
 use kola_print::prelude::*;
 use kola_span::{IntoDiagnostic, Loc};
 use kola_syntax::prelude::*;
-use kola_tree::prelude::*;
-use kola_utils::interner::PathKey;
+use kola_tree::{node::Vis, prelude::*};
+use kola_utils::{interner::PathKey, tracker::Tracker};
 
 use crate::{
     context::ResolveContext,
-    module::{
-        ModuleBindInfo, ModuleKey, ModuleScope, TypeBindInfo, UnresolvedModuleScope, ValueBindInfo,
-    },
+    info::BindInfo,
+    scope::ModuleScope,
+    symbol::{ModuleSymbol, TypeSymbol, ValueSymbol},
 };
 
-#[derive(Debug, Clone, Default)]
-pub struct ScopeStack {
-    pub reverse: Vec<UnresolvedModuleScope>,
-    pub scopes: Vec<UnresolvedModuleScope>,
-}
-
-impl ScopeStack {
-    pub fn new() -> Self {
-        Self {
-            reverse: Vec::new(),
-            scopes: Vec::new(),
-        }
-    }
-
-    pub fn start(&mut self, scope: UnresolvedModuleScope) {
-        self.scopes.push(scope);
-    }
-
-    pub fn finish(&mut self) {
-        if let Some(scope) = self.scopes.pop() {
-            // Store the scope in reverse order for later use
-            self.reverse.push(scope);
-        }
-    }
-
-    pub fn current(&self) -> Option<&UnresolvedModuleScope> {
-        self.scopes.last()
-    }
-
-    pub fn current_mut(&mut self) -> &mut UnresolvedModuleScope {
-        self.scopes.last_mut().unwrap()
-    }
-}
-
-pub fn declare(path_key: PathKey, ctx: &mut ResolveContext) -> ModuleKey {
-    let mut scopes = ScopeStack::new();
+pub fn declare(path_key: PathKey, module_sym: ModuleSymbol, ctx: &mut ResolveContext) {
+    let mut tracker = Tracker::new();
 
     let tree = ctx.forest.tree(path_key);
 
     // Create a visitor to walk the tree and collect declarations
-    let mut declarer = Declarer::new(path_key, &mut scopes, ctx);
+    let mut declarer = Declarer::new(path_key, module_sym, &mut tracker, ctx);
 
     match tree.root_id().visit_by(&mut declarer, tree.deref()) {
         ControlFlow::Continue(()) => (),
         ControlFlow::Break(_) => unreachable!(),
     }
 
+    let scopes = tracker.into_completed();
+
     // After visiting the tree, we need to finalize the declaration
-    let module_key = scopes.reverse.last().unwrap().module_key();
+    for scope in scopes {
+        let sym = scope.symbol();
 
-    for scope in scopes.reverse {
-        ctx.unresolved.insert(scope.module_key(), scope);
+        ctx.todo.insert(sym);
+        ctx.module_scopes.insert(sym, scope);
     }
-
-    module_key
 }
 
 pub struct Declarer<'a> {
     pub path_key: PathKey,
-    pub scopes: &'a mut ScopeStack,
+    pub symbols: Vec<ModuleSymbol>,
+    pub tracker: &'a mut Tracker<ModuleScope>,
     pub ctx: &'a mut ResolveContext,
 }
 
 impl<'a> Declarer<'a> {
-    pub fn new(path_key: PathKey, scopes: &'a mut ScopeStack, ctx: &'a mut ResolveContext) -> Self {
+    pub fn new(
+        path_key: PathKey,
+        symbol: ModuleSymbol, // Start symbol ??
+        tracker: &'a mut Tracker<ModuleScope>,
+        ctx: &'a mut ResolveContext,
+    ) -> Self {
         Self {
             path_key,
-            scopes,
+            symbols: vec![symbol],
+            tracker,
             ctx,
         }
     }
@@ -102,26 +76,28 @@ where
     type BreakValue = !;
 
     fn visit_module(&mut self, id: Id<node::Module>, tree: &T) -> ControlFlow<Self::BreakValue> {
-        let module_key = ModuleKey::new();
+        let module_sym = self.symbols.pop().unwrap();
 
-        // Store the new module in our modules mapping
-        self.ctx.mapping.insert(module_key, self.path_key, id);
+        self.ctx
+            .symbol_table
+            .insert_inline(self.path_key, id, module_sym);
 
         // Add dependency from current module to this new module
-        if let Some(current_scope) = self.scopes.current() {
+        if let Some(current_scope) = self.tracker.current() {
             self.ctx
-                .dependencies
-                .add_dependency(current_scope.module_key(), module_key);
+                .module_graph
+                .add_dependency(current_scope.symbol(), module_sym);
         }
 
         // Create a new scope for this module
-        self.scopes.start(ModuleScope::new(module_key));
+        self.tracker
+            .start(ModuleScope::new(module_sym, self.span(id)));
 
         // Walk through children nodes
         self.walk_module(id, tree)?;
 
         // Pop the scope now that we're done with this module
-        self.scopes.finish();
+        self.tracker.finish();
 
         ControlFlow::Continue(())
     }
@@ -131,6 +107,8 @@ where
         id: Id<node::ModuleImport>,
         tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
+        let module_sym = self.symbols.pop().unwrap();
+
         let import = tree.node(id);
         let name = tree.node(import.0);
 
@@ -147,19 +125,15 @@ where
                     );
 
                     // TODO make this more elegant
-                    // Mock key for now
-                    let module_key = ModuleKey::new();
-                    let current_module_key = self.scopes.current().unwrap().module_key();
-
+                    // I am doing this because I am not fatally returning here.
+                    // Also doing the same for every other `return`.
+                    let current_module_sym = self.tracker.current().unwrap().symbol();
                     self.ctx
-                        .dependencies
-                        .add_dependency(current_module_key, module_key);
-                    self.scopes.current_mut().insert_import(id, module_key);
-                    // Mock end
-                    // I am doing this because I am not fatally returning here,
-                    // so that later on the module key can be resolved even if it is faulty itsself.
-                    // Also doing the same for every other `return`
-
+                        .module_graph
+                        .add_dependency(current_module_sym, module_sym);
+                    self.ctx
+                        .symbol_table
+                        .insert_import(self.path_key, id, module_sym);
                     return ControlFlow::Continue(());
                 }
             };
@@ -171,14 +145,14 @@ where
                     .report
                     .add_diagnostic(e.into_diagnostic(self.span(id)).with_help("fetch"));
 
-                // Mock key for now
-                let module_key = ModuleKey::new();
-                let current_module_key = self.scopes.current().unwrap().module_key();
+                let current_module_sym = self.tracker.current().unwrap().symbol();
 
                 self.ctx
-                    .dependencies
-                    .add_dependency(current_module_key, module_key);
-                self.scopes.current_mut().insert_import(id, module_key);
+                    .module_graph
+                    .add_dependency(current_module_sym, module_sym);
+                self.ctx
+                    .symbol_table
+                    .insert_import(self.path_key, id, module_sym);
 
                 return ControlFlow::Continue(());
             }
@@ -193,14 +167,14 @@ where
 
         let input = LexInput::new(path_key, source.text());
         let Some(tokens) = tokenize(input, &mut self.ctx.report) else {
-            // Mock key for now
-            let module_key = ModuleKey::new();
-            let current_module_key = self.scopes.current().unwrap().module_key();
+            let current_module_sym = self.tracker.current().unwrap().symbol();
 
             self.ctx
-                .dependencies
-                .add_dependency(current_module_key, module_key);
-            self.scopes.current_mut().insert_import(id, module_key);
+                .module_graph
+                .add_dependency(current_module_sym, module_sym);
+            self.ctx
+                .symbol_table
+                .insert_import(self.path_key, id, module_sym);
 
             return ControlFlow::Continue(());
         };
@@ -218,14 +192,14 @@ where
             parse(input, &mut self.ctx.interner, &mut self.ctx.report);
 
         let Some(tree) = tree else {
-            // Mock key for now
-            let module_key = ModuleKey::new();
-            let current_module_key = self.scopes.current().unwrap().module_key();
+            let current_module_sym = self.tracker.current().unwrap().symbol();
 
             self.ctx
-                .dependencies
-                .add_dependency(current_module_key, module_key);
-            self.scopes.current_mut().insert_import(id, module_key);
+                .module_graph
+                .add_dependency(current_module_sym, module_sym);
+            self.ctx
+                .symbol_table
+                .insert_import(self.path_key, id, module_sym);
 
             return ControlFlow::Continue(());
         };
@@ -246,14 +220,37 @@ where
 
         // drop(interner);
 
-        let module_key = declare(path_key, &mut self.ctx);
-        let current_module_key = self.scopes.current().unwrap().module_key();
+        declare(path_key, module_sym, &mut self.ctx);
+
+        let current_module_sym = self.tracker.current().unwrap().symbol();
 
         // Add dependency from current module to this new module
         self.ctx
-            .dependencies
-            .add_dependency(current_module_key, module_key);
-        self.scopes.current_mut().insert_import(id, module_key);
+            .module_graph
+            .add_dependency(current_module_sym, module_sym);
+        self.ctx
+            .symbol_table
+            .insert_import(self.path_key, id, module_sym);
+
+        ControlFlow::Continue(())
+    }
+
+    fn visit_module_path(
+        &mut self,
+        id: Id<node::ModulePath>,
+        tree: &T,
+    ) -> ControlFlow<Self::BreakValue> {
+        let module_sym = self.symbols.pop().unwrap();
+
+        let path = tree
+            .node(id)
+            .0
+            .iter()
+            .copied()
+            .map(|id| tree.node(id).0)
+            .collect::<Vec<_>>();
+
+        self.ctx.module_paths.insert(module_sym, path);
 
         ControlFlow::Continue(())
     }
@@ -275,12 +272,20 @@ where
 
         let span = self.span(id);
 
+        let module_sym = ModuleSymbol::new();
+        self.symbols.push(module_sym);
+
+        // TODO is this right ?
+        self.ctx
+            .symbol_table
+            .insert_module_bind(self.path_key, id, module_sym);
+
         // Register the module binding in the current scope
-        if let Err(e) = self
-            .scopes
-            .current_mut()
-            .insert_module(name.0, ModuleBindInfo::new(id, value, span, *vis))
-        {
+        if let Err(e) = self.tracker.current_mut().unwrap().insert_module(
+            name.0,
+            module_sym,
+            BindInfo::new(id, span, *vis),
+        ) {
             self.ctx.report.add_diagnostic(e.into());
         }
 
@@ -305,11 +310,11 @@ where
         let span = self.span(id);
 
         // Register the value binding in the current scope
-        if let Err(e) = self
-            .scopes
-            .current_mut()
-            .insert_value(name.0, ValueBindInfo::new(id, value, span, *vis))
-        {
+        if let Err(e) = self.tracker.current_mut().unwrap().insert_value(
+            name.0,
+            ValueSymbol::new(),
+            BindInfo::new(id, span, *vis),
+        ) {
             self.ctx.report.add_diagnostic(e.into());
         }
 
@@ -328,11 +333,11 @@ where
         let span = self.span(id);
 
         // Register the type binding in the current scope
-        if let Err(e) = self
-            .scopes
-            .current_mut()
-            .insert_type(name.0, TypeBindInfo::new(id, ty, span))
-        {
+        if let Err(e) = self.tracker.current_mut().unwrap().insert_type(
+            name.0,
+            TypeSymbol::new(),
+            BindInfo::new(id, span, Vis::Export),
+        ) {
             self.ctx.report.add_diagnostic(e.into());
         }
 

@@ -72,7 +72,7 @@ pub fn module_parser<'t>() -> impl KolaParser<'t, Id<node::Module>> + Clone {
             .to_module_expr();
 
         let module_path = name
-            .separated_by(ctrl(CtrlT::DOT))
+            .separated_by(ctrl(CtrlT::DOUBLE_COLON))
             .collect()
             .map_to_node(node::ModulePath)
             .to_module_expr();
@@ -365,16 +365,45 @@ pub fn expr_parser<'t>() -> impl KolaParser<'t, Id<node::Expr>> + Clone {
     recursive(|expr| {
         let name = name_parser();
 
-        // Path expression (a.b.c) for variable and module access
-        let path = name
-            .clone()
-            .separated_by(ctrl(CtrlT::DOT))
-            .collect()
-            .map_to_node(node::PathExpr)
-            .to_expr()
-            .labelled("PathExpr")
-            .as_context()
-            .boxed();
+        // Path expression (module::record.field) for variable and module access
+        let path = group((
+            name.clone(),
+            ctrl(CtrlT::DOUBLE_COLON)
+                .ignore_then(name.clone())
+                .repeated()
+                .collect::<Vec<_>>(),
+            ctrl(CtrlT::DOT)
+                .ignore_then(name.clone())
+                .repeated()
+                .collect::<Vec<_>>(),
+        ))
+        .map_with(|(mut binding, mut path, mut select), e| {
+            let span = e.span();
+            let tree: &mut State = e.state();
+
+            let path = if path.is_empty() {
+                None
+            } else {
+                // a :: b ...
+                // a is currently the binding and must be inserted as module_path
+                // b is currently in select and must be extracted from it
+                path.insert(0, binding);
+                binding = select.remove(0);
+                // TODO wrong span
+                Some(tree.insert(node::ModulePath(path), span))
+            };
+
+            node::PathExpr {
+                path,
+                binding,
+                select,
+            }
+        })
+        .to_node()
+        .to_expr()
+        .labelled("PathExpr")
+        .as_context()
+        .boxed();
 
         let literal = literal_parser()
             .to_node()
@@ -474,9 +503,9 @@ pub fn expr_parser<'t>() -> impl KolaParser<'t, Id<node::Expr>> + Clone {
 
                 match op {
                     RecordOp::Extend(mut field_path, mut value) => {
-                        source_path.0.append(&mut field_path);
+                        source_path.select.append(&mut field_path);
 
-                        let field = source_path.0.pop().unwrap();
+                        let field = source_path.select.pop().unwrap();
                         let source = tree.insert_as::<node::Expr, _>(source_path.clone(), span);
                         value = tree.insert_as::<node::Expr, _>(
                             node::RecordExtendExpr {
@@ -486,8 +515,8 @@ pub fn expr_parser<'t>() -> impl KolaParser<'t, Id<node::Expr>> + Clone {
                             },
                             span,
                         );
-                        while source_path.0.len() > 1 {
-                            let field = source_path.0.pop().unwrap();
+                        while source_path.select.len() > 1 {
+                            let field = source_path.select.pop().unwrap();
                             let op = tree.insert(node::RecordUpdateOp::Assign, span);
                             let source = tree.insert_as::<node::Expr, _>(source_path.clone(), span);
                             value = tree.insert_as::<node::Expr, _>(
@@ -504,17 +533,17 @@ pub fn expr_parser<'t>() -> impl KolaParser<'t, Id<node::Expr>> + Clone {
                         value
                     }
                     RecordOp::Restrict(mut field_path) => {
-                        source_path.0.append(&mut field_path);
+                        source_path.select.append(&mut field_path);
 
-                        let field = source_path.0.pop().unwrap();
+                        let field = source_path.select.pop().unwrap();
                         let source = tree.insert_as::<node::Expr, _>(source_path.clone(), span);
                         let mut value = tree.insert_as::<node::Expr, _>(
                             node::RecordRestrictExpr { source, field },
                             span,
                         );
 
-                        while source_path.0.len() > 1 {
-                            let field = source_path.0.pop().unwrap();
+                        while source_path.select.len() > 1 {
+                            let field = source_path.select.pop().unwrap();
                             let op = tree.insert(node::RecordUpdateOp::Assign, span);
                             let source = tree.insert_as::<node::Expr, _>(source_path.clone(), span);
                             value = tree.insert_as::<node::Expr, _>(
@@ -532,9 +561,9 @@ pub fn expr_parser<'t>() -> impl KolaParser<'t, Id<node::Expr>> + Clone {
                     }
 
                     RecordOp::Update(mut field_path, op, mut value) => {
-                        source_path.0.append(&mut field_path);
+                        source_path.select.append(&mut field_path);
 
-                        let field = source_path.0.pop().unwrap();
+                        let field = source_path.select.pop().unwrap();
                         let source = tree.insert_as::<node::Expr, _>(source_path.clone(), span);
                         value = tree.insert_as::<node::Expr, _>(
                             node::RecordUpdateExpr {
@@ -546,8 +575,8 @@ pub fn expr_parser<'t>() -> impl KolaParser<'t, Id<node::Expr>> + Clone {
                             span,
                         );
 
-                        while source_path.0.len() > 1 {
-                            let field = source_path.0.pop().unwrap();
+                        while source_path.select.len() > 1 {
+                            let field = source_path.select.pop().unwrap();
                             let op = tree.insert(node::RecordUpdateOp::Assign, span);
                             let source = tree.insert_as::<node::Expr, _>(source_path.clone(), span);
                             value = tree.insert_as::<node::Expr, _>(

@@ -252,6 +252,7 @@ define_token_type!(Kw {
 define_token_type!(Ctrl {
     Dot => ".",
     Colon => ":",
+    DoubleColon => "::",
     Comma => ",",
     Tilde => "~",
     Pipe => "|",

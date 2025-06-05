@@ -6,6 +6,7 @@ use serde::{Deserialize, Serialize};
 use super::{Name, Pat};
 use crate::{
     id::Id,
+    node::ModulePath,
     print::TreePrinter,
     tree::{TreeBuilder, TreeView},
 };
@@ -85,26 +86,48 @@ impl Printable<TreePrinter> for LiteralExpr {
     }
 }
 
-/// Path segments can be modules but the result must allways be a value
-#[derive(
-    Debug, From, IntoIterator, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
-)]
-#[into_iterator(owned, ref)]
-#[from(forward)]
-pub struct PathExpr(pub Vec<Id<Name>>);
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+pub struct PathExpr {
+    /// The path to the module, e.g. `std::io`
+    pub path: Option<Id<ModulePath>>,
+    /// The binding of the path, e.g. `File`
+    pub binding: Id<Name>,
+    /// The selected field of a record e.g. `File.open`
+    pub select: Vec<Id<Name>>,
+}
 
 impl Printable<TreePrinter> for PathExpr {
     fn notate<'a>(&'a self, with: &'a TreePrinter, arena: &'a Bump) -> Notation<'a> {
         let head = "PathExpr".cyan().display_in(arena);
 
-        let path = self.0.gather(with, arena);
+        let path = self
+            .path
+            .as_ref()
+            .map(|p| p.notate(with, arena))
+            .or_not(arena);
+        let binding = self.binding.notate(with, arena);
+        let select = self.select.gather(with, arena);
 
         let single = path
             .clone()
-            .concat_map(|s| arena.just(' ').then(s, arena), arena)
+            .then(binding.clone(), arena)
+            .then(
+                select
+                    .clone()
+                    .concat_map(|s| arena.just(' ').then(s, arena), arena),
+                arena,
+            )
             .flatten(arena);
+
         let multi = path
-            .concat_map(|s| arena.newline().then(s, arena), arena)
+            .clone()
+            .then(binding, arena)
+            .then(
+                select
+                    .clone()
+                    .concat_map(|s| arena.newline().then(s, arena), arena),
+                arena,
+            )
             .indent(arena);
 
         head.then(single.or(multi, arena), arena)
@@ -113,7 +136,7 @@ impl Printable<TreePrinter> for PathExpr {
 
 impl PathExpr {
     pub fn get<'a>(&self, index: usize, tree: &'a impl TreeView) -> &'a Name {
-        self.0[index].get(tree)
+        self.select[index].get(tree)
     }
 }
 
@@ -1300,9 +1323,16 @@ mod inspector {
     }
 
     impl<'t, S: BuildHasher> NodeInspector<'t, Id<PathExpr>, S> {
+        /// Get an inspector for the module path of this path expression
+        pub fn module_path(self) -> Option<NodeInspector<'t, Id<ModulePath>, S>> {
+            let path = self.node.get(self.tree);
+            path.path
+                .map(|p| NodeInspector::new(p, self.tree, self.interner))
+        }
+
         /// Assert the path has the specified number of segments
         pub fn has_segments(self, count: usize) -> Self {
-            let segments_len = self.node.get(self.tree).0.len();
+            let segments_len = self.node.get(self.tree).select.len();
             assert_eq!(
                 segments_len, count,
                 "Expected {} segments but found {}",
@@ -1315,10 +1345,10 @@ mod inspector {
         pub fn segment_at_is(self, index: usize, expected: &str) -> Self {
             let path = self.node.get(self.tree);
             assert!(
-                index < path.0.len(),
+                index < path.select.len(),
                 "Segment index {} out of bounds (max {})",
                 index,
-                path.0.len() - 1
+                path.select.len() - 1
             );
             let segment = path.get(index, self.tree);
             let s = self.interner.get(segment.0).expect("Symbol not found");

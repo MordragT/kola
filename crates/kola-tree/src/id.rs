@@ -1,7 +1,7 @@
 use kola_print::prelude::*;
 use kola_utils::convert::TryAsRef;
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, hash::Hash, marker::PhantomData};
+use std::{collections::HashMap, fmt, hash::Hash, marker::PhantomData};
 
 use crate::{
     meta::{MetaCast, MetaView, Phase},
@@ -10,10 +10,16 @@ use crate::{
     tree::TreeView,
 };
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Serialize, Deserialize)]
 pub struct Id<T> {
     id: u32,
     t: PhantomData<T>,
+}
+
+impl<T> fmt::Debug for Id<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Id({})", self.id)
+    }
 }
 
 impl<T> Clone for Id<T> {

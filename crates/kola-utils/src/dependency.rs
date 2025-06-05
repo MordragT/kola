@@ -20,10 +20,6 @@ impl<T> CycleError<T> {
     }
 }
 
-//     fn dependency_graph(&self) -> &DependencyGraph<Self::Item>;
-
-// }
-
 /// Graph of dependencies between modules
 #[derive(Debug, Clone)]
 pub struct DependencyGraph<T> {
