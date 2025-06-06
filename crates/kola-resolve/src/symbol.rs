@@ -64,6 +64,12 @@ impl<T> Symbol<T> {
     }
 }
 
+impl<T> Default for Symbol<T> {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl<T> fmt::Debug for Symbol<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "Symbol({}, {}, {:?})", self.id, self.level, self.t)
@@ -119,7 +125,7 @@ pub enum AnySymbol {
     Module(ModuleSymbol),
     Type(TypeSymbol),
     Value(ValueSymbol),
-    Local(LocalSymbol),
+    // Local(LocalSymbol),
 }
 
 impl AnySymbol {
@@ -128,7 +134,7 @@ impl AnySymbol {
             AnySymbol::Module(symbol) => symbol.id(),
             AnySymbol::Type(symbol) => symbol.id(),
             AnySymbol::Value(symbol) => symbol.id(),
-            AnySymbol::Local(symbol) => symbol.id(),
+            // AnySymbol::Local(symbol) => symbol.id(),
         }
     }
 
@@ -137,7 +143,7 @@ impl AnySymbol {
             AnySymbol::Module(symbol) => symbol.level(),
             AnySymbol::Type(symbol) => symbol.level(),
             AnySymbol::Value(symbol) => symbol.level(),
-            AnySymbol::Local(symbol) => symbol.level(),
+            // AnySymbol::Local(symbol) => symbol.level(),
         }
     }
 
@@ -146,7 +152,7 @@ impl AnySymbol {
             AnySymbol::Module(_) => BindKind::Module,
             AnySymbol::Type(_) => BindKind::Type,
             AnySymbol::Value(_) => BindKind::Value,
-            AnySymbol::Local(_) => BindKind::Local,
+            // AnySymbol::Local(_) => BindKind::Local,
         }
     }
 }
@@ -162,6 +168,7 @@ pub struct SymbolTable {
 
     pub imports: BiMap<(PathKey, Id<node::ModuleImport>), ModuleSymbol>,
     pub inlines: BiMap<(PathKey, Id<node::Module>), ModuleSymbol>,
+    pub paths: BiMap<(PathKey, Id<node::ModulePath>), ModuleSymbol>,
 }
 
 impl SymbolTable {
@@ -175,6 +182,7 @@ impl SymbolTable {
 
             imports: BiMap::new(),
             inlines: BiMap::new(),
+            paths: BiMap::new(),
         }
     }
 
@@ -199,6 +207,11 @@ impl SymbolTable {
     }
 
     #[inline]
+    pub fn insert_local_bind(&mut self, key: PathKey, id: Id<node::LetExpr>, sym: LocalSymbol) {
+        self.locals.insert((key, id), sym);
+    }
+
+    #[inline]
     pub fn insert_import(&mut self, key: PathKey, id: Id<node::ModuleImport>, sym: ModuleSymbol) {
         self.imports.insert((key, id), sym);
     }
@@ -206,6 +219,11 @@ impl SymbolTable {
     #[inline]
     pub fn insert_inline(&mut self, key: PathKey, id: Id<node::Module>, sym: ModuleSymbol) {
         self.inlines.insert((key, id), sym);
+    }
+
+    #[inline]
+    pub fn insert_path(&mut self, key: PathKey, id: Id<node::ModulePath>, sym: ModuleSymbol) {
+        self.paths.insert((key, id), sym);
     }
 
     #[inline]

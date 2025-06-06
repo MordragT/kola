@@ -1,4 +1,7 @@
-use std::collections::{HashMap, HashSet};
+use std::{
+    collections::{HashMap, HashSet},
+    rc::Rc,
+};
 
 use kola_span::{Report, SourceManager};
 use kola_utils::{
@@ -10,7 +13,7 @@ use kola_utils::{
 use crate::{
     forest::Forest,
     prelude::Topography,
-    scope::ModuleScope,
+    scope::{LexicalScope, ModuleScope},
     symbol::{DefTable, ModuleSymbol, SymbolTable},
 };
 
@@ -25,13 +28,11 @@ pub struct ResolveContext {
     pub topography: Topography,
 
     pub symbol_table: SymbolTable,
-    pub def_table: DefTable,
-
+    // pub def_table: DefTable,
     pub module_graph: ModuleGraph,
-    pub module_scopes: HashMap<ModuleSymbol, ModuleScope>,
-    pub module_paths: HashMap<ModuleSymbol, Vec<StrKey>>,
-
-    pub todo: HashSet<ModuleSymbol>,
+    pub module_scopes: HashMap<ModuleSymbol, Rc<ModuleScope>>,
+    // pub module_paths: HashMap<ModuleSymbol, Vec<StrKey>>,
+    pub pending: HashSet<ModuleSymbol>,
     pub active: HashSet<ModuleSymbol>,
 }
 
@@ -46,13 +47,11 @@ impl ResolveContext {
             topography: Topography::new(),
 
             symbol_table: SymbolTable::new(),
-            def_table: DefTable::new(),
-
+            // def_table: DefTable::new(),
             module_graph: ModuleGraph::default(),
             module_scopes: HashMap::new(),
-            module_paths: HashMap::new(),
-
-            todo: HashSet::new(),
+            // module_paths: HashMap::new(),
+            pending: HashSet::new(),
             active: HashSet::new(),
         }
     }

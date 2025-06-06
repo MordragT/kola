@@ -1,5 +1,5 @@
 use std::{
-    collections::HashMap,
+    collections::{HashMap, hash_map},
     hash::{BuildHasher, RandomState},
     ops::Index,
 };
@@ -90,6 +90,14 @@ where
     pub fn contains_value(&self, value: &V) -> bool {
         self.backward.contains_key(value)
     }
+
+    pub fn keys(&self) -> impl Iterator<Item = &K> {
+        self.forward.keys()
+    }
+
+    pub fn values(&self) -> impl Iterator<Item = &V> {
+        self.forward.values()
+    }
 }
 
 impl<K, V, S> Index<K> for BiMap<K, V, S>
@@ -102,5 +110,33 @@ where
 
     fn index(&self, key: K) -> &Self::Output {
         self.get_by_key(&key).unwrap()
+    }
+}
+
+impl<K, V, S> IntoIterator for BiMap<K, V, S>
+where
+    K: Eq + std::hash::Hash + Clone,
+    V: Eq + std::hash::Hash + Clone,
+    S: std::hash::BuildHasher + Clone,
+{
+    type Item = (K, V);
+    type IntoIter = hash_map::IntoIter<K, V>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.forward.into_iter()
+    }
+}
+
+impl<'a, K, V, S> IntoIterator for &'a BiMap<K, V, S>
+where
+    K: Eq + std::hash::Hash + Clone,
+    V: Eq + std::hash::Hash + Clone,
+    S: std::hash::BuildHasher + Clone,
+{
+    type Item = (&'a K, &'a V);
+    type IntoIter = hash_map::Iter<'a, K, V>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        self.forward.iter()
     }
 }

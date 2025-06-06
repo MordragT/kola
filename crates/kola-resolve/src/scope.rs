@@ -1,5 +1,9 @@
-use std::collections::{HashMap, hash_map};
+use std::{
+    collections::{HashMap, hash_map},
+    ops::Index,
+};
 
+use kola_collections::shadow_map::ShadowMap;
 use kola_span::Loc;
 use kola_tree::node;
 use kola_utils::{bimap::BiMap, interner::StrKey};
@@ -7,8 +11,10 @@ use kola_utils::{bimap::BiMap, interner::StrKey};
 use crate::{
     error::NameCollision,
     info::{AnyInfo, BindInfo, BindKind, ModuleInfo, TypeInfo, ValueInfo},
-    symbol::{AnySymbol, ModuleSymbol, Symbol, TypeSymbol, ValueSymbol},
+    symbol::{AnySymbol, LocalSymbol, ModuleSymbol, Symbol, TypeSymbol, ValueSymbol},
 };
+
+pub type LexicalScope = ShadowMap<StrKey, LocalSymbol>;
 
 #[derive(Debug, Clone)]
 pub struct Rib<T> {
@@ -90,12 +96,32 @@ impl<'a, T> IntoIterator for &'a mut Rib<T> {
     }
 }
 
+impl<T> Index<StrKey> for Rib<T> {
+    type Output = BindInfo<T>;
+
+    fn index(&self, key: StrKey) -> &Self::Output {
+        self.lookup_sym(key)
+            .and_then(|sym| self.infos.get(&sym))
+            .expect("Bind not found")
+    }
+}
+
+impl<T> Index<Symbol<T>> for Rib<T> {
+    type Output = BindInfo<T>;
+
+    fn index(&self, sym: Symbol<T>) -> &Self::Output {
+        self.infos.get(&sym).expect("Bind not found")
+    }
+}
+
 pub struct ModuleScope {
     pub symbol: ModuleSymbol,
     pub loc: Loc,
     pub modules: Rib<node::ModuleBind>,
     pub types: Rib<node::TypeBind>,
     pub values: Rib<node::ValueBind>,
+
+    pub paths: BiMap<ModuleSymbol, Vec<StrKey>>,
 }
 
 impl ModuleScope {
@@ -106,6 +132,8 @@ impl ModuleScope {
             modules: Rib::new(),
             types: Rib::new(),
             values: Rib::new(),
+
+            paths: BiMap::new(),
         }
     }
 
@@ -150,6 +178,10 @@ impl ModuleScope {
         self.types.insert(name, symbol, info);
         Ok(())
     }
+
+    pub fn insert_path(&mut self, symbol: ModuleSymbol, path: Vec<StrKey>) {
+        self.paths.insert(symbol, path);
+    }
 }
 
 const fn name_collision(this: AnyInfo, other: AnyInfo) -> NameCollision {
@@ -180,14 +212,14 @@ const fn name_collision(this: AnyInfo, other: AnyInfo) -> NameCollision {
         }
         (BindKind::Type, BindKind::Type) => {
             "Type bindings must have distinct names from Type bindings."
-        }
-        _ => todo!(),
+        } // _ => todo!(),
     };
 
     match this {
         AnyInfo::Module(this) => NameCollision::module_bind(this.loc, other.location(), help),
         AnyInfo::Value(this) => NameCollision::value_bind(this.loc, other.location(), help),
         AnyInfo::Type(this) => NameCollision::type_bind(this.loc, other.location(), help),
+        // AnyInfo::Local(this) => NameCollision::local_bind(this.loc, other.location(), help),
     }
 }
 
@@ -210,7 +242,6 @@ impl ModuleScope {
             AnySymbol::Module(symbol) => self.modules.contains_sym(symbol),
             AnySymbol::Value(symbol) => self.values.contains_sym(symbol),
             AnySymbol::Type(symbol) => self.types.contains_sym(symbol),
-            AnySymbol::Local(symbol) => todo!(),
         }
     }
 

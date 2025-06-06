@@ -91,7 +91,7 @@ pub fn resolve(
         return Ok(ctx);
     }
 
-    let scope = ctx.module_scopes.remove(&module_sym).unwrap();
+    let scope = ctx.module_scopes.get(&module_sym).cloned().unwrap();
     define::define(scope, &mut ctx);
 
     Ok(ctx)

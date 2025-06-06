@@ -87,12 +87,13 @@ impl<T> Hash for BindInfo<T> {
 pub type ModuleInfo = BindInfo<node::ModuleBind>;
 pub type TypeInfo = BindInfo<node::TypeBind>;
 pub type ValueInfo = BindInfo<node::ValueBind>;
+pub type LocalInfo = BindInfo<node::LetExpr>;
 
 pub enum BindKind {
     Module,
     Type,
     Value,
-    Local,
+    // Local,
 }
 
 #[derive(Debug, From, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -100,6 +101,7 @@ pub enum AnyInfo {
     Module(ModuleInfo),
     Type(TypeInfo),
     Value(ValueInfo),
+    // Local(LocalInfo),
 }
 
 impl AnyInfo {
@@ -108,6 +110,7 @@ impl AnyInfo {
             AnyInfo::Module(_) => BindKind::Module,
             AnyInfo::Type(_) => BindKind::Type,
             AnyInfo::Value(_) => BindKind::Value,
+            // AnyInfo::Local(_) => BindKind::Local,
         }
     }
 
@@ -116,6 +119,7 @@ impl AnyInfo {
             AnyInfo::Module(info) => info.loc,
             AnyInfo::Type(info) => info.loc,
             AnyInfo::Value(info) => info.loc,
+            // AnyInfo::Local(info) => info.loc,
         }
     }
 
@@ -124,6 +128,7 @@ impl AnyInfo {
             AnyInfo::Module(info) => info.vis,
             AnyInfo::Type(info) => info.vis,
             AnyInfo::Value(info) => info.vis,
+            // AnyInfo::Local(info) => info.vis,
         }
     }
 }

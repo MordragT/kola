@@ -19,6 +19,11 @@ pub enum NameCollision {
         other: Loc,
         help: &'static str,
     },
+    LocalBind {
+        span: Loc,
+        other: Loc,
+        help: &'static str,
+    },
 }
 
 impl NameCollision {
@@ -30,6 +35,10 @@ impl NameCollision {
     }
     pub const fn type_bind(span: Loc, other: Loc, help: &'static str) -> Self {
         NameCollision::TypeBind { span, other, help }
+    }
+
+    pub const fn local_bind(span: Loc, other: Loc, help: &'static str) -> Self {
+        NameCollision::LocalBind { span, other, help }
     }
 }
 
@@ -49,6 +58,11 @@ impl From<NameCollision> for Diagnostic {
             NameCollision::TypeBind { span, other, help } => {
                 Diagnostic::error(span, "A type bind with the same name was defined before")
                     .with_trace([("This type bind here".to_owned(), other)])
+                    .with_help(help)
+            }
+            NameCollision::LocalBind { span, other, help } => {
+                Diagnostic::error(span, "A local bind with the same name was defined before")
+                    .with_trace([("This local bind here".to_owned(), other)])
                     .with_help(help)
             }
         }

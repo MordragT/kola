@@ -428,6 +428,7 @@ dependencies = [
  "camino",
  "derive_more",
  "indexmap",
+ "kola-collections",
  "kola-print",
  "kola-span",
  "kola-syntax",

@@ -1,6 +1,9 @@
 use log::debug;
 use owo_colors::OwoColorize;
-use std::ops::{ControlFlow, Deref};
+use std::{
+    ops::{ControlFlow, Deref},
+    rc::Rc,
+};
 
 use kola_print::prelude::*;
 use kola_span::{IntoDiagnostic, Loc};
@@ -32,10 +35,7 @@ pub fn declare(path_key: PathKey, module_sym: ModuleSymbol, ctx: &mut ResolveCon
 
     // After visiting the tree, we need to finalize the declaration
     for scope in scopes {
-        let sym = scope.symbol();
-
-        ctx.todo.insert(sym);
-        ctx.module_scopes.insert(sym, scope);
+        ctx.module_scopes.insert(scope.symbol(), Rc::new(scope));
     }
 }
 
@@ -67,6 +67,22 @@ impl<'a> Declarer<'a> {
     {
         self.ctx.topography.span(self.path_key, id)
     }
+
+    pub fn current_module(&self) -> &ModuleScope {
+        self.tracker.current().unwrap()
+    }
+
+    pub fn current_module_mut(&mut self) -> &mut ModuleScope {
+        self.tracker.current_mut().unwrap()
+    }
+
+    // pub fn current_lexical(&self) -> &LexicalScope {
+    //     &self.tracker.current().unwrap().1
+    // }
+
+    // pub fn current_lexical_mut(&mut self) -> &mut LexicalScope {
+    //     &mut self.tracker.current_mut().unwrap().1
+    // }
 }
 
 impl<'a, T> Visitor<T> for Declarer<'a>
@@ -74,6 +90,81 @@ where
     T: TreeView,
 {
     type BreakValue = !;
+
+    // fn visit_let_expr(&mut self, id: Id<node::LetExpr>, tree: &T) -> ControlFlow<Self::BreakValue> {
+    //     let node::LetExpr {
+    //         name,
+    //         value,
+    //         inside,
+    //     } = *tree.node(id);
+
+    //     let name = tree.node(name).0;
+
+    //     LocalSymbol::enter();
+    //     self.walk_expr(value, tree)?;
+    //     LocalSymbol::exit();
+
+    //     let sym = LocalSymbol::new();
+
+    //     self.ctx
+    //         .symbol_table
+    //         .insert_local_bind(self.path_key, id, sym);
+
+    //     self.current_lexical_mut().insert(name, sym);
+
+    //     self.walk_expr(inside, tree)
+    // }
+
+    // fn visit_path_expr(
+    //     &mut self,
+    //     id: Id<node::PathExpr>,
+    //     tree: &T,
+    // ) -> ControlFlow<Self::BreakValue> {
+    //     let node::PathExpr {
+    //         path,
+    //         binding,
+    //         select,
+    //     } = tree.node(id);
+
+    //     let binding = tree.node(*binding).0;
+
+    //     if let Some(path) = path {
+    //         // Cannot reuse the current visitor because that expects a module bind (look at the symbols pop)
+    //         // Also trying to resolve at this point is not correct
+    //         // It is possible to either defer this to a later phase,
+    //         // or try to somehow link these module paths to the paths which are already introduced in module binds:
+    //         // - e.g. through a BiMap of Vec<StrKey> to ModuleSymbol
+    //         // But because the definer only runs over the module binds,
+    //         // this could leave some module paths in path expressions unresolved.
+    //         // So it might be the cleanest solution to just defer the resolution,
+    //         // and create a new SideTable which stores the Vec<StrKey> for a new ModuleSymbol.
+    //         // Another option is to later in the define stage once more go over all module paths
+    //         // and actually check if they have been resolved
+    //         todo!()
+    //     }
+    //     // Cannot resolve the binding at this point...
+    //     // actually if there exists a module path,
+    //     // then I do not need to resolve the binding,
+    //     // or rather I do not need the LexicalScope to resolve it.
+    //     // So I guess I could check if there is some module path,
+    //     // and if not I can just use the LexicalScope and if there is I defer.
+    //     else {
+    //         if let Some(sym) = self.current_lexical().get(&binding) {
+    //             todo!()
+    //         }
+    //         // Well I think I also need the current ModuleScope, so I definitely need to defer until later.
+    //         // Also this could create a recursive call, which I want to prohibit.
+    //         // So I guess I will need a similar mechanism to the `todo` and `active` sets in the context,
+    //         // but for values instead of modules. A problem here could be that I actually have 2 different types
+    //         // of symbols for values: LocalSymbol and ValueSymbol.
+    //         else if let Some(info) = self.current_module().get_value(binding) {
+    //             todo!()
+    //         } else {
+    //             todo!()
+    //         }
+    //     }
+    //     todo!()
+    // }
 
     fn visit_module(&mut self, id: Id<node::Module>, tree: &T) -> ControlFlow<Self::BreakValue> {
         let module_sym = self.symbols.pop().unwrap();
@@ -127,7 +218,7 @@ where
                     // TODO make this more elegant
                     // I am doing this because I am not fatally returning here.
                     // Also doing the same for every other `return`.
-                    let current_module_sym = self.tracker.current().unwrap().symbol();
+                    let current_module_sym = self.current_module().symbol();
                     self.ctx
                         .module_graph
                         .add_dependency(current_module_sym, module_sym);
@@ -145,7 +236,7 @@ where
                     .report
                     .add_diagnostic(e.into_diagnostic(self.span(id)).with_help("fetch"));
 
-                let current_module_sym = self.tracker.current().unwrap().symbol();
+                let current_module_sym = self.current_module().symbol();
 
                 self.ctx
                     .module_graph
@@ -167,7 +258,7 @@ where
 
         let input = LexInput::new(path_key, source.text());
         let Some(tokens) = tokenize(input, &mut self.ctx.report) else {
-            let current_module_sym = self.tracker.current().unwrap().symbol();
+            let current_module_sym = self.current_module().symbol();
 
             self.ctx
                 .module_graph
@@ -192,7 +283,7 @@ where
             parse(input, &mut self.ctx.interner, &mut self.ctx.report);
 
         let Some(tree) = tree else {
-            let current_module_sym = self.tracker.current().unwrap().symbol();
+            let current_module_sym = self.current_module().symbol();
 
             self.ctx
                 .module_graph
@@ -222,7 +313,7 @@ where
 
         declare(path_key, module_sym, &mut self.ctx);
 
-        let current_module_sym = self.tracker.current().unwrap().symbol();
+        let current_module_sym = self.current_module().symbol();
 
         // Add dependency from current module to this new module
         self.ctx
@@ -240,7 +331,18 @@ where
         id: Id<node::ModulePath>,
         tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
-        let module_sym = self.symbols.pop().unwrap();
+        // This will create a new module symbol if not visited from a module bind
+        let module_sym = match self.symbols.pop() {
+            Some(sym) => sym,
+            None => {
+                // TODO if the symbol generation would be done centralized,
+                // then I might be able to abstract this away,
+                // so that I can just after the declare stage mark all as pending.
+                let sym = ModuleSymbol::new();
+                self.ctx.pending.insert(sym);
+                sym
+            }
+        };
 
         let path = tree
             .node(id)
@@ -250,7 +352,7 @@ where
             .map(|id| tree.node(id).0)
             .collect::<Vec<_>>();
 
-        self.ctx.module_paths.insert(module_sym, path);
+        self.current_module_mut().insert_path(module_sym, path);
 
         ControlFlow::Continue(())
     }
@@ -273,6 +375,7 @@ where
         let span = self.span(id);
 
         let module_sym = ModuleSymbol::new();
+        self.ctx.pending.insert(module_sym);
         self.symbols.push(module_sym);
 
         // TODO is this right ?
@@ -281,7 +384,7 @@ where
             .insert_module_bind(self.path_key, id, module_sym);
 
         // Register the module binding in the current scope
-        if let Err(e) = self.tracker.current_mut().unwrap().insert_module(
+        if let Err(e) = self.current_module_mut().insert_module(
             name.0,
             module_sym,
             BindInfo::new(id, span, *vis),
@@ -310,7 +413,7 @@ where
         let span = self.span(id);
 
         // Register the value binding in the current scope
-        if let Err(e) = self.tracker.current_mut().unwrap().insert_value(
+        if let Err(e) = self.current_module_mut().insert_value(
             name.0,
             ValueSymbol::new(),
             BindInfo::new(id, span, *vis),
@@ -318,8 +421,7 @@ where
             self.ctx.report.add_diagnostic(e.into());
         }
 
-        // self.walk_value_bind(id, tree)
-        ControlFlow::Continue(()) // nothing to do here anyways
+        self.walk_value_bind(id, tree) // walk to discover module paths in expressions
     }
 
     fn visit_type_bind(
@@ -333,7 +435,7 @@ where
         let span = self.span(id);
 
         // Register the type binding in the current scope
-        if let Err(e) = self.tracker.current_mut().unwrap().insert_type(
+        if let Err(e) = self.current_module_mut().insert_type(
             name.0,
             TypeSymbol::new(),
             BindInfo::new(id, span, Vis::Export),
@@ -341,7 +443,7 @@ where
             self.ctx.report.add_diagnostic(e.into());
         }
 
-        // self.walk_type_bind(id, tree)
-        ControlFlow::Continue(()) // nothing to do here anyways
+        // self.walk_type_bind(id, tree) // TODO walk to discover module paths in type expressions
+        ControlFlow::Continue(()) // nothing to do here at the moment
     }
 }
