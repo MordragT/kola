@@ -1,9 +1,6 @@
 use log::debug;
 use owo_colors::OwoColorize;
-use std::{
-    ops::{ControlFlow, Deref},
-    rc::Rc,
-};
+use std::{ops::ControlFlow, rc::Rc};
 
 use kola_print::prelude::*;
 use kola_span::{IntoDiagnostic, Loc};
@@ -26,7 +23,7 @@ pub fn declare(path_key: PathKey, module_sym: ModuleSymbol, ctx: &mut ResolveCon
     // Create a visitor to walk the tree and collect declarations
     let mut declarer = Declarer::new(path_key, module_sym, &mut tracker, ctx);
 
-    match tree.root_id().visit_by(&mut declarer, tree.deref()) {
+    match tree.root_id().visit_by(&mut declarer, &*tree) {
         ControlFlow::Continue(()) => (),
         ControlFlow::Break(_) => unreachable!(),
     }
@@ -35,6 +32,7 @@ pub fn declare(path_key: PathKey, module_sym: ModuleSymbol, ctx: &mut ResolveCon
 
     // After visiting the tree, we need to finalize the declaration
     for scope in scopes {
+        // TODO insert parent scope if exists as "super" -> parent_module_sym
         ctx.module_scopes.insert(scope.symbol(), Rc::new(scope));
     }
 }
@@ -75,14 +73,6 @@ impl<'a> Declarer<'a> {
     pub fn current_module_mut(&mut self) -> &mut ModuleScope {
         self.tracker.current_mut().unwrap()
     }
-
-    // pub fn current_lexical(&self) -> &LexicalScope {
-    //     &self.tracker.current().unwrap().1
-    // }
-
-    // pub fn current_lexical_mut(&mut self) -> &mut LexicalScope {
-    //     &mut self.tracker.current_mut().unwrap().1
-    // }
 }
 
 impl<'a, T> Visitor<T> for Declarer<'a>
@@ -90,81 +80,6 @@ where
     T: TreeView,
 {
     type BreakValue = !;
-
-    // fn visit_let_expr(&mut self, id: Id<node::LetExpr>, tree: &T) -> ControlFlow<Self::BreakValue> {
-    //     let node::LetExpr {
-    //         name,
-    //         value,
-    //         inside,
-    //     } = *tree.node(id);
-
-    //     let name = tree.node(name).0;
-
-    //     LocalSymbol::enter();
-    //     self.walk_expr(value, tree)?;
-    //     LocalSymbol::exit();
-
-    //     let sym = LocalSymbol::new();
-
-    //     self.ctx
-    //         .symbol_table
-    //         .insert_local_bind(self.path_key, id, sym);
-
-    //     self.current_lexical_mut().insert(name, sym);
-
-    //     self.walk_expr(inside, tree)
-    // }
-
-    // fn visit_path_expr(
-    //     &mut self,
-    //     id: Id<node::PathExpr>,
-    //     tree: &T,
-    // ) -> ControlFlow<Self::BreakValue> {
-    //     let node::PathExpr {
-    //         path,
-    //         binding,
-    //         select,
-    //     } = tree.node(id);
-
-    //     let binding = tree.node(*binding).0;
-
-    //     if let Some(path) = path {
-    //         // Cannot reuse the current visitor because that expects a module bind (look at the symbols pop)
-    //         // Also trying to resolve at this point is not correct
-    //         // It is possible to either defer this to a later phase,
-    //         // or try to somehow link these module paths to the paths which are already introduced in module binds:
-    //         // - e.g. through a BiMap of Vec<StrKey> to ModuleSymbol
-    //         // But because the definer only runs over the module binds,
-    //         // this could leave some module paths in path expressions unresolved.
-    //         // So it might be the cleanest solution to just defer the resolution,
-    //         // and create a new SideTable which stores the Vec<StrKey> for a new ModuleSymbol.
-    //         // Another option is to later in the define stage once more go over all module paths
-    //         // and actually check if they have been resolved
-    //         todo!()
-    //     }
-    //     // Cannot resolve the binding at this point...
-    //     // actually if there exists a module path,
-    //     // then I do not need to resolve the binding,
-    //     // or rather I do not need the LexicalScope to resolve it.
-    //     // So I guess I could check if there is some module path,
-    //     // and if not I can just use the LexicalScope and if there is I defer.
-    //     else {
-    //         if let Some(sym) = self.current_lexical().get(&binding) {
-    //             todo!()
-    //         }
-    //         // Well I think I also need the current ModuleScope, so I definitely need to defer until later.
-    //         // Also this could create a recursive call, which I want to prohibit.
-    //         // So I guess I will need a similar mechanism to the `todo` and `active` sets in the context,
-    //         // but for values instead of modules. A problem here could be that I actually have 2 different types
-    //         // of symbols for values: LocalSymbol and ValueSymbol.
-    //         else if let Some(info) = self.current_module().get_value(binding) {
-    //             todo!()
-    //         } else {
-    //             todo!()
-    //         }
-    //     }
-    //     todo!()
-    // }
 
     fn visit_module(&mut self, id: Id<node::Module>, tree: &T) -> ControlFlow<Self::BreakValue> {
         let module_sym = self.symbols.pop().unwrap();
@@ -353,6 +268,9 @@ where
             .collect::<Vec<_>>();
 
         self.current_module_mut().insert_path(module_sym, path);
+        self.ctx
+            .symbol_table
+            .insert_path(self.path_key, id, module_sym);
 
         ControlFlow::Continue(())
     }

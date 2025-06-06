@@ -236,8 +236,18 @@ impl SymbolTable {
     }
 
     #[inline]
+    pub fn lookup_module_id(&self, sym: ModuleSymbol) -> Option<(PathKey, Id<node::ModuleBind>)> {
+        self.modules.get_by_value(&sym).copied()
+    }
+
+    #[inline]
     pub fn lookup_type_sym(&self, key: PathKey, id: Id<node::TypeBind>) -> Option<TypeSymbol> {
         self.types.get_by_key(&(key, id)).copied()
+    }
+
+    #[inline]
+    pub fn lookup_type_id(&self, sym: TypeSymbol) -> Option<(PathKey, Id<node::TypeBind>)> {
+        self.types.get_by_value(&sym).copied()
     }
 
     #[inline]
@@ -246,17 +256,42 @@ impl SymbolTable {
     }
 
     #[inline]
-    pub fn lookup_module_id(&self, sym: ModuleSymbol) -> Option<(PathKey, Id<node::ModuleBind>)> {
-        self.modules.get_by_value(&sym).copied()
-    }
-    #[inline]
-    pub fn lookup_type_id(&self, sym: TypeSymbol) -> Option<(PathKey, Id<node::TypeBind>)> {
-        self.types.get_by_value(&sym).copied()
+    pub fn lookup_value_id(&self, sym: ValueSymbol) -> Option<(PathKey, Id<node::ValueBind>)> {
+        self.values.get_by_value(&sym).copied()
     }
 
     #[inline]
-    pub fn lookup_value_id(&self, sym: ValueSymbol) -> Option<(PathKey, Id<node::ValueBind>)> {
-        self.values.get_by_value(&sym).copied()
+    pub fn lookup_import_sym(
+        &self,
+        key: PathKey,
+        id: Id<node::ModuleImport>,
+    ) -> Option<ModuleSymbol> {
+        self.imports.get_by_key(&(key, id)).copied()
+    }
+
+    #[inline]
+    pub fn lookup_import_id(&self, sym: ModuleSymbol) -> Option<(PathKey, Id<node::ModuleImport>)> {
+        self.imports.get_by_value(&sym).copied()
+    }
+
+    #[inline]
+    pub fn lookup_inline_sym(&self, key: PathKey, id: Id<node::Module>) -> Option<ModuleSymbol> {
+        self.inlines.get_by_key(&(key, id)).copied()
+    }
+
+    #[inline]
+    pub fn lookup_inline_id(&self, sym: ModuleSymbol) -> Option<(PathKey, Id<node::Module>)> {
+        self.inlines.get_by_value(&sym).copied()
+    }
+
+    #[inline]
+    pub fn lookup_path_sym(&self, key: PathKey, id: Id<node::ModulePath>) -> Option<ModuleSymbol> {
+        self.paths.get_by_key(&(key, id)).copied()
+    }
+
+    #[inline]
+    pub fn lookup_path_id(&self, sym: ModuleSymbol) -> Option<(PathKey, Id<node::ModulePath>)> {
+        self.paths.get_by_value(&sym).copied()
     }
 }
 
