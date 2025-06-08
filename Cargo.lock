@@ -436,6 +436,7 @@ dependencies = [
  "kola-utils",
  "log",
  "owo-colors",
+ "serde",
 ]
 
 [[package]]
@@ -501,6 +502,7 @@ name = "kola-utils"
 version = "0.1.0"
 dependencies = [
  "camino",
+ "derive_more",
  "pathdiff",
  "serde",
  "thiserror",

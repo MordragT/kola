@@ -7,6 +7,8 @@ use kola_tree::{
 use kola_utils::interner::PathKey;
 use std::{collections::HashMap, ops::Index, rc::Rc};
 
+use crate::QualId;
+
 #[derive(Debug, Clone, Default)]
 pub struct Topography(HashMap<PathKey, Rc<Locations>>);
 
@@ -23,12 +25,12 @@ impl Topography {
         self.0.get(path)
     }
 
-    pub fn span<T>(&self, path: PathKey, id: Id<T>) -> Loc
+    pub fn span<T>(&self, id: QualId<T>) -> Loc
     where
         T: MetaCast<LocPhase, Meta = Loc>,
     {
-        let topography = &self.0[&path];
-        *topography.meta(id)
+        let topography = &self.0[&id.0];
+        *topography.meta(id.1)
     }
 }
 

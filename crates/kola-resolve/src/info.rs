@@ -2,26 +2,23 @@ use std::{fmt, hash::Hash};
 
 use derive_more::From;
 use kola_span::Loc;
-use kola_tree::{
-    id::Id,
-    node::{self, Vis},
-};
+use kola_tree::node::{self, Vis};
 
-use crate::symbol::ModuleSymbol;
+use crate::QualId;
 
 pub struct BindInfo<T> {
-    pub node_id: Id<T>,
+    pub id: QualId<T>,
     pub loc: Loc,
     pub vis: Vis,
 }
 
 impl<T> BindInfo<T> {
-    pub const fn new(node_id: Id<T>, loc: Loc, vis: Vis) -> Self {
-        Self { node_id, loc, vis }
+    pub const fn new(id: QualId<T>, loc: Loc, vis: Vis) -> Self {
+        Self { id, loc, vis }
     }
 
-    pub const fn node_id(&self) -> Id<T> {
-        self.node_id
+    pub const fn id(&self) -> QualId<T> {
+        self.id
     }
 
     pub const fn loc(&self) -> Loc {
@@ -36,7 +33,7 @@ impl<T> BindInfo<T> {
 impl<T> fmt::Debug for BindInfo<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("BindInfo")
-            .field("node_id", &self.node_id)
+            .field("id", &self.id)
             .field("loc", &self.loc)
             .field("vis", &self.vis)
             .finish()
@@ -46,7 +43,7 @@ impl<T> fmt::Debug for BindInfo<T> {
 impl<T> Clone for BindInfo<T> {
     fn clone(&self) -> Self {
         Self {
-            node_id: self.node_id,
+            id: self.id,
             loc: self.loc,
             vis: self.vis,
         }
@@ -57,7 +54,7 @@ impl<T> Copy for BindInfo<T> {}
 
 impl<T> PartialEq for BindInfo<T> {
     fn eq(&self, other: &Self) -> bool {
-        self.node_id == other.node_id && self.loc == other.loc
+        self.id == other.id && self.loc == other.loc
     }
 }
 
@@ -71,15 +68,15 @@ impl<T> PartialOrd for BindInfo<T> {
 
 impl<T> Ord for BindInfo<T> {
     fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.node_id
-            .cmp(&other.node_id)
+        self.id
+            .cmp(&other.id)
             .then_with(|| self.loc.cmp(&other.loc))
     }
 }
 
 impl<T> Hash for BindInfo<T> {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.node_id.hash(state);
+        self.id.hash(state);
         self.loc.hash(state);
     }
 }
@@ -87,13 +84,11 @@ impl<T> Hash for BindInfo<T> {
 pub type ModuleInfo = BindInfo<node::ModuleBind>;
 pub type TypeInfo = BindInfo<node::TypeBind>;
 pub type ValueInfo = BindInfo<node::ValueBind>;
-pub type LocalInfo = BindInfo<node::LetExpr>;
 
 pub enum BindKind {
     Module,
     Type,
     Value,
-    // Local,
 }
 
 #[derive(Debug, From, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -101,7 +96,6 @@ pub enum AnyInfo {
     Module(ModuleInfo),
     Type(TypeInfo),
     Value(ValueInfo),
-    // Local(LocalInfo),
 }
 
 impl AnyInfo {
@@ -110,7 +104,6 @@ impl AnyInfo {
             AnyInfo::Module(_) => BindKind::Module,
             AnyInfo::Type(_) => BindKind::Type,
             AnyInfo::Value(_) => BindKind::Value,
-            // AnyInfo::Local(_) => BindKind::Local,
         }
     }
 
@@ -119,7 +112,6 @@ impl AnyInfo {
             AnyInfo::Module(info) => info.loc,
             AnyInfo::Type(info) => info.loc,
             AnyInfo::Value(info) => info.loc,
-            // AnyInfo::Local(info) => info.loc,
         }
     }
 
@@ -128,19 +120,6 @@ impl AnyInfo {
             AnyInfo::Module(info) => info.vis,
             AnyInfo::Type(info) => info.vis,
             AnyInfo::Value(info) => info.vis,
-            // AnyInfo::Local(info) => info.vis,
         }
     }
 }
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum ModuleDef {
-    IsScope,
-    IsLink(ModuleSymbol),
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct ValueDef {}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct TypeDef {}

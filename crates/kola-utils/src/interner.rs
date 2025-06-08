@@ -2,13 +2,29 @@ use std::borrow::{Borrow, Cow, ToOwned};
 use std::collections::HashMap;
 use std::fmt;
 use std::hash::{BuildHasher, Hash, RandomState};
+use std::marker::PhantomData;
 use std::ops::Index;
 
-mod path;
-mod str;
+use camino::Utf8Path;
 
-pub use path::{PathInterner, PathKey};
-pub use str::{StrInterner, StrKey};
+use crate::define_unique_id;
+
+define_unique_id!(Key);
+
+impl<T: ?Sized> Key<T> {
+    const fn from_usize(key: usize) -> Self {
+        Self {
+            id: key as u32,
+            t: PhantomData,
+        }
+    }
+}
+
+pub type PathKey = Key<Utf8Path>;
+pub type PathInterner<S = RandomState> = Interner<Utf8Path, S>;
+
+pub type StrKey = Key<str>;
+pub type StrInterner<S = RandomState> = Interner<str, S>;
 
 /// A flexible interner that efficiently stores unique values.
 ///
@@ -147,22 +163,22 @@ where
     /// Accepts either borrowed or owned values via `Cow`.
     /// If the value is already interned, returns its existing index.
     /// Otherwise, adds the owned value to the interner and returns the new index.
-    pub fn intern<'a>(&mut self, value: impl Into<Cow<'a, B>>) -> usize {
+    pub fn intern<'a>(&mut self, value: impl Into<Cow<'a, B>>) -> Key<B> {
         let value = value.into();
 
         // First check if an equivalent value already exists
         // This works with the borrowed form without any conversion
         let borrowed: &B = value.borrow();
 
-        if let Some(&idx) = self.map.get(borrowed) {
-            return idx;
+        if let Some(&key) = self.map.get(borrowed) {
+            return Key::from_usize(key);
         }
 
         // Convert to owned if it's not already
         let owned = value.into_owned();
 
         // Value not found, add it to our values
-        let idx = self.values.len();
+        let key = self.values.len();
         self.values.push(owned);
 
         // Get a reference to the value we just added and convert it to a static reference
@@ -174,16 +190,16 @@ where
         let static_ref: &'static B = unsafe { std::mem::transmute::<&B, &'static B>(borrowed_ref) };
 
         // Store the reference -> index mapping
-        self.map.insert(static_ref, idx);
+        self.map.insert(static_ref, key);
 
-        idx
+        Key::from_usize(key)
     }
 
     /// Gets a reference to a value by its index.
     ///
     /// Returns `None` if the index is out of bounds.
-    pub fn get(&self, idx: usize) -> Option<&<B as ToOwned>::Owned> {
-        self.values.get(idx)
+    pub fn get(&self, key: Key<B>) -> Option<&B> {
+        self.values.get(key.as_usize()).map(Borrow::borrow)
     }
 
     /// Checks if the interner contains a value.
@@ -195,8 +211,8 @@ where
     ///
     /// If the value is interned, returns its index.
     /// Otherwise, returns None.
-    pub fn lookup(&self, value: &B) -> Option<usize> {
-        self.map.get(value).copied()
+    pub fn lookup(&self, value: &B) -> Option<Key<B>> {
+        self.map.get(value).copied().map(Key::from_usize)
     }
 
     /// Returns the number of unique values in the interner.
@@ -221,8 +237,8 @@ where
     }
 
     /// Returns an iterator over all values in the interner.
-    pub fn iter(&self) -> impl Iterator<Item = &<B as ToOwned>::Owned> {
-        self.values.iter()
+    pub fn iter(&self) -> impl Iterator<Item = &B> {
+        self.values.iter().map(Borrow::borrow)
     }
 
     /// Shrinks the capacity of the interner to fit its current length.
@@ -235,15 +251,15 @@ where
 }
 
 // Implement Index trait for convenient access by index
-impl<B, S> Index<usize> for Interner<B, S>
+impl<B, S> Index<Key<B>> for Interner<B, S>
 where
     B: ?Sized + ToOwned + Eq + Hash + 'static,
     <B as ToOwned>::Owned: Borrow<B> + 'static,
 {
     type Output = <B as ToOwned>::Owned;
 
-    fn index(&self, idx: usize) -> &Self::Output {
-        &self.values[idx]
+    fn index(&self, key: Key<B>) -> &Self::Output {
+        &self.values[key.as_usize()]
     }
 }
 

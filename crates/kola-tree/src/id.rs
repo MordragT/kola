@@ -1,7 +1,6 @@
 use kola_print::prelude::*;
-use kola_utils::convert::TryAsRef;
-use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, fmt, hash::Hash, marker::PhantomData};
+use kola_utils::{convert::TryAsRef, define_unique_id};
+use std::marker::PhantomData;
 
 use crate::{
     meta::{MetaCast, MetaView, Phase},
@@ -10,54 +9,7 @@ use crate::{
     tree::TreeView,
 };
 
-#[derive(Serialize, Deserialize)]
-pub struct Id<T> {
-    id: u32,
-    t: PhantomData<T>,
-}
-
-impl<T> fmt::Debug for Id<T> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "Id({})", self.id)
-    }
-}
-
-impl<T> Clone for Id<T> {
-    fn clone(&self) -> Self {
-        Self {
-            id: self.id,
-            t: PhantomData,
-        }
-    }
-}
-
-impl<T> Copy for Id<T> {}
-
-impl<T> PartialEq for Id<T> {
-    fn eq(&self, other: &Self) -> bool {
-        self.id.eq(&other.id)
-    }
-}
-
-impl<T> Eq for Id<T> {}
-
-impl<T> PartialOrd for Id<T> {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        self.id.partial_cmp(&other.id)
-    }
-}
-
-impl<T> Ord for Id<T> {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.id.cmp(&other.id)
-    }
-}
-
-impl<T> Hash for Id<T> {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.id.hash(state);
-    }
-}
+define_unique_id!(Id);
 
 impl<T> Id<T> {
     pub fn unchecked_from_usize(id: usize) -> Self {
@@ -69,10 +21,6 @@ impl<T> Id<T> {
 
     pub(crate) fn new(id: u32) -> Self {
         Self { id, t: PhantomData }
-    }
-
-    pub fn as_usize(&self) -> usize {
-        self.id as usize
     }
 
     pub fn get(self, tree: &impl TreeView) -> &T

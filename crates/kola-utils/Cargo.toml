@@ -7,5 +7,6 @@ edition = "2024"
 camino.workspace = true
 serde.workspace = true
 thiserror.workspace = true
+derive_more.workspace = true
 pathdiff = { version = "0.2.3", features = ["camino"] }
 typenum = "1.18.0"

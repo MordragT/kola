@@ -5,9 +5,11 @@ pub mod bimap;
 pub mod convert;
 pub mod dependency;
 pub mod errors;
+pub mod id;
 pub mod interner;
 pub mod io;
 pub mod tracker;
+pub mod visit;
 
 #[macro_export]
 macro_rules! as_variant {

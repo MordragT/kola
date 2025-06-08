@@ -1,6 +1,5 @@
 use std::{
     collections::HashMap,
-    fmt,
     hash::Hash,
     marker::PhantomData,
     ops::Index,
@@ -9,20 +8,16 @@ use std::{
 
 use derive_more::From;
 use kola_tree::{id::Id, node};
-use kola_utils::{bimap::BiMap, interner::PathKey};
+use kola_utils::{bimap::BiMap, define_unique_leveled_id, interner::PathKey};
 
-use crate::info::{BindKind, ModuleDef, TypeDef, ValueDef};
+use crate::QualId;
 
 static LEVEL: AtomicU32 = AtomicU32::new(0);
 static GENERATOR: AtomicU32 = AtomicU32::new(0);
 
-pub struct Symbol<T> {
-    id: u32,
-    level: u32,
-    t: PhantomData<T>,
-}
+define_unique_leveled_id!(Sym);
 
-impl<T> Symbol<T> {
+impl<T: ?Sized> Sym<T> {
     pub fn new() -> Self {
         let id = GENERATOR.fetch_add(1, Ordering::Relaxed);
         let level = Self::load_level();
@@ -31,14 +26,6 @@ impl<T> Symbol<T> {
             level,
             t: PhantomData,
         }
-    }
-
-    pub fn level(&self) -> u32 {
-        self.level
-    }
-
-    pub fn id(&self) -> u32 {
-        self.id
     }
 
     pub fn load_level() -> u32 {
@@ -53,10 +40,7 @@ impl<T> Symbol<T> {
         LEVEL.fetch_sub(1, Ordering::Relaxed);
     }
 
-    pub fn branch<F, U>(mut f: F) -> U
-    where
-        F: FnMut() -> U,
-    {
+    pub fn branch<U>(mut f: impl FnMut() -> U) -> U {
         LEVEL.fetch_add(1, Ordering::Relaxed);
         let result = f();
         LEVEL.fetch_sub(1, Ordering::Relaxed);
@@ -64,325 +48,335 @@ impl<T> Symbol<T> {
     }
 }
 
-impl<T> Default for Symbol<T> {
+impl<T: ?Sized> Default for Sym<T> {
     fn default() -> Self {
         Self::new()
     }
 }
 
-impl<T> fmt::Debug for Symbol<T> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "Symbol({}, {}, {:?})", self.id, self.level, self.t)
-    }
-}
+pub struct ModuleTag;
+pub struct TypeTag;
+pub struct ValueTag;
 
-impl<T> Clone for Symbol<T> {
-    fn clone(&self) -> Self {
-        Self {
-            id: self.id,
-            level: self.level,
-            t: PhantomData,
-        }
-    }
-}
-
-impl<T> Copy for Symbol<T> {}
-
-impl<T> PartialEq for Symbol<T> {
-    fn eq(&self, other: &Self) -> bool {
-        self.id == other.id && self.level == other.level
-    }
-}
-
-impl<T> Eq for Symbol<T> {}
-
-impl<T> PartialOrd for Symbol<T> {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl<T> Ord for Symbol<T> {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        (self.id, self.level).cmp(&(other.id, other.level))
-    }
-}
-
-impl<T> Hash for Symbol<T> {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.id.hash(state);
-        self.level.hash(state);
-    }
-}
-
-pub type ModuleSymbol = Symbol<node::ModuleBind>;
-pub type TypeSymbol = Symbol<node::TypeBind>;
-pub type ValueSymbol = Symbol<node::ValueBind>;
-pub type LocalSymbol = Symbol<node::LetExpr>;
+pub type ModuleSym = Sym<ModuleTag>;
+pub type TypeSym = Sym<TypeTag>;
+pub type ValueSym = Sym<ValueTag>;
 
 #[derive(Debug, From, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum AnySymbol {
-    Module(ModuleSymbol),
-    Type(TypeSymbol),
-    Value(ValueSymbol),
-    // Local(LocalSymbol),
+pub enum Symbol {
+    Module(ModuleSym),
+    Type(TypeSym),
+    Value(ValueSym),
 }
 
-impl AnySymbol {
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum SymbolKind {
+    Module,
+    Type,
+    Value,
+}
+
+impl Symbol {
     pub fn id(&self) -> u32 {
         match self {
-            AnySymbol::Module(symbol) => symbol.id(),
-            AnySymbol::Type(symbol) => symbol.id(),
-            AnySymbol::Value(symbol) => symbol.id(),
-            // AnySymbol::Local(symbol) => symbol.id(),
+            Self::Module(symbol) => symbol.id(),
+            Self::Type(symbol) => symbol.id(),
+            Self::Value(symbol) => symbol.id(),
         }
+    }
+
+    pub fn as_usize(&self) -> usize {
+        self.id() as usize
     }
 
     pub fn level(&self) -> u32 {
         match self {
-            AnySymbol::Module(symbol) => symbol.level(),
-            AnySymbol::Type(symbol) => symbol.level(),
-            AnySymbol::Value(symbol) => symbol.level(),
-            // AnySymbol::Local(symbol) => symbol.level(),
+            Self::Module(symbol) => symbol.level(),
+            Self::Type(symbol) => symbol.level(),
+            Self::Value(symbol) => symbol.level(),
         }
     }
 
-    pub fn kind(&self) -> BindKind {
+    pub fn kind(&self) -> SymbolKind {
         match self {
-            AnySymbol::Module(_) => BindKind::Module,
-            AnySymbol::Type(_) => BindKind::Type,
-            AnySymbol::Value(_) => BindKind::Value,
-            // AnySymbol::Local(_) => BindKind::Local,
+            Self::Module(_) => SymbolKind::Module,
+            Self::Type(_) => SymbolKind::Type,
+            Self::Value(_) => SymbolKind::Value,
         }
     }
 }
 
-pub type Symbols<T> = BiMap<(PathKey, Id<T>), Symbol<T>>;
+// pub type QualName = QualId<node::Name>;
+
+// pub type ModuleSymbols = BiMap<ModuleSym, QualName>;
+// pub type TypeSymbols = BiMap<TypeSym, QualName>;
+// pub type ValueSymbols = BiMap<ValueSym, QualName>;
+
+// /// A symbol table that holds all symbols in every scope of the program.
+// /// It contains modules, types, and values, each represented by their own symbol type.
+// /// It allows for insertion and lookup of symbols by their qualified names.
+// #[derive(Debug, Clone)]
+// pub struct SymbolTable {
+//     pub modules: ModuleSymbols,
+//     pub types: TypeSymbols,
+//     pub values: ValueSymbols,
+// }
+
+// impl SymbolTable {
+//     #[inline]
+//     pub fn new() -> Self {
+//         Self {
+//             modules: ModuleSymbols::new(),
+//             types: TypeSymbols::new(),
+//             values: ValueSymbols::new(),
+//         }
+//     }
+
+//     #[inline]
+//     pub fn insert_module(&mut self, sym: ModuleSym, name: QualName) {
+//         self.modules.insert(sym, name);
+//     }
+
+//     #[inline]
+//     pub fn insert_type(&mut self, sym: TypeSym, name: QualName) {
+//         self.types.insert(sym, name);
+//     }
+
+//     #[inline]
+//     pub fn insert_value(&mut self, sym: ValueSym, name: QualName) {
+//         self.values.insert(sym, name);
+//     }
+
+//     #[inline]
+//     pub fn module_sym(&self, name: &QualName) -> Option<ModuleSym> {
+//         self.modules.get_by_value(name).cloned()
+//     }
+
+//     #[inline]
+//     pub fn type_sym(&self, name: &QualName) -> Option<TypeSym> {
+//         self.types.get_by_value(name).cloned()
+//     }
+
+//     #[inline]
+//     pub fn value_sym(&self, name: &QualName) -> Option<ValueSym> {
+//         self.values.get_by_value(name).cloned()
+//     }
+
+//     #[inline]
+//     pub fn path_key_of(&self, sym: impl Into<Symbol>) -> Option<PathKey> {
+//         match sym.into() {
+//             Symbol::Module(sym) => self.modules.get_by_key(&sym),
+//             Symbol::Type(sym) => self.types.get_by_key(&sym),
+//             Symbol::Value(sym) => self.values.get_by_key(&sym),
+//         }
+//         .map(|(key, _)| *key)
+//     }
+// }
+
+pub type Lookup<T, S> = HashMap<QualId<T>, S>;
 
 #[derive(Debug, Clone)]
-pub struct SymbolTable {
-    pub modules: Symbols<node::ModuleBind>,
-    pub types: Symbols<node::TypeBind>,
-    pub values: Symbols<node::ValueBind>,
-    pub locals: Symbols<node::LetExpr>,
-
-    pub imports: BiMap<(PathKey, Id<node::ModuleImport>), ModuleSymbol>,
-    pub inlines: BiMap<(PathKey, Id<node::Module>), ModuleSymbol>,
-    pub paths: BiMap<(PathKey, Id<node::ModulePath>), ModuleSymbol>,
+pub struct LookupTable {
+    pub module_binds: Lookup<node::ModuleBind, ModuleSym>,
+    pub module_imports: Lookup<node::ModuleImport, ModuleSym>,
+    pub modules: Lookup<node::Module, ModuleSym>,
+    pub module_paths: Lookup<node::ModulePath, ModuleSym>,
+    pub type_binds: Lookup<node::TypeBind, TypeSym>,
+    pub value_binds: Lookup<node::ValueBind, ValueSym>,
+    pub let_exprs: Lookup<node::LetExpr, ValueSym>,
+    pub lambda_exprs: Lookup<node::LambdaExpr, ValueSym>,
+    pub path_exprs: Lookup<node::PathExpr, ValueSym>,
 }
 
-impl SymbolTable {
+impl LookupTable {
     #[inline]
     pub fn new() -> Self {
         Self {
-            modules: Symbols::new(),
-            types: Symbols::new(),
-            values: Symbols::new(),
-            locals: Symbols::new(),
-
-            imports: BiMap::new(),
-            inlines: BiMap::new(),
-            paths: BiMap::new(),
+            module_binds: Lookup::new(),
+            module_imports: Lookup::new(),
+            modules: Lookup::new(),
+            module_paths: Lookup::new(),
+            type_binds: Lookup::new(),
+            value_binds: Lookup::new(),
+            let_exprs: Lookup::new(),
+            lambda_exprs: Lookup::new(),
+            path_exprs: Lookup::new(),
         }
     }
 
     #[inline]
-    pub fn insert_module_bind(
-        &mut self,
-        key: PathKey,
-        id: Id<node::ModuleBind>,
-        sym: ModuleSymbol,
-    ) {
-        self.modules.insert((key, id), sym)
+    pub fn insert_module_bind(&mut self, id: QualId<node::ModuleBind>, sym: ModuleSym) {
+        self.module_binds.insert(id, sym);
     }
 
     #[inline]
-    pub fn insert_type_bind(&mut self, key: PathKey, id: Id<node::TypeBind>, sym: TypeSymbol) {
-        self.types.insert((key, id), sym)
+    pub fn insert_module_import(&mut self, id: QualId<node::ModuleImport>, sym: ModuleSym) {
+        self.module_imports.insert(id, sym);
     }
 
     #[inline]
-    pub fn insert_value_bind(&mut self, key: PathKey, id: Id<node::ValueBind>, sym: ValueSymbol) {
-        self.values.insert((key, id), sym)
+    pub fn insert_module(&mut self, id: QualId<node::Module>, sym: ModuleSym) {
+        self.modules.insert(id, sym);
     }
 
     #[inline]
-    pub fn insert_local_bind(&mut self, key: PathKey, id: Id<node::LetExpr>, sym: LocalSymbol) {
-        self.locals.insert((key, id), sym);
+    pub fn insert_module_path(&mut self, id: QualId<node::ModulePath>, sym: ModuleSym) {
+        self.module_paths.insert(id, sym);
     }
 
     #[inline]
-    pub fn insert_import(&mut self, key: PathKey, id: Id<node::ModuleImport>, sym: ModuleSymbol) {
-        self.imports.insert((key, id), sym);
+    pub fn insert_type_bind(&mut self, id: QualId<node::TypeBind>, sym: TypeSym) {
+        self.type_binds.insert(id, sym);
     }
 
     #[inline]
-    pub fn insert_inline(&mut self, key: PathKey, id: Id<node::Module>, sym: ModuleSymbol) {
-        self.inlines.insert((key, id), sym);
+    pub fn insert_value_bind(&mut self, id: QualId<node::ValueBind>, sym: ValueSym) {
+        self.value_binds.insert(id, sym);
     }
 
     #[inline]
-    pub fn insert_path(&mut self, key: PathKey, id: Id<node::ModulePath>, sym: ModuleSymbol) {
-        self.paths.insert((key, id), sym);
+    pub fn insert_let_expr(&mut self, id: QualId<node::LetExpr>, sym: ValueSym) {
+        self.let_exprs.insert(id, sym);
     }
 
     #[inline]
-    pub fn lookup_module_sym(
-        &self,
-        key: PathKey,
-        id: Id<node::ModuleBind>,
-    ) -> Option<ModuleSymbol> {
-        self.modules.get_by_key(&(key, id)).copied()
+    pub fn insert_lambda_expr(&mut self, id: QualId<node::LambdaExpr>, sym: ValueSym) {
+        self.lambda_exprs.insert(id, sym);
     }
 
     #[inline]
-    pub fn lookup_module_id(&self, sym: ModuleSymbol) -> Option<(PathKey, Id<node::ModuleBind>)> {
-        self.modules.get_by_value(&sym).copied()
+    pub fn insert_path_expr(&mut self, id: QualId<node::PathExpr>, sym: ValueSym) {
+        self.path_exprs.insert(id, sym);
     }
 
     #[inline]
-    pub fn lookup_type_sym(&self, key: PathKey, id: Id<node::TypeBind>) -> Option<TypeSymbol> {
-        self.types.get_by_key(&(key, id)).copied()
+    pub fn lookup_module_bind(&self, id: QualId<node::ModuleBind>) -> Option<ModuleSym> {
+        self.module_binds.get(&id).copied()
     }
 
     #[inline]
-    pub fn lookup_type_id(&self, sym: TypeSymbol) -> Option<(PathKey, Id<node::TypeBind>)> {
-        self.types.get_by_value(&sym).copied()
+    pub fn lookup_module_import(&self, id: QualId<node::ModuleImport>) -> Option<ModuleSym> {
+        self.module_imports.get(&id).copied()
     }
 
     #[inline]
-    pub fn lookup_value_sym(&self, key: PathKey, id: Id<node::ValueBind>) -> Option<ValueSymbol> {
-        self.values.get_by_key(&(key, id)).copied()
+    pub fn lookup_module(&self, id: QualId<node::Module>) -> Option<ModuleSym> {
+        self.modules.get(&id).copied()
     }
 
     #[inline]
-    pub fn lookup_value_id(&self, sym: ValueSymbol) -> Option<(PathKey, Id<node::ValueBind>)> {
-        self.values.get_by_value(&sym).copied()
+    pub fn lookup_module_path(&self, id: QualId<node::ModulePath>) -> Option<ModuleSym> {
+        self.module_paths.get(&id).copied()
     }
 
     #[inline]
-    pub fn lookup_import_sym(
-        &self,
-        key: PathKey,
-        id: Id<node::ModuleImport>,
-    ) -> Option<ModuleSymbol> {
-        self.imports.get_by_key(&(key, id)).copied()
+    pub fn lookup_type_bind(&self, id: QualId<node::TypeBind>) -> Option<TypeSym> {
+        self.type_binds.get(&id).copied()
     }
 
     #[inline]
-    pub fn lookup_import_id(&self, sym: ModuleSymbol) -> Option<(PathKey, Id<node::ModuleImport>)> {
-        self.imports.get_by_value(&sym).copied()
+    pub fn lookup_value_bind(&self, id: QualId<node::ValueBind>) -> Option<ValueSym> {
+        self.value_binds.get(&id).copied()
     }
 
     #[inline]
-    pub fn lookup_inline_sym(&self, key: PathKey, id: Id<node::Module>) -> Option<ModuleSymbol> {
-        self.inlines.get_by_key(&(key, id)).copied()
+    pub fn lookup_let_expr(&self, id: QualId<node::LetExpr>) -> Option<ValueSym> {
+        self.let_exprs.get(&id).copied()
     }
 
     #[inline]
-    pub fn lookup_inline_id(&self, sym: ModuleSymbol) -> Option<(PathKey, Id<node::Module>)> {
-        self.inlines.get_by_value(&sym).copied()
+    pub fn lookup_lambda_expr(&self, id: QualId<node::LambdaExpr>) -> Option<ValueSym> {
+        self.lambda_exprs.get(&id).copied()
     }
 
     #[inline]
-    pub fn lookup_path_sym(&self, key: PathKey, id: Id<node::ModulePath>) -> Option<ModuleSymbol> {
-        self.paths.get_by_key(&(key, id)).copied()
-    }
-
-    #[inline]
-    pub fn lookup_path_id(&self, sym: ModuleSymbol) -> Option<(PathKey, Id<node::ModulePath>)> {
-        self.paths.get_by_value(&sym).copied()
+    pub fn lookup_path_expr(&self, id: QualId<node::PathExpr>) -> Option<ValueSym> {
+        self.path_exprs.get(&id).copied()
     }
 }
 
-impl Index<ModuleSymbol> for SymbolTable {
-    type Output = (PathKey, Id<node::ModuleBind>);
+impl Index<QualId<node::ModuleBind>> for LookupTable {
+    type Output = ModuleSym;
 
-    fn index(&self, index: ModuleSymbol) -> &Self::Output {
-        self.modules
-            .get_by_value(&index)
+    fn index(&self, index: QualId<node::ModuleBind>) -> &Self::Output {
+        self.module_binds
+            .get(&index)
             .expect("Module symbol not found")
     }
 }
 
-impl Index<TypeSymbol> for SymbolTable {
-    type Output = (PathKey, Id<node::TypeBind>);
+impl Index<QualId<node::ModuleImport>> for LookupTable {
+    type Output = ModuleSym;
 
-    fn index(&self, index: TypeSymbol) -> &Self::Output {
-        self.types
-            .get_by_value(&index)
-            .expect("Type symbol not found")
+    fn index(&self, index: QualId<node::ModuleImport>) -> &Self::Output {
+        self.module_imports
+            .get(&index)
+            .expect("Module import symbol not found")
     }
 }
 
-impl Index<ValueSymbol> for SymbolTable {
-    type Output = (PathKey, Id<node::ValueBind>);
+impl Index<QualId<node::Module>> for LookupTable {
+    type Output = ModuleSym;
 
-    fn index(&self, index: ValueSymbol) -> &Self::Output {
-        self.values
-            .get_by_value(&index)
+    fn index(&self, index: QualId<node::Module>) -> &Self::Output {
+        self.modules.get(&index).expect("Module symbol not found")
+    }
+}
+
+impl Index<QualId<node::ModulePath>> for LookupTable {
+    type Output = ModuleSym;
+
+    fn index(&self, index: QualId<node::ModulePath>) -> &Self::Output {
+        self.module_paths
+            .get(&index)
+            .expect("Module path symbol not found")
+    }
+}
+
+impl Index<QualId<node::TypeBind>> for LookupTable {
+    type Output = TypeSym;
+
+    fn index(&self, index: QualId<node::TypeBind>) -> &Self::Output {
+        self.type_binds.get(&index).expect("Type symbol not found")
+    }
+}
+
+impl Index<QualId<node::ValueBind>> for LookupTable {
+    type Output = ValueSym;
+
+    fn index(&self, index: QualId<node::ValueBind>) -> &Self::Output {
+        self.value_binds
+            .get(&index)
             .expect("Value symbol not found")
     }
 }
 
-impl Index<(PathKey, Id<node::ModuleBind>)> for SymbolTable {
-    type Output = ModuleSymbol;
+impl Index<QualId<node::LetExpr>> for LookupTable {
+    type Output = ValueSym;
 
-    fn index(&self, index: (PathKey, Id<node::ModuleBind>)) -> &Self::Output {
-        self.modules
-            .get_by_key(&index)
-            .expect("Module symbol not found")
+    fn index(&self, index: QualId<node::LetExpr>) -> &Self::Output {
+        self.let_exprs
+            .get(&index)
+            .expect("Let expression symbol not found")
     }
 }
 
-impl Index<(PathKey, Id<node::TypeBind>)> for SymbolTable {
-    type Output = TypeSymbol;
+impl Index<QualId<node::LambdaExpr>> for LookupTable {
+    type Output = ValueSym;
 
-    fn index(&self, index: (PathKey, Id<node::TypeBind>)) -> &Self::Output {
-        self.types
-            .get_by_key(&index)
-            .expect("Type symbol not found")
+    fn index(&self, index: QualId<node::LambdaExpr>) -> &Self::Output {
+        self.lambda_exprs
+            .get(&index)
+            .expect("Lambda expression symbol not found")
     }
 }
 
-impl Index<(PathKey, Id<node::ValueBind>)> for SymbolTable {
-    type Output = ValueSymbol;
+impl Index<QualId<node::PathExpr>> for LookupTable {
+    type Output = ValueSym;
 
-    fn index(&self, index: (PathKey, Id<node::ValueBind>)) -> &Self::Output {
-        self.values
-            .get_by_key(&index)
-            .expect("Value symbol not found")
-    }
-}
-
-pub struct DefTable {
-    pub modules: HashMap<ModuleSymbol, ModuleDef>,
-    pub types: HashMap<TypeSymbol, TypeDef>,
-    pub values: HashMap<ValueSymbol, ValueDef>,
-}
-
-impl DefTable {
-    #[inline]
-    pub fn new() -> Self {
-        Self {
-            modules: HashMap::new(),
-            types: HashMap::new(),
-            values: HashMap::new(),
-        }
-    }
-
-    #[inline]
-    pub fn insert_module(&mut self, sym: ModuleSymbol, def: ModuleDef) {
-        self.modules.insert(sym, def);
-    }
-
-    #[inline]
-    pub fn insert_type(&mut self, sym: TypeSymbol, def: TypeDef) {
-        self.types.insert(sym, def);
-    }
-
-    #[inline]
-    pub fn insert_value(&mut self, sym: ValueSymbol, def: ValueDef) {
-        self.values.insert(sym, def);
+    fn index(&self, index: QualId<node::PathExpr>) -> &Self::Output {
+        self.path_exprs
+            .get(&index)
+            .expect("Path expression symbol not found")
     }
 }

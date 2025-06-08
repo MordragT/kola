@@ -387,6 +387,28 @@ pub struct ModuleBind {
     pub value: Id<ModuleExpr>,
 }
 
+impl ModuleBind {
+    pub fn new_in(
+        vis: Vis,
+        name: Name,
+        ty: Option<ModuleType>,
+        value: ModuleExpr,
+        builder: &mut TreeBuilder,
+    ) -> Id<Self> {
+        let vis = builder.insert(vis);
+        let name = builder.insert(name);
+        let ty = ty.map(|ty| builder.insert(ty));
+        let value = builder.insert(value);
+
+        builder.insert(Self {
+            vis,
+            name,
+            ty,
+            value,
+        })
+    }
+}
+
 impl Printable<TreePrinter> for ModuleBind {
     fn notate<'a>(&'a self, with: &'a TreePrinter, arena: &'a Bump) -> Notation<'a> {
         let Self {

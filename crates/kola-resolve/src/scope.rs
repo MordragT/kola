@@ -1,28 +1,33 @@
 use std::{
     collections::{HashMap, hash_map},
+    hash::Hash,
     ops::Index,
 };
 
 use kola_collections::shadow_map::ShadowMap;
 use kola_span::Loc;
-use kola_tree::node;
-use kola_utils::{bimap::BiMap, interner::StrKey};
-
-use crate::{
-    error::NameCollision,
-    info::{AnyInfo, BindInfo, BindKind, ModuleInfo, TypeInfo, ValueInfo},
-    symbol::{AnySymbol, LocalSymbol, ModuleSymbol, Symbol, TypeSymbol, ValueSymbol},
+use kola_tree::{id::Id, node};
+use kola_utils::{
+    bimap::BiMap,
+    interner::{PathKey, StrKey},
 };
 
-pub type LexicalScope = ShadowMap<StrKey, LocalSymbol>;
+use crate::{
+    QualId,
+    error::NameCollision,
+    info::{AnyInfo, BindInfo, BindKind, ModuleInfo, TypeInfo, ValueInfo},
+    symbol::{ModuleSym, Sym, Symbol, TypeSym, ValueSym},
+};
+
+pub type LexicalScope = ShadowMap<StrKey, ValueSym>;
 
 #[derive(Debug, Clone)]
-pub struct Rib<T> {
-    pub binds: BiMap<StrKey, Symbol<T>>,
-    pub infos: HashMap<Symbol<T>, BindInfo<T>>,
+pub struct Rib<S, T> {
+    pub binds: BiMap<StrKey, S>,
+    pub infos: HashMap<S, BindInfo<T>>,
 }
 
-impl<T> Rib<T> {
+impl<S, T> Rib<S, T> {
     #[inline]
     pub fn new() -> Self {
         Self {
@@ -30,25 +35,29 @@ impl<T> Rib<T> {
             infos: HashMap::new(),
         }
     }
-
+}
+impl<S, T> Rib<S, T>
+where
+    S: Copy + Eq + Hash,
+{
     #[inline]
-    pub fn insert(&mut self, name: StrKey, symbol: Symbol<T>, info: BindInfo<T>) {
+    pub fn insert(&mut self, name: StrKey, symbol: S, info: BindInfo<T>) {
         self.binds.insert(name, symbol);
         self.infos.insert(symbol, info);
     }
 
     #[inline]
-    pub fn lookup_sym(&self, name: StrKey) -> Option<Symbol<T>> {
+    pub fn lookup_sym(&self, name: StrKey) -> Option<S> {
         self.binds.get_by_key(&name).copied()
     }
 
     #[inline]
-    pub fn lookup_key(&self, symbol: Symbol<T>) -> Option<StrKey> {
+    pub fn lookup_key(&self, symbol: S) -> Option<StrKey> {
         self.binds.get_by_value(&symbol).copied()
     }
 
     #[inline]
-    pub fn get_by_sym(&self, symbol: Symbol<T>) -> Option<BindInfo<T>> {
+    pub fn get_by_sym(&self, symbol: S) -> Option<BindInfo<T>> {
         self.infos.get(&symbol).copied()
     }
 
@@ -64,39 +73,42 @@ impl<T> Rib<T> {
     }
 
     #[inline]
-    pub fn contains_sym(&self, symbol: Symbol<T>) -> bool {
+    pub fn contains_sym(&self, symbol: S) -> bool {
         self.binds.contains_value(&symbol)
     }
 }
 
-impl<T> IntoIterator for Rib<T> {
-    type Item = (Symbol<T>, BindInfo<T>);
-    type IntoIter = hash_map::IntoIter<Symbol<T>, BindInfo<T>>;
+impl<S, T> IntoIterator for Rib<S, T> {
+    type Item = (S, BindInfo<T>);
+    type IntoIter = hash_map::IntoIter<S, BindInfo<T>>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.infos.into_iter()
     }
 }
 
-impl<'a, T> IntoIterator for &'a Rib<T> {
-    type Item = (&'a Symbol<T>, &'a BindInfo<T>);
-    type IntoIter = hash_map::Iter<'a, Symbol<T>, BindInfo<T>>;
+impl<'a, S, T> IntoIterator for &'a Rib<S, T> {
+    type Item = (&'a S, &'a BindInfo<T>);
+    type IntoIter = hash_map::Iter<'a, S, BindInfo<T>>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.infos.iter()
     }
 }
 
-impl<'a, T> IntoIterator for &'a mut Rib<T> {
-    type Item = (&'a Symbol<T>, &'a mut BindInfo<T>);
-    type IntoIter = hash_map::IterMut<'a, Symbol<T>, BindInfo<T>>;
+impl<'a, S, T> IntoIterator for &'a mut Rib<S, T> {
+    type Item = (&'a S, &'a mut BindInfo<T>);
+    type IntoIter = hash_map::IterMut<'a, S, BindInfo<T>>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.infos.iter_mut()
     }
 }
 
-impl<T> Index<StrKey> for Rib<T> {
+impl<S, T> Index<StrKey> for Rib<S, T>
+where
+    S: Copy + Eq + Hash,
+{
     type Output = BindInfo<T>;
 
     fn index(&self, key: StrKey) -> &Self::Output {
@@ -106,27 +118,30 @@ impl<T> Index<StrKey> for Rib<T> {
     }
 }
 
-impl<T> Index<Symbol<T>> for Rib<T> {
+impl<ST, T> Index<Sym<ST>> for Rib<Sym<ST>, T> {
     type Output = BindInfo<T>;
 
-    fn index(&self, sym: Symbol<T>) -> &Self::Output {
+    fn index(&self, sym: Sym<ST>) -> &Self::Output {
         self.infos.get(&sym).expect("Bind not found")
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct ModuleScope {
-    pub symbol: ModuleSymbol,
+    pub id: QualId<node::ModuleBind>,
+    pub symbol: ModuleSym,
     pub loc: Loc,
-    pub modules: Rib<node::ModuleBind>,
-    pub types: Rib<node::TypeBind>,
-    pub values: Rib<node::ValueBind>,
+    pub modules: Rib<ModuleSym, node::ModuleBind>,
+    pub types: Rib<TypeSym, node::TypeBind>,
+    pub values: Rib<ValueSym, node::ValueBind>,
 
-    pub paths: BiMap<ModuleSymbol, Vec<StrKey>>,
+    pub paths: BiMap<ModuleSym, Vec<StrKey>>,
 }
 
 impl ModuleScope {
-    pub fn new(symbol: ModuleSymbol, loc: Loc) -> Self {
+    pub fn new(id: QualId<node::ModuleBind>, symbol: ModuleSym, loc: Loc) -> Self {
         Self {
+            id,
             symbol,
             loc,
             modules: Rib::new(),
@@ -140,7 +155,7 @@ impl ModuleScope {
     pub fn insert_module(
         &mut self,
         name: StrKey,
-        symbol: ModuleSymbol,
+        symbol: ModuleSym,
         info: ModuleInfo,
     ) -> Result<(), NameCollision> {
         if let Some(bind) = self.get(name) {
@@ -154,7 +169,7 @@ impl ModuleScope {
     pub fn insert_value(
         &mut self,
         name: StrKey,
-        symbol: ValueSymbol,
+        symbol: ValueSym,
         info: ValueInfo,
     ) -> Result<(), NameCollision> {
         if let Some(bind) = self.get(name) {
@@ -168,7 +183,7 @@ impl ModuleScope {
     pub fn insert_type(
         &mut self,
         name: StrKey,
-        symbol: TypeSymbol,
+        symbol: TypeSym,
         info: TypeInfo,
     ) -> Result<(), NameCollision> {
         if let Some(bind) = self.get(name) {
@@ -179,7 +194,7 @@ impl ModuleScope {
         Ok(())
     }
 
-    pub fn insert_path(&mut self, symbol: ModuleSymbol, path: Vec<StrKey>) {
+    pub fn insert_path(&mut self, symbol: ModuleSym, path: Vec<StrKey>) {
         self.paths.insert(symbol, path);
     }
 }
@@ -219,14 +234,28 @@ const fn name_collision(this: AnyInfo, other: AnyInfo) -> NameCollision {
         AnyInfo::Module(this) => NameCollision::module_bind(this.loc, other.location(), help),
         AnyInfo::Value(this) => NameCollision::value_bind(this.loc, other.location(), help),
         AnyInfo::Type(this) => NameCollision::type_bind(this.loc, other.location(), help),
-        // AnyInfo::Local(this) => NameCollision::local_bind(this.loc, other.location(), help),
     }
 }
 
 impl ModuleScope {
     #[inline]
-    pub fn symbol(&self) -> ModuleSymbol {
+    pub fn symbol(&self) -> ModuleSym {
         self.symbol
+    }
+
+    #[inline]
+    pub fn id(&self) -> QualId<node::ModuleBind> {
+        self.id
+    }
+
+    #[inline]
+    pub fn path_key(&self) -> PathKey {
+        self.id.0
+    }
+
+    #[inline]
+    pub fn node_id(&self) -> Id<node::ModuleBind> {
+        self.id.1
     }
 
     #[inline]
@@ -237,11 +266,11 @@ impl ModuleScope {
     }
 
     #[inline]
-    pub fn contains_sym(&self, symbol: AnySymbol) -> bool {
+    pub fn contains_sym(&self, symbol: Symbol) -> bool {
         match symbol {
-            AnySymbol::Module(symbol) => self.modules.contains_sym(symbol),
-            AnySymbol::Value(symbol) => self.values.contains_sym(symbol),
-            AnySymbol::Type(symbol) => self.types.contains_sym(symbol),
+            Symbol::Module(symbol) => self.modules.contains_sym(symbol),
+            Symbol::Value(symbol) => self.values.contains_sym(symbol),
+            Symbol::Type(symbol) => self.types.contains_sym(symbol),
         }
     }
 

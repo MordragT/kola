@@ -6,11 +6,12 @@ use camino::Utf8Path;
 use context::ResolveContext;
 use kola_print::prelude::*;
 use kola_syntax::prelude::*;
-use kola_utils::io::FileSystem;
+use kola_tree::{id::Id, print::TreePrinter};
+use kola_utils::{interner::PathKey, io::FileSystem};
 use log::debug;
 use owo_colors::OwoColorize;
 
-use crate::symbol::ModuleSymbol;
+use crate::symbol::ModuleSym;
 
 pub mod context;
 pub mod declare;
@@ -28,6 +29,8 @@ pub mod prelude {
     pub use crate::resolve;
     pub use crate::topography::Topography;
 }
+
+pub type QualId<T> = (PathKey, Id<T>);
 
 pub fn resolve(
     path: impl AsRef<Utf8Path>,
@@ -67,23 +70,19 @@ pub fn resolve(
         return Ok(ctx);
     };
 
+    debug!(
+        "{} {:?}\n{}",
+        "Untyped Abstract Syntax Tree".bold().bright_white(),
+        &path,
+        TreePrinter::new(tree.clone(), ctx.interner.clone()) // TODO cloning the interner is not ideal, but it works for now.
+            .with(LocDecorator(spans.clone()))
+            .render(PrintOptions::default())
+    );
+
     ctx.forest.insert(path_key, tree);
     ctx.topography.insert(path_key, spans);
 
-    // let interner = STR_INTERNER.read().unwrap();
-
-    // debug!(
-    //     "{} {:?}\n{}",
-    //     "Untyped Abstract Syntax Tree".bold().bright_white(),
-    //     &path,
-    //     TreePrinter::new(tree.clone(), &interner)
-    //         .with(LocDecorator(spans.clone()))
-    //         .render(PrintOptions::default())
-    // );
-
-    // drop(interner);
-
-    let module_sym = ModuleSymbol::new();
+    let module_sym = ModuleSym::new();
 
     declare::declare(path_key, module_sym, &mut ctx);
 
@@ -91,8 +90,18 @@ pub fn resolve(
         return Ok(ctx);
     }
 
-    let scope = ctx.module_scopes.get(&module_sym).cloned().unwrap();
-    define::define_module_scope(scope, &mut ctx);
+    define::define_modules(&mut ctx);
+
+    if !ctx.report.is_empty() {
+        return Ok(ctx);
+    }
+
+    dbg!(&ctx.module_graph);
+
+    // TODO this isn't really beautiful, but it works for now.
+    for module_sym in ctx.unresolved_scopes.keys().copied().collect::<Vec<_>>() {
+        define::define_value(module_sym, &mut ctx);
+    }
 
     Ok(ctx)
 }

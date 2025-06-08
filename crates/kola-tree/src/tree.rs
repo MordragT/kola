@@ -3,7 +3,7 @@ use kola_utils::convert::{TryAsMut, TryAsRef};
 use crate::{
     id::Id,
     meta::{Meta, Phase},
-    node::{Module, Node},
+    node::{ModuleBind, Node},
 };
 
 pub enum Query2<'a, T, U> {
@@ -146,7 +146,7 @@ impl TreeBuilder {
         Self::default()
     }
 
-    pub fn finish(self, root: Id<Module>) -> Tree {
+    pub fn finish(self, root: Id<ModuleBind>) -> Tree {
         let Self { nodes } = self;
 
         Tree { nodes, root }
@@ -212,7 +212,7 @@ impl TreeView for TreeBuilder {
 #[derive(Debug, Clone)]
 pub struct Tree {
     nodes: Vec<Node>,
-    root: Id<Module>,
+    root: Id<ModuleBind>,
 }
 
 impl TreeView for Tree {
@@ -266,7 +266,7 @@ impl TreeView for Tree {
 }
 
 impl Tree {
-    pub fn root_id(&self) -> Id<Module> {
+    pub fn root_id(&self) -> Id<ModuleBind> {
         self.root
     }
 }

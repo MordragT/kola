@@ -5,19 +5,17 @@ use std::{
 
 use kola_span::{Report, SourceManager};
 use kola_utils::{
-    dependency::DependencyGraph,
-    interner::{StrInterner, StrKey},
-    io::FileSystem,
+    dependency::DependencyGraph, interner::StrInterner, io::FileSystem, visit::VisitMap,
 };
 
 use crate::{
     forest::Forest,
     prelude::Topography,
-    scope::{LexicalScope, ModuleScope},
-    symbol::{DefTable, ModuleSymbol, SymbolTable},
+    scope::ModuleScope,
+    symbol::{LookupTable, ModuleSym},
 };
 
-pub type ModuleGraph = DependencyGraph<ModuleSymbol>;
+pub type ModuleGraph = DependencyGraph<ModuleSym>;
 
 pub struct ResolveContext {
     pub report: Report,
@@ -27,13 +25,12 @@ pub struct ResolveContext {
     pub forest: Forest,
     pub topography: Topography,
 
-    pub symbol_table: SymbolTable,
-    // pub def_table: DefTable,
+    // pub symbol_table: SymbolTable,
+    pub lookup_table: LookupTable,
     pub module_graph: ModuleGraph,
-    pub module_scopes: HashMap<ModuleSymbol, Rc<ModuleScope>>,
-    // pub module_paths: HashMap<ModuleSymbol, Vec<StrKey>>,
-    pub pending: HashSet<ModuleSymbol>,
-    pub active: HashSet<ModuleSymbol>,
+    pub unresolved_scopes: HashMap<ModuleSym, ModuleScope>,
+    pub module_scopes: HashMap<ModuleSym, Rc<ModuleScope>>,
+    pub module_visit: VisitMap<ModuleSym>,
 }
 
 impl ResolveContext {
@@ -46,13 +43,12 @@ impl ResolveContext {
             forest: Forest::new(),
             topography: Topography::new(),
 
-            symbol_table: SymbolTable::new(),
-            // def_table: DefTable::new(),
+            // symbol_table: SymbolTable::new(),
+            lookup_table: LookupTable::new(),
             module_graph: ModuleGraph::default(),
+            unresolved_scopes: HashMap::new(),
             module_scopes: HashMap::new(),
-            // module_paths: HashMap::new(),
-            pending: HashSet::new(),
-            active: HashSet::new(),
+            module_visit: VisitMap::new(),
         }
     }
 }

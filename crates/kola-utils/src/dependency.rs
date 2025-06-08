@@ -1,9 +1,6 @@
 //! Module for tracking dependencies between modules.
 
-use std::{
-    collections::{HashMap, HashSet},
-    hash::Hash,
-};
+use std::{collections::HashMap, hash::Hash};
 use thiserror::Error;
 
 /// Error representing a dependency cycle
@@ -23,140 +20,140 @@ impl<T> CycleError<T> {
     }
 }
 
-/// Resolver for tracking and resolving dependencies between items.
-///
-/// This type manages the resolution state of items, tracking which items are
-/// pending resolution, currently being processed (to detect cycles), and maintaining
-/// the dependency graph between items.
-#[derive(Debug, Clone)]
-pub struct DependencyResolver<T> {
-    /// Pending items to be resolved
-    pending: HashSet<T>,
-    /// Active items being processed (used for cycle detection)
-    active: HashSet<T>,
-    /// Dependency graph tracking relationships between items
-    graph: DependencyGraph<T>,
-}
+// /// Resolver for tracking and resolving dependencies between items.
+// ///
+// /// This type manages the resolution state of items, tracking which items are
+// /// pending resolution, currently being processed (to detect cycles), and maintaining
+// /// the dependency graph between items.
+// #[derive(Debug, Clone)]
+// pub struct DependencyResolver<T> {
+//     /// Pending items to be resolved
+//     pending: HashSet<T>,
+//     /// Active items being processed (used for cycle detection)
+//     active: HashSet<T>,
+//     /// Dependency graph tracking relationships between items
+//     graph: DependencyGraph<T>,
+// }
 
-impl<T> Default for DependencyResolver<T> {
-    fn default() -> Self {
-        Self::new()
-    }
-}
+// impl<T> Default for DependencyResolver<T> {
+//     fn default() -> Self {
+//         Self::new()
+//     }
+// }
 
-impl<T> DependencyResolver<T> {
-    /// Create a new empty dependency resolver
-    pub fn new() -> Self {
-        Self {
-            pending: HashSet::new(),
-            active: HashSet::new(),
-            graph: DependencyGraph::new(),
-        }
-    }
+// impl<T> DependencyResolver<T> {
+//     /// Create a new empty dependency resolver
+//     pub fn new() -> Self {
+//         Self {
+//             pending: HashSet::new(),
+//             active: HashSet::new(),
+//             graph: DependencyGraph::new(),
+//         }
+//     }
 
-    /// Get all pending items
-    pub fn pending_items(&self) -> impl Iterator<Item = &T> {
-        self.pending.iter()
-    }
+//     /// Get all pending items
+//     pub fn pending_items(&self) -> impl Iterator<Item = &T> {
+//         self.pending.iter()
+//     }
 
-    /// Get all active items
-    pub fn active_items(&self) -> impl Iterator<Item = &T> {
-        self.active.iter()
-    }
+//     /// Get all active items
+//     pub fn active_items(&self) -> impl Iterator<Item = &T> {
+//         self.active.iter()
+//     }
 
-    /// Get the dependency graph
-    pub fn graph(&self) -> &DependencyGraph<T> {
-        &self.graph
-    }
+//     /// Get the dependency graph
+//     pub fn graph(&self) -> &DependencyGraph<T> {
+//         &self.graph
+//     }
 
-    /// Get a mutable reference to the dependency graph
-    pub fn graph_mut(&mut self) -> &mut DependencyGraph<T> {
-        &mut self.graph
-    }
+//     /// Get a mutable reference to the dependency graph
+//     pub fn graph_mut(&mut self) -> &mut DependencyGraph<T> {
+//         &mut self.graph
+//     }
 
-    /// Clear all pending and active items (but preserve the dependency graph)
-    pub fn clear_state(&mut self) {
-        self.pending.clear();
-        self.active.clear();
-    }
+//     /// Clear all pending and active items (but preserve the dependency graph)
+//     pub fn clear_state(&mut self) {
+//         self.pending.clear();
+//         self.active.clear();
+//     }
 
-    /// Check if there are any pending items
-    pub fn has_pending(&self) -> bool {
-        !self.pending.is_empty()
-    }
+//     /// Check if there are any pending items
+//     pub fn has_pending(&self) -> bool {
+//         !self.pending.is_empty()
+//     }
 
-    /// Check if there are any active items
-    pub fn has_active(&self) -> bool {
-        !self.active.is_empty()
-    }
+//     /// Check if there are any active items
+//     pub fn has_active(&self) -> bool {
+//         !self.active.is_empty()
+//     }
 
-    /// Get the number of pending items
-    pub fn pending_count(&self) -> usize {
-        self.pending.len()
-    }
+//     /// Get the number of pending items
+//     pub fn pending_count(&self) -> usize {
+//         self.pending.len()
+//     }
 
-    /// Get the number of active items
-    pub fn active_count(&self) -> usize {
-        self.active.len()
-    }
-}
+//     /// Get the number of active items
+//     pub fn active_count(&self) -> usize {
+//         self.active.len()
+//     }
+// }
 
-impl<T: Eq + Hash> DependencyResolver<T> {
-    /// Add an item to the pending set for resolution
-    pub fn add_pending(&mut self, item: T) {
-        self.pending.insert(item);
-    }
+// impl<T: Eq + Hash> DependencyResolver<T> {
+//     /// Add an item to the pending set for resolution
+//     pub fn add_pending(&mut self, item: T) {
+//         self.pending.insert(item);
+//     }
 
-    /// Check if an item is pending resolution
-    pub fn is_pending(&self, item: &T) -> bool {
-        self.pending.contains(item)
-    }
+//     /// Check if an item is pending resolution
+//     pub fn is_pending(&self, item: &T) -> bool {
+//         self.pending.contains(item)
+//     }
 
-    /// Remove an item from the pending set
-    pub fn remove_pending(&mut self, item: &T) -> bool {
-        self.pending.remove(item)
-    }
+//     /// Remove an item from the pending set
+//     pub fn remove_pending(&mut self, item: &T) -> bool {
+//         self.pending.remove(item)
+//     }
 
-    /// Mark an item as actively being processed
-    ///
-    /// Returns `true` if the item was not already active, `false` if it was
-    /// already active (indicating a potential cycle).
-    pub fn mark_active(&mut self, item: T) -> bool {
-        self.active.insert(item)
-    }
+//     /// Mark an item as actively being processed
+//     ///
+//     /// Returns `true` if the item was not already active, `false` if it was
+//     /// already active (indicating a potential cycle).
+//     pub fn mark_active(&mut self, item: T) -> bool {
+//         self.active.insert(item)
+//     }
 
-    /// Check if an item is currently being processed
-    pub fn is_active(&self, item: &T) -> bool {
-        self.active.contains(item)
-    }
+//     /// Check if an item is currently being processed
+//     pub fn is_active(&self, item: &T) -> bool {
+//         self.active.contains(item)
+//     }
 
-    /// Mark an item as no longer being processed
-    pub fn mark_inactive(&mut self, item: &T) -> bool {
-        self.active.remove(item)
-    }
+//     /// Mark an item as no longer being processed
+//     pub fn mark_inactive(&mut self, item: &T) -> bool {
+//         self.active.remove(item)
+//     }
 
-    /// Get the dependencies of an item
-    pub fn dependencies_of(&self, item: T) -> &[T] {
-        self.graph.dependencies_of(item)
-    }
+//     /// Get the dependencies of an item
+//     pub fn dependencies_of(&self, item: T) -> &[T] {
+//         self.graph.dependencies_of(item)
+//     }
 
-    /// Get the dependents of an item
-    pub fn dependents_of(&self, item: T) -> &[T] {
-        self.graph.dependents_of(item)
-    }
-}
+//     /// Get the dependents of an item
+//     pub fn dependents_of(&self, item: T) -> &[T] {
+//         self.graph.dependents_of(item)
+//     }
+// }
 
-impl<T: Eq + Hash + Copy> DependencyResolver<T> {
-    /// Add a dependency relationship between two items
-    pub fn add_dependency(&mut self, from: T, to: T) {
-        self.graph.add_dependency(from, to);
-    }
+// impl<T: Eq + Hash + Copy> DependencyResolver<T> {
+//     /// Add a dependency relationship between two items
+//     pub fn add_dependency(&mut self, from: T, to: T) {
+//         self.graph.add_dependency(from, to);
+//     }
 
-    /// Perform topological sort of all items in the dependency graph
-    pub fn topological_sort(&self) -> Result<Vec<T>, CycleError<T>> {
-        self.graph.topological_sort()
-    }
-}
+//     /// Perform topological sort of all items in the dependency graph
+//     pub fn topological_sort(&self) -> Result<Vec<T>, CycleError<T>> {
+//         self.graph.topological_sort()
+//     }
+// }
 
 /// Graph of dependencies between modules
 #[derive(Debug, Clone)]

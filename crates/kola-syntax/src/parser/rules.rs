@@ -48,17 +48,27 @@ CallExpr := '(' Callable Expr ')'
 // TODO case expr also end in a ',' which is ambiguos to binds being separated by ','
 // Therefore replace the "case x of 10 => ..., 5 => ...," with something different.
 
-// pub fn file_module_parser<'t, I>() -> impl Parser<'t, I, NodeId<node::Module>, Extra<'t>> + Clone
-//
-//     I: ValueInput<'t, Token = Token<'t>, Span = Loc>,
-// {
-//     bind_parser()
-//         .separated_by(ctrl(CtrlT::COMMA))
-//         .allow_trailing()
-//         .collect()
-//         .map_to_node(node::Module)
-//         .boxed()
-// }
+pub fn root_parser<'t>() -> impl KolaParser<'t, Id<node::ModuleBind>> + Clone {
+    module_parser().map_with(|module, e| {
+        let span = e.span();
+        let tree: &mut State = e.state();
+
+        let vis = tree.insert(node::Vis::Export, span);
+        let key = tree.intern("root");
+        let name = tree.insert(node::Name(key), span);
+        let value = tree.insert(node::ModuleExpr::Module(module), span);
+
+        tree.insert(
+            node::ModuleBind {
+                vis,
+                name,
+                ty: None,
+                value,
+            },
+            span,
+        )
+    })
+}
 
 pub fn module_parser<'t>() -> impl KolaParser<'t, Id<node::Module>> + Clone {
     let module_type = module_type_parser();
@@ -377,7 +387,7 @@ pub fn expr_parser<'t>() -> impl KolaParser<'t, Id<node::Expr>> + Clone {
                 .repeated()
                 .collect::<Vec<_>>(),
         ))
-        .map_with(|(mut binding, mut path, mut select), e| {
+        .map_with(|(mut binding, mut path, select), e| {
             let span = e.span();
             let tree: &mut State = e.state();
 
@@ -386,9 +396,10 @@ pub fn expr_parser<'t>() -> impl KolaParser<'t, Id<node::Expr>> + Clone {
             } else {
                 // a :: b ...
                 // a is currently the binding and must be inserted as module_path
-                // b is currently in select and must be extracted from it
-                path.insert(0, binding);
-                binding = select.remove(0);
+                // b is currently in path and must be extracted from it
+                binding = std::mem::replace(&mut path[0], binding);
+                // path.insert(0, binding);
+                // binding = select.remove(0);
                 // TODO wrong span
                 Some(tree.insert(node::ModulePath(path), span))
             };
