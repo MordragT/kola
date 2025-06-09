@@ -6,7 +6,7 @@ use kola_print::prelude::*;
 use kola_utils::{as_variant, interner::StrKey};
 
 use super::Name;
-use crate::{id::Id, print::TreePrinter, tree::TreeView};
+use crate::{id::Id, print::NodePrinter, tree::TreeView};
 
 /*
 type Option = forall a . [ Some : a, None ]
@@ -35,8 +35,8 @@ forall a . { name : Str, age : Num | b }
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct TypeError;
 
-impl Printable<TreePrinter> for TypeError {
-    fn notate<'a>(&'a self, _with: &'a TreePrinter, arena: &'a Bump) -> Notation<'a> {
+impl<'a> Notate<'a> for NodePrinter<'a, TypeError> {
+    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
         "TypeError".red().display_in(arena)
     }
 }
@@ -53,11 +53,11 @@ impl TypePath {
     }
 }
 
-impl Printable<TreePrinter> for TypePath {
-    fn notate<'a>(&'a self, with: &'a TreePrinter, arena: &'a Bump) -> Notation<'a> {
+impl<'a> Notate<'a> for NodePrinter<'a, TypePath> {
+    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
         let head = "TypePath".cyan().display_in(arena);
 
-        let path = self.0.gather(with, arena);
+        let path = self.to_slice(&self.value.0).gather(arena);
 
         let single = path
             .clone()
@@ -112,12 +112,12 @@ impl PartialEq<StrKey> for TypeVar {
     }
 }
 
-impl Printable<TreePrinter> for TypeVar {
-    fn notate<'a>(&'a self, with: &'a TreePrinter, arena: &'a Bump) -> Notation<'a> {
+impl<'a> Notate<'a> for NodePrinter<'a, TypeVar> {
+    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
         let head = "TypeVar".magenta().display_in(arena);
-        let value = with
+        let value = self
             .interner
-            .get(self.0)
+            .get(self.value.0)
             .expect("Symbol not found")
             .magenta()
             .display_in(arena);
@@ -135,14 +135,14 @@ pub struct RecordFieldType {
     pub ty: Id<TypeExpr>,
 }
 
-impl Printable<TreePrinter> for RecordFieldType {
-    fn notate<'a>(&'a self, with: &'a TreePrinter, arena: &'a Bump) -> Notation<'a> {
-        let Self { name, ty } = self;
+impl<'a> Notate<'a> for NodePrinter<'a, RecordFieldType> {
+    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
+        let RecordFieldType { name, ty } = *self.value;
 
         let head = "RecordFieldType".blue().display_in(arena);
 
-        let name = name.notate(with, arena);
-        let ty = ty.notate(with, arena);
+        let name = self.to_id(name).notate(arena);
+        let ty = self.to_id(ty).notate(arena);
 
         let single = [
             arena.notate(" name = "),
@@ -179,14 +179,14 @@ impl RecordType {
     }
 }
 
-impl Printable<TreePrinter> for RecordType {
-    fn notate<'a>(&'a self, with: &'a TreePrinter, arena: &'a Bump) -> Notation<'a> {
-        let Self { fields, extension } = self;
+impl<'a> Notate<'a> for NodePrinter<'a, RecordType> {
+    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
+        let RecordType { fields, extension } = self.value;
 
         let head = "RecordType".blue().display_in(arena);
 
-        let fields = fields.gather(with, arena);
-        let extension = extension.as_ref().map(|ext| ext.notate(with, arena));
+        let fields = self.to_slice(fields).gather(arena);
+        let extension = extension.map(|ext| self.to_id(ext).notate(arena));
 
         let single = [
             arena.notate(" fields = "),
@@ -224,14 +224,14 @@ pub struct VariantCaseType {
     pub ty: Option<Id<TypeExpr>>,
 }
 
-impl Printable<TreePrinter> for VariantCaseType {
-    fn notate<'a>(&'a self, with: &'a TreePrinter, arena: &'a Bump) -> Notation<'a> {
-        let Self { name, ty } = self;
+impl<'a> Notate<'a> for NodePrinter<'a, VariantCaseType> {
+    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
+        let VariantCaseType { name, ty } = *self.value;
 
         let head = "VariantCaseType".blue().display_in(arena);
 
-        let name = name.notate(with, arena);
-        let ty = ty.as_ref().map(|ty| ty.notate(with, arena));
+        let name = self.to_id(name).notate(arena);
+        let ty = ty.map(|ty| self.to_id(ty).notate(arena));
 
         let single = [
             arena.notate(" name = "),
@@ -269,14 +269,14 @@ impl VariantType {
     }
 }
 
-impl Printable<TreePrinter> for VariantType {
-    fn notate<'a>(&'a self, with: &'a TreePrinter, arena: &'a Bump) -> Notation<'a> {
-        let Self { cases, extension } = self;
+impl<'a> Notate<'a> for NodePrinter<'a, VariantType> {
+    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
+        let VariantType { cases, extension } = self.value;
 
         let head = "VariantType".blue().display_in(arena);
 
-        let cases = cases.gather(with, arena);
-        let extension = extension.as_ref().map(|ext| ext.notate(with, arena));
+        let cases = self.to_slice(cases).gather(arena);
+        let extension = extension.map(|ext| self.to_id(ext).notate(arena));
 
         let single = [
             arena.notate(" cases = "),
@@ -314,14 +314,14 @@ pub struct FuncType {
     pub output: Id<TypeExpr>,
 }
 
-impl Printable<TreePrinter> for FuncType {
-    fn notate<'a>(&'a self, with: &'a TreePrinter, arena: &'a Bump) -> Notation<'a> {
-        let Self { input, output } = self;
+impl<'a> Notate<'a> for NodePrinter<'a, FuncType> {
+    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
+        let FuncType { input, output } = *self.value;
 
         let head = "FuncType".blue().display_in(arena);
 
-        let input = input.notate(with, arena);
-        let output = output.notate(with, arena);
+        let input = self.to_id(input).notate(arena);
+        let output = self.to_id(output).notate(arena);
 
         let single = [
             arena.notate(" input = "),
@@ -352,14 +352,14 @@ pub struct TypeApplication {
     pub arg: Id<TypeExpr>,
 }
 
-impl Printable<TreePrinter> for TypeApplication {
-    fn notate<'a>(&'a self, with: &'a TreePrinter, arena: &'a Bump) -> Notation<'a> {
-        let Self { constructor, arg } = self;
+impl<'a> Notate<'a> for NodePrinter<'a, TypeApplication> {
+    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
+        let TypeApplication { constructor, arg } = *self.value;
 
         let head = "TypeApplication".blue().display_in(arena);
 
-        let constructor = constructor.notate(with, arena);
-        let arg = arg.notate(with, arena);
+        let constructor = self.to_id(constructor).notate(arena);
+        let arg = self.to_id(arg).notate(arena);
 
         let single = [
             arena.notate(" constructor = "),
@@ -396,15 +396,15 @@ pub enum TypeExpr {
     Application(Id<TypeApplication>),
 }
 
-impl Printable<TreePrinter> for TypeExpr {
-    fn notate<'a>(&'a self, with: &'a TreePrinter, arena: &'a Bump) -> Notation<'a> {
-        match self {
-            Self::Error(e) => e.get(&with.tree).notate(with, arena),
-            Self::Path(p) => p.get(&with.tree).notate(with, arena),
-            Self::Record(r) => r.get(&with.tree).notate(with, arena),
-            Self::Variant(v) => v.get(&with.tree).notate(with, arena),
-            Self::Func(f) => f.get(&with.tree).notate(with, arena),
-            Self::Application(a) => a.get(&with.tree).notate(with, arena),
+impl<'a> Notate<'a> for NodePrinter<'a, TypeExpr> {
+    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
+        match *self.value {
+            TypeExpr::Error(e) => self.to_node(e.get(self.tree)).notate(arena),
+            TypeExpr::Path(p) => self.to_node(p.get(self.tree)).notate(arena),
+            TypeExpr::Record(r) => self.to_node(r.get(self.tree)).notate(arena),
+            TypeExpr::Variant(v) => self.to_node(v.get(self.tree)).notate(arena),
+            TypeExpr::Func(f) => self.to_node(f.get(self.tree)).notate(arena),
+            TypeExpr::Application(a) => self.to_node(a.get(self.tree)).notate(arena),
         }
     }
 }
@@ -477,14 +477,14 @@ pub struct Type {
     pub ty: Id<TypeExpr>,
 }
 
-impl Printable<TreePrinter> for Type {
-    fn notate<'a>(&'a self, with: &'a TreePrinter, arena: &'a Bump) -> Notation<'a> {
-        let Self { vars, ty } = self;
+impl<'a> Notate<'a> for NodePrinter<'a, Type> {
+    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
+        let Type { vars, ty } = self.value;
 
         let head = "Type".green().display_in(arena);
 
-        let vars = vars.gather(with, arena);
-        let ty = ty.notate(with, arena);
+        let vars = self.to_slice(vars).gather(arena);
+        let ty = self.to_id(*ty).notate(arena);
 
         let single = if vars.is_empty() {
             arena

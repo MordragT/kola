@@ -7,7 +7,7 @@ use kola_utils::as_variant;
 use super::{Expr, Name, Type};
 use crate::{
     id::Id,
-    print::TreePrinter,
+    print::NodePrinter,
     tree::{TreeBuilder, TreeView},
 };
 
@@ -44,11 +44,11 @@ module safe-stack = functor (s : Stack) => {
 #[into_iterator(owned, ref)]
 pub struct Module(pub Vec<Id<Bind>>); // TODO maybe should know its parent ?
 
-impl Printable<TreePrinter> for Module {
-    fn notate<'a>(&'a self, with: &'a TreePrinter, arena: &'a Bump) -> Notation<'a> {
+impl<'a> Notate<'a> for NodePrinter<'a, Module> {
+    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
         let head = "Module".green().display_in(arena);
 
-        let binds = self.0.gather(with, arena);
+        let binds = self.to_slice(&self.value.0).gather(arena);
 
         let single = binds.clone().concat_map(
             |bind| arena.just(' ').then(bind.flatten(arena), arena),
@@ -75,11 +75,11 @@ impl ModulePath {
     }
 }
 
-impl Printable<TreePrinter> for ModulePath {
-    fn notate<'a>(&'a self, with: &'a TreePrinter, arena: &'a Bump) -> Notation<'a> {
+impl<'a> Notate<'a> for NodePrinter<'a, ModulePath> {
+    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
         let head = "ModulePath".cyan().display_in(arena);
 
-        let path = self.0.gather(with, arena);
+        let path = self.to_slice(&self.value.0).gather(arena);
 
         let single = path
             .clone()
@@ -98,11 +98,11 @@ impl Printable<TreePrinter> for ModulePath {
 )]
 pub struct ModuleImport(pub Id<Name>);
 
-impl Printable<TreePrinter> for ModuleImport {
-    fn notate<'a>(&'a self, with: &'a TreePrinter, arena: &'a Bump) -> Notation<'a> {
+impl<'a> Notate<'a> for NodePrinter<'a, ModuleImport> {
+    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
         let head = "ModuleImport".green().display_in(arena);
 
-        let path = self.0.notate(with, arena);
+        let path = self.to_id(self.value.0).notate(arena);
 
         let single = arena.just(' ').then(path.clone().flatten(arena), arena);
         let multi = arena.newline().then(path, arena).indent(arena);
@@ -121,12 +121,12 @@ pub enum ModuleExpr {
     Path(Id<ModulePath>),
 }
 
-impl Printable<TreePrinter> for ModuleExpr {
-    fn notate<'a>(&'a self, with: &'a TreePrinter, arena: &'a Bump) -> Notation<'a> {
-        match *self {
-            Self::Module(id) => id.get(&with.tree).notate(with, arena),
-            Self::Import(id) => id.get(&with.tree).notate(with, arena),
-            Self::Path(id) => id.get(&with.tree).notate(with, arena),
+impl<'a> Notate<'a> for NodePrinter<'a, ModuleExpr> {
+    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
+        match *self.value {
+            ModuleExpr::Module(id) => self.to_node(id.get(self.tree)).notate(arena),
+            ModuleExpr::Import(id) => self.to_node(id.get(self.tree)).notate(arena),
+            ModuleExpr::Path(id) => self.to_node(id.get(self.tree)).notate(arena),
         }
     }
 }
@@ -142,14 +142,14 @@ pub enum Bind {
     ModuleType(Id<ModuleTypeBind>),
 }
 
-impl Printable<TreePrinter> for Bind {
-    fn notate<'a>(&'a self, with: &'a TreePrinter, arena: &'a Bump) -> Notation<'a> {
-        match self {
-            Self::Value(v) => v.get(&with.tree).notate(with, arena),
-            Self::Type(t) => t.get(&with.tree).notate(with, arena),
-            Self::OpaqueType(o) => o.get(&with.tree).notate(with, arena),
-            Self::Module(m) => m.get(&with.tree).notate(with, arena),
-            Self::ModuleType(mt) => mt.get(&with.tree).notate(with, arena),
+impl<'a> Notate<'a> for NodePrinter<'a, Bind> {
+    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
+        match *self.value {
+            Bind::Value(v) => self.to_node(v.get(self.tree)).notate(arena),
+            Bind::Type(t) => self.to_node(t.get(self.tree)).notate(arena),
+            Bind::OpaqueType(o) => self.to_node(o.get(self.tree)).notate(arena),
+            Bind::Module(m) => self.to_node(m.get(self.tree)).notate(arena),
+            Bind::ModuleType(mt) => self.to_node(mt.get(self.tree)).notate(arena),
         }
     }
 }
@@ -214,11 +214,11 @@ pub enum Vis {
     None,
 }
 
-impl Printable<TreePrinter> for Vis {
-    fn notate<'a>(&'a self, _with: &'a TreePrinter, arena: &'a Bump) -> Notation<'a> {
-        match self {
-            Self::Export => "Export".purple().display_in(arena),
-            Self::None => arena.empty(),
+impl<'a> Notate<'a> for NodePrinter<'a, Vis> {
+    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
+        match *self.value {
+            Vis::Export => "Export".purple().display_in(arena),
+            Vis::None => arena.empty(),
         }
     }
 }
@@ -231,31 +231,31 @@ pub struct ValueBind {
     pub value: Id<Expr>,
 }
 
-impl Printable<TreePrinter> for ValueBind {
-    fn notate<'a>(&'a self, with: &'a TreePrinter, arena: &'a Bump) -> Notation<'a> {
-        let Self {
+impl<'a> Notate<'a> for NodePrinter<'a, ValueBind> {
+    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
+        let ValueBind {
             vis,
             name,
             ty,
             value,
-        } = self;
+        } = *self.value;
 
         let head = "ValueBind".green().display_in(arena);
 
-        let vis = vis.notate(with, arena);
-        let name = name.notate(with, arena);
-        let ty = ty.as_ref().map(|ty| ty.notate(with, arena));
-        let value = value.notate(with, arena);
+        let vis = self.to_id(vis).notate(arena);
+        let name = self.to_id(name).notate(arena);
+        let ty = ty.map(|ty| self.to_id(ty).notate(arena));
+        let value = self.to_id(value).notate(arena);
 
         let single = [
-            arena.notate(" vis = "),
+            arena.just(' ').then("vis = ".display_in(arena), arena),
             vis.clone(),
-            arena.notate(" name = "),
+            ", name = ".display_in(arena),
             name.clone(),
             ty.clone()
-                .map(|ty| arena.notate(", ty = ").then(ty, arena))
+                .map(|ty| ", ty = ".display_in(arena).then(ty, arena))
                 .or_not(arena),
-            arena.notate(", value = "),
+            ", value = ".display_in(arena),
             value.clone(),
         ]
         .concat_in(arena)
@@ -263,15 +263,15 @@ impl Printable<TreePrinter> for ValueBind {
 
         let multi = [
             arena.newline(),
-            arena.notate("vis = "),
+            "vis = ".display_in(arena),
             vis,
             arena.newline(),
-            arena.notate("name = "),
+            "name = ".display_in(arena),
             name,
-            ty.map(|ty| [arena.newline(), arena.notate("ty = "), ty].concat_in(arena))
+            ty.map(|ty| [arena.newline(), "ty = ".display_in(arena), ty].concat_in(arena))
                 .or_not(arena),
             arena.newline(),
-            arena.notate("value = "),
+            "value = ".display_in(arena),
             value,
         ]
         .concat_in(arena)
@@ -309,29 +309,29 @@ pub struct TypeBind {
     pub ty: Id<Type>,
 }
 
-impl Printable<TreePrinter> for TypeBind {
-    fn notate<'a>(&'a self, with: &'a TreePrinter, arena: &'a Bump) -> Notation<'a> {
-        let Self { name, ty } = self;
+impl<'a> Notate<'a> for NodePrinter<'a, TypeBind> {
+    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
+        let TypeBind { name, ty } = self.value;
 
         let head = "TypeBind".green().display_in(arena);
 
-        let name = name.notate(with, arena);
-        let ty = ty.notate(with, arena);
+        let name = self.to_id(*name).notate(arena);
+        let ty = self.to_id(*ty).notate(arena);
 
         let single = [
-            arena.notate(" name = "),
+            arena.just(' ').then("name = ".display_in(arena), arena),
             name.clone().flatten(arena),
-            arena.notate(", ty = "),
+            ", ty = ".display_in(arena),
             ty.clone().flatten(arena),
         ]
         .concat_in(arena);
 
         let multi = [
             arena.newline(),
-            arena.notate("name = "),
+            "name = ".display_in(arena),
             name,
             arena.newline(),
-            arena.notate("ty = "),
+            "ty = ".display_in(arena),
             ty,
         ]
         .concat_in(arena)
@@ -347,29 +347,29 @@ pub struct OpaqueTypeBind {
     pub ty: Id<Type>,
 }
 
-impl Printable<TreePrinter> for OpaqueTypeBind {
-    fn notate<'a>(&'a self, with: &'a TreePrinter, arena: &'a Bump) -> Notation<'a> {
-        let Self { name, ty } = self;
+impl<'a> Notate<'a> for NodePrinter<'a, OpaqueTypeBind> {
+    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
+        let OpaqueTypeBind { name, ty } = self.value;
 
         let head = "OpaqueTypeBind".green().display_in(arena);
 
-        let name = name.notate(with, arena);
-        let ty = ty.notate(with, arena);
+        let name = self.to_id(*name).notate(arena);
+        let ty = self.to_id(*ty).notate(arena);
 
         let single = [
-            arena.notate(" name = "),
+            arena.just(' ').then("name = ".display_in(arena), arena),
             name.clone().flatten(arena),
-            arena.notate(", ty = "),
+            ", ty = ".display_in(arena),
             ty.clone().flatten(arena),
         ]
         .concat_in(arena);
 
         let multi = [
             arena.newline(),
-            arena.notate("name = "),
+            "name = ".display_in(arena),
             name,
             arena.newline(),
-            arena.notate("ty = "),
+            "ty = ".display_in(arena),
             ty,
         ]
         .concat_in(arena)
@@ -409,31 +409,31 @@ impl ModuleBind {
     }
 }
 
-impl Printable<TreePrinter> for ModuleBind {
-    fn notate<'a>(&'a self, with: &'a TreePrinter, arena: &'a Bump) -> Notation<'a> {
-        let Self {
+impl<'a> Notate<'a> for NodePrinter<'a, ModuleBind> {
+    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
+        let ModuleBind {
             vis,
             name,
             ty,
             value,
-        } = self;
+        } = self.value;
 
         let head = "ModuleBind".green().display_in(arena);
 
-        let vis = vis.notate(with, arena);
-        let name = name.notate(with, arena);
-        let ty = ty.as_ref().map(|ty| ty.notate(with, arena));
-        let value = value.notate(with, arena);
+        let vis = self.to_id(*vis).notate(arena);
+        let name = self.to_id(*name).notate(arena);
+        let ty = ty.as_ref().map(|ty| self.to_id(*ty).notate(arena));
+        let value = self.to_id(*value).notate(arena);
 
         let single = [
-            arena.notate(" vis = "),
+            arena.just(' ').then("vis = ".display_in(arena), arena),
             vis.clone(),
-            arena.notate(" name = "),
+            ", name = ".display_in(arena),
             name.clone(),
             ty.clone()
-                .map(|ty| arena.notate(", ty = ").then(ty, arena))
+                .map(|ty| ", ty = ".display_in(arena).then(ty, arena))
                 .or_not(arena),
-            arena.notate(", value = "),
+            ", value = ".display_in(arena),
             value.clone(),
         ]
         .concat_in(arena)
@@ -441,15 +441,15 @@ impl Printable<TreePrinter> for ModuleBind {
 
         let multi = [
             arena.newline(),
-            arena.notate("vis = "),
+            "vis = ".display_in(arena),
             vis,
             arena.newline(),
-            arena.notate("name = "),
+            "name = ".display_in(arena),
             name,
-            ty.map(|ty| [arena.newline(), arena.notate("ty = "), ty].concat_in(arena))
+            ty.map(|ty| [arena.newline(), "ty = ".display_in(arena), ty].concat_in(arena))
                 .or_not(arena),
             arena.newline(),
-            arena.notate("value = "),
+            "value = ".display_in(arena),
             value,
         ]
         .concat_in(arena)
@@ -465,29 +465,29 @@ pub struct ModuleTypeBind {
     pub ty: Id<ModuleType>,
 }
 
-impl Printable<TreePrinter> for ModuleTypeBind {
-    fn notate<'a>(&'a self, with: &'a TreePrinter, arena: &'a Bump) -> Notation<'a> {
-        let Self { name, ty } = self;
+impl<'a> Notate<'a> for NodePrinter<'a, ModuleTypeBind> {
+    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
+        let ModuleTypeBind { name, ty } = self.value;
 
         let head = "ModuleTypeBind".green().display_in(arena);
 
-        let name = name.notate(with, arena);
-        let ty = ty.notate(with, arena);
+        let name = self.to_id(*name).notate(arena);
+        let ty = self.to_id(*ty).notate(arena);
 
         let single = [
-            arena.notate(" name = "),
+            arena.just(' ').then("name = ".display_in(arena), arena),
             name.clone().flatten(arena),
-            arena.notate(", ty = "),
+            ", ty = ".display_in(arena),
             ty.clone().flatten(arena),
         ]
         .concat_in(arena);
 
         let multi = [
             arena.newline(),
-            arena.notate("name = "),
+            "name = ".display_in(arena),
             name,
             arena.newline(),
-            arena.notate("ty = "),
+            "ty = ".display_in(arena),
             ty,
         ]
         .concat_in(arena)
@@ -505,11 +505,11 @@ impl Printable<TreePrinter> for ModuleTypeBind {
 #[into_iterator(owned, ref)]
 pub struct ModuleType(pub Vec<Id<Spec>>); // TODO functor ?
 
-impl Printable<TreePrinter> for ModuleType {
-    fn notate<'a>(&'a self, with: &'a TreePrinter, arena: &'a Bump) -> Notation<'a> {
+impl<'a> Notate<'a> for NodePrinter<'a, ModuleType> {
+    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
         let head = "ModuleType".green().display_in(arena);
 
-        let specs = self.0.gather(with, arena);
+        let specs = self.to_slice(&self.value.0).gather(arena);
 
         let single = specs.clone().concat_map(
             |spec| arena.just(' ').then(spec.flatten(arena), arena),
@@ -534,13 +534,13 @@ pub enum Spec {
     Module(Id<ModuleSpec>),
 }
 
-impl Printable<TreePrinter> for Spec {
-    fn notate<'a>(&'a self, with: &'a TreePrinter, arena: &'a Bump) -> Notation<'a> {
-        match self {
-            Self::Value(v) => v.get(&with.tree).notate(with, arena),
-            Self::TypeBind(t) => t.get(&with.tree).notate(with, arena),
-            Self::OpaqueType(o) => o.get(&with.tree).notate(with, arena),
-            Self::Module(m) => m.get(&with.tree).notate(with, arena),
+impl<'a> Notate<'a> for NodePrinter<'a, Spec> {
+    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
+        match *self.value {
+            Spec::Value(v) => self.to_node(v.get(self.tree)).notate(arena),
+            Spec::TypeBind(t) => self.to_node(t.get(self.tree)).notate(arena),
+            Spec::OpaqueType(o) => self.to_node(o.get(self.tree)).notate(arena),
+            Spec::Module(m) => self.to_node(m.get(self.tree)).notate(arena),
         }
     }
 }
@@ -586,29 +586,29 @@ pub struct ValueSpec {
     pub ty: Id<Type>,
 }
 
-impl Printable<TreePrinter> for ValueSpec {
-    fn notate<'a>(&'a self, with: &'a TreePrinter, arena: &'a Bump) -> Notation<'a> {
-        let Self { name, ty } = self;
+impl<'a> Notate<'a> for NodePrinter<'a, ValueSpec> {
+    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
+        let ValueSpec { name, ty } = self.value;
 
         let head = "ValueSpec".green().display_in(arena);
 
-        let name = name.notate(with, arena);
-        let ty = ty.notate(with, arena);
+        let name = self.to_id(*name).notate(arena);
+        let ty = self.to_id(*ty).notate(arena);
 
         let single = [
-            arena.notate(" name = "),
+            arena.just(' ').then("name = ".display_in(arena), arena),
             name.clone().flatten(arena),
-            arena.notate(", ty = "),
+            ", ty = ".display_in(arena),
             ty.clone().flatten(arena),
         ]
         .concat_in(arena);
 
         let multi = [
             arena.newline(),
-            arena.notate("name = "),
+            "name = ".display_in(arena),
             name,
             arena.newline(),
-            arena.notate("ty = "),
+            "ty = ".display_in(arena),
             ty,
         ]
         .concat_in(arena)
@@ -625,29 +625,29 @@ pub struct ModuleSpec {
     pub ty: Id<ModuleType>,
 }
 
-impl Printable<TreePrinter> for ModuleSpec {
-    fn notate<'a>(&'a self, with: &'a TreePrinter, arena: &'a Bump) -> Notation<'a> {
-        let Self { name, ty } = self;
+impl<'a> Notate<'a> for NodePrinter<'a, ModuleSpec> {
+    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
+        let ModuleSpec { name, ty } = self.value;
 
         let head = "ModuleSpec".green().display_in(arena);
 
-        let name = name.notate(with, arena);
-        let ty = ty.notate(with, arena);
+        let name = self.to_id(*name).notate(arena);
+        let ty = self.to_id(*ty).notate(arena);
 
         let single = [
-            arena.notate(" name = "),
+            arena.just(' ').then("name = ".display_in(arena), arena),
             name.clone().flatten(arena),
-            arena.notate(", ty = "),
+            ", ty = ".display_in(arena),
             ty.clone().flatten(arena),
         ]
         .concat_in(arena);
 
         let multi = [
             arena.newline(),
-            arena.notate("name = "),
+            "name = ".display_in(arena),
             name,
             arena.newline(),
-            arena.notate("ty = "),
+            "ty = ".display_in(arena),
             ty,
         ]
         .concat_in(arena)
@@ -664,29 +664,29 @@ pub struct OpaqueTypeSpec {
     pub kind: Id<OpaqueTypeKind>,
 }
 
-impl Printable<TreePrinter> for OpaqueTypeSpec {
-    fn notate<'a>(&'a self, with: &'a TreePrinter, arena: &'a Bump) -> Notation<'a> {
-        let Self { name, kind } = self;
+impl<'a> Notate<'a> for NodePrinter<'a, OpaqueTypeSpec> {
+    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
+        let OpaqueTypeSpec { name, kind } = self.value;
 
         let head = "OpaqueTypeSpec".green().display_in(arena);
 
-        let name = name.notate(with, arena);
-        let kind = kind.notate(with, arena);
+        let name = self.to_id(*name).notate(arena);
+        let kind = self.to_id(*kind).notate(arena);
 
         let single = [
-            arena.notate(" name = "),
+            arena.just(' ').then("name = ".display_in(arena), arena),
             name.clone().flatten(arena),
-            arena.notate(", kind = "),
+            ", kind = ".display_in(arena),
             kind.clone().flatten(arena),
         ]
         .concat_in(arena);
 
         let multi = [
             arena.newline(),
-            arena.notate("name = "),
+            "name = ".display_in(arena),
             name,
             arena.newline(),
-            arena.notate("kind = "),
+            "kind = ".display_in(arena),
             kind,
         ]
         .concat_in(arena)
@@ -702,11 +702,11 @@ pub struct OpaqueTypeKind {
     pub arity: usize,
 }
 
-impl Printable<TreePrinter> for OpaqueTypeKind {
-    fn notate<'a>(&'a self, _with: &'a TreePrinter, arena: &'a Bump) -> Notation<'a> {
+impl<'a> Notate<'a> for NodePrinter<'a, OpaqueTypeKind> {
+    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
         let head = "OpaqueTypeKind".green().display_in(arena);
 
-        let arity = format!("arity = {}", self.arity).display_in(arena);
+        let arity = format!("arity = {}", self.value.arity).display_in(arena);
 
         head.then(arena.just(' ').then(arity, arena), arena)
     }

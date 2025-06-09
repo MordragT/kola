@@ -3,6 +3,7 @@ use std::{
     rc::Rc,
 };
 
+use kola_print::{PrintOptions, bumpalo::Bump};
 use kola_span::{Report, SourceManager};
 use kola_utils::{
     dependency::DependencyGraph, interner::StrInterner, io::FileSystem, visit::VisitMap,
@@ -18,12 +19,15 @@ use crate::{
 pub type ModuleGraph = DependencyGraph<ModuleSym>;
 
 pub struct ResolveContext {
+    pub arena: Bump,
     pub report: Report,
     pub io: Box<dyn FileSystem>,
     pub interner: StrInterner,
     pub source_manager: SourceManager,
     pub forest: Forest,
     pub topography: Topography,
+
+    pub print_options: PrintOptions,
 
     // pub symbol_table: SymbolTable,
     pub lookup_table: LookupTable,
@@ -34,14 +38,17 @@ pub struct ResolveContext {
 }
 
 impl ResolveContext {
-    pub fn new(io: impl FileSystem + 'static) -> Self {
+    pub fn new(io: impl FileSystem + 'static, print_options: PrintOptions) -> Self {
         Self {
+            arena: Bump::new(),
             report: Report::new(),
             io: Box::new(io),
             interner: StrInterner::new(),
             source_manager: SourceManager::new(),
             forest: Forest::new(),
             topography: Topography::new(),
+
+            print_options,
 
             // symbol_table: SymbolTable::new(),
             lookup_table: LookupTable::new(),

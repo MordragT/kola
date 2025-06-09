@@ -7,15 +7,15 @@ use super::{Name, Pat};
 use crate::{
     id::Id,
     node::ModulePath,
-    print::TreePrinter,
+    print::NodePrinter,
     tree::{TreeBuilder, TreeView},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct ExprError;
 
-impl Printable<TreePrinter> for ExprError {
-    fn notate<'a>(&'a self, _with: &'a TreePrinter, arena: &'a Bump) -> Notation<'a> {
+impl<'a> Notate<'a> for NodePrinter<'a, ExprError> {
+    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
         "ExprError".red().display_in(arena)
     }
 }
@@ -62,17 +62,17 @@ impl LiteralExpr {
     }
 }
 
-impl Printable<TreePrinter> for LiteralExpr {
-    fn notate<'a>(&'a self, with: &'a TreePrinter, arena: &'a Bump) -> Notation<'a> {
+impl<'a> Notate<'a> for NodePrinter<'a, LiteralExpr> {
+    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
         let head = "LiteralExpr".purple().display_in(arena);
 
-        let lit = match self {
-            Self::Bool(b) => b.yellow().display_in(arena),
-            Self::Num(n) => n.yellow().display_in(arena),
-            Self::Char(c) => c.yellow().display_in(arena),
-            Self::Str(s) => with
+        let lit = match *self.value {
+            LiteralExpr::Bool(b) => b.yellow().display_in(arena),
+            LiteralExpr::Num(n) => n.yellow().display_in(arena),
+            LiteralExpr::Char(c) => c.yellow().display_in(arena),
+            LiteralExpr::Str(s) => self
                 .interner
-                .get(*s)
+                .get(s)
                 .expect("Symbol not found")
                 .yellow()
                 .display_in(arena),
@@ -96,17 +96,19 @@ pub struct PathExpr {
     pub select: Vec<Id<Name>>,
 }
 
-impl Printable<TreePrinter> for PathExpr {
-    fn notate<'a>(&'a self, with: &'a TreePrinter, arena: &'a Bump) -> Notation<'a> {
+impl<'a> Notate<'a> for NodePrinter<'a, PathExpr> {
+    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
+        let PathExpr {
+            path,
+            binding,
+            select,
+        } = self.value;
+
         let head = "PathExpr".cyan().display_in(arena);
 
-        let path = self
-            .path
-            .as_ref()
-            .map(|p| p.notate(with, arena))
-            .or_not(arena);
-        let binding = self.binding.notate(with, arena);
-        let select = self.select.gather(with, arena);
+        let path = path.map(|p| self.to_id(p).notate(arena)).or_not(arena);
+        let binding = self.to_id(*binding).notate(arena);
+        let select = self.to_slice(select).gather(arena);
 
         let single = path
             .clone()
@@ -146,11 +148,11 @@ impl PathExpr {
 #[into_iterator(owned, ref)]
 pub struct ListExpr(pub Vec<Id<Expr>>);
 
-impl Printable<TreePrinter> for ListExpr {
-    fn notate<'a>(&'a self, with: &'a TreePrinter, arena: &'a Bump) -> Notation<'a> {
+impl<'a> Notate<'a> for NodePrinter<'a, ListExpr> {
+    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
         let head = "List".blue().display_in(arena);
 
-        let values = self.0.gather(with, arena);
+        let values = self.to_slice(&self.value.0).gather(arena);
 
         let single = values.clone().concat_map(
             |expr| arena.just(' ').then(expr.flatten(arena), arena),
@@ -180,14 +182,14 @@ impl RecordField {
     }
 }
 
-impl Printable<TreePrinter> for RecordField {
-    fn notate<'a>(&'a self, with: &'a TreePrinter, arena: &'a Bump) -> Notation<'a> {
-        let Self { field, value } = self;
+impl<'a> Notate<'a> for NodePrinter<'a, RecordField> {
+    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
+        let RecordField { field, value } = *self.value;
 
         let head = "RecordField".blue().display_in(arena);
 
-        let field = field.notate(with, arena);
-        let value = value.notate(with, arena);
+        let field = self.to_id(field).notate(arena);
+        let value = self.to_id(value).notate(arena);
 
         let single = [
             arena.notate(" key = "),
@@ -229,12 +231,11 @@ pub struct RecordExpr(pub Vec<Id<RecordField>>);
 //         })
 //     }
 // }
-
-impl Printable<TreePrinter> for RecordExpr {
-    fn notate<'a>(&'a self, with: &'a TreePrinter, arena: &'a Bump) -> Notation<'a> {
+impl<'a> Notate<'a> for NodePrinter<'a, RecordExpr> {
+    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
         let head = "Record".blue().display_in(arena);
 
-        let fields = self.0.gather(with, arena);
+        let fields = self.to_slice(&self.value.0).gather(arena);
 
         let single = fields.clone().concat_map(
             |field| arena.just(' ').then(field.flatten(arena), arena),
@@ -270,19 +271,19 @@ impl RecordExtendExpr {
     }
 }
 
-impl Printable<TreePrinter> for RecordExtendExpr {
-    fn notate<'a>(&'a self, with: &'a TreePrinter, arena: &'a Bump) -> Notation<'a> {
-        let Self {
+impl<'a> Notate<'a> for NodePrinter<'a, RecordExtendExpr> {
+    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
+        let RecordExtendExpr {
             source,
             field,
             value,
-        } = self;
+        } = self.value;
 
         let head = "RecordExtend".blue().display_in(arena);
 
-        let source = source.notate(with, arena);
-        let field = field.notate(with, arena);
-        let value = value.notate(with, arena);
+        let source = self.to_id(*source).notate(arena);
+        let field = self.to_id(*field).notate(arena);
+        let value = self.to_id(*value).notate(arena);
 
         let single = [
             arena.notate(" source = "),
@@ -329,14 +330,14 @@ impl RecordRestrictExpr {
     }
 }
 
-impl Printable<TreePrinter> for RecordRestrictExpr {
-    fn notate<'a>(&'a self, with: &'a TreePrinter, arena: &'a Bump) -> Notation<'a> {
-        let Self { source, field } = self;
+impl<'a> Notate<'a> for NodePrinter<'a, RecordRestrictExpr> {
+    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
+        let RecordRestrictExpr { source, field } = self.value;
 
         let head = "RecordRestrict".blue().display_in(arena);
 
-        let source = source.notate(with, arena);
-        let field = field.notate(with, arena);
+        let source = self.to_id(*source).notate(arena);
+        let field = self.to_id(*field).notate(arena);
 
         let single = [
             arena.notate(" source = "),
@@ -373,9 +374,9 @@ pub enum RecordUpdateOp {
     RemAssign,
 }
 
-impl Printable<TreePrinter> for RecordUpdateOp {
-    fn notate<'a>(&'a self, _with: &'a TreePrinter, arena: &'a Bump) -> Notation<'a> {
-        self.red().display_in(arena)
+impl<'a> Notate<'a> for NodePrinter<'a, RecordUpdateOp> {
+    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
+        self.value.red().display_in(arena)
     }
 }
 
@@ -406,21 +407,21 @@ impl RecordUpdateExpr {
     }
 }
 
-impl Printable<TreePrinter> for RecordUpdateExpr {
-    fn notate<'a>(&'a self, with: &'a TreePrinter, arena: &'a Bump) -> Notation<'a> {
-        let Self {
+impl<'a> Notate<'a> for NodePrinter<'a, RecordUpdateExpr> {
+    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
+        let RecordUpdateExpr {
             source,
             field,
             op,
             value,
-        } = self;
+        } = self.value;
 
         let head = "RecordUpdate".blue().display_in(arena);
 
-        let source = source.notate(with, arena);
-        let field = field.notate(with, arena);
-        let op = op.notate(with, arena);
-        let value = value.notate(with, arena);
+        let source = self.to_id(*source).notate(arena);
+        let field = self.to_id(*field).notate(arena);
+        let op = self.to_id(*op).notate(arena);
+        let value = self.to_id(*value).notate(arena);
 
         let single = [
             arena.notate(" source = "),
@@ -463,9 +464,9 @@ pub enum UnaryOp {
     Not,
 }
 
-impl Printable<TreePrinter> for UnaryOp {
-    fn notate<'a>(&'a self, _with: &'a TreePrinter, arena: &'a Bump) -> Notation<'a> {
-        self.red().display_in(arena)
+impl<'a> Notate<'a> for NodePrinter<'a, UnaryOp> {
+    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
+        self.value.red().display_in(arena)
     }
 }
 
@@ -492,14 +493,14 @@ impl UnaryExpr {
     }
 }
 
-impl Printable<TreePrinter> for UnaryExpr {
-    fn notate<'a>(&'a self, with: &'a TreePrinter, arena: &'a Bump) -> Notation<'a> {
-        let Self { op, operand } = self;
+impl<'a> Notate<'a> for NodePrinter<'a, UnaryExpr> {
+    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
+        let UnaryExpr { op, operand } = self.value;
 
         let head = "Unary".blue().display_in(arena);
 
-        let op = op.notate(with, arena);
-        let operand = operand.notate(with, arena);
+        let op = self.to_id(*op).notate(arena);
+        let operand = self.to_id(*operand).notate(arena);
 
         let single = [
             arena.just(' '),
@@ -542,9 +543,9 @@ pub enum BinaryOp {
     Merge,
 }
 
-impl Printable<TreePrinter> for BinaryOp {
-    fn notate<'a>(&'a self, _with: &'a TreePrinter, arena: &'a Bump) -> Notation<'a> {
-        self.red().display_in(arena)
+impl<'a> Notate<'a> for NodePrinter<'a, BinaryOp> {
+    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
+        self.value.red().display_in(arena)
     }
 }
 
@@ -577,15 +578,15 @@ impl BinaryExpr {
     }
 }
 
-impl Printable<TreePrinter> for BinaryExpr {
-    fn notate<'a>(&'a self, with: &'a TreePrinter, arena: &'a Bump) -> Notation<'a> {
-        let Self { op, left, right } = self;
+impl<'a> Notate<'a> for NodePrinter<'a, BinaryExpr> {
+    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
+        let BinaryExpr { op, left, right } = self.value;
 
         let head = "Binary".blue().display_in(arena);
 
-        let left = left.notate(with, arena);
-        let op = op.notate(with, arena);
-        let right = right.notate(with, arena);
+        let left = self.to_id(*left).notate(arena);
+        let op = self.to_id(*op).notate(arena);
+        let right = self.to_id(*right).notate(arena);
 
         let single = [
             arena.just(' '),
@@ -645,19 +646,19 @@ impl LetExpr {
     }
 }
 
-impl Printable<TreePrinter> for LetExpr {
-    fn notate<'a>(&'a self, with: &'a TreePrinter, arena: &'a Bump) -> Notation<'a> {
-        let Self {
+impl<'a> Notate<'a> for NodePrinter<'a, LetExpr> {
+    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
+        let LetExpr {
             name,
             value,
             inside,
-        } = self;
+        } = self.value;
 
         let head = "Let".blue().display_in(arena);
 
-        let name = name.notate(with, arena);
-        let value = value.notate(with, arena);
-        let inside = inside.notate(with, arena);
+        let name = self.to_id(*name).notate(arena);
+        let value = self.to_id(*value).notate(arena);
+        let inside = self.to_id(*inside).notate(arena);
 
         let single = [
             arena.notate(" name = "),
@@ -720,19 +721,19 @@ impl IfExpr {
     }
 }
 
-impl Printable<TreePrinter> for IfExpr {
-    fn notate<'a>(&'a self, with: &'a TreePrinter, arena: &'a Bump) -> Notation<'a> {
-        let Self {
+impl<'a> Notate<'a> for NodePrinter<'a, IfExpr> {
+    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
+        let IfExpr {
             predicate,
             then,
             or,
-        } = self;
+        } = self.value;
 
-        let head = "Let".blue().display_in(arena);
+        let head = "If".blue().display_in(arena);
 
-        let predicate = predicate.notate(with, arena);
-        let then = then.notate(with, arena);
-        let or = or.notate(with, arena);
+        let predicate = self.to_id(*predicate).notate(arena);
+        let then = self.to_id(*then).notate(arena);
+        let or = self.to_id(*or).notate(arena);
 
         let single = [
             arena.notate(" predicate = "),
@@ -778,14 +779,14 @@ impl CaseBranch {
     }
 }
 
-impl Printable<TreePrinter> for CaseBranch {
-    fn notate<'a>(&'a self, with: &'a TreePrinter, arena: &'a Bump) -> Notation<'a> {
-        let Self { pat, matches } = self;
+impl<'a> Notate<'a> for NodePrinter<'a, CaseBranch> {
+    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
+        let CaseBranch { pat, matches } = self.value;
 
         let head = "Branch".blue().display_in(arena);
 
-        let pat = pat.notate(with, arena);
-        let matches = matches.notate(with, arena);
+        let pat = self.to_id(*pat).notate(arena);
+        let matches = self.to_id(*matches).notate(arena);
 
         let single = [
             arena.notate(" pat = "),
@@ -822,14 +823,14 @@ impl CaseExpr {
     }
 }
 
-impl Printable<TreePrinter> for CaseExpr {
-    fn notate<'a>(&'a self, with: &'a TreePrinter, arena: &'a Bump) -> Notation<'a> {
-        let Self { source, branches } = self;
+impl<'a> Notate<'a> for NodePrinter<'a, CaseExpr> {
+    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
+        let CaseExpr { source, branches } = self.value;
 
         let head = "Case".blue().display_in(arena);
 
-        let source = source.notate(with, arena);
-        let branches = branches.gather(with, arena).concat_in(arena);
+        let source = self.to_id(*source).notate(arena);
+        let branches = self.to_slice(branches).gather(arena).concat_in(arena);
 
         let single = [
             arena.notate(" source = "),
@@ -870,14 +871,14 @@ impl CallExpr {
     }
 }
 
-impl Printable<TreePrinter> for CallExpr {
-    fn notate<'a>(&'a self, with: &'a TreePrinter, arena: &'a Bump) -> Notation<'a> {
-        let Self { func, arg } = self;
+impl<'a> Notate<'a> for NodePrinter<'a, CallExpr> {
+    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
+        let CallExpr { func, arg } = self.value;
 
         let head = "Call".blue().display_in(arena);
 
-        let func = func.notate(with, arena);
-        let arg = arg.notate(with, arena);
+        let func = self.to_id(*func).notate(arena);
+        let arg = self.to_id(*arg).notate(arena);
 
         let single = [
             arena.notate(" func = "),
@@ -918,14 +919,14 @@ impl LambdaExpr {
     }
 }
 
-impl Printable<TreePrinter> for LambdaExpr {
-    fn notate<'a>(&'a self, with: &'a TreePrinter, arena: &'a Bump) -> Notation<'a> {
-        let Self { param, body } = self;
+impl<'a> Notate<'a> for NodePrinter<'a, LambdaExpr> {
+    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
+        let LambdaExpr { param, body } = self.value;
 
         let head = "Func".blue().display_in(arena);
 
-        let param = param.notate(with, arena);
-        let body = body.notate(with, arena);
+        let param = self.to_id(*param).notate(arena);
+        let body = self.to_id(*body).notate(arena);
 
         let single = [
             arena.notate(" param = "),
@@ -971,24 +972,24 @@ pub enum Expr {
     Call(Id<CallExpr>),
 }
 
-impl Printable<TreePrinter> for Expr {
-    fn notate<'a>(&'a self, with: &'a TreePrinter, arena: &'a Bump) -> Notation<'a> {
-        match self {
-            Self::Error(e) => e.get(&with.tree).notate(with, arena),
-            Self::Literal(l) => l.get(&with.tree).notate(with, arena),
-            Self::Path(p) => p.get(&with.tree).notate(with, arena),
-            Self::List(l) => l.get(&with.tree).notate(with, arena),
-            Self::Record(r) => r.get(&with.tree).notate(with, arena),
-            Self::RecordExtend(r) => r.get(&with.tree).notate(with, arena),
-            Self::RecordRestrict(r) => r.get(&with.tree).notate(with, arena),
-            Self::RecordUpdate(r) => r.get(&with.tree).notate(with, arena),
-            Self::Unary(u) => u.get(&with.tree).notate(with, arena),
-            Self::Binary(b) => b.get(&with.tree).notate(with, arena),
-            Self::Let(l) => l.get(&with.tree).notate(with, arena),
-            Self::If(i) => i.get(&with.tree).notate(with, arena),
-            Self::Case(c) => c.get(&with.tree).notate(with, arena),
-            Self::Lambda(f) => f.get(&with.tree).notate(with, arena),
-            Self::Call(c) => c.get(&with.tree).notate(with, arena),
+impl<'a> Notate<'a> for NodePrinter<'a, Expr> {
+    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
+        match *self.value {
+            Expr::Error(e) => self.to_id(e).notate(arena),
+            Expr::Literal(l) => self.to_id(l).notate(arena),
+            Expr::Path(p) => self.to_id(p).notate(arena),
+            Expr::List(l) => self.to_id(l).notate(arena),
+            Expr::Record(r) => self.to_id(r).notate(arena),
+            Expr::RecordExtend(r) => self.to_id(r).notate(arena),
+            Expr::RecordRestrict(r) => self.to_id(r).notate(arena),
+            Expr::RecordUpdate(r) => self.to_id(r).notate(arena),
+            Expr::Unary(u) => self.to_id(u).notate(arena),
+            Expr::Binary(b) => self.to_id(b).notate(arena),
+            Expr::Let(l) => self.to_id(l).notate(arena),
+            Expr::If(i) => self.to_id(i).notate(arena),
+            Expr::Case(c) => self.to_id(c).notate(arena),
+            Expr::Lambda(f) => self.to_id(f).notate(arena),
+            Expr::Call(c) => self.to_id(c).notate(arena),
         }
     }
 }

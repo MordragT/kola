@@ -1,11 +1,9 @@
-use kola_print::prelude::*;
 use kola_utils::{convert::TryAsRef, define_unique_id};
 use std::marker::PhantomData;
 
 use crate::{
     meta::{MetaCast, MetaView, Phase},
     node::Node,
-    print::TreePrinter,
     tree::TreeView,
 };
 
@@ -51,15 +49,5 @@ impl<T> Id<T> {
             id: self.id,
             t: PhantomData,
         }
-    }
-}
-
-impl<T> Printable<TreePrinter> for Id<T>
-where
-    Node: TryAsRef<T>,
-    T: Printable<TreePrinter>,
-{
-    fn notate<'a>(&'a self, with: &'a TreePrinter, arena: &'a Bump) -> Notation<'a> {
-        with.decorate(*self, arena)
     }
 }

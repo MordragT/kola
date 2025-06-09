@@ -488,6 +488,7 @@ dependencies = [
  "either",
  "indexmap",
  "kola-print",
+ "kola-resolve",
  "kola-span",
  "kola-syntax",
  "kola-tree",

@@ -1,11 +1,12 @@
 use std::collections::HashMap;
 
+use kola_resolve::symbol::ModuleSym;
 use kola_tree::meta::*;
 
-use crate::{module::ModulePath, types};
+use crate::types;
 
-pub type TypeInfoTable = HashMap<ModulePath, TypeInfo>;
-pub type TypeInfo = Metadata<TypePhase>;
+pub type TypeInfoTable = HashMap<ModuleSym, TypeInfo>;
+pub type TypeInfo = MetaVec<TypePhase>;
 
 #[derive(Clone, Copy, Debug)]
 pub struct TypePhase;

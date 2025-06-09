@@ -7,10 +7,10 @@ use std::{collections::HashMap, fmt, ops::Index};
 use kola_print::prelude::*;
 use kola_span::Located;
 
-pub struct TokenPrinter<'t>(pub &'t Tokens<'t>);
+pub struct TokenPrinter<'t>(pub &'t Tokens<'t>, pub PrintOptions);
 
-impl<'t> Printable<PrintOptions> for TokenPrinter<'t> {
-    fn notate<'a>(&'a self, with: &'a PrintOptions, arena: &'a Bump) -> Notation<'a> {
+impl<'a> Notate<'a> for TokenPrinter<'a> {
+    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
         let tokens = self
             .0
             .iter()
@@ -29,7 +29,7 @@ impl<'t> Printable<PrintOptions> for TokenPrinter<'t> {
                     .concat_in(arena)
                     .enclose(arena.just('('), arena.just(')'), arena);
 
-                let spacing_width = (with.width as usize / 3)
+                let spacing_width = (self.1.width as usize / 3)
                     .checked_sub(head_str.len())
                     .unwrap_or(1);
                 let spacing = arena.just(' ').repeat(spacing_width, arena);
@@ -43,13 +43,6 @@ impl<'t> Printable<PrintOptions> for TokenPrinter<'t> {
             .collect_in::<bumpalo::collections::Vec<_>>(arena);
 
         arena.concat(tokens.into_bump_slice())
-    }
-
-    fn print(&self, options: PrintOptions)
-    where
-        PrintOptions: Default,
-    {
-        self.print_with(&options, options);
     }
 }
 

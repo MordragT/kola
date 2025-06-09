@@ -6,13 +6,13 @@ use kola_print::prelude::*;
 use kola_utils::{as_variant, interner::StrKey};
 
 use super::{LiteralExpr, Name};
-use crate::{id::Id, print::TreePrinter, tree::TreeView};
+use crate::{id::Id, print::NodePrinter, tree::TreeView};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct PatError;
 
-impl Printable<TreePrinter> for PatError {
-    fn notate<'a>(&'a self, _with: &'a TreePrinter, arena: &'a Bump) -> Notation<'a> {
+impl<'a> Notate<'a> for NodePrinter<'a, PatError> {
+    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
         "PatError".red().display_in(arena)
     }
 }
@@ -20,8 +20,8 @@ impl Printable<TreePrinter> for PatError {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct AnyPat;
 
-impl Printable<TreePrinter> for AnyPat {
-    fn notate<'a>(&'a self, _with: &'a TreePrinter, arena: &'a Bump) -> Notation<'a> {
+impl<'a> Notate<'a> for NodePrinter<'a, AnyPat> {
+    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
         "AnyPat".blue().display_in(arena)
     }
 }
@@ -63,15 +63,15 @@ pub struct LiteralPat(pub LiteralExpr);
 //     }
 // }
 
-impl Printable<TreePrinter> for LiteralPat {
-    fn notate<'a>(&'a self, with: &'a TreePrinter, arena: &'a Bump) -> Notation<'a> {
+impl<'a> Notate<'a> for NodePrinter<'a, LiteralPat> {
+    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
         let kind = "LiteralPat".purple().display_in(arena);
 
-        let lit = match &self.0 {
+        let lit = match &self.value.0 {
             LiteralExpr::Bool(b) => b.yellow().display_in(arena),
             LiteralExpr::Num(n) => n.yellow().display_in(arena),
             LiteralExpr::Char(c) => c.yellow().display_in(arena),
-            LiteralExpr::Str(s) => with
+            LiteralExpr::Str(s) => self
                 .interner
                 .get(*s)
                 .expect("Symbol not found")
@@ -129,13 +129,13 @@ impl PartialEq<StrKey> for IdentPat {
     }
 }
 
-impl Printable<TreePrinter> for IdentPat {
-    fn notate<'a>(&'a self, with: &'a TreePrinter, arena: &'a Bump) -> Notation<'a> {
+impl<'a> Notate<'a> for NodePrinter<'a, IdentPat> {
+    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
         let head = "IdentPat".cyan().display_in(arena);
 
-        let ident = with
+        let ident = self
             .interner
-            .get(self.0)
+            .get(self.value.0)
             .expect("Symbol not found")
             .yellow()
             .display_in(arena)
@@ -164,14 +164,14 @@ impl RecordFieldPat {
     }
 }
 
-impl Printable<TreePrinter> for RecordFieldPat {
-    fn notate<'a>(&'a self, with: &'a TreePrinter, arena: &'a Bump) -> Notation<'a> {
-        let Self { field, pat } = self;
+impl<'a> Notate<'a> for NodePrinter<'a, RecordFieldPat> {
+    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
+        let RecordFieldPat { field, pat } = *self.value;
 
         let head = "RecordFieldPat".blue().display_in(arena);
 
-        let field = field.notate(with, arena);
-        let pat = pat.as_ref().map(|v| v.notate(with, arena));
+        let field = self.to_id(field).notate(arena);
+        let pat = pat.map(|v| self.to_id(v).notate(arena));
 
         let single = [
             arena.notate(" field = "),
@@ -213,11 +213,11 @@ pub struct RecordPat(pub Vec<Id<RecordFieldPat>>);
 //     }
 // }
 
-impl Printable<TreePrinter> for RecordPat {
-    fn notate<'a>(&'a self, with: &'a TreePrinter, arena: &'a Bump) -> Notation<'a> {
+impl<'a> Notate<'a> for NodePrinter<'a, RecordPat> {
+    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
         let head = "RecordPat".blue().display_in(arena);
 
-        let fields = self.0.gather(with, arena);
+        let fields = self.to_slice(&self.value.0).gather(arena);
 
         let single = fields.clone().concat_map(
             |field| arena.notate(" ").then(field.flatten(arena), arena),
@@ -245,14 +245,14 @@ impl VariantCasePat {
     }
 }
 
-impl Printable<TreePrinter> for VariantCasePat {
-    fn notate<'a>(&'a self, with: &'a TreePrinter, arena: &'a Bump) -> Notation<'a> {
-        let Self { case, pat } = self;
+impl<'a> Notate<'a> for NodePrinter<'a, VariantCasePat> {
+    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
+        let VariantCasePat { case, pat } = *self.value;
 
         let head = "VariantCasePat".blue().display_in(arena);
 
-        let case = case.notate(with, arena);
-        let pat = pat.as_ref().map(|v| v.notate(with, arena));
+        let case = self.to_id(case).notate(arena);
+        let pat = pat.map(|v| self.to_id(v).notate(arena));
 
         let single = [
             arena.notate(" case = "),
@@ -292,11 +292,11 @@ pub struct VariantPat(pub Vec<Id<VariantCasePat>>);
 //     }
 // }
 
-impl Printable<TreePrinter> for VariantPat {
-    fn notate<'a>(&'a self, with: &'a TreePrinter, arena: &'a Bump) -> Notation<'a> {
+impl<'a> Notate<'a> for NodePrinter<'a, VariantPat> {
+    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
         let head = "VariantPat".blue().display_in(arena);
 
-        let cases = self.0.gather(with, arena);
+        let cases = self.to_slice(&self.value.0).gather(arena);
 
         let single = cases.clone().concat_map(
             |case| arena.notate(" ").then(case.flatten(arena), arena),
@@ -318,15 +318,15 @@ pub enum Pat {
     Variant(Id<VariantPat>),
 }
 
-impl Printable<TreePrinter> for Pat {
-    fn notate<'a>(&'a self, with: &'a TreePrinter, arena: &'a Bump) -> Notation<'a> {
-        match self {
-            Self::Error(e) => e.notate(with, arena),
-            Self::Any(w) => w.notate(with, arena),
-            Self::Literal(l) => l.notate(with, arena),
-            Self::Ident(i) => i.notate(with, arena),
-            Self::Record(r) => r.notate(with, arena),
-            Self::Variant(v) => v.notate(with, arena),
+impl<'a> Notate<'a> for NodePrinter<'a, Pat> {
+    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
+        match *self.value {
+            Pat::Error(e) => self.to_id(e).notate(arena),
+            Pat::Any(w) => self.to_id(w).notate(arena),
+            Pat::Literal(l) => self.to_id(l).notate(arena),
+            Pat::Ident(i) => self.to_id(i).notate(arena),
+            Pat::Record(r) => self.to_id(r).notate(arena),
+            Pat::Variant(v) => self.to_id(v).notate(arena),
         }
     }
 }

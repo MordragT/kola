@@ -2,7 +2,7 @@ use kola_print::prelude::*;
 use kola_utils::convert::TryAsRef;
 use std::{hash::Hash, marker::PhantomData};
 
-use crate::{instr::Instr, ir::Ir};
+use crate::{instr::Instr, ir::Ir, print::IrPrinter};
 
 #[derive(Debug)]
 pub struct Id<T> {
@@ -61,15 +61,5 @@ impl<T> Ord for Id<T> {
 impl<T> Hash for Id<T> {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.id.hash(state);
-    }
-}
-
-impl<T> Printable<Ir> for Id<T>
-where
-    Instr: TryAsRef<T>,
-    T: Printable<Ir>,
-{
-    fn notate<'a>(&'a self, with: &'a Ir, arena: &'a Bump) -> Notation<'a> {
-        with.instr(*self).notate(with, arena)
     }
 }

@@ -231,7 +231,8 @@ where
             "{} {:?}\n{}",
             "Tokens".bold().bright_white(),
             &path,
-            TokenPrinter(&tokens).render(PrintOptions::default())
+            TokenPrinter(&tokens, self.ctx.print_options)
+                .render(self.ctx.print_options, &self.ctx.arena)
         );
 
         let input = ParseInput::new(path_key, tokens);
@@ -243,13 +244,14 @@ where
             return ControlFlow::Continue(());
         };
 
+        let decorators = Decorators::new().with(LocDecorator(spans.clone()));
+        let tree_printer = TreePrinter::new(&tree, &self.ctx.interner, &decorators);
+
         debug!(
             "{} {:?}\n{}",
             "Untyped Abstract Syntax Tree".bold().bright_white(),
             &path,
-            TreePrinter::new(tree.clone(), self.ctx.interner.clone()) // TODO cloning the entire interner is not a good idea
-                .with(LocDecorator(spans.clone()))
-                .render(PrintOptions::default())
+            tree_printer.render(self.ctx.print_options, &self.ctx.arena)
         );
 
         self.ctx.forest.insert(path_key, tree);

@@ -12,67 +12,117 @@ pub trait Decorator {
     -> Notation<'a>;
 }
 
-pub struct TreePrinter {
-    pub tree: Tree,
-    pub interner: StrInterner,
-    pub decorators: Vec<Box<dyn Decorator>>,
-}
+pub struct Decorators(Vec<Box<dyn Decorator>>);
 
-impl TreePrinter {
-    pub fn new(tree: Tree, interner: StrInterner) -> Self {
-        Self {
-            tree,
-            interner,
-            decorators: Vec::new(),
-        }
+impl Decorators {
+    pub fn new() -> Self {
+        Self(Vec::new())
     }
 
     pub fn with(mut self, decorator: impl Decorator + 'static) -> Self {
-        self.decorators.push(Box::new(decorator));
+        self.0.push(Box::new(decorator));
         self
-    }
-
-    pub fn decorate<'a, T>(&'a self, id: Id<T>, arena: &'a Bump) -> Notation<'a>
-    where
-        Node: TryAsRef<T>,
-        T: Printable<Self> + 'a,
-    {
-        let mut notation = self.tree.node::<T>(id).notate(&self, arena);
-
-        for decorator in &self.decorators {
-            notation = decorator.decorate(notation, id.as_usize(), arena);
-        }
-
-        notation
-    }
-
-    pub fn render_at<T>(&self, id: Id<T>, options: PrintOptions) -> String
-    where
-        Node: TryAsRef<T>,
-        T: Printable<Self>,
-    {
-        let arena = Bump::new();
-        let notation = self.decorate(id, &arena);
-
-        let mut output = String::new();
-        let mut printer = Printer::new(&notation, options, &arena);
-        printer.print(&mut output, &arena).unwrap();
-        output
-    }
-
-    pub fn print_at<T>(&self, id: Id<T>, options: PrintOptions)
-    where
-        Node: TryAsRef<T>,
-        T: Printable<Self>,
-    {
-        let output = self.render_at(id, options);
-        println!("{}", output);
     }
 }
 
-impl Printable<()> for TreePrinter {
-    fn notate<'a>(&'a self, _with: &'a (), arena: &'a Bump) -> Notation<'a> {
-        let root = self.tree.root_id();
-        self.decorate(root, arena)
+impl Decorator for Decorators {
+    fn decorate<'a>(
+        &'a self,
+        notation: Notation<'a>,
+        with: usize,
+        arena: &'a Bump,
+    ) -> Notation<'a> {
+        self.0
+            .iter()
+            .fold(notation, |n, d| d.decorate(n, with, arena))
+    }
+}
+
+#[derive(Clone, Copy)]
+pub struct TreePrinter<'a, T> {
+    pub tree: &'a Tree,
+    pub interner: &'a StrInterner,
+    pub decorators: &'a Decorators,
+    pub value: T,
+}
+
+pub type NodePrinter<'a, T> = TreePrinter<'a, &'a T>;
+pub type IdPrinter<'a, T> = TreePrinter<'a, Id<T>>;
+pub type SlicePrinter<'a, T> = TreePrinter<'a, &'a [Id<T>]>;
+
+impl<'a> IdPrinter<'a, crate::node::ModuleBind> {
+    pub fn new(tree: &'a Tree, interner: &'a StrInterner, decorators: &'a Decorators) -> Self {
+        Self {
+            tree,
+            interner,
+            decorators,
+            value: tree.root_id(),
+        }
+    }
+}
+
+impl<'a, T> TreePrinter<'a, T> {
+    pub fn to<U>(self, value: U) -> TreePrinter<'a, U> {
+        TreePrinter {
+            tree: self.tree,
+            interner: self.interner,
+            decorators: self.decorators,
+            value,
+        }
+    }
+
+    pub fn to_node<U>(self, node: &'a U) -> NodePrinter<'a, U> {
+        NodePrinter {
+            tree: self.tree,
+            interner: self.interner,
+            decorators: self.decorators,
+            value: node,
+        }
+    }
+
+    pub fn to_id<U>(self, id: Id<U>) -> IdPrinter<'a, U> {
+        IdPrinter {
+            tree: self.tree,
+            interner: self.interner,
+            decorators: self.decorators,
+            value: id,
+        }
+    }
+
+    pub fn to_slice<U>(self, slice: &'a [Id<U>]) -> SlicePrinter<'a, U> {
+        SlicePrinter {
+            tree: self.tree,
+            interner: self.interner,
+            decorators: self.decorators,
+            value: slice,
+        }
+    }
+}
+
+impl<'a, T> Notate<'a> for IdPrinter<'a, T>
+where
+    Node: TryAsRef<T>,
+    NodePrinter<'a, T>: Notate<'a>,
+    T: 'a,
+{
+    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
+        let node = self.tree.node(self.value);
+        let notation = self.to(node).notate(arena);
+        self.decorators
+            .decorate(notation, self.value.as_usize(), arena)
+    }
+}
+
+impl<'a, T> Gather<'a> for SlicePrinter<'a, T>
+where
+    Node: TryAsRef<T>,
+    NodePrinter<'a, T>: Notate<'a>,
+    T: 'a,
+{
+    fn gather(self, arena: &'a Bump) -> BumpVec<'a, Notation<'a>> {
+        self.value
+            .iter()
+            .map(|id| self.to_id(*id).notate(arena))
+            .collect_in(arena)
     }
 }

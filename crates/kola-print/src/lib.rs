@@ -1,23 +1,24 @@
 #![feature(allocator_api)]
 
+pub use bumpalo;
+pub use notate::Notate;
 pub use notation::{Arena, Notation};
-pub use printable::Printable;
 pub use printer::{PrintOptions, Printer};
 
 pub mod combinator;
+mod notate;
 mod notation;
-mod printable;
 mod printer;
 
 pub mod prelude {
     pub use crate::combinator::{ConcatBy, ConcatIn, ConcatMap, DisplayIn, Gather, OrNot, Repeat};
     pub use crate::layout;
+    pub use crate::notate::Notate;
     pub use crate::notation::{Arena, Notation};
-    pub use crate::printable::Printable;
     pub use crate::printer::{PrintOptions, Printer};
     pub use bumpalo::{
         self, Bump,
-        collections::{CollectIn, FromIteratorIn},
+        collections::{CollectIn, FromIteratorIn, Vec as BumpVec},
     };
     pub use owo_colors::{self, OwoColorize};
 }

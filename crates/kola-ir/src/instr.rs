@@ -4,10 +4,7 @@ use derive_more::{Display, From};
 use kola_print::prelude::*;
 use kola_utils::{impl_try_as, interner::StrKey};
 
-use crate::{
-    id::Id,
-    ir::{Ir, IrBuilder},
-};
+use crate::{id::Id, ir::IrBuilder, print::IrPrinter};
 
 // TODO Symbol scoping
 #[derive(Debug, Display, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -42,10 +39,12 @@ impl Func {
     }
 }
 
-impl Printable<Ir> for Func {
-    fn notate<'a>(&'a self, with: &'a Ir, arena: &'a Bump) -> Notation<'a> {
-        let param = self.param.display_in(arena);
-        let body = self.body.notate(with, arena);
+impl<'a> Notate<'a> for IrPrinter<'a, Func> {
+    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
+        let Func { param, body } = self.node;
+
+        let param = param.display_in(arena);
+        let body = self.to(body).notate(arena);
 
         param.then(body.clone().flatten(arena).or(body, arena), arena)
     }
@@ -76,15 +75,15 @@ impl_try_as!(
     Symbol(Symbol)
 );
 
-impl Printable<Ir> for Atom {
-    fn notate<'a>(&'a self, with: &'a Ir, arena: &'a Bump) -> Notation<'a> {
-        match self {
-            Self::Bool(b) => b.display_in(arena).enclose_by(arena.just('"'), arena),
-            Self::Char(c) => c.display_in(arena).enclose_by(arena.just('"'), arena),
-            Self::Num(n) => n.display_in(arena).enclose_by(arena.just('"'), arena),
-            Self::Str(s) => s.display_in(arena).enclose_by(arena.just('"'), arena),
-            Self::Func(f) => f.notate(with, arena),
-            Self::Symbol(s) => s.display_in(arena),
+impl<'a> Notate<'a> for IrPrinter<'a, Id<Atom>> {
+    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
+        match *self.ir.instr(self.node) {
+            Atom::Bool(b) => b.display_in(arena).enclose_by(arena.just('"'), arena),
+            Atom::Char(c) => c.display_in(arena).enclose_by(arena.just('"'), arena),
+            Atom::Num(n) => n.display_in(arena).enclose_by(arena.just('"'), arena),
+            Atom::Str(s) => s.display_in(arena).enclose_by(arena.just('"'), arena),
+            Atom::Func(f) => self.to(f).notate(arena),
+            Atom::Symbol(s) => s.display_in(arena),
         }
     }
 }
@@ -130,9 +129,11 @@ impl RetExpr {
     }
 }
 
-impl Printable<Ir> for RetExpr {
-    fn notate<'a>(&'a self, with: &'a Ir, arena: &'a Bump) -> Notation<'a> {
-        let arg = self.arg.notate(with, arena);
+impl<'a> Notate<'a> for IrPrinter<'a, RetExpr> {
+    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
+        let RetExpr { arg } = self.node;
+
+        let arg = self.to(arg).notate(arena);
         let single = arena.just(' ').then(arg.clone().flatten(arena), arena);
         let multi = arena.newline().then(arg, arena);
 
@@ -169,12 +170,19 @@ impl CallExpr {
     }
 }
 
-impl Printable<Ir> for CallExpr {
-    fn notate<'a>(&'a self, with: &'a Ir, arena: &'a Bump) -> Notation<'a> {
-        let bind = self.bind.display_in(arena);
-        let func = self.func.notate(with, arena);
-        let arg = self.arg.notate(with, arena);
-        let next = arena.newline().then(self.next.notate(with, arena), arena);
+impl<'a> Notate<'a> for IrPrinter<'a, CallExpr> {
+    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
+        let CallExpr {
+            bind,
+            func,
+            arg,
+            next,
+        } = self.node;
+
+        let bind = bind.display_in(arena);
+        let func = self.to(func).notate(arena);
+        let arg = self.to(arg).notate(arena);
+        let next = arena.newline().then(self.to(next).notate(arena), arena);
 
         let single = [
             bind.clone(),
@@ -235,13 +243,21 @@ impl IfExpr {
     }
 }
 
-impl Printable<Ir> for IfExpr {
-    fn notate<'a>(&'a self, with: &'a Ir, arena: &'a Bump) -> Notation<'a> {
-        let bind = self.bind.display_in(arena);
-        let predicate = self.predicate.notate(with, arena);
-        let then = self.then.notate(with, arena);
-        let or = self.or.notate(with, arena);
-        let next = arena.newline().then(self.next.notate(with, arena), arena);
+impl<'a> Notate<'a> for IrPrinter<'a, IfExpr> {
+    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
+        let IfExpr {
+            bind,
+            predicate,
+            then,
+            or,
+            next,
+        } = self.node;
+
+        let bind = bind.display_in(arena);
+        let predicate = self.to(predicate).notate(arena);
+        let then = self.to(then).notate(arena);
+        let or = self.to(or).notate(arena);
+        let next = arena.newline().then(self.to(next).notate(arena), arena);
 
         let single = [
             bind.clone(),
@@ -294,11 +310,13 @@ impl LetExpr {
     }
 }
 
-impl Printable<Ir> for LetExpr {
-    fn notate<'a>(&'a self, with: &'a Ir, arena: &'a Bump) -> Notation<'a> {
-        let bind = self.bind.display_in(arena);
-        let value = self.value.notate(with, arena);
-        let next = arena.newline().then(self.next.notate(with, arena), arena);
+impl<'a> Notate<'a> for IrPrinter<'a, LetExpr> {
+    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
+        let LetExpr { bind, value, next } = self.node;
+
+        let bind = bind.display_in(arena);
+        let value = self.to(value).notate(arena);
+        let next = arena.newline().then(self.to(next).notate(arena), arena);
 
         let single = [bind.clone(), arena.notate(" = "), value.clone()]
             .concat_in(arena)
@@ -339,12 +357,19 @@ impl LetInExpr {
     }
 }
 
-impl Printable<Ir> for LetInExpr {
-    fn notate<'a>(&'a self, with: &'a Ir, arena: &'a Bump) -> Notation<'a> {
-        let bind = self.bind.display_in(arena);
-        let value = self.value.notate(with, arena);
-        let inside = self.inside.notate(with, arena);
-        let next = arena.newline().then(self.next.notate(with, arena), arena);
+impl<'a> Notate<'a> for IrPrinter<'a, LetInExpr> {
+    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
+        let LetInExpr {
+            bind,
+            value,
+            inside,
+            next,
+        } = self.node;
+
+        let bind = bind.display_in(arena);
+        let value = self.to(value).notate(arena);
+        let inside = self.to(inside).notate(arena);
+        let next = arena.newline().then(self.to(next).notate(arena), arena);
 
         let single = [
             bind.clone(),
@@ -399,12 +424,19 @@ impl UnaryExpr {
     }
 }
 
-impl Printable<Ir> for UnaryExpr {
-    fn notate<'a>(&'a self, with: &'a Ir, arena: &'a Bump) -> Notation<'a> {
-        let bind = self.bind.display_in(arena);
-        let op = self.op.display_in(arena);
-        let arg = self.arg.notate(with, arena);
-        let next = arena.newline().then(self.next.notate(with, arena), arena);
+impl<'a> Notate<'a> for IrPrinter<'a, UnaryExpr> {
+    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
+        let UnaryExpr {
+            bind,
+            op,
+            arg,
+            next,
+        } = self.node;
+
+        let bind = bind.display_in(arena);
+        let op = op.display_in(arena);
+        let arg = self.to(arg).notate(arena);
+        let next = arena.newline().then(self.to(next).notate(arena), arena);
 
         let single = [bind.clone(), arena.notate(" = "), op.clone(), arg.clone()]
             .concat_in(arena)
@@ -448,13 +480,21 @@ impl BinaryExpr {
     }
 }
 
-impl Printable<Ir> for BinaryExpr {
-    fn notate<'a>(&'a self, with: &'a Ir, arena: &'a Bump) -> Notation<'a> {
-        let bind = self.bind.display_in(arena);
-        let op = self.op.display_in(arena);
-        let lhs = self.lhs.notate(with, arena);
-        let rhs = self.rhs.notate(with, arena);
-        let next = arena.newline().then(self.next.notate(with, arena), arena);
+impl<'a> Notate<'a> for IrPrinter<'a, BinaryExpr> {
+    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
+        let BinaryExpr {
+            bind,
+            op,
+            lhs,
+            rhs,
+            next,
+        } = self.node;
+
+        let bind = bind.display_in(arena);
+        let op = op.display_in(arena);
+        let lhs = self.to(lhs).notate(arena);
+        let rhs = self.to(rhs).notate(arena);
+        let next = arena.newline().then(self.to(next).notate(arena), arena);
 
         let single = [
             bind.clone(),
@@ -485,10 +525,12 @@ impl RecordField {
     }
 }
 
-impl Printable<Ir> for RecordField {
-    fn notate<'a>(&'a self, with: &'a Ir, arena: &'a Bump) -> Notation<'a> {
-        let label = self.label.display_in(arena);
-        let value = self.value.notate(with, arena);
+impl<'a> Notate<'a> for IrPrinter<'a, RecordField> {
+    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
+        let RecordField { label, value } = self.node;
+
+        let label = label.display_in(arena);
+        let value = self.to(value).notate(arena);
 
         [label, arena.notate(" = "), value].concat_in(arena)
     }
@@ -515,11 +557,18 @@ impl RecordExpr {
     }
 }
 
-impl Printable<Ir> for RecordExpr {
-    fn notate<'a>(&'a self, with: &'a Ir, arena: &'a Bump) -> Notation<'a> {
-        let bind = self.bind.display_in(arena);
-        let fields = self.fields.get(with).gather(with, arena);
-        let next = arena.newline().then(self.next.notate(with, arena), arena);
+impl<'a> Notate<'a> for IrPrinter<'a, RecordExpr> {
+    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
+        let RecordExpr { bind, fields, next } = self.node;
+
+        let bind = bind.display_in(arena);
+        let fields = fields
+            .get(self.ir)
+            .iter()
+            .copied()
+            .map(|field| self.to(field).notate(arena))
+            .collect_in::<BumpVec<_>>(arena);
+        let next = arena.newline().then(self.to(next).notate(arena), arena);
 
         let single = [
             bind.clone(),
@@ -573,13 +622,21 @@ impl RecordExtendExpr {
     }
 }
 
-impl Printable<Ir> for RecordExtendExpr {
-    fn notate<'a>(&'a self, with: &'a Ir, arena: &'a Bump) -> Notation<'a> {
-        let bind = self.bind.display_in(arena);
-        let base = self.base.notate(with, arena);
-        let label = self.label.display_in(arena);
-        let value = self.value.notate(with, arena);
-        let next = arena.newline().then(self.next.notate(with, arena), arena);
+impl<'a> Notate<'a> for IrPrinter<'a, RecordExtendExpr> {
+    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
+        let RecordExtendExpr {
+            bind,
+            base,
+            label,
+            value,
+            next,
+        } = self.node;
+
+        let bind = bind.display_in(arena);
+        let base = self.to(base).notate(arena);
+        let label = label.display_in(arena);
+        let value = self.to(value).notate(arena);
+        let next = arena.newline().then(self.to(next).notate(arena), arena);
 
         let single = [
             bind.clone(),
@@ -638,12 +695,19 @@ impl RecordRestrictExpr {
     }
 }
 
-impl Printable<Ir> for RecordRestrictExpr {
-    fn notate<'a>(&'a self, with: &'a Ir, arena: &'a Bump) -> Notation<'a> {
-        let bind = self.bind.display_in(arena);
-        let base = self.base.notate(with, arena);
-        let label = self.label.display_in(arena);
-        let next = arena.newline().then(self.next.notate(with, arena), arena);
+impl<'a> Notate<'a> for IrPrinter<'a, RecordRestrictExpr> {
+    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
+        let RecordRestrictExpr {
+            bind,
+            base,
+            label,
+            next,
+        } = self.node;
+
+        let bind = bind.display_in(arena);
+        let base = self.to(base).notate(arena);
+        let label = label.display_in(arena);
+        let next = arena.newline().then(self.to(next).notate(arena), arena);
 
         let single = [
             bind.clone(),
@@ -727,14 +791,23 @@ impl RecordUpdateExpr {
     }
 }
 
-impl Printable<Ir> for RecordUpdateExpr {
-    fn notate<'a>(&'a self, with: &'a Ir, arena: &'a Bump) -> Notation<'a> {
-        let bind = self.bind.display_in(arena);
-        let base = self.base.notate(with, arena);
-        let label = self.label.display_in(arena);
-        let op = self.op.display_in(arena);
-        let value = self.value.notate(with, arena);
-        let next = arena.newline().then(self.next.notate(with, arena), arena);
+impl<'a> Notate<'a> for IrPrinter<'a, RecordUpdateExpr> {
+    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
+        let RecordUpdateExpr {
+            bind,
+            base,
+            label,
+            op,
+            value,
+            next,
+        } = self.node;
+
+        let bind = bind.display_in(arena);
+        let base = self.to(base).notate(arena);
+        let label = label.display_in(arena);
+        let op = op.display_in(arena);
+        let value = self.to(value).notate(arena);
+        let next = arena.newline().then(self.to(next).notate(arena), arena);
 
         let single = [
             bind.clone(),
@@ -792,12 +865,19 @@ impl RecordAccessExpr {
     }
 }
 
-impl Printable<Ir> for RecordAccessExpr {
-    fn notate<'a>(&'a self, with: &'a Ir, arena: &'a Bump) -> Notation<'a> {
-        let bind = self.bind.display_in(arena);
-        let base = self.base.notate(with, arena);
-        let label = self.label.display_in(arena);
-        let next = arena.newline().then(self.next.notate(with, arena), arena);
+impl<'a> Notate<'a> for IrPrinter<'a, RecordAccessExpr> {
+    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
+        let RecordAccessExpr {
+            bind,
+            base,
+            label,
+            next,
+        } = self.node;
+
+        let bind = bind.display_in(arena);
+        let base = self.to(base).notate(arena);
+        let label = label.display_in(arena);
+        let next = arena.newline().then(self.to(next).notate(arena), arena);
 
         let single = [
             bind.clone(),
@@ -865,21 +945,21 @@ impl_try_as!(
     Binary(BinaryExpr)
 );
 
-impl Printable<Ir> for Expr {
-    fn notate<'a>(&'a self, with: &'a Ir, arena: &'a Bump) -> Notation<'a> {
-        match self {
-            Self::Ret(expr) => expr.notate(with, arena),
-            Self::Call(expr) => expr.notate(with, arena),
-            Self::If(expr) => expr.notate(with, arena),
-            Self::Let(expr) => expr.notate(with, arena),
-            Self::LetIn(expr) => expr.notate(with, arena),
-            Self::Unary(expr) => expr.notate(with, arena),
-            Self::Binary(expr) => expr.notate(with, arena),
-            Self::Record(expr) => expr.notate(with, arena),
-            Self::RecordExtend(expr) => expr.notate(with, arena),
-            Self::RecordRestrict(expr) => expr.notate(with, arena),
-            Self::RecordUpdate(expr) => expr.notate(with, arena),
-            Self::RecordAccess(expr) => expr.notate(with, arena),
+impl<'a> Notate<'a> for IrPrinter<'a, Id<Expr>> {
+    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
+        match *self.ir.instr(self.node) {
+            Expr::Ret(expr) => self.to(expr).notate(arena),
+            Expr::Call(expr) => self.to(expr).notate(arena),
+            Expr::If(expr) => self.to(expr).notate(arena),
+            Expr::Let(expr) => self.to(expr).notate(arena),
+            Expr::LetIn(expr) => self.to(expr).notate(arena),
+            Expr::Unary(expr) => self.to(expr).notate(arena),
+            Expr::Binary(expr) => self.to(expr).notate(arena),
+            Expr::Record(expr) => self.to(expr).notate(arena),
+            Expr::RecordExtend(expr) => self.to(expr).notate(arena),
+            Expr::RecordRestrict(expr) => self.to(expr).notate(arena),
+            Expr::RecordUpdate(expr) => self.to(expr).notate(arena),
+            Expr::RecordAccess(expr) => self.to(expr).notate(arena),
         }
     }
 }

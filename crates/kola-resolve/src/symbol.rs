@@ -1,3 +1,6 @@
+use derive_more::From;
+use kola_tree::node;
+use kola_utils::define_unique_leveled_id;
 use std::{
     collections::HashMap,
     hash::Hash,
@@ -5,10 +8,6 @@ use std::{
     ops::Index,
     sync::atomic::{AtomicU32, Ordering},
 };
-
-use derive_more::From;
-use kola_tree::{id::Id, node};
-use kola_utils::{bimap::BiMap, define_unique_leveled_id, interner::PathKey};
 
 use crate::QualId;
 
@@ -105,73 +104,6 @@ impl Symbol {
         }
     }
 }
-
-// pub type QualName = QualId<node::Name>;
-
-// pub type ModuleSymbols = BiMap<ModuleSym, QualName>;
-// pub type TypeSymbols = BiMap<TypeSym, QualName>;
-// pub type ValueSymbols = BiMap<ValueSym, QualName>;
-
-// /// A symbol table that holds all symbols in every scope of the program.
-// /// It contains modules, types, and values, each represented by their own symbol type.
-// /// It allows for insertion and lookup of symbols by their qualified names.
-// #[derive(Debug, Clone)]
-// pub struct SymbolTable {
-//     pub modules: ModuleSymbols,
-//     pub types: TypeSymbols,
-//     pub values: ValueSymbols,
-// }
-
-// impl SymbolTable {
-//     #[inline]
-//     pub fn new() -> Self {
-//         Self {
-//             modules: ModuleSymbols::new(),
-//             types: TypeSymbols::new(),
-//             values: ValueSymbols::new(),
-//         }
-//     }
-
-//     #[inline]
-//     pub fn insert_module(&mut self, sym: ModuleSym, name: QualName) {
-//         self.modules.insert(sym, name);
-//     }
-
-//     #[inline]
-//     pub fn insert_type(&mut self, sym: TypeSym, name: QualName) {
-//         self.types.insert(sym, name);
-//     }
-
-//     #[inline]
-//     pub fn insert_value(&mut self, sym: ValueSym, name: QualName) {
-//         self.values.insert(sym, name);
-//     }
-
-//     #[inline]
-//     pub fn module_sym(&self, name: &QualName) -> Option<ModuleSym> {
-//         self.modules.get_by_value(name).cloned()
-//     }
-
-//     #[inline]
-//     pub fn type_sym(&self, name: &QualName) -> Option<TypeSym> {
-//         self.types.get_by_value(name).cloned()
-//     }
-
-//     #[inline]
-//     pub fn value_sym(&self, name: &QualName) -> Option<ValueSym> {
-//         self.values.get_by_value(name).cloned()
-//     }
-
-//     #[inline]
-//     pub fn path_key_of(&self, sym: impl Into<Symbol>) -> Option<PathKey> {
-//         match sym.into() {
-//             Symbol::Module(sym) => self.modules.get_by_key(&sym),
-//             Symbol::Type(sym) => self.types.get_by_key(&sym),
-//             Symbol::Value(sym) => self.values.get_by_key(&sym),
-//         }
-//         .map(|(key, _)| *key)
-//     }
-// }
 
 pub type Lookup<T, S> = HashMap<QualId<T>, S>;
 

@@ -1,6 +1,7 @@
 use std::io;
 
 use camino::Utf8Path;
+use kola_print::PrintOptions;
 use kola_resolve::prelude::*;
 use kola_utils::io::FileSystem;
 
@@ -13,7 +14,7 @@ impl Driver {
         path: impl AsRef<Utf8Path>,
         io: impl FileSystem + 'static,
     ) -> io::Result<()> {
-        let ctx = resolve(path, io)?;
+        let ctx = resolve(path, io, PrintOptions::default())?;
 
         if !ctx.report.is_empty() {
             return ctx.report.eprint(&ctx.source_manager);

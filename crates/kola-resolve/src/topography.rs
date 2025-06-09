@@ -1,9 +1,6 @@
 use kola_span::Loc;
 use kola_syntax::loc::{LocPhase, Locations};
-use kola_tree::{
-    id::Id,
-    meta::{MetaCast, MetaView},
-};
+use kola_tree::meta::{MetaCast, MetaView};
 use kola_utils::interner::PathKey;
 use std::{collections::HashMap, ops::Index, rc::Rc};
 

@@ -1,6 +1,6 @@
 use std::{collections::HashMap, ops::ControlFlow};
 
-use kola_span::{Diagnostic, Loc, Located};
+use kola_span::{Diagnostic, IntoDiagnostic, Loc, Located};
 use kola_syntax::prelude::*;
 use kola_tree::prelude::*;
 use kola_utils::errors::Errors;
@@ -9,7 +9,6 @@ use crate::{
     VisitState,
     env::{KindEnv, TypeEnv},
     error::SemanticError,
-    module::{ModuleInfo, ModuleInfoTable, ModulePath},
     substitute::{Substitutable, Substitution},
     types::{Kind, MonoType, PolyType, Property, TypeVar, Typed},
     unify::Unifiable,
@@ -17,11 +16,9 @@ use crate::{
 
 mod phase;
 mod print;
-mod resolver;
 
 pub use phase::{TypeInfo, TypeInfoTable, TypePhase};
 pub use print::TypeDecorator;
-pub use resolver::{PathResolution, PathResolver};
 
 // https://blog.stimsina.com/post/implementing-a-hindley-milner-type-system-part-2
 
@@ -79,7 +76,7 @@ impl Constraints {
                 } => actual
                     .apply_cow(s)
                     .constrain(expected, kind_env)
-                    .map_err(|e| e.with(span))?,
+                    .map_err(|e| e.into_diagnostic(span))?,
                 Constraint::Ty {
                     expected,
                     actual,

@@ -5,7 +5,7 @@ use std::{borrow::Borrow, ops::Deref};
 use kola_print::prelude::*;
 use kola_utils::{impl_try_as, interner::StrKey};
 
-use crate::{id::Id, print::TreePrinter};
+use crate::{id::Id, print::NodePrinter};
 
 mod expr;
 mod module;
@@ -59,13 +59,13 @@ impl PartialEq<StrKey> for Name {
     }
 }
 
-impl Printable<TreePrinter> for Name {
-    fn notate<'a>(&'a self, with: &'a TreePrinter, arena: &'a Bump) -> Notation<'a> {
+impl<'a> Notate<'a> for NodePrinter<'a, Name> {
+    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
         let head = "Name".cyan().display_in(arena);
 
-        let name = with
+        let name = self
             .interner
-            .get(self.0)
+            .get(self.value.0)
             .unwrap()
             .yellow()
             .display_in(arena)

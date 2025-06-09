@@ -60,8 +60,8 @@ impl Ir {
     }
 }
 
-impl Printable<()> for Ir {
-    fn notate<'a>(&'a self, _with: &'a (), arena: &'a Bump) -> Notation<'a> {
-        self.root.notate(self, arena)
-    }
-}
+// impl Printable<()> for Ir {
+//     fn notate<'a>(&self, _with: (), arena: &'a Bump) -> Notation<'a> {
+//         self.root.notate(self, arena)
+//     }
+// }

@@ -6,8 +6,8 @@ use owo_colors::{OwoColorize, Style};
 use std::fmt::{self, Write};
 
 use crate::{
+    notate::Notate,
     notation::{Arena, Notation},
-    printable::Printable,
 };
 
 pub trait Repeat<'a> {
@@ -112,19 +112,17 @@ where
     }
 }
 
-pub trait Gather<'a, W> {
-    fn gather(self, with: &'a W, arena: &'a Bump) -> Vec<'a, Notation<'a>>;
+pub trait Gather<'a> {
+    fn gather(self, arena: &'a Bump) -> Vec<'a, Notation<'a>>;
 }
 
-impl<'a, I, T, W> Gather<'a, W> for I
+impl<'a, I, T> Gather<'a> for I
 where
-    T: Printable<W> + 'a,
+    T: Notate<'a> + 'a,
     I: IntoIterator<Item = &'a T>,
 {
-    fn gather(self, with: &'a W, arena: &'a Bump) -> Vec<'a, Notation<'a>> {
-        self.into_iter()
-            .map(|p| p.notate(with, arena))
-            .collect_in(arena)
+    fn gather(self, arena: &'a Bump) -> Vec<'a, Notation<'a>> {
+        self.into_iter().map(|p| p.notate(arena)).collect_in(arena)
     }
 }
 

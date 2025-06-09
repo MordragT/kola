@@ -6,7 +6,10 @@ use camino::Utf8Path;
 use context::ResolveContext;
 use kola_print::prelude::*;
 use kola_syntax::prelude::*;
-use kola_tree::{id::Id, print::TreePrinter};
+use kola_tree::{
+    id::Id,
+    print::{Decorators, TreePrinter},
+};
 use kola_utils::{interner::PathKey, io::FileSystem};
 use log::debug;
 use owo_colors::OwoColorize;
@@ -35,8 +38,9 @@ pub type QualId<T> = (PathKey, Id<T>);
 pub fn resolve(
     path: impl AsRef<Utf8Path>,
     io: impl FileSystem + 'static,
+    print_options: PrintOptions,
 ) -> io::Result<ResolveContext> {
-    let mut ctx = ResolveContext::new(io);
+    let mut ctx = ResolveContext::new(io, print_options);
 
     let path = ctx.io.canonicalize(path.as_ref())?;
 
@@ -59,7 +63,7 @@ pub fn resolve(
         "{} {:?}\n{}",
         "Tokens".bold().bright_white(),
         &path,
-        TokenPrinter(&tokens).render(PrintOptions::default())
+        TokenPrinter(&tokens, ctx.print_options).render(ctx.print_options, &ctx.arena)
     );
 
     let input = ParseInput::new(path_key, tokens);
@@ -70,13 +74,14 @@ pub fn resolve(
         return Ok(ctx);
     };
 
+    let decorators = Decorators::new().with(LocDecorator(spans.clone()));
+    let tree_printer = TreePrinter::new(&tree, &ctx.interner, &decorators);
+
     debug!(
         "{} {:?}\n{}",
         "Untyped Abstract Syntax Tree".bold().bright_white(),
         &path,
-        TreePrinter::new(tree.clone(), ctx.interner.clone()) // TODO cloning the interner is not ideal, but it works for now.
-            .with(LocDecorator(spans.clone()))
-            .render(PrintOptions::default())
+        tree_printer.render(ctx.print_options, &ctx.arena)
     );
 
     ctx.forest.insert(path_key, tree);
