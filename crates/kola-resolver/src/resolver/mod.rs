@@ -2,13 +2,9 @@ use std::{io, rc::Rc};
 
 use camino::Utf8Path;
 use indexmap::IndexMap;
-use log::debug;
-use owo_colors::OwoColorize;
 
 use kola_print::prelude::*;
 use kola_span::{Report, SourceManager};
-use kola_syntax::prelude::*;
-use kola_tree::prelude::*;
 use kola_utils::{dependency::DependencyGraph, interner::StrInterner, io::FileSystem};
 
 use crate::{
@@ -16,7 +12,7 @@ use crate::{
     prelude::Topography,
     resolver::{discover::DiscoverOutput, module::ModuleResolution, value::resolve_values},
     scope::ModuleScope,
-    symbol::{LookupTable, ModuleSym},
+    symbol::{ModuleSym, SymbolTable},
 };
 
 mod discover;
@@ -32,7 +28,7 @@ pub struct ResolveOutput {
     pub source_manager: SourceManager,
     pub forest: Forest,
     pub topography: Topography,
-    pub lookup_table: LookupTable,
+    pub symbol_table: SymbolTable,
     pub module_graph: ModuleGraph,
     pub module_scopes: ModuleScopes,
 }
@@ -45,87 +41,21 @@ pub fn resolve(
     report: &mut Report,
     print_options: PrintOptions,
 ) -> io::Result<ResolveOutput> {
-    // let mut ctx = ResolveContext::new(io, print_options);
-
-    let mut source_manager = SourceManager::new();
-
-    let path = io.canonicalize(path.as_ref())?;
-
-    let (path_key, source) = source_manager.fetch(path.as_path(), &io)?;
-
-    debug!(
-        "{} {}\n{}",
-        "Source".bold().bright_white(),
-        &path,
-        source.text()
-    );
-
-    let input = LexInput::new(path_key, source.text());
-    let Some(tokens) = tokenize(input, report) else {
-        return Ok(ResolveOutput {
-            source_manager,
-            ..Default::default()
-        });
-    };
-
-    debug!(
-        "{} {:?}\n{}",
-        "Tokens".bold().bright_white(),
-        &path,
-        TokenPrinter(&tokens, print_options).render(print_options, arena)
-    );
-
-    let input = ParseInput::new(path_key, tokens);
-    let ParseOutput { tree, spans, .. } = parse(input, interner, report);
-
-    let Some(tree) = tree else {
-        return Ok(ResolveOutput {
-            source_manager,
-            ..Default::default()
-        });
-    };
-
-    let decorators = Decorators::new().with(LocDecorator(spans.clone()));
-    let tree_printer = TreePrinter::new(&tree, interner, &decorators);
-
-    debug!(
-        "{} {:?}\n{}",
-        "Untyped Abstract Syntax Tree".bold().bright_white(),
-        &path,
-        tree_printer.render(print_options, arena)
-    );
-
-    let mut forest = Forest::new();
-    let mut topography = Topography::new();
-
-    forest.insert(path_key, tree);
-    topography.insert(path_key, spans);
-
-    let module_sym = ModuleSym::new();
-
     let DiscoverOutput {
-        mut lookup_table,
+        source_manager,
+        forest,
+        topography,
+        mut symbol_table,
         mut module_graph,
         module_scopes,
-    } = discover::discover(
-        path_key,
-        module_sym,
-        io,
-        arena,
-        interner,
-        report,
-        &mut source_manager,
-        &mut forest,
-        &mut topography,
-        print_options,
-    );
+    } = discover::discover(path, io, arena, interner, report, print_options)?;
 
     if !report.is_empty() {
         return Ok(ResolveOutput {
             source_manager,
             forest,
             topography,
-            lookup_table,
+            symbol_table,
             module_graph,
             ..Default::default()
         });
@@ -144,7 +74,7 @@ pub fn resolve(
             source_manager,
             forest,
             topography,
-            lookup_table,
+            symbol_table,
             module_graph,
             module_scopes,
         });
@@ -155,16 +85,15 @@ pub fn resolve(
         &forest,
         &topography,
         &module_scopes,
-        interner,
         report,
-        &mut lookup_table,
+        &mut symbol_table,
     );
 
     Ok(ResolveOutput {
         source_manager,
         forest,
         topography,
-        lookup_table,
+        symbol_table,
         module_graph,
         module_scopes,
     })

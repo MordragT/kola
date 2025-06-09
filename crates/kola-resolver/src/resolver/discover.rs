@@ -1,7 +1,8 @@
+use camino::Utf8Path;
 use indexmap::IndexMap;
 use log::debug;
 use owo_colors::OwoColorize;
-use std::ops::ControlFlow;
+use std::{io, ops::ControlFlow};
 
 use kola_print::prelude::*;
 use kola_span::{IntoDiagnostic, Loc, Report, SourceManager};
@@ -20,54 +21,108 @@ use crate::{
     prelude::Topography,
     resolver::MutModuleScopes,
     scope::ModuleScope,
-    symbol::{LookupTable, ModuleSym, TypeSym, ValueSym},
+    symbol::{ModuleSym, SymbolTable, TypeSym, ValueSym},
 };
 
 use super::ModuleGraph;
 
+#[derive(Debug, Clone, Default)]
 pub struct DiscoverOutput {
-    pub lookup_table: LookupTable,
+    pub source_manager: SourceManager,
+    pub forest: Forest,
+    pub topography: Topography,
+    pub symbol_table: SymbolTable,
     pub module_graph: ModuleGraph,
     pub module_scopes: MutModuleScopes,
 }
 
 pub fn discover(
-    path_key: PathKey,
-    module_sym: ModuleSym,
+    path: impl AsRef<Utf8Path>,
     io: &dyn FileSystem,
     arena: &Bump,
     interner: &mut StrInterner,
     report: &mut Report,
-    source_manager: &mut SourceManager,
-    forest: &mut Forest,
-    topography: &mut Topography,
     print_options: PrintOptions,
-) -> DiscoverOutput {
-    let mut lookup_table = LookupTable::new();
+) -> io::Result<DiscoverOutput> {
+    let mut source_manager = SourceManager::new();
+    let path = io.canonicalize(path.as_ref())?;
+    let (path_key, source) = source_manager.fetch(path.as_path(), &io)?;
+
+    debug!(
+        "{} {}\n{}",
+        "Source".bold().bright_white(),
+        &path,
+        source.text()
+    );
+
+    let input = LexInput::new(path_key, source.text());
+    let Some(tokens) = tokenize(input, report) else {
+        return Ok(DiscoverOutput {
+            source_manager,
+            ..Default::default()
+        });
+    };
+
+    debug!(
+        "{} {:?}\n{}",
+        "Tokens".bold().bright_white(),
+        &path,
+        TokenPrinter(&tokens, print_options).render(print_options, arena)
+    );
+
+    let input = ParseInput::new(path_key, tokens);
+    let ParseOutput { tree, spans, .. } = parse(input, interner, report);
+
+    let Some(tree) = tree else {
+        return Ok(DiscoverOutput {
+            source_manager,
+            ..Default::default()
+        });
+    };
+
+    let decorators = Decorators::new().with(LocDecorator(spans.clone()));
+    let tree_printer = TreePrinter::new(&tree, interner, &decorators);
+
+    debug!(
+        "{} {:?}\n{}",
+        "Untyped Abstract Syntax Tree".bold().bright_white(),
+        &path,
+        tree_printer.render(print_options, arena)
+    );
+
+    let mut forest = Forest::new();
+    let mut topography = Topography::new();
+    forest.insert(path_key, tree);
+    topography.insert(path_key, spans);
+
+    let mut symbol_table = SymbolTable::new();
     let mut module_graph = ModuleGraph::new();
     let mut module_scopes = IndexMap::new();
 
     _discover(
         path_key,
-        module_sym,
+        ModuleSym::new(),
         io,
         arena,
         interner,
         report,
-        source_manager,
-        forest,
-        topography,
-        &mut lookup_table,
+        &mut source_manager,
+        &mut forest,
+        &mut topography,
+        &mut symbol_table,
         &mut module_graph,
         &mut module_scopes,
         print_options,
     );
 
-    DiscoverOutput {
-        lookup_table,
+    Ok(DiscoverOutput {
+        source_manager,
+        forest,
+        topography,
+        symbol_table,
         module_graph,
         module_scopes,
-    }
+    })
 }
 
 fn _discover(
@@ -80,7 +135,7 @@ fn _discover(
     source_manager: &mut SourceManager,
     forest: &mut Forest,
     topography: &mut Topography,
-    lookup_table: &mut LookupTable,
+    symbol_table: &mut SymbolTable,
     module_graph: &mut ModuleGraph,
     module_scopes: &mut MutModuleScopes,
     print_options: PrintOptions,
@@ -98,7 +153,7 @@ fn _discover(
         source_manager,
         forest,
         topography,
-        lookup_table,
+        symbol_table,
         module_graph,
         module_scopes,
         print_options,
@@ -119,7 +174,6 @@ fn _discover(
 struct Discoverer<'a> {
     path_key: PathKey,
     current_sym: Option<ModuleSym>,
-    current_bind: Option<Id<node::ModuleBind>>,
     tracker: Tracker<ModuleScope>,
     io: &'a dyn FileSystem,
     arena: &'a Bump,
@@ -128,7 +182,7 @@ struct Discoverer<'a> {
     source_manager: &'a mut SourceManager,
     forest: &'a mut Forest,
     topography: &'a mut Topography,
-    lookup_table: &'a mut LookupTable,
+    symbol_table: &'a mut SymbolTable,
     module_graph: &'a mut ModuleGraph,
     module_scopes: &'a mut MutModuleScopes,
     print_options: PrintOptions,
@@ -137,7 +191,7 @@ struct Discoverer<'a> {
 impl<'a> Discoverer<'a> {
     fn new(
         path_key: PathKey,
-        symbol: ModuleSym,
+        module_sym: ModuleSym,
         io: &'a dyn FileSystem,
         arena: &'a Bump,
         interner: &'a mut StrInterner,
@@ -145,15 +199,14 @@ impl<'a> Discoverer<'a> {
         source_manager: &'a mut SourceManager,
         forest: &'a mut Forest,
         topography: &'a mut Topography,
-        lookup_table: &'a mut LookupTable,
+        symbol_table: &'a mut SymbolTable,
         module_graph: &'a mut ModuleGraph,
         module_scopes: &'a mut MutModuleScopes,
         print_options: PrintOptions,
     ) -> Self {
         Self {
             path_key,
-            current_sym: Some(symbol),
-            current_bind: None,
+            current_sym: Some(module_sym),
             tracker: Tracker::new(),
             io,
             arena,
@@ -162,7 +215,7 @@ impl<'a> Discoverer<'a> {
             source_manager,
             forest,
             topography,
-            lookup_table,
+            symbol_table,
             module_graph,
             module_scopes,
             print_options,
@@ -183,11 +236,6 @@ impl<'a> Discoverer<'a> {
     }
 
     #[inline]
-    pub fn current_bind(&self) -> Option<QualId<node::ModuleBind>> {
-        self.current_bind.map(|id| (self.path_key, id))
-    }
-
-    #[inline]
     pub fn current_module(&self) -> &ModuleScope {
         self.tracker.current().unwrap()
     }
@@ -204,52 +252,11 @@ where
 {
     type BreakValue = !;
 
-    fn visit_module_bind(
-        &mut self,
-        id: Id<node::ModuleBind>,
-        tree: &T,
-    ) -> ControlFlow<Self::BreakValue> {
-        let node::ModuleBind {
-            vis,
-            name,
-            ty,
-            value,
-        } = *tree.node(id);
-
-        let name = tree.node(name);
-        let vis = tree.node(vis);
-
-        let span = self.span(id);
-        let qual_id = self.qual(id);
-        let module_sym = self.current_sym.unwrap_or_default();
-        // self.current_sym = Some(module_sym);
-        self.current_bind = Some(id);
-
-        self.lookup_table.insert_module_bind(qual_id, module_sym);
-
-        // TODO Hacky stuff here to adhere to the root handling
-        // It would be far better to have some kind of root declare function as initializer
-        // Or maybe insert a scope in the tracker before visiting the tree
-        if self.current_sym.is_none() {
-            // Register the module binding in the current scope
-            if let Err(e) = self.current_module_mut().insert_module(
-                name.0,
-                module_sym,
-                BindInfo::new(qual_id, span, *vis),
-            ) {
-                self.report.add_diagnostic(e.into());
-            }
-        }
-
-        self.current_sym = Some(module_sym);
-
-        self.walk_module_bind(id, tree)
-    }
-
     fn visit_module(&mut self, id: Id<node::Module>, tree: &T) -> ControlFlow<Self::BreakValue> {
-        let module_sym = self.current_sym.take().unwrap_or_default();
+        let module_sym = self.current_sym.take().unwrap();
+        let qual_id = self.qual(id);
 
-        self.lookup_table.insert_module(self.qual(id), module_sym);
+        self.symbol_table.insert_module(qual_id, module_sym);
 
         // Add dependency from current module to this new module
         if let Some(current_scope) = self.tracker.current() {
@@ -258,11 +265,8 @@ where
         }
 
         // Create a new scope for this module
-        self.tracker.start(ModuleScope::new(
-            self.current_bind().unwrap(),
-            module_sym,
-            self.span(id),
-        ));
+        self.tracker
+            .start(ModuleScope::new(qual_id, module_sym, self.span(id)));
 
         // Walk through children nodes
         self.walk_module(id, tree)?;
@@ -280,7 +284,7 @@ where
     ) -> ControlFlow<Self::BreakValue> {
         let module_sym = self.current_sym.take().unwrap();
 
-        self.lookup_table
+        self.symbol_table
             .insert_module_import(self.qual(id), module_sym);
 
         let current_module_sym = self.current_module().symbol();
@@ -362,7 +366,7 @@ where
             self.source_manager,
             self.forest,
             self.topography,
-            self.lookup_table,
+            self.symbol_table,
             self.module_graph,
             self.module_scopes,
             self.print_options,
@@ -379,7 +383,7 @@ where
         // This will create a new module symbol if not visited from a module bind
         let module_sym = self.current_sym.take().unwrap_or_default();
 
-        self.lookup_table
+        self.symbol_table
             .insert_module_path(self.qual(id), module_sym);
 
         let path = tree
@@ -395,17 +399,40 @@ where
         ControlFlow::Continue(())
     }
 
+    fn visit_module_bind(
+        &mut self,
+        id: Id<node::ModuleBind>,
+        tree: &T,
+    ) -> ControlFlow<Self::BreakValue> {
+        let node::ModuleBind { vis, name, .. } = *tree.node(id);
+
+        let name = tree.node(name);
+        let vis = tree.node(vis);
+
+        let span = self.span(id);
+        let qual_id = self.qual(id);
+        let module_sym = ModuleSym::new();
+
+        self.current_sym = Some(module_sym);
+        self.symbol_table.insert_module_bind(qual_id, module_sym);
+
+        // Register the module binding in the current scope
+        if let Err(e) =
+            self.current_module_mut()
+                .insert_module(name.0, module_sym, BindInfo::new(span, *vis))
+        {
+            self.report.add_diagnostic(e.into());
+        }
+
+        self.walk_module_bind(id, tree)
+    }
+
     fn visit_value_bind(
         &mut self,
         id: Id<node::ValueBind>,
         tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
-        let node::ValueBind {
-            vis,
-            name,
-            ty,
-            value,
-        } = *tree.node(id);
+        let node::ValueBind { vis, name, .. } = *tree.node(id);
 
         let name = tree.node(name);
         let vis = tree.node(vis);
@@ -416,14 +443,13 @@ where
 
         let value_sym = ValueSym::new();
 
-        self.lookup_table.insert_value_bind(qual_id, value_sym);
+        self.symbol_table.insert_value_bind(qual_id, value_sym);
 
         // Register the value binding in the current scope
-        if let Err(e) = self.current_module_mut().insert_value(
-            name.0,
-            value_sym,
-            BindInfo::new(qual_id, span, *vis),
-        ) {
+        if let Err(e) =
+            self.current_module_mut()
+                .insert_value(name.0, value_sym, BindInfo::new(span, *vis))
+        {
             self.report.add_diagnostic(e.into());
         }
 
@@ -435,7 +461,7 @@ where
         id: Id<node::TypeBind>,
         tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
-        let node::TypeBind { name, ty } = *tree.node(id);
+        let node::TypeBind { name, .. } = *tree.node(id);
         let name = tree.node(name);
 
         let span = self.span(id);
@@ -444,13 +470,13 @@ where
 
         let type_sym = TypeSym::new();
 
-        self.lookup_table.insert_type_bind(qual_id, type_sym);
+        self.symbol_table.insert_type_bind(qual_id, type_sym);
 
         // Register the type binding in the current scope
         if let Err(e) = self.current_module_mut().insert_type(
             name.0,
             type_sym,
-            BindInfo::new(qual_id, span, Vis::Export),
+            BindInfo::new(span, Vis::Export),
         ) {
             self.report.add_diagnostic(e.into());
         }

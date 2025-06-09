@@ -128,7 +128,7 @@ impl<ST, T> Index<Sym<ST>> for Rib<Sym<ST>, T> {
 
 #[derive(Debug, Clone)]
 pub struct ModuleScope {
-    pub id: QualId<node::ModuleBind>,
+    pub id: QualId<node::Module>,
     pub symbol: ModuleSym,
     pub loc: Loc,
     pub modules: Rib<ModuleSym, node::ModuleBind>,
@@ -139,7 +139,7 @@ pub struct ModuleScope {
 }
 
 impl ModuleScope {
-    pub fn new(id: QualId<node::ModuleBind>, symbol: ModuleSym, loc: Loc) -> Self {
+    pub fn new(id: QualId<node::Module>, symbol: ModuleSym, loc: Loc) -> Self {
         Self {
             id,
             symbol,
@@ -244,7 +244,7 @@ impl ModuleScope {
     }
 
     #[inline]
-    pub fn id(&self) -> QualId<node::ModuleBind> {
+    pub fn id(&self) -> QualId<node::Module> {
         self.id
     }
 
@@ -254,7 +254,7 @@ impl ModuleScope {
     }
 
     #[inline]
-    pub fn node_id(&self) -> Id<node::ModuleBind> {
+    pub fn node_id(&self) -> Id<node::Module> {
         self.id.1
     }
 

@@ -108,7 +108,7 @@ impl Symbol {
 pub type Lookup<T, S> = HashMap<QualId<T>, S>;
 
 #[derive(Debug, Clone, Default)]
-pub struct LookupTable {
+pub struct SymbolTable {
     pub module_binds: Lookup<node::ModuleBind, ModuleSym>,
     pub module_imports: Lookup<node::ModuleImport, ModuleSym>,
     pub modules: Lookup<node::Module, ModuleSym>,
@@ -120,7 +120,7 @@ pub struct LookupTable {
     pub path_exprs: Lookup<node::PathExpr, ValueSym>,
 }
 
-impl LookupTable {
+impl SymbolTable {
     #[inline]
     pub fn new() -> Self {
         Self {
@@ -227,7 +227,7 @@ impl LookupTable {
     }
 }
 
-impl Index<QualId<node::ModuleBind>> for LookupTable {
+impl Index<QualId<node::ModuleBind>> for SymbolTable {
     type Output = ModuleSym;
 
     fn index(&self, index: QualId<node::ModuleBind>) -> &Self::Output {
@@ -237,7 +237,7 @@ impl Index<QualId<node::ModuleBind>> for LookupTable {
     }
 }
 
-impl Index<QualId<node::ModuleImport>> for LookupTable {
+impl Index<QualId<node::ModuleImport>> for SymbolTable {
     type Output = ModuleSym;
 
     fn index(&self, index: QualId<node::ModuleImport>) -> &Self::Output {
@@ -247,7 +247,7 @@ impl Index<QualId<node::ModuleImport>> for LookupTable {
     }
 }
 
-impl Index<QualId<node::Module>> for LookupTable {
+impl Index<QualId<node::Module>> for SymbolTable {
     type Output = ModuleSym;
 
     fn index(&self, index: QualId<node::Module>) -> &Self::Output {
@@ -255,7 +255,7 @@ impl Index<QualId<node::Module>> for LookupTable {
     }
 }
 
-impl Index<QualId<node::ModulePath>> for LookupTable {
+impl Index<QualId<node::ModulePath>> for SymbolTable {
     type Output = ModuleSym;
 
     fn index(&self, index: QualId<node::ModulePath>) -> &Self::Output {
@@ -265,7 +265,7 @@ impl Index<QualId<node::ModulePath>> for LookupTable {
     }
 }
 
-impl Index<QualId<node::TypeBind>> for LookupTable {
+impl Index<QualId<node::TypeBind>> for SymbolTable {
     type Output = TypeSym;
 
     fn index(&self, index: QualId<node::TypeBind>) -> &Self::Output {
@@ -273,7 +273,7 @@ impl Index<QualId<node::TypeBind>> for LookupTable {
     }
 }
 
-impl Index<QualId<node::ValueBind>> for LookupTable {
+impl Index<QualId<node::ValueBind>> for SymbolTable {
     type Output = ValueSym;
 
     fn index(&self, index: QualId<node::ValueBind>) -> &Self::Output {
@@ -283,7 +283,7 @@ impl Index<QualId<node::ValueBind>> for LookupTable {
     }
 }
 
-impl Index<QualId<node::LetExpr>> for LookupTable {
+impl Index<QualId<node::LetExpr>> for SymbolTable {
     type Output = ValueSym;
 
     fn index(&self, index: QualId<node::LetExpr>) -> &Self::Output {
@@ -293,7 +293,7 @@ impl Index<QualId<node::LetExpr>> for LookupTable {
     }
 }
 
-impl Index<QualId<node::LambdaExpr>> for LookupTable {
+impl Index<QualId<node::LambdaExpr>> for SymbolTable {
     type Output = ValueSym;
 
     fn index(&self, index: QualId<node::LambdaExpr>) -> &Self::Output {
@@ -303,7 +303,7 @@ impl Index<QualId<node::LambdaExpr>> for LookupTable {
     }
 }
 
-impl Index<QualId<node::PathExpr>> for LookupTable {
+impl Index<QualId<node::PathExpr>> for SymbolTable {
     type Output = ValueSym;
 
     fn index(&self, index: QualId<node::PathExpr>) -> &Self::Output {

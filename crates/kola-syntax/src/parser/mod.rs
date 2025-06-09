@@ -28,7 +28,7 @@ pub fn parse<'t>(
     interner: &'t mut StrInterner,
     report: &'t mut Report,
 ) -> ParseOutput {
-    let parser = rules::root_parser();
+    let parser = rules::module_parser();
 
     let mut state = State::new(interner);
 

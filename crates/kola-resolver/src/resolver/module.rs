@@ -30,11 +30,14 @@ pub fn resolve_modules(
     for mut scope in scopes.into_values().rev() {
         if let [parent, rest @ ..] = module_graph.dependents_of(scope.symbol()) {
             let parent_scope = &module_scopes[parent];
-            scope.insert_module(
+
+            if let Err(e) = scope.insert_module(
                 super_name,
                 *parent,
-                ModuleInfo::new(parent_scope.id, parent_scope.loc, Vis::Export),
-            );
+                ModuleInfo::new(parent_scope.loc, Vis::Export),
+            ) {
+                report.add_diagnostic(e.into());
+            }
 
             if !rest.is_empty() {
                 panic!(

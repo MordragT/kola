@@ -32,7 +32,7 @@ impl Driver {
             source_manager,
             forest,
             topography,
-            lookup_table,
+            symbol_table,
             module_graph,
             module_scopes,
         } = resolve(

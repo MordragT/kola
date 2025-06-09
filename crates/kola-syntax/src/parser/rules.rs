@@ -48,27 +48,27 @@ CallExpr := '(' Callable Expr ')'
 // TODO case expr also end in a ',' which is ambiguos to binds being separated by ','
 // Therefore replace the "case x of 10 => ..., 5 => ...," with something different.
 
-pub fn root_parser<'t>() -> impl KolaParser<'t, Id<node::ModuleBind>> + Clone {
-    module_parser().map_with(|module, e| {
-        let span = e.span();
-        let tree: &mut State = e.state();
+// pub fn root_parser<'t>() -> impl KolaParser<'t, Id<node::ModuleBind>> + Clone {
+//     module_parser().map_with(|module, e| {
+//         let span = e.span();
+//         let tree: &mut State = e.state();
 
-        let vis = tree.insert(node::Vis::Export, span);
-        let key = tree.intern("root");
-        let name = tree.insert(node::Name(key), span);
-        let value = tree.insert(node::ModuleExpr::Module(module), span);
+//         let vis = tree.insert(node::Vis::Export, span);
+//         let key = tree.intern("root");
+//         let name = tree.insert(node::Name(key), span);
+//         let value = tree.insert(node::ModuleExpr::Module(module), span);
 
-        tree.insert(
-            node::ModuleBind {
-                vis,
-                name,
-                ty: None,
-                value,
-            },
-            span,
-        )
-    })
-}
+//         tree.insert(
+//             node::ModuleBind {
+//                 vis,
+//                 name,
+//                 ty: None,
+//                 value,
+//             },
+//             span,
+//         )
+//     })
+// }
 
 pub fn module_parser<'t>() -> impl KolaParser<'t, Id<node::Module>> + Clone {
     let module_type = module_type_parser();
