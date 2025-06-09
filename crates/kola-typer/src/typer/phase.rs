@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use kola_resolve::symbol::ModuleSym;
+use kola_resolver::symbol::ModuleSym;
 use kola_tree::meta::*;
 
 use crate::types;

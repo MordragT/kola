@@ -1,63 +1,171 @@
+use indexmap::IndexMap;
 use log::debug;
 use owo_colors::OwoColorize;
-use std::{ops::ControlFlow, rc::Rc};
+use std::ops::ControlFlow;
 
 use kola_print::prelude::*;
-use kola_span::{IntoDiagnostic, Loc};
+use kola_span::{IntoDiagnostic, Loc, Report, SourceManager};
 use kola_syntax::prelude::*;
 use kola_tree::{node::Vis, prelude::*};
-use kola_utils::{interner::PathKey, tracker::Tracker};
+use kola_utils::{
+    interner::{PathKey, StrInterner},
+    io::FileSystem,
+    tracker::Tracker,
+};
 
 use crate::{
     QualId,
-    context::ResolveContext,
-    info::{BindInfo, ModuleInfo},
+    forest::Forest,
+    info::BindInfo,
+    prelude::Topography,
+    resolver::MutModuleScopes,
     scope::ModuleScope,
-    symbol::{ModuleSym, TypeSym, ValueSym},
+    symbol::{LookupTable, ModuleSym, TypeSym, ValueSym},
 };
 
-pub fn declare(path_key: PathKey, module_sym: ModuleSym, ctx: &mut ResolveContext) {
-    let mut tracker = Tracker::new();
+use super::ModuleGraph;
 
-    let tree = ctx.forest.tree(path_key);
+pub struct DiscoverOutput {
+    pub lookup_table: LookupTable,
+    pub module_graph: ModuleGraph,
+    pub module_scopes: MutModuleScopes,
+}
+
+pub fn discover(
+    path_key: PathKey,
+    module_sym: ModuleSym,
+    io: &dyn FileSystem,
+    arena: &Bump,
+    interner: &mut StrInterner,
+    report: &mut Report,
+    source_manager: &mut SourceManager,
+    forest: &mut Forest,
+    topography: &mut Topography,
+    print_options: PrintOptions,
+) -> DiscoverOutput {
+    let mut lookup_table = LookupTable::new();
+    let mut module_graph = ModuleGraph::new();
+    let mut module_scopes = IndexMap::new();
+
+    _discover(
+        path_key,
+        module_sym,
+        io,
+        arena,
+        interner,
+        report,
+        source_manager,
+        forest,
+        topography,
+        &mut lookup_table,
+        &mut module_graph,
+        &mut module_scopes,
+        print_options,
+    );
+
+    DiscoverOutput {
+        lookup_table,
+        module_graph,
+        module_scopes,
+    }
+}
+
+fn _discover(
+    path_key: PathKey,
+    module_sym: ModuleSym,
+    io: &dyn FileSystem,
+    arena: &Bump,
+    interner: &mut StrInterner,
+    report: &mut Report,
+    source_manager: &mut SourceManager,
+    forest: &mut Forest,
+    topography: &mut Topography,
+    lookup_table: &mut LookupTable,
+    module_graph: &mut ModuleGraph,
+    module_scopes: &mut MutModuleScopes,
+    print_options: PrintOptions,
+) {
+    let tree = forest.tree(path_key);
 
     // Create a visitor to walk the tree and collect declarations
-    let mut declarer = Declarer::new(path_key, module_sym, &mut tracker, ctx);
+    let mut discoverer = Discoverer::new(
+        path_key,
+        module_sym,
+        io,
+        arena,
+        interner,
+        report,
+        source_manager,
+        forest,
+        topography,
+        lookup_table,
+        module_graph,
+        module_scopes,
+        print_options,
+    );
 
-    match tree.root_id().visit_by(&mut declarer, &*tree) {
+    match tree.root_id().visit_by(&mut discoverer, &*tree) {
         ControlFlow::Continue(()) => (),
         ControlFlow::Break(_) => unreachable!(),
     }
 
-    let scopes = tracker.into_completed();
+    let tracker = discoverer.tracker;
 
-    // After visiting the tree, we need to finalize the declaration
-    for scope in scopes.into_iter().rev() {
-        ctx.unresolved_scopes.insert(scope.symbol(), scope);
+    for scope in tracker.into_completed() {
+        module_scopes.insert(scope.symbol(), scope);
     }
 }
 
-pub struct Declarer<'a> {
-    pub path_key: PathKey,
-    pub current_sym: Option<ModuleSym>,
-    pub current_bind: Option<Id<node::ModuleBind>>,
-    pub tracker: &'a mut Tracker<ModuleScope>,
-    pub ctx: &'a mut ResolveContext,
+struct Discoverer<'a> {
+    path_key: PathKey,
+    current_sym: Option<ModuleSym>,
+    current_bind: Option<Id<node::ModuleBind>>,
+    tracker: Tracker<ModuleScope>,
+    io: &'a dyn FileSystem,
+    arena: &'a Bump,
+    interner: &'a mut StrInterner,
+    report: &'a mut Report,
+    source_manager: &'a mut SourceManager,
+    forest: &'a mut Forest,
+    topography: &'a mut Topography,
+    lookup_table: &'a mut LookupTable,
+    module_graph: &'a mut ModuleGraph,
+    module_scopes: &'a mut MutModuleScopes,
+    print_options: PrintOptions,
 }
 
-impl<'a> Declarer<'a> {
-    pub fn new(
+impl<'a> Discoverer<'a> {
+    fn new(
         path_key: PathKey,
-        symbol: ModuleSym, // Start symbol ??
-        tracker: &'a mut Tracker<ModuleScope>,
-        ctx: &'a mut ResolveContext,
+        symbol: ModuleSym,
+        io: &'a dyn FileSystem,
+        arena: &'a Bump,
+        interner: &'a mut StrInterner,
+        report: &'a mut Report,
+        source_manager: &'a mut SourceManager,
+        forest: &'a mut Forest,
+        topography: &'a mut Topography,
+        lookup_table: &'a mut LookupTable,
+        module_graph: &'a mut ModuleGraph,
+        module_scopes: &'a mut MutModuleScopes,
+        print_options: PrintOptions,
     ) -> Self {
         Self {
             path_key,
             current_sym: Some(symbol),
             current_bind: None,
-            tracker,
-            ctx,
+            tracker: Tracker::new(),
+            io,
+            arena,
+            interner,
+            report,
+            source_manager,
+            forest,
+            topography,
+            lookup_table,
+            module_graph,
+            module_scopes,
+            print_options,
         }
     }
 
@@ -66,7 +174,7 @@ impl<'a> Declarer<'a> {
     where
         T: MetaCast<LocPhase, Meta = Loc>,
     {
-        self.ctx.topography.span((self.path_key, id))
+        self.topography.span((self.path_key, id))
     }
 
     #[inline]
@@ -90,7 +198,7 @@ impl<'a> Declarer<'a> {
     }
 }
 
-impl<'a, T> Visitor<T> for Declarer<'a>
+impl<'a, T> Visitor<T> for Discoverer<'a>
 where
     T: TreeView,
 {
@@ -117,9 +225,7 @@ where
         // self.current_sym = Some(module_sym);
         self.current_bind = Some(id);
 
-        self.ctx
-            .lookup_table
-            .insert_module_bind(qual_id, module_sym);
+        self.lookup_table.insert_module_bind(qual_id, module_sym);
 
         // TODO Hacky stuff here to adhere to the root handling
         // It would be far better to have some kind of root declare function as initializer
@@ -131,7 +237,7 @@ where
                 module_sym,
                 BindInfo::new(qual_id, span, *vis),
             ) {
-                self.ctx.report.add_diagnostic(e.into());
+                self.report.add_diagnostic(e.into());
             }
         }
 
@@ -143,14 +249,11 @@ where
     fn visit_module(&mut self, id: Id<node::Module>, tree: &T) -> ControlFlow<Self::BreakValue> {
         let module_sym = self.current_sym.take().unwrap_or_default();
 
-        self.ctx
-            .lookup_table
-            .insert_module(self.qual(id), module_sym);
+        self.lookup_table.insert_module(self.qual(id), module_sym);
 
         // Add dependency from current module to this new module
         if let Some(current_scope) = self.tracker.current() {
-            self.ctx
-                .module_graph
+            self.module_graph
                 .add_dependency(current_scope.symbol(), module_sym);
         }
 
@@ -177,39 +280,33 @@ where
     ) -> ControlFlow<Self::BreakValue> {
         let module_sym = self.current_sym.take().unwrap();
 
-        self.ctx
-            .lookup_table
+        self.lookup_table
             .insert_module_import(self.qual(id), module_sym);
 
         let current_module_sym = self.current_module().symbol();
 
-        self.ctx
-            .module_graph
+        self.module_graph
             .add_dependency(current_module_sym, module_sym);
 
         let import = tree.node(id);
         let name = tree.node(import.0);
 
-        let path =
-            match self
-                .ctx
-                .source_manager
-                .resolve_import(self.path_key, name.0, &self.ctx.interner)
-            {
-                Ok(path) => path,
-                Err(e) => {
-                    self.ctx.report.add_diagnostic(
-                        e.into_diagnostic(self.span(id)).with_help("resolve_import"),
-                    );
-                    return ControlFlow::Continue(());
-                }
-            };
+        let path = match self
+            .source_manager
+            .resolve_import(self.path_key, name.0, &self.interner)
+        {
+            Ok(path) => path,
+            Err(e) => {
+                self.report
+                    .add_diagnostic(e.into_diagnostic(self.span(id)).with_help("resolve_import"));
+                return ControlFlow::Continue(());
+            }
+        };
 
-        let (path_key, source) = match self.ctx.source_manager.fetch(path.as_path(), &self.ctx.io) {
+        let (path_key, source) = match self.source_manager.fetch(path.as_path(), &self.io) {
             Ok(tuple) => tuple,
             Err(e) => {
-                self.ctx
-                    .report
+                self.report
                     .add_diagnostic(e.into_diagnostic(self.span(id)).with_help("fetch"));
                 return ControlFlow::Continue(());
             }
@@ -223,7 +320,7 @@ where
         );
 
         let input = LexInput::new(path_key, source.text());
-        let Some(tokens) = tokenize(input, &mut self.ctx.report) else {
+        let Some(tokens) = tokenize(input, &mut self.report) else {
             return ControlFlow::Continue(());
         };
 
@@ -231,33 +328,45 @@ where
             "{} {:?}\n{}",
             "Tokens".bold().bright_white(),
             &path,
-            TokenPrinter(&tokens, self.ctx.print_options)
-                .render(self.ctx.print_options, &self.ctx.arena)
+            TokenPrinter(&tokens, self.print_options).render(self.print_options, &self.arena)
         );
 
         let input = ParseInput::new(path_key, tokens);
 
-        let ParseOutput { tree, spans, .. } =
-            parse(input, &mut self.ctx.interner, &mut self.ctx.report);
+        let ParseOutput { tree, spans, .. } = parse(input, &mut self.interner, &mut self.report);
 
         let Some(tree) = tree else {
             return ControlFlow::Continue(());
         };
 
         let decorators = Decorators::new().with(LocDecorator(spans.clone()));
-        let tree_printer = TreePrinter::new(&tree, &self.ctx.interner, &decorators);
+        let tree_printer = TreePrinter::new(&tree, &self.interner, &decorators);
 
         debug!(
             "{} {:?}\n{}",
             "Untyped Abstract Syntax Tree".bold().bright_white(),
             &path,
-            tree_printer.render(self.ctx.print_options, &self.ctx.arena)
+            tree_printer.render(self.print_options, &self.arena)
         );
 
-        self.ctx.forest.insert(path_key, tree);
-        self.ctx.topography.insert(path_key, spans);
+        self.forest.insert(path_key, tree);
+        self.topography.insert(path_key, spans);
 
-        declare(path_key, module_sym, &mut self.ctx);
+        _discover(
+            path_key,
+            module_sym,
+            self.io,
+            self.arena,
+            self.interner,
+            self.report,
+            self.source_manager,
+            self.forest,
+            self.topography,
+            self.lookup_table,
+            self.module_graph,
+            self.module_scopes,
+            self.print_options,
+        );
 
         ControlFlow::Continue(())
     }
@@ -270,8 +379,7 @@ where
         // This will create a new module symbol if not visited from a module bind
         let module_sym = self.current_sym.take().unwrap_or_default();
 
-        self.ctx
-            .lookup_table
+        self.lookup_table
             .insert_module_path(self.qual(id), module_sym);
 
         let path = tree
@@ -308,7 +416,7 @@ where
 
         let value_sym = ValueSym::new();
 
-        self.ctx.lookup_table.insert_value_bind(qual_id, value_sym);
+        self.lookup_table.insert_value_bind(qual_id, value_sym);
 
         // Register the value binding in the current scope
         if let Err(e) = self.current_module_mut().insert_value(
@@ -316,7 +424,7 @@ where
             value_sym,
             BindInfo::new(qual_id, span, *vis),
         ) {
-            self.ctx.report.add_diagnostic(e.into());
+            self.report.add_diagnostic(e.into());
         }
 
         self.walk_value_bind(id, tree) // walk to discover module paths in expressions
@@ -336,7 +444,7 @@ where
 
         let type_sym = TypeSym::new();
 
-        self.ctx.lookup_table.insert_type_bind(qual_id, type_sym);
+        self.lookup_table.insert_type_bind(qual_id, type_sym);
 
         // Register the type binding in the current scope
         if let Err(e) = self.current_module_mut().insert_type(
@@ -344,7 +452,7 @@ where
             type_sym,
             BindInfo::new(qual_id, span, Vis::Export),
         ) {
-            self.ctx.report.add_diagnostic(e.into());
+            self.report.add_diagnostic(e.into());
         }
 
         // self.walk_type_bind(id, tree) // TODO walk to discover module paths in type expressions

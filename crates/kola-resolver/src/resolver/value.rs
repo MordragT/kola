@@ -1,31 +1,66 @@
 use std::{ops::ControlFlow, rc::Rc};
 
-use kola_span::{Diagnostic, Loc};
+use kola_span::{Diagnostic, Loc, Report};
 use kola_syntax::loc::LocPhase;
 use kola_tree::{node::Vis, prelude::*};
+use kola_utils::interner::StrInterner;
 
 use crate::{
     QualId,
-    context::ResolveContext,
+    forest::Forest,
+    resolver::ModuleScopes,
     scope::{LexicalScope, ModuleScope},
-    symbol::{ModuleSym, ValueSym},
+    symbol::{LookupTable, ModuleSym, ValueSym},
+    topography::Topography,
 };
 
-// Also I can probably do topological sort of the modules to get the list of module_symbols.
-// I don't think it is necessary to define values in a specific order,
-// but I will need it for type checking later on so might as well do it now.
-pub fn define_value(module_sym: ModuleSym, ctx: &mut ResolveContext) {
-    let scope = ctx
-        .module_scopes
-        .get(&module_sym)
-        .cloned()
-        .expect("Module scope should exist");
+pub fn resolve_values(
+    module_symbols: &[ModuleSym],
+    forest: &Forest,
+    topography: &Topography,
+    module_scopes: &ModuleScopes,
+    interner: &mut StrInterner,
+    report: &mut Report,
+    lookup_table: &mut LookupTable,
+) {
+    for module_sym in module_symbols {
+        let scope = module_scopes
+            .get(module_sym)
+            .expect("Module scope should exist");
 
+        resolve_values_in_module(
+            Rc::clone(scope),
+            forest,
+            topography,
+            module_scopes,
+            interner,
+            report,
+            lookup_table,
+        );
+    }
+}
+
+pub fn resolve_values_in_module(
+    scope: Rc<ModuleScope>,
+    forest: &Forest,
+    topography: &Topography,
+    module_scopes: &ModuleScopes,
+    interner: &mut StrInterner,
+    report: &mut Report,
+    lookup_table: &mut LookupTable,
+) {
     let root_id = scope.node_id();
 
-    let tree = ctx.forest.tree(scope.path_key());
+    let tree = forest.tree(scope.path_key());
 
-    let mut definer = ValueDefiner::new(scope, ctx);
+    let mut definer = ValueResolver::new(
+        scope,
+        topography,
+        module_scopes,
+        interner,
+        report,
+        lookup_table,
+    );
 
     // TODO If I do not use PathKey's I shouldn't visit the whole tree, but the module root instead.
     match root_id.visit_by(&mut definer, &*tree) {
@@ -34,18 +69,33 @@ pub fn define_value(module_sym: ModuleSym, ctx: &mut ResolveContext) {
     }
 }
 
-pub struct ValueDefiner<'a> {
-    pub module_scope: Rc<ModuleScope>,
-    pub scope: LexicalScope,
-    pub ctx: &'a mut ResolveContext,
+struct ValueResolver<'a> {
+    module_scope: Rc<ModuleScope>,
+    scope: LexicalScope,
+    topography: &'a Topography,
+    module_scopes: &'a ModuleScopes,
+    interner: &'a mut StrInterner,
+    report: &'a mut Report,
+    lookup_table: &'a mut LookupTable,
 }
 
-impl<'a> ValueDefiner<'a> {
-    pub fn new(module_scope: Rc<ModuleScope>, ctx: &'a mut ResolveContext) -> Self {
+impl<'a> ValueResolver<'a> {
+    fn new(
+        module_scope: Rc<ModuleScope>,
+        topography: &'a Topography,
+        module_scopes: &'a ModuleScopes,
+        interner: &'a mut StrInterner,
+        report: &'a mut Report,
+        lookup_table: &'a mut LookupTable,
+    ) -> Self {
         Self {
             module_scope,
             scope: LexicalScope::new(),
-            ctx,
+            topography,
+            module_scopes,
+            interner,
+            report,
+            lookup_table,
         }
     }
 
@@ -54,7 +104,7 @@ impl<'a> ValueDefiner<'a> {
     where
         T: MetaCast<LocPhase, Meta = Loc>,
     {
-        self.ctx.topography.span((self.module_scope.path_key(), id))
+        self.topography.span((self.module_scope.path_key(), id))
     }
 
     #[inline]
@@ -63,7 +113,7 @@ impl<'a> ValueDefiner<'a> {
     }
 }
 
-impl<'a, T> Visitor<T> for ValueDefiner<'a>
+impl<'a, T> Visitor<T> for ValueResolver<'a>
 where
     T: TreeView,
 {
@@ -84,7 +134,7 @@ where
 
         let sym = ValueSym::new();
 
-        self.ctx.lookup_table.insert_let_expr(self.qual(id), sym);
+        self.lookup_table.insert_let_expr(self.qual(id), sym);
 
         self.scope.insert(name, sym);
         self.walk_expr(inside, tree)?;
@@ -104,7 +154,7 @@ where
 
         let sym = ValueSym::new();
 
-        self.ctx.lookup_table.insert_lambda_expr(self.qual(id), sym);
+        self.lookup_table.insert_lambda_expr(self.qual(id), sym);
 
         self.scope.insert(name, sym);
         self.walk_expr(body, tree)?;
@@ -130,27 +180,17 @@ where
 
         if let Some(path) = path {
             let module_sym = self
-                .ctx
                 .lookup_table
                 .lookup_module_path(self.qual(*path))
                 .expect("Path should have been resolved before value definition");
 
-            dbg!(
-                tree.node(*path)
-                    .0
-                    .iter()
-                    .map(|id| self.ctx.interner.get(id.get(tree).0))
-                    .collect::<Vec<_>>()
-            );
-
             let scope = self
-                .ctx
-                .unresolved_scopes
+                .module_scopes
                 .get(&module_sym)
                 .expect("Module scope should exist");
 
             let Some(bind) = scope.get_value(binding) else {
-                self.ctx.report.add_diagnostic(
+                self.report.add_diagnostic(
                     Diagnostic::error(self.span(*path), "Cannot find value binding")
                         .with_trace([("In this module".to_owned(), scope.loc)]),
                 );
@@ -158,7 +198,7 @@ where
             };
 
             if bind.vis != Vis::Export {
-                self.ctx.report.add_diagnostic(
+                self.report.add_diagnostic(
                     Diagnostic::error(self.span(*path), "Cannot access non-exported value binding")
                         .with_trace([("At this binding".to_owned(), bind.loc)]),
                 );
@@ -166,17 +206,16 @@ where
             }
 
             let value_sym = self
-                .ctx
                 .lookup_table
                 .lookup_value_bind(bind.id) // TODO replace Id with QualId in BindInfo ? or just QualName ??
                 .expect("Value symbol should exist");
 
-            self.ctx.lookup_table.insert_path_expr(qual_id, value_sym);
+            self.lookup_table.insert_path_expr(qual_id, value_sym);
         } else if let Some(value_sym) = self.scope.get(&binding) {
-            self.ctx.lookup_table.insert_path_expr(qual_id, *value_sym);
+            self.lookup_table.insert_path_expr(qual_id, *value_sym);
         } else if let Some(bind) = self.module_scope.get_value(binding) {
             if bind.vis != Vis::Export {
-                self.ctx.report.add_diagnostic(
+                self.report.add_diagnostic(
                     Diagnostic::error(self.span(id), "Cannot access non-exported value binding")
                         .with_trace([("At this binding".to_owned(), bind.loc)]),
                 );
@@ -184,14 +223,13 @@ where
             }
 
             let value_sym = self
-                .ctx
                 .lookup_table
                 .lookup_value_bind(bind.id) // TODO replace Id with QualId in BindInfo ? or just QualName ??
                 .expect("Value symbol should exist");
 
-            self.ctx.lookup_table.insert_path_expr(qual_id, value_sym);
+            self.lookup_table.insert_path_expr(qual_id, value_sym);
         } else {
-            self.ctx.report.add_diagnostic(
+            self.report.add_diagnostic(
                 Diagnostic::error(self.span(id), "Cannot find value binding")
                     .with_trace([("In this module".to_owned(), self.module_scope.loc)]),
             );

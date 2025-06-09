@@ -107,7 +107,7 @@ impl Symbol {
 
 pub type Lookup<T, S> = HashMap<QualId<T>, S>;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Default)]
 pub struct LookupTable {
     pub module_binds: Lookup<node::ModuleBind, ModuleSym>,
     pub module_imports: Lookup<node::ModuleImport, ModuleSym>,

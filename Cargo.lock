@@ -389,7 +389,8 @@ version = "0.1.0"
 dependencies = [
  "camino",
  "kola-print",
- "kola-resolve",
+ "kola-resolver",
+ "kola-span",
  "kola-syntax",
  "kola-utils",
  "log",
@@ -422,7 +423,7 @@ dependencies = [
 ]
 
 [[package]]
-name = "kola-resolve"
+name = "kola-resolver"
 version = "0.1.0"
 dependencies = [
  "camino",
@@ -488,7 +489,7 @@ dependencies = [
  "either",
  "indexmap",
  "kola-print",
- "kola-resolve",
+ "kola-resolver",
  "kola-span",
  "kola-syntax",
  "kola-tree",

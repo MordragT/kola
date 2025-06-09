@@ -4,9 +4,10 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-kola-resolve.workspace = true
+kola-resolver.workspace = true
 kola-syntax.workspace = true
 kola-utils.workspace = true
+kola-span.workspace = true
 kola-print.workspace = true
 camino.workspace = true
 log.workspace = true

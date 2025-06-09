@@ -1,5 +1,5 @@
 use camino::Utf8PathBuf;
-use kola_utils::io::RealFileSystem;
+use kola_utils::io::{FileSystem, RealFileSystem};
 use log::info;
 use std::io;
 
@@ -56,7 +56,7 @@ fn main() -> io::Result<()> {
 
             // world.type_check().unwrap();
 
-            Driver::compile(path, RealFileSystem)
+            Driver::new(RealFileSystem).compile(path)
         }
     }
 }

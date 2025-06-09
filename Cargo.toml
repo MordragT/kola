@@ -8,7 +8,7 @@ kola-driver = { path = "crates/kola-driver" }
 kola-ir = { path = "crates/kola-ir" }
 kola-lowerer = { path = "crates/kola-lowerer" }
 kola-print = { path = "crates/kola-print" }
-kola-resolve = { path = "crates/kola-resolve" }
+kola-resolver = { path = "crates/kola-resolver" }
 kola-span = { path = "crates/kola-span" }
 kola-syntax = { path = "crates/kola-syntax" }
 kola-tree = { path = "crates/kola-tree" }

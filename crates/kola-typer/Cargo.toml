@@ -6,7 +6,7 @@ edition = "2024"
 [dependencies]
 kola-span.workspace = true
 kola-tree.workspace = true
-kola-resolve.workspace = true
+kola-resolver.workspace = true
 kola-syntax.workspace = true
 kola-utils.workspace = true
 kola-print.workspace = true
