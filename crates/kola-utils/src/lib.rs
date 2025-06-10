@@ -1,7 +1,6 @@
 #![feature(variant_count)]
 #![feature(negative_impls)]
 
-pub mod bimap;
 pub mod convert;
 pub mod dependency;
 pub mod errors;

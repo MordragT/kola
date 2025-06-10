@@ -1,6 +1,7 @@
 pub use builtin::*;
 pub use func::*;
 pub use list::*;
+pub use module::*;
 pub use mono::*;
 pub use poly::*;
 pub use row::*;
@@ -10,13 +11,14 @@ pub use visit::*;
 mod builtin;
 mod func;
 mod list;
+mod module;
 mod mono;
 mod poly;
 mod row;
 mod var;
 mod visit;
 
-use super::{env::KindEnv, error::SemanticError};
+use super::{error::SemanticError, scope::KindScope};
 use std::ops::ControlFlow;
 
 /// Represents a constraint on a type variable to a specific kind (*i.e.*, a type class).
@@ -34,7 +36,7 @@ pub enum Kind {
 }
 
 pub trait Typed: TypeVisitable {
-    fn constrain(&self, with: Kind, env: &mut KindEnv) -> Result<(), SemanticError>;
+    fn constrain(&self, with: Kind, env: &mut KindScope) -> Result<(), SemanticError>;
 
     /// occurs check
     fn contains(&self, var: &TypeVar) -> bool {

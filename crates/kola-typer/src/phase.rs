@@ -1,18 +1,17 @@
-use std::collections::HashMap;
-
+use kola_collections::HashMap;
 use kola_resolver::symbol::ModuleSym;
 use kola_tree::meta::*;
 
 use crate::types;
 
-pub type TypeInfoTable = HashMap<ModuleSym, TypeInfo>;
-pub type TypeInfo = MetaVec<TypePhase>;
+pub type TypeAnnotations = HashMap<ModuleSym, TypedNodes>;
+pub type TypedNodes = MetaMap<TypePhase>;
 
 #[derive(Clone, Copy, Debug)]
 pub struct TypePhase;
 
 impl Phase for TypePhase {
-    type Name = Empty;
+    type Name = !;
     type AnyPat = types::MonoType;
     type LiteralPat = types::MonoType;
     type IdentPat = types::MonoType;
@@ -20,7 +19,7 @@ impl Phase for TypePhase {
     type RecordPat = types::MonoType;
     type VariantCasePat = types::Property;
     type VariantPat = types::MonoType;
-    type PatError = Empty;
+    type PatError = !;
     type Pat = types::MonoType;
     type LiteralExpr = types::MonoType;
     type PathExpr = types::MonoType;
@@ -41,34 +40,34 @@ impl Phase for TypePhase {
     type IfExpr = types::MonoType;
     type LambdaExpr = types::MonoType;
     type CallExpr = types::MonoType;
-    type ExprError = Empty;
+    type ExprError = !;
     type Expr = types::MonoType;
-    type TypePath = Stub<types::PolyType>;
-    type TypeVar = Empty;
+    type TypePath = types::PolyType;
+    type TypeVar = !;
     type RecordFieldType = types::MonoType;
     type RecordType = types::MonoType;
     type VariantCaseType = types::MonoType;
     type VariantType = types::MonoType;
     type FuncType = types::MonoType;
-    type TypeApplication = Stub<types::PolyType>;
-    type TypeExpr = Stub<types::PolyType>;
-    type TypeError = Empty;
-    type Type = Stub<types::PolyType>;
-    type Vis = Empty;
-    type ValueBind = Stub<types::PolyType>;
-    type TypeBind = Stub<types::PolyType>;
-    type OpaqueTypeBind = Empty;
-    type ModuleBind = Empty;
-    type ModuleTypeBind = Empty;
-    type Bind = Empty;
-    type Module = Empty;
-    type ModulePath = Empty;
-    type ModuleImport = Empty;
-    type ModuleExpr = Empty;
-    type ValueSpec = Empty;
-    type OpaqueTypeKind = Empty;
-    type OpaqueTypeSpec = Empty;
-    type ModuleSpec = Empty;
-    type Spec = Empty;
-    type ModuleType = Empty;
+    type TypeApplication = types::PolyType;
+    type TypeExpr = types::PolyType;
+    type TypeError = !;
+    type Type = types::PolyType;
+    type Vis = !;
+    type ValueBind = types::PolyType;
+    type TypeBind = types::PolyType;
+    type OpaqueTypeBind = !;
+    type ModuleBind = !;
+    type ModuleTypeBind = !;
+    type Bind = !;
+    type Module = !;
+    type ModulePath = !;
+    type ModuleImport = !;
+    type ModuleExpr = !;
+    type ValueSpec = !;
+    type OpaqueTypeKind = !;
+    type OpaqueTypeSpec = !;
+    type ModuleSpec = !;
+    type Spec = !;
+    type ModuleType = !;
 }

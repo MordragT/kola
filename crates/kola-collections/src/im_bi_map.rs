@@ -1,60 +1,55 @@
 use std::{
-    collections::{HashMap, hash_map},
-    hash::{BuildHasher, RandomState},
+    hash::{BuildHasher, Hash, RandomState},
     ops::Index,
 };
 
+use crate::im_hash_map::ImHashMap;
+
+pub use crate::im_hash_map::{IntoIter, Iter};
+
 #[derive(Debug, Clone)]
-pub struct BiMap<K, V, S: BuildHasher = RandomState> {
-    forward: HashMap<K, V, S>,
-    backward: HashMap<V, K, S>,
+pub struct ImBiMap<K, V, S: BuildHasher = RandomState> {
+    forward: ImHashMap<K, V, S>,
+    backward: ImHashMap<V, K, S>,
 }
 
-impl<K, V> Default for BiMap<K, V> {
+impl<K, V> Default for ImBiMap<K, V> {
     fn default() -> Self {
         Self {
-            forward: HashMap::new(),
-            backward: HashMap::new(),
+            forward: ImHashMap::new(),
+            backward: ImHashMap::new(),
         }
     }
 }
 
-impl<K, V> BiMap<K, V> {
+impl<K, V> ImBiMap<K, V> {
     pub fn new() -> Self {
         Self::default()
     }
-
-    pub fn with_capacity(capacity: usize) -> Self {
-        Self {
-            forward: HashMap::with_capacity(capacity),
-            backward: HashMap::with_capacity(capacity),
-        }
-    }
 }
 
-impl<K, V, S> BiMap<K, V, S>
+impl<K, V, S> ImBiMap<K, V, S>
 where
-    K: Eq + std::hash::Hash + Clone,
-    V: Eq + std::hash::Hash + Clone,
-    S: std::hash::BuildHasher + Clone,
+    K: Eq + Hash + Clone,
+    V: Eq + Hash + Clone,
+    S: BuildHasher + Clone,
 {
     pub fn with_hasher(hasher: S) -> Self {
         Self {
-            forward: HashMap::with_hasher(hasher.clone()),
-            backward: HashMap::with_hasher(hasher),
-        }
-    }
-
-    pub fn with_capacity_and_hasher(capacity: usize, hasher: S) -> Self {
-        Self {
-            forward: HashMap::with_capacity_and_hasher(capacity, hasher.clone()),
-            backward: HashMap::with_capacity_and_hasher(capacity, hasher),
+            forward: ImHashMap::with_hasher(hasher.clone()),
+            backward: ImHashMap::with_hasher(hasher),
         }
     }
 
     pub fn insert(&mut self, key: K, value: V) {
         self.forward.insert(key.clone(), value.clone());
         self.backward.insert(value, key);
+    }
+
+    pub fn update(&self, key: K, value: V) -> Self {
+        let mut new_bimap = self.clone();
+        new_bimap.insert(key, value);
+        new_bimap
     }
 
     pub fn get_by_key(&self, key: &K) -> Option<&V> {
@@ -100,11 +95,11 @@ where
     }
 }
 
-impl<K, V, S> Index<K> for BiMap<K, V, S>
+impl<K, V, S> Index<K> for ImBiMap<K, V, S>
 where
-    K: Eq + std::hash::Hash + Clone,
-    V: Eq + std::hash::Hash + Clone,
-    S: std::hash::BuildHasher + Clone,
+    K: Eq + Hash + Clone,
+    V: Eq + Hash + Clone,
+    S: BuildHasher + Clone,
 {
     type Output = V;
 
@@ -113,28 +108,28 @@ where
     }
 }
 
-impl<K, V, S> IntoIterator for BiMap<K, V, S>
+impl<K, V, S> IntoIterator for ImBiMap<K, V, S>
 where
-    K: Eq + std::hash::Hash + Clone,
-    V: Eq + std::hash::Hash + Clone,
-    S: std::hash::BuildHasher + Clone,
+    K: Eq + Hash + Clone,
+    V: Eq + Hash + Clone,
+    S: BuildHasher + Clone,
 {
     type Item = (K, V);
-    type IntoIter = hash_map::IntoIter<K, V>;
+    type IntoIter = IntoIter<(K, V), crate::Ptr>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.forward.into_iter()
     }
 }
 
-impl<'a, K, V, S> IntoIterator for &'a BiMap<K, V, S>
+impl<'a, K, V, S> IntoIterator for &'a ImBiMap<K, V, S>
 where
-    K: Eq + std::hash::Hash + Clone,
-    V: Eq + std::hash::Hash + Clone,
-    S: std::hash::BuildHasher + Clone,
+    K: Eq + Hash + Clone,
+    V: Eq + Hash + Clone,
+    S: BuildHasher + Clone,
 {
     type Item = (&'a K, &'a V);
-    type IntoIter = hash_map::Iter<'a, K, V>;
+    type IntoIter = Iter<'a, K, V, crate::Ptr>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.forward.iter()

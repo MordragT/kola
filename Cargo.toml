@@ -36,7 +36,6 @@ thiserror = "2.0"
 paste = "1.0"
 log = "0.4"
 either = "1.15"
-imbl = "5.0"
 
 
 [package]

@@ -1,29 +1,20 @@
-// TODO: mutable iterator should only be able to mutate the value, not the key
+use crate::im_vec::ImVec;
 
-/// A simple ordered map implementation using a vector.
-/// Duplicate keys are explicitly allowed.
-///
-/// Keys are maintained in sorted order with binary search.
+pub use crate::im_vec::{IntoIter, Iter};
+
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct ShadowMap<K, V> {
-    entries: Vec<(K, V)>,
+pub struct ImShadowMap<K, V> {
+    entries: ImVec<(K, V)>,
 }
 
-impl<K, V> ShadowMap<K, V>
+impl<K, V> ImShadowMap<K, V>
 where
     K: Ord,
 {
     /// Creates an empty `OrdMap`.
     pub fn new() -> Self {
-        ShadowMap {
-            entries: Vec::new(),
-        }
-    }
-
-    /// Creates an empty `OrdMap` with the specified capacity.
-    pub fn with_capacity(capacity: usize) -> Self {
-        ShadowMap {
-            entries: Vec::with_capacity(capacity),
+        ImShadowMap {
+            entries: ImVec::new(),
         }
     }
 
@@ -52,12 +43,27 @@ where
     /// Inserts a key-value pair into the map.
     ///
     /// The key is inserted at its correct position to maintain ordering.
-    pub fn insert(&mut self, key: K, value: V) {
+    pub fn insert(&mut self, key: K, value: V)
+    where
+        K: Clone,
+        V: Clone,
+    {
         let idx = match self.binary_search(&key) {
             Ok(idx) => idx,  // Key exists, insert after the last occurrence
             Err(idx) => idx, // Key doesn't exist, insert at computed position
         };
         self.entries.insert(idx, (key, value));
+    }
+
+    /// Creates a new `ImShadowMap` with the specified key-value pair.
+    pub fn update(&self, key: K, value: V) -> Self
+    where
+        K: Clone,
+        V: Clone,
+    {
+        let mut new_map = self.clone();
+        new_map.insert(key, value);
+        new_map
     }
 
     /// Gets a reference to the value corresponding to the key.
@@ -73,7 +79,11 @@ where
     /// Gets a mutable reference to the value corresponding to the key.
     ///
     /// If there are multiple values with the same key, returns the first one found.
-    pub fn get_mut(&mut self, key: &K) -> Option<&mut V> {
+    pub fn get_mut(&mut self, key: &K) -> Option<&mut V>
+    where
+        K: Clone,
+        V: Clone,
+    {
         match self.binary_search(key) {
             Ok(idx) => Some(&mut self.entries[idx].1),
             Err(_) => None,
@@ -89,7 +99,11 @@ where
     ///
     /// If the map contains multiple pairs with the same key, removes the first one.
     /// Returns the value associated with the key if it was present in the map.
-    pub fn remove(&mut self, key: &K) -> Option<V> {
+    pub fn remove(&mut self, key: &K) -> Option<V>
+    where
+        K: Clone,
+        V: Clone,
+    {
         match self.binary_search(key) {
             Ok(idx) => Some(self.entries.remove(idx).1),
             Err(_) => None,
@@ -103,12 +117,12 @@ where
 
     /// Returns the first key-value pair in the map, if any.
     pub fn first(&self) -> Option<&(K, V)> {
-        self.entries.first()
+        self.entries.front()
     }
 
     /// Returns the last key-value pair in the map, if any.
     pub fn last(&self) -> Option<&(K, V)> {
-        self.entries.last()
+        self.entries.back()
     }
 
     /// Returns an iterator over the keys of the map.
@@ -122,7 +136,11 @@ where
     }
 
     /// Returns a mutable iterator over the values of the map.
-    pub fn values_mut(&mut self) -> impl Iterator<Item = &mut V> {
+    pub fn values_mut(&mut self) -> impl Iterator<Item = &mut V>
+    where
+        K: Clone,
+        V: Clone,
+    {
         self.entries.iter_mut().map(|(_, v)| v)
     }
 
@@ -132,22 +150,16 @@ where
     }
 
     // /// Returns a mutable iterator over the key-value pairs of the map.
-    // pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut (K, V)> {
+    // pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut (K, V)>
+    // where
+    //     K: Clone,
+    //     V: Clone,
+    // {
     //     self.entries.iter_mut()
     // }
-
-    /// Returns the capacity of the map.
-    pub fn capacity(&self) -> usize {
-        self.entries.capacity()
-    }
-
-    /// Reserves capacity for at least `additional` more elements.
-    pub fn reserve(&mut self, additional: usize) {
-        self.entries.reserve(additional);
-    }
 }
 
-impl<K, V> Default for ShadowMap<K, V>
+impl<K, V> Default for ImShadowMap<K, V>
 where
     K: Ord,
 {
@@ -156,12 +168,13 @@ where
     }
 }
 
-impl<K, V> FromIterator<(K, V)> for ShadowMap<K, V>
+impl<K, V> FromIterator<(K, V)> for ImShadowMap<K, V>
 where
-    K: Ord,
+    K: Ord + Clone,
+    V: Clone,
 {
     fn from_iter<I: IntoIterator<Item = (K, V)>>(iter: I) -> Self {
-        let mut map = ShadowMap::new();
+        let mut map = ImShadowMap::new();
         for (k, v) in iter {
             map.insert(k, v);
         }
@@ -169,9 +182,10 @@ where
     }
 }
 
-impl<K, V> Extend<(K, V)> for ShadowMap<K, V>
+impl<K, V> Extend<(K, V)> for ImShadowMap<K, V>
 where
-    K: Ord,
+    K: Ord + Clone,
+    V: Clone,
 {
     fn extend<I: IntoIterator<Item = (K, V)>>(&mut self, iter: I) {
         for (k, v) in iter {
@@ -180,27 +194,35 @@ where
     }
 }
 
-impl<K, V> IntoIterator for ShadowMap<K, V> {
+impl<K, V> IntoIterator for ImShadowMap<K, V>
+where
+    K: Clone,
+    V: Clone,
+{
     type Item = (K, V);
-    type IntoIter = std::vec::IntoIter<(K, V)>;
+    type IntoIter = IntoIter<(K, V), crate::Ptr>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.entries.into_iter()
     }
 }
 
-impl<'a, K, V> IntoIterator for &'a ShadowMap<K, V> {
+impl<'a, K, V> IntoIterator for &'a ImShadowMap<K, V> {
     type Item = &'a (K, V);
-    type IntoIter = std::slice::Iter<'a, (K, V)>;
+    type IntoIter = Iter<'a, (K, V), crate::Ptr>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.entries.iter()
     }
 }
 
-// impl<'a, K, V> IntoIterator for &'a mut ShadowMap<K, V> {
+// impl<'a, K, V> IntoIterator for &'a mut ImShadowMap<K, V>
+// where
+//     K: Clone,
+//     V: Clone,
+// {
 //     type Item = &'a mut (K, V);
-//     type IntoIter = std::slice::IterMut<'a, (K, V)>;
+//     type IntoIter = imbl::vector::IterMut<'a, (K, V), crate::Ptr>;
 
 //     fn into_iter(self) -> Self::IntoIter {
 //         self.entries.iter_mut()

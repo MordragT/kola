@@ -53,8 +53,11 @@ impl<T: ?Sized> Default for Sym<T> {
     }
 }
 
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ModuleTag;
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct TypeTag;
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ValueTag;
 
 pub type ModuleSym = Sym<ModuleTag>;

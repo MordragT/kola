@@ -63,6 +63,8 @@ impl PolyType {
             return false;
         }
 
+        // TODO maybe check for structural equality of the types
+
         let mut sub_self = HashMap::new();
         let mut sub_other = HashMap::new();
 
@@ -103,5 +105,58 @@ impl fmt::Display for PolyType {
         }
 
         ty.fmt(f)
+    }
+}
+
+/// Substitution of Polytypes in Constraint-Based Type Inference
+///
+/// This implementation handles substitution for polytypes in a constraint-based type inference
+/// system where generalization occurs during inference and final substitution is deferred.
+///
+/// ## Algorithmic Context
+///
+/// Unlike Algorithm W (which applies substitutions eagerly), this implementation follows a
+/// constraint-based approach:
+/// 1. Generate constraints and generalize types during inference traversal
+/// 2. Solve all constraints at the end to produce a global substitution
+/// 3. Apply the final substitution to all types, including polytypes
+///
+/// ## The "Open Polytype" Problem
+///
+/// When generalization occurs during inference (e.g., at let-bindings), polytypes may contain
+/// free variables that need later substitution:
+///
+/// ```
+/// // During let-expression inference with outer scope containing T1:
+/// let x = expr_of_type(T1 -> T2) in body
+///
+/// // Generalization with bound_vars = [T1] produces:
+/// PolyType { vars: [T2], ty: T1 -> T2 }
+/// //                        ^^     ^^
+/// //                     free   bound
+///
+/// // Later constraint solving determines T1 = Int
+/// // Final substitution should produce:
+/// PolyType { vars: [T2], ty: Int -> T2 }
+/// ```
+///
+/// ## Substitution Rules
+///
+/// When applying substitution to a polytype:
+/// 1. Apply substitution to the inner monotype (`ty` field)
+/// 2. Preserve all quantified variables (`vars` field unchanged)
+/// 3. The inner monotype's substitution will automatically avoid bound variables
+///    due to how MonoType substitution handles variable scoping
+///
+/// This is essential for correctness in systems where generalization and constraint
+/// solving are temporally separated, which is common in modern type checkers for
+/// better error reporting and incremental compilation.
+impl Substitutable for PolyType {
+    fn try_apply(&self, s: &mut Substitution) -> Option<Self> {
+        // Apply substitution to the inner monotype while preserving quantified variables
+        self.ty.try_apply(s).map(|ty| PolyType {
+            vars: self.vars.clone(), // Quantified variables remain unchanged
+            ty,                      // Free variables in inner type get substituted
+        })
     }
 }

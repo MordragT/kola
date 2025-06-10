@@ -410,6 +410,7 @@ dependencies = [
 name = "kola-lowerer"
 version = "0.1.0"
 dependencies = [
+ "kola-collections",
  "kola-ir",
  "kola-tree",
 ]
@@ -488,6 +489,7 @@ dependencies = [
  "derive_more",
  "either",
  "indexmap",
+ "kola-collections",
  "kola-print",
  "kola-resolver",
  "kola-span",
@@ -516,7 +518,6 @@ name = "kola-vm"
 version = "0.1.0"
 dependencies = [
  "derive_more",
- "imbl",
  "kola-collections",
  "kola-ir",
  "kola-utils",

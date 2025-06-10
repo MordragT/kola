@@ -1,5 +1,5 @@
+use kola_collections::HashMap;
 use kola_tree::prelude::{Id as TreeId, *};
-use std::collections::HashMap;
 
 use kola_ir::prelude::{Id as InstrId, *};
 

@@ -1,5 +1,5 @@
 use derive_more::From;
-use kola_collections::shadow_map::ShadowMap;
+use kola_collections::ImShadowMap;
 use kola_ir::instr::{Func, Symbol};
 use kola_utils::as_variant;
 use std::{fmt, rc::Rc};
@@ -139,20 +139,19 @@ impl fmt::Display for Value {
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct Record(Rc<ShadowMap<Symbol, Value>>);
+pub struct Record(ImShadowMap<Symbol, Value>);
 
 impl Record {
-    pub fn empty() -> Self {
-        Self(Rc::new(ShadowMap::new()))
+    pub fn new() -> Self {
+        Self(ImShadowMap::new())
     }
 
-    pub fn new(map: ShadowMap<Symbol, Value>) -> Self {
-        Self(Rc::new(map))
+    pub fn from_shadow_map(map: ImShadowMap<Symbol, Value>) -> Self {
+        Self(map)
     }
 
     pub fn insert(&mut self, key: Symbol, value: Value) {
-        let map = Rc::make_mut(&mut self.0);
-        map.insert(key, value);
+        self.0.insert(key, value);
     }
 
     pub fn get(&self, key: &Symbol) -> Option<&Value> {
@@ -160,8 +159,7 @@ impl Record {
     }
 
     pub fn remove(&mut self, key: &Symbol) -> Option<Value> {
-        let map = Rc::make_mut(&mut self.0);
-        map.remove(key)
+        self.0.remove(key)
     }
 
     pub fn contains_key(&self, key: &Symbol) -> bool {
@@ -181,9 +179,9 @@ impl Record {
     }
 }
 
-impl From<ShadowMap<Symbol, Value>> for Record {
-    fn from(map: ShadowMap<Symbol, Value>) -> Self {
-        Self(Rc::new(map))
+impl From<ImShadowMap<Symbol, Value>> for Record {
+    fn from(map: ImShadowMap<Symbol, Value>) -> Self {
+        Self(map)
     }
 }
 

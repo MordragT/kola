@@ -2,10 +2,10 @@ use kola_print::prelude::*;
 use kola_tree::prelude::*;
 use owo_colors::OwoColorize;
 
-use super::TypeInfo;
+use crate::phase::TypedNodes;
 
 #[derive(Debug, Clone)]
-pub struct TypeDecorator(pub TypeInfo);
+pub struct TypeDecorator(pub TypedNodes);
 
 impl Decorator for TypeDecorator {
     fn decorate<'a>(
@@ -14,7 +14,7 @@ impl Decorator for TypeDecorator {
         with: usize,
         arena: &'a Bump,
     ) -> Notation<'a> {
-        let ty = match self.0.get(with) {
+        let ty = match MetaView::get(&self.0, with) {
             Meta::Name(_) => return notation,
             // Patterns
             Meta::AnyPat(t)

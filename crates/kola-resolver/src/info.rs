@@ -5,7 +5,6 @@ use kola_span::Loc;
 use kola_tree::node::{self, Vis};
 
 pub struct BindInfo<T> {
-    // pub id: QualId<T>,
     pub loc: Loc,
     pub vis: Vis,
     pub t: PhantomData<T>,
@@ -19,10 +18,6 @@ impl<T> BindInfo<T> {
             t: PhantomData,
         }
     }
-
-    // pub const fn id(&self) -> QualId<T> {
-    //     self.id
-    // }
 
     pub const fn loc(&self) -> Loc {
         self.loc
@@ -46,7 +41,6 @@ impl<T> fmt::Debug for BindInfo<T> {
 impl<T> Clone for BindInfo<T> {
     fn clone(&self) -> Self {
         Self {
-            // id: self.id,
             loc: self.loc,
             vis: self.vis,
             t: PhantomData,

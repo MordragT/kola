@@ -1,6 +1,8 @@
+use std::{borrow::Cow, fmt, hash::Hash};
+
+use kola_collections::{HashMap, ImHashMap, ImOrdMap, ImVec, OrdMap};
 use kola_print::prelude::OwoColorize;
 use kola_tree::prelude::*;
-use std::{borrow::Cow, collections::HashMap, fmt};
 
 use super::types::{MonoType, TypeVar};
 
@@ -101,15 +103,21 @@ pub trait Substitutable: Sized {
     fn try_apply(&self, s: &mut Substitution) -> Option<Self>;
 }
 
-impl<T> Substitutable for Stub<T> {
+impl Substitutable for ! {
     fn try_apply(&self, _s: &mut Substitution) -> Option<Self> {
         None
     }
 }
 
-impl Substitutable for Empty {
-    fn try_apply(&self, _s: &mut Substitution) -> Option<Self> {
-        None
+impl<T> Substitutable for Option<T>
+where
+    T: Substitutable + Clone,
+{
+    fn try_apply(&self, s: &mut Substitution) -> Option<Self> {
+        match self {
+            Some(t) => t.try_apply(s).map(Some),
+            None => None,
+        }
     }
 }
 
@@ -118,28 +126,112 @@ where
     T: Substitutable + Clone,
 {
     fn try_apply(&self, s: &mut Substitution) -> Option<Self> {
-        // I think this is only allocated if used but unsure
-        let mut collector = Vec::new();
-        let mut rem = self.as_slice();
+        let mut result = None;
 
-        while let Some((end, el)) = rem
-            .iter()
-            .enumerate()
-            .find_map(|(i, el)| el.try_apply(s).map(|el| (i, el)))
-        {
-            collector.extend_from_slice(&self[0..end]);
-            collector.push(el);
-
-            rem = rem.get(end + 1..).unwrap_or(&[]);
+        for (i, item) in self.iter().enumerate() {
+            if let Some(next) = item.try_apply(s) {
+                result.get_or_insert_with(|| self.clone())[i] = next;
+            }
         }
 
-        if !collector.is_empty() {
-            collector.extend_from_slice(rem);
-            assert_eq!(collector.len(), self.len());
-            Some(collector)
-        } else {
-            None
+        result
+    }
+}
+
+impl<T> Substitutable for ImVec<T>
+where
+    T: Substitutable + Clone,
+{
+    fn try_apply(&self, s: &mut Substitution) -> Option<Self> {
+        let mut result = None;
+
+        for (i, item) in self.iter().enumerate() {
+            if let Some(next) = item.try_apply(s) {
+                result.get_or_insert_with(|| self.clone()).set(i, next);
+            }
         }
+
+        result
+    }
+}
+
+impl<K, V> Substitutable for HashMap<K, V>
+where
+    K: Eq + Clone + Hash,
+    V: Substitutable + Clone,
+{
+    fn try_apply(&self, s: &mut Substitution) -> Option<Self> {
+        let mut result = None;
+
+        for (key, value) in self.iter() {
+            if let Some(next) = value.try_apply(s) {
+                result
+                    .get_or_insert_with(|| self.clone())
+                    .insert(key.clone(), next);
+            }
+        }
+
+        result
+    }
+}
+
+impl<K, V> Substitutable for ImHashMap<K, V>
+where
+    K: Eq + Clone + Hash,
+    V: Substitutable + Clone,
+{
+    fn try_apply(&self, s: &mut Substitution) -> Option<Self> {
+        let mut result = None;
+
+        for (key, value) in self.iter() {
+            if let Some(next) = value.try_apply(s) {
+                result
+                    .get_or_insert_with(|| self.clone())
+                    .insert(key.clone(), next);
+            }
+        }
+
+        result
+    }
+}
+
+impl<K, V> Substitutable for OrdMap<K, V>
+where
+    K: Ord + Clone,
+    V: Substitutable + Clone,
+{
+    fn try_apply(&self, s: &mut Substitution) -> Option<Self> {
+        let mut result = None;
+
+        for (key, value) in self.iter() {
+            if let Some(next) = value.try_apply(s) {
+                result
+                    .get_or_insert_with(|| self.clone())
+                    .insert(key.clone(), next);
+            }
+        }
+
+        result
+    }
+}
+
+impl<K, V> Substitutable for ImOrdMap<K, V>
+where
+    K: Ord + Clone,
+    V: Substitutable + Clone,
+{
+    fn try_apply(&self, s: &mut Substitution) -> Option<Self> {
+        let mut result = None;
+
+        for (key, value) in self.iter() {
+            if let Some(next) = value.try_apply(s) {
+                result
+                    .get_or_insert_with(|| self.clone())
+                    .insert(key.clone(), next);
+            }
+        }
+
+        result
     }
 }
 

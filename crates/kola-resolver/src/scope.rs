@@ -1,16 +1,9 @@
-use std::{
-    collections::{HashMap, hash_map},
-    hash::Hash,
-    ops::Index,
-};
+use std::{hash::Hash, ops::Index};
 
-use kola_collections::shadow_map::ShadowMap;
+use kola_collections::{BiMap, HashMap, ShadowMap, hash_map};
 use kola_span::Loc;
 use kola_tree::{id::Id, node};
-use kola_utils::{
-    bimap::BiMap,
-    interner::{PathKey, StrKey},
-};
+use kola_utils::interner::{PathKey, StrKey};
 
 use crate::{
     QualId,

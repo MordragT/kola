@@ -3,8 +3,8 @@ use std::fmt;
 
 use super::{Kind, MonoType, Typed};
 use crate::{
-    env::KindEnv,
     error::SemanticError,
+    scope::KindScope,
     substitute::{Substitutable, Substitution, merge},
 };
 
@@ -27,7 +27,7 @@ impl fmt::Display for FuncType {
 }
 
 impl Typed for FuncType {
-    fn constrain(&self, with: Kind, _env: &mut KindEnv) -> Result<(), SemanticError> {
+    fn constrain(&self, with: Kind, _env: &mut KindScope) -> Result<(), SemanticError> {
         Err(SemanticError::CannotConstrain {
             expected: with,
             actual: self.clone().into(),

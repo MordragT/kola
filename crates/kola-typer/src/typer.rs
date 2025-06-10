@@ -1,24 +1,20 @@
-use std::{collections::HashMap, ops::ControlFlow};
+use std::{ops::ControlFlow, rc::Rc};
 
-use kola_span::{Diagnostic, IntoDiagnostic, Loc, Located};
+use kola_resolver::{QualId, scope::ModuleScope, symbol::SymbolTable};
+use kola_span::{Diagnostic, IntoDiagnostic, Loc, Located, Report};
 use kola_syntax::prelude::*;
 use kola_tree::prelude::*;
 use kola_utils::errors::Errors;
 
 use crate::{
-    VisitState,
-    env::{KindEnv, TypeEnv},
+    env::TypeEnvironment,
     error::SemanticError,
+    phase::{TypePhase, TypedNodes},
+    scope::{KindScope, TypeScope},
     substitute::{Substitutable, Substitution},
     types::{Kind, MonoType, PolyType, Property, TypeVar, Typed},
     unify::Unifiable,
 };
-
-mod phase;
-mod print;
-
-pub use phase::{TypeInfo, TypeInfoTable, TypePhase};
-pub use print::TypeDecorator;
 
 // https://blog.stimsina.com/post/implementing-a-hindley-milner-type-system-part-2
 
@@ -65,7 +61,7 @@ impl Constraints {
     }
 
     // TODO error handling do not propagate but keep trace of errors
-    pub fn solve(self, s: &mut Substitution, kind_env: &mut KindEnv) -> Result<(), Error> {
+    pub fn solve(self, s: &mut Substitution, kind_env: &mut KindScope, report: &mut Report) {
         // TODO infer Types first ?
         for c in self.0 {
             match c {
@@ -73,21 +69,23 @@ impl Constraints {
                     expected,
                     actual,
                     span,
-                } => actual
-                    .apply_cow(s)
-                    .constrain(expected, kind_env)
-                    .map_err(|e| e.into_diagnostic(span))?,
+                } => {
+                    if let Err(e) = actual.apply_cow(s).constrain(expected, kind_env) {
+                        report.add_diagnostic(e.into_diagnostic(span));
+                        return;
+                    }
+                }
                 Constraint::Ty {
                     expected,
                     actual,
                     span,
-                } => expected
-                    .try_unify(&actual, s)
-                    .map_err(|errs| (errs, span))?,
+                } => {
+                    if let Err(e) = expected.try_unify(&actual, s) {
+                        todo!()
+                    }
+                }
             }
         }
-
-        Ok(())
     }
 }
 
@@ -100,64 +98,48 @@ impl Constraints {
 // TODO τ for normal types
 // r for record types ?
 
+// TODO: Since I have "open polytypes" that need final substitution,
+// I should defer populating the public `TypeEnvironment`
+// until **after** constraint solving and substitution.
+// for that I need to cache the NodeIDs of the "public" types
+
 pub struct Typer<'a> {
+    scope: Rc<ModuleScope>,
     subs: Substitution,
     cons: Constraints,
-    t_env: TypeEnv,
-    k_env: KindEnv,
-    types: Vec<Meta<TypePhase>>,
-    module_path: ModulePath,
-    module: ModuleInfo,
+    type_scope: TypeScope,
+    kind_scope: KindScope,
+    types: TypedNodes,
     spans: Locations,
-    visited: HashMap<Id<node::ValueBind>, VisitState>,
-    module_infos: &'a ModuleInfoTable,
-    module_parents: &'a HashMap<ModulePath, ModulePath>,
-    type_infos: &'a TypeInfoTable,
+    env: &'a TypeEnvironment,
+    symbol_table: &'a SymbolTable,
 }
 
 impl<'a> Typer<'a> {
     pub fn new(
-        module_path: ModulePath,
-        module: ModuleInfo,
+        scope: Rc<ModuleScope>,
         spans: Locations,
-        module_infos: &'a ModuleInfoTable,
-        module_parents: &'a HashMap<ModulePath, ModulePath>,
-        type_infos: &'a TypeInfoTable,
+        env: &'a TypeEnvironment,
+        symbol_table: &'a SymbolTable,
     ) -> Self {
-        let types = spans
-            .iter()
-            .map(|m| Meta::<TypePhase>::default_for(m.kind()))
-            .collect();
-
-        let visited = module
-            .values
-            .values()
-            .map(|bind| (bind.id, VisitState::Unvisited))
-            .collect();
-
         Self {
+            scope,
             subs: Substitution::empty(),
             cons: Constraints::new(),
-            t_env: TypeEnv::new(),
-            k_env: KindEnv::new(),
-            types,
-            module_path,
-            module,
+            type_scope: TypeScope::new(),
+            kind_scope: KindScope::new(),
+            types: TypedNodes::new(),
             spans,
-            visited,
-            module_infos,
-            module_parents,
-            type_infos,
+            env,
+            symbol_table,
         }
     }
 
-    pub fn solve(mut self, tree: &Tree) -> Result<TypeInfo, Error> {
-        let id = self.module_path.id;
-
-        match id.visit_by(&mut self, tree) {
+    pub fn solve(mut self, tree: &Tree, report: &mut Report) -> Option<TypedNodes> {
+        match self.scope.node_id().visit_by(&mut self, tree) {
             ControlFlow::Break(e) => {
-                eprintln!("{e}");
-                panic!()
+                report.add_diagnostic(e);
+                return None;
             }
             ControlFlow::Continue(()) => (),
         }
@@ -165,29 +147,42 @@ impl<'a> Typer<'a> {
         let Self {
             mut subs,
             cons,
-            mut k_env,
+            kind_scope: mut k_env,
             mut types,
             ..
         } = self;
 
-        cons.solve(&mut subs, &mut k_env)?;
+        cons.solve(&mut subs, &mut k_env, report);
+
+        if !report.is_empty() {
+            return None;
+        }
+
         types.apply_mut(&mut subs);
 
-        Ok(types.into_metadata())
+        Some(types)
     }
 
-    fn update_type<T>(&mut self, id: Id<T>, t: T::Meta) -> T::Meta
+    #[inline]
+    fn update_type<T>(&mut self, id: Id<T>, t: T::Meta)
     where
         T: MetaCast<TypePhase>,
     {
-        self.types.update_meta(id, t)
+        // self.types.update_meta(id, t)
+        self.types.insert(id.as_usize(), T::upcast(t));
     }
 
+    #[inline]
     fn span<T>(&self, id: Id<T>) -> Loc
     where
         T: MetaCast<LocPhase, Meta = Loc>,
     {
         *self.spans.meta(id)
+    }
+
+    #[inline]
+    pub fn qual<T>(&self, id: Id<T>) -> QualId<T> {
+        (self.scope.path_key(), id)
     }
 
     fn partial_restrict(
@@ -220,7 +215,7 @@ impl<'a, T> Visitor<T> for Typer<'a>
 where
     T: TreeView,
 {
-    type BreakValue = SourceDiagnostic;
+    type BreakValue = Diagnostic;
 
     fn visit_module_bind(
         &mut self,
@@ -236,47 +231,31 @@ where
         id: Id<node::ValueBind>,
         tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
-        match self.visited[&id] {
-            VisitState::Unvisited => {
-                let node::ValueBind {
-                    vis: _,
-                    name,
-                    ty,
-                    value,
-                } = *id.get(tree);
-                let name = name.get(tree).0.clone();
+        let node::ValueBind { ty, value, .. } = *id.get(tree);
 
-                TypeVar::enter();
-                self.visit_expr(value, tree)?;
-                TypeVar::exit();
+        TypeVar::enter();
+        self.visit_expr(value, tree)?;
+        TypeVar::exit();
 
-                // due to explicit traversal this is known
-                let t = self.types.meta(value).clone();
-                // generalize with no bound type vars because this is a top-level binding.
-                let pt = t.generalize(&[]);
+        // due to explicit traversal this is known
+        let t = self.types.meta(value).clone();
+        // generalize with no bound type vars because this is a top-level binding.
+        let pt = t.generalize(&[]);
 
-                if let Some(ty) = ty {
-                    self.visit_type(ty, tree)?;
-                    let expected_pt = self.types.meta(ty);
+        if let Some(ty) = ty {
+            self.visit_type(ty, tree)?;
+            let expected_pt = self.types.meta(ty);
 
-                    if !pt.alpha_equivalent(&expected_pt.0) {
-                        return ControlFlow::Break(SourceDiagnostic::error(
-                            self.span(id),
-                            format!("Type mismatch: expected {}, found {}", expected_pt, pt),
-                        ));
-                    }
-                }
-
-                self.update_type(id, Stub(pt));
-                self.visited.insert(id, VisitState::Visited);
-                ControlFlow::Continue(())
+            if !pt.alpha_equivalent(&expected_pt) {
+                return ControlFlow::Break(Diagnostic::error(
+                    self.span(id),
+                    format!("Type mismatch: expected {}, found {}", expected_pt, pt),
+                ));
             }
-            VisitState::Visiting => {
-                let span = self.span(id);
-                ControlFlow::Break(SourceDiagnostic::error(span, "Recursive call detected"))
-            }
-            VisitState::Visited => ControlFlow::Continue(()),
         }
+
+        self.update_type(id, pt);
+        ControlFlow::Continue(())
     }
 
     // Patterns
@@ -344,91 +323,49 @@ where
     ) -> ControlFlow<Self::BreakValue> {
         let span = self.span(id);
 
-        let module_explorer = PathResolver::new(
-            tree,
-            &self.spans,
-            &self.module,
-            &self.module_path,
-            &self.module_infos,
-            &self.module_parents,
-        );
+        let node::PathExpr {
+            path,
+            binding,
+            select,
+        } = id.get(tree);
 
-        let resolution = match module_explorer.path_expr(id, &self.t_env) {
-            Ok(resolution) => resolution,
-            Err(diag) => return ControlFlow::Break(diag),
+        let name = binding.get(tree).0;
+
+        let t = if let Some(path) = *path {
+            let module_sym = self
+                .symbol_table
+                .lookup_module_path(self.qual(path))
+                .expect("Module path not found");
+
+            let value_sym = self.env[module_sym]
+                .get_value(name)
+                .expect("Value not found in module");
+
+            let pt = &self.env[value_sym];
+            pt.instantiate()
+        } else if let Some(pt) = self.type_scope.lookup(name) {
+            pt.instantiate()
+        } else {
+            return ControlFlow::Break(Diagnostic::error(span, "Value not found in scope"));
         };
 
-        let t = match resolution {
-            PathResolution::LocalValue(pt) => pt.instantiate(),
-            PathResolution::LocalRecordAccess { pt, remaining } => {
-                // dbg!(remaining.iter().map(|s| s.get(tree)).collect::<Vec<_>>());
+        let field_t = select.iter().fold(t, |t, field| {
+            self.cons.constrain_kind(Kind::Record, t.clone(), span);
 
-                let t = pt.instantiate();
-                let field_t = remaining.into_iter().fold(t, |t, field| {
-                    self.cons.constrain_kind(Kind::Record, t.clone(), span);
+            let field_t = MonoType::variable();
 
-                    let field_t = MonoType::variable();
+            let head = Property {
+                k: field.get(tree).0.clone(),
+                v: field_t.clone(),
+            };
 
-                    let head = Property {
-                        k: field.get(tree).0.clone(),
-                        v: field_t.clone(),
-                    };
+            self.cons
+                .constrain(MonoType::row(head, MonoType::variable()), t.clone(), span);
 
-                    self.cons
-                        .constrain(MonoType::row(head, MonoType::variable()), t.clone(), span);
+            field_t
+        });
 
-                    field_t
-                });
-
-                field_t
-            }
-            PathResolution::ScopeValue(id) => {
-                self.visit_value_bind(id, tree)?;
-                let pt = &self.types.meta(id).0;
-
-                pt.instantiate()
-            }
-            PathResolution::ScopeRecordAccess {
-                value_id,
-                remaining,
-            } => {
-                self.visit_value_bind(value_id, tree)?;
-                let pt = &self.types.meta(value_id).0;
-
-                let t = pt.instantiate();
-                let field_t = remaining.into_iter().fold(t, |t, field| {
-                    self.cons.constrain_kind(Kind::Record, t.clone(), span);
-
-                    let field_t = MonoType::variable();
-
-                    let head = Property {
-                        k: field.get(tree).0.clone(),
-                        v: field_t.clone(),
-                    };
-
-                    self.cons
-                        .constrain(MonoType::row(head, MonoType::variable()), t.clone(), span);
-
-                    field_t
-                });
-
-                field_t
-            }
-            PathResolution::ModuleValue {
-                module_path,
-                value_id,
-            } => {
-                let pt = self.type_infos[&module_path].meta(value_id);
-                pt.0.instantiate()
-            }
-            PathResolution::ModuleRecordAccess {
-                module_path,
-                value_id,
-                remaining,
-            } => todo!(),
-        };
-
-        self.update_type(id, t);
+        self.update_type(id, field_t);
         ControlFlow::Continue(())
     }
 
@@ -714,14 +651,14 @@ where
         // due to explicit traversal this is known
         let t = self.types.meta(value).clone();
 
-        self.t_env.enter();
+        self.type_scope.enter();
         {
-            let pt = t.generalize(&self.t_env.bound_vars());
-            self.t_env.insert(name, pt);
+            let pt = t.generalize(&self.type_scope.bound_vars());
+            self.type_scope.insert(name, pt);
 
             self.visit_expr(inside, tree)?;
         }
-        self.t_env.exit();
+        self.type_scope.exit();
 
         let t_prime = self.types.meta(inside).clone();
         self.update_type(id, t_prime);
@@ -783,12 +720,12 @@ where
         // let name = self.types.meta(func.param).clone();
         let name = param.get(tree).0.clone();
 
-        self.t_env.enter();
+        self.type_scope.enter();
         {
-            self.t_env.insert(name, PolyType::from(t.clone()));
+            self.type_scope.insert(name, PolyType::from(t.clone()));
             self.visit_expr(body, tree)?;
         }
-        self.t_env.exit();
+        self.type_scope.exit();
 
         let t_prime = self.types.meta(body).clone();
         let func = MonoType::func(t, t_prime);
@@ -862,7 +799,7 @@ mod tests {
     use kola_tree::prelude::*;
     use kola_vfs::path::FilePath;
 
-    use super::{Error, TypeInfo, TypeInfoTable, Typer};
+    use super::{Error, TypeAnnotations, TypedNodes, Typer};
     use crate::{
         error::SemanticError,
         module::{ModuleInfoBuilder, ModuleInfoTable, ModulePath},
@@ -874,7 +811,7 @@ mod tests {
         tree.metadata_with(|node| Meta::default_with(span, node.kind()))
             .into_metadata()
     }
-    fn solve_expr<T>(mut builder: TreeBuilder, node: Id<T>) -> Result<TypeInfo, Error>
+    fn solve_expr<T>(mut builder: TreeBuilder, node: Id<T>) -> Result<TypedNodes, Error>
     where
         node::Expr: From<Id<T>>,
     {
@@ -903,7 +840,7 @@ mod tests {
             spans,
             &ModuleInfoTable::new(),
             &HashMap::new(),
-            &TypeInfoTable::new(),
+            &TypeAnnotations::new(),
         )
         .solve(&tree)
     }

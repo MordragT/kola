@@ -1,9 +1,9 @@
-use imbl::HashMap;
+use kola_collections::ImHashMap;
 use kola_ir::instr::Symbol;
 
 use crate::value::Value;
 
-pub type Env = HashMap<Symbol, Value>;
+pub type Env = ImHashMap<Symbol, Value>;
 
 // /// Values in the environment should be fully evaluated (Atom)
 // #[derive(Debug, Clone, PartialEq)]

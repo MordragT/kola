@@ -3,8 +3,8 @@ use std::fmt;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    env::KindEnv,
     error::SemanticError,
+    scope::KindScope,
     substitute::{Substitutable, Substitution},
 };
 
@@ -28,7 +28,7 @@ impl fmt::Display for ListType {
 }
 
 impl Typed for ListType {
-    fn constrain(&self, with: Kind, _env: &mut KindEnv) -> Result<(), SemanticError> {
+    fn constrain(&self, with: Kind, _env: &mut KindScope) -> Result<(), SemanticError> {
         match with {
             Kind::Addable | Kind::Comparable | Kind::Equatable => Ok(()),
             _ => Err(SemanticError::CannotConstrain {

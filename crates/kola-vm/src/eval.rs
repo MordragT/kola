@@ -4,7 +4,7 @@ use crate::{
     env::Env,
     value::{Record, Value},
 };
-use kola_collections::shadow_map::ShadowMap;
+use kola_collections::ImShadowMap;
 use kola_ir::{
     instr::{
         Atom, BinaryExpr, BinaryOp, CallExpr, Expr, Func, IfExpr, LetExpr, LetInExpr,
@@ -453,7 +453,7 @@ impl Eval for RecordExpr {
     fn eval(&self, mut env: Env, cont: Cont, ir: &Ir) -> MachineState {
         let Self { bind, fields, next } = *self;
 
-        let mut record = ShadowMap::new();
+        let mut record = ImShadowMap::new();
 
         // Evaluate each field value
         for RecordField { label, value } in fields.get(ir) {
@@ -464,7 +464,7 @@ impl Eval for RecordExpr {
         }
 
         // Create a record value from the evaluated fields
-        let record_value = Value::Record(Record::new(record));
+        let record_value = Value::Record(Record::from(record));
 
         // Bind the record to the variable in the environment
         env.insert(bind, record_value);
