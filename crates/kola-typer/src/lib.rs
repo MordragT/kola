@@ -22,7 +22,7 @@ pub mod prelude {
     pub use crate::error::{SemanticError, SemanticErrors};
     pub use crate::phase::{TypeAnnotations, TypePhase};
     pub use crate::print::TypeDecorator;
-    pub use crate::scope::{KindScope, TypeScope};
+    pub use crate::scope::{BoundVars, KindScope, TypeScope};
     pub use crate::substitute::{Substitutable, Substitution};
     pub use crate::typer::{Constraint, Constraints, Typer};
     pub use crate::types::*;

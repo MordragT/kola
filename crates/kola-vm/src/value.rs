@@ -2,7 +2,7 @@ use derive_more::From;
 use kola_collections::ImShadowMap;
 use kola_ir::instr::{Func, Symbol};
 use kola_utils::as_variant;
-use std::{fmt, rc::Rc};
+use std::fmt;
 
 use crate::{cont::Cont, env::Env};
 

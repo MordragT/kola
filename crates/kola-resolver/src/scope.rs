@@ -1,6 +1,6 @@
 use std::{hash::Hash, ops::Index};
 
-use kola_collections::{BiMap, HashMap, ShadowMap, hash_map};
+use kola_collections::{BiMap, HashMap, hash_map};
 use kola_span::Loc;
 use kola_tree::{id::Id, node};
 use kola_utils::interner::{PathKey, StrKey};
@@ -11,8 +11,6 @@ use crate::{
     info::{AnyInfo, BindInfo, BindKind, ModuleInfo, TypeInfo, ValueInfo},
     symbol::{ModuleSym, Sym, Symbol, TypeSym, ValueSym},
 };
-
-pub type LexicalScope = ShadowMap<StrKey, ValueSym>;
 
 #[derive(Debug, Clone)]
 pub struct Rib<S, T> {

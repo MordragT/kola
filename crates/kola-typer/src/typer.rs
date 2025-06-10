@@ -10,7 +10,7 @@ use crate::{
     env::TypeEnvironment,
     error::SemanticError,
     phase::{TypePhase, TypedNodes},
-    scope::{KindScope, TypeScope},
+    scope::{BoundVars, KindScope, TypeScope},
     substitute::{Substitutable, Substitution},
     types::{Kind, MonoType, PolyType, Property, TypeVar, Typed},
     unify::Unifiable,
@@ -343,7 +343,7 @@ where
 
             let pt = &self.env[value_sym];
             pt.instantiate()
-        } else if let Some(pt) = self.type_scope.lookup(name) {
+        } else if let Some(pt) = self.type_scope.get(&name) {
             pt.instantiate()
         } else {
             return ControlFlow::Break(Diagnostic::error(span, "Value not found in scope"));
@@ -650,15 +650,11 @@ where
 
         // due to explicit traversal this is known
         let t = self.types.meta(value).clone();
+        let pt = t.generalize(&self.type_scope.bound_vars());
 
-        self.type_scope.enter();
-        {
-            let pt = t.generalize(&self.type_scope.bound_vars());
-            self.type_scope.insert(name, pt);
-
-            self.visit_expr(inside, tree)?;
-        }
-        self.type_scope.exit();
+        self.type_scope.enter(name, pt);
+        self.visit_expr(inside, tree)?;
+        self.type_scope.exit(&name);
 
         let t_prime = self.types.meta(inside).clone();
         self.update_type(id, t_prime);
@@ -720,12 +716,9 @@ where
         // let name = self.types.meta(func.param).clone();
         let name = param.get(tree).0.clone();
 
-        self.type_scope.enter();
-        {
-            self.type_scope.insert(name, PolyType::from(t.clone()));
-            self.visit_expr(body, tree)?;
-        }
-        self.type_scope.exit();
+        self.type_scope.enter(name, PolyType::from(t.clone()));
+        self.visit_expr(body, tree)?;
+        self.type_scope.exit(&name);
 
         let t_prime = self.types.meta(body).clone();
         let func = MonoType::func(t, t_prime);
@@ -795,21 +788,16 @@ mod tests {
 
     use std::collections::HashMap;
 
-    use kola_syntax::loc::{Loc, Locations};
+    use kola_span::Loc;
+    use kola_syntax::loc::Locations;
     use kola_tree::prelude::*;
-    use kola_vfs::path::FilePath;
 
-    use super::{Error, TypeAnnotations, TypedNodes, Typer};
-    use crate::{
-        error::SemanticError,
-        module::{ModuleInfoBuilder, ModuleInfoTable, ModulePath},
-        types::*,
-    };
+    use super::{Error, TypedNodes, Typer};
+    use crate::{error::SemanticError, types::*};
 
     fn mocked_spans(tree: &impl TreeView) -> Locations {
         let span = Loc::new(0, 0);
         tree.metadata_with(|node| Meta::default_with(span, node.kind()))
-            .into_metadata()
     }
     fn solve_expr<T>(mut builder: TreeBuilder, node: Id<T>) -> Result<TypedNodes, Error>
     where

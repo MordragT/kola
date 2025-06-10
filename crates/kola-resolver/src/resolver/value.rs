@@ -3,12 +3,13 @@ use std::{ops::ControlFlow, rc::Rc};
 use kola_span::{Diagnostic, Loc, Report};
 use kola_syntax::loc::LocPhase;
 use kola_tree::{node::Vis, prelude::*};
+use kola_utils::{interner::StrKey, scope::LinearScope};
 
 use crate::{
     QualId,
     forest::Forest,
     resolver::ModuleScopes,
-    scope::{LexicalScope, ModuleScope},
+    scope::ModuleScope,
     symbol::{ModuleSym, SymbolTable, ValueSym},
     topography::Topography,
 };
@@ -60,7 +61,7 @@ pub fn resolve_values_in_module(
 
 struct ValueResolver<'a> {
     module_scope: Rc<ModuleScope>,
-    scope: LexicalScope,
+    scope: LinearScope<StrKey, ValueSym>,
     topography: &'a Topography,
     module_scopes: &'a ModuleScopes,
     report: &'a mut Report,
@@ -77,7 +78,7 @@ impl<'a> ValueResolver<'a> {
     ) -> Self {
         Self {
             module_scope,
-            scope: LexicalScope::new(),
+            scope: LinearScope::new(),
             topography,
             module_scopes,
             report,
@@ -122,9 +123,9 @@ where
 
         self.symbol_table.insert_let_expr(self.qual(id), sym);
 
-        self.scope.insert(name, sym);
+        self.scope.enter(name, sym);
         self.walk_expr(inside, tree)?;
-        self.scope.remove(&name);
+        self.scope.exit(name);
 
         ControlFlow::Continue(())
     }
@@ -142,9 +143,9 @@ where
 
         self.symbol_table.insert_lambda_expr(self.qual(id), sym);
 
-        self.scope.insert(name, sym);
+        self.scope.enter(name, sym);
         self.walk_expr(body, tree)?;
-        self.scope.remove(&name);
+        self.scope.exit(name);
 
         ControlFlow::Continue(())
     }

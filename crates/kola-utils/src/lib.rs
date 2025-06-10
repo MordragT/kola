@@ -7,6 +7,7 @@ pub mod errors;
 pub mod id;
 pub mod interner;
 pub mod io;
+pub mod scope;
 pub mod tracker;
 pub mod visit;
 

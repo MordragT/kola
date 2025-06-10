@@ -9,18 +9,16 @@ pub struct ShadowMap<K, V> {
     entries: Vec<(K, V)>,
 }
 
-impl<K, V> ShadowMap<K, V>
-where
-    K: Ord,
-{
-    /// Creates an empty `OrdMap`.
+// Basic methods that don't require Ord
+impl<K, V> ShadowMap<K, V> {
+    /// Creates an empty `ShadowMap`.
     pub fn new() -> Self {
         ShadowMap {
             entries: Vec::new(),
         }
     }
 
-    /// Creates an empty `OrdMap` with the specified capacity.
+    /// Creates an empty `ShadowMap` with the specified capacity.
     pub fn with_capacity(capacity: usize) -> Self {
         ShadowMap {
             entries: Vec::with_capacity(capacity),
@@ -37,6 +35,61 @@ where
         self.entries.is_empty()
     }
 
+    /// Removes all key-value pairs from the map.
+    pub fn clear(&mut self) {
+        self.entries.clear();
+    }
+
+    /// Returns the first key-value pair in the map, if any.
+    pub fn first(&self) -> Option<&(K, V)> {
+        self.entries.first()
+    }
+
+    /// Returns the last key-value pair in the map, if any.
+    pub fn last(&self) -> Option<&(K, V)> {
+        self.entries.last()
+    }
+
+    /// Returns an iterator over the keys of the map.
+    pub fn keys(&self) -> impl Iterator<Item = &K> {
+        self.entries.iter().map(|(k, _)| k)
+    }
+
+    /// Returns an iterator over the values of the map.
+    pub fn values(&self) -> impl Iterator<Item = &V> {
+        self.entries.iter().map(|(_, v)| v)
+    }
+
+    /// Returns a mutable iterator over the values of the map.
+    pub fn values_mut(&mut self) -> impl Iterator<Item = &mut V> {
+        self.entries.iter_mut().map(|(_, v)| v)
+    }
+
+    /// Returns an iterator over the key-value pairs of the map.
+    pub fn iter(&self) -> impl Iterator<Item = &(K, V)> {
+        self.entries.iter()
+    }
+
+    // /// Returns a mutable iterator over the key-value pairs of the map.
+    // pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut (K, V)> {
+    //     self.entries.iter_mut()
+    // }
+
+    /// Returns the capacity of the map.
+    pub fn capacity(&self) -> usize {
+        self.entries.capacity()
+    }
+
+    /// Reserves capacity for at least `additional` more elements.
+    pub fn reserve(&mut self, additional: usize) {
+        self.entries.reserve(additional);
+    }
+}
+
+impl<K, V> ShadowMap<K, V>
+where
+    K: Ord,
+{
     /// Performs a binary search for the specified key.
     ///
     /// If the key is found, returns the index of the first occurrence.
@@ -95,62 +148,9 @@ where
             Err(_) => None,
         }
     }
-
-    /// Removes all key-value pairs from the map.
-    pub fn clear(&mut self) {
-        self.entries.clear();
-    }
-
-    /// Returns the first key-value pair in the map, if any.
-    pub fn first(&self) -> Option<&(K, V)> {
-        self.entries.first()
-    }
-
-    /// Returns the last key-value pair in the map, if any.
-    pub fn last(&self) -> Option<&(K, V)> {
-        self.entries.last()
-    }
-
-    /// Returns an iterator over the keys of the map.
-    pub fn keys(&self) -> impl Iterator<Item = &K> {
-        self.entries.iter().map(|(k, _)| k)
-    }
-
-    /// Returns an iterator over the values of the map.
-    pub fn values(&self) -> impl Iterator<Item = &V> {
-        self.entries.iter().map(|(_, v)| v)
-    }
-
-    /// Returns a mutable iterator over the values of the map.
-    pub fn values_mut(&mut self) -> impl Iterator<Item = &mut V> {
-        self.entries.iter_mut().map(|(_, v)| v)
-    }
-
-    /// Returns an iterator over the key-value pairs of the map.
-    pub fn iter(&self) -> impl Iterator<Item = &(K, V)> {
-        self.entries.iter()
-    }
-
-    // /// Returns a mutable iterator over the key-value pairs of the map.
-    // pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut (K, V)> {
-    //     self.entries.iter_mut()
-    // }
-
-    /// Returns the capacity of the map.
-    pub fn capacity(&self) -> usize {
-        self.entries.capacity()
-    }
-
-    /// Reserves capacity for at least `additional` more elements.
-    pub fn reserve(&mut self, additional: usize) {
-        self.entries.reserve(additional);
-    }
 }
 
-impl<K, V> Default for ShadowMap<K, V>
-where
-    K: Ord,
-{
+impl<K, V> Default for ShadowMap<K, V> {
     fn default() -> Self {
         Self::new()
     }
