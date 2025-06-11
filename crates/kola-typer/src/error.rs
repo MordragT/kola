@@ -1,35 +1,67 @@
-use kola_span::IntoDiagnostic;
-use kola_utils::errors::Errors;
-use thiserror::Error;
+use kola_utils::{errors::Errors, fmt::DisplayWithInterner, interner::StrKey};
 
 use crate::types::{Kind, MonoType, TypeVar};
 
-pub type SemanticErrors = Errors<SemanticError>;
+pub type TypeErrors = Errors<TypeError>;
 
-#[derive(Debug, Clone, Error, PartialEq, Eq)]
-pub enum SemanticError {
-    #[error("Unbound: {0}")]
-    Unbound(String),
-    #[error("Occurs: {0}")]
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TypeError {
+    Unbound(StrKey),
     Occurs(TypeVar),
-    #[error("Cannot Unify: Expected `{expected}` but got `{actual}`")]
     CannotUnify {
         expected: MonoType,
         actual: MonoType,
     },
-    #[error("Cannot Unify Label: {label} : {expected} with {actual} because\n{cause}")]
     CannotUnifyLabel {
-        label: String,
+        label: StrKey,
         expected: MonoType,
         actual: MonoType,
-        cause: SemanticErrors,
+        cause: TypeErrors,
     },
-    #[error("Cannot Constrain: {expected:?} {actual}")]
-    CannotConstrain { expected: Kind, actual: MonoType },
-    #[error("Extra Label: {0}")]
-    ExtraLabel(String),
-    #[error("Missing Label: {0}")]
-    MissingLabel(String),
+    CannotConstrain {
+        expected: Kind,
+        actual: MonoType,
+    },
+    ExtraLabel(StrKey),
+    MissingLabel(StrKey),
 }
 
-impl IntoDiagnostic for SemanticError {}
+impl DisplayWithInterner for TypeError {
+    fn fmt(
+        &self,
+        f: &mut std::fmt::Formatter<'_>,
+        interner: &kola_utils::interner::StrInterner,
+    ) -> std::fmt::Result {
+        match self {
+            TypeError::Unbound(name) => writeln!(f, "Unbound: {}", interner[*name]),
+            TypeError::Occurs(var) => writeln!(f, "Occurs: {}", var),
+            TypeError::CannotUnify { expected, actual } => writeln!(
+                f,
+                "Cannot Unify: Expected `{}` but got `{}`",
+                expected, actual
+            ),
+            TypeError::CannotUnifyLabel {
+                label,
+                expected,
+                actual,
+                cause,
+            } => {
+                writeln!(
+                    f,
+                    "Cannot Unify Label: {} : {} with {} because",
+                    label, expected, actual
+                )?;
+                cause.fmt(f, interner)
+            }
+            TypeError::CannotConstrain { expected, actual } => {
+                writeln!(f, "Cannot Constrain: {:?} {}", expected, actual)
+            }
+            TypeError::ExtraLabel(label) => {
+                writeln!(f, "Extra Label: {}", interner[*label])
+            }
+            TypeError::MissingLabel(label) => {
+                writeln!(f, "Missing Label: {}", interner[*label])
+            }
+        }
+    }
+}

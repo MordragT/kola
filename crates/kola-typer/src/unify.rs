@@ -1,7 +1,5 @@
-use kola_utils::errors::Errors;
-
 use crate::{
-    error::SemanticError,
+    error::{TypeError, TypeErrors},
     substitute::{Substitutable, Substitution},
     types::*,
 };
@@ -15,11 +13,11 @@ pub trait Unifiable<Rhs = Self> {
     /// If successful, results in a solution to the unification problem,
     /// in the form of a substitution. If there is no solution to the
     /// unification problem then unification fails and an error is reported.
-    fn try_unify(&self, rhs: &Rhs, s: &mut Substitution) -> Result<(), Errors<SemanticError>>;
+    fn try_unify(&self, rhs: &Rhs, s: &mut Substitution) -> Result<(), TypeErrors>;
 }
 
 impl Unifiable for BuiltinType {
-    fn try_unify(&self, rhs: &Self, s: &mut Substitution) -> Result<(), Errors<SemanticError>> {
+    fn try_unify(&self, rhs: &Self, s: &mut Substitution) -> Result<(), TypeErrors> {
         let mut unifier = Unifier::new(s);
         unifier.unify_builtin(self, rhs);
         if unifier.errors.has_errors() {
@@ -31,7 +29,7 @@ impl Unifiable for BuiltinType {
 }
 
 impl Unifiable for FuncType {
-    fn try_unify(&self, rhs: &Self, s: &mut Substitution) -> Result<(), Errors<SemanticError>> {
+    fn try_unify(&self, rhs: &Self, s: &mut Substitution) -> Result<(), TypeErrors> {
         let mut unifier = Unifier::new(s);
         unifier.unify_func(self, rhs);
         if unifier.errors.has_errors() {
@@ -43,7 +41,7 @@ impl Unifiable for FuncType {
 }
 
 impl Unifiable for MonoType {
-    fn try_unify(&self, rhs: &Self, s: &mut Substitution) -> Result<(), Errors<SemanticError>> {
+    fn try_unify(&self, rhs: &Self, s: &mut Substitution) -> Result<(), TypeErrors> {
         let mut unifier = Unifier::new(s);
         unifier.unify_mono(self, rhs);
         if unifier.errors.has_errors() {
@@ -55,7 +53,7 @@ impl Unifiable for MonoType {
 }
 
 impl Unifiable for RowType {
-    fn try_unify(&self, rhs: &Self, s: &mut Substitution) -> Result<(), Errors<SemanticError>> {
+    fn try_unify(&self, rhs: &Self, s: &mut Substitution) -> Result<(), TypeErrors> {
         let mut unifier = Unifier::new(s);
         unifier.unify_record(self, rhs);
         if unifier.errors.has_errors() {
@@ -67,7 +65,7 @@ impl Unifiable for RowType {
 }
 
 impl Unifiable for TypeVar {
-    fn try_unify(&self, rhs: &Self, s: &mut Substitution) -> Result<(), Errors<SemanticError>> {
+    fn try_unify(&self, rhs: &Self, s: &mut Substitution) -> Result<(), TypeErrors> {
         let mut unifier = Unifier::new(s);
         unifier.unify_var(self, rhs);
         if unifier.errors.has_errors() {
@@ -79,7 +77,7 @@ impl Unifiable for TypeVar {
 }
 
 impl Unifiable<MonoType> for TypeVar {
-    fn try_unify(&self, rhs: &MonoType, s: &mut Substitution) -> Result<(), Errors<SemanticError>> {
+    fn try_unify(&self, rhs: &MonoType, s: &mut Substitution) -> Result<(), TypeErrors> {
         let mut unifier = Unifier::new(s);
         unifier.bind_var(self, rhs);
         if unifier.errors.has_errors() {
@@ -92,21 +90,21 @@ impl Unifiable<MonoType> for TypeVar {
 
 struct Unifier<'s> {
     substitution: &'s mut Substitution,
-    errors: Errors<SemanticError>,
+    errors: TypeErrors,
 }
 
 impl<'s> Unifier<'s> {
     fn new(substitution: &'s mut Substitution) -> Self {
         Self {
             substitution,
-            errors: Errors::new(),
+            errors: TypeErrors::new(),
         }
     }
 
     fn branch_errors<F, T, E>(&mut self, f: F, context: E) -> T
     where
         F: FnOnce(&mut Self) -> T,
-        E: FnOnce(Errors<SemanticError>) -> SemanticError,
+        E: FnOnce(TypeErrors) -> TypeError,
     {
         let former = self.errors.take();
         let result = f(self);
@@ -118,7 +116,7 @@ impl<'s> Unifier<'s> {
 
     fn unify_builtin(&mut self, lhs: &BuiltinType, rhs: &BuiltinType) {
         if lhs != rhs {
-            self.errors.push(SemanticError::CannotUnify {
+            self.errors.push(TypeError::CannotUnify {
                 expected: lhs.into(),
                 actual: rhs.into(),
             });
@@ -140,7 +138,7 @@ impl<'s> Unifier<'s> {
             (MonoType::Var(var), with) => self.bind_var(var, with),
             (with, MonoType::Var(var)) => self.bind_var(var, with),
             (l, r) => {
-                self.errors.push(SemanticError::CannotUnify {
+                self.errors.push(TypeError::CannotUnify {
                     expected: l.clone(),
                     actual: r.clone(),
                 });
@@ -185,7 +183,7 @@ impl<'s> Unifier<'s> {
             ) if a == b && l == r => {
                 self.branch_errors(
                     |ctx| ctx.unify_mono(t, u),
-                    |cause| SemanticError::CannotUnifyLabel {
+                    |cause| TypeError::CannotUnifyLabel {
                         label: a.clone(),
                         expected: t.clone(),
                         actual: u.clone(),
@@ -202,7 +200,7 @@ impl<'s> Unifier<'s> {
                     head: Property { k: b, .. },
                     tail: MonoType::Var(r),
                 },
-            ) if a != b && l == r => self.errors.push(SemanticError::CannotUnify {
+            ) if a != b && l == r => self.errors.push(TypeError::CannotUnify {
                 expected: MonoType::from(lhs.clone()),
                 actual: MonoType::from(rhs.clone()),
             }),
@@ -254,7 +252,7 @@ impl<'s> Unifier<'s> {
                     ..
                 },
                 RowType::Empty,
-            ) => self.errors.push(SemanticError::MissingLabel(a.clone())),
+            ) => self.errors.push(TypeError::MissingLabel(a.clone())),
             // If we are expecting {} but find {a: u | r}, label `a` is extra.
             (
                 RowType::Empty,
@@ -262,8 +260,8 @@ impl<'s> Unifier<'s> {
                     head: Property { k: a, .. },
                     ..
                 },
-            ) => self.errors.push(SemanticError::ExtraLabel(a.clone())),
-            _ => self.errors.push(SemanticError::CannotUnify {
+            ) => self.errors.push(TypeError::ExtraLabel(a.clone())),
+            _ => self.errors.push(TypeError::CannotUnify {
                 expected: MonoType::from(lhs.clone()),
                 actual: MonoType::from(rhs.clone()),
             }),
@@ -287,7 +285,7 @@ impl<'s> Unifier<'s> {
         if let MonoType::Var(with) = with {
             self.unify_var(var, with);
         } else if with.contains(var) {
-            self.errors.push(SemanticError::Occurs(*var));
+            self.errors.push(TypeError::Occurs(*var));
         } else {
             self.substitution.insert(*var, with.clone());
         }

@@ -392,6 +392,7 @@ dependencies = [
  "kola-resolver",
  "kola-span",
  "kola-syntax",
+ "kola-typer",
  "kola-utils",
  "log",
  "owo-colors",

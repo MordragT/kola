@@ -1,14 +1,14 @@
-use std::ops::ControlFlow;
+use std::{ops::ControlFlow, rc::Rc};
 
 use kola_resolver::{QualId, symbol::SymbolTable};
-use kola_span::{Diagnostic, IntoDiagnostic, Loc, Located, Report};
+use kola_span::{Diagnostic, Loc, Located, Report};
 use kola_syntax::prelude::*;
 use kola_tree::prelude::*;
 use kola_utils::errors::Errors;
 
 use crate::{
     env::{KindEnv, TypeEnv},
-    error::SemanticError,
+    error::TypeErrors,
     phase::{TypePhase, TypedNodes},
     scope::{BoundVars, TypeScope},
     substitute::{Substitutable, Substitution},
@@ -31,8 +31,6 @@ pub enum Constraint {
         span: Loc,
     },
 }
-
-pub type Error = Located<Errors<SemanticError>>;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Constraints(Vec<Constraint>);
@@ -61,7 +59,11 @@ impl Constraints {
     }
 
     // TODO error handling do not propagate but keep trace of errors
-    pub fn solve(self, s: &mut Substitution, kind_env: &mut KindEnv, report: &mut Report) {
+    pub fn solve(
+        self,
+        s: &mut Substitution,
+        kind_env: &mut KindEnv,
+    ) -> Result<(), Located<TypeErrors>> {
         // TODO infer Types first ?
         for c in self.0 {
             match c {
@@ -70,22 +72,24 @@ impl Constraints {
                     actual,
                     span,
                 } => {
-                    if let Err(e) = actual.apply_cow(s).constrain(expected, kind_env) {
-                        report.add_diagnostic(e.into_diagnostic(span));
-                        return;
-                    }
+                    actual
+                        .apply_cow(s)
+                        .constrain(expected, kind_env)
+                        .map_err(|e| (Errors::unit(e), span))?;
                 }
                 Constraint::Ty {
                     expected,
                     actual,
                     span,
                 } => {
-                    if let Err(e) = expected.try_unify(&actual, s) {
-                        todo!()
-                    }
+                    expected
+                        .try_unify(&actual, s)
+                        .map_err(|errors| ((errors, span)))?;
                 }
             }
         }
+
+        Ok(())
     }
 }
 
@@ -110,7 +114,7 @@ pub struct Typer<'a, N> {
     type_scope: TypeScope,
     kind_scope: KindEnv,
     types: TypedNodes,
-    spans: Locations,
+    spans: Rc<Locations>,
     env: &'a TypeEnv,
     symbol_table: &'a SymbolTable,
 }
@@ -118,7 +122,7 @@ pub struct Typer<'a, N> {
 impl<'a, N> Typer<'a, N> {
     pub fn new(
         root_id: QualId<N>,
-        spans: Locations,
+        spans: Rc<Locations>,
         env: &'a TypeEnv,
         symbol_table: &'a SymbolTable,
     ) -> Self {
@@ -135,7 +139,11 @@ impl<'a, N> Typer<'a, N> {
         }
     }
 
-    pub fn solve<Tree>(mut self, tree: &Tree, report: &mut Report) -> Result<TypedNodes, Error>
+    pub fn solve<Tree>(
+        mut self,
+        tree: &Tree,
+        report: &mut Report,
+    ) -> Result<TypedNodes, Located<TypeErrors>>
     where
         Tree: TreeView,
         Id<N>: Visitable<Tree>,
@@ -145,7 +153,7 @@ impl<'a, N> Typer<'a, N> {
         match root.visit_by(&mut self, tree) {
             ControlFlow::Break(e) => {
                 report.add_diagnostic(e);
-                return None;
+                return Ok(self.types);
             }
             ControlFlow::Continue(()) => (),
         }
@@ -158,15 +166,10 @@ impl<'a, N> Typer<'a, N> {
             ..
         } = self;
 
-        cons.solve(&mut subs, &mut k_env, report);
-
-        if !report.is_empty() {
-            return None;
-        }
-
+        cons.solve(&mut subs, &mut k_env)?;
         types.apply_mut(&mut subs);
 
-        Some(types)
+        Ok(types)
     }
 
     #[inline]
@@ -792,15 +795,21 @@ where
 
 #[cfg(test)]
 mod tests {
+    use std::rc::Rc;
+
     use camino::Utf8PathBuf;
     use kola_resolver::symbol::SymbolTable;
-    use kola_span::{Loc, Report, Span};
+    use kola_span::{Loc, Located, Report, Span};
     use kola_syntax::loc::Locations;
     use kola_tree::prelude::*;
     use kola_utils::interner::{PathInterner, PathKey, StrInterner};
 
-    use super::{Error, TypedNodes, Typer};
-    use crate::{env::TypeEnv, error::SemanticError, types::*};
+    use super::{TypedNodes, Typer};
+    use crate::{
+        env::TypeEnv,
+        error::{TypeError, TypeErrors},
+        types::*,
+    };
 
     fn mocked_key() -> PathKey {
         let mut interner = PathInterner::new();
@@ -816,7 +825,7 @@ mod tests {
         mut builder: TreeBuilder,
         node: Id<T>,
         interner: &mut StrInterner,
-    ) -> Result<TypedNodes, Error>
+    ) -> Result<TypedNodes, Located<TypeErrors>>
     where
         node::Expr: From<Id<T>>,
     {
@@ -832,7 +841,7 @@ mod tests {
         let root_id = builder.insert(node::Module(vec![bind]));
 
         let tree = builder.finish(root_id);
-        let spans = mocked_spans(path_key, &tree);
+        let spans = Rc::new(mocked_spans(path_key, &tree));
 
         let qual_id = (path_key, root_id);
         let mut report = Report::new();
@@ -873,7 +882,7 @@ mod tests {
 
         assert_eq!(
             errors[0],
-            SemanticError::CannotUnify {
+            TypeError::CannotUnify {
                 expected: MonoType::BOOL,
                 actual: MonoType::NUM
             }
@@ -893,7 +902,7 @@ mod tests {
 
         assert_eq!(
             errors[0],
-            SemanticError::CannotUnify {
+            TypeError::CannotUnify {
                 expected: MonoType::BOOL,
                 actual: MonoType::NUM
             }
@@ -951,7 +960,7 @@ mod tests {
 
         assert_eq!(
             errors[0],
-            SemanticError::CannotUnify {
+            TypeError::CannotUnify {
                 expected: MonoType::NUM,
                 actual: MonoType::CHAR,
             }

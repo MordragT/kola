@@ -3,8 +3,9 @@ use std::io;
 use camino::Utf8Path;
 use kola_print::{PrintOptions, prelude::Bump};
 use kola_resolver::prelude::*;
-use kola_span::Report;
-use kola_utils::{interner::StrInterner, io::FileSystem};
+use kola_span::{IntoDiagnostic, Report};
+use kola_typer::{env::TypeEnv, typer::Typer};
+use kola_utils::{fmt::StrInternerExt, interner::StrInterner, io::FileSystem};
 
 pub enum DriverOptions {}
 
@@ -46,6 +47,26 @@ impl Driver {
 
         if !self.report.is_empty() {
             return self.report.eprint(&source_manager);
+        }
+
+        // TODO actually fill the `TypeEnv` with the necessary information
+        let mut env = TypeEnv::new();
+
+        for (module_sym, module_scope) in module_scopes {
+            let path_key = module_scope.path_key();
+
+            let spans = topography[path_key].clone();
+            let tree = &*forest[path_key];
+
+            match Typer::new(module_scope.id(), spans, &env, &symbol_table)
+                .solve(tree, &mut self.report)
+            {
+                Ok(types) => todo!(),
+                Err((errors, span)) => {
+                    let diag = self.interner.display(&errors).into_diagnostic(span);
+                    self.report.add_diagnostic(diag);
+                }
+            }
         }
 
         Ok(())

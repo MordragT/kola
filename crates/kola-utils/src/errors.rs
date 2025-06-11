@@ -4,6 +4,8 @@ use std::{
     slice, vec,
 };
 
+use crate::fmt::DisplayWithInterner;
+
 /// An error type which can represent multiple errors.
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
 pub struct Errors<T> {
@@ -20,6 +22,11 @@ impl<T> Errors<T> {
     /// Creates a new, empty `Errors` instance.
     pub fn new() -> Errors<T> {
         Errors::from(Vec::new())
+    }
+
+    /// Creates a new `Errors` instance with a single error.
+    pub fn unit(err: T) -> Errors<T> {
+        Errors { errors: vec![err] }
     }
 
     /// Returns true if `self` contains any errors
@@ -73,6 +80,24 @@ impl<T> Errors<T> {
         range: impl std::ops::RangeBounds<usize>,
     ) -> impl Iterator<Item = T> + '_ {
         self.errors.drain(range)
+    }
+}
+
+impl<T> DisplayWithInterner for Errors<T>
+where
+    T: DisplayWithInterner,
+{
+    fn fmt(
+        &self,
+        f: &mut fmt::Formatter<'_>,
+        interner: &crate::interner::StrInterner,
+    ) -> fmt::Result {
+        for err in &self.errors {
+            err.fmt(f, interner)?;
+            '\n'.fmt(f)?;
+        }
+
+        Ok(())
     }
 }
 

@@ -1,4 +1,4 @@
-use std::{collections::HashMap, rc::Rc};
+use std::{collections::HashMap, ops::Index, rc::Rc};
 
 use kola_tree::{
     id::Id,
@@ -39,5 +39,13 @@ impl Forest {
     pub fn node_count(&self, path: PathKey) -> usize {
         let tree = &self.0[&path];
         tree.count()
+    }
+}
+
+impl Index<PathKey> for Forest {
+    type Output = Rc<Tree>;
+
+    fn index(&self, path: PathKey) -> &Self::Output {
+        self.0.get(&path).unwrap()
     }
 }

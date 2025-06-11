@@ -1,6 +1,6 @@
-use ariadne::{Config, IndexType};
 use chumsky::error::Rich;
 use derive_more::Display;
+use kola_utils::fmt::{DisplayWithInterner, WithInterner};
 use owo_colors::{OwoColorize, Style};
 use std::{
     fmt,
@@ -8,33 +8,6 @@ use std::{
 };
 
 use crate::{Loc, Located, SourceManager};
-
-// pub trait HasMutReport: HasReport {
-//     /// Returns a mutable reference to the report associated with this type.
-//     fn report_mut(&mut self) -> &mut Report;
-
-//     fn write_report(&self, w: impl Write) -> io::Result<()>
-//     where
-//         Self: HasSourceManager,
-//     {
-//         // TODO eliminate clone
-//         self.report().clone().write(w, self.source_manager())
-//     }
-
-//     fn print_report(&self) -> io::Result<()>
-//     where
-//         Self: HasSourceManager,
-//     {
-//         self.write_report(io::stdout())
-//     }
-
-//     fn eprint_report(&self) -> io::Result<()>
-//     where
-//         Self: HasSourceManager,
-//     {
-//         self.write_report(io::stderr())
-//     }
-// }
 
 /// Represents a report containing multiple issues and diagnostics.
 #[derive(Debug, Clone, Default)]
@@ -234,6 +207,8 @@ pub trait IntoDiagnostic: fmt::Display + Sized {
 }
 
 impl IntoDiagnostic for io::Error {}
+
+impl<T> IntoDiagnostic for WithInterner<'_, T> where T: DisplayWithInterner {}
 
 /// Represents a diagnostic message with source location information.
 ///

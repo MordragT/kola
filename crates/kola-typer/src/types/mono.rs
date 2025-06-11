@@ -6,7 +6,7 @@ use std::fmt;
 use super::{BuiltinType, FuncType, ListType, PolyType, Property, RowType, TypeVar, Typed};
 use crate::{
     env::KindEnv,
-    error::SemanticError,
+    error::TypeError,
     substitute::{Substitutable, Substitution},
 };
 
@@ -127,7 +127,7 @@ impl MonoType {
 }
 
 impl Typed for MonoType {
-    fn constrain(&self, with: super::Kind, env: &mut KindEnv) -> Result<(), SemanticError> {
+    fn constrain(&self, with: super::Kind, env: &mut KindEnv) -> Result<(), TypeError> {
         match self {
             Self::Builtin(b) => b.constrain(with, env),
             Self::Func(f) => f.constrain(with, env),

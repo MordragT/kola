@@ -4,6 +4,7 @@
 pub mod convert;
 pub mod dependency;
 pub mod errors;
+pub mod fmt;
 pub mod id;
 pub mod interner;
 pub mod io;

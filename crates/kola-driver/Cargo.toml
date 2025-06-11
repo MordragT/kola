@@ -9,6 +9,7 @@ kola-syntax.workspace = true
 kola-utils.workspace = true
 kola-span.workspace = true
 kola-print.workspace = true
+kola-typer.workspace = true
 camino.workspace = true
 log.workspace = true
 owo-colors.workspace = true

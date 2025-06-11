@@ -19,7 +19,7 @@ pub mod unify;
 
 pub mod prelude {
     pub use crate::env::{KindEnv, TypeEnv};
-    pub use crate::error::{SemanticError, SemanticErrors};
+    pub use crate::error::{TypeError, TypeErrors};
     pub use crate::phase::{TypeAnnotations, TypePhase};
     pub use crate::print::TypeDecorator;
     pub use crate::scope::{BoundVars, TypeScope};

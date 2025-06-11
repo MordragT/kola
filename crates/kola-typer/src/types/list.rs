@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 
 use crate::{
     env::KindEnv,
-    error::SemanticError,
+    error::TypeError,
     substitute::{Substitutable, Substitution},
 };
 
@@ -28,10 +28,10 @@ impl fmt::Display for ListType {
 }
 
 impl Typed for ListType {
-    fn constrain(&self, with: Kind, _env: &mut KindEnv) -> Result<(), SemanticError> {
+    fn constrain(&self, with: Kind, _env: &mut KindEnv) -> Result<(), TypeError> {
         match with {
             Kind::Addable | Kind::Comparable | Kind::Equatable => Ok(()),
-            _ => Err(SemanticError::CannotConstrain {
+            _ => Err(TypeError::CannotConstrain {
                 expected: with,
                 actual: self.clone().into(),
             }),
