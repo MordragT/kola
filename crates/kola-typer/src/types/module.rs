@@ -2,7 +2,7 @@ use kola_collections::OrdMap;
 use kola_resolver::symbol::{ModuleSym, TypeSym, ValueSym};
 use kola_utils::interner::StrKey;
 
-use crate::env::TypeEnvironment;
+use crate::env::TypeEnv;
 
 /// Represents the interface/signature of a module, mapping exported names to their types.
 ///
@@ -63,7 +63,7 @@ impl ModuleType {
 
     /// Returns true if this module type subsumes the other (contains all its requirements)
     /// In other words: self ⊇ other (self is a superset of other)
-    pub fn subsumes(&self, other: &Self, env: &TypeEnvironment) -> bool {
+    pub fn subsumes(&self, other: &Self, env: &TypeEnv) -> bool {
         if self.modules.len() < other.modules.len()
             || self.types.len() < other.types.len()
             || self.values.len() < other.values.len()
@@ -104,7 +104,7 @@ impl ModuleType {
         true
     }
 
-    pub fn alpha_equivalent(&self, other: &Self, env: &TypeEnvironment) -> bool {
+    pub fn alpha_equivalent(&self, other: &Self, env: &TypeEnv) -> bool {
         if self.modules.len() != other.modules.len()
             || self.types.len() != other.types.len()
             || self.values.len() != other.values.len()

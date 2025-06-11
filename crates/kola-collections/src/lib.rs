@@ -5,6 +5,8 @@ pub mod cons;
 pub mod im_bi_map;
 pub mod im_shadow_map;
 pub mod shadow_map;
+pub mod shadow_stack;
+pub mod stack_map;
 
 pub mod im_ord_map {
     pub use imbl::ordmap::{ConsumingIter as IntoIter, Iter};
@@ -85,3 +87,5 @@ pub use hash_set::HashSet;
 pub use ord_map::OrdMap;
 pub use ord_set::OrdSet;
 pub use shadow_map::ShadowMap;
+pub use shadow_stack::ShadowStack;
+pub use stack_map::StackMap;

@@ -18,7 +18,7 @@ mod row;
 mod var;
 mod visit;
 
-use super::{error::SemanticError, scope::KindScope};
+use super::{env::KindEnv, error::SemanticError};
 use std::ops::ControlFlow;
 
 /// Represents a constraint on a type variable to a specific kind (*i.e.*, a type class).
@@ -36,7 +36,7 @@ pub enum Kind {
 }
 
 pub trait Typed: TypeVisitable {
-    fn constrain(&self, with: Kind, env: &mut KindScope) -> Result<(), SemanticError>;
+    fn constrain(&self, with: Kind, env: &mut KindEnv) -> Result<(), SemanticError>;
 
     /// occurs check
     fn contains(&self, var: &TypeVar) -> bool {

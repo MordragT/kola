@@ -1024,6 +1024,7 @@ mod tests {
         let mut interner = PathInterner::new();
         interner.intern(Utf8PathBuf::from("test"))
     }
+
     fn try_parse_str_with<'t, T>(
         text: &'t str,
         parser: impl KolaParser<'t, T> + 't,
@@ -1036,6 +1037,7 @@ mod tests {
 
         try_parse_with(input, parser, interner).unwrap()
     }
+
     #[test]
     fn pat() {
         let mut interner = StrInterner::new();

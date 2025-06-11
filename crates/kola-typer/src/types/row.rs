@@ -4,8 +4,8 @@ use std::fmt;
 
 use super::{Kind, MonoType, Typed};
 use crate::{
+    env::KindEnv,
     error::SemanticError,
-    scope::KindScope,
     substitute::{Substitutable, Substitution, merge},
 };
 
@@ -74,7 +74,7 @@ impl fmt::Display for RowType {
 }
 
 impl Typed for RowType {
-    fn constrain(&self, with: Kind, _env: &mut KindScope) -> Result<(), SemanticError> {
+    fn constrain(&self, with: Kind, _env: &mut KindEnv) -> Result<(), SemanticError> {
         match with {
             Kind::Record => Ok(()),
             _ => Err(SemanticError::CannotConstrain {

@@ -1,9 +1,6 @@
-use indexmap::IndexMap;
 use kola_utils::{interner::StrKey, scope::LinearScope};
 
-use crate::types::{Kind, PolyType, TypeVar};
-
-pub type KindScope = IndexMap<TypeVar, Vec<Kind>>;
+use crate::types::{PolyType, TypeVar};
 
 pub trait BoundVars {
     /// Extends the given vector with the type variables that are bound in this type.

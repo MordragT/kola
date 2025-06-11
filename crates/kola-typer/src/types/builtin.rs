@@ -2,7 +2,7 @@ use serde::{Deserialize, Serialize};
 use std::fmt;
 
 use super::{Kind, Typed};
-use crate::{error::SemanticError, scope::KindScope};
+use crate::{env::KindEnv, error::SemanticError};
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum BuiltinType {
@@ -24,7 +24,7 @@ impl fmt::Display for BuiltinType {
 }
 
 impl Typed for BuiltinType {
-    fn constrain(&self, with: Kind, _env: &mut KindScope) -> Result<(), SemanticError> {
+    fn constrain(&self, with: Kind, _env: &mut KindEnv) -> Result<(), SemanticError> {
         match self {
             BuiltinType::Bool => match with {
                 Kind::Equatable | Kind::Stringable => Ok(()),

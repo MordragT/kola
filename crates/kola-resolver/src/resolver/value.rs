@@ -125,7 +125,7 @@ where
 
         self.scope.enter(name, sym);
         self.walk_expr(inside, tree)?;
-        self.scope.exit(name);
+        self.scope.exit(&name);
 
         ControlFlow::Continue(())
     }
@@ -145,7 +145,7 @@ where
 
         self.scope.enter(name, sym);
         self.walk_expr(body, tree)?;
-        self.scope.exit(name);
+        self.scope.exit(&name);
 
         ControlFlow::Continue(())
     }

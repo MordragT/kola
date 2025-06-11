@@ -1,8 +1,11 @@
 use std::{collections::HashMap, ops::Index};
 
+use indexmap::IndexMap;
 use kola_resolver::symbol::{ModuleSym, ModuleTag, Sym, TypeSym, TypeTag, ValueSym, ValueTag};
 
-use crate::types::{ModuleType, PolyType};
+use crate::types::{Kind, ModuleType, PolyType, TypeVar};
+
+pub type KindEnv = IndexMap<TypeVar, Vec<Kind>>;
 
 #[derive(Debug, Clone, Default)]
 pub struct SymbolCache<T>(HashMap<(Sym<T>, Sym<T>), bool>);
@@ -45,7 +48,7 @@ pub type ModuleCache = SymbolCache<ModuleTag>;
 // - implement cached equivalence checks for types, modules and values
 
 #[derive(Debug, Clone, Default)]
-pub struct TypeEnvironment {
+pub struct TypeEnv {
     pub values: HashMap<ValueSym, PolyType>,
     pub equiv_values: ValueCache,
 
@@ -56,7 +59,7 @@ pub struct TypeEnvironment {
     pub equiv_modules: ModuleCache,
 }
 
-impl TypeEnvironment {
+impl TypeEnv {
     pub fn new() -> Self {
         Self::default()
     }
@@ -128,7 +131,7 @@ impl TypeEnvironment {
     }
 }
 
-impl Index<ValueSym> for TypeEnvironment {
+impl Index<ValueSym> for TypeEnv {
     type Output = PolyType;
 
     fn index(&self, sym: ValueSym) -> &Self::Output {
@@ -138,7 +141,7 @@ impl Index<ValueSym> for TypeEnvironment {
     }
 }
 
-impl Index<TypeSym> for TypeEnvironment {
+impl Index<TypeSym> for TypeEnv {
     type Output = PolyType;
 
     fn index(&self, sym: TypeSym) -> &Self::Output {
@@ -148,7 +151,7 @@ impl Index<TypeSym> for TypeEnvironment {
     }
 }
 
-impl Index<ModuleSym> for TypeEnvironment {
+impl Index<ModuleSym> for TypeEnv {
     type Output = ModuleType;
 
     fn index(&self, sym: ModuleSym) -> &Self::Output {

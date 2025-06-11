@@ -25,16 +25,6 @@ impl<K, V> ImShadowMap<K, V> {
         self.entries.is_empty()
     }
 
-    /// Returns the first key-value pair in the map, if any.
-    pub fn first(&self) -> Option<&(K, V)> {
-        self.entries.front()
-    }
-
-    /// Returns the last key-value pair in the map, if any.
-    pub fn last(&self) -> Option<&(K, V)> {
-        self.entries.back()
-    }
-
     /// Returns an iterator over the keys of the map.
     pub fn keys(&self) -> impl Iterator<Item = &K> {
         self.entries.iter().map(|(k, _)| k)
@@ -196,16 +186,3 @@ impl<'a, K, V> IntoIterator for &'a ImShadowMap<K, V> {
         self.entries.iter()
     }
 }
-
-// impl<'a, K, V> IntoIterator for &'a mut ImShadowMap<K, V>
-// where
-//     K: Clone,
-//     V: Clone,
-// {
-//     type Item = &'a mut (K, V);
-//     type IntoIter = imbl::vector::IterMut<'a, (K, V), crate::Ptr>;
-
-//     fn into_iter(self) -> Self::IntoIter {
-//         self.entries.iter_mut()
-//     }
-// }

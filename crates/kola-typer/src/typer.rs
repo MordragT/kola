@@ -1,16 +1,16 @@
-use std::{ops::ControlFlow, rc::Rc};
+use std::ops::ControlFlow;
 
-use kola_resolver::{QualId, scope::ModuleScope, symbol::SymbolTable};
+use kola_resolver::{QualId, symbol::SymbolTable};
 use kola_span::{Diagnostic, IntoDiagnostic, Loc, Located, Report};
 use kola_syntax::prelude::*;
 use kola_tree::prelude::*;
 use kola_utils::errors::Errors;
 
 use crate::{
-    env::TypeEnvironment,
+    env::{KindEnv, TypeEnv},
     error::SemanticError,
     phase::{TypePhase, TypedNodes},
-    scope::{BoundVars, KindScope, TypeScope},
+    scope::{BoundVars, TypeScope},
     substitute::{Substitutable, Substitution},
     types::{Kind, MonoType, PolyType, Property, TypeVar, Typed},
     unify::Unifiable,
@@ -61,7 +61,7 @@ impl Constraints {
     }
 
     // TODO error handling do not propagate but keep trace of errors
-    pub fn solve(self, s: &mut Substitution, kind_env: &mut KindScope, report: &mut Report) {
+    pub fn solve(self, s: &mut Substitution, kind_env: &mut KindEnv, report: &mut Report) {
         // TODO infer Types first ?
         for c in self.0 {
             match c {
@@ -103,31 +103,31 @@ impl Constraints {
 // until **after** constraint solving and substitution.
 // for that I need to cache the NodeIDs of the "public" types
 
-pub struct Typer<'a> {
-    scope: Rc<ModuleScope>,
+pub struct Typer<'a, N> {
+    root_id: QualId<N>,
     subs: Substitution,
     cons: Constraints,
     type_scope: TypeScope,
-    kind_scope: KindScope,
+    kind_scope: KindEnv,
     types: TypedNodes,
     spans: Locations,
-    env: &'a TypeEnvironment,
+    env: &'a TypeEnv,
     symbol_table: &'a SymbolTable,
 }
 
-impl<'a> Typer<'a> {
+impl<'a, N> Typer<'a, N> {
     pub fn new(
-        scope: Rc<ModuleScope>,
+        root_id: QualId<N>,
         spans: Locations,
-        env: &'a TypeEnvironment,
+        env: &'a TypeEnv,
         symbol_table: &'a SymbolTable,
     ) -> Self {
         Self {
-            scope,
+            root_id,
             subs: Substitution::empty(),
             cons: Constraints::new(),
             type_scope: TypeScope::new(),
-            kind_scope: KindScope::new(),
+            kind_scope: KindEnv::new(),
             types: TypedNodes::new(),
             spans,
             env,
@@ -135,8 +135,14 @@ impl<'a> Typer<'a> {
         }
     }
 
-    pub fn solve(mut self, tree: &Tree, report: &mut Report) -> Option<TypedNodes> {
-        match self.scope.node_id().visit_by(&mut self, tree) {
+    pub fn solve<Tree>(mut self, tree: &Tree, report: &mut Report) -> Result<TypedNodes, Error>
+    where
+        Tree: TreeView,
+        Id<N>: Visitable<Tree>,
+    {
+        let root = self.root_id.1;
+
+        match root.visit_by(&mut self, tree) {
             ControlFlow::Break(e) => {
                 report.add_diagnostic(e);
                 return None;
@@ -182,7 +188,7 @@ impl<'a> Typer<'a> {
 
     #[inline]
     pub fn qual<T>(&self, id: Id<T>) -> QualId<T> {
-        (self.scope.path_key(), id)
+        (self.root_id.0, id)
     }
 
     fn partial_restrict(
@@ -211,9 +217,10 @@ impl<'a> Typer<'a> {
     }
 }
 
-impl<'a, T> Visitor<T> for Typer<'a>
+impl<'a, T, N> Visitor<T> for Typer<'a, N>
 where
     T: TreeView,
+    Id<N>: Visitable<T>,
 {
     type BreakValue = Diagnostic;
 
@@ -785,52 +792,52 @@ where
 
 #[cfg(test)]
 mod tests {
-
-    use std::collections::HashMap;
-
-    use kola_span::Loc;
+    use camino::Utf8PathBuf;
+    use kola_resolver::symbol::SymbolTable;
+    use kola_span::{Loc, Report, Span};
     use kola_syntax::loc::Locations;
     use kola_tree::prelude::*;
+    use kola_utils::interner::{PathInterner, PathKey, StrInterner};
 
     use super::{Error, TypedNodes, Typer};
-    use crate::{error::SemanticError, types::*};
+    use crate::{env::TypeEnv, error::SemanticError, types::*};
 
-    fn mocked_spans(tree: &impl TreeView) -> Locations {
-        let span = Loc::new(0, 0);
+    fn mocked_key() -> PathKey {
+        let mut interner = PathInterner::new();
+        interner.intern(Utf8PathBuf::from("test"))
+    }
+
+    fn mocked_spans(path_key: PathKey, tree: &impl TreeView) -> Locations {
+        let span = Loc::new(path_key, Span::new(0, 0));
         tree.metadata_with(|node| Meta::default_with(span, node.kind()))
     }
-    fn solve_expr<T>(mut builder: TreeBuilder, node: Id<T>) -> Result<TypedNodes, Error>
+
+    fn solve_expr<T>(
+        mut builder: TreeBuilder,
+        node: Id<T>,
+        interner: &mut StrInterner,
+    ) -> Result<TypedNodes, Error>
     where
         node::Expr: From<Id<T>>,
     {
+        let path_key = mocked_key();
+
         let bind = node::Bind::value_in(
             node::Vis::None,
-            "_".into(),
+            interner.intern("_").into(),
             None,
             node::Expr::from(node),
             &mut builder,
         );
-        let root = builder.insert(node::Module(vec![bind]));
-        let tree = builder.finish(root);
+        let root_id = builder.insert(node::Module(vec![bind]));
 
-        let spans = mocked_spans(&tree);
+        let tree = builder.finish(root_id);
+        let spans = mocked_spans(path_key, &tree);
 
-        let span = *spans.meta(root);
-        let module_path = ModulePath::new(
-            root,
-            FilePath::new_unchecked("/mocked/path.kl", "path.kl"),
-            span,
-        );
+        let qual_id = (path_key, root_id);
+        let mut report = Report::new();
 
-        Typer::new(
-            module_path,
-            ModuleInfoBuilder::new().finish(),
-            spans,
-            &ModuleInfoTable::new(),
-            &HashMap::new(),
-            &TypeAnnotations::new(),
-        )
-        .solve(&tree)
+        Typer::new(qual_id, spans, &TypeEnv::new(), &SymbolTable::new()).solve(&tree, &mut report)
     }
 
     #[test]
@@ -838,7 +845,7 @@ mod tests {
         let mut builder = TreeBuilder::new();
         let lit = builder.insert(node::LiteralExpr::Num(10.0));
 
-        let types = solve_expr(builder, lit).unwrap();
+        let types = solve_expr(builder, lit, &mut StrInterner::new()).unwrap();
 
         assert_eq!(types.meta(lit), &MonoType::NUM);
     }
@@ -850,7 +857,7 @@ mod tests {
         let target = builder.insert(node::LiteralExpr::Num(10.0));
         let unary = node::UnaryExpr::new_in(node::UnaryOp::Neg, target.into(), &mut builder);
 
-        let types = solve_expr(builder, unary).unwrap();
+        let types = solve_expr(builder, unary, &mut StrInterner::new()).unwrap();
 
         assert_eq!(types.meta(unary), &MonoType::NUM);
     }
@@ -862,7 +869,7 @@ mod tests {
         let target = builder.insert(node::LiteralExpr::Num(10.0));
         let unary = node::UnaryExpr::new_in(node::UnaryOp::Not, target.into(), &mut builder);
 
-        let (errors, _) = solve_expr(builder, unary).unwrap_err();
+        let (errors, _) = solve_expr(builder, unary, &mut StrInterner::new()).unwrap_err();
 
         assert_eq!(
             errors[0],
@@ -882,7 +889,7 @@ mod tests {
         let binary =
             node::BinaryExpr::new_in(node::BinaryOp::Eq, left.into(), right.into(), &mut builder);
 
-        let (errors, _) = solve_expr(builder, binary).unwrap_err();
+        let (errors, _) = solve_expr(builder, binary, &mut StrInterner::new()).unwrap_err();
 
         assert_eq!(
             errors[0],
@@ -895,19 +902,24 @@ mod tests {
 
     #[test]
     fn let_() {
+        let mut interner = StrInterner::new();
         let mut builder = TreeBuilder::new();
 
         let value = builder.insert(node::LiteralExpr::Num(10.0));
-        let segment = builder.insert(node::Name::from("x"));
-        let inside = builder.insert(node::PathExpr(vec![segment]));
+        let binding = builder.insert(node::Name::from(interner.intern("x")));
+        let inside = builder.insert(node::PathExpr {
+            path: None,
+            binding,
+            select: vec![],
+        });
         let let_ = node::LetExpr::new_in(
-            node::Name::from("x"),
+            node::Name::from(interner.intern("x")),
             value.into(),
             inside.into(),
             &mut builder,
         );
 
-        let types = solve_expr(builder, let_).unwrap();
+        let types = solve_expr(builder, let_, &mut interner).unwrap();
 
         assert_eq!(types.meta(let_), &MonoType::NUM);
     }
@@ -921,7 +933,7 @@ mod tests {
         let or = builder.insert(node::LiteralExpr::Num(10.0));
         let if_ = node::IfExpr::new_in(predicate.into(), then.into(), or.into(), &mut builder);
 
-        let types = solve_expr(builder, if_).unwrap();
+        let types = solve_expr(builder, if_, &mut StrInterner::new()).unwrap();
 
         assert_eq!(types.meta(if_), &MonoType::NUM);
     }
@@ -935,7 +947,7 @@ mod tests {
         let or = builder.insert(node::LiteralExpr::Char('x'));
         let if_ = node::IfExpr::new_in(predicate.into(), then.into(), or.into(), &mut builder);
 
-        let (errors, _) = solve_expr(builder, if_).unwrap_err();
+        let (errors, _) = solve_expr(builder, if_, &mut StrInterner::new()).unwrap_err();
 
         assert_eq!(
             errors[0],

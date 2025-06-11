@@ -1,5 +1,3 @@
-// TODO: mutable iterator should only be able to mutate the value, not the key
-
 /// A simple ordered map implementation using a vector.
 /// Duplicate keys are explicitly allowed.
 ///
@@ -40,16 +38,6 @@ impl<K, V> ShadowMap<K, V> {
         self.entries.clear();
     }
 
-    /// Returns the first key-value pair in the map, if any.
-    pub fn first(&self) -> Option<&(K, V)> {
-        self.entries.first()
-    }
-
-    /// Returns the last key-value pair in the map, if any.
-    pub fn last(&self) -> Option<&(K, V)> {
-        self.entries.last()
-    }
-
     /// Returns an iterator over the keys of the map.
     pub fn keys(&self) -> impl Iterator<Item = &K> {
         self.entries.iter().map(|(k, _)| k)
@@ -69,11 +57,6 @@ impl<K, V> ShadowMap<K, V> {
     pub fn iter(&self) -> impl Iterator<Item = &(K, V)> {
         self.entries.iter()
     }
-
-    // /// Returns a mutable iterator over the key-value pairs of the map.
-    // pub fn iter_mut(&mut self) -> impl Iterator<Item = &mut (K, V)> {
-    //     self.entries.iter_mut()
-    // }
 
     /// Returns the capacity of the map.
     pub fn capacity(&self) -> usize {
@@ -197,12 +180,3 @@ impl<'a, K, V> IntoIterator for &'a ShadowMap<K, V> {
         self.entries.iter()
     }
 }
-
-// impl<'a, K, V> IntoIterator for &'a mut ShadowMap<K, V> {
-//     type Item = &'a mut (K, V);
-//     type IntoIter = std::slice::IterMut<'a, (K, V)>;
-
-//     fn into_iter(self) -> Self::IntoIter {
-//         self.entries.iter_mut()
-//     }
-// }

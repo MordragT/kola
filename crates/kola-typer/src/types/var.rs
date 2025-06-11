@@ -6,8 +6,8 @@ use std::{
 
 use super::{Kind, MonoType, Typed};
 use crate::{
+    env::KindEnv,
     error::SemanticError,
-    scope::KindScope,
     substitute::{Substitutable, Substitution},
 };
 
@@ -81,7 +81,7 @@ impl Default for TypeVar {
 }
 
 impl Typed for TypeVar {
-    fn constrain(&self, with: Kind, env: &mut KindScope) -> Result<(), SemanticError> {
+    fn constrain(&self, with: Kind, env: &mut KindEnv) -> Result<(), SemanticError> {
         env.entry(*self)
             .and_modify(|constraint| constraint.push(with))
             .or_insert_with(|| vec![with]);
