@@ -1,82 +1,21 @@
 use derive_more::{From, TryInto};
 use serde::{Deserialize, Serialize};
-use std::{borrow::Borrow, ops::Deref};
 
-use kola_print::prelude::*;
-use kola_utils::{impl_try_as, interner::StrKey};
+use kola_utils::impl_try_as;
 
-use crate::{id::Id, print::NodePrinter};
+use crate::id::Id;
 
 mod expr;
 mod module;
+mod namespace;
 mod pat;
 mod ty;
 
 pub use expr::*;
 pub use module::*;
+pub use namespace::*;
 pub use pat::*;
 pub use ty::*;
-
-#[derive(
-    Debug, From, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
-)]
-#[from(forward)]
-pub struct Name(pub StrKey);
-
-impl Name {
-    #[inline]
-    pub fn as_str_key(&self) -> &StrKey {
-        &self.0
-    }
-}
-
-impl Deref for Name {
-    type Target = StrKey;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl AsRef<StrKey> for Name {
-    #[inline]
-    fn as_ref(&self) -> &StrKey {
-        &self.0
-    }
-}
-
-impl Borrow<StrKey> for Name {
-    #[inline]
-    fn borrow(&self) -> &StrKey {
-        &self.0
-    }
-}
-
-impl PartialEq<StrKey> for Name {
-    #[inline]
-    fn eq(&self, other: &StrKey) -> bool {
-        self == other
-    }
-}
-
-impl<'a> Notate<'a> for NodePrinter<'a, Name> {
-    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
-        let head = "Name".cyan().display_in(arena);
-
-        let name = self
-            .interner
-            .get(self.value.0)
-            .unwrap()
-            .yellow()
-            .display_in(arena)
-            .enclose_by(arena.just('"'), arena);
-
-        let single = [arena.just(' '), name.clone()].concat_in(arena);
-        let multi = [arena.newline(), name].concat_in(arena).indent(arena);
-
-        head.then(single.or(multi, arena), arena)
-    }
-}
 
 macro_rules! define_nodes {
     ($($variant:ident),* $(,)?) => {
@@ -125,7 +64,9 @@ macro_rules! define_nodes {
 }
 
 define_nodes!(
-    Name,
+    ModuleName,
+    TypeName,
+    ValueName,
     // Patterns
     AnyPat,
     LiteralPat,

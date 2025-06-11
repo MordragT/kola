@@ -197,7 +197,7 @@ impl<'a, N> Typer<'a, N> {
     fn partial_restrict(
         &mut self,
         source: Id<node::Expr>,
-        field: Id<node::Name>,
+        field: Id<node::ValueName>,
         span: Loc,
         tree: &impl TreeView,
     ) -> MonoType {

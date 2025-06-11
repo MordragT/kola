@@ -4,9 +4,10 @@ use serde::{Deserialize, Serialize};
 use kola_print::prelude::*;
 use kola_utils::as_variant;
 
-use super::{Expr, Name, Type};
+use super::{Expr, ModuleName, Type};
 use crate::{
     id::Id,
+    node::{TypeName, ValueName},
     print::NodePrinter,
     tree::{TreeBuilder, TreeView},
 };
@@ -67,11 +68,11 @@ impl<'a> Notate<'a> for NodePrinter<'a, Module> {
     Debug, From, IntoIterator, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
 )]
 #[into_iterator(owned, ref)]
-pub struct ModulePath(pub Vec<Id<Name>>);
+pub struct ModulePath(pub Vec<Id<ModuleName>>);
 
 impl ModulePath {
-    pub fn get<'a>(&self, index: usize, tree: &'a impl TreeView) -> &'a Name {
-        self.0[index].get(tree)
+    pub fn get(&self, index: usize, tree: &impl TreeView) -> ModuleName {
+        *self.0[index].get(tree)
     }
 }
 
@@ -96,7 +97,7 @@ impl<'a> Notate<'a> for NodePrinter<'a, ModulePath> {
 #[derive(
     Debug, From, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
 )]
-pub struct ModuleImport(pub Id<Name>);
+pub struct ModuleImport(pub Id<ModuleName>);
 
 impl<'a> Notate<'a> for NodePrinter<'a, ModuleImport> {
     fn notate(&self, arena: &'a Bump) -> Notation<'a> {
@@ -157,7 +158,7 @@ impl<'a> Notate<'a> for NodePrinter<'a, Bind> {
 impl Bind {
     pub fn value_in(
         vis: Vis,
-        name: Name,
+        name: ValueName,
         ty: Option<Type>,
         value: Expr,
         builder: &mut TreeBuilder,
@@ -226,7 +227,7 @@ impl<'a> Notate<'a> for NodePrinter<'a, Vis> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct ValueBind {
     pub vis: Id<Vis>,
-    pub name: Id<Name>,
+    pub name: Id<ValueName>,
     pub ty: Option<Id<Type>>,
     pub value: Id<Expr>,
 }
@@ -284,7 +285,7 @@ impl<'a> Notate<'a> for NodePrinter<'a, ValueBind> {
 impl ValueBind {
     pub fn new_in(
         vis: Vis,
-        name: Name,
+        name: ValueName,
         ty: Option<Type>,
         value: Expr,
         builder: &mut TreeBuilder,
@@ -305,7 +306,7 @@ impl ValueBind {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct TypeBind {
-    pub name: Id<Name>,
+    pub name: Id<TypeName>,
     pub ty: Id<Type>,
 }
 
@@ -343,7 +344,7 @@ impl<'a> Notate<'a> for NodePrinter<'a, TypeBind> {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct OpaqueTypeBind {
-    pub name: Id<Name>,
+    pub name: Id<TypeName>,
     pub ty: Id<Type>,
 }
 
@@ -382,7 +383,7 @@ impl<'a> Notate<'a> for NodePrinter<'a, OpaqueTypeBind> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct ModuleBind {
     pub vis: Id<Vis>,
-    pub name: Id<Name>,
+    pub name: Id<ModuleName>,
     pub ty: Option<Id<ModuleType>>,
     pub value: Id<ModuleExpr>,
 }
@@ -390,7 +391,7 @@ pub struct ModuleBind {
 impl ModuleBind {
     pub fn new_in(
         vis: Vis,
-        name: Name,
+        name: ModuleName,
         ty: Option<ModuleType>,
         value: ModuleExpr,
         builder: &mut TreeBuilder,
@@ -461,7 +462,7 @@ impl<'a> Notate<'a> for NodePrinter<'a, ModuleBind> {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct ModuleTypeBind {
-    pub name: Id<Name>,
+    pub name: Id<ModuleName>,
     pub ty: Id<ModuleType>,
 }
 
@@ -582,7 +583,7 @@ impl Spec {
 // f : Num -> Num
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct ValueSpec {
-    pub name: Id<Name>,
+    pub name: Id<ValueName>,
     pub ty: Id<Type>,
 }
 
@@ -621,7 +622,7 @@ impl<'a> Notate<'a> for NodePrinter<'a, ValueSpec> {
 // module M : { ... }
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct ModuleSpec {
-    pub name: Id<Name>,
+    pub name: Id<ModuleName>,
     pub ty: Id<ModuleType>,
 }
 
@@ -660,7 +661,7 @@ impl<'a> Notate<'a> for NodePrinter<'a, ModuleSpec> {
 // opaque type T : * -> *
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct OpaqueTypeSpec {
-    pub name: Id<Name>,
+    pub name: Id<TypeName>,
     pub kind: Id<OpaqueTypeKind>,
 }
 
@@ -847,7 +848,7 @@ mod inspector {
     }
 
     impl<'t, S: BuildHasher> NodeInspector<'t, Id<ModuleImport>, S> {
-        pub fn as_name(self) -> NodeInspector<'t, Id<Name>, S> {
+        pub fn as_name(self) -> NodeInspector<'t, Id<ModuleName>, S> {
             let name_id = self.node.get(self.tree).0;
 
             NodeInspector::new(name_id, self.tree, self.interner)

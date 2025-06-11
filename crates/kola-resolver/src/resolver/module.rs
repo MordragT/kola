@@ -1,9 +1,9 @@
 use std::rc::Rc;
 
 use kola_span::{Diagnostic, Report};
-use kola_tree::node::Vis;
+use kola_tree::node::{ModuleName, Vis};
 use kola_utils::{
-    interner::{StrInterner, StrKey},
+    interner::StrInterner,
     visit::{VisitMap, VisitState},
 };
 
@@ -23,7 +23,7 @@ pub fn resolve_modules(
     let mut module_visit = VisitMap::new();
     let mut module_scopes = ModuleScopes::new();
 
-    let super_name = interner.intern("super");
+    let super_name = ModuleName::new(interner.intern("super"));
 
     // By using a IndexMap, we ensure that the order of modules is preserved,
     // meaning parents are resolved before children.
@@ -104,7 +104,7 @@ pub fn resolve_module_scope(
 // TODO return error type instead of on the fly reporting.
 pub fn resolve_module_path<'s>(
     path_sym: ModuleSym,
-    mut path: &[StrKey],
+    mut path: &[ModuleName],
     mut scope: Rc<ModuleScope>,
     report: &mut Report,
     module_graph: &mut ModuleGraph,

@@ -157,7 +157,7 @@ where
     ) -> ControlFlow<Self::BreakValue> {
         let node::PathExpr { path, binding, .. } = tree.node(id);
 
-        let binding = tree.node(*binding).0;
+        let binding = *tree.node(*binding);
 
         let qual_id = self.qual(id);
 

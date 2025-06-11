@@ -1,7 +1,8 @@
 use std::{collections::HashMap, ops::Index};
 
 use indexmap::IndexMap;
-use kola_resolver::symbol::{ModuleSym, ModuleTag, Sym, TypeSym, TypeTag, ValueSym, ValueTag};
+use kola_resolver::symbol::{ModuleSym, Sym, TypeSym, ValueSym};
+use kola_tree::node::{ModuleNamespace, TypeNamespace, ValueNamespace};
 
 use crate::types::{Kind, ModuleType, PolyType, TypeVar};
 
@@ -38,9 +39,9 @@ impl<T> Index<(Sym<T>, Sym<T>)> for SymbolCache<T> {
     }
 }
 
-pub type ValueCache = SymbolCache<ValueTag>;
-pub type TypeCache = SymbolCache<TypeTag>;
-pub type ModuleCache = SymbolCache<ModuleTag>;
+pub type ModuleCache = SymbolCache<ModuleNamespace>;
+pub type TypeCache = SymbolCache<TypeNamespace>;
+pub type ValueCache = SymbolCache<ValueNamespace>;
 
 // TODO:
 // - remove Types inside ModuleType and TypeInfo

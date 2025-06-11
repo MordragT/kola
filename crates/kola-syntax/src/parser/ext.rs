@@ -8,6 +8,14 @@ use crate::loc::LocPhase;
 
 pub trait KolaParser<'t, T>: Parser<'t, ParseInput<'t>, T, Extra<'t>> + Sized {
     #[inline]
+    fn spanned(self) -> impl Parser<'t, ParseInput<'t>, (T, Loc), Extra<'t>> {
+        self.map_with(|node, e| {
+            let span = e.span();
+            (node, span)
+        })
+    }
+
+    #[inline]
     fn to_node(self) -> impl Parser<'t, ParseInput<'t>, Id<T>, Extra<'t>>
     where
         Node: From<T>,

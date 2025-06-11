@@ -6,7 +6,7 @@ use kola_print::prelude::*;
 use kola_utils::{as_variant, interner::StrKey};
 
 use super::{LiteralExpr, Name};
-use crate::{id::Id, print::NodePrinter, tree::TreeView};
+use crate::{id::Id, node::ValueName, print::NodePrinter, tree::TreeView};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct PatError;
@@ -150,13 +150,13 @@ impl<'a> Notate<'a> for NodePrinter<'a, IdentPat> {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct RecordFieldPat {
-    pub field: Id<Name>,
+    pub field: Id<ValueName>,
     pub pat: Option<Id<Pat>>,
 }
 
 impl RecordFieldPat {
-    pub fn field(self, tree: &impl TreeView) -> &Name {
-        self.field.get(tree)
+    pub fn field(self, tree: &impl TreeView) -> ValueName {
+        *self.field.get(tree)
     }
 
     pub fn pat(self, tree: &impl TreeView) -> Option<Pat> {
@@ -231,13 +231,13 @@ impl<'a> Notate<'a> for NodePrinter<'a, RecordPat> {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct VariantCasePat {
-    pub case: Id<Name>,
+    pub case: Id<ValueName>,
     pub pat: Option<Id<Pat>>,
 }
 
 impl VariantCasePat {
-    pub fn case(self, tree: &impl TreeView) -> &Name {
-        self.case.get(tree)
+    pub fn case(self, tree: &impl TreeView) -> ValueName {
+        *self.case.get(tree)
     }
 
     pub fn pat(self, tree: &impl TreeView) -> Option<Pat> {

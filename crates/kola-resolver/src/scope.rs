@@ -1,24 +1,30 @@
-use std::{hash::Hash, ops::Index};
+use std::ops::Index;
 
 use kola_collections::{BiMap, HashMap, hash_map};
 use kola_span::Loc;
-use kola_tree::{id::Id, node};
+use kola_tree::{
+    id::Id,
+    node::{
+        self, AnyName, ModuleName, ModuleNamespace, Name, Namespace, TypeName, TypeNamespace,
+        ValueName, ValueNamespace,
+    },
+};
 use kola_utils::interner::{PathKey, StrKey};
 
 use crate::{
     QualId,
     error::NameCollision,
-    info::{AnyInfo, BindInfo, BindKind, ModuleInfo, TypeInfo, ValueInfo},
-    symbol::{ModuleSym, Sym, Symbol, TypeSym, ValueSym},
+    info::{AnyInfo, BindInfo, ModuleInfo, TypeInfo, ValueInfo},
+    symbol::{AnySym, ModuleSym, Sym, TypeSym, ValueSym},
 };
 
 #[derive(Debug, Clone)]
-pub struct Rib<S, T> {
-    pub binds: BiMap<StrKey, S>,
-    pub infos: HashMap<S, BindInfo<T>>,
+pub struct Rib<N: Namespace> {
+    pub binds: BiMap<Name<N>, Sym<N>>,
+    pub infos: HashMap<Sym<N>, BindInfo<N>>,
 }
 
-impl<S, T> Rib<S, T> {
+impl<N: Namespace> Rib<N> {
     #[inline]
     pub fn new() -> Self {
         Self {
@@ -27,92 +33,86 @@ impl<S, T> Rib<S, T> {
         }
     }
 }
-impl<S, T> Rib<S, T>
-where
-    S: Copy + Eq + Hash,
-{
+impl<N: Namespace> Rib<N> {
     #[inline]
-    pub fn insert(&mut self, name: StrKey, symbol: S, info: BindInfo<T>) {
+    pub fn insert(&mut self, name: Name<N>, symbol: Sym<N>, info: BindInfo<N>) {
         self.binds.insert(name, symbol);
         self.infos.insert(symbol, info);
     }
 
     #[inline]
-    pub fn lookup_sym(&self, name: StrKey) -> Option<S> {
+    pub fn lookup_sym(&self, name: Name<N>) -> Option<Sym<N>> {
         self.binds.get_by_key(&name).copied()
     }
 
     #[inline]
-    pub fn lookup_key(&self, symbol: S) -> Option<StrKey> {
+    pub fn lookup_key(&self, symbol: Sym<N>) -> Option<Name<N>> {
         self.binds.get_by_value(&symbol).copied()
     }
 
     #[inline]
-    pub fn get_by_sym(&self, symbol: S) -> Option<BindInfo<T>> {
+    pub fn get_by_sym(&self, symbol: Sym<N>) -> Option<BindInfo<N>> {
         self.infos.get(&symbol).copied()
     }
 
     #[inline]
-    pub fn get_by_key(&self, name: StrKey) -> Option<BindInfo<T>> {
+    pub fn get_by_key(&self, name: Name<N>) -> Option<BindInfo<N>> {
         self.lookup_sym(name)
             .and_then(|symbol| self.get_by_sym(symbol))
     }
 
     #[inline]
-    pub fn contains_key(&self, name: StrKey) -> bool {
+    pub fn contains_key(&self, name: Name<N>) -> bool {
         self.binds.contains_key(&name)
     }
 
     #[inline]
-    pub fn contains_sym(&self, symbol: S) -> bool {
+    pub fn contains_sym(&self, symbol: Sym<N>) -> bool {
         self.binds.contains_value(&symbol)
     }
 }
 
-impl<S, T> IntoIterator for Rib<S, T> {
-    type Item = (S, BindInfo<T>);
-    type IntoIter = hash_map::IntoIter<S, BindInfo<T>>;
+impl<N: Namespace> IntoIterator for Rib<N> {
+    type Item = (Sym<N>, BindInfo<N>);
+    type IntoIter = hash_map::IntoIter<Sym<N>, BindInfo<N>>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.infos.into_iter()
     }
 }
 
-impl<'a, S, T> IntoIterator for &'a Rib<S, T> {
-    type Item = (&'a S, &'a BindInfo<T>);
-    type IntoIter = hash_map::Iter<'a, S, BindInfo<T>>;
+impl<'a, N: Namespace> IntoIterator for &'a Rib<N> {
+    type Item = (&'a Sym<N>, &'a BindInfo<N>);
+    type IntoIter = hash_map::Iter<'a, Sym<N>, BindInfo<N>>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.infos.iter()
     }
 }
 
-impl<'a, S, T> IntoIterator for &'a mut Rib<S, T> {
-    type Item = (&'a S, &'a mut BindInfo<T>);
-    type IntoIter = hash_map::IterMut<'a, S, BindInfo<T>>;
+impl<'a, N: Namespace> IntoIterator for &'a mut Rib<N> {
+    type Item = (&'a Sym<N>, &'a mut BindInfo<N>);
+    type IntoIter = hash_map::IterMut<'a, Sym<N>, BindInfo<N>>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.infos.iter_mut()
     }
 }
 
-impl<S, T> Index<StrKey> for Rib<S, T>
-where
-    S: Copy + Eq + Hash,
-{
-    type Output = BindInfo<T>;
+impl<N: Namespace> Index<Name<N>> for Rib<N> {
+    type Output = BindInfo<N>;
 
-    fn index(&self, key: StrKey) -> &Self::Output {
+    fn index(&self, key: Name<N>) -> &Self::Output {
         self.lookup_sym(key)
             .and_then(|sym| self.infos.get(&sym))
             .expect("Bind not found")
     }
 }
 
-impl<ST, T> Index<Sym<ST>> for Rib<Sym<ST>, T> {
-    type Output = BindInfo<T>;
+impl<N: Namespace> Index<Sym<N>> for Rib<N> {
+    type Output = BindInfo<N>;
 
-    fn index(&self, sym: Sym<ST>) -> &Self::Output {
+    fn index(&self, sym: Sym<N>) -> &Self::Output {
         self.infos.get(&sym).expect("Bind not found")
     }
 }
@@ -122,11 +122,11 @@ pub struct ModuleScope {
     pub id: QualId<node::Module>,
     pub symbol: ModuleSym,
     pub loc: Loc,
-    pub modules: Rib<ModuleSym, node::ModuleBind>,
-    pub types: Rib<TypeSym, node::TypeBind>,
-    pub values: Rib<ValueSym, node::ValueBind>,
+    pub modules: Rib<ModuleNamespace>,
+    pub types: Rib<TypeNamespace>,
+    pub values: Rib<ValueNamespace>,
 
-    pub paths: BiMap<ModuleSym, Vec<StrKey>>,
+    pub paths: BiMap<ModuleSym, Vec<ModuleName>>,
 }
 
 impl ModuleScope {
@@ -145,7 +145,7 @@ impl ModuleScope {
 
     pub fn insert_module(
         &mut self,
-        name: StrKey,
+        name: ModuleName,
         symbol: ModuleSym,
         info: ModuleInfo,
     ) -> Result<(), NameCollision> {
@@ -159,7 +159,7 @@ impl ModuleScope {
 
     pub fn insert_value(
         &mut self,
-        name: StrKey,
+        name: ValueName,
         symbol: ValueSym,
         info: ValueInfo,
     ) -> Result<(), NameCollision> {
@@ -173,7 +173,7 @@ impl ModuleScope {
 
     pub fn insert_type(
         &mut self,
-        name: StrKey,
+        name: TypeName,
         symbol: TypeSym,
         info: TypeInfo,
     ) -> Result<(), NameCollision> {
@@ -185,40 +185,24 @@ impl ModuleScope {
         Ok(())
     }
 
-    pub fn insert_path(&mut self, symbol: ModuleSym, path: Vec<StrKey>) {
+    pub fn insert_path(&mut self, symbol: ModuleSym, path: Vec<ModuleName>) {
         self.paths.insert(symbol, path);
     }
 }
 
 const fn name_collision(this: AnyInfo, other: AnyInfo) -> NameCollision {
+    use kola_tree::node::NamespaceKind::*;
+
     let help = match (this.kind(), other.kind()) {
-        (BindKind::Module, BindKind::Module) => {
-            "Module bindings must have distinct names from Module bindings."
-        }
-        (BindKind::Module, BindKind::Value) => {
-            "Module bindings must have distinct names from Value bindings."
-        }
-        (BindKind::Module, BindKind::Type) => {
-            "Module bindings must have distinct names from Type bindings."
-        }
-        (BindKind::Value, BindKind::Module) => {
-            "Value bindings must have distinct names from Module bindings."
-        }
-        (BindKind::Value, BindKind::Value) => {
-            "Value bindings must have distinct names from Value bindings."
-        }
-        (BindKind::Value, BindKind::Type) => {
-            "Value bindings must have distinct names from Type bindings."
-        }
-        (BindKind::Type, BindKind::Module) => {
-            "Type bindings must have distinct names from Module bindings."
-        }
-        (BindKind::Type, BindKind::Value) => {
-            "Type bindings must have distinct names from Value bindings."
-        }
-        (BindKind::Type, BindKind::Type) => {
-            "Type bindings must have distinct names from Type bindings."
-        } // _ => todo!(),
+        (Module, Module) => "Module bindings must have distinct names from Module bindings.",
+        (Module, Value) => "Module bindings must have distinct names from Value bindings.",
+        (Module, Type) => "Module bindings must have distinct names from Type bindings.",
+        (Value, Module) => "Value bindings must have distinct names from Module bindings.",
+        (Value, Value) => "Value bindings must have distinct names from Value bindings.",
+        (Value, Type) => "Value bindings must have distinct names from Type bindings.",
+        (Type, Module) => "Type bindings must have distinct names from Module bindings.",
+        (Type, Value) => "Type bindings must have distinct names from Value bindings.",
+        (Type, Type) => "Type bindings must have distinct names from Type bindings.",
     };
 
     match this {
@@ -250,46 +234,44 @@ impl ModuleScope {
     }
 
     #[inline]
-    pub fn contains_key(&self, name: StrKey) -> bool {
-        self.modules.contains_key(name)
-            || self.values.contains_key(name)
-            || self.types.contains_key(name)
-    }
-
-    #[inline]
-    pub fn contains_sym(&self, symbol: Symbol) -> bool {
-        match symbol {
-            Symbol::Module(symbol) => self.modules.contains_sym(symbol),
-            Symbol::Value(symbol) => self.values.contains_sym(symbol),
-            Symbol::Type(symbol) => self.types.contains_sym(symbol),
+    pub fn contains_name(&self, name: AnyName) -> bool {
+        match name {
+            AnyName::Module(name) => self.modules.contains_key(name),
+            AnyName::Value(name) => self.values.contains_key(name),
+            AnyName::Type(name) => self.types.contains_key(name),
         }
     }
 
     #[inline]
-    pub fn get_module(&self, name: StrKey) -> Option<ModuleInfo> {
+    pub fn contains_sym(&self, symbol: AnySym) -> bool {
+        match symbol {
+            AnySym::Module(symbol) => self.modules.contains_sym(symbol),
+            AnySym::Value(symbol) => self.values.contains_sym(symbol),
+            AnySym::Type(symbol) => self.types.contains_sym(symbol),
+        }
+    }
+
+    #[inline]
+    pub fn get_module(&self, name: ModuleName) -> Option<ModuleInfo> {
         self.modules.get_by_key(name)
     }
 
     #[inline]
-    pub fn get_value(&self, name: StrKey) -> Option<ValueInfo> {
+    pub fn get_value(&self, name: ValueName) -> Option<ValueInfo> {
         self.values.get_by_key(name)
     }
 
     #[inline]
-    pub fn get_type(&self, name: StrKey) -> Option<TypeInfo> {
+    pub fn get_type(&self, name: TypeName) -> Option<TypeInfo> {
         self.types.get_by_key(name)
     }
 
     #[inline]
-    fn get(&self, name: StrKey) -> Option<AnyInfo> {
-        if let Some(module) = self.modules.get_by_key(name) {
-            Some(module.into())
-        } else if let Some(value) = self.values.get_by_key(name) {
-            Some(value.into())
-        } else if let Some(ty) = self.types.get_by_key(name) {
-            Some(ty.into())
-        } else {
-            None
+    fn get(&self, name: impl Into<AnyName>) -> Option<AnyInfo> {
+        match name.into() {
+            AnyName::Module(name) => self.modules.get_by_key(name).map(AnyInfo::Module),
+            AnyName::Value(name) => self.values.get_by_key(name).map(AnyInfo::Value),
+            AnyName::Type(name) => self.types.get_by_key(name).map(AnyInfo::Type),
         }
     }
 }

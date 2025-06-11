@@ -180,7 +180,9 @@ macro_rules! define {
 }
 
 define!(
-    Name,
+    ModuleName,
+    TypeName,
+    ValueName,
     // Patterns
     AnyPat,
     LiteralPat,

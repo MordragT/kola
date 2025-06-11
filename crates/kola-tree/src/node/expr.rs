@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use super::{Name, Pat};
 use crate::{
     id::Id,
-    node::ModulePath,
+    node::{ModulePath, ValueName},
     print::NodePrinter,
     tree::{TreeBuilder, TreeView},
 };
@@ -91,9 +91,9 @@ pub struct PathExpr {
     /// The path to the module, e.g. `std::io`
     pub path: Option<Id<ModulePath>>,
     /// The binding of the path, e.g. `File`
-    pub binding: Id<Name>,
+    pub binding: Id<ValueName>,
     /// The selected field of a record e.g. `File.open`
-    pub select: Vec<Id<Name>>,
+    pub select: Vec<Id<ValueName>>,
 }
 
 impl<'a> Notate<'a> for NodePrinter<'a, PathExpr> {
@@ -137,8 +137,8 @@ impl<'a> Notate<'a> for NodePrinter<'a, PathExpr> {
 }
 
 impl PathExpr {
-    pub fn get<'a>(&self, index: usize, tree: &'a impl TreeView) -> &'a Name {
-        self.select[index].get(tree)
+    pub fn get(&self, index: usize, tree: &impl TreeView) -> ValueName {
+        *self.select[index].get(tree)
     }
 }
 
@@ -168,13 +168,13 @@ impl<'a> Notate<'a> for NodePrinter<'a, ListExpr> {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct RecordField {
-    pub field: Id<Name>,
+    pub field: Id<ValueName>,
     pub value: Id<Expr>,
 }
 
 impl RecordField {
-    pub fn field(self, tree: &impl TreeView) -> &Name {
-        self.field.get(tree)
+    pub fn field(self, tree: &impl TreeView) -> ValueName {
+        *self.field.get(tree)
     }
 
     pub fn value(self, tree: &impl TreeView) -> Expr {
@@ -253,7 +253,7 @@ impl<'a> Notate<'a> for NodePrinter<'a, RecordExpr> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct RecordExtendExpr {
     pub source: Id<Expr>,
-    pub field: Id<Name>,
+    pub field: Id<ValueName>,
     pub value: Id<Expr>,
 }
 
@@ -262,8 +262,8 @@ impl RecordExtendExpr {
         *self.source.get(tree)
     }
 
-    pub fn field(self, tree: &impl TreeView) -> &Name {
-        self.field.get(tree)
+    pub fn field(self, tree: &impl TreeView) -> ValueName {
+        *self.field.get(tree)
     }
 
     pub fn value(self, tree: &impl TreeView) -> Expr {
@@ -317,7 +317,7 @@ impl<'a> Notate<'a> for NodePrinter<'a, RecordExtendExpr> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct RecordRestrictExpr {
     pub source: Id<Expr>,
-    pub field: Id<Name>,
+    pub field: Id<ValueName>,
 }
 
 impl RecordRestrictExpr {
@@ -325,8 +325,8 @@ impl RecordRestrictExpr {
         *self.source.get(tree)
     }
 
-    pub fn field(self, tree: &impl TreeView) -> &Name {
-        self.field.get(tree)
+    pub fn field(self, tree: &impl TreeView) -> ValueName {
+        *self.field.get(tree)
     }
 }
 
@@ -384,7 +384,7 @@ impl<'a> Notate<'a> for NodePrinter<'a, RecordUpdateOp> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct RecordUpdateExpr {
     pub source: Id<Expr>,
-    pub field: Id<Name>,
+    pub field: Id<ValueName>,
     pub op: Id<RecordUpdateOp>,
     pub value: Id<Expr>,
 }
@@ -394,8 +394,8 @@ impl RecordUpdateExpr {
         *self.source.get(tree)
     }
 
-    pub fn field(self, tree: &impl TreeView) -> &Name {
-        self.field.get(tree)
+    pub fn field(self, tree: &impl TreeView) -> ValueName {
+        *self.field.get(tree)
     }
 
     pub fn op(self, tree: &impl TreeView) -> RecordUpdateOp {
@@ -615,13 +615,18 @@ impl<'a> Notate<'a> for NodePrinter<'a, BinaryExpr> {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct LetExpr {
-    pub name: Id<Name>,
+    pub name: Id<ValueName>,
     pub value: Id<Expr>,
     pub inside: Id<Expr>,
 }
 
 impl LetExpr {
-    pub fn new_in(name: Name, value: Expr, inside: Expr, builder: &mut TreeBuilder) -> Id<Self> {
+    pub fn new_in(
+        name: ValueName,
+        value: Expr,
+        inside: Expr,
+        builder: &mut TreeBuilder,
+    ) -> Id<Self> {
         let name = builder.insert(name);
         let value = builder.insert(value);
         let inside = builder.insert(inside);
@@ -633,8 +638,8 @@ impl LetExpr {
         })
     }
 
-    pub fn name(self, tree: &impl TreeView) -> &Name {
-        self.name.get(tree)
+    pub fn name(self, tree: &impl TreeView) -> ValueName {
+        *self.name.get(tree)
     }
 
     pub fn value(self, tree: &impl TreeView) -> Expr {
@@ -905,13 +910,13 @@ impl<'a> Notate<'a> for NodePrinter<'a, CallExpr> {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct LambdaExpr {
-    pub param: Id<Name>, // TODO pattern
+    pub param: Id<ValueName>, // TODO pattern
     pub body: Id<Expr>,
 }
 
 impl LambdaExpr {
-    pub fn param(self, tree: &impl TreeView) -> &Name {
-        self.param.get(tree)
+    pub fn param(self, tree: &impl TreeView) -> ValueName {
+        *self.param.get(tree)
     }
 
     pub fn body(self, tree: &impl TreeView) -> Expr {
@@ -1658,7 +1663,7 @@ mod inspector {
         }
 
         /// Get an inspector for the field path being extended
-        pub fn field(self) -> NodeInspector<'t, Id<Name>, S> {
+        pub fn field(self) -> NodeInspector<'t, Id<ValueName>, S> {
             let extend = self.node.get(self.tree);
             NodeInspector::new(extend.field, self.tree, self.interner)
         }
@@ -1678,7 +1683,7 @@ mod inspector {
         }
 
         /// Get an inspector for the field path being restricted
-        pub fn field(self) -> NodeInspector<'t, Id<Name>, S> {
+        pub fn field(self) -> NodeInspector<'t, Id<ValueName>, S> {
             let restrict = self.node.get(self.tree);
             NodeInspector::new(restrict.field, self.tree, self.interner)
         }
@@ -1692,7 +1697,7 @@ mod inspector {
         }
 
         /// Get an inspector for the field path being updated
-        pub fn field(self) -> NodeInspector<'t, Id<Name>, S> {
+        pub fn field(self) -> NodeInspector<'t, Id<ValueName>, S> {
             let update = self.node.get(self.tree);
             NodeInspector::new(update.field, self.tree, self.interner)
         }

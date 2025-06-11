@@ -1,5 +1,5 @@
 use derive_more::From;
-use kola_tree::node;
+use kola_tree::node::{self, ModuleNamespace, NamespaceKind, TypeNamespace, ValueNamespace};
 use kola_utils::define_unique_leveled_id;
 use std::{
     collections::HashMap,
@@ -53,32 +53,18 @@ impl<T: ?Sized> Default for Sym<T> {
     }
 }
 
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct ModuleTag;
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct TypeTag;
-#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct ValueTag;
-
-pub type ModuleSym = Sym<ModuleTag>;
-pub type TypeSym = Sym<TypeTag>;
-pub type ValueSym = Sym<ValueTag>;
+pub type ModuleSym = Sym<ModuleNamespace>;
+pub type TypeSym = Sym<TypeNamespace>;
+pub type ValueSym = Sym<ValueNamespace>;
 
 #[derive(Debug, From, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum Symbol {
+pub enum AnySym {
     Module(ModuleSym),
     Type(TypeSym),
     Value(ValueSym),
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum SymbolKind {
-    Module,
-    Type,
-    Value,
-}
-
-impl Symbol {
+impl AnySym {
     pub fn id(&self) -> u32 {
         match self {
             Self::Module(symbol) => symbol.id(),
@@ -99,11 +85,11 @@ impl Symbol {
         }
     }
 
-    pub fn kind(&self) -> SymbolKind {
+    pub fn kind(&self) -> NamespaceKind {
         match self {
-            Self::Module(_) => SymbolKind::Module,
-            Self::Type(_) => SymbolKind::Type,
-            Self::Value(_) => SymbolKind::Value,
+            Self::Module(_) => NamespaceKind::Module,
+            Self::Type(_) => NamespaceKind::Type,
+            Self::Value(_) => NamespaceKind::Value,
         }
     }
 }

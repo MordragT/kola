@@ -6,7 +6,12 @@ use kola_print::prelude::*;
 use kola_utils::{as_variant, interner::StrKey};
 
 use super::Name;
-use crate::{id::Id, print::NodePrinter, tree::TreeView};
+use crate::{
+    id::Id,
+    node::{TypeName, ValueName},
+    print::NodePrinter,
+    tree::TreeView,
+};
 
 /*
 type Option = forall a . [ Some : a, None ]
@@ -45,11 +50,11 @@ impl<'a> Notate<'a> for NodePrinter<'a, TypeError> {
     Debug, From, IntoIterator, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
 )]
 #[into_iterator(owned, ref)]
-pub struct TypePath(pub Vec<Id<Name>>);
+pub struct TypePath(pub Vec<Id<TypeName>>);
 
 impl TypePath {
-    pub fn get<'a>(&self, index: usize, tree: &'a impl TreeView) -> &'a Name {
-        self.0[index].get(tree)
+    pub fn get(&self, index: usize, tree: &impl TreeView) -> TypeName {
+        *self.0[index].get(tree)
     }
 }
 
@@ -131,7 +136,7 @@ impl<'a> Notate<'a> for NodePrinter<'a, TypeVar> {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct RecordFieldType {
-    pub name: Id<Name>,
+    pub name: Id<ValueName>,
     pub ty: Id<TypeExpr>,
 }
 
@@ -220,7 +225,7 @@ impl<'a> Notate<'a> for NodePrinter<'a, RecordType> {
 // TODO better name it Tag ??
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct VariantCaseType {
-    pub name: Id<Name>,
+    pub name: Id<ValueName>,
     pub ty: Option<Id<TypeExpr>>,
 }
 
@@ -473,7 +478,7 @@ impl TypeExpr {
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct Type {
-    pub vars: Vec<Id<Name>>,
+    pub vars: Vec<Id<TypeVar>>,
     pub ty: Id<TypeExpr>,
 }
 
@@ -587,7 +592,7 @@ mod inspector {
         }
 
         /// Get an inspector for the type variable at the given index
-        pub fn type_var_at(self, index: usize) -> NodeInspector<'t, Id<Name>, S> {
+        pub fn type_var_at(self, index: usize) -> NodeInspector<'t, Id<TypeVar>, S> {
             let ty = self.node.get(self.tree);
             assert!(
                 index < ty.vars.len(),

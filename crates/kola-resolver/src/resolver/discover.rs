@@ -391,7 +391,7 @@ where
             .0
             .iter()
             .copied()
-            .map(|id| tree.node(id).0)
+            .map(|id| *tree.node(id))
             .collect::<Vec<_>>();
 
         self.current_module_mut().insert_path(module_sym, path);
@@ -406,7 +406,7 @@ where
     ) -> ControlFlow<Self::BreakValue> {
         let node::ModuleBind { vis, name, .. } = *tree.node(id);
 
-        let name = tree.node(name);
+        let name = *tree.node(name);
         let vis = tree.node(vis);
 
         let span = self.span(id);
@@ -419,7 +419,7 @@ where
         // Register the module binding in the current scope
         if let Err(e) =
             self.current_module_mut()
-                .insert_module(name.0, module_sym, BindInfo::new(span, *vis))
+                .insert_module(name, module_sym, BindInfo::new(span, *vis))
         {
             self.report.add_diagnostic(e.into());
         }
@@ -434,13 +434,11 @@ where
     ) -> ControlFlow<Self::BreakValue> {
         let node::ValueBind { vis, name, .. } = *tree.node(id);
 
-        let name = tree.node(name);
+        let name = *tree.node(name);
         let vis = tree.node(vis);
 
         let span = self.span(id);
-
         let qual_id = self.qual(id);
-
         let value_sym = ValueSym::new();
 
         self.symbol_table.insert_value_bind(qual_id, value_sym);
@@ -448,7 +446,7 @@ where
         // Register the value binding in the current scope
         if let Err(e) =
             self.current_module_mut()
-                .insert_value(name.0, value_sym, BindInfo::new(span, *vis))
+                .insert_value(name, value_sym, BindInfo::new(span, *vis))
         {
             self.report.add_diagnostic(e.into());
         }
@@ -462,22 +460,19 @@ where
         tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
         let node::TypeBind { name, .. } = *tree.node(id);
-        let name = tree.node(name);
+        let name = *tree.node(name);
 
         let span = self.span(id);
-
         let qual_id = self.qual(id);
-
         let type_sym = TypeSym::new();
 
         self.symbol_table.insert_type_bind(qual_id, type_sym);
 
         // Register the type binding in the current scope
-        if let Err(e) = self.current_module_mut().insert_type(
-            name.0,
-            type_sym,
-            BindInfo::new(span, Vis::Export),
-        ) {
+        if let Err(e) =
+            self.current_module_mut()
+                .insert_type(name, type_sym, BindInfo::new(span, Vis::Export))
+        {
             self.report.add_diagnostic(e.into());
         }
 

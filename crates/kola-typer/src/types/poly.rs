@@ -108,6 +108,13 @@ impl fmt::Display for PolyType {
     }
 }
 
+// TODO is the following really correct ?
+// The only expression that has a polytype also in the TypedNodes is the ValueBind
+// and since it is at the top-level ??
+// But then at the same time I need ordering of multiple top-level value binds,
+// because they might depend on each other.
+// And then I definitely need to apply the substitution to the polytype.
+
 /// Substitution of Polytypes in Constraint-Based Type Inference
 ///
 /// This implementation handles substitution for polytypes in a constraint-based type inference

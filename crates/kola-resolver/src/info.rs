@@ -2,7 +2,7 @@ use std::{fmt, hash::Hash, marker::PhantomData};
 
 use derive_more::From;
 use kola_span::Loc;
-use kola_tree::node::{self, Vis};
+use kola_tree::node::{self, ModuleNamespace, NamespaceKind, TypeNamespace, ValueNamespace, Vis};
 
 pub struct BindInfo<T> {
     pub loc: Loc,
@@ -76,15 +76,9 @@ impl<T> Hash for BindInfo<T> {
     }
 }
 
-pub type ModuleInfo = BindInfo<node::ModuleBind>;
-pub type TypeInfo = BindInfo<node::TypeBind>;
-pub type ValueInfo = BindInfo<node::ValueBind>;
-
-pub enum BindKind {
-    Module,
-    Type,
-    Value,
-}
+pub type ModuleInfo = BindInfo<ModuleNamespace>;
+pub type TypeInfo = BindInfo<TypeNamespace>;
+pub type ValueInfo = BindInfo<ValueNamespace>;
 
 #[derive(Debug, From, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum AnyInfo {
@@ -94,11 +88,11 @@ pub enum AnyInfo {
 }
 
 impl AnyInfo {
-    pub const fn kind(&self) -> BindKind {
+    pub const fn kind(&self) -> NamespaceKind {
         match self {
-            AnyInfo::Module(_) => BindKind::Module,
-            AnyInfo::Type(_) => BindKind::Type,
-            AnyInfo::Value(_) => BindKind::Value,
+            AnyInfo::Module(_) => NamespaceKind::Module,
+            AnyInfo::Type(_) => NamespaceKind::Type,
+            AnyInfo::Value(_) => NamespaceKind::Value,
         }
     }
 

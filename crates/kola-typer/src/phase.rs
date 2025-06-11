@@ -11,7 +11,9 @@ pub type TypedNodes = MetaMap<TypePhase>;
 pub struct TypePhase;
 
 impl Phase for TypePhase {
-    type Name = !;
+    type ModuleName = !;
+    type TypeName = !;
+    type ValueName = !;
     type AnyPat = types::MonoType;
     type LiteralPat = types::MonoType;
     type IdentPat = types::MonoType;

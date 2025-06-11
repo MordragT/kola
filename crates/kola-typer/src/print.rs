@@ -15,7 +15,7 @@ impl Decorator for TypeDecorator {
         arena: &'a Bump,
     ) -> Notation<'a> {
         let ty = match MetaView::get(&self.0, with) {
-            Meta::Name(_) => return notation,
+            Meta::ModuleName(_) | Meta::TypeName(_) | Meta::ValueName(_) => return notation,
             // Patterns
             Meta::AnyPat(t)
             | Meta::LiteralPat(t)

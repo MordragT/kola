@@ -29,7 +29,9 @@ macro_rules! define_folder_trait {
 }
 
 define_folder_trait!(
-    Name,
+    ModuleName,
+    TypeName,
+    ValueName,
     // Patterns
     AnyPat,
     LiteralPat,

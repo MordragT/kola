@@ -254,7 +254,9 @@ macro_rules! impl_meta_substitutable {
 }
 
 impl_meta_substitutable!(
-    Name,
+    ModuleName,
+    TypeName,
+    ValueName,
     // Patterns
     AnyPat,
     LiteralPat,
