@@ -1,11 +1,10 @@
 use derive_more::Display;
-use kola_utils::interner::PathKey;
 use paste::paste;
 use serde::{Deserialize, Serialize};
 use std::{collections::HashMap, fmt, ops::Index};
 
 use kola_print::prelude::*;
-use kola_span::Located;
+use kola_span::{Located, SourceId};
 
 pub struct TokenPrinter<'t>(pub &'t Tokens<'t>, pub PrintOptions);
 
@@ -78,7 +77,7 @@ pub enum LiteralT<'t> {
 
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct TokenCache<'t> {
-    cache: HashMap<PathKey, Tokens<'t>>,
+    cache: HashMap<SourceId, Tokens<'t>>,
 }
 
 impl<'t> TokenCache<'t> {
@@ -86,23 +85,23 @@ impl<'t> TokenCache<'t> {
         Self::default()
     }
 
-    pub fn get(&self, path: &PathKey) -> Option<&Tokens> {
-        self.cache.get(path)
+    pub fn get(&self, source: SourceId) -> Option<&Tokens> {
+        self.cache.get(&source)
     }
 
-    pub fn get_mut(&mut self, path: &PathKey) -> Option<&mut Tokens<'t>> {
-        self.cache.get_mut(path)
+    pub fn get_mut(&mut self, source: SourceId) -> Option<&mut Tokens<'t>> {
+        self.cache.get_mut(&source)
     }
 
-    pub fn insert(&mut self, path: PathKey, tokens: Tokens<'t>) {
+    pub fn insert(&mut self, path: SourceId, tokens: Tokens<'t>) {
         self.cache.insert(path, tokens);
     }
 }
 
-impl<'t> Index<PathKey> for TokenCache<'t> {
+impl<'t> Index<SourceId> for TokenCache<'t> {
     type Output = Tokens<'t>;
 
-    fn index(&self, index: PathKey) -> &Self::Output {
+    fn index(&self, index: SourceId) -> &Self::Output {
         self.cache.get(&index).unwrap()
     }
 }

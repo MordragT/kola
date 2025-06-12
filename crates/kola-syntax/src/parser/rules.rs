@@ -1020,8 +1020,9 @@ where
 mod tests {
     use camino::Utf8PathBuf;
 
+    use kola_span::SourceId;
     use kola_tree::{inspector::NodeInspector, prelude::*};
-    use kola_utils::interner::{PathInterner, PathKey, StrInterner};
+    use kola_utils::interner::{PathInterner, StrInterner};
 
     use super::{
         expr_parser, module_parser, module_type_parser, pat_parser, type_bind_parser,
@@ -1032,7 +1033,7 @@ mod tests {
         parser::{KolaParser, ParseInput, ParseResult, try_parse_with},
     };
 
-    fn mocked_key() -> PathKey {
+    fn mocked_source() -> SourceId {
         let mut interner = PathInterner::new();
         interner.intern(Utf8PathBuf::from("test"))
     }
@@ -1042,10 +1043,10 @@ mod tests {
         parser: impl KolaParser<'t, T> + 't,
         interner: &'t mut StrInterner,
     ) -> ParseResult<T> {
-        let key = mocked_key();
-        let input = LexInput { key, text };
+        let source = mocked_source();
+        let input = LexInput { source, text };
         let tokens = try_tokenize(input).unwrap();
-        let input = ParseInput::new(key, tokens);
+        let input = ParseInput::new(source, tokens);
 
         try_parse_with(input, parser, interner).unwrap()
     }

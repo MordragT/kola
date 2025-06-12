@@ -6,11 +6,12 @@ use kola_tree::{node::Vis, prelude::*};
 use kola_utils::{interner::StrKey, scope::LinearScope};
 
 use crate::{
-    QualId,
+    GlobalId,
+    bind::Bindings,
     forest::Forest,
     resolver::ModuleScopes,
     scope::ModuleScope,
-    symbol::{ModuleSym, SymbolTable, ValueSym},
+    symbol::{ModuleSym, ValueSym},
     topography::Topography,
 };
 
@@ -20,7 +21,7 @@ pub fn resolve_values(
     topography: &Topography,
     module_scopes: &ModuleScopes,
     report: &mut Report,
-    symbol_table: &mut SymbolTable,
+    symbol_table: &mut Bindings,
 ) {
     for module_sym in module_symbols {
         let scope = module_scopes
@@ -44,16 +45,14 @@ pub fn resolve_values_in_module(
     topography: &Topography,
     module_scopes: &ModuleScopes,
     report: &mut Report,
-    symbol_table: &mut SymbolTable,
+    symbol_table: &mut Bindings,
 ) {
-    let root_id = scope.node_id();
-
-    let tree = forest.tree(scope.path_key());
+    let bind = scope.bind();
+    let tree = forest.tree(bind.source());
 
     let mut definer = ValueResolver::new(scope, topography, module_scopes, report, symbol_table);
 
-    // TODO If I do not use PathKey's I shouldn't visit the whole tree, but the module root instead.
-    match root_id.visit_by(&mut definer, &*tree) {
+    match bind.node_id().visit_by(&mut definer, &*tree) {
         ControlFlow::Continue(()) => (),
         ControlFlow::Break(_) => unreachable!(),
     }
@@ -65,7 +64,7 @@ struct ValueResolver<'a> {
     topography: &'a Topography,
     module_scopes: &'a ModuleScopes,
     report: &'a mut Report,
-    symbol_table: &'a mut SymbolTable,
+    symbol_table: &'a mut Bindings,
 }
 
 impl<'a> ValueResolver<'a> {
@@ -74,7 +73,7 @@ impl<'a> ValueResolver<'a> {
         topography: &'a Topography,
         module_scopes: &'a ModuleScopes,
         report: &'a mut Report,
-        symbol_table: &'a mut SymbolTable,
+        symbol_table: &'a mut Bindings,
     ) -> Self {
         Self {
             module_scope,
@@ -91,12 +90,12 @@ impl<'a> ValueResolver<'a> {
     where
         T: MetaCast<LocPhase, Meta = Loc>,
     {
-        self.topography.span((self.module_scope.path_key(), id))
+        self.topography.span(self.qualify(id))
     }
 
     #[inline]
-    pub fn qual<T>(&self, id: Id<T>) -> QualId<T> {
-        (self.module_scope.path_key(), id)
+    pub fn qualify<T>(&self, id: Id<T>) -> GlobalId<T> {
+        GlobalId::new(self.module_scope.source(), id)
     }
 }
 
@@ -121,7 +120,7 @@ where
 
         let sym = ValueSym::new();
 
-        self.symbol_table.insert_let_expr(self.qual(id), sym);
+        self.symbol_table.insert_let_expr(self.qualify(id), sym);
 
         self.scope.enter(name, sym);
         self.walk_expr(inside, tree)?;
@@ -141,7 +140,7 @@ where
 
         let sym = ValueSym::new();
 
-        self.symbol_table.insert_lambda_expr(self.qual(id), sym);
+        self.symbol_table.insert_lambda_expr(self.qualify(id), sym);
 
         self.scope.enter(name, sym);
         self.walk_expr(body, tree)?;
@@ -159,12 +158,12 @@ where
 
         let binding = *tree.node(*binding);
 
-        let qual_id = self.qual(id);
+        let global_id = self.qualify(id);
 
         if let Some(path) = path {
             let module_sym = self
                 .symbol_table
-                .lookup_module_path(self.qual(*path))
+                .lookup_module_path(self.qualify(*path))
                 .expect("Path should have been resolved before value definition");
 
             let scope = self
@@ -172,15 +171,15 @@ where
                 .get(&module_sym)
                 .expect("Module scope should exist");
 
-            let Some(value_sym) = scope.values.lookup_sym(binding) else {
+            let Some(value_sym) = scope.env.lookup_value(binding) else {
                 self.report.add_diagnostic(
                     Diagnostic::error(self.span(*path), "Cannot find value binding")
-                        .with_trace([("In this module".to_owned(), scope.loc)]),
+                        .with_trace([("In this module".to_owned(), scope.loc())]),
                 );
                 return ControlFlow::Continue(());
             };
 
-            let bind = scope.values[value_sym];
+            let bind = scope.env[value_sym];
 
             if bind.vis != Vis::Export {
                 self.report.add_diagnostic(
@@ -190,11 +189,11 @@ where
                 return ControlFlow::Continue(());
             }
 
-            self.symbol_table.insert_path_expr(qual_id, value_sym);
+            self.symbol_table.insert_path_expr(global_id, value_sym);
         } else if let Some(value_sym) = self.scope.get(&binding) {
-            self.symbol_table.insert_path_expr(qual_id, *value_sym);
-        } else if let Some(value_sym) = self.module_scope.values.lookup_sym(binding) {
-            let bind = self.module_scope.values[value_sym];
+            self.symbol_table.insert_path_expr(global_id, *value_sym);
+        } else if let Some(value_sym) = self.module_scope.env.lookup_value(binding) {
+            let bind = self.module_scope.env[value_sym];
 
             if bind.vis != Vis::Export {
                 self.report.add_diagnostic(
@@ -204,11 +203,11 @@ where
                 return ControlFlow::Continue(());
             }
 
-            self.symbol_table.insert_path_expr(qual_id, value_sym);
+            self.symbol_table.insert_path_expr(global_id, value_sym);
         } else {
             self.report.add_diagnostic(
                 Diagnostic::error(self.span(id), "Cannot find value binding")
-                    .with_trace([("In this module".to_owned(), self.module_scope.loc)]),
+                    .with_trace([("In this module".to_owned(), self.module_scope.loc())]),
             );
 
             return ControlFlow::Continue(());

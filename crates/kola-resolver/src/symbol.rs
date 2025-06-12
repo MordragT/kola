@@ -1,15 +1,15 @@
 use derive_more::From;
-use kola_tree::node::{self, ModuleNamespace, NamespaceKind, TypeNamespace, ValueNamespace};
+use kola_collections::{HashMap, hash_map};
+use kola_tree::node::{
+    ModuleNamespace, Name, Namespace, NamespaceKind, TypeNamespace, ValueNamespace,
+};
 use kola_utils::define_unique_leveled_id;
 use std::{
-    collections::HashMap,
     hash::Hash,
     marker::PhantomData,
     ops::Index,
     sync::atomic::{AtomicU32, Ordering},
 };
-
-use crate::QualId;
 
 static LEVEL: AtomicU32 = AtomicU32::new(0);
 static GENERATOR: AtomicU32 = AtomicU32::new(0);
@@ -94,210 +94,66 @@ impl AnySym {
     }
 }
 
-pub type Lookup<T, S> = HashMap<QualId<T>, S>;
+#[derive(Debug, Default, Clone, PartialEq, Eq)]
+pub struct LocalSyms<N: Namespace>(HashMap<Name<N>, Sym<N>>);
 
-#[derive(Debug, Clone, Default)]
-pub struct SymbolTable {
-    pub module_binds: Lookup<node::ModuleBind, ModuleSym>,
-    pub module_imports: Lookup<node::ModuleImport, ModuleSym>,
-    pub modules: Lookup<node::Module, ModuleSym>,
-    pub module_paths: Lookup<node::ModulePath, ModuleSym>,
-    pub type_binds: Lookup<node::TypeBind, TypeSym>,
-    pub value_binds: Lookup<node::ValueBind, ValueSym>,
-    pub let_exprs: Lookup<node::LetExpr, ValueSym>,
-    pub lambda_exprs: Lookup<node::LambdaExpr, ValueSym>,
-    pub path_exprs: Lookup<node::PathExpr, ValueSym>,
-}
-
-impl SymbolTable {
-    #[inline]
+impl<N: Namespace> LocalSyms<N> {
     pub fn new() -> Self {
-        Self {
-            module_binds: Lookup::new(),
-            module_imports: Lookup::new(),
-            modules: Lookup::new(),
-            module_paths: Lookup::new(),
-            type_binds: Lookup::new(),
-            value_binds: Lookup::new(),
-            let_exprs: Lookup::new(),
-            lambda_exprs: Lookup::new(),
-            path_exprs: Lookup::new(),
-        }
+        Self(HashMap::new())
     }
 
-    #[inline]
-    pub fn insert_module_bind(&mut self, id: QualId<node::ModuleBind>, sym: ModuleSym) {
-        self.module_binds.insert(id, sym);
+    pub fn insert(&mut self, name: Name<N>, sym: Sym<N>) {
+        self.0.insert(name, sym);
     }
 
-    #[inline]
-    pub fn insert_module_import(&mut self, id: QualId<node::ModuleImport>, sym: ModuleSym) {
-        self.module_imports.insert(id, sym);
+    pub fn get(&self, name: Name<N>) -> Option<Sym<N>> {
+        self.0.get(&name).copied()
     }
 
-    #[inline]
-    pub fn insert_module(&mut self, id: QualId<node::Module>, sym: ModuleSym) {
-        self.modules.insert(id, sym);
+    pub fn contains(&self, name: Name<N>) -> bool {
+        self.0.contains_key(&name)
     }
 
-    #[inline]
-    pub fn insert_module_path(&mut self, id: QualId<node::ModulePath>, sym: ModuleSym) {
-        self.module_paths.insert(id, sym);
+    pub fn iter(&self) -> hash_map::Iter<Name<N>, Sym<N>> {
+        self.0.iter()
     }
 
-    #[inline]
-    pub fn insert_type_bind(&mut self, id: QualId<node::TypeBind>, sym: TypeSym) {
-        self.type_binds.insert(id, sym);
-    }
-
-    #[inline]
-    pub fn insert_value_bind(&mut self, id: QualId<node::ValueBind>, sym: ValueSym) {
-        self.value_binds.insert(id, sym);
-    }
-
-    #[inline]
-    pub fn insert_let_expr(&mut self, id: QualId<node::LetExpr>, sym: ValueSym) {
-        self.let_exprs.insert(id, sym);
-    }
-
-    #[inline]
-    pub fn insert_lambda_expr(&mut self, id: QualId<node::LambdaExpr>, sym: ValueSym) {
-        self.lambda_exprs.insert(id, sym);
-    }
-
-    #[inline]
-    pub fn insert_path_expr(&mut self, id: QualId<node::PathExpr>, sym: ValueSym) {
-        self.path_exprs.insert(id, sym);
-    }
-
-    #[inline]
-    pub fn lookup_module_bind(&self, id: QualId<node::ModuleBind>) -> Option<ModuleSym> {
-        self.module_binds.get(&id).copied()
-    }
-
-    #[inline]
-    pub fn lookup_module_import(&self, id: QualId<node::ModuleImport>) -> Option<ModuleSym> {
-        self.module_imports.get(&id).copied()
-    }
-
-    #[inline]
-    pub fn lookup_module(&self, id: QualId<node::Module>) -> Option<ModuleSym> {
-        self.modules.get(&id).copied()
-    }
-
-    #[inline]
-    pub fn lookup_module_path(&self, id: QualId<node::ModulePath>) -> Option<ModuleSym> {
-        self.module_paths.get(&id).copied()
-    }
-
-    #[inline]
-    pub fn lookup_type_bind(&self, id: QualId<node::TypeBind>) -> Option<TypeSym> {
-        self.type_binds.get(&id).copied()
-    }
-
-    #[inline]
-    pub fn lookup_value_bind(&self, id: QualId<node::ValueBind>) -> Option<ValueSym> {
-        self.value_binds.get(&id).copied()
-    }
-
-    #[inline]
-    pub fn lookup_let_expr(&self, id: QualId<node::LetExpr>) -> Option<ValueSym> {
-        self.let_exprs.get(&id).copied()
-    }
-
-    #[inline]
-    pub fn lookup_lambda_expr(&self, id: QualId<node::LambdaExpr>) -> Option<ValueSym> {
-        self.lambda_exprs.get(&id).copied()
-    }
-
-    #[inline]
-    pub fn lookup_path_expr(&self, id: QualId<node::PathExpr>) -> Option<ValueSym> {
-        self.path_exprs.get(&id).copied()
+    pub fn iter_mut(&mut self) -> hash_map::IterMut<Name<N>, Sym<N>> {
+        self.0.iter_mut()
     }
 }
 
-impl Index<QualId<node::ModuleBind>> for SymbolTable {
-    type Output = ModuleSym;
+impl<N: Namespace> Index<Name<N>> for LocalSyms<N> {
+    type Output = Sym<N>;
 
-    fn index(&self, index: QualId<node::ModuleBind>) -> &Self::Output {
-        self.module_binds
-            .get(&index)
-            .expect("Module symbol not found")
+    fn index(&self, index: Name<N>) -> &Self::Output {
+        self.0.get(&index).expect("Local symbol not found")
     }
 }
 
-impl Index<QualId<node::ModuleImport>> for SymbolTable {
-    type Output = ModuleSym;
+impl<N: Namespace> IntoIterator for LocalSyms<N> {
+    type Item = (Name<N>, Sym<N>);
+    type IntoIter = std::collections::hash_map::IntoIter<Name<N>, Sym<N>>;
 
-    fn index(&self, index: QualId<node::ModuleImport>) -> &Self::Output {
-        self.module_imports
-            .get(&index)
-            .expect("Module import symbol not found")
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.into_iter()
     }
 }
 
-impl Index<QualId<node::Module>> for SymbolTable {
-    type Output = ModuleSym;
+impl<'a, N: Namespace> IntoIterator for &'a LocalSyms<N> {
+    type Item = (&'a Name<N>, &'a Sym<N>);
+    type IntoIter = hash_map::Iter<'a, Name<N>, Sym<N>>;
 
-    fn index(&self, index: QualId<node::Module>) -> &Self::Output {
-        self.modules.get(&index).expect("Module symbol not found")
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.iter()
     }
 }
 
-impl Index<QualId<node::ModulePath>> for SymbolTable {
-    type Output = ModuleSym;
+impl<'a, N: Namespace> IntoIterator for &'a mut LocalSyms<N> {
+    type Item = (&'a Name<N>, &'a mut Sym<N>);
+    type IntoIter = hash_map::IterMut<'a, Name<N>, Sym<N>>;
 
-    fn index(&self, index: QualId<node::ModulePath>) -> &Self::Output {
-        self.module_paths
-            .get(&index)
-            .expect("Module path symbol not found")
-    }
-}
-
-impl Index<QualId<node::TypeBind>> for SymbolTable {
-    type Output = TypeSym;
-
-    fn index(&self, index: QualId<node::TypeBind>) -> &Self::Output {
-        self.type_binds.get(&index).expect("Type symbol not found")
-    }
-}
-
-impl Index<QualId<node::ValueBind>> for SymbolTable {
-    type Output = ValueSym;
-
-    fn index(&self, index: QualId<node::ValueBind>) -> &Self::Output {
-        self.value_binds
-            .get(&index)
-            .expect("Value symbol not found")
-    }
-}
-
-impl Index<QualId<node::LetExpr>> for SymbolTable {
-    type Output = ValueSym;
-
-    fn index(&self, index: QualId<node::LetExpr>) -> &Self::Output {
-        self.let_exprs
-            .get(&index)
-            .expect("Let expression symbol not found")
-    }
-}
-
-impl Index<QualId<node::LambdaExpr>> for SymbolTable {
-    type Output = ValueSym;
-
-    fn index(&self, index: QualId<node::LambdaExpr>) -> &Self::Output {
-        self.lambda_exprs
-            .get(&index)
-            .expect("Lambda expression symbol not found")
-    }
-}
-
-impl Index<QualId<node::PathExpr>> for SymbolTable {
-    type Output = ValueSym;
-
-    fn index(&self, index: QualId<node::PathExpr>) -> &Self::Output {
-        self.path_exprs
-            .get(&index)
-            .expect("Path expression symbol not found")
+    fn into_iter(self) -> Self::IntoIter {
+        self.0.iter_mut()
     }
 }

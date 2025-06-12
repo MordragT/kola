@@ -1,18 +1,18 @@
-use std::{io, rc::Rc};
+use std::io;
 
 use camino::Utf8Path;
-use indexmap::IndexMap;
 
 use kola_print::prelude::*;
 use kola_span::{Report, SourceManager};
 use kola_utils::{dependency::DependencyGraph, interner::StrInterner, io::FileSystem};
 
 use crate::{
+    bind::Bindings,
     forest::Forest,
     prelude::Topography,
     resolver::{discover::DiscoverOutput, module::ModuleResolution, value::resolve_values},
-    scope::ModuleScope,
-    symbol::{ModuleSym, SymbolTable},
+    scope::{ModuleScope, ModuleScopes},
+    symbol::ModuleSym,
 };
 
 mod discover;
@@ -20,15 +20,13 @@ mod module;
 mod value;
 
 pub type ModuleGraph = DependencyGraph<ModuleSym>;
-pub type MutModuleScopes = IndexMap<ModuleSym, ModuleScope>;
-pub type ModuleScopes = IndexMap<ModuleSym, Rc<ModuleScope>>;
 
 #[derive(Debug, Clone, Default)]
 pub struct ResolveOutput {
     pub source_manager: SourceManager,
     pub forest: Forest,
     pub topography: Topography,
-    pub symbol_table: SymbolTable,
+    pub symbol_table: Bindings,
     pub module_graph: ModuleGraph,
     pub module_scopes: ModuleScopes,
 }
@@ -45,7 +43,7 @@ pub fn resolve(
         source_manager,
         forest,
         topography,
-        mut symbol_table,
+        bindings: mut symbol_table,
         mut module_graph,
         module_scopes,
     } = discover::discover(path, io, arena, interner, report, print_options)?;
@@ -61,10 +59,10 @@ pub fn resolve(
         });
     }
 
-    // I could replace this with a topological sort, if I need it later anyway.
-    // For that to work, I should however ensure that the module graph has no duplicates,
-    // or at least that the duplicates are handled correctly.
-    let module_symbols = module_scopes.keys().copied().collect::<Vec<_>>();
+    let module_symbols = module_scopes
+        .iter()
+        .map(ModuleScope::sym)
+        .collect::<Vec<_>>();
 
     let ModuleResolution { module_scopes } =
         module::resolve_modules(module_scopes, interner, report, &mut module_graph);

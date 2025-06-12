@@ -53,12 +53,12 @@ impl Driver {
         let mut env = TypeEnv::new();
 
         for (module_sym, module_scope) in module_scopes {
-            let path_key = module_scope.path_key();
+            let path_key = module_scope.source();
 
             let spans = topography[path_key].clone();
             let tree = &*forest[path_key];
 
-            match Typer::new(module_scope.id(), spans, &env, &symbol_table)
+            match Typer::new(module_scope.global_id(), spans, &env, &symbol_table)
                 .solve(tree, &mut self.report)
             {
                 Ok(types) => todo!(),

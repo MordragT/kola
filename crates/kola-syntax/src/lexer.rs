@@ -1,7 +1,6 @@
 use chumsky::{input::StrInput, prelude::*};
 
-use kola_span::{Diagnostic, Loc, Report};
-use kola_utils::interner::PathKey;
+use kola_span::{Diagnostic, Loc, Report, SourceId};
 
 use crate::token::{LiteralT, Token, Tokens};
 
@@ -70,20 +69,20 @@ pub type Extra<'t> = extra::Err<Error<'t>>;
 // }
 
 pub struct LexInput<'t> {
-    pub key: PathKey,
+    pub source: SourceId,
     pub text: &'t str,
 }
 
 impl<'t> LexInput<'t> {
-    pub fn new(key: PathKey, text: &'t str) -> Self {
-        Self { key, text }
+    pub fn new(source: SourceId, text: &'t str) -> Self {
+        Self { source, text }
     }
 }
 
 pub fn tokenize<'t>(input: LexInput<'t>, report: &mut Report) -> Option<Tokens<'t>> {
-    let LexInput { key, text } = input;
+    let LexInput { source, text } = input;
 
-    let input = text.with_context::<Loc>(key);
+    let input = text.with_context::<Loc>(source);
 
     let lexer = lexer();
     let (tokens, errors) = lexer.parse(input).into_output_errors();
@@ -93,9 +92,9 @@ pub fn tokenize<'t>(input: LexInput<'t>, report: &mut Report) -> Option<Tokens<'
 }
 
 pub fn try_tokenize(input: LexInput<'_>) -> Result<Tokens<'_>, Vec<Error<'_>>> {
-    let LexInput { key, text } = input;
+    let LexInput { source, text } = input;
 
-    let input = text.with_context::<Loc>(key);
+    let input = text.with_context::<Loc>(source);
 
     let lexer = lexer();
     lexer.parse(input).into_result()
@@ -278,9 +277,9 @@ mod test {
 
     fn tokenize_str(text: &str) -> Vec<Located<Token<'_>>> {
         let mut interner = PathInterner::new();
-        let key = interner.intern(Utf8PathBuf::from("test"));
+        let source = interner.intern(Utf8PathBuf::from("test"));
 
-        let input = LexInput { key, text };
+        let input = LexInput { source, text };
 
         let mut report = Report::new();
 
@@ -510,11 +509,11 @@ mod test {
     #[test]
     fn test_recovery() {
         let mut interner = PathInterner::new();
-        let key = interner.intern(Utf8PathBuf::from("test"));
+        let source = interner.intern(Utf8PathBuf::from("test"));
         let mut report = Report::new();
 
         let input = LexInput {
-            key,
+            source,
             text: "let x = @ 42",
         };
 

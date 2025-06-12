@@ -7,57 +7,14 @@ use kola_utils::{
     io::FileSystem,
 };
 
+pub type SourceId = PathKey;
 pub type Source = ariadne::Source<Arc<str>>;
-
-// TODO create newtype over PathKey: SourceKey
-
-// pub trait HasSourceManager {
-//     fn source_manager(&self) -> &SourceManager;
-
-//     fn resolve_import(&mut self, from: PathKey, name: StrKey) -> io::Result<Utf8PathBuf>
-//     where
-//         Self: HasStrInterner + Sized,
-//     {
-//         self.source_manager().resolve_import(from, name, self)
-//     }
-// }
-
-// pub trait HasMutSourceManager: HasSourceManager {
-//     fn source_manager_mut(&mut self) -> &mut SourceManager;
-
-//     fn fetch_import(&mut self, from: PathKey, name: StrKey) -> io::Result<(PathKey, &Source)>
-//     where
-//         Self: HasStrInterner + HasFileSystem + Sized,
-//     {
-//         let path = self.source_manager().resolve_import(from, name, self)?;
-
-//         self.source_manager_mut().fetch(path, self)
-//     }
-// }
-
-// pub trait SourceManagerExt<I> {
-//     fn fetch_import(&mut self, from: PathKey, name: StrKey) -> io::Result<(PathKey, &Source)>;
-//     fn resolve_import(&self, from: PathKey, name: StrKey) -> io::Result<Utf8PathBuf>;
-// }
-
-// impl<I: ManyIndex, C: ToRef> SourceManagerExt<I> for World<C> {
-//     fn fetch_import(&mut self, from: PathKey, name: StrKey) -> io::Result<(PathKey, &Source)>
-//     where
-//         C: GetMany<Cons![SourceManager, StrInterner, Box<dyn FileSystem>], I>,
-//     {
-//         todo!()
-//     }
-
-//     fn resolve_import(&self, from: PathKey, name: StrKey) -> io::Result<Utf8PathBuf> {
-//         todo!()
-//     }
-// }
 
 #[derive(Debug, Clone, Default)]
 pub struct SourceManager {
     interner: PathInterner,
-    sources: HashMap<PathKey, Source>,
-    import_dirs: HashMap<PathKey, Utf8PathBuf>,
+    sources: HashMap<SourceId, Source>,
+    import_dirs: HashMap<SourceId, Utf8PathBuf>,
 }
 
 impl SourceManager {
@@ -71,7 +28,7 @@ impl SourceManager {
         &mut self,
         path: impl Into<Cow<'p, Utf8Path>>,
         io: &impl FileSystem,
-    ) -> io::Result<(PathKey, &Source)> {
+    ) -> io::Result<(SourceId, &Source)> {
         let path = path.into();
         assert!(path.is_absolute());
 
@@ -94,18 +51,18 @@ impl SourceManager {
 
     pub fn fetch_import(
         &mut self,
-        from: PathKey,
+        from: SourceId,
         name: StrKey,
         interner: &StrInterner,
         io: &impl FileSystem,
-    ) -> io::Result<(PathKey, &Source)> {
+    ) -> io::Result<(SourceId, &Source)> {
         let path = self.resolve_import(from, name, interner)?;
         self.fetch(path, io)
     }
 
     pub fn resolve_import(
         &self,
-        from: PathKey,
+        from: SourceId,
         name: StrKey,
         interner: &StrInterner,
     ) -> io::Result<Utf8PathBuf> {
@@ -119,7 +76,7 @@ impl SourceManager {
         Ok(path)
     }
 
-    pub fn lookup(&self, path: &Utf8Path) -> Option<PathKey> {
+    pub fn lookup(&self, path: &Utf8Path) -> Option<SourceId> {
         assert!(path.is_absolute());
 
         self.interner.lookup(path)
@@ -131,35 +88,35 @@ impl SourceManager {
         self.interner.contains(path)
     }
 
-    pub fn contains_key(&self, path: PathKey) -> bool {
+    pub fn contains_key(&self, path: SourceId) -> bool {
         self.sources.contains_key(&path)
     }
 
-    pub fn get(&self, path: PathKey) -> Option<&Source> {
+    pub fn get(&self, path: SourceId) -> Option<&Source> {
         self.sources.get(&path)
     }
 
-    pub fn get_import_dir(&self, path: PathKey) -> Option<&Utf8Path> {
+    pub fn get_import_dir(&self, path: SourceId) -> Option<&Utf8Path> {
         self.import_dirs.get(&path).map(|p| p.as_path())
     }
 }
 
-impl Cache<PathKey> for &SourceManager {
+impl Cache<SourceId> for &SourceManager {
     type Storage = Arc<str>;
 
-    fn fetch(&mut self, path: &PathKey) -> Result<&Source, impl fmt::Debug> {
+    fn fetch(&mut self, path: &SourceId) -> Result<&Source, impl fmt::Debug> {
         self.sources.get(path).ok_or("Path key not found")
     }
 
-    fn display<'a>(&self, id: &'a PathKey) -> Option<impl fmt::Display + 'a> {
+    fn display<'a>(&self, id: &'a SourceId) -> Option<impl fmt::Display + 'a> {
         Some(self.interner[*id].to_owned())
     }
 }
 
-impl Index<PathKey> for SourceManager {
+impl Index<SourceId> for SourceManager {
     type Output = Source;
 
-    fn index(&self, index: PathKey) -> &Self::Output {
+    fn index(&self, index: SourceId) -> &Self::Output {
         self.sources.get(&index).unwrap()
     }
 }

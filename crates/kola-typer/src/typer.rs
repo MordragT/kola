@@ -1,6 +1,6 @@
 use std::{ops::ControlFlow, rc::Rc};
 
-use kola_resolver::{QualId, symbol::SymbolTable};
+use kola_resolver::{GlobalId, bind::Bindings};
 use kola_span::{Diagnostic, Loc, Located, Report};
 use kola_syntax::prelude::*;
 use kola_tree::prelude::*;
@@ -108,7 +108,7 @@ impl Constraints {
 // for that I need to cache the NodeIDs of the "public" types
 
 pub struct Typer<'a, N> {
-    root_id: QualId<N>,
+    root_id: GlobalId<N>,
     subs: Substitution,
     cons: Constraints,
     type_scope: TypeScope,
@@ -116,15 +116,15 @@ pub struct Typer<'a, N> {
     types: TypedNodes,
     spans: Rc<Locations>,
     env: &'a TypeEnv,
-    symbol_table: &'a SymbolTable,
+    symbol_table: &'a Bindings,
 }
 
 impl<'a, N> Typer<'a, N> {
     pub fn new(
-        root_id: QualId<N>,
+        root_id: GlobalId<N>,
         spans: Rc<Locations>,
         env: &'a TypeEnv,
-        symbol_table: &'a SymbolTable,
+        symbol_table: &'a Bindings,
     ) -> Self {
         Self {
             root_id,
@@ -148,7 +148,7 @@ impl<'a, N> Typer<'a, N> {
         Tree: TreeView,
         Id<N>: Visitable<Tree>,
     {
-        let root = self.root_id.1;
+        let root = self.root_id.id;
 
         match root.visit_by(&mut self, tree) {
             ControlFlow::Break(e) => {
@@ -190,8 +190,8 @@ impl<'a, N> Typer<'a, N> {
     }
 
     #[inline]
-    pub fn qual<T>(&self, id: Id<T>) -> QualId<T> {
-        (self.root_id.0, id)
+    pub fn qualify<T>(&self, id: Id<T>) -> GlobalId<T> {
+        GlobalId::new(self.root_id.source, id)
     }
 
     fn partial_restrict(
@@ -344,7 +344,7 @@ where
         let t = if let Some(path) = *path {
             let module_sym = self
                 .symbol_table
-                .lookup_module_path(self.qual(path))
+                .lookup_module_path(self.qualify(path))
                 .expect("Module path not found");
 
             let value_sym = self.env[module_sym]
@@ -798,11 +798,11 @@ mod tests {
     use std::rc::Rc;
 
     use camino::Utf8PathBuf;
-    use kola_resolver::symbol::SymbolTable;
-    use kola_span::{Loc, Located, Report, Span};
+    use kola_resolver::{GlobalId, bind::Bindings};
+    use kola_span::{Loc, Located, Report, SourceId, Span};
     use kola_syntax::loc::Locations;
     use kola_tree::prelude::*;
-    use kola_utils::interner::{PathInterner, PathKey, StrInterner};
+    use kola_utils::interner::{PathInterner, StrInterner};
 
     use super::{TypedNodes, Typer};
     use crate::{
@@ -811,13 +811,13 @@ mod tests {
         types::*,
     };
 
-    fn mocked_key() -> PathKey {
+    fn mocked_source() -> SourceId {
         let mut interner = PathInterner::new();
         interner.intern(Utf8PathBuf::from("test"))
     }
 
-    fn mocked_spans(path_key: PathKey, tree: &impl TreeView) -> Locations {
-        let span = Loc::new(path_key, Span::new(0, 0));
+    fn mocked_spans(source_id: SourceId, tree: &impl TreeView) -> Locations {
+        let span = Loc::new(source_id, Span::new(0, 0));
         tree.metadata_with(|node| Meta::default_with(span, node.kind()))
     }
 
@@ -829,7 +829,7 @@ mod tests {
     where
         node::Expr: From<Id<T>>,
     {
-        let path_key = mocked_key();
+        let source_id = mocked_source();
 
         let bind = node::Bind::value_in(
             node::Vis::None,
@@ -841,12 +841,12 @@ mod tests {
         let root_id = builder.insert(node::Module(vec![bind]));
 
         let tree = builder.finish(root_id);
-        let spans = Rc::new(mocked_spans(path_key, &tree));
+        let spans = Rc::new(mocked_spans(source_id, &tree));
 
-        let qual_id = (path_key, root_id);
+        let global_id = GlobalId::new(source_id, root_id);
         let mut report = Report::new();
 
-        Typer::new(qual_id, spans, &TypeEnv::new(), &SymbolTable::new()).solve(&tree, &mut report)
+        Typer::new(global_id, spans, &TypeEnv::new(), &Bindings::new()).solve(&tree, &mut report)
     }
 
     #[test]

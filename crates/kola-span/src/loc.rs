@@ -1,13 +1,13 @@
 use kola_utils::interner::PathKey;
 use std::{fmt, ops::Range};
 
-use crate::Span;
+use crate::{Span, source::SourceId};
 
 pub type Located<T> = (T, Loc);
 
 #[derive(Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Loc {
-    pub path: PathKey,
+    pub path: SourceId,
     pub span: Span,
 }
 
@@ -27,17 +27,17 @@ impl fmt::Display for Loc {
 
 impl Loc {
     #[inline]
-    pub fn new(path: PathKey, span: Span) -> Self {
+    pub fn new(path: SourceId, span: Span) -> Self {
         Self { path, span }
     }
 
     #[inline]
-    pub fn from_range(path: PathKey, range: Range<usize>) -> Self {
+    pub fn from_range(path: SourceId, range: Range<usize>) -> Self {
         Self::new(path, Span::from(range))
     }
 
     #[inline]
-    pub fn source(&self) -> PathKey {
+    pub fn source(&self) -> SourceId {
         self.path
     }
 
@@ -78,7 +78,7 @@ impl chumsky::span::Span for Loc {
 }
 
 impl ariadne::Span for Loc {
-    type SourceId = PathKey;
+    type SourceId = SourceId;
 
     fn source(&self) -> &Self::SourceId {
         &self.path

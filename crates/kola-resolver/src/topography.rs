@@ -1,40 +1,39 @@
-use kola_span::Loc;
+use kola_span::{Loc, SourceId};
 use kola_syntax::loc::{LocPhase, Locations};
 use kola_tree::meta::{MetaCast, MetaView};
-use kola_utils::interner::PathKey;
 use std::{collections::HashMap, ops::Index, rc::Rc};
 
-use crate::QualId;
+use crate::GlobalId;
 
 #[derive(Debug, Clone, Default)]
-pub struct Topography(HashMap<PathKey, Rc<Locations>>);
+pub struct Topography(HashMap<SourceId, Rc<Locations>>);
 
 impl Topography {
     pub fn new() -> Self {
         Self(HashMap::new())
     }
 
-    pub fn insert(&mut self, path: PathKey, loc: Locations) {
-        self.0.insert(path, Rc::new(loc));
+    pub fn insert(&mut self, source: SourceId, loc: Locations) {
+        self.0.insert(source, Rc::new(loc));
     }
 
-    pub fn get(&self, path: &PathKey) -> Option<&Rc<Locations>> {
-        self.0.get(path)
+    pub fn get(&self, source: SourceId) -> Option<&Rc<Locations>> {
+        self.0.get(&source)
     }
 
-    pub fn span<T>(&self, id: QualId<T>) -> Loc
+    pub fn span<T>(&self, id: GlobalId<T>) -> Loc
     where
         T: MetaCast<LocPhase, Meta = Loc>,
     {
-        let topography = &self.0[&id.0];
-        *topography.meta(id.1)
+        let topography = &self.0[&id.source];
+        *topography.meta(id.id)
     }
 }
 
-impl Index<PathKey> for Topography {
+impl Index<SourceId> for Topography {
     type Output = Rc<Locations>;
 
-    fn index(&self, path: PathKey) -> &Self::Output {
-        self.0.get(&path).unwrap()
+    fn index(&self, source: SourceId) -> &Self::Output {
+        self.0.get(&source).unwrap()
     }
 }

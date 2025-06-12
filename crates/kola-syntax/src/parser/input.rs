@@ -1,19 +1,18 @@
 use std::ops::Range;
 
 use chumsky::{input::ValueInput, prelude::*};
-use kola_span::Loc;
-use kola_utils::interner::PathKey;
+use kola_span::{Loc, SourceId};
 
 use crate::token::{Token, Tokens};
 
 pub struct ParseInput<'t> {
-    pub key: PathKey,
+    pub source: SourceId,
     pub tokens: Tokens<'t>,
 }
 
 impl<'t> ParseInput<'t> {
-    pub fn new(key: PathKey, tokens: Tokens<'t>) -> Self {
-        Self { key, tokens }
+    pub fn new(source: SourceId, tokens: Tokens<'t>) -> Self {
+        Self { source, tokens }
     }
 }
 
@@ -22,12 +21,12 @@ impl<'t> Input<'t> for ParseInput<'t> {
     type Token = Token<'t>;
     type MaybeToken = Token<'t>;
     type Cursor = usize;
-    type Cache = (Tokens<'t>, PathKey);
+    type Cache = (Tokens<'t>, SourceId);
 
     fn begin(self) -> (Self::Cursor, Self::Cache) {
-        let Self { key, tokens } = self;
+        let Self { source, tokens } = self;
 
-        (0, (tokens, key))
+        (0, (tokens, source))
     }
 
     fn cursor_location(cursor: &Self::Cursor) -> usize {
