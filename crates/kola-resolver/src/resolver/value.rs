@@ -1,218 +1,93 @@
-use std::{ops::ControlFlow, rc::Rc};
+use kola_span::{Diagnostic, Report};
 
-use kola_span::{Diagnostic, Loc, Report};
-use kola_syntax::loc::LocPhase;
-use kola_tree::{node::Vis, prelude::*};
-use kola_utils::{interner::StrKey, scope::LinearScope};
-
+use super::ValueOrders;
 use crate::{
-    GlobalId,
     bind::Bindings,
-    forest::Forest,
-    resolver::ModuleScopes,
-    scope::ModuleScope,
-    symbol::{ModuleSym, ValueSym},
-    topography::Topography,
+    refs::ValueRef,
+    scope::{ModuleCell, ModuleCells},
+    symbol::ModuleSym,
 };
+
+pub struct ValueResolution {
+    pub value_orders: ValueOrders,
+}
+
+/*
+ How this works:
+
+1. During discovery, forward value references are collected as `ValueRef` structs
+   containing the reference name, global_id, and source binding symbol.
+2. No placeholder symbols or bindings are created during discovery.
+3. Resolution resolves each collected `ValueRef` to concrete value definitions.
+
+The process:
+1. For each module scope, iterate through the collected `Vec<ValueRef>`.
+2. For each `ValueRef`:
+   - Look up the reference name in the module's shape to find the target symbol
+   - If found, create the final binding entry (global_id → target_symbol)
+   - Add the dependency edge (source → target) to the value graph
+   - If not found, report an error
+3. Perform topological sort on the resolved dependency graph for:
+   - Cycle detection (if sort fails)
+   - Evaluation order (if sort succeeds)
+4. All bindings are created in a single pass during resolution.
+
+This approach eliminates placeholder symbols and binding mutations, making each
+phase have a single clear responsibility: discovery collects information,
+resolution creates relationships.
+*/
 
 pub fn resolve_values(
     module_symbols: &[ModuleSym],
-    forest: &Forest,
-    topography: &Topography,
-    module_scopes: &ModuleScopes,
+    module_scopes: &ModuleCells,
     report: &mut Report,
-    symbol_table: &mut Bindings,
-) {
+    bindings: &mut Bindings,
+) -> ValueResolution {
+    let mut value_orders = ValueOrders::new();
+
     for module_sym in module_symbols {
-        let scope = module_scopes
-            .get(module_sym)
-            .expect("Module scope should exist");
+        let scope = module_scopes[module_sym].clone();
 
-        resolve_values_in_module(
-            Rc::clone(scope),
-            forest,
-            topography,
-            module_scopes,
-            report,
-            symbol_table,
-        );
-    }
-}
+        resolve_values_in_module(scope.clone(), report, bindings);
 
-pub fn resolve_values_in_module(
-    scope: Rc<ModuleScope>,
-    forest: &Forest,
-    topography: &Topography,
-    module_scopes: &ModuleScopes,
-    report: &mut Report,
-    symbol_table: &mut Bindings,
-) {
-    let bind = scope.bind();
-    let tree = forest.tree(bind.source());
-
-    let mut definer = ValueResolver::new(scope, topography, module_scopes, report, symbol_table);
-
-    match bind.node_id().visit_by(&mut definer, &*tree) {
-        ControlFlow::Continue(()) => (),
-        ControlFlow::Break(_) => unreachable!(),
-    }
-}
-
-struct ValueResolver<'a> {
-    module_scope: Rc<ModuleScope>,
-    scope: LinearScope<StrKey, ValueSym>,
-    topography: &'a Topography,
-    module_scopes: &'a ModuleScopes,
-    report: &'a mut Report,
-    symbol_table: &'a mut Bindings,
-}
-
-impl<'a> ValueResolver<'a> {
-    fn new(
-        module_scope: Rc<ModuleScope>,
-        topography: &'a Topography,
-        module_scopes: &'a ModuleScopes,
-        report: &'a mut Report,
-        symbol_table: &'a mut Bindings,
-    ) -> Self {
-        Self {
-            module_scope,
-            scope: LinearScope::new(),
-            topography,
-            module_scopes,
-            report,
-            symbol_table,
+        match scope.borrow().value_graph.topological_sort() {
+            Ok(order) => {
+                value_orders.insert(*module_sym, order);
+            }
+            Err(_) => {
+                report.add_diagnostic(
+                    Diagnostic::error(scope.borrow().loc, "Cycle detected in value graph")
+                        .with_help("Check for circular dependencies in value definitions."),
+                );
+            }
         }
     }
 
-    #[inline]
-    pub fn span<T>(&self, id: Id<T>) -> Loc
-    where
-        T: MetaCast<LocPhase, Meta = Loc>,
+    ValueResolution { value_orders }
+}
+
+fn resolve_values_in_module(scope: ModuleCell, report: &mut Report, bindings: &mut Bindings) {
+    let value_refs: Vec<ValueRef> = scope.borrow().refs.values().to_vec();
+
+    // First pass: resolve all forward value references
+    for ValueRef {
+        name,
+        global_id,
+        source,
+    } in value_refs
     {
-        self.topography.span(self.qualify(id))
-    }
-
-    #[inline]
-    pub fn qualify<T>(&self, id: Id<T>) -> GlobalId<T> {
-        GlobalId::new(self.module_scope.source(), id)
-    }
-}
-
-impl<'a, T> Visitor<T> for ValueResolver<'a>
-where
-    T: TreeView,
-{
-    type BreakValue = !;
-
-    fn visit_let_expr(&mut self, id: Id<node::LetExpr>, tree: &T) -> ControlFlow<Self::BreakValue> {
-        let node::LetExpr {
-            name,
-            value,
-            inside,
-        } = *tree.node(id);
-
-        let name = tree.node(name).0;
-
-        ValueSym::enter();
-        self.walk_expr(value, tree)?;
-        ValueSym::exit();
-
-        let sym = ValueSym::new();
-
-        self.symbol_table.insert_let_expr(self.qualify(id), sym);
-
-        self.scope.enter(name, sym);
-        self.walk_expr(inside, tree)?;
-        self.scope.exit(&name);
-
-        ControlFlow::Continue(())
-    }
-
-    fn visit_lambda_expr(
-        &mut self,
-        id: Id<node::LambdaExpr>,
-        tree: &T,
-    ) -> ControlFlow<Self::BreakValue> {
-        let node::LambdaExpr { param, body } = *tree.node(id);
-
-        let name = tree.node(param).0;
-
-        let sym = ValueSym::new();
-
-        self.symbol_table.insert_lambda_expr(self.qualify(id), sym);
-
-        self.scope.enter(name, sym);
-        self.walk_expr(body, tree)?;
-        self.scope.exit(&name);
-
-        ControlFlow::Continue(())
-    }
-
-    fn visit_path_expr(
-        &mut self,
-        id: Id<node::PathExpr>,
-        tree: &T,
-    ) -> ControlFlow<Self::BreakValue> {
-        let node::PathExpr { path, binding, .. } = tree.node(id);
-
-        let binding = *tree.node(*binding);
-
-        let global_id = self.qualify(id);
-
-        if let Some(path) = path {
-            let module_sym = self
-                .symbol_table
-                .lookup_module_path(self.qualify(*path))
-                .expect("Path should have been resolved before value definition");
-
-            let scope = self
-                .module_scopes
-                .get(&module_sym)
-                .expect("Module scope should exist");
-
-            let Some(value_sym) = scope.env.lookup_value(binding) else {
-                self.report.add_diagnostic(
-                    Diagnostic::error(self.span(*path), "Cannot find value binding")
-                        .with_trace([("In this module".to_owned(), scope.loc())]),
-                );
-                return ControlFlow::Continue(());
-            };
-
-            let bind = scope.env[value_sym];
-
-            if bind.vis != Vis::Export {
-                self.report.add_diagnostic(
-                    Diagnostic::error(self.span(*path), "Cannot access non-exported value binding")
-                        .with_trace([("At this binding".to_owned(), bind.loc)]),
-                );
-                return ControlFlow::Continue(());
-            }
-
-            self.symbol_table.insert_path_expr(global_id, value_sym);
-        } else if let Some(value_sym) = self.scope.get(&binding) {
-            self.symbol_table.insert_path_expr(global_id, *value_sym);
-        } else if let Some(value_sym) = self.module_scope.env.lookup_value(binding) {
-            let bind = self.module_scope.env[value_sym];
-
-            if bind.vis != Vis::Export {
-                self.report.add_diagnostic(
-                    Diagnostic::error(self.span(id), "Cannot access non-exported value binding")
-                        .with_trace([("At this binding".to_owned(), bind.loc)]),
-                );
-                return ControlFlow::Continue(());
-            }
-
-            self.symbol_table.insert_path_expr(global_id, value_sym);
+        if let Some(target) = scope.borrow().shape.lookup_value(name) {
+            scope
+                .borrow_mut()
+                .value_graph
+                .add_dependency(source, target);
+            bindings.insert_path_expr(global_id, target);
         } else {
-            self.report.add_diagnostic(
-                Diagnostic::error(self.span(id), "Cannot find value binding")
-                    .with_trace([("In this module".to_owned(), self.module_scope.loc())]),
+            // Value not found in current module
+            report.add_diagnostic(
+                Diagnostic::error(scope.borrow().loc, "Value not found")
+                    .with_help("Check that the value is defined in this module."),
             );
-
-            return ControlFlow::Continue(());
         }
-
-        ControlFlow::Continue(())
     }
 }

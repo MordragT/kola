@@ -1,19 +1,19 @@
 use std::ops::Index;
 
 use crate::{
-    def::{AnyDef, Defs, ModuleDef, TypeDef, ValueDef},
+    defs::{AnyDef, Defs, ModuleDef, TypeDef, ValueDef},
     error::NameCollision,
     symbol::{LocalSyms, ModuleSym, TypeSym, ValueSym},
 };
-use kola_span::Loc;
+use indexmap::IndexMap;
 use kola_tree::node::{
     AnyName, ModuleName, ModuleNamespace, TypeName, TypeNamespace, ValueName, ValueNamespace,
 };
 
-#[derive(Debug, Clone)]
-pub struct LocalEnv {
-    loc: Loc,
-
+// Idea: Create refreshner for Symbols inside ModuleShape,
+// so that this can be compared to other ModuleShapes for SML style functors and such
+#[derive(Debug, Clone, Default)]
+pub struct ModuleShape {
     module_syms: LocalSyms<ModuleNamespace>,
     type_syms: LocalSyms<TypeNamespace>,
     value_syms: LocalSyms<ValueNamespace>,
@@ -23,22 +23,9 @@ pub struct LocalEnv {
     value_defs: Defs<ValueNamespace>,
 }
 
-impl LocalEnv {
-    pub fn new(loc: Loc) -> Self {
-        Self {
-            loc,
-            module_syms: LocalSyms::new(),
-            type_syms: LocalSyms::new(),
-            value_syms: LocalSyms::new(),
-            module_defs: Defs::new(),
-            type_defs: Defs::new(),
-            value_defs: Defs::new(),
-        }
-    }
-
-    #[inline]
-    pub fn loc(&self) -> Loc {
-        self.loc
+impl ModuleShape {
+    pub fn new() -> Self {
+        Self::default()
     }
 
     #[inline]
@@ -148,7 +135,7 @@ const fn name_collision(this: AnyDef, other: AnyDef) -> NameCollision {
     }
 }
 
-impl LocalEnv {
+impl ModuleShape {
     pub fn insert_module(
         &mut self,
         name: ModuleName,
@@ -222,7 +209,7 @@ impl LocalEnv {
 //     }
 // }
 
-impl Index<ModuleSym> for LocalEnv {
+impl Index<ModuleSym> for ModuleShape {
     type Output = ModuleDef;
 
     fn index(&self, index: ModuleSym) -> &Self::Output {
@@ -230,7 +217,7 @@ impl Index<ModuleSym> for LocalEnv {
     }
 }
 
-impl Index<ValueSym> for LocalEnv {
+impl Index<ValueSym> for ModuleShape {
     type Output = ValueDef;
 
     fn index(&self, index: ValueSym) -> &Self::Output {
@@ -238,46 +225,10 @@ impl Index<ValueSym> for LocalEnv {
     }
 }
 
-impl Index<TypeSym> for LocalEnv {
+impl Index<TypeSym> for ModuleShape {
     type Output = TypeDef;
 
     fn index(&self, index: TypeSym) -> &Self::Output {
         &self.type_defs[index]
     }
 }
-
-// #[derive(Debug, Clone, Default)]
-// pub struct GlobalEnv {
-//     pub modules: IndexMap<ModuleSym, Rc<LocalEnv>>,
-// }
-
-// impl GlobalEnv {
-//     pub fn new() -> Self {
-//         Self::default()
-//     }
-
-//     pub fn insert_module(&mut self, sym: ModuleSym, env: LocalEnv) {
-//         self.modules.insert(sym, Rc::new(env));
-//     }
-
-//     pub fn get_module(&self, sym: ModuleSym) -> Option<Rc<LocalEnv>> {
-//         self.modules.get(&sym).cloned()
-//     }
-
-//     pub fn contains_module(&self, sym: ModuleSym) -> bool {
-//         self.modules.contains_key(&sym)
-//     }
-// }
-
-// impl Index<ModuleSym> for GlobalEnv {
-//     type Output = Rc<LocalEnv>;
-
-//     fn index(&self, index: ModuleSym) -> &Self::Output {
-//         self.modules
-//             .get(&index)
-//             .expect("Module symbol not found in global environment")
-//     }
-// }
-
-// TODO Idea: create a GlobalEnv that contains LocalEnv for each module
-// Do not store LocalEnv inside the ModuleScope

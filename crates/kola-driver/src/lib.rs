@@ -33,9 +33,10 @@ impl Driver {
             source_manager,
             forest,
             topography,
-            symbol_table,
+            bindings,
             module_graph,
             module_scopes,
+            value_orders,
         } = resolve(
             path,
             &self.io,
@@ -53,13 +54,12 @@ impl Driver {
         let mut env = TypeEnv::new();
 
         for (module_sym, module_scope) in module_scopes {
-            let path_key = module_scope.source();
+            let bind = module_scope.borrow().bind;
 
-            let spans = topography[path_key].clone();
-            let tree = &*forest[path_key];
+            let spans = topography[bind.source()].clone();
+            let tree = &*forest[bind.source()];
 
-            match Typer::new(module_scope.global_id(), spans, &env, &symbol_table)
-                .solve(tree, &mut self.report)
+            match Typer::new(bind.global_id(), spans, &env, &bindings).solve(tree, &mut self.report)
             {
                 Ok(types) => todo!(),
                 Err((errors, span)) => {

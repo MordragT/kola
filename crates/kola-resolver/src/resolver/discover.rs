@@ -4,18 +4,19 @@ use owo_colors::OwoColorize;
 use std::{io, ops::ControlFlow};
 
 use kola_print::prelude::*;
-use kola_span::{IntoDiagnostic, Loc, Report, SourceId, SourceManager};
+use kola_span::{Diagnostic, IntoDiagnostic, Loc, Report, SourceId, SourceManager};
 use kola_syntax::prelude::*;
 use kola_tree::{node::Vis, prelude::*};
-use kola_utils::{interner::StrInterner, io::FileSystem, tracker::Tracker};
+use kola_utils::{interner::StrInterner, io::FileSystem};
 
 use crate::{
     GlobalId,
     bind::Bindings,
-    def::Def,
+    defs::Def,
     forest::Forest,
     prelude::Topography,
-    scope::ModuleScope,
+    refs::ValueRef,
+    scope::{ModuleScope, ModuleScopeStack},
     symbol::{ModuleSym, TypeSym, ValueSym},
 };
 
@@ -159,14 +160,15 @@ fn _discover(
         ControlFlow::Break(_) => unreachable!(),
     }
 
-    let tracker = discoverer.tracker;
+    let tracker = discoverer.stack;
     module_scopes.append(&mut tracker.into_completed());
 }
 
 struct Discoverer<'a> {
     source_id: SourceId,
-    current_sym: Option<ModuleSym>,
-    tracker: Tracker<ModuleScope>,
+    current_module_bind_sym: Option<ModuleSym>,
+    current_value_bind_sym: Option<ValueSym>,
+    stack: ModuleScopeStack,
     io: &'a dyn FileSystem,
     arena: &'a Bump,
     interner: &'a mut StrInterner,
@@ -198,8 +200,9 @@ impl<'a> Discoverer<'a> {
     ) -> Self {
         Self {
             source_id,
-            current_sym: Some(module_sym),
-            tracker: Tracker::new(),
+            current_module_bind_sym: Some(module_sym),
+            current_value_bind_sym: None,
+            stack: ModuleScopeStack::new(),
             io,
             arena,
             interner,
@@ -215,7 +218,7 @@ impl<'a> Discoverer<'a> {
     }
 
     #[inline]
-    pub fn span<T>(&self, id: Id<T>) -> Loc
+    fn span<T>(&self, id: Id<T>) -> Loc
     where
         T: MetaCast<LocPhase, Meta = Loc>,
     {
@@ -223,18 +226,8 @@ impl<'a> Discoverer<'a> {
     }
 
     #[inline]
-    pub fn qualify<T>(&self, id: Id<T>) -> GlobalId<T> {
+    fn qualify<T>(&self, id: Id<T>) -> GlobalId<T> {
         GlobalId::new(self.source_id, id)
-    }
-
-    #[inline]
-    pub fn current_module(&self) -> &ModuleScope {
-        self.tracker.current().unwrap()
-    }
-
-    #[inline]
-    pub fn current_module_mut(&mut self) -> &mut ModuleScope {
-        self.tracker.current_mut().unwrap()
     }
 }
 
@@ -245,25 +238,24 @@ where
     type BreakValue = !;
 
     fn visit_module(&mut self, id: Id<node::Module>, tree: &T) -> ControlFlow<Self::BreakValue> {
-        let module_sym = self.current_sym.take().unwrap();
+        let module_sym = self.current_module_bind_sym.take().unwrap();
         let global_id = self.qualify(id);
 
         let bind = self.bindings.insert_module(global_id, module_sym);
 
         // Add dependency from current module to this new module
-        if let Some(current_scope) = self.tracker.current() {
-            self.module_graph
-                .add_dependency(current_scope.sym(), module_sym);
+        if let Some(bind) = self.stack.try_bind() {
+            self.module_graph.add_dependency(bind.sym(), module_sym);
         }
 
         // Create a new scope for this module
-        self.tracker.start(ModuleScope::new(bind, self.span(id)));
+        self.stack.start(ModuleScope::new(bind, self.span(id)));
 
         // Walk through children nodes
         self.walk_module(id, tree)?;
 
         // Pop the scope now that we're done with this module
-        self.tracker.finish();
+        self.stack.finish();
 
         ControlFlow::Continue(())
     }
@@ -273,12 +265,12 @@ where
         id: Id<node::ModuleImport>,
         tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
-        let module_sym = self.current_sym.take().unwrap();
+        let module_sym = self.current_module_bind_sym.take().unwrap();
 
         self.bindings
             .insert_module_import(self.qualify(id), module_sym);
 
-        let current_module_sym = self.current_module().sym();
+        let current_module_sym = self.stack.bind().sym();
 
         self.module_graph
             .add_dependency(current_module_sym, module_sym);
@@ -372,7 +364,7 @@ where
         tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
         // This will create a new module symbol if not visited from a module bind
-        let module_sym = self.current_sym.take().unwrap_or_default();
+        let module_sym = self.current_module_bind_sym.take().unwrap_or_default();
 
         self.bindings
             .insert_module_path(self.qualify(id), module_sym);
@@ -385,8 +377,7 @@ where
             .map(|id| *tree.node(id))
             .collect::<Vec<_>>();
 
-        self.current_module_mut()
-            .add_module_ref(module_sym, module_ref);
+        self.stack.refs_mut().insert_module(module_sym, module_ref);
 
         ControlFlow::Continue(())
     }
@@ -405,14 +396,14 @@ where
         let qual_id = self.qualify(id);
         let module_sym = ModuleSym::new();
 
-        self.current_sym = Some(module_sym);
+        self.current_module_bind_sym = Some(module_sym);
         self.bindings.insert_module_bind(qual_id, module_sym);
 
         // Register the module binding in the current scope
-        if let Err(e) =
-            self.current_module_mut()
-                .env
-                .insert_module(name, module_sym, Def::new(span, *vis))
+        if let Err(e) = self
+            .stack
+            .shape_mut()
+            .insert_module(name, module_sym, Def::new(span, *vis))
         {
             self.report.add_diagnostic(e.into());
         }
@@ -434,13 +425,14 @@ where
         let qual_id = self.qualify(id);
         let value_sym = ValueSym::new();
 
+        self.current_value_bind_sym = Some(value_sym);
         self.bindings.insert_value_bind(qual_id, value_sym);
 
         // Register the value binding in the current scope
-        if let Err(e) =
-            self.current_module_mut()
-                .env
-                .insert_value(name, value_sym, Def::new(span, *vis))
+        if let Err(e) = self
+            .stack
+            .shape_mut()
+            .insert_value(name, value_sym, Def::new(span, *vis))
         {
             self.report.add_diagnostic(e.into());
         }
@@ -464,8 +456,8 @@ where
 
         // Register the type binding in the current scope
         if let Err(e) =
-            self.current_module_mut()
-                .env
+            self.stack
+                .shape_mut()
                 .insert_type(name, type_sym, Def::new(span, Vis::Export))
         {
             self.report.add_diagnostic(e.into());
@@ -473,5 +465,98 @@ where
 
         // self.walk_type_bind(id, tree) // TODO walk to discover module paths in type expressions
         ControlFlow::Continue(()) // nothing to do here at the moment
+    }
+
+    fn visit_let_expr(&mut self, id: Id<node::LetExpr>, tree: &T) -> ControlFlow<Self::BreakValue> {
+        let node::LetExpr {
+            name,
+            value,
+            inside,
+        } = *tree.node(id);
+
+        let name = *tree.node(name);
+
+        ValueSym::enter();
+        self.walk_expr(value, tree)?;
+        ValueSym::exit();
+
+        let sym = ValueSym::new();
+
+        self.bindings.insert_let_expr(self.qualify(id), sym);
+
+        self.stack.lexical_mut().enter(name, sym);
+        self.walk_expr(inside, tree)?;
+        self.stack.lexical_mut().exit(&name);
+
+        ControlFlow::Continue(())
+    }
+
+    fn visit_lambda_expr(
+        &mut self,
+        id: Id<node::LambdaExpr>,
+        tree: &T,
+    ) -> ControlFlow<Self::BreakValue> {
+        let node::LambdaExpr { param, body } = *tree.node(id);
+
+        let name = *tree.node(param);
+        let sym = ValueSym::new();
+
+        self.bindings.insert_lambda_expr(self.qualify(id), sym);
+
+        self.stack.lexical_mut().enter(name, sym);
+        self.walk_expr(body, tree)?;
+        self.stack.lexical_mut().exit(&name);
+
+        ControlFlow::Continue(())
+    }
+
+    fn visit_path_expr(
+        &mut self,
+        id: Id<node::PathExpr>,
+        tree: &T,
+    ) -> ControlFlow<Self::BreakValue> {
+        let node::PathExpr { path, binding, .. } = tree.node(id);
+
+        let name = *tree.node(*binding);
+        let global_id = self.qualify(id);
+
+        if let Some(_path) = path {
+            // Nothing to do here, will not create value bind cycle
+            ControlFlow::Continue(())
+        } else if let Some(value_sym) = self.stack.lexical().get(&name) {
+            // Local binding will not create value bind cycle either
+            self.bindings.insert_path_expr(global_id, *value_sym);
+            ControlFlow::Continue(())
+        } else if let Some(value_sym) = self.stack.shape().lookup_value(name) {
+            // Found a value binding in the current module scope
+            // which was defined before this path expression (no forward reference)
+            let bind = self.stack.shape()[value_sym];
+
+            if bind.vis != Vis::Export {
+                self.report.add_diagnostic(
+                    Diagnostic::error(self.span(id), "Cannot access non-exported value binding")
+                        .with_trace([("At this binding".to_owned(), bind.loc)]),
+                );
+                return ControlFlow::Continue(());
+            }
+
+            self.bindings.insert_path_expr(global_id, value_sym);
+
+            let current_sym = self.current_value_bind_sym.unwrap();
+            self.stack
+                .value_graph_mut()
+                .add_dependency(current_sym, value_sym);
+
+            ControlFlow::Continue(())
+        } else {
+            // Either a forward reference or not found in the current module scope
+
+            let current_sym = self.current_value_bind_sym.unwrap();
+            let ref_ = ValueRef::new(name, global_id, current_sym);
+
+            self.stack.refs_mut().insert_value(ref_);
+
+            ControlFlow::Continue(())
+        }
     }
 }

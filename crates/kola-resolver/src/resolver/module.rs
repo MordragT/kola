@@ -1,4 +1,4 @@
-use std::rc::Rc;
+use std::{cell::RefCell, rc::Rc};
 
 use kola_span::{Diagnostic, Report};
 use kola_tree::node::{ModuleName, Vis};
@@ -7,16 +7,37 @@ use kola_utils::{
     visit::{VisitMap, VisitState},
 };
 
-use super::ModuleGraph;
 use crate::{
-    def::ModuleDef,
-    scope::{ModuleScope, ModuleScopes},
+    defs::ModuleDef,
+    info::ModuleGraph,
+    scope::{ModuleCell, ModuleCells, ModuleScope},
     symbol::ModuleSym,
 };
 
 pub struct ModuleResolution {
-    pub module_scopes: ModuleScopes,
+    pub module_scopes: ModuleCells,
 }
+
+/*
+ How this works:
+
+1. We start with a list of module scopes, each representing a concrete module in the program.
+2. Each module scope contains a list of module references, which are paths to other modules.
+3. We take a module scope of the list and mark it as visiting.
+4. For every module reference in the scope, we check if it has been visited:
+  - If it has not been visited, we resolve the module path recursively.
+       1. We take the first name in the path and look it up in the current scope.
+       2. If the name is not found, we report an error.
+       3. If the name is found, we check if it is exported.
+       4. If it is not exported, we report an error.
+       5. If it is exported, we check if it has been visited:
+           - If it has not been visited, we resolve the module scope recursively.
+           - If it is currently being visited, we have a cycle and report an error.
+           - If it has been visited, we skip it.
+  - If it is currently being visited, we have a cycle and report an error.
+  - If it has been visited, we skip it.
+
+*/
 
 pub fn resolve_modules(
     scopes: Vec<ModuleScope>,
@@ -25,32 +46,30 @@ pub fn resolve_modules(
     module_graph: &mut ModuleGraph,
 ) -> ModuleResolution {
     let mut module_visit = VisitMap::new();
-    let mut module_scopes = ModuleScopes::new();
+    let mut module_scopes = ModuleCells::new();
 
     let super_name = ModuleName::new(interner.intern("super"));
 
     // By using a Vec we ensure that the order of modules is preserved,
     // meaning parents are resolved before children.
     for mut scope in scopes.into_iter().rev() {
-        let sym = scope.sym();
-
-        if let [parent, rest @ ..] = module_graph.dependents_of(sym) {
+        if let [parent, rest @ ..] = module_graph.dependents_of(scope.bind.sym()) {
             let parent_scope = &module_scopes[parent];
 
-            if let Err(e) = scope.env.insert_module(
+            if let Err(e) = scope.shape.insert_module(
                 super_name,
                 *parent,
-                ModuleDef::new(parent_scope.loc(), Vis::Export),
+                ModuleDef::new(parent_scope.borrow().loc, Vis::Export),
             ) {
                 report.add_diagnostic(e.into());
             }
 
             if !rest.is_empty() {
-                panic!("Multiple parent modules found for module: {}", sym);
+                panic!("Multiple parent modules found for module: {:?}", scope.bind);
             }
         }
 
-        module_scopes.insert(sym, Rc::new(scope));
+        module_scopes.insert(scope.bind.sym(), Rc::new(RefCell::new(scope)));
     }
 
     for (sym, scope) in module_scopes.clone() {
@@ -63,7 +82,10 @@ pub fn resolve_modules(
                 &mut module_scopes,
             ),
             VisitState::Visiting => {
-                report.add_diagnostic(Diagnostic::error(scope.loc(), "Module cycle detected"));
+                report.add_diagnostic(Diagnostic::error(
+                    scope.borrow().loc,
+                    "Module cycle detected",
+                ));
                 module_visit[sym] = VisitState::Visited;
             }
             VisitState::Visited => (),
@@ -74,17 +96,17 @@ pub fn resolve_modules(
 }
 
 pub fn resolve_module_scope(
-    scope: Rc<ModuleScope>,
+    scope: ModuleCell,
     report: &mut Report,
     module_graph: &mut ModuleGraph,
     module_visit: &mut VisitMap<ModuleSym>,
-    module_scopes: &mut ModuleScopes,
+    module_scopes: &mut ModuleCells,
 ) {
-    let sym = scope.sym();
+    let sym = scope.borrow().bind.sym();
 
     module_visit[sym] = VisitState::Visiting;
 
-    for (sym, module_ref) in scope.iter_module_refs() {
+    for (&sym, module_ref) in scope.borrow().refs.modules() {
         match module_visit[sym] {
             VisitState::Unvisited => resolve_module_path(
                 sym,
@@ -96,7 +118,10 @@ pub fn resolve_module_scope(
                 module_scopes,
             ),
             VisitState::Visiting => {
-                report.add_diagnostic(Diagnostic::error(scope.loc(), "Module cycle detected"));
+                report.add_diagnostic(Diagnostic::error(
+                    scope.borrow().loc,
+                    "Module cycle detected",
+                ));
                 module_visit[sym] = VisitState::Visited;
             }
             VisitState::Visited => (),
@@ -110,31 +135,29 @@ pub fn resolve_module_scope(
 pub fn resolve_module_path<'s>(
     path_sym: ModuleSym,
     mut path: &[ModuleName],
-    mut scope: Rc<ModuleScope>,
+    mut scope: ModuleCell,
     report: &mut Report,
     module_graph: &mut ModuleGraph,
     module_visit: &mut VisitMap<ModuleSym>,
-    module_scopes: &mut ModuleScopes,
+    module_scopes: &mut ModuleCells,
 ) {
     module_visit[path_sym] = VisitState::Visiting;
 
-    let source_sym = scope.sym();
+    let source_sym = scope.borrow().bind.sym();
 
     while let Some((name, rest)) = path.split_first() {
-        // TODO do not special case super here, but rather insert it in the scope itsself.
-
-        let Some(sym) = scope.env.lookup_module(*name) else {
-            report.add_diagnostic(Diagnostic::error(scope.loc(), "Module not found"));
+        let Some(sym) = scope.borrow().shape.lookup_module(*name) else {
+            report.add_diagnostic(Diagnostic::error(scope.borrow().loc, "Module not found"));
             module_visit[path_sym] = VisitState::Visited;
             return;
         };
 
-        let bind = scope.env[sym];
+        let def = scope.borrow().shape[sym];
 
         // Check if the module is exported or part of the current module.
-        if bind.vis != Vis::Export && scope.sym() != source_sym {
+        if def.vis != Vis::Export && scope.borrow().bind.sym() != source_sym {
             report.add_diagnostic(
-                Diagnostic::error(bind.loc, "Module not exported")
+                Diagnostic::error(def.loc, "Module not exported")
                     .with_help("Only exported modules can be used in paths."),
             );
             module_visit[path_sym] = VisitState::Visited;
@@ -142,7 +165,7 @@ pub fn resolve_module_path<'s>(
         }
 
         if module_visit[sym] == VisitState::Visiting {
-            report.add_diagnostic(Diagnostic::error(bind.loc, "Module cycle detected"));
+            report.add_diagnostic(Diagnostic::error(def.loc, "Module cycle detected"));
             module_visit[sym] = VisitState::Visited;
             return;
         }
@@ -156,7 +179,7 @@ pub fn resolve_module_path<'s>(
                     module_visit,
                     module_scopes,
                 );
-            } else if let Some(module_ref) = scope.get_module_ref(sym) {
+            } else if let Some(module_ref) = scope.borrow().refs.get_module(sym) {
                 resolve_module_path(
                     sym,
                     module_ref.path(),
@@ -174,7 +197,7 @@ pub fn resolve_module_path<'s>(
         scope = if let Some(scope) = module_scopes.get(&sym) {
             scope.clone()
         } else {
-            report.add_diagnostic(Diagnostic::error(bind.loc, "Module scope not found"));
+            report.add_diagnostic(Diagnostic::error(def.loc, "Module scope not found"));
             module_visit[path_sym] = VisitState::Visited;
             return;
         };
@@ -183,6 +206,6 @@ pub fn resolve_module_path<'s>(
     }
 
     module_visit[path_sym] = VisitState::Visited;
-    module_graph.add_dependency(source_sym, scope.sym());
+    module_graph.add_dependency(source_sym, scope.borrow().bind.sym());
     module_scopes.insert(path_sym, scope);
 }

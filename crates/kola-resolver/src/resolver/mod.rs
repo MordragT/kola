@@ -1,34 +1,40 @@
 use std::io;
 
 use camino::Utf8Path;
+use indexmap::IndexMap;
 
 use kola_print::prelude::*;
 use kola_span::{Report, SourceManager};
-use kola_utils::{dependency::DependencyGraph, interner::StrInterner, io::FileSystem};
+use kola_utils::{interner::StrInterner, io::FileSystem};
 
 use crate::{
     bind::Bindings,
     forest::Forest,
+    info::ModuleGraph,
     prelude::Topography,
-    resolver::{discover::DiscoverOutput, module::ModuleResolution, value::resolve_values},
-    scope::{ModuleScope, ModuleScopes},
-    symbol::ModuleSym,
+    scope::ModuleCells,
+    symbol::{ModuleSym, ValueSym},
 };
 
 mod discover;
 mod module;
 mod value;
 
-pub type ModuleGraph = DependencyGraph<ModuleSym>;
+use discover::DiscoverOutput;
+use module::ModuleResolution;
+use value::ValueResolution;
+
+pub type ValueOrders = IndexMap<ModuleSym, Vec<ValueSym>>;
 
 #[derive(Debug, Clone, Default)]
 pub struct ResolveOutput {
     pub source_manager: SourceManager,
     pub forest: Forest,
     pub topography: Topography,
-    pub symbol_table: Bindings,
+    pub bindings: Bindings,
     pub module_graph: ModuleGraph,
-    pub module_scopes: ModuleScopes,
+    pub module_scopes: ModuleCells,
+    pub value_orders: ValueOrders,
 }
 
 pub fn resolve(
@@ -43,7 +49,7 @@ pub fn resolve(
         source_manager,
         forest,
         topography,
-        bindings: mut symbol_table,
+        mut bindings,
         mut module_graph,
         module_scopes,
     } = discover::discover(path, io, arena, interner, report, print_options)?;
@@ -53,7 +59,7 @@ pub fn resolve(
             source_manager,
             forest,
             topography,
-            symbol_table,
+            bindings,
             module_graph,
             ..Default::default()
         });
@@ -61,7 +67,7 @@ pub fn resolve(
 
     let module_symbols = module_scopes
         .iter()
-        .map(ModuleScope::sym)
+        .map(|scope| scope.bind.sym())
         .collect::<Vec<_>>();
 
     let ModuleResolution { module_scopes } =
@@ -72,27 +78,23 @@ pub fn resolve(
             source_manager,
             forest,
             topography,
-            symbol_table,
+            bindings,
             module_graph,
             module_scopes,
+            ..Default::default()
         });
     }
 
-    resolve_values(
-        &module_symbols,
-        &forest,
-        &topography,
-        &module_scopes,
-        report,
-        &mut symbol_table,
-    );
+    let ValueResolution { value_orders } =
+        value::resolve_values(&module_symbols, &module_scopes, report, &mut bindings);
 
     Ok(ResolveOutput {
         source_manager,
         forest,
         topography,
-        symbol_table,
+        bindings,
         module_graph,
         module_scopes,
+        value_orders,
     })
 }

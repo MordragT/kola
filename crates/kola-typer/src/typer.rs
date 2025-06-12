@@ -116,7 +116,7 @@ pub struct Typer<'a, N> {
     types: TypedNodes,
     spans: Rc<Locations>,
     env: &'a TypeEnv,
-    symbol_table: &'a Bindings,
+    bindings: &'a Bindings,
 }
 
 impl<'a, N> Typer<'a, N> {
@@ -124,7 +124,7 @@ impl<'a, N> Typer<'a, N> {
         root_id: GlobalId<N>,
         spans: Rc<Locations>,
         env: &'a TypeEnv,
-        symbol_table: &'a Bindings,
+        bindings: &'a Bindings,
     ) -> Self {
         Self {
             root_id,
@@ -135,7 +135,7 @@ impl<'a, N> Typer<'a, N> {
             types: TypedNodes::new(),
             spans,
             env,
-            symbol_table,
+            bindings,
         }
     }
 
@@ -343,7 +343,7 @@ where
 
         let t = if let Some(path) = *path {
             let module_sym = self
-                .symbol_table
+                .bindings
                 .lookup_module_path(self.qualify(path))
                 .expect("Module path not found");
 

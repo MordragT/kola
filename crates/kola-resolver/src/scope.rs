@@ -1,85 +1,175 @@
-use std::rc::Rc;
+use std::{cell::RefCell, rc::Rc};
 
-use derive_more::From;
 use indexmap::IndexMap;
-use kola_collections::HashMap;
-use kola_span::{Loc, SourceId};
-use kola_tree::node::{self, ModuleName, ModuleNamespace};
+use kola_span::Loc;
+use kola_tree::node::{self, ModuleNamespace, ValueName};
+use kola_utils::scope::LinearScope;
 
-use crate::{GlobalId, bind::Bind, env::LocalEnv, symbol::ModuleSym};
+use crate::{
+    bind::Bind,
+    info::ValueGraph,
+    refs::ModuleRefs,
+    shape::ModuleShape,
+    symbol::{ModuleSym, ValueSym},
+};
 
-pub type ModuleScopes = IndexMap<ModuleSym, Rc<ModuleScope>>;
+pub type LexicalScope = LinearScope<ValueName, ValueSym>;
 
-#[derive(Debug, From, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct ModuleRef(Vec<ModuleName>);
-
-impl ModuleRef {
-    pub fn new(path: Vec<ModuleName>) -> Self {
-        Self(path)
-    }
-
-    pub fn path(&self) -> &[ModuleName] {
-        &self.0
-    }
-}
+pub type ModuleCell = Rc<RefCell<ModuleScope>>;
+pub type ModuleCells = IndexMap<ModuleSym, ModuleCell>;
 
 #[derive(Debug, Clone)]
 pub struct ModuleScope {
-    pub env: LocalEnv,
-    bind: Bind<ModuleNamespace, node::Module>,
-    module_refs: HashMap<ModuleSym, ModuleRef>,
+    pub bind: Bind<ModuleNamespace, node::Module>,
+    pub shape: ModuleShape,
+    pub refs: ModuleRefs,
+    pub lexical: LexicalScope,
+    pub value_graph: ValueGraph,
+    pub loc: Loc,
 }
 
 impl ModuleScope {
     pub fn new(bind: Bind<ModuleNamespace, node::Module>, loc: Loc) -> Self {
         Self {
             bind,
-            env: LocalEnv::new(loc),
-            module_refs: HashMap::new(),
+            shape: ModuleShape::new(),
+            refs: ModuleRefs::new(),
+            lexical: LexicalScope::new(),
+            value_graph: ValueGraph::new(),
+            loc,
+        }
+    }
+}
+
+#[derive(Debug, Clone)]
+pub struct ModuleScopeStack {
+    todo: Vec<ModuleScope>,
+    done: Vec<ModuleScope>,
+}
+
+impl ModuleScopeStack {
+    #[inline]
+    pub fn new() -> Self {
+        Self {
+            todo: Vec::new(),
+            done: Vec::new(),
         }
     }
 
-    pub fn bind(&self) -> Bind<ModuleNamespace, node::Module> {
-        self.bind
-    }
-
-    pub fn loc(&self) -> Loc {
-        self.env.loc()
-    }
-
-    pub fn sym(&self) -> ModuleSym {
-        self.bind.sym()
-    }
-
-    pub fn global_id(&self) -> GlobalId<node::Module> {
-        self.bind.global_id()
-    }
-
-    pub fn source(&self) -> SourceId {
-        self.bind.source()
-    }
-
-    pub fn env(&self) -> &LocalEnv {
-        &self.env
-    }
-
-    pub fn module_refs(&self) -> &HashMap<ModuleSym, ModuleRef> {
-        &self.module_refs
+    #[inline]
+    pub fn start(&mut self, scope: ModuleScope) {
+        self.todo.push(scope);
     }
 
     #[inline]
-    pub fn iter_module_refs(&self) -> impl Iterator<Item = (ModuleSym, &ModuleRef)> {
-        self.module_refs
-            .iter()
-            .map(|(&sym, module_ref)| (sym, module_ref))
-    }
-
-    pub fn add_module_ref(&mut self, sym: ModuleSym, ref_: impl Into<ModuleRef>) {
-        self.module_refs.insert(sym, ref_.into());
+    pub fn finish(&mut self) {
+        if let Some(current) = self.todo.pop() {
+            self.done.push(current);
+        }
     }
 
     #[inline]
-    pub fn get_module_ref(&self, sym: ModuleSym) -> Option<&ModuleRef> {
-        self.module_refs.get(&sym)
+    pub fn try_bind(&self) -> Option<&Bind<ModuleNamespace, node::Module>> {
+        self.todo.last().map(|scope| &scope.bind)
+    }
+
+    #[inline]
+    pub fn bind(&self) -> &Bind<ModuleNamespace, node::Module> {
+        self.try_bind().unwrap()
+    }
+
+    #[inline]
+    pub fn try_shape(&self) -> Option<&ModuleShape> {
+        self.todo.last().map(|scope| &scope.shape)
+    }
+
+    #[inline]
+    pub fn shape(&self) -> &ModuleShape {
+        self.try_shape().unwrap()
+    }
+
+    #[inline]
+    pub fn try_shape_mut(&mut self) -> Option<&mut ModuleShape> {
+        self.todo.last_mut().map(|scope| &mut scope.shape)
+    }
+
+    #[inline]
+    pub fn shape_mut(&mut self) -> &mut ModuleShape {
+        self.try_shape_mut().unwrap()
+    }
+
+    #[inline]
+    pub fn try_refs(&self) -> Option<&ModuleRefs> {
+        self.todo.last().map(|scope| &scope.refs)
+    }
+
+    #[inline]
+    pub fn refs(&self) -> &ModuleRefs {
+        self.try_refs().unwrap()
+    }
+
+    #[inline]
+    pub fn try_refs_mut(&mut self) -> Option<&mut ModuleRefs> {
+        self.todo.last_mut().map(|scope| &mut scope.refs)
+    }
+
+    #[inline]
+    pub fn refs_mut(&mut self) -> &mut ModuleRefs {
+        self.try_refs_mut().unwrap()
+    }
+
+    #[inline]
+    pub fn try_lexical(&self) -> Option<&LexicalScope> {
+        self.todo.last().map(|scope| &scope.lexical)
+    }
+
+    #[inline]
+    pub fn lexical(&self) -> &LexicalScope {
+        self.try_lexical().unwrap()
+    }
+
+    #[inline]
+    pub fn try_lexical_mut(&mut self) -> Option<&mut LexicalScope> {
+        self.todo.last_mut().map(|scope| &mut scope.lexical)
+    }
+
+    #[inline]
+    pub fn lexical_mut(&mut self) -> &mut LexicalScope {
+        self.try_lexical_mut().unwrap()
+    }
+
+    #[inline]
+    pub fn try_value_graph(&self) -> Option<&ValueGraph> {
+        self.todo.last().map(|scope| &scope.value_graph)
+    }
+
+    #[inline]
+    pub fn value_graph(&self) -> &ValueGraph {
+        self.try_value_graph().unwrap()
+    }
+
+    #[inline]
+    pub fn try_value_graph_mut(&mut self) -> Option<&mut ValueGraph> {
+        self.todo.last_mut().map(|scope| &mut scope.value_graph)
+    }
+
+    #[inline]
+    pub fn value_graph_mut(&mut self) -> &mut ValueGraph {
+        self.try_value_graph_mut().unwrap()
+    }
+
+    #[inline]
+    pub fn try_loc(&self) -> Option<&Loc> {
+        self.todo.last().map(|scope| &scope.loc)
+    }
+
+    #[inline]
+    pub fn loc(&self) -> &Loc {
+        self.try_loc().unwrap()
+    }
+
+    #[inline]
+    pub fn into_completed(self) -> Vec<ModuleScope> {
+        self.done
     }
 }

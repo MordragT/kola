@@ -1,0 +1,267 @@
+use std::{ops::ControlFlow, rc::Rc};
+
+use kola_span::{Diagnostic, Loc, Report};
+use kola_syntax::loc::LocPhase;
+use kola_tree::{node::Vis, prelude::*};
+use kola_utils::{
+    interner::StrKey,
+    scope::LinearScope,
+    visit::{VisitMap, VisitState},
+};
+
+use crate::{
+    GlobalId,
+    bind::Bindings,
+    forest::Forest,
+    resolver::{ModuleScopes, ValueGraph, ValueGraphs},
+    scope::ModuleScope,
+    symbol::{ModuleSym, ValueSym},
+    topography::Topography,
+};
+
+pub struct ValueResolution {
+    pub value_graphs: ValueGraphs,
+}
+
+pub fn resolve_values(
+    module_symbols: &[ModuleSym],
+    forest: &Forest,
+    topography: &Topography,
+    module_scopes: &ModuleScopes,
+    report: &mut Report,
+    bindings: &mut Bindings,
+) -> ValueResolution {
+    let mut value_graphs = ValueGraphs::new();
+
+    for module_sym in module_symbols {
+        let scope = module_scopes
+            .get(module_sym)
+            .expect("Module scope should exist");
+
+        let graph = resolve_values_in_module(
+            Rc::clone(scope),
+            forest,
+            topography,
+            module_scopes,
+            report,
+            bindings,
+        );
+
+        value_graphs.insert(*module_sym, graph);
+    }
+
+    ValueResolution { value_graphs }
+}
+
+pub fn resolve_values_in_module(
+    scope: Rc<ModuleScope>,
+    forest: &Forest,
+    topography: &Topography,
+    module_scopes: &ModuleScopes,
+    report: &mut Report,
+    bindings: &mut Bindings,
+) -> ValueGraph {
+    let bind = scope.bind();
+    let tree = forest.tree(bind.source());
+
+    let mut resolver = ValueResolver::new(scope, topography, module_scopes, report, bindings);
+
+    match bind.node_id().visit_by(&mut resolver, &*tree) {
+        ControlFlow::Continue(()) => (),
+        ControlFlow::Break(_) => unreachable!(),
+    }
+
+    resolver.graph
+}
+
+struct ValueResolver<'a> {
+    module_scope: Rc<ModuleScope>,
+    scope: LinearScope<StrKey, ValueSym>,
+    graph: ValueGraph,
+    visit_map: VisitMap<ValueSym>,
+    current_sym: Option<ValueSym>,
+    topography: &'a Topography,
+    module_scopes: &'a ModuleScopes,
+    report: &'a mut Report,
+    bindings: &'a mut Bindings,
+}
+
+impl<'a> ValueResolver<'a> {
+    fn new(
+        module_scope: Rc<ModuleScope>,
+        topography: &'a Topography,
+        module_scopes: &'a ModuleScopes,
+        report: &'a mut Report,
+        bindings: &'a mut Bindings,
+    ) -> Self {
+        Self {
+            module_scope,
+            scope: LinearScope::new(),
+            graph: ValueGraph::new(),
+            visit_map: VisitMap::new(),
+            current_sym: None,
+            topography,
+            module_scopes,
+            report,
+            bindings,
+        }
+    }
+
+    #[inline]
+    pub fn span<T>(&self, id: Id<T>) -> Loc
+    where
+        T: MetaCast<LocPhase, Meta = Loc>,
+    {
+        self.topography.span(self.qualify(id))
+    }
+
+    #[inline]
+    pub fn qualify<T>(&self, id: Id<T>) -> GlobalId<T> {
+        GlobalId::new(self.module_scope.source(), id)
+    }
+}
+
+impl<'a, T> Visitor<T> for ValueResolver<'a>
+where
+    T: TreeView,
+{
+    type BreakValue = !;
+
+    fn visit_value_bind(
+        &mut self,
+        id: Id<node::ValueBind>,
+        tree: &T,
+    ) -> ControlFlow<Self::BreakValue> {
+        let sym = self.bindings.lookup_value_bind(self.qualify(id)).unwrap(); // TODO expect
+
+        self.visit_map[sym] = VisitState::Visiting;
+        self.current_sym = Some(sym);
+        self.walk_value_bind(id, tree)?;
+        self.current_sym = None;
+        self.visit_map[sym] = VisitState::Visited;
+
+        ControlFlow::Continue(())
+    }
+
+    fn visit_let_expr(&mut self, id: Id<node::LetExpr>, tree: &T) -> ControlFlow<Self::BreakValue> {
+        let node::LetExpr {
+            name,
+            value,
+            inside,
+        } = *tree.node(id);
+
+        let name = tree.node(name).0;
+
+        ValueSym::enter();
+        self.walk_expr(value, tree)?;
+        ValueSym::exit();
+
+        let sym = ValueSym::new();
+
+        self.bindings.insert_let_expr(self.qualify(id), sym);
+
+        self.scope.enter(name, sym);
+        self.walk_expr(inside, tree)?;
+        self.scope.exit(&name);
+
+        ControlFlow::Continue(())
+    }
+
+    fn visit_lambda_expr(
+        &mut self,
+        id: Id<node::LambdaExpr>,
+        tree: &T,
+    ) -> ControlFlow<Self::BreakValue> {
+        let node::LambdaExpr { param, body } = *tree.node(id);
+
+        let name = tree.node(param).0;
+
+        let sym = ValueSym::new();
+
+        self.bindings.insert_lambda_expr(self.qualify(id), sym);
+
+        self.scope.enter(name, sym);
+        self.walk_expr(body, tree)?;
+        self.scope.exit(&name);
+
+        ControlFlow::Continue(())
+    }
+
+    fn visit_path_expr(
+        &mut self,
+        id: Id<node::PathExpr>,
+        tree: &T,
+    ) -> ControlFlow<Self::BreakValue> {
+        let node::PathExpr { path, binding, .. } = tree.node(id);
+
+        let binding = *tree.node(*binding);
+
+        let global_id = self.qualify(id);
+
+        if let Some(path) = path {
+            let module_sym = self
+                .bindings
+                .lookup_module_path(self.qualify(*path))
+                .expect("Path should have been resolved before value definition");
+
+            let scope = self
+                .module_scopes
+                .get(&module_sym)
+                .expect("Module scope should exist");
+
+            let Some(value_sym) = scope.env.lookup_value(binding) else {
+                self.report.add_diagnostic(
+                    Diagnostic::error(self.span(*path), "Cannot find value binding")
+                        .with_trace([("In this module".to_owned(), scope.loc())]),
+                );
+                return ControlFlow::Continue(());
+            };
+
+            let bind = scope.env[value_sym];
+
+            if bind.vis != Vis::Export {
+                self.report.add_diagnostic(
+                    Diagnostic::error(self.span(*path), "Cannot access non-exported value binding")
+                        .with_trace([("At this binding".to_owned(), bind.loc)]),
+                );
+                return ControlFlow::Continue(());
+            }
+
+            self.bindings.insert_path_expr(global_id, value_sym);
+        } else if let Some(value_sym) = self.scope.get(&binding) {
+            self.bindings.insert_path_expr(global_id, *value_sym);
+        } else if let Some(value_sym) = self.module_scope.env.lookup_value(binding) {
+            let bind = self.module_scope.env[value_sym];
+
+            if bind.vis != Vis::Export {
+                self.report.add_diagnostic(
+                    Diagnostic::error(self.span(id), "Cannot access non-exported value binding")
+                        .with_trace([("At this binding".to_owned(), bind.loc)]),
+                );
+                return ControlFlow::Continue(());
+            }
+
+            self.bindings.insert_path_expr(global_id, value_sym);
+
+            let current_sym = self.current_sym.unwrap();
+            match self.visit_map[value_sym] {
+                VisitState::Visiting => {
+                    self.report.add_diagnostic(
+                        Diagnostic::error(self.span(id), "Cyclic value reference detected")
+                            .with_trace([("In this module".to_owned(), self.module_scope.loc())]),
+                    );
+                }
+                _ => self.graph.add_dependency(current_sym, value_sym),
+            }
+        } else {
+            self.report.add_diagnostic(
+                Diagnostic::error(self.span(id), "Cannot find value binding")
+                    .with_trace([("In this module".to_owned(), self.module_scope.loc())]),
+            );
+
+            return ControlFlow::Continue(());
+        }
+
+        ControlFlow::Continue(())
+    }
+}

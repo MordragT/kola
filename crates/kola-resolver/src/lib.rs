@@ -78,12 +78,14 @@
 #![feature(never_type)]
 
 pub mod bind;
-pub mod def;
-pub mod env;
+pub mod defs;
 pub mod error;
 pub mod forest;
+pub mod info;
+pub mod refs;
 pub mod resolver;
 pub mod scope;
+pub mod shape;
 pub mod symbol;
 pub mod topography;
 
