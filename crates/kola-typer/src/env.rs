@@ -48,6 +48,8 @@ pub type ValueCache = SymbolCache<ValueNamespace>;
 // - replace them with *Sym and use the TypeEnvironment to resolve them
 // - implement cached equivalence checks for types, modules and values
 
+// ModuleSyms are not unique that's why this doesn't work :(
+
 #[derive(Debug, Clone, Default)]
 pub struct TypeEnv {
     pub values: HashMap<ValueSym, PolyType>,

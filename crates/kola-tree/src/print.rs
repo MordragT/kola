@@ -51,7 +51,7 @@ pub type IdPrinter<'a, T> = TreePrinter<'a, Id<T>>;
 pub type SlicePrinter<'a, T> = TreePrinter<'a, &'a [Id<T>]>;
 
 impl<'a> IdPrinter<'a, crate::node::Module> {
-    pub fn new(tree: &'a Tree, interner: &'a StrInterner, decorators: &'a Decorators) -> Self {
+    pub fn root(tree: &'a Tree, interner: &'a StrInterner, decorators: &'a Decorators) -> Self {
         Self {
             tree,
             interner,
@@ -62,6 +62,20 @@ impl<'a> IdPrinter<'a, crate::node::Module> {
 }
 
 impl<'a, T> TreePrinter<'a, T> {
+    pub fn new(
+        tree: &'a Tree,
+        interner: &'a StrInterner,
+        decorators: &'a Decorators,
+        value: T,
+    ) -> Self {
+        Self {
+            tree,
+            interner,
+            decorators,
+            value,
+        }
+    }
+
     pub fn to<U>(self, value: U) -> TreePrinter<'a, U> {
         TreePrinter {
             tree: self.tree,

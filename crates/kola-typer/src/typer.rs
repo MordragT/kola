@@ -347,6 +347,8 @@ where
                 .lookup_module_path(self.qualify(path))
                 .expect("Module path not found");
 
+            dbg!(module_sym);
+
             let value_sym = self.env[module_sym]
                 .get_value(name)
                 .expect("Value not found in module");

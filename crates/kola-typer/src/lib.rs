@@ -7,6 +7,7 @@
 //! https://github.com/miguel-nascimento/algorithm-j-rs/
 //! https://github.com/nwoeanhinnogaehr/algorithmw-rust/
 
+pub mod check;
 pub mod env;
 pub mod error;
 pub mod phase;

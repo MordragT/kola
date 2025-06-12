@@ -50,6 +50,8 @@ pub fn resolve_values(
 
         resolve_values_in_module(scope.clone(), report, bindings);
 
+        dbg!(&scope.borrow().value_graph);
+
         match scope.borrow().value_graph.topological_sort() {
             Ok(order) => {
                 value_orders.insert(*module_sym, order);

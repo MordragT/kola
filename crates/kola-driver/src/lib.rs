@@ -4,7 +4,11 @@ use camino::Utf8Path;
 use kola_print::{PrintOptions, prelude::Bump};
 use kola_resolver::prelude::*;
 use kola_span::{IntoDiagnostic, Report};
-use kola_typer::{env::TypeEnv, typer::Typer};
+use kola_typer::{
+    check::{TypeCheckInput, TypeCheckOutput, type_check},
+    env::TypeEnv,
+    typer::Typer,
+};
 use kola_utils::{fmt::StrInternerExt, interner::StrInterner, io::FileSystem};
 
 pub enum DriverOptions {}
@@ -50,23 +54,28 @@ impl Driver {
             return self.report.eprint(&source_manager);
         }
 
-        // TODO actually fill the `TypeEnv` with the necessary information
-        let mut env = TypeEnv::new();
+        let input = TypeCheckInput {
+            forest,
+            topography,
+            bindings,
+            module_graph,
+            module_scopes,
+            value_orders,
+        };
 
-        for (module_sym, module_scope) in module_scopes {
-            let bind = module_scope.borrow().bind;
+        let TypeCheckOutput {
+            type_env,
+            type_annotations,
+        } = type_check(
+            input,
+            &self.arena,
+            &mut self.interner,
+            &mut self.report,
+            self.print_options,
+        );
 
-            let spans = topography[bind.source()].clone();
-            let tree = &*forest[bind.source()];
-
-            match Typer::new(bind.global_id(), spans, &env, &bindings).solve(tree, &mut self.report)
-            {
-                Ok(types) => todo!(),
-                Err((errors, span)) => {
-                    let diag = self.interner.display(&errors).into_diagnostic(span);
-                    self.report.add_diagnostic(diag);
-                }
-            }
+        if !self.report.is_empty() {
+            return self.report.eprint(&source_manager);
         }
 
         Ok(())

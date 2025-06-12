@@ -77,7 +77,7 @@ pub fn discover(
     };
 
     let decorators = Decorators::new().with(LocDecorator(spans.clone()));
-    let tree_printer = TreePrinter::new(&tree, interner, &decorators);
+    let tree_printer = TreePrinter::root(&tree, interner, &decorators);
 
     debug!(
         "{} {:?}\n{}",
@@ -327,7 +327,7 @@ where
         };
 
         let decorators = Decorators::new().with(LocDecorator(spans.clone()));
-        let tree_printer = TreePrinter::new(&tree, &self.interner, &decorators);
+        let tree_printer = TreePrinter::root(&tree, &self.interner, &decorators);
 
         debug!(
             "{} {:?}\n{}",
@@ -427,6 +427,7 @@ where
 
         self.current_value_bind_sym = Some(value_sym);
         self.bindings.insert_value_bind(qual_id, value_sym);
+        self.stack.value_graph_mut().add_node(value_sym);
 
         // Register the value binding in the current scope
         if let Err(e) = self
@@ -520,9 +521,9 @@ where
         let name = *tree.node(*binding);
         let global_id = self.qualify(id);
 
-        if let Some(_path) = path {
-            // Nothing to do here, will not create value bind cycle
-            ControlFlow::Continue(())
+        if let Some(path) = path {
+            // Just visit the module path if it exists
+            self.visit_module_path(*path, tree)
         } else if let Some(value_sym) = self.stack.lexical().get(&name) {
             // Local binding will not create value bind cycle either
             self.bindings.insert_path_expr(global_id, *value_sym);

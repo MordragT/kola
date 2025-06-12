@@ -1,4 +1,4 @@
-use kola_collections::HashMap;
+use kola_collections::{BiMap, HashMap};
 use kola_span::SourceId;
 use kola_tree::{
     id::Id,
@@ -80,7 +80,8 @@ pub struct Bindings {
     pub modules: Lookup<node::Module, ModuleSym>,
     pub module_paths: Lookup<node::ModulePath, ModuleSym>,
     pub type_binds: Lookup<node::TypeBind, TypeSym>,
-    pub value_binds: Lookup<node::ValueBind, ValueSym>,
+    // pub value_binds: Lookup<node::ValueBind, ValueSym>,
+    pub value_binds: BiMap<GlobalId<node::ValueBind>, ValueSym>,
     pub let_exprs: Lookup<node::LetExpr, ValueSym>,
     pub lambda_exprs: Lookup<node::LambdaExpr, ValueSym>,
     pub path_exprs: Lookup<node::PathExpr, ValueSym>,
@@ -95,7 +96,8 @@ impl Bindings {
             modules: Lookup::new(),
             module_paths: Lookup::new(),
             type_binds: Lookup::new(),
-            value_binds: Lookup::new(),
+            // value_binds: Lookup::new(),
+            value_binds: BiMap::new(),
             let_exprs: Lookup::new(),
             lambda_exprs: Lookup::new(),
             path_exprs: Lookup::new(),
@@ -228,7 +230,13 @@ impl Bindings {
 
     #[inline]
     pub fn lookup_value_bind(&self, id: GlobalId<node::ValueBind>) -> Option<ValueSym> {
-        self.value_binds.get(&id).copied()
+        // self.value_binds.get(&id).copied()
+        self.value_binds.get_by_key(&id).copied()
+    }
+
+    #[inline]
+    pub fn lookup_value_bind_by_sym(&self, sym: ValueSym) -> Option<GlobalId<node::ValueBind>> {
+        self.value_binds.get_by_value(&sym).copied()
     }
 
     #[inline]
@@ -298,7 +306,8 @@ impl Index<GlobalId<node::ValueBind>> for Bindings {
 
     fn index(&self, index: GlobalId<node::ValueBind>) -> &Self::Output {
         self.value_binds
-            .get(&index)
+            // .get(&index)
+            .get_by_key(&index)
             .expect("Value symbol not found")
     }
 }

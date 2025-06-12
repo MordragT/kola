@@ -52,24 +52,30 @@ impl<T> DependencyGraph<T> {
 }
 
 impl<T: Eq + Hash> DependencyGraph<T> {
-    /// Get dependencies of a module
-    pub fn dependencies_of(&self, module: T) -> &[T] {
+    /// Get dependencies of an item
+    pub fn dependencies_of(&self, item: T) -> &[T] {
         self.forward
-            .get(&module)
+            .get(&item)
             .map(|deps| deps.as_slice())
             .unwrap_or(&[])
     }
 
-    /// Get dependents of a module
-    pub fn dependents_of(&self, module: T) -> &[T] {
+    /// Get dependents of an item
+    pub fn dependents_of(&self, item: T) -> &[T] {
         self.reverse
-            .get(&module)
+            .get(&item)
             .map(|deps| deps.as_slice())
             .unwrap_or(&[])
     }
 }
 
 impl<T: Eq + Hash + Copy> DependencyGraph<T> {
+    pub fn add_node(&mut self, item: T) {
+        // Ensure the item exists in both forward and reverse maps
+        self.forward.entry(item).or_default();
+        self.reverse.entry(item).or_default();
+    }
+
     /// Add a dependency edge
     pub fn add_dependency(&mut self, from: T, to: T) {
         // Add forward dependency
