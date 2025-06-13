@@ -235,7 +235,6 @@ where
 
     fn visit_module(&mut self, id: Id<node::Module>, tree: &T) -> ControlFlow<Self::BreakValue> {
         let sym = self.current_module_bind_sym.take().unwrap();
-        self.insert_symbol(id, sym);
 
         // Add dependency from current module to this new module
         if let Some(info) = self.stack.try_info() {
@@ -245,6 +244,8 @@ where
         // Create a new scope for this module
         self.stack
             .start(ModuleInfo::new(id, sym, self.source_id, self.span(id)));
+
+        self.insert_symbol(id, sym);
 
         // Walk through children nodes
         self.walk_module(id, tree)?;
@@ -398,7 +399,7 @@ where
         // Register the module binding in the current scope
         if let Err(e) = self
             .stack
-            .insert_module(name, module_sym, Def::new(span, *vis))
+            .insert_module(name, module_sym, Def::bound(id, *vis, span))
         {
             self.report.add_diagnostic(e.into());
         }
@@ -426,7 +427,7 @@ where
         // Register the value binding in the current scope
         if let Err(e) = self
             .stack
-            .insert_value(name, value_sym, Def::new(span, *vis))
+            .insert_value(name, value_sym, Def::bound(id, *vis, span))
         {
             self.report.add_diagnostic(e.into());
         }
@@ -450,7 +451,7 @@ where
         // Register the type binding in the current scope
         if let Err(e) = self
             .stack
-            .insert_type(name, type_sym, Def::new(span, Vis::Export))
+            .insert_type(name, type_sym, Def::bound(id, Vis::Export, span))
         {
             self.report.add_diagnostic(e.into());
         }
@@ -520,15 +521,6 @@ where
         } else if let Some(value_sym) = self.stack.shape().get_value(name) {
             // Found a value binding in the current module scope
             // which was defined before this path expression (no forward reference)
-            let def = self.stack.defs()[value_sym];
-
-            if def.vis != Vis::Export {
-                self.report.add_diagnostic(
-                    Diagnostic::error(self.span(id), "Cannot access non-exported value binding")
-                        .with_trace([("At this binding".to_owned(), def.loc)]),
-                );
-                return ControlFlow::Continue(());
-            }
 
             self.insert_symbol(id, value_sym);
 

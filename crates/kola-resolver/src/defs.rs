@@ -1,10 +1,11 @@
-use std::{fmt, hash::Hash, marker::PhantomData, ops::Index};
+use std::{fmt, hash::Hash, ops::Index};
 
 use derive_more::From;
 use kola_collections::{HashMap, hash_map};
 use kola_span::Loc;
-use kola_tree::node::{
-    ModuleNamespace, Namespace, NamespaceKind, TypeNamespace, ValueNamespace, Vis,
+use kola_tree::{
+    id::Id,
+    node::{self, ModuleNamespace, Namespace, NamespaceKind, TypeNamespace, ValueNamespace, Vis},
 };
 
 use crate::symbol::{AnySym, ModuleSym, Sym, TypeSym, ValueSym};
@@ -12,16 +13,20 @@ use crate::symbol::{AnySym, ModuleSym, Sym, TypeSym, ValueSym};
 pub struct Def<T> {
     pub loc: Loc,
     pub vis: Vis,
-    pub t: PhantomData<T>,
+    pub id: Option<Id<T>>,
 }
 
 impl<T> Def<T> {
-    pub const fn new(loc: Loc, vis: Vis) -> Self {
+    pub const fn bound(id: Id<T>, vis: Vis, loc: Loc) -> Self {
         Self {
             loc,
             vis,
-            t: PhantomData,
+            id: Some(id),
         }
+    }
+
+    pub const fn unbound(loc: Loc, vis: Vis) -> Self {
+        Self { loc, vis, id: None }
     }
 
     pub const fn loc(&self) -> Loc {
@@ -31,12 +36,16 @@ impl<T> Def<T> {
     pub const fn vis(&self) -> Vis {
         self.vis
     }
+
+    pub fn id(&self) -> Id<T> {
+        self.id.unwrap()
+    }
 }
 
 impl<T> fmt::Debug for Def<T> {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("BindInfo")
-            // .field("id", &self.id)
+            .field("id", &self.id)
             .field("loc", &self.loc)
             .field("vis", &self.vis)
             .finish()
@@ -48,7 +57,7 @@ impl<T> Clone for Def<T> {
         Self {
             loc: self.loc,
             vis: self.vis,
-            t: PhantomData,
+            id: self.id,
         }
     }
 }
@@ -81,9 +90,9 @@ impl<T> Hash for Def<T> {
     }
 }
 
-pub type ModuleDef = Def<ModuleNamespace>;
-pub type TypeDef = Def<TypeNamespace>;
-pub type ValueDef = Def<ValueNamespace>;
+pub type ModuleDef = Def<node::ModuleBind>;
+pub type TypeDef = Def<node::TypeBind>;
+pub type ValueDef = Def<node::ValueBind>;
 
 #[derive(Debug, From, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum AnyDef {
@@ -119,66 +128,69 @@ impl AnyDef {
 }
 
 #[derive(Debug, Clone)]
-pub struct Defs<N: Namespace>(HashMap<Sym<N>, Def<N>>);
+pub struct Defs<N: Namespace, T>(HashMap<Sym<N>, Def<T>>);
 
-impl<N: Namespace> Defs<N> {
+impl<N: Namespace, T> Defs<N, T> {
     #[inline]
     pub fn new() -> Self {
         Self::default()
     }
 
     #[inline]
-    pub fn insert(&mut self, symbol: Sym<N>, info: Def<N>) {
+    pub fn insert(&mut self, symbol: Sym<N>, info: Def<T>) {
         self.0.insert(symbol, info);
     }
 
     #[inline]
-    pub fn get(&self, symbol: Sym<N>) -> Option<Def<N>> {
+    pub fn get(&self, symbol: Sym<N>) -> Option<Def<T>>
+    where
+        Def<T>: Copy,
+    {
         self.0.get(&symbol).copied()
     }
 
     #[inline]
-    pub fn iter(&self) -> hash_map::Iter<Sym<N>, Def<N>> {
+    pub fn iter(&self) -> hash_map::Iter<Sym<N>, Def<T>> {
         self.0.iter()
     }
 }
 
-impl<N: Namespace> Default for Defs<N> {
+impl<N: Namespace, T> Default for Defs<N, T> {
     #[inline]
     fn default() -> Self {
         Self(HashMap::new())
     }
 }
 
-impl<N: Namespace> IntoIterator for Defs<N> {
-    type Item = (Sym<N>, Def<N>);
-    type IntoIter = hash_map::IntoIter<Sym<N>, Def<N>>;
+impl<N: Namespace, T> IntoIterator for Defs<N, T> {
+    type Item = (Sym<N>, Def<T>);
+    type IntoIter = hash_map::IntoIter<Sym<N>, Def<T>>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.0.into_iter()
     }
 }
 
-impl<'a, N: Namespace> IntoIterator for &'a Defs<N> {
-    type Item = (&'a Sym<N>, &'a Def<N>);
-    type IntoIter = hash_map::Iter<'a, Sym<N>, Def<N>>;
+impl<'a, N: Namespace, T> IntoIterator for &'a Defs<N, T> {
+    type Item = (&'a Sym<N>, &'a Def<T>);
+    type IntoIter = hash_map::Iter<'a, Sym<N>, Def<T>>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.0.iter()
     }
 }
 
-impl<'a, N: Namespace> IntoIterator for &'a mut Defs<N> {
-    type Item = (&'a Sym<N>, &'a mut Def<N>);
-    type IntoIter = hash_map::IterMut<'a, Sym<N>, Def<N>>;
+impl<'a, N: Namespace, T> IntoIterator for &'a mut Defs<N, T> {
+    type Item = (&'a Sym<N>, &'a mut Def<T>);
+    type IntoIter = hash_map::IterMut<'a, Sym<N>, Def<T>>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.0.iter_mut()
     }
 }
 
-impl<N: Namespace> Index<Sym<N>> for Defs<N> {
-    type Output = Def<N>;
+impl<N: Namespace, T> Index<Sym<N>> for Defs<N, T> {
+    type Output = Def<T>;
 
     fn index(&self, sym: Sym<N>) -> &Self::Output {
         self.0.get(&sym).expect("Bind not found")
@@ -187,9 +199,9 @@ impl<N: Namespace> Index<Sym<N>> for Defs<N> {
 
 #[derive(Debug, Clone, Default)]
 pub struct Definitions {
-    modules: Defs<ModuleNamespace>,
-    types: Defs<TypeNamespace>,
-    values: Defs<ValueNamespace>,
+    modules: Defs<ModuleNamespace, node::ModuleBind>,
+    types: Defs<TypeNamespace, node::TypeBind>,
+    values: Defs<ValueNamespace, node::ValueBind>,
 }
 
 impl Definitions {

@@ -1,36 +1,36 @@
-use std::ops::Index;
+// use std::ops::Index;
 
-use kola_collections::HashMap;
+// use kola_collections::HashMap;
 use kola_tree::meta::{MetaMap, Phase};
 
 use crate::symbol::{ModuleSym, TypeSym, ValueSym};
 
-#[derive(Debug, Clone, Default)]
-pub struct Resolutions(HashMap<ModuleSym, ResolvedNodes>);
+// #[derive(Debug, Clone, Default)]
+// pub struct Resolutions(HashMap<ModuleSym, ResolvedNodes>);
 
-impl Resolutions {
-    pub fn new() -> Self {
-        Self(HashMap::new())
-    }
+// impl Resolutions {
+//     pub fn new() -> Self {
+//         Self(HashMap::new())
+//     }
 
-    pub fn insert(&mut self, module: ModuleSym, nodes: ResolvedNodes) {
-        self.0.insert(module, nodes);
-    }
+//     pub fn insert(&mut self, module: ModuleSym, nodes: ResolvedNodes) {
+//         self.0.insert(module, nodes);
+//     }
 
-    pub fn get(&self, module: &ModuleSym) -> Option<&ResolvedNodes> {
-        self.0.get(module)
-    }
-}
+//     pub fn get(&self, module: &ModuleSym) -> Option<&ResolvedNodes> {
+//         self.0.get(module)
+//     }
+// }
 
-impl Index<ModuleSym> for Resolutions {
-    type Output = ResolvedNodes;
+// impl Index<ModuleSym> for Resolutions {
+//     type Output = ResolvedNodes;
 
-    fn index(&self, module: ModuleSym) -> &Self::Output {
-        self.0
-            .get(&module)
-            .expect("Module not found in resolutions")
-    }
-}
+//     fn index(&self, module: ModuleSym) -> &Self::Output {
+//         self.0
+//             .get(&module)
+//             .expect("Module not found in resolutions")
+//     }
+// }
 
 pub type ResolvedNodes = MetaMap<ResolvePhase>;
 

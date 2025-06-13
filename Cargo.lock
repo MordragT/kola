@@ -388,12 +388,15 @@ name = "kola-driver"
 version = "0.1.0"
 dependencies = [
  "camino",
+ "kola-ir",
+ "kola-lowerer",
  "kola-print",
  "kola-resolver",
  "kola-span",
  "kola-syntax",
  "kola-typer",
  "kola-utils",
+ "kola-vm",
  "log",
  "owo-colors",
 ]
@@ -413,6 +416,7 @@ version = "0.1.0"
 dependencies = [
  "kola-collections",
  "kola-ir",
+ "kola-resolver",
  "kola-tree",
 ]
 

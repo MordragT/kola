@@ -1,0 +1,5 @@
+{
+    x = fn a => let
+    x = a + a in
+    x,
+}

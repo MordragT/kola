@@ -37,8 +37,6 @@ impl CekMachine {
     /// Returns Ok(true) if the machine has reached a final state,
     /// Ok(false) if more steps are needed, or Err if an error occurred
     pub fn step(&mut self) -> bool {
-        dbg!(&self.state);
-
         let state = std::mem::replace(&mut self.state, MachineState::InProgress);
 
         self.state = match state {
@@ -142,11 +140,8 @@ mod tests {
 
     #[test]
     fn test_simple_let_and_return() {
-        let mut interner = StrInterner::new();
-        let x = interner.intern("x");
-
         // Create symbols
-        let x_sym = Symbol(x);
+        let x_sym = Symbol(0);
 
         // let x = 42 in
         //   return x
@@ -172,17 +167,11 @@ mod tests {
 
     #[test]
     fn test_function_application() {
-        let mut interner = StrInterner::new();
-        let f = interner.intern("f");
-        let x = interner.intern("x");
-        let y = interner.intern("y");
-        let t = interner.intern("t");
-
         // Create symbols
-        let f_sym = Symbol(f);
-        let x_sym = Symbol(x);
-        let y_sym = Symbol(y);
-        let t_sym = Symbol(t);
+        let f_sym = Symbol(0);
+        let x_sym = Symbol(1);
+        let y_sym = Symbol(2);
+        let t_sym = Symbol(3);
 
         // let f = (x => return x+1) in
         //   let y = f(5) in
@@ -228,18 +217,11 @@ mod tests {
 
     #[test]
     fn test_record_creation_and_access() {
-        let mut interner = StrInterner::new();
-        // Intern symbols
-        let r = interner.intern("r");
-        let x = interner.intern("x");
-        let y = interner.intern("y");
-        let z = interner.intern("z");
-
         // Create symbols
-        let r_sym = Symbol(r);
-        let x_sym = Symbol(x);
-        let y_sym = Symbol(y);
-        let z_sym = Symbol(z);
+        let r_sym = Symbol(0);
+        let x_sym = Symbol(1);
+        let y_sym = Symbol(2);
+        let z_sym = Symbol(3);
 
         let mut ir = IrBuilder::new();
 
@@ -278,20 +260,12 @@ mod tests {
 
     #[test]
     fn test_record_extension() {
-        let mut interner = StrInterner::new();
-        // Intern symbols
-        let r1 = interner.intern("r1");
-        let r2 = interner.intern("r2");
-        let x = interner.intern("x");
-        let y = interner.intern("y");
-        let z = interner.intern("z");
-
         // Create symbols
-        let r1_sym = Symbol(r1);
-        let r2_sym = Symbol(r2);
-        let x_sym = Symbol(x);
-        let y_sym = Symbol(y);
-        let z_sym = Symbol(z);
+        let r1_sym = Symbol(0);
+        let r2_sym = Symbol(1);
+        let x_sym = Symbol(2);
+        let y_sym = Symbol(3);
+        let z_sym = Symbol(4);
 
         let mut ir = IrBuilder::new();
 
@@ -335,16 +309,10 @@ mod tests {
 
     #[test]
     fn test_record_update() {
-        let mut interner = StrInterner::new();
-        // Intern symbols for variables and fields
-        let r1 = interner.intern("r1");
-        let r2 = interner.intern("r2");
-        let x = interner.intern("x");
-
         // Create symbols for use in the IR
-        let r1_sym = Symbol(r1);
-        let r2_sym = Symbol(r2);
-        let x_sym = Symbol(x);
+        let r1_sym = Symbol(0);
+        let r2_sym = Symbol(1);
+        let x_sym = Symbol(2);
 
         let mut ir = IrBuilder::new();
 

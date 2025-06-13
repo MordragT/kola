@@ -1,15 +1,14 @@
 use std::io;
 
 use camino::Utf8Path;
-use kola_print::{PrintOptions, prelude::Bump};
+use kola_ir::print::IrPrinter;
+use kola_lowerer::module::lower;
+use kola_print::{PrintOptions, prelude::*};
 use kola_resolver::prelude::*;
-use kola_span::{IntoDiagnostic, Report};
-use kola_typer::{
-    check::{TypeCheckInput, TypeCheckOutput, type_check},
-    env::TypeEnv,
-    typer::Typer,
-};
-use kola_utils::{fmt::StrInternerExt, interner::StrInterner, io::FileSystem};
+use kola_span::Report;
+use kola_typer::check::{TypeCheckOutput, type_check};
+use kola_utils::{interner::StrInterner, io::FileSystem};
+use kola_vm::machine::CekMachine;
 
 pub enum DriverOptions {}
 
@@ -37,7 +36,6 @@ impl Driver {
             source_manager,
             forest,
             topography,
-            bindings,
             module_graph,
             module_scopes,
             value_orders,
@@ -54,20 +52,15 @@ impl Driver {
             return self.report.eprint(&source_manager);
         }
 
-        let input = TypeCheckInput {
-            forest,
-            topography,
-            bindings,
-            module_graph,
-            module_scopes,
-            value_orders,
-        };
-
         let TypeCheckOutput {
             type_env,
             type_annotations,
         } = type_check(
-            input,
+            &forest,
+            &topography,
+            &module_graph,
+            &module_scopes,
+            &value_orders,
             &self.arena,
             &mut self.interner,
             &mut self.report,
@@ -76,6 +69,25 @@ impl Driver {
 
         if !self.report.is_empty() {
             return self.report.eprint(&source_manager);
+        }
+
+        let mut output = lower(&module_scopes, &value_orders, &forest);
+
+        // Must be replaced by proper Ir linking
+        let ir = output.remove(0).ir;
+
+        // Ir Printint should be in another function
+        {
+            let root_id = ir.root();
+            let ir_printer = IrPrinter::new(&ir, root_id);
+            ir_printer.print(self.print_options, &self.arena);
+        }
+
+        let mut machine = CekMachine::new(ir);
+
+        match machine.run() {
+            Ok(value) => println!("Execution result: {:?}", value),
+            Err(e) => eprintln!("Runtime error: {}", e),
         }
 
         Ok(())

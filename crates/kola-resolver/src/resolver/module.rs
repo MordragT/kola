@@ -64,7 +64,7 @@ pub fn resolve_modules(
             if let Err(e) = scope.insert_module(
                 super_name,
                 *parent,
-                ModuleDef::new(parent_info.loc, Vis::Export),
+                ModuleDef::unbound(parent_info.loc, Vis::Export),
             ) {
                 report.add_diagnostic(e.into());
             }

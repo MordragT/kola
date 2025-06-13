@@ -8,7 +8,7 @@ use crate::{id::Id, ir::IrBuilder, print::IrPrinter};
 
 // TODO Symbol scoping
 #[derive(Debug, Display, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct Symbol(pub StrKey);
+pub struct Symbol(pub u32);
 
 #[derive(Debug, From, Clone, PartialEq)]
 pub enum Instr {
