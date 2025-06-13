@@ -1,7 +1,7 @@
 use kola_print::prelude::*;
 use kola_resolver::{
     GlobalId, bind::Bindings, forest::Forest, info::ModuleGraph, prelude::Topography,
-    resolver::ValueOrders, scope::ModuleCells,
+    resolver::ValueOrders, scope::ModuleScopes,
 };
 use kola_span::{IntoDiagnostic, Issue, Report};
 use kola_syntax::loc::LocDecorator;
@@ -26,7 +26,7 @@ pub struct TypeCheckInput {
     pub topography: Topography,
     pub bindings: Bindings,
     pub module_graph: ModuleGraph,
-    pub module_scopes: ModuleCells,
+    pub module_scopes: ModuleScopes,
     pub value_orders: ValueOrders,
 }
 
@@ -70,7 +70,7 @@ pub fn type_check(
 
     for module_sym in module_order {
         let module_scope = module_scopes[&module_sym].clone();
-        let bind = module_scope.borrow().bind;
+        let bind = module_scope.bind;
 
         let tree = &*forest[bind.source()];
         let spans = topography[bind.source()].clone();
@@ -99,7 +99,7 @@ pub fn type_check(
             module_annotations.extend(typed_nodes);
         }
 
-        let module_type = ModuleType::from(module_scope.borrow().shape.clone()); // TODO this is really inefficient
+        let module_type = ModuleType::from(module_scope.shape.clone());
         type_env.insert_module(module_sym, module_type);
 
         // dbg!(&module_annotations);

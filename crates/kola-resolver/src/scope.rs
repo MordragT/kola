@@ -1,5 +1,3 @@
-use std::{cell::RefCell, rc::Rc};
-
 use indexmap::IndexMap;
 use kola_span::Loc;
 use kola_tree::node::{self, ModuleName, ModuleNamespace, TypeName, ValueName};
@@ -15,10 +13,9 @@ use crate::{
     symbol::{ModuleSym, TypeSym, ValueSym},
 };
 
-pub type LexicalScope = LinearScope<ValueName, ValueSym>;
+pub type ModuleScopes = IndexMap<ModuleSym, ModuleScope>;
 
-pub type ModuleCell = Rc<RefCell<ModuleScope>>;
-pub type ModuleCells = IndexMap<ModuleSym, ModuleCell>;
+pub type LexicalScope = LinearScope<ValueName, ValueSym>;
 
 #[derive(Debug, Clone)]
 pub struct ModuleScope {

@@ -12,7 +12,7 @@ use crate::{
     forest::Forest,
     info::ModuleGraph,
     prelude::Topography,
-    scope::ModuleCells,
+    scope::ModuleScopes,
     symbol::{ModuleSym, ValueSym},
 };
 
@@ -33,7 +33,7 @@ pub struct ResolveOutput {
     pub topography: Topography,
     pub bindings: Bindings,
     pub module_graph: ModuleGraph,
-    pub module_scopes: ModuleCells,
+    pub module_scopes: ModuleScopes,
     pub value_orders: ValueOrders,
 }
 
@@ -70,7 +70,7 @@ pub fn resolve(
         .map(|scope| scope.bind.sym())
         .collect::<Vec<_>>();
 
-    let ModuleResolution { module_scopes } = module::resolve_modules(
+    let ModuleResolution { mut module_scopes } = module::resolve_modules(
         module_scopes,
         interner,
         report,
@@ -91,7 +91,7 @@ pub fn resolve(
     }
 
     let ValueResolution { value_orders } =
-        value::resolve_values(&module_symbols, &module_scopes, report, &mut bindings);
+        value::resolve_values(&module_symbols, &mut module_scopes, report, &mut bindings);
 
     Ok(ResolveOutput {
         source_manager,

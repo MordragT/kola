@@ -4,7 +4,7 @@ use super::ValueOrders;
 use crate::{
     bind::Bindings,
     refs::ValueRef,
-    scope::{ModuleCell, ModuleCells},
+    scope::{ModuleScope, ModuleScopes},
     symbol::ModuleSym,
 };
 
@@ -38,27 +38,25 @@ resolution creates relationships.
 */
 
 pub fn resolve_values(
-    module_symbols: &[ModuleSym],
-    module_scopes: &ModuleCells,
+    symbols: &[ModuleSym],
+    scopes: &mut ModuleScopes,
     report: &mut Report,
     bindings: &mut Bindings,
 ) -> ValueResolution {
     let mut value_orders = ValueOrders::new();
 
-    for module_sym in module_symbols {
-        let scope = module_scopes[module_sym].clone();
+    for module_sym in symbols {
+        let scope = &mut scopes[module_sym];
 
-        resolve_values_in_module(scope.clone(), report, bindings);
+        resolve_values_in_module(scope, report, bindings);
 
-        dbg!(&scope.borrow().value_graph);
-
-        match scope.borrow().value_graph.topological_sort() {
+        match scope.value_graph.topological_sort() {
             Ok(order) => {
                 value_orders.insert(*module_sym, order);
             }
             Err(_) => {
                 report.add_diagnostic(
-                    Diagnostic::error(scope.borrow().loc, "Cycle detected in value graph")
+                    Diagnostic::error(scope.loc, "Cycle detected in value graph")
                         .with_help("Check for circular dependencies in value definitions."),
                 );
             }
@@ -68,22 +66,17 @@ pub fn resolve_values(
     ValueResolution { value_orders }
 }
 
-fn resolve_values_in_module(scope: ModuleCell, report: &mut Report, bindings: &mut Bindings) {
-    let value_refs: Vec<ValueRef> = scope.borrow().refs.values().to_vec();
-
+fn resolve_values_in_module(scope: &mut ModuleScope, report: &mut Report, bindings: &mut Bindings) {
     // First pass: resolve all forward value references
-    for ValueRef {
+    for &ValueRef {
         name,
         global_id,
         source,
         loc,
-    } in value_refs
+    } in scope.refs.values()
     {
-        if let Some(target) = scope.borrow().shape.get_value(name) {
-            scope
-                .borrow_mut()
-                .value_graph
-                .add_dependency(source, target);
+        if let Some(target) = scope.shape.get_value(name) {
+            scope.value_graph.add_dependency(source, target);
             bindings.insert_path_expr(global_id, target);
         } else {
             // Value not found in current module
