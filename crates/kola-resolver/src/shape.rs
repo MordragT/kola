@@ -5,7 +5,6 @@ use crate::{
     error::NameCollision,
     symbol::{LocalSyms, ModuleSym, TypeSym, ValueSym},
 };
-use indexmap::IndexMap;
 use kola_tree::node::{
     AnyName, ModuleName, ModuleNamespace, TypeName, TypeNamespace, ValueName, ValueNamespace,
 };

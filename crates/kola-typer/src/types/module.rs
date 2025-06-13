@@ -1,5 +1,9 @@
 use kola_collections::OrdMap;
-use kola_resolver::symbol::{ModuleSym, TypeSym, ValueSym};
+use kola_resolver::{
+    shape::ModuleShape,
+    symbol::{ModuleSym, TypeSym, ValueSym},
+};
+use kola_tree::node::{ModuleName, TypeName, ValueName};
 use kola_utils::interner::StrKey;
 
 use crate::env::TypeEnv;
@@ -21,11 +25,11 @@ use crate::env::TypeEnv;
 #[derive(Debug, Clone, Hash)]
 pub struct ModuleType {
     /// Nested module interfaces exported by this module
-    pub modules: OrdMap<StrKey, ModuleSym>,
+    pub modules: OrdMap<ModuleName, ModuleSym>,
     /// Type definitions exported by this module
-    pub types: OrdMap<StrKey, TypeSym>,
+    pub types: OrdMap<TypeName, TypeSym>,
     /// Value bindings exported by this module
-    pub values: OrdMap<StrKey, ValueSym>,
+    pub values: OrdMap<ValueName, ValueSym>,
 }
 
 impl ModuleType {
@@ -37,18 +41,19 @@ impl ModuleType {
         }
     }
 
-    pub fn insert_module(&mut self, name: StrKey, sym: ModuleSym) {
+    pub fn insert_module(&mut self, name: ModuleName, sym: ModuleSym) {
         self.modules.insert(name, sym);
     }
 
-    pub fn insert_type(&mut self, name: StrKey, sym: TypeSym) {
+    pub fn insert_type(&mut self, name: TypeName, sym: TypeSym) {
         self.types.insert(name, sym);
     }
 
-    pub fn insert_value(&mut self, name: StrKey, sym: ValueSym) {
+    pub fn insert_value(&mut self, name: ValueName, sym: ValueSym) {
         self.values.insert(name, sym);
     }
 
+    // Dafuq ??
     pub fn get_module(&self, name: StrKey) -> Option<ModuleSym> {
         self.modules.get(&name).copied()
     }
@@ -143,5 +148,25 @@ impl ModuleType {
         }
 
         true
+    }
+}
+
+impl From<ModuleShape> for ModuleType {
+    fn from(shape: ModuleShape) -> Self {
+        let mut module_type = Self::new();
+
+        for (name, sym, _) in shape.iter_modules() {
+            module_type.insert_module(name, sym);
+        }
+
+        for (name, sym, _) in shape.iter_types() {
+            module_type.insert_type(name, sym);
+        }
+
+        for (name, sym, _) in shape.iter_values() {
+            module_type.insert_value(name, sym);
+        }
+
+        module_type
     }
 }

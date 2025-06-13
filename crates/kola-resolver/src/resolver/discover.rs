@@ -15,7 +15,7 @@ use crate::{
     defs::Def,
     forest::Forest,
     prelude::Topography,
-    refs::ValueRef,
+    refs::{ModuleRef, ValueRef},
     scope::{ModuleScope, ModuleScopeStack},
     symbol::{ModuleSym, TypeSym, ValueSym},
 };
@@ -363,13 +363,7 @@ where
         id: Id<node::ModulePath>,
         tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
-        // This will create a new module symbol if not visited from a module bind
-        let module_sym = self.current_module_bind_sym.take().unwrap_or_default();
-
-        self.bindings
-            .insert_module_path(self.qualify(id), module_sym);
-
-        let module_ref = tree
+        let path = tree
             .node(id)
             .0
             .iter()
@@ -377,7 +371,24 @@ where
             .map(|id| *tree.node(id))
             .collect::<Vec<_>>();
 
-        self.stack.refs_mut().insert_module(module_sym, module_ref);
+        if let Some(module_sym) = self.current_module_bind_sym.take() {
+            // If this is called from a module bind, we can insert the module path
+            // module a = b::c
+
+            self.bindings
+                .insert_module_path(self.qualify(id), module_sym);
+
+            self.stack.refs_mut().insert_module_bind(module_sym, path);
+        } else {
+            // If we don't have a current module bind, we need to create a reference
+            // module::record.field
+
+            let global_id = self.qualify(id);
+            let current_sym = self.stack.bind().sym();
+            let ref_ = ModuleRef::new(path, global_id, current_sym, self.span(id));
+
+            self.stack.refs_mut().insert_module(ref_);
+        }
 
         ControlFlow::Continue(())
     }
@@ -553,7 +564,7 @@ where
             // Either a forward reference or not found in the current module scope
 
             let current_sym = self.current_value_bind_sym.unwrap();
-            let ref_ = ValueRef::new(name, global_id, current_sym);
+            let ref_ = ValueRef::new(name, global_id, current_sym, self.span(id));
 
             self.stack.refs_mut().insert_value(ref_);
 

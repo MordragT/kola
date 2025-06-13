@@ -18,6 +18,7 @@ use crate::{
     phase::{TypeAnnotations, TypedNodes},
     print::TypeDecorator,
     typer::Typer,
+    types::ModuleType,
 };
 
 pub struct TypeCheckInput {
@@ -75,7 +76,7 @@ pub fn type_check(
         let spans = topography[bind.source()].clone();
         let value_order = &value_orders[&module_sym];
 
-        dbg!(&value_order);
+        dbg!(module_sym, &value_order);
 
         let mut module_annotations = TypedNodes::new();
 
@@ -98,7 +99,10 @@ pub fn type_check(
             module_annotations.extend(typed_nodes);
         }
 
-        dbg!(&module_annotations);
+        let module_type = ModuleType::from(module_scope.borrow().shape.clone()); // TODO this is really inefficient
+        type_env.insert_module(module_sym, module_type);
+
+        // dbg!(&module_annotations);
 
         // TODO both decorators should take Rc's instead of needing to clone here
         let decorators = Decorators::new()
@@ -109,9 +113,10 @@ pub fn type_check(
         let tree_printer = TreePrinter::new(&tree, &interner, &decorators, bind.node_id());
 
         debug!(
-            "{} {:?}\n{}",
+            "{} SourceId {}, ModuleSym {}\n{}",
             "Typed Abstract Syntax Tree".bold().bright_white(),
             bind.source(),
+            module_sym,
             tree_printer.render(print_options, arena)
         );
 

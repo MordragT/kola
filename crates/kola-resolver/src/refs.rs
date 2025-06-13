@@ -2,6 +2,7 @@ use std::ops::Index;
 
 use derive_more::From;
 use kola_collections::HashMap;
+use kola_span::Loc;
 use kola_tree::node::{self, ModuleName, ValueName};
 
 use crate::{
@@ -10,15 +11,43 @@ use crate::{
 };
 
 #[derive(Debug, From, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct ModuleRef(Vec<ModuleName>);
+pub struct ModuleBindRef(Vec<ModuleName>);
 
-impl ModuleRef {
+impl ModuleBindRef {
     pub fn new(path: Vec<ModuleName>) -> Self {
         Self(path)
     }
 
     pub fn path(&self) -> &[ModuleName] {
         &self.0
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct ModuleRef {
+    /// The path that references some other module bind.
+    pub path: Vec<ModuleName>,
+    /// The global identifier of the module path that references some other module bind.
+    pub global_id: GlobalId<node::ModulePath>,
+    /// The symbol of the module bind, this reference occured inside.
+    pub source: ModuleSym,
+    /// The location of the module reference in the source code.
+    pub loc: Loc,
+}
+
+impl ModuleRef {
+    pub fn new(
+        path: Vec<ModuleName>,
+        global_id: GlobalId<node::ModulePath>,
+        source: ModuleSym,
+        loc: Loc,
+    ) -> Self {
+        Self {
+            path,
+            global_id,
+            source,
+            loc,
+        }
     }
 }
 
@@ -30,21 +59,30 @@ pub struct ValueRef {
     pub global_id: GlobalId<node::PathExpr>,
     /// The symbol of the value bind, this reference occured inside.
     pub source: ValueSym,
+    /// The location of the value reference in the source code.
+    pub loc: Loc,
 }
 
 impl ValueRef {
-    pub fn new(name: ValueName, global_id: GlobalId<node::PathExpr>, source: ValueSym) -> Self {
+    pub fn new(
+        name: ValueName,
+        global_id: GlobalId<node::PathExpr>,
+        source: ValueSym,
+        loc: Loc,
+    ) -> Self {
         Self {
             name,
             global_id,
             source,
+            loc,
         }
     }
 }
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct ModuleRefs {
-    modules: HashMap<ModuleSym, ModuleRef>,
+    module_binds: HashMap<ModuleSym, ModuleBindRef>,
+    modules: Vec<ModuleRef>,
     values: Vec<ValueRef>,
 }
 
@@ -53,32 +91,40 @@ impl ModuleRefs {
         Self::default()
     }
 
-    pub fn insert_module(&mut self, sym: ModuleSym, path: Vec<ModuleName>) {
-        self.modules.insert(sym, ModuleRef::new(path));
+    pub fn insert_module_bind(&mut self, sym: ModuleSym, path: Vec<ModuleName>) {
+        self.module_binds.insert(sym, ModuleBindRef::new(path));
+    }
+
+    pub fn insert_module(&mut self, module_ref: ModuleRef) {
+        self.modules.push(module_ref);
     }
 
     pub fn insert_value(&mut self, value_ref: ValueRef) {
         self.values.push(value_ref);
     }
 
-    pub fn get_module(&self, sym: ModuleSym) -> Option<&ModuleRef> {
-        self.modules.get(&sym)
+    pub fn get_module_bind(&self, sym: ModuleSym) -> Option<&ModuleBindRef> {
+        self.module_binds.get(&sym)
     }
 
     pub fn values(&self) -> &[ValueRef] {
         &self.values
     }
 
-    pub fn modules(&self) -> &HashMap<ModuleSym, ModuleRef> {
+    pub fn modules(&self) -> &[ModuleRef] {
         &self.modules
+    }
+
+    pub fn module_binds(&self) -> &HashMap<ModuleSym, ModuleBindRef> {
+        &self.module_binds
     }
 }
 
 impl Index<ModuleSym> for ModuleRefs {
-    type Output = ModuleRef;
+    type Output = ModuleBindRef;
 
     fn index(&self, index: ModuleSym) -> &Self::Output {
-        self.modules
+        self.module_binds
             .get(&index)
             .expect("ModuleSym not found in ModuleRefs")
     }

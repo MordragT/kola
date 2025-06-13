@@ -76,6 +76,7 @@ fn resolve_values_in_module(scope: ModuleCell, report: &mut Report, bindings: &m
         name,
         global_id,
         source,
+        loc,
     } in value_refs
     {
         if let Some(target) = scope.borrow().shape.lookup_value(name) {
@@ -87,7 +88,7 @@ fn resolve_values_in_module(scope: ModuleCell, report: &mut Report, bindings: &m
         } else {
             // Value not found in current module
             report.add_diagnostic(
-                Diagnostic::error(scope.borrow().loc, "Value not found")
+                Diagnostic::error(loc, "Value not found")
                     .with_help("Check that the value is defined in this module."),
             );
         }

@@ -70,8 +70,13 @@ pub fn resolve(
         .map(|scope| scope.bind.sym())
         .collect::<Vec<_>>();
 
-    let ModuleResolution { module_scopes } =
-        module::resolve_modules(module_scopes, interner, report, &mut module_graph);
+    let ModuleResolution { module_scopes } = module::resolve_modules(
+        module_scopes,
+        interner,
+        report,
+        &mut bindings,
+        &mut module_graph,
+    );
 
     if !report.is_empty() {
         return Ok(ResolveOutput {

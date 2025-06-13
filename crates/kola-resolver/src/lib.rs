@@ -82,6 +82,7 @@ pub mod defs;
 pub mod error;
 pub mod forest;
 pub mod info;
+pub mod print;
 pub mod refs;
 pub mod resolver;
 pub mod scope;
