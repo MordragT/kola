@@ -7,7 +7,7 @@ use kola_tree::node::{
     ModuleNamespace, Namespace, NamespaceKind, TypeNamespace, ValueNamespace, Vis,
 };
 
-use crate::symbol::Sym;
+use crate::symbol::{AnySym, ModuleSym, Sym, TypeSym, ValueSym};
 
 pub struct Def<T> {
     pub loc: Loc,
@@ -182,5 +182,93 @@ impl<N: Namespace> Index<Sym<N>> for Defs<N> {
 
     fn index(&self, sym: Sym<N>) -> &Self::Output {
         self.0.get(&sym).expect("Bind not found")
+    }
+}
+
+#[derive(Debug, Clone, Default)]
+pub struct Definitions {
+    modules: Defs<ModuleNamespace>,
+    types: Defs<TypeNamespace>,
+    values: Defs<ValueNamespace>,
+}
+
+impl Definitions {
+    pub fn new() -> Self {
+        Self::default()
+    }
+
+    pub fn insert_module(&mut self, sym: ModuleSym, def: ModuleDef) {
+        self.modules.insert(sym, def);
+    }
+
+    pub fn insert_type(&mut self, sym: TypeSym, def: TypeDef) {
+        self.types.insert(sym, def);
+    }
+
+    pub fn insert_value(&mut self, sym: ValueSym, def: ValueDef) {
+        self.values.insert(sym, def);
+    }
+
+    #[inline]
+    pub fn get_module(&self, sym: ModuleSym) -> Option<ModuleDef> {
+        self.modules.get(sym)
+    }
+
+    #[inline]
+    pub fn get_type(&self, sym: TypeSym) -> Option<TypeDef> {
+        self.types.get(sym)
+    }
+
+    #[inline]
+    pub fn get_value(&self, sym: ValueSym) -> Option<ValueDef> {
+        self.values.get(sym)
+    }
+
+    #[inline]
+    pub fn get(&self, sym: impl Into<AnySym>) -> Option<AnyDef> {
+        match sym.into() {
+            AnySym::Module(sym) => self.get_module(sym).map(AnyDef::Module),
+            AnySym::Value(sym) => self.get_value(sym).map(AnyDef::Value),
+            AnySym::Type(sym) => self.get_type(sym).map(AnyDef::Type),
+        }
+    }
+
+    #[inline]
+    pub fn iter_modules(&self) -> impl Iterator<Item = (ModuleSym, ModuleDef)> {
+        self.modules.iter().map(|(&sym, &def)| (sym, def))
+    }
+
+    #[inline]
+    pub fn iter_types(&self) -> impl Iterator<Item = (TypeSym, TypeDef)> {
+        self.types.iter().map(|(&sym, &def)| (sym, def))
+    }
+
+    #[inline]
+    pub fn iter_values(&self) -> impl Iterator<Item = (ValueSym, ValueDef)> {
+        self.values.iter().map(|(&sym, &def)| (sym, def))
+    }
+}
+
+impl Index<ModuleSym> for Definitions {
+    type Output = ModuleDef;
+
+    fn index(&self, index: ModuleSym) -> &Self::Output {
+        &self.modules[index]
+    }
+}
+
+impl Index<ValueSym> for Definitions {
+    type Output = ValueDef;
+
+    fn index(&self, index: ValueSym) -> &Self::Output {
+        &self.values[index]
+    }
+}
+
+impl Index<TypeSym> for Definitions {
+    type Output = TypeDef;
+
+    fn index(&self, index: TypeSym) -> &Self::Output {
+        &self.types[index]
     }
 }

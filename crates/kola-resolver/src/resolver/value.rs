@@ -79,7 +79,7 @@ fn resolve_values_in_module(scope: ModuleCell, report: &mut Report, bindings: &m
         loc,
     } in value_refs
     {
-        if let Some(target) = scope.borrow().shape.lookup_value(name) {
+        if let Some(target) = scope.borrow().shape.get_value(name) {
             scope
                 .borrow_mut()
                 .value_graph

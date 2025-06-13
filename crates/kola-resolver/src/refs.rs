@@ -80,13 +80,13 @@ impl ValueRef {
 }
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
-pub struct ModuleRefs {
+pub struct References {
     module_binds: HashMap<ModuleSym, ModuleBindRef>,
     modules: Vec<ModuleRef>,
     values: Vec<ValueRef>,
 }
 
-impl ModuleRefs {
+impl References {
     pub fn new() -> Self {
         Self::default()
     }
@@ -120,7 +120,7 @@ impl ModuleRefs {
     }
 }
 
-impl Index<ModuleSym> for ModuleRefs {
+impl Index<ModuleSym> for References {
     type Output = ModuleBindRef;
 
     fn index(&self, index: ModuleSym) -> &Self::Output {

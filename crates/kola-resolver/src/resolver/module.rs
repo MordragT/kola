@@ -60,7 +60,7 @@ pub fn resolve_modules(
         if let [parent, rest @ ..] = module_graph.dependents_of(scope.bind.sym()) {
             let parent_scope = &module_scopes[parent];
 
-            if let Err(e) = scope.shape.insert_module(
+            if let Err(e) = scope.insert_module(
                 super_name,
                 *parent,
                 ModuleDef::new(parent_scope.borrow().loc, Vis::Export),
@@ -134,12 +134,12 @@ pub fn resolve_module_ref(
     let source_sym = scope.borrow().bind.sym();
 
     while let Some((name, rest)) = path.split_first() {
-        let Some(sym) = scope.borrow().shape.lookup_module(*name) else {
+        let Some(sym) = scope.borrow().shape.get_module(*name) else {
             report.add_diagnostic(Diagnostic::error(loc, "Module not found"));
             return;
         };
 
-        let def = scope.borrow().shape[sym];
+        let def = scope.borrow().defs[sym];
 
         // Check if the module is exported or part of the current module.
         if def.vis != Vis::Export && scope.borrow().bind.sym() != source_sym {
@@ -218,13 +218,13 @@ pub fn resolve_module_path_bind(
     let source_sym = scope.borrow().bind.sym();
 
     while let Some((name, rest)) = path.split_first() {
-        let Some(sym) = scope.borrow().shape.lookup_module(*name) else {
+        let Some(sym) = scope.borrow().shape.get_module(*name) else {
             report.add_diagnostic(Diagnostic::error(scope.borrow().loc, "Module not found"));
             module_visit[path_sym] = VisitState::Visited;
             return;
         };
 
-        let def = scope.borrow().shape[sym];
+        let def = scope.borrow().defs[sym];
 
         // Check if the module is exported or part of the current module.
         if def.vis != Vis::Export && scope.borrow().bind.sym() != source_sym {

@@ -1,6 +1,6 @@
-use kola_collections::OrdMap;
+use kola_collections::HashMap;
 use kola_resolver::{
-    shape::ModuleShape,
+    shape::Shape,
     symbol::{ModuleSym, TypeSym, ValueSym},
 };
 use kola_tree::node::{ModuleName, TypeName, ValueName};
@@ -19,25 +19,22 @@ use crate::env::TypeEnv;
 /// data lives in `TypeEnvironment` and is looked up by symbol. Methods like
 /// `alpha_equivalent()` and `subsumes()` require a `TypeEnvironment` parameter to
 /// resolve symbols for comparison and cache results.
-///
-/// Uses `OrdMap` for deterministic comparison and maps exported names (`StrKey`)
-/// to symbols for a name-based external interface.
-#[derive(Debug, Clone, Hash)]
+#[derive(Debug, Clone)]
 pub struct ModuleType {
     /// Nested module interfaces exported by this module
-    pub modules: OrdMap<ModuleName, ModuleSym>,
+    pub modules: HashMap<ModuleName, ModuleSym>,
     /// Type definitions exported by this module
-    pub types: OrdMap<TypeName, TypeSym>,
+    pub types: HashMap<TypeName, TypeSym>,
     /// Value bindings exported by this module
-    pub values: OrdMap<ValueName, ValueSym>,
+    pub values: HashMap<ValueName, ValueSym>,
 }
 
 impl ModuleType {
     pub fn new() -> Self {
         Self {
-            modules: OrdMap::new(),
-            types: OrdMap::new(),
-            values: OrdMap::new(),
+            modules: HashMap::new(),
+            types: HashMap::new(),
+            values: HashMap::new(),
         }
     }
 
@@ -117,6 +114,7 @@ impl ModuleType {
             return false;
         }
 
+        // TODO can't I just zip them together and compare ?
         for (name, this) in &self.modules {
             if !other
                 .modules
@@ -151,22 +149,16 @@ impl ModuleType {
     }
 }
 
-impl From<ModuleShape> for ModuleType {
-    fn from(shape: ModuleShape) -> Self {
-        let mut module_type = Self::new();
+// TODO this works for now but non exported items shouldn't be part of the module type,
+// but are included in the shape.
+impl From<Shape> for ModuleType {
+    fn from(shape: Shape) -> Self {
+        let (modules, types, values) = shape.into_raw();
 
-        for (name, sym, _) in shape.iter_modules() {
-            module_type.insert_module(name, sym);
+        Self {
+            modules,
+            types,
+            values,
         }
-
-        for (name, sym, _) in shape.iter_types() {
-            module_type.insert_type(name, sym);
-        }
-
-        for (name, sym, _) in shape.iter_values() {
-            module_type.insert_value(name, sym);
-        }
-
-        module_type
     }
 }

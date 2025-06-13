@@ -413,7 +413,6 @@ where
         // Register the module binding in the current scope
         if let Err(e) = self
             .stack
-            .shape_mut()
             .insert_module(name, module_sym, Def::new(span, *vis))
         {
             self.report.add_diagnostic(e.into());
@@ -443,7 +442,6 @@ where
         // Register the value binding in the current scope
         if let Err(e) = self
             .stack
-            .shape_mut()
             .insert_value(name, value_sym, Def::new(span, *vis))
         {
             self.report.add_diagnostic(e.into());
@@ -467,10 +465,9 @@ where
         self.bindings.insert_type_bind(qual_id, type_sym);
 
         // Register the type binding in the current scope
-        if let Err(e) =
-            self.stack
-                .shape_mut()
-                .insert_type(name, type_sym, Def::new(span, Vis::Export))
+        if let Err(e) = self
+            .stack
+            .insert_type(name, type_sym, Def::new(span, Vis::Export))
         {
             self.report.add_diagnostic(e.into());
         }
@@ -539,15 +536,15 @@ where
             // Local binding will not create value bind cycle either
             self.bindings.insert_path_expr(global_id, *value_sym);
             ControlFlow::Continue(())
-        } else if let Some(value_sym) = self.stack.shape().lookup_value(name) {
+        } else if let Some(value_sym) = self.stack.shape().get_value(name) {
             // Found a value binding in the current module scope
             // which was defined before this path expression (no forward reference)
-            let bind = self.stack.shape()[value_sym];
+            let def = self.stack.defs()[value_sym];
 
-            if bind.vis != Vis::Export {
+            if def.vis != Vis::Export {
                 self.report.add_diagnostic(
                     Diagnostic::error(self.span(id), "Cannot access non-exported value binding")
-                        .with_trace([("At this binding".to_owned(), bind.loc)]),
+                        .with_trace([("At this binding".to_owned(), def.loc)]),
                 );
                 return ControlFlow::Continue(());
             }
