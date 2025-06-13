@@ -1,3 +1,3 @@
-use crate::bind::Bindings;
+use crate::phase::ResolvedNodes;
 
-pub struct SymbolDecorator(pub Bindings);
+pub struct ResolutionDecorator(pub ResolvedNodes);

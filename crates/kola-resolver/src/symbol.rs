@@ -1,13 +1,9 @@
 use derive_more::From;
-use kola_collections::{HashMap, hash_map};
-use kola_tree::node::{
-    ModuleNamespace, Name, Namespace, NamespaceKind, TypeNamespace, ValueNamespace,
-};
+use kola_tree::node::{ModuleNamespace, NamespaceKind, TypeNamespace, ValueNamespace};
 use kola_utils::define_unique_leveled_id;
 use std::{
     hash::Hash,
     marker::PhantomData,
-    ops::Index,
     sync::atomic::{AtomicU32, Ordering},
 };
 

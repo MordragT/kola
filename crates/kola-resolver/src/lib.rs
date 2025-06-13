@@ -77,11 +77,11 @@
 
 #![feature(never_type)]
 
-pub mod bind;
 pub mod defs;
 pub mod error;
 pub mod forest;
 pub mod info;
+pub mod phase;
 pub mod print;
 pub mod refs;
 pub mod resolver;

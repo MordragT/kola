@@ -3,12 +3,12 @@ use std::ops::Index;
 use derive_more::From;
 use kola_collections::HashMap;
 use kola_span::Loc;
-use kola_tree::node::{self, ModuleName, ValueName};
-
-use crate::{
-    GlobalId,
-    symbol::{ModuleSym, ValueSym},
+use kola_tree::{
+    id::Id,
+    node::{self, ModuleName, ValueName},
 };
+
+use crate::symbol::{ModuleSym, ValueSym};
 
 #[derive(Debug, From, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ModuleBindRef(Vec<ModuleName>);
@@ -28,7 +28,7 @@ pub struct ModuleRef {
     /// The path that references some other module bind.
     pub path: Vec<ModuleName>,
     /// The global identifier of the module path that references some other module bind.
-    pub global_id: GlobalId<node::ModulePath>,
+    pub id: Id<node::ModulePath>,
     /// The symbol of the module bind, this reference occured inside.
     pub source: ModuleSym,
     /// The location of the module reference in the source code.
@@ -38,13 +38,13 @@ pub struct ModuleRef {
 impl ModuleRef {
     pub fn new(
         path: Vec<ModuleName>,
-        global_id: GlobalId<node::ModulePath>,
+        id: Id<node::ModulePath>,
         source: ModuleSym,
         loc: Loc,
     ) -> Self {
         Self {
             path,
-            global_id,
+            id,
             source,
             loc,
         }
@@ -55,8 +55,8 @@ impl ModuleRef {
 pub struct ValueRef {
     /// The name of the value reference.
     pub name: ValueName,
-    /// The global identifier of the path expression that references some other value bind..
-    pub global_id: GlobalId<node::PathExpr>,
+    /// The identifier of the path expression that references some other value bind..
+    pub id: Id<node::PathExpr>,
     /// The symbol of the value bind, this reference occured inside.
     pub source: ValueSym,
     /// The location of the value reference in the source code.
@@ -64,15 +64,10 @@ pub struct ValueRef {
 }
 
 impl ValueRef {
-    pub fn new(
-        name: ValueName,
-        global_id: GlobalId<node::PathExpr>,
-        source: ValueSym,
-        loc: Loc,
-    ) -> Self {
+    pub fn new(name: ValueName, id: Id<node::PathExpr>, source: ValueSym, loc: Loc) -> Self {
         Self {
             name,
-            global_id,
+            id,
             source,
             loc,
         }

@@ -11,9 +11,10 @@ use kola_utils::{interner::StrInterner, io::FileSystem};
 
 use crate::{
     GlobalId,
-    bind::Bindings,
     defs::Def,
     forest::Forest,
+    info::ModuleInfo,
+    phase::ResolvePhase,
     prelude::Topography,
     refs::{ModuleRef, ValueRef},
     scope::{ModuleScope, ModuleScopeStack},
@@ -27,7 +28,6 @@ pub struct DiscoverOutput {
     pub source_manager: SourceManager,
     pub forest: Forest,
     pub topography: Topography,
-    pub bindings: Bindings,
     pub module_graph: ModuleGraph,
     pub module_scopes: Vec<ModuleScope>,
 }
@@ -91,7 +91,6 @@ pub fn discover(
     forest.insert(source_id, tree);
     topography.insert(source_id, spans);
 
-    let mut bindings = Bindings::new();
     let mut module_graph = ModuleGraph::new();
     let mut module_scopes = Vec::new();
 
@@ -105,7 +104,6 @@ pub fn discover(
         &mut source_manager,
         &mut forest,
         &mut topography,
-        &mut bindings,
         &mut module_graph,
         &mut module_scopes,
         print_options,
@@ -115,7 +113,6 @@ pub fn discover(
         source_manager,
         forest,
         topography,
-        bindings,
         module_graph,
         module_scopes,
     })
@@ -131,7 +128,6 @@ fn _discover(
     source_manager: &mut SourceManager,
     forest: &mut Forest,
     topography: &mut Topography,
-    bindings: &mut Bindings,
     module_graph: &mut ModuleGraph,
     module_scopes: &mut Vec<ModuleScope>,
     print_options: PrintOptions,
@@ -149,7 +145,6 @@ fn _discover(
         source_manager,
         forest,
         topography,
-        bindings,
         module_graph,
         module_scopes,
         print_options,
@@ -176,7 +171,6 @@ struct Discoverer<'a> {
     source_manager: &'a mut SourceManager,
     forest: &'a mut Forest,
     topography: &'a mut Topography,
-    bindings: &'a mut Bindings,
     module_graph: &'a mut ModuleGraph,
     module_scopes: &'a mut Vec<ModuleScope>,
     print_options: PrintOptions,
@@ -193,7 +187,6 @@ impl<'a> Discoverer<'a> {
         source_manager: &'a mut SourceManager,
         forest: &'a mut Forest,
         topography: &'a mut Topography,
-        bindings: &'a mut Bindings,
         module_graph: &'a mut ModuleGraph,
         module_scopes: &'a mut Vec<ModuleScope>,
         print_options: PrintOptions,
@@ -210,7 +203,6 @@ impl<'a> Discoverer<'a> {
             source_manager,
             forest,
             topography,
-            bindings,
             module_graph,
             module_scopes,
             print_options,
@@ -225,9 +217,13 @@ impl<'a> Discoverer<'a> {
         self.topography.span(GlobalId::new(self.source_id, id))
     }
 
-    #[inline]
-    fn qualify<T>(&self, id: Id<T>) -> GlobalId<T> {
-        GlobalId::new(self.source_id, id)
+    fn insert_symbol<T>(&mut self, id: Id<T>, sym: T::Meta)
+    where
+        T: MetaCast<ResolvePhase>,
+    {
+        self.stack
+            .resolved_mut()
+            .insert(id.as_usize(), T::upcast(sym));
     }
 }
 
@@ -238,18 +234,17 @@ where
     type BreakValue = !;
 
     fn visit_module(&mut self, id: Id<node::Module>, tree: &T) -> ControlFlow<Self::BreakValue> {
-        let module_sym = self.current_module_bind_sym.take().unwrap();
-        let global_id = self.qualify(id);
-
-        let bind = self.bindings.insert_module(global_id, module_sym);
+        let sym = self.current_module_bind_sym.take().unwrap();
+        self.insert_symbol(id, sym);
 
         // Add dependency from current module to this new module
-        if let Some(bind) = self.stack.try_bind() {
-            self.module_graph.add_dependency(bind.sym(), module_sym);
+        if let Some(info) = self.stack.try_info() {
+            self.module_graph.add_dependency(info.sym, sym);
         }
 
         // Create a new scope for this module
-        self.stack.start(ModuleScope::new(bind, self.span(id)));
+        self.stack
+            .start(ModuleInfo::new(id, sym, self.source_id, self.span(id)));
 
         // Walk through children nodes
         self.walk_module(id, tree)?;
@@ -266,12 +261,9 @@ where
         tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
         let module_sym = self.current_module_bind_sym.take().unwrap();
+        self.insert_symbol(id, module_sym);
 
-        self.bindings
-            .insert_module_import(self.qualify(id), module_sym);
-
-        let current_module_sym = self.stack.bind().sym();
-
+        let current_module_sym = self.stack.info().sym;
         self.module_graph
             .add_dependency(current_module_sym, module_sym);
 
@@ -284,8 +276,7 @@ where
         {
             Ok(path) => path,
             Err(e) => {
-                self.report
-                    .add_diagnostic(e.into_diagnostic(self.span(id)).with_help("resolve_import"));
+                self.report.add_diagnostic(e.into_diagnostic(self.span(id)));
                 return ControlFlow::Continue(());
             }
         };
@@ -293,8 +284,7 @@ where
         let (source_id, source) = match self.source_manager.fetch(path.as_path(), &self.io) {
             Ok(tuple) => tuple,
             Err(e) => {
-                self.report
-                    .add_diagnostic(e.into_diagnostic(self.span(id)).with_help("fetch"));
+                self.report.add_diagnostic(e.into_diagnostic(self.span(id)));
                 return ControlFlow::Continue(());
             }
         };
@@ -349,7 +339,6 @@ where
             self.source_manager,
             self.forest,
             self.topography,
-            self.bindings,
             self.module_graph,
             self.module_scopes,
             self.print_options,
@@ -375,17 +364,14 @@ where
             // If this is called from a module bind, we can insert the module path
             // module a = b::c
 
-            self.bindings
-                .insert_module_path(self.qualify(id), module_sym);
-
+            self.insert_symbol(id, module_sym);
             self.stack.refs_mut().insert_module_bind(module_sym, path);
         } else {
             // If we don't have a current module bind, we need to create a reference
             // module::record.field
 
-            let global_id = self.qualify(id);
-            let current_sym = self.stack.bind().sym();
-            let ref_ = ModuleRef::new(path, global_id, current_sym, self.span(id));
+            let current_sym = self.stack.info().sym;
+            let ref_ = ModuleRef::new(path, id, current_sym, self.span(id));
 
             self.stack.refs_mut().insert_module(ref_);
         }
@@ -404,11 +390,10 @@ where
         let vis = tree.node(vis);
 
         let span = self.span(id);
-        let qual_id = self.qualify(id);
-        let module_sym = ModuleSym::new();
 
+        let module_sym = ModuleSym::new();
+        self.insert_symbol(id, module_sym);
         self.current_module_bind_sym = Some(module_sym);
-        self.bindings.insert_module_bind(qual_id, module_sym);
 
         // Register the module binding in the current scope
         if let Err(e) = self
@@ -432,11 +417,10 @@ where
         let vis = tree.node(vis);
 
         let span = self.span(id);
-        let qual_id = self.qualify(id);
-        let value_sym = ValueSym::new();
 
+        let value_sym = ValueSym::new();
+        self.insert_symbol(id, value_sym);
         self.current_value_bind_sym = Some(value_sym);
-        self.bindings.insert_value_bind(qual_id, value_sym);
         self.stack.value_graph_mut().add_node(value_sym);
 
         // Register the value binding in the current scope
@@ -459,10 +443,9 @@ where
         let name = *tree.node(name);
 
         let span = self.span(id);
-        let qual_id = self.qualify(id);
-        let type_sym = TypeSym::new();
 
-        self.bindings.insert_type_bind(qual_id, type_sym);
+        let type_sym = TypeSym::new();
+        self.insert_symbol(id, type_sym);
 
         // Register the type binding in the current scope
         if let Err(e) = self
@@ -490,8 +473,7 @@ where
         ValueSym::exit();
 
         let sym = ValueSym::new();
-
-        self.bindings.insert_let_expr(self.qualify(id), sym);
+        self.insert_symbol(id, sym);
 
         self.stack.lexical_mut().enter(name, sym);
         self.walk_expr(inside, tree)?;
@@ -508,9 +490,9 @@ where
         let node::LambdaExpr { param, body } = *tree.node(id);
 
         let name = *tree.node(param);
-        let sym = ValueSym::new();
 
-        self.bindings.insert_lambda_expr(self.qualify(id), sym);
+        let sym = ValueSym::new();
+        self.insert_symbol(id, sym);
 
         self.stack.lexical_mut().enter(name, sym);
         self.walk_expr(body, tree)?;
@@ -527,14 +509,13 @@ where
         let node::PathExpr { path, binding, .. } = tree.node(id);
 
         let name = *tree.node(*binding);
-        let global_id = self.qualify(id);
 
         if let Some(path) = path {
             // Just visit the module path if it exists
             self.visit_module_path(*path, tree)
         } else if let Some(value_sym) = self.stack.lexical().get(&name) {
             // Local binding will not create value bind cycle either
-            self.bindings.insert_path_expr(global_id, *value_sym);
+            self.insert_symbol(id, *value_sym);
             ControlFlow::Continue(())
         } else if let Some(value_sym) = self.stack.shape().get_value(name) {
             // Found a value binding in the current module scope
@@ -549,7 +530,7 @@ where
                 return ControlFlow::Continue(());
             }
 
-            self.bindings.insert_path_expr(global_id, value_sym);
+            self.insert_symbol(id, value_sym);
 
             let current_sym = self.current_value_bind_sym.unwrap();
             self.stack
@@ -561,7 +542,7 @@ where
             // Either a forward reference or not found in the current module scope
 
             let current_sym = self.current_value_bind_sym.unwrap();
-            let ref_ = ValueRef::new(name, global_id, current_sym, self.span(id));
+            let ref_ = ValueRef::new(name, id, current_sym, self.span(id));
 
             self.stack.refs_mut().insert_value(ref_);
 

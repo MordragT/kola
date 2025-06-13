@@ -4,9 +4,24 @@ use std::{collections::HashMap, fmt::Debug};
 pub type MetaVec<P> = Vec<Meta<P>>;
 pub type MetaMap<P> = HashMap<usize, Meta<P>>;
 
+pub trait MetaMapExt<P: Phase> {
+    fn insert_meta<T>(&mut self, id: Id<T>, meta: T::Meta)
+    where
+        T: MetaCast<P>;
+}
+
+impl<P: Phase> MetaMapExt<P> for MetaMap<P> {
+    fn insert_meta<T>(&mut self, id: Id<T>, meta: T::Meta)
+    where
+        T: MetaCast<P>,
+    {
+        let meta = T::upcast(meta);
+        self.insert(id.as_usize(), meta);
+    }
+}
+
 pub trait MetaView<P: Phase>: Sized {
     fn get(&self, id: usize) -> &Meta<P>;
-
     fn get_mut(&mut self, id: usize) -> &mut Meta<P>;
 
     fn meta<T>(&self, id: Id<T>) -> &T::Meta

@@ -1,8 +1,8 @@
 use kola_span::{Diagnostic, Report};
+use kola_tree::meta::MetaMapExt;
 
 use super::ValueOrders;
 use crate::{
-    bind::Bindings,
     refs::ValueRef,
     scope::{ModuleScope, ModuleScopes},
     symbol::ModuleSym,
@@ -41,14 +41,13 @@ pub fn resolve_values(
     symbols: &[ModuleSym],
     scopes: &mut ModuleScopes,
     report: &mut Report,
-    bindings: &mut Bindings,
 ) -> ValueResolution {
     let mut value_orders = ValueOrders::new();
 
     for module_sym in symbols {
         let scope = &mut scopes[module_sym];
 
-        resolve_values_in_module(scope, report, bindings);
+        resolve_values_in_module(scope, report);
 
         match scope.value_graph.topological_sort() {
             Ok(order) => {
@@ -56,7 +55,7 @@ pub fn resolve_values(
             }
             Err(_) => {
                 report.add_diagnostic(
-                    Diagnostic::error(scope.loc, "Cycle detected in value graph")
+                    Diagnostic::error(scope.info.loc, "Cycle detected in value graph")
                         .with_help("Check for circular dependencies in value definitions."),
                 );
             }
@@ -66,18 +65,18 @@ pub fn resolve_values(
     ValueResolution { value_orders }
 }
 
-fn resolve_values_in_module(scope: &mut ModuleScope, report: &mut Report, bindings: &mut Bindings) {
+fn resolve_values_in_module(scope: &mut ModuleScope, report: &mut Report) {
     // First pass: resolve all forward value references
     for &ValueRef {
         name,
-        global_id,
+        id,
         source,
         loc,
     } in scope.refs.values()
     {
         if let Some(target) = scope.shape.get_value(name) {
             scope.value_graph.add_dependency(source, target);
-            bindings.insert_path_expr(global_id, target);
+            scope.resolved.insert_meta(id, target);
         } else {
             // Value not found in current module
             report.add_diagnostic(

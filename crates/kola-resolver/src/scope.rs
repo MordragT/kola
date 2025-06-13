@@ -1,43 +1,41 @@
 use indexmap::IndexMap;
-use kola_span::Loc;
-use kola_tree::node::{self, ModuleName, ModuleNamespace, TypeName, ValueName};
+use kola_tree::node::{ModuleName, TypeName, ValueName};
 use kola_utils::scope::LinearScope;
 
 use crate::{
-    bind::Bind,
     defs::{AnyDef, Definitions, ModuleDef, TypeDef, ValueDef},
     error::NameCollision,
-    info::ValueGraph,
+    info::{ModuleInfo, ValueGraph},
+    phase::ResolvedNodes,
     refs::References,
     shape::Shape,
     symbol::{ModuleSym, TypeSym, ValueSym},
 };
 
 pub type ModuleScopes = IndexMap<ModuleSym, ModuleScope>;
-
 pub type LexicalScope = LinearScope<ValueName, ValueSym>;
 
 #[derive(Debug, Clone)]
 pub struct ModuleScope {
-    pub bind: Bind<ModuleNamespace, node::Module>,
+    pub info: ModuleInfo,
     pub shape: Shape,
     pub defs: Definitions,
     pub refs: References,
+    pub resolved: ResolvedNodes,
     pub lexical: LexicalScope,
     pub value_graph: ValueGraph,
-    pub loc: Loc,
 }
 
 impl ModuleScope {
-    pub fn new(bind: Bind<ModuleNamespace, node::Module>, loc: Loc) -> Self {
+    pub fn new(info: ModuleInfo) -> Self {
         Self {
-            bind,
+            info,
             shape: Shape::new(),
             defs: Definitions::new(),
             refs: References::new(),
+            resolved: ResolvedNodes::new(),
             lexical: LexicalScope::new(),
             value_graph: ValueGraph::new(),
-            loc,
         }
     }
 
@@ -125,8 +123,8 @@ impl ModuleScopeStack {
     }
 
     #[inline]
-    pub fn start(&mut self, scope: ModuleScope) {
-        self.todo.push(scope);
+    pub fn start(&mut self, scope: impl Into<ModuleScope>) {
+        self.todo.push(scope.into());
     }
 
     #[inline]
@@ -164,13 +162,13 @@ impl ModuleScopeStack {
     }
 
     #[inline]
-    pub fn try_bind(&self) -> Option<&Bind<ModuleNamespace, node::Module>> {
-        self.todo.last().map(|scope| &scope.bind)
+    pub fn try_info(&self) -> Option<&ModuleInfo> {
+        self.todo.last().map(|scope| &scope.info)
     }
 
     #[inline]
-    pub fn bind(&self) -> &Bind<ModuleNamespace, node::Module> {
-        self.try_bind().unwrap()
+    pub fn info(&self) -> &ModuleInfo {
+        self.try_info().unwrap()
     }
 
     #[inline]
@@ -234,6 +232,26 @@ impl ModuleScopeStack {
     }
 
     #[inline]
+    pub fn try_resolved(&self) -> Option<&ResolvedNodes> {
+        self.todo.last().map(|scope| &scope.resolved)
+    }
+
+    #[inline]
+    pub fn resolved(&self) -> &ResolvedNodes {
+        self.try_resolved().unwrap()
+    }
+
+    #[inline]
+    pub fn try_resolved_mut(&mut self) -> Option<&mut ResolvedNodes> {
+        self.todo.last_mut().map(|scope| &mut scope.resolved)
+    }
+
+    #[inline]
+    pub fn resolved_mut(&mut self) -> &mut ResolvedNodes {
+        self.try_resolved_mut().unwrap()
+    }
+
+    #[inline]
     pub fn try_lexical(&self) -> Option<&LexicalScope> {
         self.todo.last().map(|scope| &scope.lexical)
     }
@@ -274,17 +292,13 @@ impl ModuleScopeStack {
     }
 
     #[inline]
-    pub fn try_loc(&self) -> Option<&Loc> {
-        self.todo.last().map(|scope| &scope.loc)
-    }
-
-    #[inline]
-    pub fn loc(&self) -> &Loc {
-        self.try_loc().unwrap()
-    }
-
-    #[inline]
     pub fn into_completed(self) -> Vec<ModuleScope> {
         self.done
+    }
+}
+
+impl From<ModuleInfo> for ModuleScope {
+    fn from(info: ModuleInfo) -> Self {
+        Self::new(info)
     }
 }

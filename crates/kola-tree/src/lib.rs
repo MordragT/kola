@@ -10,7 +10,7 @@ pub mod visit;
 pub mod prelude {
     pub use crate::fold::Folder;
     pub use crate::id::Id;
-    pub use crate::meta::{Meta, MetaCast, MetaVec, MetaView, Phase, UniformPhase};
+    pub use crate::meta::{Meta, MetaCast, MetaMapExt, MetaVec, MetaView, Phase, UniformPhase};
     pub use crate::node::{self, Node, NodeId, NodeKind};
     pub use crate::print::{
         Decorator, Decorators, IdPrinter, NodePrinter, SlicePrinter, TreePrinter,

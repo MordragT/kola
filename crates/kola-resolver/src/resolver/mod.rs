@@ -8,7 +8,6 @@ use kola_span::{Report, SourceManager};
 use kola_utils::{interner::StrInterner, io::FileSystem};
 
 use crate::{
-    bind::Bindings,
     forest::Forest,
     info::ModuleGraph,
     prelude::Topography,
@@ -31,7 +30,6 @@ pub struct ResolveOutput {
     pub source_manager: SourceManager,
     pub forest: Forest,
     pub topography: Topography,
-    pub bindings: Bindings,
     pub module_graph: ModuleGraph,
     pub module_scopes: ModuleScopes,
     pub value_orders: ValueOrders,
@@ -49,7 +47,6 @@ pub fn resolve(
         source_manager,
         forest,
         topography,
-        mut bindings,
         mut module_graph,
         module_scopes,
     } = discover::discover(path, io, arena, interner, report, print_options)?;
@@ -59,7 +56,6 @@ pub fn resolve(
             source_manager,
             forest,
             topography,
-            bindings,
             module_graph,
             ..Default::default()
         });
@@ -67,23 +63,17 @@ pub fn resolve(
 
     let module_symbols = module_scopes
         .iter()
-        .map(|scope| scope.bind.sym())
+        .map(|scope| scope.info.sym)
         .collect::<Vec<_>>();
 
-    let ModuleResolution { mut module_scopes } = module::resolve_modules(
-        module_scopes,
-        interner,
-        report,
-        &mut bindings,
-        &mut module_graph,
-    );
+    let ModuleResolution { mut module_scopes } =
+        module::resolve_modules(module_scopes, interner, report, &mut module_graph);
 
     if !report.is_empty() {
         return Ok(ResolveOutput {
             source_manager,
             forest,
             topography,
-            bindings,
             module_graph,
             module_scopes,
             ..Default::default()
@@ -91,13 +81,12 @@ pub fn resolve(
     }
 
     let ValueResolution { value_orders } =
-        value::resolve_values(&module_symbols, &mut module_scopes, report, &mut bindings);
+        value::resolve_values(&module_symbols, &mut module_scopes, report);
 
     Ok(ResolveOutput {
         source_manager,
         forest,
         topography,
-        bindings,
         module_graph,
         module_scopes,
         value_orders,

@@ -1,6 +1,6 @@
 use std::{ops::ControlFlow, rc::Rc};
 
-use kola_resolver::{GlobalId, bind::Bindings};
+use kola_resolver::{GlobalId, phase::ResolvedNodes};
 use kola_span::{Diagnostic, Loc, Located, Report};
 use kola_syntax::prelude::*;
 use kola_tree::prelude::*;
@@ -108,7 +108,7 @@ impl Constraints {
 // for that I need to cache the NodeIDs of the "public" types
 
 pub struct Typer<'a, N> {
-    root_id: GlobalId<N>,
+    root_id: Id<N>,
     subs: Substitution,
     cons: Constraints,
     type_scope: TypeScope,
@@ -116,15 +116,15 @@ pub struct Typer<'a, N> {
     types: TypedNodes,
     spans: Rc<Locations>,
     env: &'a TypeEnv,
-    bindings: &'a Bindings,
+    resolved: &'a ResolvedNodes,
 }
 
 impl<'a, N> Typer<'a, N> {
     pub fn new(
-        root_id: GlobalId<N>,
+        root_id: Id<N>,
         spans: Rc<Locations>,
         env: &'a TypeEnv,
-        bindings: &'a Bindings,
+        resolved: &'a ResolvedNodes,
     ) -> Self {
         Self {
             root_id,
@@ -135,7 +135,7 @@ impl<'a, N> Typer<'a, N> {
             types: TypedNodes::new(),
             spans,
             env,
-            bindings,
+            resolved,
         }
     }
 
@@ -148,7 +148,7 @@ impl<'a, N> Typer<'a, N> {
         Tree: TreeView,
         Id<N>: Visitable<Tree>,
     {
-        let root = self.root_id.id;
+        let root = self.root_id;
 
         match root.visit_by(&mut self, tree) {
             ControlFlow::Break(e) => {
@@ -187,11 +187,6 @@ impl<'a, N> Typer<'a, N> {
         T: MetaCast<LocPhase, Meta = Loc>,
     {
         *self.spans.meta(id)
-    }
-
-    #[inline]
-    pub fn qualify<T>(&self, id: Id<T>) -> GlobalId<T> {
-        GlobalId::new(self.root_id.source, id)
     }
 
     fn partial_restrict(
@@ -342,12 +337,7 @@ where
         let name = binding.get(tree).0;
 
         let t = if let Some(path) = *path {
-            let module_sym = self
-                .bindings
-                .lookup_module_path(self.qualify(path))
-                .expect("Module path not found");
-
-            dbg!(module_sym);
+            let module_sym = *self.resolved.meta(path);
 
             let value_sym = self.env[module_sym]
                 .get_value(name)
@@ -800,7 +790,7 @@ mod tests {
     use std::rc::Rc;
 
     use camino::Utf8PathBuf;
-    use kola_resolver::{GlobalId, bind::Bindings};
+    use kola_resolver::phase::ResolvedNodes;
     use kola_span::{Loc, Located, Report, SourceId, Span};
     use kola_syntax::loc::Locations;
     use kola_tree::prelude::*;
@@ -845,10 +835,9 @@ mod tests {
         let tree = builder.finish(root_id);
         let spans = Rc::new(mocked_spans(source_id, &tree));
 
-        let global_id = GlobalId::new(source_id, root_id);
         let mut report = Report::new();
 
-        Typer::new(global_id, spans, &TypeEnv::new(), &Bindings::new()).solve(&tree, &mut report)
+        Typer::new(root_id, spans, &TypeEnv::new(), &ResolvedNodes::new()).solve(&tree, &mut report)
     }
 
     #[test]
