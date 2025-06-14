@@ -813,26 +813,11 @@ mod tests {
         tree.metadata_with(|node| Meta::default_with(span, node.kind()))
     }
 
-    fn solve_expr<T>(
-        mut builder: TreeBuilder,
-        node: Id<T>,
-        interner: &mut StrInterner,
-    ) -> Result<TypedNodes, Located<TypeErrors>>
+    fn solve<T>(tree: TreeBuilder, root_id: Id<T>) -> Result<TypedNodes, Located<TypeErrors>>
     where
-        node::Expr: From<Id<T>>,
+        Id<T>: Visitable<TreeBuilder>,
     {
         let source_id = mocked_source();
-
-        let bind = node::Bind::value_in(
-            node::Vis::None,
-            interner.intern("_").into(),
-            None,
-            node::Expr::from(node),
-            &mut builder,
-        );
-        let root_id = builder.insert(node::Module(vec![bind]));
-
-        let tree = builder.finish(root_id);
         let spans = Rc::new(mocked_spans(source_id, &tree));
 
         let mut report = Report::new();
@@ -845,7 +830,7 @@ mod tests {
         let mut builder = TreeBuilder::new();
         let lit = builder.insert(node::LiteralExpr::Num(10.0));
 
-        let types = solve_expr(builder, lit, &mut StrInterner::new()).unwrap();
+        let types = solve(builder, lit).unwrap();
 
         assert_eq!(types.meta(lit), &MonoType::NUM);
     }
@@ -857,7 +842,7 @@ mod tests {
         let target = builder.insert(node::LiteralExpr::Num(10.0));
         let unary = node::UnaryExpr::new_in(node::UnaryOp::Neg, target.into(), &mut builder);
 
-        let types = solve_expr(builder, unary, &mut StrInterner::new()).unwrap();
+        let types = solve(builder, unary).unwrap();
 
         assert_eq!(types.meta(unary), &MonoType::NUM);
     }
@@ -869,7 +854,7 @@ mod tests {
         let target = builder.insert(node::LiteralExpr::Num(10.0));
         let unary = node::UnaryExpr::new_in(node::UnaryOp::Not, target.into(), &mut builder);
 
-        let (errors, _) = solve_expr(builder, unary, &mut StrInterner::new()).unwrap_err();
+        let (errors, _) = solve(builder, unary).unwrap_err();
 
         assert_eq!(
             errors[0],
@@ -889,7 +874,7 @@ mod tests {
         let binary =
             node::BinaryExpr::new_in(node::BinaryOp::Eq, left.into(), right.into(), &mut builder);
 
-        let (errors, _) = solve_expr(builder, binary, &mut StrInterner::new()).unwrap_err();
+        let (errors, _) = solve(builder, binary).unwrap_err();
 
         assert_eq!(
             errors[0],
@@ -919,7 +904,7 @@ mod tests {
             &mut builder,
         );
 
-        let types = solve_expr(builder, let_, &mut interner).unwrap();
+        let types = solve(builder, let_).unwrap();
 
         assert_eq!(types.meta(let_), &MonoType::NUM);
     }
@@ -933,7 +918,7 @@ mod tests {
         let or = builder.insert(node::LiteralExpr::Num(10.0));
         let if_ = node::IfExpr::new_in(predicate.into(), then.into(), or.into(), &mut builder);
 
-        let types = solve_expr(builder, if_, &mut StrInterner::new()).unwrap();
+        let types = solve(builder, if_).unwrap();
 
         assert_eq!(types.meta(if_), &MonoType::NUM);
     }
@@ -947,7 +932,7 @@ mod tests {
         let or = builder.insert(node::LiteralExpr::Char('x'));
         let if_ = node::IfExpr::new_in(predicate.into(), then.into(), or.into(), &mut builder);
 
-        let (errors, _) = solve_expr(builder, if_, &mut StrInterner::new()).unwrap_err();
+        let (errors, _) = solve(builder, if_).unwrap_err();
 
         assert_eq!(
             errors[0],
