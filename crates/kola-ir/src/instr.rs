@@ -7,8 +7,17 @@ use kola_utils::{impl_try_as, interner::StrKey};
 use crate::{id::Id, ir::IrBuilder, print::IrPrinter};
 
 // TODO Symbol scoping
-#[derive(Debug, Display, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Symbol(pub u32);
+
+impl fmt::Display for Symbol {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        // let mut display = self.0.to_string();
+        // display.truncate(3);
+        // write!(f, "s{display}")
+        write!(f, "s{}", self.0)
+    }
+}
 
 #[derive(Debug, From, Clone, PartialEq)]
 pub enum Instr {
@@ -49,7 +58,21 @@ impl<'a> Notate<'a> for IrPrinter<'a, Func> {
         let param = param.display_in(arena);
         let body = self.to(body).notate(arena);
 
-        param.then(body.clone().flatten(arena).or(body, arena), arena)
+        let single = arena
+            .just(' ')
+            .then("=> ".blue().display_in(arena), arena)
+            .then(body.clone().flatten(arena), arena);
+        let multi = arena
+            .newline()
+            .then("=> ".blue().display_in(arena), arena)
+            .then(body, arena)
+            .indent(arena);
+
+        "fn "
+            .red()
+            .display_in(arena)
+            .then(param, arena)
+            .then(single.or(multi, arena), arena)
     }
 }
 
@@ -80,14 +103,19 @@ impl_try_as!(
 
 impl<'a> Notate<'a> for IrPrinter<'a, Id<Atom>> {
     fn notate(&self, arena: &'a Bump) -> Notation<'a> {
-        match *self.ir.instr(self.node) {
-            Atom::Bool(b) => b.display_in(arena).enclose_by(arena.just('"'), arena),
-            Atom::Char(c) => c.display_in(arena).enclose_by(arena.just('"'), arena),
-            Atom::Num(n) => n.display_in(arena).enclose_by(arena.just('"'), arena),
-            Atom::Str(s) => s.display_in(arena).enclose_by(arena.just('"'), arena),
+        let notation = match *self.ir.instr(self.node) {
+            Atom::Bool(b) => b.green().display_in(arena),
+            Atom::Char(c) => format!("'{}'", c.green()).display_in(arena),
+            Atom::Num(n) => n.green().display_in(arena),
+            Atom::Str(s) => format!("\"{}\"", s.green()).display_in(arena),
             Atom::Func(f) => self.to(f).notate(arena),
             Atom::Symbol(s) => s.display_in(arena),
-        }
+        };
+
+        notation
+            .clone()
+            .flatten(arena)
+            .or(notation.indent(arena), arena)
     }
 }
 
@@ -141,9 +169,12 @@ impl<'a> Notate<'a> for IrPrinter<'a, RetExpr> {
 
         let arg = self.to(arg).notate(arena);
         let single = arena.just(' ').then(arg.clone().flatten(arena), arena);
-        let multi = arena.newline().then(arg, arena);
+        let multi = arena.newline().then(arg, arena).indent(arena);
 
-        arena.notate("return").then(single.or(multi, arena), arena)
+        "return"
+            .red()
+            .display_in(arena)
+            .then(single.or(multi, arena), arena)
     }
 }
 
@@ -196,25 +227,25 @@ impl<'a> Notate<'a> for IrPrinter<'a, CallExpr> {
 
         let single = [
             bind.clone(),
-            arena.notate(" = "),
-            func.clone(),
-            arena.just('('),
-            arg.clone(),
+            arena.notate(" = ("),
+            func.clone().flatten(arena),
+            arena.just(' '),
+            arg.clone().flatten(arena),
             arena.just(')'),
         ]
-        .concat_in(arena)
-        .flatten(arena);
+        .concat_in(arena);
 
         let multi = [
             bind,
             arena.newline(),
-            arena.notate("= "),
+            arena.notate("= ("),
             func,
-            arena.just('('),
+            arena.newline(),
             arg,
             arena.just(')'),
         ]
-        .concat_in(arena);
+        .concat_in(arena)
+        .indent(arena);
 
         single.or(multi, arena).then(next, arena)
     }
@@ -277,14 +308,13 @@ impl<'a> Notate<'a> for IrPrinter<'a, IfExpr> {
         let single = [
             bind.clone(),
             arena.notate(" = if "),
-            predicate.clone(),
+            predicate.clone().flatten(arena),
             arena.notate(" then "),
-            then.clone(),
+            then.clone().flatten(arena),
             arena.notate(" else "),
-            or.clone(),
+            or.clone().flatten(arena),
         ]
-        .concat_in(arena)
-        .flatten(arena);
+        .concat_in(arena);
 
         let multi = [
             bind,
@@ -298,7 +328,8 @@ impl<'a> Notate<'a> for IrPrinter<'a, IfExpr> {
             arena.notate("else "),
             or,
         ]
-        .concat_in(arena);
+        .concat_in(arena)
+        .indent(arena);
 
         single.or(multi, arena).then(next, arena)
     }
@@ -336,11 +367,16 @@ impl<'a> Notate<'a> for IrPrinter<'a, LetExpr> {
         let value = self.to(value).notate(arena);
         let next = arena.newline().then(self.to(next).notate(arena), arena);
 
-        let single = [bind.clone(), arena.notate(" = "), value.clone()]
-            .concat_in(arena)
-            .flatten(arena);
+        let single = [
+            bind.clone(),
+            arena.notate(" = "),
+            value.clone().flatten(arena),
+        ]
+        .concat_in(arena);
 
-        let multi = [bind, arena.newline(), arena.notate("= "), value].concat_in(arena);
+        let multi = [bind, arena.newline(), arena.notate("= "), value]
+            .concat_in(arena)
+            .indent(arena);
 
         single.or(multi, arena).then(next, arena)
     }
@@ -397,12 +433,11 @@ impl<'a> Notate<'a> for IrPrinter<'a, LetInExpr> {
         let single = [
             bind.clone(),
             arena.notate(" = "),
-            value.clone(),
+            value.clone().flatten(arena),
             arena.notate(" in "),
-            inside.clone(),
+            inside.clone().flatten(arena),
         ]
-        .concat_in(arena)
-        .flatten(arena);
+        .concat_in(arena);
 
         let multi = [
             bind,
@@ -413,7 +448,8 @@ impl<'a> Notate<'a> for IrPrinter<'a, LetInExpr> {
             arena.notate("in "),
             inside,
         ]
-        .concat_in(arena);
+        .concat_in(arena)
+        .indent(arena);
 
         single.or(multi, arena).then(next, arena)
     }
@@ -465,11 +501,25 @@ impl<'a> Notate<'a> for IrPrinter<'a, UnaryExpr> {
         let arg = self.to(arg).notate(arena);
         let next = arena.newline().then(self.to(next).notate(arena), arena);
 
-        let single = [bind.clone(), arena.notate(" = "), op.clone(), arg.clone()]
-            .concat_in(arena)
-            .flatten(arena);
+        let single = [
+            bind.clone(),
+            arena.notate(" = "),
+            op.clone(),
+            arena.just(' '),
+            arg.clone().flatten(arena),
+        ]
+        .concat_in(arena);
 
-        let multi = [bind, arena.newline(), arena.notate("= "), op, arg].concat_in(arena);
+        let multi = [
+            bind,
+            arena.newline(),
+            arena.notate("= "),
+            op,
+            arena.newline(),
+            arg,
+        ]
+        .concat_in(arena)
+        .indent(arena);
 
         single.or(multi, arena).then(next, arena)
     }
@@ -531,14 +581,26 @@ impl<'a> Notate<'a> for IrPrinter<'a, BinaryExpr> {
         let single = [
             bind.clone(),
             arena.notate(" = "),
-            lhs.clone(),
+            lhs.clone().flatten(arena),
+            arena.just(' '),
             op.clone(),
-            rhs.clone(),
+            arena.just(' '),
+            rhs.clone().flatten(arena),
+        ]
+        .concat_in(arena);
+
+        let multi = [
+            bind,
+            arena.newline(),
+            arena.notate("= "),
+            lhs,
+            arena.newline(),
+            op,
+            arena.newline(),
+            rhs,
         ]
         .concat_in(arena)
-        .flatten(arena);
-
-        let multi = [bind, arena.newline(), arena.notate("= "), lhs, op, rhs].concat_in(arena);
+        .indent(arena);
 
         single.or(multi, arena).then(next, arena)
     }
@@ -608,28 +670,27 @@ impl<'a> Notate<'a> for IrPrinter<'a, RecordExpr> {
         let next = arena.newline().then(self.to(next).notate(arena), arena);
 
         let single = [
+            bind.clone(),
             arena.notate(" = { "),
-            fields
-                .clone()
-                .concat_by(arena.notate(", "), arena)
-                .flatten(arena),
+            fields.clone().concat_by(arena.notate(", "), arena),
             arena.notate(" }"),
         ]
-        .concat_in(arena)
-        .flatten(arena);
+        .concat_in(arena);
 
         let multi = [
+            bind,
             arena.newline(),
             arena.notate("= {"),
             arena.newline(),
-            fields.concat_by(arena.newline(), arena),
+            fields
+                .concat_by([arena.notate(","), arena.newline()].concat_in(arena), arena)
+                .indent(arena),
             arena.newline(),
             arena.just('}'),
         ]
-        .concat_in(arena)
-        .indent(arena);
+        .concat_in(arena);
 
-        bind.then(single.or(multi, arena).then(next, arena), arena)
+        single.or(multi, arena).then(next, arena)
     }
 }
 
@@ -688,26 +749,29 @@ impl<'a> Notate<'a> for IrPrinter<'a, RecordExtendExpr> {
 
         let single = [
             bind.clone(),
-            arena.notate(" = "),
-            base.clone(),
-            arena.just('.'),
+            arena.notate(" = { "),
+            base.clone().flatten(arena),
+            arena.notate(" | +"),
             label.clone(),
             arena.notate(" = "),
-            value.clone(),
+            value.clone().flatten(arena),
+            arena.notate(" }"),
         ]
-        .concat_in(arena)
-        .flatten(arena);
+        .concat_in(arena);
 
         let multi = [
             bind,
             arena.newline(),
-            arena.notate("= +"),
+            arena.notate("= { "),
             base,
-            arena.just('.'),
+            arena.newline(),
+            arena.notate("  | +"),
             label,
             arena.newline(),
-            arena.notate("= "),
+            arena.notate("  = "),
             value,
+            arena.newline(),
+            arena.notate("}"),
         ]
         .concat_in(arena);
 
@@ -763,21 +827,24 @@ impl<'a> Notate<'a> for IrPrinter<'a, RecordRestrictExpr> {
 
         let single = [
             bind.clone(),
-            arena.notate(" = "),
-            base.clone(),
-            arena.just('.'),
+            arena.notate(" = { "),
+            base.clone().flatten(arena),
+            arena.notate(" | -"),
             label.clone(),
+            arena.notate(" }"),
         ]
-        .concat_in(arena)
-        .flatten(arena);
+        .concat_in(arena);
 
         let multi = [
             bind,
             arena.newline(),
-            arena.notate("= -"),
+            arena.notate("= { "),
             base,
-            arena.just('.'),
+            arena.newline(),
+            arena.notate("  | -"),
             label,
+            arena.newline(),
+            arena.notate("}"),
         ]
         .concat_in(arena);
 
@@ -797,14 +864,15 @@ pub enum RecordUpdateOp {
 
 impl fmt::Display for RecordUpdateOp {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Assign => write!(f, "="),
-            Self::AddAssign => write!(f, "+="),
-            Self::SubAssign => write!(f, "-="),
-            Self::MulAssign => write!(f, "*="),
-            Self::DivAssign => write!(f, "/="),
-            Self::RemAssign => write!(f, "%="),
-        }
+        let op = match self {
+            Self::Assign => "=",
+            Self::AddAssign => "+=",
+            Self::SubAssign => "-=",
+            Self::MulAssign => "*=",
+            Self::DivAssign => "/=",
+            Self::RemAssign => "%=",
+        };
+        write!(f, "{}", op.blue())
     }
 }
 
@@ -868,25 +936,33 @@ impl<'a> Notate<'a> for IrPrinter<'a, RecordUpdateExpr> {
 
         let single = [
             bind.clone(),
-            arena.notate(" = "),
-            base.clone(),
-            arena.just('.'),
+            arena.notate(" = { "),
+            base.clone().flatten(arena),
+            arena.notate(" | "),
             label.clone(),
+            arena.just(' '),
             op.clone(),
-            value.clone(),
+            arena.just(' '),
+            value.clone().flatten(arena),
+            arena.notate(" }"),
         ]
-        .concat_in(arena)
-        .flatten(arena);
+        .concat_in(arena);
 
         let multi = [
             bind,
             arena.newline(),
-            arena.notate("= "),
+            arena.notate("= { "),
             base,
-            arena.just('.'),
+            arena.newline(),
+            arena.notate("  | "),
             label,
+            arena.newline(),
+            arena.notate("  "),
             op,
+            arena.just(' '),
             value,
+            arena.newline(),
+            arena.notate("}"),
         ]
         .concat_in(arena);
 
@@ -943,22 +1019,23 @@ impl<'a> Notate<'a> for IrPrinter<'a, RecordAccessExpr> {
         let single = [
             bind.clone(),
             arena.notate(" = "),
-            base.clone(),
+            base.clone().flatten(arena),
             arena.just('.'),
             label.clone(),
         ]
-        .concat_in(arena)
-        .flatten(arena);
+        .concat_in(arena);
 
         let multi = [
             bind,
             arena.newline(),
             arena.notate("= "),
             base,
+            arena.newline(),
             arena.just('.'),
             label,
         ]
-        .concat_in(arena);
+        .concat_in(arena)
+        .indent(arena);
 
         single.or(multi, arena).then(next, arena)
     }
@@ -1022,5 +1099,6 @@ impl<'a> Notate<'a> for IrPrinter<'a, Id<Expr>> {
             Expr::RecordUpdate(expr) => self.to(expr).notate(arena),
             Expr::RecordAccess(expr) => self.to(expr).notate(arena),
         }
+        .then(';'.display_in(arena), arena)
     }
 }

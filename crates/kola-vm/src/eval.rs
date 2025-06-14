@@ -133,6 +133,16 @@ impl Eval for RetExpr {
         // Create new environment with the bound variable
         env.insert(var, value);
 
+        // Push back the modified ContFrame to preserve the handler context.
+        // Even if the pure continuation is now empty, the handler_closure must
+        // remain active to handle any effects raised during execution of the
+        // next expression and to process the final return value when the
+        // computation within this handler scope completes.
+        cont.push(ContFrame {
+            pure,
+            handler_closure,
+        });
+
         // Continue with the next expression
         MachineState::Standard(StandardConfig {
             control: *body.get(ir),

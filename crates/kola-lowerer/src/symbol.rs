@@ -3,7 +3,7 @@ use std::u32;
 use kola_ir::instr as ir;
 use kola_resolver::{
     phase::{ResolvePhase, ResolvedNodes},
-    symbol::Sym,
+    symbol::{Sym, ValueSym},
 };
 use kola_tree::{
     id::Id as TreeId,
@@ -14,20 +14,16 @@ use kola_tree::{
 #[derive(Debug, Clone, Copy)]
 pub struct SymbolEnv<'a> {
     resolved: &'a ResolvedNodes,
-    counter: u32,
 }
 
 impl<'a> SymbolEnv<'a> {
     pub fn new(resolved: &'a ResolvedNodes) -> Self {
-        Self {
-            resolved,
-            counter: u32::MAX,
-        }
+        Self { resolved }
     }
 
     pub fn next(&mut self) -> ir::Symbol {
-        let symbol = ir::Symbol(self.counter);
-        self.counter -= 1;
+        let sym = ValueSym::new();
+        let symbol = ir::Symbol(sym.id());
         symbol
     }
 

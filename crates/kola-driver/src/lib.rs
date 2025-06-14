@@ -2,7 +2,7 @@ use std::io;
 
 use camino::Utf8Path;
 use kola_ir::print::IrPrinter;
-use kola_lowerer::module::lower;
+use kola_lowerer::module::{Program, lower};
 use kola_print::{PrintOptions, prelude::*};
 use kola_resolver::prelude::*;
 use kola_span::Report;
@@ -38,6 +38,7 @@ impl Driver {
             topography,
             module_graph,
             module_scopes,
+            entry_point,
             value_orders,
         } = resolve(
             path,
@@ -71,10 +72,7 @@ impl Driver {
             return self.report.eprint(&source_manager);
         }
 
-        let mut output = lower(&module_scopes, &value_orders, &forest);
-
-        // Must be replaced by proper Ir linking
-        let ir = output.remove(0).ir;
+        let Program { ir, modules } = lower(entry_point, &module_scopes, &value_orders, &forest);
 
         // Ir Printint should be in another function
         {

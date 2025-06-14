@@ -30,6 +30,7 @@ pub struct DiscoverOutput {
     pub topography: Topography,
     pub module_graph: ModuleGraph,
     pub module_scopes: Vec<ModuleScope>,
+    pub entry_points: Vec<ValueSym>,
 }
 
 pub fn discover(
@@ -93,6 +94,7 @@ pub fn discover(
 
     let mut module_graph = ModuleGraph::new();
     let mut module_scopes = Vec::new();
+    let mut entry_points = Vec::new();
 
     _discover(
         source_id,
@@ -106,6 +108,7 @@ pub fn discover(
         &mut topography,
         &mut module_graph,
         &mut module_scopes,
+        &mut entry_points,
         print_options,
     );
 
@@ -115,6 +118,7 @@ pub fn discover(
         topography,
         module_graph,
         module_scopes,
+        entry_points,
     })
 }
 
@@ -130,6 +134,7 @@ fn _discover(
     topography: &mut Topography,
     module_graph: &mut ModuleGraph,
     module_scopes: &mut Vec<ModuleScope>,
+    entry_points: &mut Vec<ValueSym>,
     print_options: PrintOptions,
 ) {
     let tree = forest.tree(source_id);
@@ -147,6 +152,7 @@ fn _discover(
         topography,
         module_graph,
         module_scopes,
+        entry_points,
         print_options,
     );
 
@@ -173,6 +179,7 @@ struct Discoverer<'a> {
     topography: &'a mut Topography,
     module_graph: &'a mut ModuleGraph,
     module_scopes: &'a mut Vec<ModuleScope>,
+    entry_points: &'a mut Vec<ValueSym>,
     print_options: PrintOptions,
 }
 
@@ -189,6 +196,7 @@ impl<'a> Discoverer<'a> {
         topography: &'a mut Topography,
         module_graph: &'a mut ModuleGraph,
         module_scopes: &'a mut Vec<ModuleScope>,
+        entry_points: &'a mut Vec<ValueSym>,
         print_options: PrintOptions,
     ) -> Self {
         Self {
@@ -205,6 +213,7 @@ impl<'a> Discoverer<'a> {
             topography,
             module_graph,
             module_scopes,
+            entry_points,
             print_options,
         }
     }
@@ -342,6 +351,7 @@ where
             self.topography,
             self.module_graph,
             self.module_scopes,
+            self.entry_points,
             self.print_options,
         );
 
@@ -423,6 +433,11 @@ where
         self.insert_symbol(id, value_sym);
         self.current_value_bind_sym = Some(value_sym);
         self.stack.value_graph_mut().add_node(value_sym);
+
+        if self.interner.get(name.0) == Some("main") {
+            // If this is the main entry point, we will collect it later
+            self.entry_points.push(value_sym);
+        }
 
         // Register the value binding in the current scope
         if let Err(e) = self
