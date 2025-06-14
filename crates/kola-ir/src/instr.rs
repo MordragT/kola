@@ -39,6 +39,9 @@ impl Func {
     }
 }
 
+// fn <param> => <body>
+// fn <param>
+//      => <body>;
 impl<'a> Notate<'a> for IrPrinter<'a, Func> {
     fn notate(&self, arena: &'a Bump) -> Notation<'a> {
         let Func { param, body } = self.node;
@@ -129,6 +132,9 @@ impl RetExpr {
     }
 }
 
+// return <arg>;
+// return
+//    <arg>;
 impl<'a> Notate<'a> for IrPrinter<'a, RetExpr> {
     fn notate(&self, arena: &'a Bump) -> Notation<'a> {
         let RetExpr { arg } = self.node;
@@ -170,6 +176,10 @@ impl CallExpr {
     }
 }
 
+// <bind> = (<func> <arg>);
+// <bind> =
+//     ( <func>
+//     <arg> );
 impl<'a> Notate<'a> for IrPrinter<'a, CallExpr> {
     fn notate(&self, arena: &'a Bump) -> Notation<'a> {
         let CallExpr {
@@ -243,6 +253,11 @@ impl IfExpr {
     }
 }
 
+// <bind> = if <predicate> then <then> else <or>;
+// <bind> =
+//     if <predicate>
+//     then <then>
+//     else <or>;
 impl<'a> Notate<'a> for IrPrinter<'a, IfExpr> {
     fn notate(&self, arena: &'a Bump) -> Notation<'a> {
         let IfExpr {
@@ -310,6 +325,9 @@ impl LetExpr {
     }
 }
 
+// <bind> = <value>;
+// <bind> =
+//    <value>;
 impl<'a> Notate<'a> for IrPrinter<'a, LetExpr> {
     fn notate(&self, arena: &'a Bump) -> Notation<'a> {
         let LetExpr { bind, value, next } = self.node;
@@ -357,6 +375,11 @@ impl LetInExpr {
     }
 }
 
+// <bind> = <value> in <inside>;
+// <bind> =
+//    <value>
+//    in
+//    <inside>;
 impl<'a> Notate<'a> for IrPrinter<'a, LetInExpr> {
     fn notate(&self, arena: &'a Bump) -> Notation<'a> {
         let LetInExpr {
@@ -424,6 +447,10 @@ impl UnaryExpr {
     }
 }
 
+// <bind> = <op> <arg>;
+// <bind> =
+//      <op>
+//      <arg>;
 impl<'a> Notate<'a> for IrPrinter<'a, UnaryExpr> {
     fn notate(&self, arena: &'a Bump) -> Notation<'a> {
         let UnaryExpr {
@@ -480,6 +507,11 @@ impl BinaryExpr {
     }
 }
 
+// <bind> = <lhs> <op> <rhs>;
+// <bind> =
+//      <lhs>
+//      <op>
+//      <rhs>;
 impl<'a> Notate<'a> for IrPrinter<'a, BinaryExpr> {
     fn notate(&self, arena: &'a Bump) -> Notation<'a> {
         let BinaryExpr {
@@ -557,6 +589,11 @@ impl RecordExpr {
     }
 }
 
+// <bind> = { <label> = <value>, ... };
+// <bind> =
+//      { <label> = <value>
+//      , ...
+//      , <label> = <value> };
 impl<'a> Notate<'a> for IrPrinter<'a, RecordExpr> {
     fn notate(&self, arena: &'a Bump) -> Notation<'a> {
         let RecordExpr { bind, fields, next } = self.node;
@@ -571,22 +608,28 @@ impl<'a> Notate<'a> for IrPrinter<'a, RecordExpr> {
         let next = arena.newline().then(self.to(next).notate(arena), arena);
 
         let single = [
-            bind.clone(),
-            arena.notate(" = "),
-            fields.clone().concat_in(arena).flatten(arena),
+            arena.notate(" = { "),
+            fields
+                .clone()
+                .concat_by(arena.notate(", "), arena)
+                .flatten(arena),
+            arena.notate(" }"),
         ]
         .concat_in(arena)
         .flatten(arena);
 
         let multi = [
-            bind,
             arena.newline(),
-            arena.notate("= "),
-            fields.concat_in(arena),
+            arena.notate("= {"),
+            arena.newline(),
+            fields.concat_by(arena.newline(), arena),
+            arena.newline(),
+            arena.just('}'),
         ]
-        .concat_in(arena);
+        .concat_in(arena)
+        .indent(arena);
 
-        single.or(multi, arena).then(next, arena)
+        bind.then(single.or(multi, arena).then(next, arena), arena)
     }
 }
 
@@ -622,6 +665,11 @@ impl RecordExtendExpr {
     }
 }
 
+// <bind> = { <base> | + <label> = <value> };
+// <bind> =
+//      { <base>
+//      | + <label>
+//      = <value> };
 impl<'a> Notate<'a> for IrPrinter<'a, RecordExtendExpr> {
     fn notate(&self, arena: &'a Bump) -> Notation<'a> {
         let RecordExtendExpr {
@@ -695,6 +743,10 @@ impl RecordRestrictExpr {
     }
 }
 
+// <bind> = { <base> | - <label> };
+// <bind> =
+//      { <base>
+//      | - <label> };
 impl<'a> Notate<'a> for IrPrinter<'a, RecordRestrictExpr> {
     fn notate(&self, arena: &'a Bump) -> Notation<'a> {
         let RecordRestrictExpr {
@@ -791,6 +843,11 @@ impl RecordUpdateExpr {
     }
 }
 
+// <bind> = { <base> | <label> <op> value };
+// <bind> =
+//      { <base>
+//      | <label>
+//      <op> value };
 impl<'a> Notate<'a> for IrPrinter<'a, RecordUpdateExpr> {
     fn notate(&self, arena: &'a Bump) -> Notation<'a> {
         let RecordUpdateExpr {
@@ -865,6 +922,10 @@ impl RecordAccessExpr {
     }
 }
 
+// <bind> = <record>.<field>;
+// <bind> =
+//      <record>
+//      .<field>;
 impl<'a> Notate<'a> for IrPrinter<'a, RecordAccessExpr> {
     fn notate(&self, arena: &'a Bump) -> Notation<'a> {
         let RecordAccessExpr {

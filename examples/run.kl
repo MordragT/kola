@@ -1,5 +1,4 @@
 {
-    x = fn a => let
-    x = a + a in
-    x,
+    id = fn x => x,
+    main = (id 42),
 }

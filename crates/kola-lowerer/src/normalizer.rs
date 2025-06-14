@@ -258,29 +258,166 @@ where
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+
+    use kola_ir::{
+        instr as ir,
+        ir::{Ir, IrBuilder},
+    };
+    use kola_resolver::{phase::ResolvedNodes, symbol::ValueSym};
     use kola_tree::prelude::*;
+    use kola_utils::interner::StrInterner;
+    use kola_vm::{machine::CekMachine, value::Value};
 
-    // #[test]
-    // fn test_normalizer() {
-    //     // Example usage of the Normalizer
-    //     let tree = Tree::new();
-    //     let root_id = tree.root_id();
+    use super::Normalizer;
+    use crate::symbol::SymbolEnv;
 
-    //     let mut builder = IrBuilder::new();
-    //     let symbols = SymbolEnv::new(&tree);
+    // TODO this wont work for path expressions using bound symbols,
+    fn mock_resolved(tree: &impl TreeView) -> ResolvedNodes {
+        let mut resolved = ResolvedNodes::default();
 
-    //     let mut normalizer = Normalizer::new(
-    //         root_id,
-    //         builder.next(),
-    //         symbols.next(),
-    //         &mut builder,
-    //         symbols,
-    //     );
-    //     let result = normalizer.run(&tree);
+        for query in tree.query3::<node::PathExpr, node::LetExpr, node::LambdaExpr>() {
+            match query {
+                Query3::V0(id, _path) => resolved.insert_meta(id, ValueSym::new()),
+                Query3::V1(id, _let) => resolved.insert_meta(id, ValueSym::new()),
+                Query3::V2(id, _lambda) => resolved.insert_meta(id, ValueSym::new()),
+            }
+        }
 
-    //     assert!(result.is_ok());
-    // }
+        resolved
+    }
+
+    fn normalize<T>(tree: TreeBuilder, root_id: Id<T>, resolved: &ResolvedNodes) -> Ir
+    where
+        Id<T>: Visitable<TreeBuilder>,
+    {
+        let mut symbols = SymbolEnv::new(resolved);
+        let mut builder = IrBuilder::new();
+
+        let hole = symbols.next();
+        let arg = builder.add(ir::Atom::Symbol(hole));
+        let next = builder.add(ir::Expr::Ret(ir::RetExpr { arg }));
+
+        let normalizer = Normalizer::new(root_id, next, hole, &mut builder, symbols);
+        let root = normalizer.run(&tree);
+
+        builder.finish(root)
+    }
+
+    #[test]
+    fn literal() {
+        let mut builder = TreeBuilder::new();
+        let lit = builder.insert(node::LiteralExpr::Num(10.0));
+
+        let resolved = mock_resolved(&builder);
+        let ir = normalize(builder, lit, &resolved);
+        let mut machine = CekMachine::new(ir);
+        let value = machine.run().unwrap();
+
+        assert_eq!(value, Value::Num(10.0))
+    }
+
+    #[test]
+    fn path_expr_unbound() {
+        let mut interner = StrInterner::new();
+        let mut builder = TreeBuilder::new();
+
+        let x = interner.intern("x");
+
+        // Build a simple path expression: x (no module path, just binding)
+        let binding = builder.insert(node::ValueName::new(x));
+        let path_expr = builder.insert(node::PathExpr {
+            path: None,
+            binding,
+            select: vec![],
+        });
+
+        let resolved = mock_resolved(&builder);
+        let ir = normalize(builder, path_expr, &resolved);
+        let mut machine = CekMachine::new(ir);
+
+        // Expect unbound symbol error.
+        let _err = machine.run().unwrap_err();
+    }
+
+    #[test]
+    fn let_expr() {
+        let mut interner = StrInterner::new();
+        let mut builder = TreeBuilder::new();
+        let mut resolved = ResolvedNodes::default();
+
+        let x = interner.intern("x");
+        let x_sym = ValueSym::new();
+
+        // Build: let x = 42 in x
+        let name = builder.insert(node::ValueName::new(x));
+        let value = builder.insert(node::LiteralExpr::Num(42.0));
+        let value = builder.insert(node::Expr::Literal(value));
+        let inside = builder.insert(node::PathExpr {
+            path: None,
+            binding: name,
+            select: vec![],
+        });
+        resolved.insert_meta(inside, x_sym);
+        let inside = builder.insert(node::Expr::Path(inside));
+
+        let let_expr = builder.insert(node::LetExpr {
+            name,
+            value,
+            inside,
+        });
+        resolved.insert_meta(let_expr, x_sym);
+
+        let ir = normalize(builder, let_expr, &resolved);
+        let mut machine = CekMachine::new(ir);
+        let value = machine.run().unwrap();
+
+        // Should evaluate to 42 (the value bound to x)
+        assert_eq!(value, Value::Num(42.0));
+    }
+
+    #[test]
+    fn lambda_call_expr() {
+        let mut interner = StrInterner::new();
+        let mut builder = TreeBuilder::new();
+        let mut resolved = ResolvedNodes::default();
+
+        let x = interner.intern("x");
+        let x_sym = ValueSym::new();
+
+        // Build: (\x => x) 42  (identity function applied to 42)
+
+        // Create the lambda parameter reference in body: x
+        let param_name = builder.insert(node::ValueName::new(x));
+        let lambda_body_path = builder.insert(node::PathExpr {
+            path: None,
+            binding: param_name,
+            select: vec![],
+        });
+        resolved.insert_meta(lambda_body_path, x_sym); // Reference to parameter
+        let lambda_body = builder.insert(node::Expr::Path(lambda_body_path));
+
+        // Create the lambda: \x => x
+        let lambda_expr = builder.insert(node::LambdaExpr {
+            param: param_name,
+            body: lambda_body,
+        });
+        resolved.insert_meta(lambda_expr, x_sym); // Lambda gets parameter symbol
+        let lambda = builder.insert(node::Expr::Lambda(lambda_expr));
+
+        // Create the argument: 42
+        let arg_literal = builder.insert(node::LiteralExpr::Num(42.0));
+        let arg = builder.insert(node::Expr::Literal(arg_literal));
+
+        // Create the call: (\x => x) 42
+        let call_expr = builder.insert(node::CallExpr { func: lambda, arg });
+
+        let ir = normalize(builder, call_expr, &resolved);
+        let mut machine = CekMachine::new(ir);
+        let value = machine.run().unwrap();
+
+        // Should evaluate to 42 (identity function returns its argument)
+        assert_eq!(value, Value::Num(42.0));
+    }
 }
 
 // impl<T> Normalizer<T> {

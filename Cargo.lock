@@ -418,6 +418,8 @@ dependencies = [
  "kola-ir",
  "kola-resolver",
  "kola-tree",
+ "kola-utils",
+ "kola-vm",
 ]
 
 [[package]]

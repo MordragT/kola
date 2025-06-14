@@ -8,3 +8,10 @@ kola-ir.workspace = true
 kola-tree.workspace = true
 kola-resolver.workspace = true
 kola-collections.workspace = true
+
+[dev-dependencies]
+kola-vm.workspace = true
+# camino.workspace = true
+kola-utils.workspace = true
+# kola-syntax.workspace = true
+# kola-span.workspace = true
