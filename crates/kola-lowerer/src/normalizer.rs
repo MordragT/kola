@@ -1,10 +1,7 @@
 use std::ops::ControlFlow;
 
 use kola_ir::prelude::{Id as InstrId, instr as ir, *};
-use kola_resolver::{
-    phase::{ResolvePhase, ResolvedNodes},
-    symbol::Sym,
-};
+use kola_resolver::{phase::ResolvePhase, symbol::Sym};
 use kola_tree::{
     node::Namespace,
     prelude::{Id as TreeId, *},
@@ -22,23 +19,6 @@ pub struct Normalizer<'a, Node> {
 }
 
 impl<'a, Node> Normalizer<'a, Node> {
-    // pub fn new(root_id: TreeId<Node>, resolved: &'a ResolvedNodes) -> Self {
-    //     let mut symbols = SymbolEnv::new(resolved);
-    //     let mut builder = IrBuilder::new();
-
-    //     let hole = symbols.next();
-    //     let arg = builder.add(ir::Atom::Symbol(hole));
-    //     let next = builder.add(ir::Expr::Ret(ir::RetExpr { arg }));
-
-    //     Self {
-    //         root_id,
-    //         builder,
-    //         next,
-    //         hole,
-    //         symbols,
-    //     }
-    // }
-
     pub fn new(
         root_id: TreeId<Node>,
         next: InstrId<ir::Expr>,
@@ -254,6 +234,132 @@ where
         self.hole = x_sym;
         self.visit_expr(arg, tree)
     }
+
+    fn visit_if_expr(
+        &mut self,
+        id: TreeId<node::IfExpr>,
+        tree: &T,
+    ) -> ControlFlow<Self::BreakValue> {
+        let node::IfExpr {
+            predicate,
+            then,
+            or,
+        } = *id.get(tree);
+
+        // Create a fresh symbol for the predicate
+        let pred_sym = self.next_symbol();
+        let pred_atom = self.builder.add(ir::Atom::Symbol(pred_sym));
+
+        // Normalize the then and else branches in fresh contexts
+        let then_expr = self.with_fresh_context(tree, |this, tree| this.visit_expr(then, tree));
+        let or_expr = self.with_fresh_context(tree, |this, tree| this.visit_expr(or, tree));
+
+        // Create the if expression that will be the "context" for our normalization
+        let if_expr = self.builder.add(ir::Expr::If(ir::IfExpr {
+            bind: self.hole,
+            predicate: pred_atom,
+            then: then_expr,
+            or: or_expr,
+            next: self.next,
+        }));
+
+        // Set up context for predicate normalization
+        self.next = if_expr;
+        self.hole = pred_sym;
+
+        // Normalize the predicate expression
+        self.visit_expr(predicate, tree)
+    }
+
+    fn visit_binary_expr(
+        &mut self,
+        id: TreeId<node::BinaryExpr>,
+        tree: &T,
+    ) -> ControlFlow<Self::BreakValue> {
+        let node::BinaryExpr { left, op, right } = *id.get(tree);
+
+        // Create fresh symbols for left and right operands
+        let left_sym = self.next_symbol();
+        let right_sym = self.next_symbol();
+
+        // Create atoms for the symbols
+        let left_atom = self.builder.add(ir::Atom::Symbol(left_sym));
+        let right_atom = self.builder.add(ir::Atom::Symbol(right_sym));
+
+        // Get the binary operator
+        let binary_op = match *op.get(tree) {
+            node::BinaryOp::Add => ir::BinaryOp::Add,
+            node::BinaryOp::Sub => ir::BinaryOp::Sub,
+            node::BinaryOp::Mul => ir::BinaryOp::Mul,
+            node::BinaryOp::Div => ir::BinaryOp::Div,
+            node::BinaryOp::Rem => ir::BinaryOp::Rem,
+            node::BinaryOp::Eq => ir::BinaryOp::Eq,
+            node::BinaryOp::NotEq => ir::BinaryOp::NotEq,
+            node::BinaryOp::Less => ir::BinaryOp::Less,
+            node::BinaryOp::LessEq => ir::BinaryOp::LessEq,
+            node::BinaryOp::Greater => ir::BinaryOp::Greater,
+            node::BinaryOp::GreaterEq => ir::BinaryOp::GreaterEq,
+            node::BinaryOp::And => ir::BinaryOp::And,
+            node::BinaryOp::Or => ir::BinaryOp::Or,
+            node::BinaryOp::Xor => ir::BinaryOp::Xor,
+            node::BinaryOp::Merge => ir::BinaryOp::Merge,
+        };
+
+        // Create the binary expression that will be the "context" for our normalizations
+        let binary_expr = self.builder.add(ir::Expr::Binary(ir::BinaryExpr {
+            bind: self.hole,
+            op: binary_op,
+            lhs: left_atom,
+            rhs: right_atom,
+            next: self.next,
+        }));
+
+        // Normalize in CPS style:
+        // First, set up context for left operand normalization
+        self.next = binary_expr;
+        self.hole = left_sym;
+
+        // Normalize the left expression
+        self.visit_expr(left, tree)?;
+
+        // Then, normalize the right operand into right_sym
+        self.hole = right_sym;
+        self.visit_expr(right, tree)
+    }
+
+    fn visit_unary_expr(
+        &mut self,
+        id: TreeId<node::UnaryExpr>,
+        tree: &T,
+    ) -> ControlFlow<Self::BreakValue> {
+        let node::UnaryExpr { op, operand } = *id.get(tree);
+
+        // Create a fresh symbol for the operand
+        let operand_sym = self.next_symbol();
+        let operand_atom = self.builder.add(ir::Atom::Symbol(operand_sym));
+
+        // Get the unary operator
+        let unary_op = match *op.get(tree) {
+            node::UnaryOp::Neg => ir::UnaryOp::Neg,
+            node::UnaryOp::Not => ir::UnaryOp::Not,
+        };
+
+        // Create the unary expression that will be the "context" for our normalization
+        let unary_expr = self.builder.add(ir::Expr::Unary(ir::UnaryExpr {
+            bind: self.hole,
+            op: unary_op,
+            arg: operand_atom,
+            next: self.next,
+        }));
+
+        // Normalize in CPS style:
+        // First, set up context for operand normalization
+        self.next = unary_expr;
+        self.hole = operand_sym;
+
+        // Normalize the operand expression
+        self.visit_expr(operand, tree)
+    }
 }
 
 #[cfg(test)]
@@ -419,132 +525,6 @@ mod tests {
         assert_eq!(value, Value::Num(42.0));
     }
 }
-
-// impl<T> Normalizer<T> {
-//     pub fn new(root_id: TreeId<T>) -> Self {
-//         Self {
-//             root_id,
-//             builder: IrBuilder::new(),
-//         }
-//     }
-//
-//     pub fn finish(tree: &Tree) -> Ir {
-//         let mut normalizer = Self::new();
-
-//         let root = tree.root_id().get(tree);
-//         let root = normalizer.normalize_with(root, tree);
-
-//         self.builder.finish(root)
-//     }
-
-//     // TODO better name that a function body is normalized here
-//     fn normalize_with(&mut self, expr: &node::Expr, tree: &Tree) -> InstrId<instr::Expr> {
-//         let bind = self.symbols.next();
-//         let arg = self.builder.add(instr::Atom::Symbol(bind));
-//         let ret = self.builder.add(instr::Expr::Ret { arg });
-
-//         self.normalize_expr(expr, bind, ret, tree)
-//     }
-
-//     fn normalize_expr(
-//         &mut self,
-//         expr: &node::Expr,
-//         hole: instr::Symbol,
-//         ctx: InstrId<instr::Expr>,
-//         tree: &Tree,
-//     ) -> InstrId<instr::Expr> {
-//         use node::Expr::*;
-
-//         match expr {
-//             Error(_) => panic!(),
-//             Literal(id) => {
-//                 let lit = id.get(tree);
-//                 let atom = self.builder.add(instr::Atom::from(lit.clone()));
-//                 self.builder.add(subst(ctx, hole, atom))
-//             }
-//             Ident(id) => {
-//                 let ident = id.get(tree);
-//                 let symbol = self.symbols.lookup(&ident.0);
-//                 let atom = self.builder.add(instr::Atom::from(symbol));
-//                 self.builder.add(subst(ctx, hole, atom))
-//             }
-
-//             List(id) => todo!(),
-//             Record(id) => {
-//                 let node::RecordExpr { fields } = id.get(tree);
-
-//                 todo!()
-//             }
-//             RecordSelect(id) => todo!(),
-//             RecordExtend(id) => todo!(),
-//             RecordRestrict(id) => todo!(),
-//             RecordUpdate(id) => todo!(),
-//             Unary(id) => todo!(),
-//             Binary(id) => todo!(),
-//             // normalize(let x = e1 in e2, hole, ctx) =
-//             // normalize(e1,x,normalize(e2,hole,ctx))
-//             Let(id) => {
-//                 let node::LetExpr {
-//                     name,
-//                     value,
-//                     inside,
-//                 } = id.get(tree);
-
-//                 let res = self.normalize_expr(inside.get(tree), hole, ctx, tree);
-
-//                 let bind = self.symbols.lookup(name.get(tree));
-//                 let res = self.normalize_expr(value.get(tree), bind, res, tree);
-//                 res
-//             }
-//             If(id) => {
-//                 let if_ = id.get(tree);
-//                 todo!()
-//             }
-//             Case(id) => todo!(),
-//             // normalize(\x => e, hole, ctx) =
-//             // let f = \x => normalize_with(e) in ctx[hole:=f]
-//             Lambda(id) => {
-//                 let node::LambdaExpr { param, body } = id.get(tree);
-
-//                 let bind = self.symbols.next();
-//                 let atom = self.builder.add(instr::Atom::from(bind));
-
-//                 // TODO scope
-//                 let param = self.symbols.lookup(param.get(tree));
-//                 let body = self.normalize_with(body.get(tree), tree);
-//                 let func = self.builder.add(instr::Atom::Func { param, body });
-
-//                 let next = self.builder.add(subst(ctx, hole, atom));
-
-//                 self.builder.add(instr::Expr::Let {
-//                     bind,
-//                     value: func,
-//                     next,
-//                 })
-//             }
-//             // normalize((e0 e1), hole, ctx) =
-//             // normalize(e1,x, normalize(e0,f, let hole = (f x) in ctx))
-//             Call(id) => {
-//                 let node::CallExpr { func, arg } = id.get(tree);
-
-//                 let f = self.symbols.next();
-//                 let f_atom = self.builder.add(instr::Atom::from(f));
-//                 let x = self.symbols.next();
-//                 let x_atom = self.builder.add(instr::Atom::from(x));
-
-//                 let res = self.builder.add(instr::Expr::Call {
-//                     bind: hole,
-//                     func: f_atom,
-//                     arg: x_atom,
-//                     next: ctx,
-//                 });
-
-//                 let res = self.normalize_expr(func.get(tree), f, res, tree);
-//                 self.normalize_expr(arg.get(tree), x, res, tree)
-//             }
-//         }
-//     }
-// }
 
 // from typing import Callable, Union
 

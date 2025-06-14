@@ -1,4 +1,39 @@
 {
-    id = fn x => x,
-    main = (id 42),
+    # Helper functions
+    add_one = fn x => x + 1,
+    multiply = fn x => fn y => x * y,
+
+    # Conditional logic
+    max = fn a => fn b =>
+        if a > b then a else b,
+
+    # More complex expressions with nested calls and operations
+    compute = fn n =>
+        let doubled = n * 2 in
+        let incremented = (add_one doubled) in
+        let multiplier = (multiply 3) in
+        (multiplier incremented),
+
+    # Nested if expressions
+    categorize = fn score =>
+        if score >= 90 then 'A'
+        else if score >= 80 then 'B'
+        else if score >= 70 then 'C'
+        else 'F',
+
+    # Complex arithmetic with multiple binary operations
+    formula = fn x => fn y =>
+        let sum = x + y in
+        let diff = x - y in
+        let product = sum * diff in
+        product / 2,
+
+    # Entry point that exercises everything
+    main =
+        let test_num = 15 in
+        let result1 = (compute test_num) in
+        let result2 = ((max result1) 100) in
+        let grade = (categorize 85) in
+        let final_calc = ((formula result2) 50) in
+        final_calc + 1000,
 }

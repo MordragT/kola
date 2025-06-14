@@ -38,7 +38,7 @@ impl Driver {
             topography,
             module_graph,
             module_scopes,
-            entry_point,
+            entry_points,
             value_orders,
         } = resolve(
             path,
@@ -72,9 +72,11 @@ impl Driver {
             return self.report.eprint(&source_manager);
         }
 
-        let Program { ir, modules } = lower(entry_point, &module_scopes, &value_orders, &forest);
+        // TODO entry_points logic
+        let Program { ir, modules } =
+            lower(entry_points[0], &module_scopes, &value_orders, &forest);
 
-        // Ir Printint should be in another function
+        // Ir Printing should be in another function
         {
             let root_id = ir.root();
             let ir_printer = IrPrinter::new(&ir, root_id);

@@ -33,7 +33,7 @@ pub struct ResolveOutput {
     pub module_graph: ModuleGraph,
     pub module_scopes: ModuleScopes,
     pub value_orders: ValueOrders,
-    pub entry_point: ValueSym,
+    pub entry_points: Vec<ValueSym>,
 }
 
 pub fn resolve(
@@ -53,21 +53,13 @@ pub fn resolve(
         entry_points,
     } = discover::discover(path, io, arena, interner, report, print_options)?;
 
-    // TODO better error handling with trace
-    let &[entry_point] = entry_points.as_slice() else {
-        return Err(io::Error::new(
-            io::ErrorKind::InvalidData,
-            "No entry point or too many found in the project",
-        ));
-    };
-
     if !report.is_empty() {
         return Ok(ResolveOutput {
             source_manager,
             forest,
             topography,
             module_graph,
-            entry_point,
+            entry_points,
             ..Default::default()
         });
     }
@@ -87,7 +79,7 @@ pub fn resolve(
             topography,
             module_graph,
             module_scopes,
-            entry_point,
+            entry_points,
             ..Default::default()
         });
     }
@@ -102,6 +94,6 @@ pub fn resolve(
         module_graph,
         module_scopes,
         value_orders,
-        entry_point,
+        entry_points,
     })
 }

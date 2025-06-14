@@ -125,7 +125,7 @@ pub enum UnaryOp {
     Not,
 }
 
-#[derive(Debug, Display, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum BinaryOp {
     Add,
     Sub,
@@ -146,6 +146,29 @@ pub enum BinaryOp {
     NotEq,
     // Record
     Merge,
+}
+
+impl fmt::Display for BinaryOp {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        let op = match self {
+            Self::Add => "+",
+            Self::Sub => "-",
+            Self::Mul => "*",
+            Self::Div => "/",
+            Self::Rem => "%",
+            Self::Less => "<",
+            Self::Greater => ">",
+            Self::LessEq => "<=",
+            Self::GreaterEq => ">=",
+            Self::And => "and",
+            Self::Or => "or",
+            Self::Xor => "xor",
+            Self::Eq => "==",
+            Self::NotEq => "!=",
+            Self::Merge => "&",
+        };
+        write!(f, "{}", op.blue())
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
