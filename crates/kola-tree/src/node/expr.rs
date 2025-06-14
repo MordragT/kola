@@ -1328,12 +1328,30 @@ mod inspector {
         }
     }
 
+    impl<'t, S: BuildHasher> NamedNode for NodeInspector<'t, Id<PathExpr>, S> {
+        fn assert_name(self, expected: &str, node_type: &str) -> Self {
+            let name = self.node.get(self.tree).binding.get(self.tree);
+            let s = self.interner.get(name.0).expect("Symbol not found");
+
+            assert_eq!(
+                s, expected,
+                "Expected {} name '{}' but found '{}'",
+                node_type, expected, s
+            );
+            self
+        }
+    }
+
     impl<'t, S: BuildHasher> NodeInspector<'t, Id<PathExpr>, S> {
         /// Get an inspector for the module path of this path expression
         pub fn module_path(self) -> Option<NodeInspector<'t, Id<ModulePath>, S>> {
             let path = self.node.get(self.tree);
             path.path
                 .map(|p| NodeInspector::new(p, self.tree, self.interner))
+        }
+
+        pub fn has_binding_name(self, expected: &str) -> Self {
+            self.assert_name(expected, "path binding")
         }
 
         /// Assert the path has the specified number of segments

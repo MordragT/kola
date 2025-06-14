@@ -424,7 +424,7 @@ mod test {
     #[test]
     fn test_two_char_operators() {
         let tokens = tokenize_str("+= -= *= /= %= <= >= == != -> => ::");
-        assert_eq!(tokens.len(), 11);
+        assert_eq!(tokens.len(), 12);
         assert_eq!(tokens[0].0, Token::Atom("+="));
         assert_eq!(tokens[1].0, Token::Atom("-="));
         assert_eq!(tokens[2].0, Token::Atom("*="));

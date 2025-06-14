@@ -66,7 +66,7 @@ pub fn discover(
         TokenPrinter(&tokens, print_options).render(print_options, arena)
     );
 
-    let input = ParseInput::new(source_id, tokens);
+    let input = ParseInput::new(source_id, tokens, source.len());
     let ParseOutput { tree, spans, .. } = parse(input, interner, report);
 
     let Some(tree) = tree else {
@@ -309,7 +309,7 @@ where
             TokenPrinter(&tokens, self.print_options).render(self.print_options, &self.arena)
         );
 
-        let input = ParseInput::new(source_id, tokens);
+        let input = ParseInput::new(source_id, tokens, source.len());
 
         let ParseOutput { tree, spans, .. } = parse(input, &mut self.interner, &mut self.report);
 

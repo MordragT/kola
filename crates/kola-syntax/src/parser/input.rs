@@ -1,18 +1,23 @@
 use std::ops::Range;
 
 use chumsky::{input::ValueInput, prelude::*};
-use kola_span::{Loc, SourceId};
+use kola_span::{Loc, SourceId, Span};
 
 use crate::token::{Token, Tokens};
 
 pub struct ParseInput<'t> {
     pub source: SourceId,
     pub tokens: Tokens<'t>,
+    pub eoi: Span,
 }
 
 impl<'t> ParseInput<'t> {
-    pub fn new(source: SourceId, tokens: Tokens<'t>) -> Self {
-        Self { source, tokens }
+    pub fn new(source: SourceId, tokens: Tokens<'t>, len: usize) -> Self {
+        Self {
+            source,
+            tokens,
+            eoi: Span::new(len, len),
+        }
     }
 }
 
@@ -21,12 +26,10 @@ impl<'t> Input<'t> for ParseInput<'t> {
     type Token = Token<'t>;
     type MaybeToken = Token<'t>;
     type Cursor = usize;
-    type Cache = (Tokens<'t>, SourceId);
+    type Cache = ParseInput<'t>;
 
     fn begin(self) -> (Self::Cursor, Self::Cache) {
-        let Self { source, tokens } = self;
-
-        (0, (tokens, source))
+        (0, self)
     }
 
     fn cursor_location(cursor: &Self::Cursor) -> usize {
@@ -37,7 +40,7 @@ impl<'t> Input<'t> for ParseInput<'t> {
         cache: &mut Self::Cache,
         cursor: &mut Self::Cursor,
     ) -> Option<Self::MaybeToken> {
-        if let Some(tok) = cache.0.get(*cursor) {
+        if let Some(tok) = cache.tokens.get(*cursor) {
             *cursor += 1;
             Some(tok.0)
         } else {
@@ -46,11 +49,11 @@ impl<'t> Input<'t> for ParseInput<'t> {
     }
 
     unsafe fn span(cache: &mut Self::Cache, range: Range<&Self::Cursor>) -> Self::Span {
-        Loc::from_range(
-            cache.1,
-            // TODO is this correct?
-            cache.0[*range.start].1.span.start..cache.0[*range.end - 1].1.span.end,
-        )
+        if let Some((_token, loc)) = cache.tokens.get(*range.start).copied() {
+            loc
+        } else {
+            Loc::new(cache.source, cache.eoi)
+        }
     }
 }
 

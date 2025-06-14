@@ -256,6 +256,33 @@ where
     }
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use kola_tree::prelude::*;
+
+    // #[test]
+    // fn test_normalizer() {
+    //     // Example usage of the Normalizer
+    //     let tree = Tree::new();
+    //     let root_id = tree.root_id();
+
+    //     let mut builder = IrBuilder::new();
+    //     let symbols = SymbolEnv::new(&tree);
+
+    //     let mut normalizer = Normalizer::new(
+    //         root_id,
+    //         builder.next(),
+    //         symbols.next(),
+    //         &mut builder,
+    //         symbols,
+    //     );
+    //     let result = normalizer.run(&tree);
+
+    //     assert!(result.is_ok());
+    // }
+}
+
 // impl<T> Normalizer<T> {
 //     pub fn new(root_id: TreeId<T>) -> Self {
 //         Self {

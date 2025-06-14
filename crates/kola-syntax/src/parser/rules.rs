@@ -1046,7 +1046,7 @@ mod tests {
         let source = mocked_source();
         let input = LexInput { source, text };
         let tokens = try_tokenize(input).unwrap();
-        let input = ParseInput::new(source, tokens);
+        let input = ParseInput::new(source, tokens, text.len());
 
         try_parse_with(input, parser, interner).unwrap()
     }
@@ -1111,11 +1111,7 @@ mod tests {
 
         let case = inspector.as_case().unwrap();
 
-        case.source()
-            .as_path()
-            .unwrap()
-            .has_segments(1)
-            .segment_at_is(0, "x");
+        case.source().as_path().unwrap().has_binding_name("x");
 
         case.has_branches(2);
 
@@ -1203,20 +1199,8 @@ mod tests {
 
         let if_expr = inspector.as_if().unwrap();
 
-        if_expr
-            .predicate()
-            .as_path()
-            .unwrap()
-            .has_segments(1)
-            .segment_at_is(0, "y");
-
-        if_expr
-            .then()
-            .as_path()
-            .unwrap()
-            .has_segments(1)
-            .segment_at_is(0, "x");
-
+        if_expr.predicate().as_path().unwrap().has_binding_name("y");
+        if_expr.then().as_path().unwrap().has_binding_name("x");
         if_expr.or().as_literal().unwrap().is_num(0.0);
     }
 
@@ -1232,10 +1216,10 @@ mod tests {
         inspector
             .as_path()
             .unwrap()
-            .has_segments(3)
-            .segment_at_is(0, "x")
-            .segment_at_is(1, "y")
-            .segment_at_is(2, "z");
+            .has_binding_name("x")
+            .has_segments(2)
+            .segment_at_is(0, "y")
+            .segment_at_is(1, "z");
     }
 
     #[test]
@@ -1251,13 +1235,7 @@ mod tests {
 
         extend.field();
 
-        extend
-            .source()
-            .as_path()
-            .unwrap()
-            .has_segments(1)
-            .segment_at_is(0, "y");
-
+        extend.source().as_path().unwrap().has_binding_name("y");
         extend.value().as_literal().unwrap().is_num(10.0);
     }
 
