@@ -1,0 +1,54 @@
+{
+    # Basic type aliases
+    type UserId = Num,
+    type UserName = Str,
+
+    # Polymorphic type alias
+    type Identity = forall a . a -> a,
+
+    # Function type alias
+    type Predicate = forall a . a -> Bool,
+
+    # Record type aliases
+    type Point = { x: Num, y: Num },
+    type Person = { name: Str, age: Num },
+
+    # Open record type (with row polymorphism)
+    type Extendable = forall r . { name: Str | r },
+
+    # Variant type alias
+    type Color = < Red, Green, Blue >,
+    type Result = forall a b . < Ok a, Error b >,
+
+    # Type application
+    type StrList = List Str,
+    type NumResult = Result Num Str,
+
+    # Functions using the type aliases
+    identity: Identity = fn x => x,
+
+    create_point: Num -> Num -> Point = fn x => fn y => { x = x, y = y },
+
+    get_name: forall r . { name: Str | r } -> Str =
+        fn person => person.name,
+
+    is_adult: Person -> Bool = fn person => person.age >= 18,
+
+    process_result: NumResult -> Num = fn result =>
+        case result of
+        | Ok value => value
+        | Error _ => -1,
+
+    # Test values
+    test_point = (create_point 10) 20,
+    test_person = { name = "Alice", age = 25 },
+    test_extended = { name = "Bob", age = 30, city = "NYC" },
+
+    main =
+        let name1 = (get_name test_person) in
+        let name2 = (get_name test_extended) in  # Row polymorphism!
+        let adult_check = (is_adult test_person) in
+        let success_result = Ok 42 in
+        let result_value = (process_result success_result) in
+        result_value + test_point.x,
+}

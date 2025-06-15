@@ -14,19 +14,21 @@ impl Phase for TypePhase {
     type ModuleName = !;
     type TypeName = !;
     type ValueName = !;
+
     type AnyPat = types::MonoType;
     type LiteralPat = types::MonoType;
     type IdentPat = types::MonoType;
-    type RecordFieldPat = types::Property;
+    type RecordFieldPat = types::LabeledType;
     type RecordPat = types::MonoType;
-    type VariantCasePat = types::Property;
+    type VariantCasePat = types::LabeledType;
     type VariantPat = types::MonoType;
     type PatError = !;
     type Pat = types::MonoType;
+
     type LiteralExpr = types::MonoType;
     type PathExpr = types::MonoType;
     type ListExpr = types::MonoType;
-    type RecordField = types::Property;
+    type RecordField = types::LabeledType;
     type RecordExpr = types::MonoType;
     type RecordExtendExpr = types::MonoType;
     type RecordRestrictExpr = types::MonoType;
@@ -44,17 +46,19 @@ impl Phase for TypePhase {
     type CallExpr = types::MonoType;
     type ExprError = !;
     type Expr = types::MonoType;
+
     type TypePath = types::PolyType;
-    type TypeVar = !;
-    type RecordFieldType = types::MonoType;
+    type TypeVar = types::PolyType;
+    type RecordFieldType = types::LabeledType;
     type RecordType = types::MonoType;
-    type VariantCaseType = types::MonoType;
+    type VariantCaseType = types::LabeledType;
     type VariantType = types::MonoType;
     type FuncType = types::MonoType;
     type TypeApplication = types::PolyType;
     type TypeExpr = types::PolyType;
     type TypeError = !;
     type Type = types::PolyType;
+
     type Vis = !;
     type ValueBind = types::PolyType;
     type TypeBind = types::PolyType;
@@ -62,6 +66,7 @@ impl Phase for TypePhase {
     type ModuleBind = !;
     type ModuleTypeBind = !;
     type Bind = !;
+
     type Module = !;
     type ModulePath = !;
     type ModuleImport = !;

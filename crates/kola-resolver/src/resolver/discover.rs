@@ -4,7 +4,7 @@ use owo_colors::OwoColorize;
 use std::{io, ops::ControlFlow};
 
 use kola_print::prelude::*;
-use kola_span::{Diagnostic, IntoDiagnostic, Loc, Report, SourceId, SourceManager};
+use kola_span::{IntoDiagnostic, Loc, Report, SourceId, SourceManager};
 use kola_syntax::prelude::*;
 use kola_tree::{node::Vis, prelude::*};
 use kola_utils::{interner::StrInterner, io::FileSystem};
@@ -16,7 +16,7 @@ use crate::{
     info::ModuleInfo,
     phase::ResolvePhase,
     prelude::Topography,
-    refs::{ModuleRef, ValueRef},
+    refs::{ModuleRef, TypeRef, ValueRef},
     scope::{ModuleScope, ModuleScopeStack},
     symbol::{ModuleSym, TypeSym, ValueSym},
 };
@@ -168,6 +168,7 @@ fn _discover(
 struct Discoverer<'a> {
     source_id: SourceId,
     current_module_bind_sym: Option<ModuleSym>,
+    current_type_bind_sym: Option<TypeSym>,
     current_value_bind_sym: Option<ValueSym>,
     stack: ModuleScopeStack,
     io: &'a dyn FileSystem,
@@ -202,6 +203,7 @@ impl<'a> Discoverer<'a> {
         Self {
             source_id,
             current_module_bind_sym: Some(module_sym),
+            current_type_bind_sym: None,
             current_value_bind_sym: None,
             stack: ModuleScopeStack::new(),
             io,
@@ -241,6 +243,33 @@ where
     T: TreeView,
 {
     type BreakValue = !;
+
+    fn visit_module_bind(
+        &mut self,
+        id: Id<node::ModuleBind>,
+        tree: &T,
+    ) -> ControlFlow<Self::BreakValue> {
+        let node::ModuleBind { vis, name, .. } = *tree.node(id);
+
+        let name = *tree.node(name);
+        let vis = tree.node(vis);
+
+        let span = self.span(id);
+
+        let module_sym = ModuleSym::new();
+        self.insert_symbol(id, module_sym);
+        self.current_module_bind_sym = Some(module_sym);
+
+        // Register the module binding in the current scope
+        if let Err(e) = self
+            .stack
+            .insert_module(name, module_sym, Def::bound(id, *vis, span))
+        {
+            self.report.add_diagnostic(e.into());
+        }
+
+        self.walk_module_bind(id, tree)
+    }
 
     fn visit_module(&mut self, id: Id<node::Module>, tree: &T) -> ControlFlow<Self::BreakValue> {
         let sym = self.current_module_bind_sym.take().unwrap();
@@ -390,33 +419,6 @@ where
         ControlFlow::Continue(())
     }
 
-    fn visit_module_bind(
-        &mut self,
-        id: Id<node::ModuleBind>,
-        tree: &T,
-    ) -> ControlFlow<Self::BreakValue> {
-        let node::ModuleBind { vis, name, .. } = *tree.node(id);
-
-        let name = *tree.node(name);
-        let vis = tree.node(vis);
-
-        let span = self.span(id);
-
-        let module_sym = ModuleSym::new();
-        self.insert_symbol(id, module_sym);
-        self.current_module_bind_sym = Some(module_sym);
-
-        // Register the module binding in the current scope
-        if let Err(e) = self
-            .stack
-            .insert_module(name, module_sym, Def::bound(id, *vis, span))
-        {
-            self.report.add_diagnostic(e.into());
-        }
-
-        self.walk_module_bind(id, tree)
-    }
-
     fn visit_value_bind(
         &mut self,
         id: Id<node::ValueBind>,
@@ -448,31 +450,6 @@ where
         }
 
         self.walk_value_bind(id, tree) // walk to discover module paths in expressions
-    }
-
-    fn visit_type_bind(
-        &mut self,
-        id: Id<node::TypeBind>,
-        tree: &T,
-    ) -> ControlFlow<Self::BreakValue> {
-        let node::TypeBind { name, .. } = *tree.node(id);
-        let name = *tree.node(name);
-
-        let span = self.span(id);
-
-        let type_sym = TypeSym::new();
-        self.insert_symbol(id, type_sym);
-
-        // Register the type binding in the current scope
-        if let Err(e) = self
-            .stack
-            .insert_type(name, type_sym, Def::bound(id, Vis::Export, span))
-        {
-            self.report.add_diagnostic(e.into());
-        }
-
-        // self.walk_type_bind(id, tree) // TODO walk to discover module paths in type expressions
-        ControlFlow::Continue(()) // nothing to do here at the moment
     }
 
     fn visit_let_expr(&mut self, id: Id<node::LetExpr>, tree: &T) -> ControlFlow<Self::BreakValue> {
@@ -552,6 +529,69 @@ where
             let ref_ = ValueRef::new(name, id, current_sym, self.span(id));
 
             self.stack.refs_mut().insert_value(ref_);
+
+            ControlFlow::Continue(())
+        }
+    }
+
+    fn visit_type_bind(
+        &mut self,
+        id: Id<node::TypeBind>,
+        tree: &T,
+    ) -> ControlFlow<Self::BreakValue> {
+        let node::TypeBind { name, .. } = *tree.node(id);
+
+        let name = *tree.node(name);
+
+        let span = self.span(id);
+
+        let type_sym = TypeSym::new();
+        self.insert_symbol(id, type_sym);
+        self.current_type_bind_sym = Some(type_sym);
+        self.stack.type_graph_mut().add_node(type_sym);
+
+        // Register the type binding in the current scope
+        if let Err(e) = self
+            .stack
+            .insert_type(name, type_sym, Def::bound(id, Vis::Export, span))
+        {
+            self.report.add_diagnostic(e.into());
+        }
+
+        self.walk_type_bind(id, tree) // walk to discover module paths in type expressions
+    }
+
+    fn visit_type_path(
+        &mut self,
+        id: Id<node::TypePath>,
+        tree: &T,
+    ) -> ControlFlow<Self::BreakValue> {
+        let node::TypePath { path, ty } = *tree.node(id);
+
+        let name = *ty.get(tree);
+
+        if let Some(path) = path {
+            // Just visit the module path if it exists
+            self.visit_module_path(path, tree)
+        } else if let Some(type_sym) = self.stack.shape().get_type(name) {
+            // Found a type binding in the current module scope
+            // which was defined before this type path (no forward reference)
+
+            self.insert_symbol(id, type_sym);
+
+            let current_sym = self.current_type_bind_sym.unwrap();
+            self.stack
+                .type_graph_mut()
+                .add_dependency(current_sym, type_sym);
+
+            ControlFlow::Continue(())
+        } else {
+            // Either a forward reference or not found in the current module scope
+
+            let current_sym = self.current_type_bind_sym.unwrap();
+            let ref_ = TypeRef::new(name, id, current_sym, self.span(id));
+
+            self.stack.refs_mut().insert_type(ref_);
 
             ControlFlow::Continue(())
         }

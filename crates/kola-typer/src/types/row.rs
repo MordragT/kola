@@ -11,22 +11,22 @@ use crate::{
 
 /// A key-value pair representing a property type in a record.
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Serialize, Deserialize)]
-pub struct Property {
-    pub k: StrKey,
-    pub v: MonoType,
+pub struct LabeledType {
+    pub label: StrKey,
+    pub ty: MonoType,
 }
 
-impl fmt::Display for Property {
+impl fmt::Display for LabeledType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{} : {}", self.k, self.v)
+        write!(f, "{} : {}", self.label, self.ty)
     }
 }
 
-impl Substitutable for Property {
+impl Substitutable for LabeledType {
     fn try_apply(&self, s: &mut Substitution) -> Option<Self> {
-        self.v.try_apply(s).map(|v| Property {
-            k: self.k.clone(),
-            v,
+        self.ty.try_apply(s).map(|v| LabeledType {
+            label: self.label.clone(),
+            ty: v,
         })
     }
 }
@@ -43,23 +43,23 @@ derive that:
 {x :: Int, y :: Int} ∼= {y :: Int, x :: Int}
 */
 
-// An extensible record type.
+// An extensible row type.
 ///
-/// A record is either `Empty`, meaning it has no properties,
-/// or it is an extension of a record.
+/// A row is either `Empty`, meaning it has no properties,
+/// or it is an extension of a row.
 ///
-/// A record may extend what is referred to as a *record
-/// variable*. A record variable is a type variable that
-/// represents an unknown record type.
+/// A record may extend what is referred to as a *row
+/// variable*. A row variable is a type variable that
+/// represents an unknown row type.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum RowType {
-    /// A record that has no properties.
+    /// A row that has no properties.
     Empty,
-    /// Extension of a record.
+    /// Extension of a row.
     Extension {
-        /// The [`Property`] that extends the record type.
-        head: Property,
-        /// `tail` is the record variable.
+        /// The [`Property`] that extends the row type.
+        head: LabeledType,
+        /// `tail` is the row variable.
         tail: MonoType,
     },
 }

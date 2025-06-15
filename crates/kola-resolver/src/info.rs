@@ -3,9 +3,10 @@ use kola_span::{Loc, SourceId};
 use kola_tree::{id::Id, node};
 use kola_utils::dependency::DependencyGraph;
 
-use crate::symbol::{ModuleSym, ValueSym};
+use crate::symbol::{ModuleSym, TypeSym, ValueSym};
 
 pub type ModuleGraph = DependencyGraph<ModuleSym>;
+pub type TypeGraph = DependencyGraph<TypeSym>;
 pub type ValueGraph = DependencyGraph<ValueSym>;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]

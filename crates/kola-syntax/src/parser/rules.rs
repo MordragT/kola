@@ -393,7 +393,7 @@ pub fn expr_parser<'t>() -> impl KolaParser<'t, Id<node::Expr>> + Clone {
                 .collect::<Vec<_>>(),
         ))
         .map_with(|(mut binding, mut path, select), e| {
-            let span = e.span();
+            let loc = e.span();
             let tree: &mut State = e.state();
 
             let path = if path.is_empty() {
@@ -404,13 +404,13 @@ pub fn expr_parser<'t>() -> impl KolaParser<'t, Id<node::Expr>> + Clone {
                 // b is currently in path and must be extracted from it
                 binding = std::mem::replace(&mut path[0], binding);
 
+                let path_loc = loc.map_span(|span| span.after(&binding.1.span).unwrap());
                 let path = path
                     .into_iter()
                     .map(|(key, span)| tree.insert(node::ModuleName::new(key), span))
                     .collect();
 
-                // TODO wrong span
-                Some(tree.insert(node::ModulePath(path), span))
+                Some(tree.insert(node::ModulePath(path), path_loc))
             };
 
             let binding = tree.insert(node::ValueName::new(binding.0), binding.1);
@@ -839,11 +839,33 @@ pub fn expr_parser<'t>() -> impl KolaParser<'t, Id<node::Expr>> + Clone {
 /// ```
 pub fn type_expr_parser<'t>() -> impl KolaParser<'t, Id<node::TypeExpr>> + Clone {
     recursive(|ty| {
-        let path = type_name_parser()
-            .separated_by(ctrl(CtrlT::DOT))
+        let path = symbol()
+            .spanned()
+            .separated_by(ctrl(CtrlT::DOUBLE_COLON))
             .at_least(1)
-            .collect()
-            .map_to_node(node::TypePath)
+            .collect::<Vec<_>>()
+            .map_with(|mut path, e| {
+                let loc = e.span();
+                let tree: &mut State = e.state();
+
+                let (ty_name, ty_loc) = path.pop().unwrap();
+                let ty = tree.insert(node::TypeName::new(ty_name), ty_loc);
+
+                let path = if !path.is_empty() {
+                    let module_loc = loc.map_span(|span| span.before(&ty_loc.span).unwrap());
+                    let module_path = path
+                        .into_iter()
+                        .map(|(name, span)| tree.insert(node::ModuleName::new(name), span))
+                        .collect::<Vec<_>>();
+
+                    Some(tree.insert(node::ModulePath(module_path), module_loc))
+                } else {
+                    None
+                };
+
+                node::TypePath { path, ty }
+            })
+            .to_node()
             .to_type_expr()
             .boxed();
 
@@ -1285,11 +1307,7 @@ mod tests {
         // Num -> (...)
         let func = inspector.as_function().unwrap();
 
-        func.input()
-            .as_path()
-            .unwrap()
-            .has_segments(1)
-            .segment_at_is(0, "Num");
+        func.input().as_path().unwrap().has_type_name("Num");
 
         // { a: Num, ... } -> ...
         let func2 = func.output().as_function().unwrap();
@@ -1303,8 +1321,7 @@ mod tests {
             .type_expr()
             .as_path()
             .unwrap()
-            .has_segments(1)
-            .segment_at_is(0, "Num");
+            .has_type_name("Num");
 
         record
             .field_at(1)
@@ -1313,12 +1330,7 @@ mod tests {
             .as_function()
             .unwrap();
 
-        func2
-            .output()
-            .as_path()
-            .unwrap()
-            .has_segments(1)
-            .segment_at_is(0, "Str");
+        func2.output().as_path().unwrap().has_type_name("Str");
     }
 
     #[test]
@@ -1343,8 +1355,7 @@ mod tests {
             .constructor()
             .as_path()
             .unwrap()
-            .has_segments(1)
-            .segment_at_is(0, "Map");
+            .has_type_name("Map");
 
         inner_app.arg().as_function().unwrap();
 
@@ -1388,27 +1399,15 @@ mod tests {
             .type_expr()
             .as_path()
             .unwrap()
-            .has_segments(1)
-            .segment_at_is(0, "a");
+            .has_type_name("a");
 
         let right_field = record.field_at(1);
         right_field.has_field_name("right");
 
         let fn_type = right_field.type_expr().as_function().unwrap();
 
-        fn_type
-            .input()
-            .as_path()
-            .unwrap()
-            .has_segments(1)
-            .segment_at_is(0, "Num");
-
-        fn_type
-            .output()
-            .as_path()
-            .unwrap()
-            .has_segments(1)
-            .segment_at_is(0, "b");
+        fn_type.input().as_path().unwrap().has_type_name("Num");
+        fn_type.output().as_path().unwrap().has_type_name("b");
     }
 
     #[test]
@@ -1464,8 +1463,7 @@ mod tests {
             .unwrap()
             .as_path()
             .unwrap()
-            .has_segments(1)
-            .segment_at_is(0, "a");
+            .has_type_name("a");
 
         assert!(
             variant
@@ -1508,8 +1506,7 @@ mod tests {
             .type_expr()
             .as_path()
             .unwrap()
-            .has_segments(1)
-            .segment_at_is(0, "Num");
+            .has_type_name("Num");
     }
 
     #[test]
@@ -1535,8 +1532,7 @@ mod tests {
             .type_expr()
             .as_path()
             .unwrap()
-            .has_segments(1)
-            .segment_at_is(0, "Num");
+            .has_type_name("Num");
 
         inspector
             .spec_at(1)
@@ -1547,8 +1543,7 @@ mod tests {
             .type_expr()
             .as_path()
             .unwrap()
-            .has_segments(1)
-            .segment_at_is(0, "Str");
+            .has_type_name("Str");
     }
 
     #[test]
@@ -1610,8 +1605,7 @@ mod tests {
             .type_expr()
             .as_path()
             .unwrap()
-            .has_segments(1)
-            .segment_at_is(0, "Num");
+            .has_type_name("Num");
 
         // Check implementation
         module_bind

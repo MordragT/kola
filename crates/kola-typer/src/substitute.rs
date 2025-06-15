@@ -36,15 +36,24 @@ impl fmt::Display for Substitution {
 }
 
 impl Substitution {
-    pub fn new(table: HashMap<TypeVar, MonoType>) -> Self {
+    pub fn empty() -> Self {
+        Self::default()
+    }
+
+    pub fn unit(var: TypeVar, ty: MonoType) -> Self {
+        let mut table = HashMap::new();
+        table.insert(var, ty);
         Self {
             table,
             cache: HashMap::new(),
         }
     }
 
-    pub fn empty() -> Self {
-        Self::default()
+    pub fn new(table: HashMap<TypeVar, MonoType>) -> Self {
+        Self {
+            table,
+            cache: HashMap::new(),
+        }
     }
 
     pub fn get(&self, tv: &TypeVar) -> Option<&MonoType> {

@@ -664,11 +664,13 @@ pub trait Visitor<T: TreeView> {
         id: Id<node::TypePath>,
         tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
-        let type_path = id.get(tree);
+        let node::TypePath { path, ty } = id.get(tree);
 
-        for id in type_path {
-            self.visit_type_name(*id, tree)?;
+        if let Some(path) = path {
+            self.visit_module_path(*path, tree)?;
         }
+
+        self.visit_type_name(*ty, tree)?;
 
         ControlFlow::Continue(())
     }

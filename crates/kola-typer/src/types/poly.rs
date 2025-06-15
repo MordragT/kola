@@ -3,7 +3,10 @@ use std::{collections::HashMap, fmt};
 use serde::{Deserialize, Serialize};
 
 use super::{MonoType, TypeVar, Typed};
-use crate::substitute::{Substitutable, Substitution};
+use crate::{
+    error::TypeConversionError,
+    substitute::{Substitutable, Substitution},
+};
 
 /// Polytype
 /// Types that contains variable bound by zero or more forall
@@ -11,8 +14,8 @@ use crate::substitute::{Substitutable, Substitution};
 /// https://en.wikipedia.org/wiki/Hindley%e2%80%93Milner_type_system#Polytypes
 #[derive(Debug, Default, Clone, Hash, Serialize, Deserialize)]
 pub struct PolyType {
-    pub(super) vars: Vec<TypeVar>,
-    pub(super) ty: MonoType,
+    pub vars: Vec<TypeVar>,
+    pub ty: MonoType,
 }
 
 impl PolyType {
@@ -36,6 +39,30 @@ impl PolyType {
         let mut vars = Vec::new();
         self.extend_free_vars(&mut vars);
         vars
+    }
+
+    pub fn into_mono(self) -> Result<MonoType, TypeConversionError> {
+        if self.vars.is_empty() {
+            Ok(self.ty)
+        } else {
+            Err(TypeConversionError::NotMonomorphic(self.clone()))
+        }
+    }
+
+    pub fn to_mono(&self) -> Result<MonoType, TypeConversionError> {
+        if self.vars.is_empty() {
+            Ok(self.ty.clone())
+        } else {
+            Err(TypeConversionError::NotMonomorphic(self.clone()))
+        }
+    }
+
+    pub fn as_mono(&self) -> Result<&MonoType, TypeConversionError> {
+        if self.vars.is_empty() {
+            Ok(&self.ty)
+        } else {
+            Err(TypeConversionError::NotMonomorphic(self.clone()))
+        }
     }
 
     /// The procedure inst(σ) specializes the polytype σ by copying the term

@@ -28,8 +28,8 @@ pub trait TypeVisitor: Sized {
         }
     }
 
-    fn visit_property(&mut self, property: &super::Property) -> ControlFlow<Self::BreakValue> {
-        self.visit_mono(&property.v)?;
+    fn visit_property(&mut self, property: &super::LabeledType) -> ControlFlow<Self::BreakValue> {
+        self.visit_mono(&property.ty)?;
         ControlFlow::Continue(())
     }
 
@@ -82,9 +82,9 @@ pub trait TypeVisitorMut: Sized {
 
     fn visit_property_mut(
         &mut self,
-        property: &mut super::Property,
+        property: &mut super::LabeledType,
     ) -> ControlFlow<Self::BreakValue> {
-        self.visit_mono_mut(&mut property.v)?;
+        self.visit_mono_mut(&mut property.ty)?;
         ControlFlow::Continue(())
     }
 
@@ -177,7 +177,7 @@ impl TypeVisitable for super::MonoType {
     }
 }
 
-impl TypeVisitable for super::Property {
+impl TypeVisitable for super::LabeledType {
     fn visit_type_by<V>(&self, visitor: &mut V) -> ControlFlow<V::BreakValue>
     where
         V: TypeVisitor,

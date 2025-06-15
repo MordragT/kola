@@ -6,6 +6,7 @@ use crate::{env::KindEnv, error::TypeError};
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum BuiltinType {
+    Unit,
     Bool,
     Num,
     Char,
@@ -15,6 +16,7 @@ pub enum BuiltinType {
 impl fmt::Display for BuiltinType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
+            Self::Unit => write!(f, "Unit"),
             Self::Bool => write!(f, "Bool"),
             Self::Num => write!(f, "Num"),
             Self::Char => write!(f, "Char"),
@@ -26,6 +28,10 @@ impl fmt::Display for BuiltinType {
 impl Typed for BuiltinType {
     fn constrain(&self, with: Kind, _env: &mut KindEnv) -> Result<(), TypeError> {
         match self {
+            BuiltinType::Unit => Err(TypeError::CannotConstrain {
+                expected: with,
+                actual: self.into(),
+            }),
             BuiltinType::Bool => match with {
                 Kind::Equatable | Kind::Stringable => Ok(()),
                 _ => Err(TypeError::CannotConstrain {

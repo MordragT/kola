@@ -5,10 +5,10 @@ use kola_collections::HashMap;
 use kola_span::Loc;
 use kola_tree::{
     id::Id,
-    node::{self, ModuleName, ValueName},
+    node::{self, ModuleName, TypeName, ValueName},
 };
 
-use crate::symbol::{ModuleSym, ValueSym};
+use crate::symbol::{ModuleSym, TypeSym, ValueSym};
 
 #[derive(Debug, From, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ModuleBindRef(Vec<ModuleName>);
@@ -74,10 +74,34 @@ impl ValueRef {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct TypeRef {
+    /// The name of the value reference.
+    pub name: TypeName,
+    /// The identifier of the type path that references some other type bind..
+    pub id: Id<node::TypePath>,
+    /// The symbol of the type bind, this reference occured inside.
+    pub source: TypeSym,
+    /// The location of the type reference in the source code.
+    pub loc: Loc,
+}
+
+impl TypeRef {
+    pub fn new(name: TypeName, id: Id<node::TypePath>, source: TypeSym, loc: Loc) -> Self {
+        Self {
+            name,
+            id,
+            source,
+            loc,
+        }
+    }
+}
+
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct References {
     module_binds: HashMap<ModuleSym, ModuleBindRef>,
     modules: Vec<ModuleRef>,
+    types: Vec<TypeRef>,
     values: Vec<ValueRef>,
 }
 
@@ -94,6 +118,10 @@ impl References {
         self.modules.push(module_ref);
     }
 
+    pub fn insert_type(&mut self, type_ref: TypeRef) {
+        self.types.push(type_ref);
+    }
+
     pub fn insert_value(&mut self, value_ref: ValueRef) {
         self.values.push(value_ref);
     }
@@ -102,16 +130,20 @@ impl References {
         self.module_binds.get(&sym)
     }
 
-    pub fn values(&self) -> &[ValueRef] {
-        &self.values
+    pub fn module_binds(&self) -> &HashMap<ModuleSym, ModuleBindRef> {
+        &self.module_binds
     }
 
     pub fn modules(&self) -> &[ModuleRef] {
         &self.modules
     }
 
-    pub fn module_binds(&self) -> &HashMap<ModuleSym, ModuleBindRef> {
-        &self.module_binds
+    pub fn types(&self) -> &[TypeRef] {
+        &self.types
+    }
+
+    pub fn values(&self) -> &[ValueRef] {
+        &self.values
     }
 }
 

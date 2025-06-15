@@ -173,11 +173,11 @@ impl<'s> Unifier<'s> {
             (RowType::Empty, RowType::Empty) => (),
             (
                 RowType::Extension {
-                    head: Property { k: a, v: t },
+                    head: LabeledType { label: a, ty: t },
                     tail: MonoType::Var(l),
                 },
                 RowType::Extension {
-                    head: Property { k: b, v: u },
+                    head: LabeledType { label: b, ty: u },
                     tail: MonoType::Var(r),
                 },
             ) if a == b && l == r => {
@@ -193,11 +193,11 @@ impl<'s> Unifier<'s> {
             }
             (
                 RowType::Extension {
-                    head: Property { k: a, .. },
+                    head: LabeledType { label: a, .. },
                     tail: MonoType::Var(l),
                 },
                 RowType::Extension {
-                    head: Property { k: b, .. },
+                    head: LabeledType { label: b, .. },
                     tail: MonoType::Var(r),
                 },
             ) if a != b && l == r => self.errors.push(TypeError::CannotUnify {
@@ -206,11 +206,11 @@ impl<'s> Unifier<'s> {
             }),
             (
                 RowType::Extension {
-                    head: Property { k: a, v: t },
+                    head: LabeledType { label: a, ty: t },
                     tail: l,
                 },
                 RowType::Extension {
-                    head: Property { k: b, v: u },
+                    head: LabeledType { label: b, ty: u },
                     tail: r,
                 },
             ) if a == b => {
@@ -219,26 +219,26 @@ impl<'s> Unifier<'s> {
             }
             (
                 RowType::Extension {
-                    head: Property { k: a, v: t },
+                    head: LabeledType { label: a, ty: t },
                     tail: l,
                 },
                 RowType::Extension {
-                    head: Property { k: b, v: u },
+                    head: LabeledType { label: b, ty: u },
                     tail: r,
                 },
             ) if a != b => {
                 let var = TypeVar::new();
                 let exp = MonoType::from(RowType::Extension {
-                    head: Property {
-                        k: a.clone(),
-                        v: t.clone(),
+                    head: LabeledType {
+                        label: a.clone(),
+                        ty: t.clone(),
                     },
                     tail: MonoType::Var(var),
                 });
                 let act = MonoType::from(RowType::Extension {
-                    head: Property {
-                        k: b.clone(),
-                        v: u.clone(),
+                    head: LabeledType {
+                        label: b.clone(),
+                        ty: u.clone(),
                     },
                     tail: MonoType::Var(var),
                 });
@@ -248,7 +248,7 @@ impl<'s> Unifier<'s> {
             // If we are expecting {a: u | r} but find {}, label `a` is missing.
             (
                 RowType::Extension {
-                    head: Property { k: a, .. },
+                    head: LabeledType { label: a, .. },
                     ..
                 },
                 RowType::Empty,
@@ -257,7 +257,7 @@ impl<'s> Unifier<'s> {
             (
                 RowType::Empty,
                 RowType::Extension {
-                    head: Property { k: a, .. },
+                    head: LabeledType { label: a, .. },
                     ..
                 },
             ) => self.errors.push(TypeError::ExtraLabel(a.clone())),

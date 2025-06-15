@@ -1,0 +1,7 @@
+{
+    type Person = forall a . { name : Str | a },
+
+    person_a : Person = { name = "Alice" },
+
+    person_b : Person = { name = "Bob", age = 30 },
+}

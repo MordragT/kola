@@ -1,6 +1,9 @@
 use kola_print::prelude::*;
 use kola_resolver::{
-    forest::Forest, info::ModuleGraph, prelude::Topography, resolver::ValueOrders,
+    forest::Forest,
+    info::ModuleGraph,
+    prelude::Topography,
+    resolver::{TypeOrders, ValueOrders},
     scope::ModuleScopes,
 };
 use kola_span::{IntoDiagnostic, Issue, Report};
@@ -32,6 +35,7 @@ pub fn type_check(
     module_graph: &ModuleGraph,
     module_scopes: &ModuleScopes,
     value_orders: &ValueOrders,
+    type_orders: &TypeOrders,
     arena: &Bump,
     interner: &mut StrInterner,
     report: &mut Report,
@@ -58,12 +62,47 @@ pub fn type_check(
         let tree = &*forest[info.source];
         let spans = topography[info.source].clone();
         let value_order = &value_orders[&module_sym];
+        let type_order = &type_orders[&module_sym];
         let mut module_annotations = TypedNodes::new();
+
+        for &type_sym in type_order {
+            let id = module_scope.defs[type_sym].id();
+
+            let typer = Typer::new(
+                id,
+                spans.clone(),
+                &type_env,
+                interner,
+                &module_scope.resolved,
+            );
+            let typed_nodes = match typer.solve(tree, report) {
+                Ok(typed_nodes) => typed_nodes,
+                Err((errors, span)) => {
+                    let diag = interner.display(&errors).into_diagnostic(span);
+                    report.add_diagnostic(diag);
+                    continue;
+                }
+            };
+
+            type_env.insert_type(type_sym, typed_nodes.meta(id).clone());
+            module_annotations.extend(typed_nodes);
+        }
+
+        if !report.is_empty() {
+            // If there are errors in type checking types, break out early
+            break;
+        }
 
         for &value_sym in value_order {
             let id = module_scope.defs[value_sym].id();
 
-            let typer = Typer::new(id, spans.clone(), &type_env, &module_scope.resolved);
+            let typer = Typer::new(
+                id,
+                spans.clone(),
+                &type_env,
+                interner,
+                &module_scope.resolved,
+            );
             let typed_nodes = match typer.solve(tree, report) {
                 Ok(typed_nodes) => typed_nodes,
                 Err((errors, span)) => {
@@ -74,8 +113,12 @@ pub fn type_check(
             };
 
             type_env.insert_value(value_sym, typed_nodes.meta(id).clone());
-            // TODO insert more stuff into the type_env about type_binds, etc.
             module_annotations.extend(typed_nodes);
+        }
+
+        if !report.is_empty() {
+            // If there are errors in type checking values, break out early
+            break;
         }
 
         let module_type = ModuleType::from(module_scope.shape.clone());

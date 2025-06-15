@@ -50,15 +50,14 @@ impl Decorator for TypeDecorator {
             | Meta::LambdaExpr(t)
             | Meta::CallExpr(t)
             | Meta::Expr(t) => t.green().display_in(arena),
-            Meta::RecordField(p) => return notation,
+            Meta::RecordField(lt) => return notation,
             Meta::ExprError(_) => return notation,
 
             // Types
-            Meta::RecordFieldType(t)
-            | Meta::RecordType(t)
-            | Meta::VariantCaseType(t)
-            | Meta::VariantType(t)
-            | Meta::FuncType(t) => t.green().display_in(arena),
+            Meta::RecordFieldType(lt) | Meta::VariantCaseType(lt) => return notation,
+            Meta::RecordType(t) | Meta::VariantType(t) | Meta::FuncType(t) => {
+                t.green().display_in(arena)
+            }
             Meta::TypePath(pt)
             | Meta::TypeApplication(pt)
             | Meta::TypeExpr(pt)

@@ -3,10 +3,10 @@ use kola_utils::as_variant;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
-use super::{BuiltinType, FuncType, ListType, PolyType, Property, RowType, TypeVar, Typed};
+use super::{BuiltinType, FuncType, LabeledType, ListType, PolyType, RowType, TypeVar, Typed};
 use crate::{
     env::KindEnv,
-    error::TypeError,
+    error::{TypeConversionError, TypeError},
     substitute::{Substitutable, Substitution},
 };
 
@@ -28,6 +28,7 @@ impl MonoType {
     pub const NUM: Self = Self::Builtin(BuiltinType::Num);
     pub const CHAR: Self = Self::Builtin(BuiltinType::Char);
     pub const STR: Self = Self::Builtin(BuiltinType::Str);
+    pub const UNIT: Self = Self::Builtin(BuiltinType::Unit);
 }
 
 impl MonoType {
@@ -43,7 +44,7 @@ impl MonoType {
         Self::List(Box::new(ListType::new(el)))
     }
 
-    pub fn row(head: Property, tail: Self) -> Self {
+    pub fn row(head: LabeledType, tail: Self) -> Self {
         Self::Row(Box::new(RowType::Extension { head, tail }))
     }
 
@@ -189,5 +190,21 @@ impl From<RowType> for MonoType {
 impl From<ListType> for MonoType {
     fn from(value: ListType) -> Self {
         Self::List(Box::new(value))
+    }
+}
+
+impl TryFrom<PolyType> for MonoType {
+    type Error = TypeConversionError;
+
+    fn try_from(value: PolyType) -> Result<Self, Self::Error> {
+        value.into_mono()
+    }
+}
+
+impl<'a> TryFrom<&'a PolyType> for &'a MonoType {
+    type Error = TypeConversionError;
+
+    fn try_from(value: &'a PolyType) -> Result<Self, Self::Error> {
+        value.as_mono()
     }
 }

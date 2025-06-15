@@ -11,18 +11,21 @@ use crate::{
     forest::Forest,
     info::ModuleGraph,
     prelude::Topography,
+    resolver::ty::TypeResolution,
     scope::ModuleScopes,
-    symbol::{ModuleSym, ValueSym},
+    symbol::{ModuleSym, TypeSym, ValueSym},
 };
 
 mod discover;
 mod module;
+mod ty;
 mod value;
 
 use discover::DiscoverOutput;
 use module::ModuleResolution;
 use value::ValueResolution;
 
+pub type TypeOrders = IndexMap<ModuleSym, Vec<TypeSym>>;
 pub type ValueOrders = IndexMap<ModuleSym, Vec<ValueSym>>;
 
 #[derive(Debug, Clone, Default)]
@@ -33,6 +36,7 @@ pub struct ResolveOutput {
     pub module_graph: ModuleGraph,
     pub module_scopes: ModuleScopes,
     pub value_orders: ValueOrders,
+    pub type_orders: TypeOrders,
     pub entry_points: Vec<ValueSym>,
 }
 
@@ -84,6 +88,9 @@ pub fn resolve(
         });
     }
 
+    let TypeResolution { type_orders } =
+        ty::resolve_types(&module_symbols, &mut module_scopes, report);
+
     let ValueResolution { value_orders } =
         value::resolve_values(&module_symbols, &mut module_scopes, report);
 
@@ -94,6 +101,7 @@ pub fn resolve(
         module_graph,
         module_scopes,
         value_orders,
+        type_orders,
         entry_points,
     })
 }

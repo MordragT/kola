@@ -5,7 +5,7 @@ use kola_utils::scope::LinearScope;
 use crate::{
     defs::{AnyDef, Definitions, ModuleDef, TypeDef, ValueDef},
     error::NameCollision,
-    info::{ModuleInfo, ValueGraph},
+    info::{ModuleInfo, TypeGraph, ValueGraph},
     phase::ResolvedNodes,
     refs::References,
     shape::Shape,
@@ -24,6 +24,7 @@ pub struct ModuleScope {
     pub resolved: ResolvedNodes,
     pub lexical: LexicalScope,
     pub value_graph: ValueGraph,
+    pub type_graph: TypeGraph,
 }
 
 impl ModuleScope {
@@ -36,6 +37,7 @@ impl ModuleScope {
             resolved: ResolvedNodes::new(),
             lexical: LexicalScope::new(),
             value_graph: ValueGraph::new(),
+            type_graph: TypeGraph::new(),
         }
     }
 
@@ -289,6 +291,25 @@ impl ModuleScopeStack {
     #[inline]
     pub fn value_graph_mut(&mut self) -> &mut ValueGraph {
         self.try_value_graph_mut().unwrap()
+    }
+    #[inline]
+    pub fn try_type_graph(&self) -> Option<&TypeGraph> {
+        self.todo.last().map(|scope| &scope.type_graph)
+    }
+
+    #[inline]
+    pub fn type_graph(&self) -> &TypeGraph {
+        self.try_type_graph().unwrap()
+    }
+
+    #[inline]
+    pub fn try_type_graph_mut(&mut self) -> Option<&mut TypeGraph> {
+        self.todo.last_mut().map(|scope| &mut scope.type_graph)
+    }
+
+    #[inline]
+    pub fn type_graph_mut(&mut self) -> &mut TypeGraph {
+        self.try_type_graph_mut().unwrap()
     }
 
     #[inline]

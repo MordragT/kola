@@ -79,8 +79,3 @@ impl<'t, T, S: BuildHasher> NodeInspector<'t, T, S> {
         self
     }
 }
-
-// Common traits for inspecting nodes with similar properties
-pub trait NamedNode {
-    fn assert_name(self, expected: &str, node_type: &str) -> Self;
-}

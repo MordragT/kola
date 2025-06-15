@@ -1150,112 +1150,96 @@ impl Expr {
         matches!(self, Self::Call(_))
     }
 }
-
 mod inspector {
     use std::hash::BuildHasher;
 
     use super::*;
     use crate::inspector::*;
     impl<'t, S: BuildHasher> NodeInspector<'t, Id<Expr>, S> {
-        /// Check if this expression is an error
         pub fn as_error(self) -> Option<NodeInspector<'t, Id<ExprError>, S>> {
             let expr = self.node.get(self.tree);
             expr.to_error()
                 .map(|err_id| NodeInspector::new(err_id, self.tree, self.interner))
         }
 
-        /// Check if this expression is a literal
         pub fn as_literal(self) -> Option<NodeInspector<'t, Id<LiteralExpr>, S>> {
             let expr = self.node.get(self.tree);
             expr.to_literal()
                 .map(|lit_id| NodeInspector::new(lit_id, self.tree, self.interner))
         }
 
-        /// Check if this expression is a path
         pub fn as_path(self) -> Option<NodeInspector<'t, Id<PathExpr>, S>> {
             let expr = self.node.get(self.tree);
             expr.to_path()
                 .map(|path_id| NodeInspector::new(path_id, self.tree, self.interner))
         }
 
-        /// Check if this expression is a list
         pub fn as_list(self) -> Option<NodeInspector<'t, Id<ListExpr>, S>> {
             let expr = self.node.get(self.tree);
             expr.to_list()
                 .map(|list_id| NodeInspector::new(list_id, self.tree, self.interner))
         }
 
-        /// Check if this expression is a record
         pub fn as_record(self) -> Option<NodeInspector<'t, Id<RecordExpr>, S>> {
             let expr = self.node.get(self.tree);
             expr.to_record()
                 .map(|rec_id| NodeInspector::new(rec_id, self.tree, self.interner))
         }
 
-        /// Check if this expression is a record extend
         pub fn as_record_extend(self) -> Option<NodeInspector<'t, Id<RecordExtendExpr>, S>> {
             let expr = self.node.get(self.tree);
             expr.to_record_extend()
                 .map(|ext_id| NodeInspector::new(ext_id, self.tree, self.interner))
         }
 
-        /// Check if this expression is a record restrict
         pub fn as_record_restrict(self) -> Option<NodeInspector<'t, Id<RecordRestrictExpr>, S>> {
             let expr = self.node.get(self.tree);
             expr.to_record_restrict()
                 .map(|res_id| NodeInspector::new(res_id, self.tree, self.interner))
         }
 
-        /// Check if this expression is a record update
         pub fn as_record_update(self) -> Option<NodeInspector<'t, Id<RecordUpdateExpr>, S>> {
             let expr = self.node.get(self.tree);
             expr.to_record_update()
                 .map(|upd_id| NodeInspector::new(upd_id, self.tree, self.interner))
         }
 
-        /// Check if this expression is a unary operation
         pub fn as_unary(self) -> Option<NodeInspector<'t, Id<UnaryExpr>, S>> {
             let expr = self.node.get(self.tree);
             expr.to_unary()
                 .map(|un_id| NodeInspector::new(un_id, self.tree, self.interner))
         }
 
-        /// Check if this expression is a binary operation
         pub fn as_binary(self) -> Option<NodeInspector<'t, Id<BinaryExpr>, S>> {
             let expr = self.node.get(self.tree);
             expr.to_binary()
                 .map(|bin_id| NodeInspector::new(bin_id, self.tree, self.interner))
         }
 
-        /// Check if this expression is a let binding
         pub fn as_let(self) -> Option<NodeInspector<'t, Id<LetExpr>, S>> {
             let expr = self.node.get(self.tree);
             expr.to_let()
                 .map(|let_id| NodeInspector::new(let_id, self.tree, self.interner))
         }
 
-        /// Check if this expression is an if condition
         pub fn as_if(self) -> Option<NodeInspector<'t, Id<IfExpr>, S>> {
             let expr = self.node.get(self.tree);
             expr.to_if()
                 .map(|if_id| NodeInspector::new(if_id, self.tree, self.interner))
         }
 
-        /// Check if this expression is a case expression
         pub fn as_case(self) -> Option<NodeInspector<'t, Id<CaseExpr>, S>> {
             let expr = self.node.get(self.tree);
             expr.to_case()
                 .map(|case_id| NodeInspector::new(case_id, self.tree, self.interner))
         }
 
-        /// Check if this expression is a lambda
         pub fn as_lambda(self) -> Option<NodeInspector<'t, Id<LambdaExpr>, S>> {
             let expr = self.node.get(self.tree);
             expr.to_lambda()
                 .map(|lambda_id| NodeInspector::new(lambda_id, self.tree, self.interner))
         }
 
-        /// Check if this expression is a function call
         pub fn as_call(self) -> Option<NodeInspector<'t, Id<CallExpr>, S>> {
             let expr = self.node.get(self.tree);
             expr.to_call()
@@ -1264,7 +1248,6 @@ mod inspector {
     }
 
     impl<'t, S: BuildHasher> NodeInspector<'t, Id<LiteralExpr>, S> {
-        /// Check what kind of literal this is and assert its value
         pub fn is_bool(self, expected: bool) -> Self {
             let lit = self.node.get(self.tree);
             match lit {
@@ -1314,36 +1297,21 @@ mod inspector {
             let lit = self.node.get(self.tree);
             match lit {
                 LiteralExpr::Str(value) => {
-                    let s = self.interner.get(*value).expect("Symbol not found");
+                    let value = self.interner.get(*value).expect("Symbol not found");
 
                     assert_eq!(
-                        s, expected,
+                        value, expected,
                         "Expected string \"{}\" but found \"{}\"",
-                        expected, s,
+                        expected, value
                     );
                 }
-                _ => panic!("Expected string literal but found {:?}", lit),
+                _ => panic!("Expected string literalbut found {:?}", lit),
             }
             self
         }
     }
 
-    impl<'t, S: BuildHasher> NamedNode for NodeInspector<'t, Id<PathExpr>, S> {
-        fn assert_name(self, expected: &str, node_type: &str) -> Self {
-            let name = self.node.get(self.tree).binding.get(self.tree);
-            let s = self.interner.get(name.0).expect("Symbol not found");
-
-            assert_eq!(
-                s, expected,
-                "Expected {} name '{}' but found '{}'",
-                node_type, expected, s
-            );
-            self
-        }
-    }
-
     impl<'t, S: BuildHasher> NodeInspector<'t, Id<PathExpr>, S> {
-        /// Get an inspector for the module path of this path expression
         pub fn module_path(self) -> Option<NodeInspector<'t, Id<ModulePath>, S>> {
             let path = self.node.get(self.tree);
             path.path
@@ -1351,10 +1319,17 @@ mod inspector {
         }
 
         pub fn has_binding_name(self, expected: &str) -> Self {
-            self.assert_name(expected, "path binding")
+            let name = self.node.get(self.tree).binding.get(self.tree);
+            let s = self.interner.get(name.0).expect("Symbol not found");
+
+            assert_eq!(
+                s, expected,
+                "Expected binding name '{}' but found '{}'",
+                expected, s
+            );
+            self
         }
 
-        /// Assert the path has the specified number of segments
         pub fn has_segments(self, count: usize) -> Self {
             let segments_len = self.node.get(self.tree).select.len();
             assert_eq!(
@@ -1365,7 +1340,6 @@ mod inspector {
             self
         }
 
-        /// Assert the path segment at the given index has the expected name
         pub fn segment_at_is(self, index: usize, expected: &str) -> Self {
             let path = self.node.get(self.tree);
             assert!(
@@ -1387,13 +1361,11 @@ mod inspector {
     }
 
     impl<'t, S: BuildHasher> NodeInspector<'t, Id<UnaryExpr>, S> {
-        /// Get the operator of this unary expression
         pub fn op(self) -> UnaryOp {
             let unary = self.node.get(self.tree);
             unary.op(self.tree)
         }
 
-        /// Assert the operator is the expected one
         pub fn has_op(self, expected: UnaryOp) -> Self {
             let op = self.op();
             assert_eq!(
@@ -1404,7 +1376,6 @@ mod inspector {
             self
         }
 
-        /// Get an inspector for the operand
         pub fn operand(self) -> NodeInspector<'t, Id<Expr>, S> {
             let unary = self.node.get(self.tree);
             NodeInspector::new(unary.operand, self.tree, self.interner)
@@ -1412,13 +1383,11 @@ mod inspector {
     }
 
     impl<'t, S: BuildHasher> NodeInspector<'t, Id<BinaryExpr>, S> {
-        /// Get the operator of this binary expression
         pub fn op(self) -> BinaryOp {
             let binary = self.node.get(self.tree);
             binary.op(self.tree)
         }
 
-        /// Assert the operator is the expected one
         pub fn has_op(self, expected: BinaryOp) -> Self {
             let op = self.op();
             assert_eq!(
@@ -1429,46 +1398,35 @@ mod inspector {
             self
         }
 
-        /// Get an inspector for the left operand
         pub fn left(self) -> NodeInspector<'t, Id<Expr>, S> {
             let binary = self.node.get(self.tree);
             NodeInspector::new(binary.left, self.tree, self.interner)
         }
 
-        /// Get an inspector for the right operand
         pub fn right(self) -> NodeInspector<'t, Id<Expr>, S> {
             let binary = self.node.get(self.tree);
             NodeInspector::new(binary.right, self.tree, self.interner)
         }
     }
 
-    impl<'t, S: BuildHasher> NamedNode for NodeInspector<'t, Id<LetExpr>, S> {
-        fn assert_name(self, expected: &str, node_type: &str) -> Self {
+    impl<'t, S: BuildHasher> NodeInspector<'t, Id<LetExpr>, S> {
+        pub fn has_name(self, expected: &str) -> Self {
             let name = self.node.get(self.tree).name(self.tree);
             let s = self.interner.get(name.0).expect("Symbol not found");
 
             assert_eq!(
                 s, expected,
-                "Expected {} name '{}' but found '{}'",
-                node_type, expected, s
+                "Expected let binding name '{}' but found '{}'",
+                expected, s
             );
             self
         }
-    }
 
-    impl<'t, S: BuildHasher> NodeInspector<'t, Id<LetExpr>, S> {
-        /// Assert the let binding has the specified name
-        pub fn has_name(self, expected: &str) -> Self {
-            self.assert_name(expected, "let binding")
-        }
-
-        /// Get an inspector for the value expression
         pub fn value(self) -> NodeInspector<'t, Id<Expr>, S> {
             let let_expr = self.node.get(self.tree);
             NodeInspector::new(let_expr.value, self.tree, self.interner)
         }
 
-        /// Get an inspector for the inside expression
         pub fn inside(self) -> NodeInspector<'t, Id<Expr>, S> {
             let let_expr = self.node.get(self.tree);
             NodeInspector::new(let_expr.inside, self.tree, self.interner)
@@ -1476,19 +1434,16 @@ mod inspector {
     }
 
     impl<'t, S: BuildHasher> NodeInspector<'t, Id<IfExpr>, S> {
-        /// Get an inspector for the predicate expression
         pub fn predicate(self) -> NodeInspector<'t, Id<Expr>, S> {
             let if_expr = self.node.get(self.tree);
             NodeInspector::new(if_expr.predicate, self.tree, self.interner)
         }
 
-        /// Get an inspector for the then branch
         pub fn then(self) -> NodeInspector<'t, Id<Expr>, S> {
             let if_expr = self.node.get(self.tree);
             NodeInspector::new(if_expr.then, self.tree, self.interner)
         }
 
-        /// Get an inspector for the else branch
         pub fn or(self) -> NodeInspector<'t, Id<Expr>, S> {
             let if_expr = self.node.get(self.tree);
             NodeInspector::new(if_expr.or, self.tree, self.interner)
@@ -1496,13 +1451,11 @@ mod inspector {
     }
 
     impl<'t, S: BuildHasher> NodeInspector<'t, Id<CaseExpr>, S> {
-        /// Get an inspector for the case source expression
         pub fn source(self) -> NodeInspector<'t, Id<Expr>, S> {
             let case_expr = self.node.get(self.tree);
             NodeInspector::new(case_expr.source, self.tree, self.interner)
         }
 
-        /// Assert the case has the specified number of branches
         pub fn has_branches(self, count: usize) -> Self {
             let branches_len = self.node.get(self.tree).branches.len();
             assert_eq!(
@@ -1513,7 +1466,6 @@ mod inspector {
             self
         }
 
-        /// Get an inspector for the branch at the given index
         pub fn branch_at(self, index: usize) -> NodeInspector<'t, Id<CaseBranch>, S> {
             let case_expr = self.node.get(self.tree);
             assert!(
@@ -1528,13 +1480,11 @@ mod inspector {
     }
 
     impl<'t, S: BuildHasher> NodeInspector<'t, Id<CaseBranch>, S> {
-        /// Get an inspector for the pattern in this branch
         pub fn pat(self) -> NodeInspector<'t, Id<Pat>, S> {
             let branch = self.node.get(self.tree);
             NodeInspector::new(branch.pat, self.tree, self.interner)
         }
 
-        /// Get an inspector for the result expression in this branch
         pub fn matches(self) -> NodeInspector<'t, Id<Expr>, S> {
             let branch = self.node.get(self.tree);
             NodeInspector::new(branch.matches, self.tree, self.interner)
@@ -1542,14 +1492,12 @@ mod inspector {
     }
 
     impl<'t, S: BuildHasher> NodeInspector<'t, Id<LambdaExpr>, S> {
-        /// Get the parameter name of this lambda
         pub fn param_name(self) -> &'t str {
             let lambda = self.node.get(self.tree);
             let symbol = lambda.param(self.tree);
             self.interner.get(symbol.0).expect("Symbol not found")
         }
 
-        /// Assert the parameter has the expected name
         pub fn has_param(self, expected: &str) -> Self {
             let param = self.param_name();
             assert_eq!(
@@ -1560,7 +1508,6 @@ mod inspector {
             self
         }
 
-        /// Get an inspector for the lambda body
         pub fn body(self) -> NodeInspector<'t, Id<Expr>, S> {
             let lambda = self.node.get(self.tree);
             NodeInspector::new(lambda.body, self.tree, self.interner)
@@ -1568,13 +1515,11 @@ mod inspector {
     }
 
     impl<'t, S: BuildHasher> NodeInspector<'t, Id<CallExpr>, S> {
-        /// Get an inspector for the function expression
         pub fn func(self) -> NodeInspector<'t, Id<Expr>, S> {
             let call = self.node.get(self.tree);
             NodeInspector::new(call.func, self.tree, self.interner)
         }
 
-        /// Get an inspector for the argument expression
         pub fn arg(self) -> NodeInspector<'t, Id<Expr>, S> {
             let call = self.node.get(self.tree);
             NodeInspector::new(call.arg, self.tree, self.interner)
@@ -1582,7 +1527,6 @@ mod inspector {
     }
 
     impl<'t, S: BuildHasher> NodeInspector<'t, Id<ListExpr>, S> {
-        /// Assert the list has the specified number of elements
         pub fn has_elements(self, count: usize) -> Self {
             let elements_len = self.node.get(self.tree).0.len();
             assert_eq!(
@@ -1593,7 +1537,6 @@ mod inspector {
             self
         }
 
-        /// Get an inspector for the element at the given index
         pub fn element_at(self, index: usize) -> NodeInspector<'t, Id<Expr>, S> {
             let list = self.node.get(self.tree);
             assert!(
@@ -1608,7 +1551,6 @@ mod inspector {
     }
 
     impl<'t, S: BuildHasher> NodeInspector<'t, Id<RecordExpr>, S> {
-        /// Assert the record has the specified number of fields
         pub fn has_fields(self, count: usize) -> Self {
             let fields_len = self.node.get(self.tree).0.len();
             assert_eq!(
@@ -1619,7 +1561,6 @@ mod inspector {
             self
         }
 
-        /// Get an inspector for the field at the given index
         pub fn field_at(self, index: usize) -> NodeInspector<'t, Id<RecordField>, S> {
             let record = self.node.get(self.tree);
             assert!(
@@ -1632,7 +1573,6 @@ mod inspector {
             NodeInspector::new(field_id, self.tree, self.interner)
         }
 
-        /// Get an inspector for the field with the given name, if it exists
         pub fn field_named(self, name: &str) -> Option<NodeInspector<'t, Id<RecordField>, S>> {
             let record = self.node.get(self.tree);
             record
@@ -1646,27 +1586,19 @@ mod inspector {
         }
     }
 
-    impl<'t, S: BuildHasher> NamedNode for NodeInspector<'t, Id<RecordField>, S> {
-        fn assert_name(self, expected: &str, node_type: &str) -> Self {
+    impl<'t, S: BuildHasher> NodeInspector<'t, Id<RecordField>, S> {
+        pub fn has_field_name(self, expected: &str) -> Self {
             let name = self.node.get(self.tree).field(self.tree);
             let s = self.interner.get(name.0).expect("Symbol not found");
 
             assert_eq!(
                 s, expected,
-                "Expected {} name '{}' but found '{}'",
-                node_type, expected, s
+                "Expected field name '{}' but found '{}'",
+                expected, s
             );
             self
         }
-    }
 
-    impl<'t, S: BuildHasher> NodeInspector<'t, Id<RecordField>, S> {
-        /// Assert the record field has the expected name
-        pub fn has_field_name(self, expected: &str) -> Self {
-            self.assert_name(expected, "field")
-        }
-
-        /// Get an inspector for the field value
         pub fn value(self) -> NodeInspector<'t, Id<Expr>, S> {
             let field = self.node.get(self.tree);
             NodeInspector::new(field.value, self.tree, self.interner)
@@ -1674,19 +1606,16 @@ mod inspector {
     }
 
     impl<'t, S: BuildHasher> NodeInspector<'t, Id<RecordExtendExpr>, S> {
-        /// Get an inspector for the source record
         pub fn source(self) -> NodeInspector<'t, Id<Expr>, S> {
             let extend = self.node.get(self.tree);
             NodeInspector::new(extend.source, self.tree, self.interner)
         }
 
-        /// Get an inspector for the field path being extended
         pub fn field(self) -> NodeInspector<'t, Id<ValueName>, S> {
             let extend = self.node.get(self.tree);
             NodeInspector::new(extend.field, self.tree, self.interner)
         }
 
-        /// Get an inspector for the value being added
         pub fn value(self) -> NodeInspector<'t, Id<Expr>, S> {
             let extend = self.node.get(self.tree);
             NodeInspector::new(extend.value, self.tree, self.interner)
@@ -1694,13 +1623,11 @@ mod inspector {
     }
 
     impl<'t, S: BuildHasher> NodeInspector<'t, Id<RecordRestrictExpr>, S> {
-        /// Get an inspector for the source record
         pub fn source(self) -> NodeInspector<'t, Id<Expr>, S> {
             let restrict = self.node.get(self.tree);
             NodeInspector::new(restrict.source, self.tree, self.interner)
         }
 
-        /// Get an inspector for the field path being restricted
         pub fn field(self) -> NodeInspector<'t, Id<ValueName>, S> {
             let restrict = self.node.get(self.tree);
             NodeInspector::new(restrict.field, self.tree, self.interner)
@@ -1708,25 +1635,21 @@ mod inspector {
     }
 
     impl<'t, S: BuildHasher> NodeInspector<'t, Id<RecordUpdateExpr>, S> {
-        /// Get an inspector for the source record
         pub fn source(self) -> NodeInspector<'t, Id<Expr>, S> {
             let update = self.node.get(self.tree);
             NodeInspector::new(update.source, self.tree, self.interner)
         }
 
-        /// Get an inspector for the field path being updated
         pub fn field(self) -> NodeInspector<'t, Id<ValueName>, S> {
             let update = self.node.get(self.tree);
             NodeInspector::new(update.field, self.tree, self.interner)
         }
 
-        /// Get the update operation
         pub fn op(self) -> RecordUpdateOp {
             let update = self.node.get(self.tree);
             update.op(self.tree)
         }
 
-        /// Assert the update operation is the expected one
         pub fn has_op(self, expected: RecordUpdateOp) -> Self {
             let op = self.op();
             assert_eq!(
@@ -1737,7 +1660,6 @@ mod inspector {
             self
         }
 
-        /// Get an inspector for the new value
         pub fn value(self) -> NodeInspector<'t, Id<Expr>, S> {
             let update = self.node.get(self.tree);
             NodeInspector::new(update.value, self.tree, self.interner)

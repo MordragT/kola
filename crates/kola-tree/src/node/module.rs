@@ -789,7 +789,6 @@ mod inspector {
     use crate::inspector::*;
 
     impl<'t, S: BuildHasher> NodeInspector<'t, Id<Module>, S> {
-        /// Assert the module has the specified number of binds
         pub fn has_binds(self, count: usize) -> Self {
             let binds_len = self.node.get(self.tree).0.len();
             assert_eq!(
@@ -800,7 +799,6 @@ mod inspector {
             self
         }
 
-        /// Get an inspector for the bind at the given index
         pub fn bind_at(self, index: usize) -> NodeInspector<'t, Id<Bind>, S> {
             let module = self.node.get(self.tree);
             assert!(
@@ -815,7 +813,6 @@ mod inspector {
     }
 
     impl<'t, S: BuildHasher> NodeInspector<'t, Id<ModulePath>, S> {
-        /// Assert the path has the specified number of segments
         pub fn has_segments(self, count: usize) -> Self {
             let segments_len = self.node.get(self.tree).0.len();
             assert_eq!(
@@ -826,7 +823,6 @@ mod inspector {
             self
         }
 
-        /// Assert the path segment at the given index has the expected name
         pub fn segment_at_is(self, index: usize, expected: &str) -> Self {
             let path = self.node.get(self.tree);
             assert!(
@@ -879,35 +875,30 @@ mod inspector {
     }
 
     impl<'t, S: BuildHasher> NodeInspector<'t, Id<Bind>, S> {
-        /// Check if this bind is a module bind and return an inspector for it
         pub fn as_module(self) -> Option<NodeInspector<'t, Id<ModuleBind>, S>> {
             let bind = self.node.get(self.tree);
             bind.to_module()
                 .map(|module_id| NodeInspector::new(module_id, self.tree, self.interner))
         }
 
-        /// Check if this bind is a value bind and return an inspector for it
         pub fn as_value(self) -> Option<NodeInspector<'t, Id<ValueBind>, S>> {
             let bind = self.node.get(self.tree);
             bind.to_value()
                 .map(|value_id| NodeInspector::new(value_id, self.tree, self.interner))
         }
 
-        /// Check if this bind is a type bind and return an inspector for it
         pub fn as_type(self) -> Option<NodeInspector<'t, Id<TypeBind>, S>> {
             let bind = self.node.get(self.tree);
             bind.to_type()
                 .map(|type_id| NodeInspector::new(type_id, self.tree, self.interner))
         }
 
-        /// Check if this bind is a module type bind and return an inspector for it
         pub fn as_module_type(self) -> Option<NodeInspector<'t, Id<ModuleTypeBind>, S>> {
             let bind = self.node.get(self.tree);
             bind.to_module_type()
                 .map(|mt_id| NodeInspector::new(mt_id, self.tree, self.interner))
         }
 
-        /// Check if this bind is an opaque type bind and return an inspector for it
         pub fn as_opaque_type(self) -> Option<NodeInspector<'t, Id<OpaqueTypeBind>, S>> {
             let bind = self.node.get(self.tree);
             bind.to_opaque_type()
@@ -915,33 +906,24 @@ mod inspector {
         }
     }
 
-    impl<'t, S: BuildHasher> NamedNode for NodeInspector<'t, Id<ModuleBind>, S> {
-        fn assert_name(self, expected: &str, node_type: &str) -> Self {
+    impl<'t, S: BuildHasher> NodeInspector<'t, Id<ModuleBind>, S> {
+        pub fn has_name(self, expected: &str) -> Self {
             let name = self.node.get(self.tree).name.get(self.tree);
             let name = self.interner.get(name.0).expect("Symbol not found");
 
             assert_eq!(
                 name, expected,
-                "Expected {} name '{}' but found '{}'",
-                node_type, expected, name
+                "Expected module name '{}' but found '{}'",
+                expected, name
             );
             self
         }
-    }
 
-    impl<'t, S: BuildHasher> NodeInspector<'t, Id<ModuleBind>, S> {
-        /// Assert the module bind has the specified name
-        pub fn has_name(self, expected: &str) -> Self {
-            self.assert_name(expected, "module")
-        }
-
-        /// Get an inspector for the module's implementation
         pub fn value(self) -> NodeInspector<'t, Id<ModuleExpr>, S> {
             let module_bind = self.node.get(self.tree);
             NodeInspector::new(module_bind.value, self.tree, self.interner)
         }
 
-        /// Get an inspector for the module's interface if it has one
         pub fn module_type(self) -> Option<NodeInspector<'t, Id<ModuleType>, S>> {
             let module_bind = self.node.get(self.tree);
             module_bind
@@ -950,54 +932,38 @@ mod inspector {
         }
     }
 
-    impl<'t, S: BuildHasher> NamedNode for NodeInspector<'t, Id<OpaqueTypeBind>, S> {
-        fn assert_name(self, expected: &str, node_type: &str) -> Self {
+    impl<'t, S: BuildHasher> NodeInspector<'t, Id<OpaqueTypeBind>, S> {
+        pub fn has_name(self, expected: &str) -> Self {
             let name = self.node.get(self.tree).name.get(self.tree);
             let name = self.interner.get(name.0).expect("Symbol not found");
 
             assert_eq!(
                 name, expected,
-                "Expected {} name '{}' but found '{}'",
-                node_type, expected, name
+                "Expected opaque type name '{}' but found '{}'",
+                expected, name
             );
             self
         }
-    }
 
-    impl<'t, S: BuildHasher> NodeInspector<'t, Id<OpaqueTypeBind>, S> {
-        /// Assert the opaque type bind has the specified name
-        pub fn has_name(self, expected: &str) -> Self {
-            self.assert_name(expected, "opaque type")
-        }
-
-        /// Get an inspector for the opaque type's implementation
         pub fn type_node(self) -> NodeInspector<'t, Id<Type>, S> {
             let opaque_type_bind = self.node.get(self.tree);
             NodeInspector::new(opaque_type_bind.ty, self.tree, self.interner)
         }
     }
 
-    impl<'t, S: BuildHasher> NamedNode for NodeInspector<'t, Id<ModuleTypeBind>, S> {
-        fn assert_name(self, expected: &str, node_type: &str) -> Self {
+    impl<'t, S: BuildHasher> NodeInspector<'t, Id<ModuleTypeBind>, S> {
+        pub fn has_name(self, expected: &str) -> Self {
             let name = self.node.get(self.tree).name.get(self.tree);
             let name = self.interner.get(name.0).expect("Symbol not found");
 
             assert_eq!(
                 name, expected,
-                "Expected {} name '{}' but found '{}'",
-                node_type, expected, name
+                "Expected module type name '{}' but found '{}'",
+                expected, name
             );
             self
         }
-    }
 
-    impl<'t, S: BuildHasher> NodeInspector<'t, Id<ModuleTypeBind>, S> {
-        /// Assert the module type bind has the specified name
-        pub fn has_name(self, expected: &str) -> Self {
-            self.assert_name(expected, "module type")
-        }
-
-        /// Get an inspector for the module type
         pub fn type_node(self) -> NodeInspector<'t, Id<ModuleType>, S> {
             let module_type_bind = self.node.get(self.tree);
             NodeInspector::new(module_type_bind.ty, self.tree, self.interner)
@@ -1005,7 +971,6 @@ mod inspector {
     }
 
     impl<'t, S: BuildHasher> NodeInspector<'t, Id<ModuleType>, S> {
-        /// Assert the module type has the specified number of specifications
         pub fn has_specs(self, count: usize) -> Self {
             let specs_len = self.node.get(self.tree).0.len();
             assert_eq!(
@@ -1016,7 +981,6 @@ mod inspector {
             self
         }
 
-        /// Get an inspector for the spec at the given index
         pub fn spec_at(self, index: usize) -> NodeInspector<'t, Id<Spec>, S> {
             let module_type = self.node.get(self.tree);
             assert!(
@@ -1031,28 +995,24 @@ mod inspector {
     }
 
     impl<'t, S: BuildHasher> NodeInspector<'t, Id<Spec>, S> {
-        /// Check if this spec is a value spec and return an inspector for it
         pub fn as_value(self) -> Option<NodeInspector<'t, Id<ValueSpec>, S>> {
             let spec = self.node.get(self.tree);
             spec.to_value()
                 .map(|value_id| NodeInspector::new(value_id, self.tree, self.interner))
         }
 
-        /// Check if this spec is a type bind and return an inspector for it
         pub fn as_type_bind(self) -> Option<NodeInspector<'t, Id<TypeBind>, S>> {
             let spec = self.node.get(self.tree);
             spec.to_type_bind()
                 .map(|type_id| NodeInspector::new(type_id, self.tree, self.interner))
         }
 
-        /// Check if this spec is a module spec and return an inspector for it
         pub fn as_module(self) -> Option<NodeInspector<'t, Id<ModuleSpec>, S>> {
             let spec = self.node.get(self.tree);
             spec.to_module()
                 .map(|module_id| NodeInspector::new(module_id, self.tree, self.interner))
         }
 
-        /// Check if this spec is an opaque type spec and return an inspector for it
         pub fn as_opaque_type(self) -> Option<NodeInspector<'t, Id<OpaqueTypeSpec>, S>> {
             let spec = self.node.get(self.tree);
             spec.to_opaque_type()
@@ -1060,43 +1020,22 @@ mod inspector {
         }
     }
 
-    impl<'t, S: BuildHasher> NamedNode for NodeInspector<'t, Id<ValueSpec>, S> {
-        fn assert_name(self, expected: &str, node_type: &str) -> Self {
+    impl<'t, S: BuildHasher> NodeInspector<'t, Id<ValueSpec>, S> {
+        pub fn has_name(self, expected: &str) -> Self {
             let name = self.node.get(self.tree).name.get(self.tree);
             let name = self.interner.get(name.0).expect("Symbol not found");
 
             assert_eq!(
                 name, expected,
-                "Expected {} name '{}' but found '{}'",
-                node_type, expected, name
+                "Expected value spec name '{}' but found '{}'",
+                expected, name
             );
             self
-        }
-    }
-
-    impl<'t, S: BuildHasher> NodeInspector<'t, Id<ValueSpec>, S> {
-        /// Assert the value spec has the specified name
-        pub fn has_name(self, expected: &str) -> Self {
-            self.assert_name(expected, "value spec")
         }
 
         pub fn type_node(self) -> NodeInspector<'t, Id<Type>, S> {
             let value_spec = self.node.get(self.tree);
             NodeInspector::new(value_spec.ty, self.tree, self.interner)
-        }
-    }
-
-    impl<'t, S: BuildHasher> NamedNode for NodeInspector<'t, Id<ValueBind>, S> {
-        fn assert_name(self, expected: &str, node_type: &str) -> Self {
-            let name = self.node.get(self.tree).name.get(self.tree);
-            let name = self.interner.get(name.0).expect("Symbol not found");
-
-            assert_eq!(
-                name, expected,
-                "Expected {} name '{}' but found '{}'",
-                node_type, expected, name
-            );
-            self
         }
     }
 
@@ -1106,12 +1045,18 @@ mod inspector {
             NodeInspector::new(value_bind.vis, self.tree, self.interner)
         }
 
-        /// Assert the value bind has the specified name
         pub fn has_name(self, expected: &str) -> Self {
-            self.assert_name(expected, "value")
+            let name = self.node.get(self.tree).name.get(self.tree);
+            let name = self.interner.get(name.0).expect("Symbol not found");
+
+            assert_eq!(
+                name, expected,
+                "Expected value name '{}' but found '{}'",
+                expected, name
+            );
+            self
         }
 
-        /// Get an inspector for the value's type if it has one
         pub fn type_node(self) -> Option<NodeInspector<'t, Id<Type>, S>> {
             let value_bind = self.node.get(self.tree);
             value_bind
@@ -1119,88 +1064,63 @@ mod inspector {
                 .map(|ty_id| NodeInspector::new(ty_id, self.tree, self.interner))
         }
 
-        /// Get an inspector for the value's expression
         pub fn value(self) -> NodeInspector<'t, Id<Expr>, S> {
             let value_bind = self.node.get(self.tree);
             NodeInspector::new(value_bind.value, self.tree, self.interner)
         }
     }
 
-    impl<'t, S: BuildHasher> NamedNode for NodeInspector<'t, Id<TypeBind>, S> {
-        fn assert_name(self, expected: &str, node_type: &str) -> Self {
+    impl<'t, S: BuildHasher> NodeInspector<'t, Id<TypeBind>, S> {
+        pub fn has_name(self, expected: &str) -> Self {
             let name = self.node.get(self.tree).name.get(self.tree);
             let name = self.interner.get(name.0).expect("Symbol not found");
 
             assert_eq!(
                 name, expected,
-                "Expected {} name '{}' but found '{}'",
-                node_type, expected, name
+                "Expected type name '{}' but found '{}'",
+                expected, name
             );
             self
         }
-    }
 
-    impl<'t, S: BuildHasher> NodeInspector<'t, Id<TypeBind>, S> {
-        /// Assert the type bind has the specified name
-        pub fn has_name(self, expected: &str) -> Self {
-            self.assert_name(expected, "type")
-        }
-
-        /// Get an inspector for the type definition
         pub fn type_node(self) -> NodeInspector<'t, Id<Type>, S> {
             let type_bind = self.node.get(self.tree);
             NodeInspector::new(type_bind.ty, self.tree, self.interner)
         }
     }
 
-    impl<'t, S: BuildHasher> NamedNode for NodeInspector<'t, Id<ModuleSpec>, S> {
-        fn assert_name(self, expected: &str, node_type: &str) -> Self {
+    impl<'t, S: BuildHasher> NodeInspector<'t, Id<ModuleSpec>, S> {
+        pub fn has_name(self, expected: &str) -> Self {
             let name = self.node.get(self.tree).name.get(self.tree);
             let name = self.interner.get(name.0).expect("Symbol not found");
 
             assert_eq!(
                 name, expected,
-                "Expected {} name '{}' but found '{}'",
-                node_type, expected, name
+                "Expected module spec name '{}' but found '{}'",
+                expected, name
             );
             self
         }
-    }
 
-    impl<'t, S: BuildHasher> NodeInspector<'t, Id<ModuleSpec>, S> {
-        /// Assert the module spec has the specified name
-        pub fn has_name(self, expected: &str) -> Self {
-            self.assert_name(expected, "module spec")
-        }
-
-        /// Get an inspector for the module spec's type
         pub fn module_type(self) -> NodeInspector<'t, Id<ModuleType>, S> {
             let module_spec = self.node.get(self.tree);
             NodeInspector::new(module_spec.ty, self.tree, self.interner)
         }
     }
 
-    impl<'t, S: BuildHasher> NamedNode for NodeInspector<'t, Id<OpaqueTypeSpec>, S> {
-        fn assert_name(self, expected: &str, node_type: &str) -> Self {
+    impl<'t, S: BuildHasher> NodeInspector<'t, Id<OpaqueTypeSpec>, S> {
+        pub fn has_name(self, expected: &str) -> Self {
             let name = self.node.get(self.tree).name.get(self.tree);
             let name = self.interner.get(name.0).expect("Symbol not found");
 
             assert_eq!(
                 name, expected,
-                "Expected {} name '{}' but found '{}'",
-                node_type, expected, name
+                "Expected opaque type spec name '{}' but found '{}'",
+                expected, name
             );
             self
         }
-    }
 
-    impl<'t, S: BuildHasher> NodeInspector<'t, Id<OpaqueTypeSpec>, S> {
-        /// Assert the opaque type spec has the specified name
-        pub fn has_name(self, expected: &str) -> Self {
-            self.assert_name(expected, "opaque type spec")
-        }
-
-        /// Get an inspector for the opaque type's kind
         pub fn kind(self) -> NodeInspector<'t, Id<OpaqueTypeKind>, S> {
             let opaque_type_spec = self.node.get(self.tree);
             NodeInspector::new(opaque_type_spec.kind, self.tree, self.interner)
@@ -1208,7 +1128,6 @@ mod inspector {
     }
 
     impl<'t, S: BuildHasher> NodeInspector<'t, Id<OpaqueTypeKind>, S> {
-        /// Assert the opaque type kind has the specified arity
         pub fn has_arity(self, expected: usize) -> Self {
             let arity = self.node.get(self.tree).arity;
             assert_eq!(

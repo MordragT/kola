@@ -44,10 +44,10 @@ impl<T> Id<T> {
         metadata.meta_mut(self)
     }
 
-    pub(crate) fn cast<U>(self) -> Id<U> {
-        Id {
-            id: self.id,
-            t: PhantomData,
-        }
-    }
+    // pub(crate) fn cast<U>(self) -> Id<U> {
+    //     Id {
+    //         id: self.id,
+    //         t: PhantomData,
+    //     }
+    // }
 }

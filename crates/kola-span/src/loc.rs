@@ -45,6 +45,17 @@ impl Loc {
     pub fn span(&self) -> Span {
         self.span
     }
+
+    #[inline]
+    pub fn map_span<F>(&self, f: F) -> Self
+    where
+        F: FnOnce(Span) -> Span,
+    {
+        Self {
+            path: self.path,
+            span: f(self.span),
+        }
+    }
 }
 
 impl IntoIterator for Loc {

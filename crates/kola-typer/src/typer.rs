@@ -4,7 +4,7 @@ use kola_resolver::{GlobalId, phase::ResolvedNodes};
 use kola_span::{Diagnostic, Loc, Located, Report};
 use kola_syntax::prelude::*;
 use kola_tree::prelude::*;
-use kola_utils::errors::Errors;
+use kola_utils::{errors::Errors, interner::StrInterner};
 
 use crate::{
     env::{KindEnv, TypeEnv},
@@ -12,7 +12,7 @@ use crate::{
     phase::{TypePhase, TypedNodes},
     scope::{BoundVars, TypeScope},
     substitute::{Substitutable, Substitution},
-    types::{Kind, MonoType, PolyType, Property, TypeVar, Typed},
+    types::{Kind, LabeledType, MonoType, PolyType, TypeVar, Typed},
     unify::Unifiable,
 };
 
@@ -116,6 +116,7 @@ pub struct Typer<'a, N> {
     types: TypedNodes,
     spans: Rc<Locations>,
     env: &'a TypeEnv,
+    interner: &'a StrInterner,
     resolved: &'a ResolvedNodes,
 }
 
@@ -124,6 +125,7 @@ impl<'a, N> Typer<'a, N> {
         root_id: Id<N>,
         spans: Rc<Locations>,
         env: &'a TypeEnv,
+        interner: &'a StrInterner,
         resolved: &'a ResolvedNodes,
     ) -> Self {
         Self {
@@ -135,6 +137,7 @@ impl<'a, N> Typer<'a, N> {
             types: TypedNodes::new(),
             spans,
             env,
+            interner,
             resolved,
         }
     }
@@ -203,9 +206,9 @@ impl<'a, N> Typer<'a, N> {
         let t_prime = MonoType::variable();
 
         // TODO handle field path
-        let head = Property {
-            k: field.get(tree).0.clone(),
-            v: MonoType::variable(),
+        let head = LabeledType {
+            label: field.get(tree).0.clone(),
+            ty: MonoType::variable(),
         };
 
         self.cons
@@ -228,6 +231,278 @@ where
         _tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
         // Skip module binds altogether
+        ControlFlow::Continue(())
+    }
+
+    fn visit_type_bind(
+        &mut self,
+        id: Id<node::TypeBind>,
+        tree: &T,
+    ) -> ControlFlow<Self::BreakValue> {
+        let node::TypeBind { name, ty } = *id.get(tree);
+
+        self.visit_type(ty, tree)?;
+        let pt = self.types.meta(ty).clone();
+
+        self.update_type(id, pt);
+        ControlFlow::Continue(())
+    }
+
+    fn visit_type(&mut self, id: Id<node::Type>, tree: &T) -> ControlFlow<Self::BreakValue> {
+        let node::Type { vars, ty } = id.get(tree);
+
+        let type_vars = vars
+            .iter()
+            .map(|v| {
+                let type_var = TypeVar::new();
+
+                let name = v.get(tree).0;
+                let pt = PolyType::new(type_var.into());
+
+                self.type_scope.enter(name, pt);
+                type_var
+            })
+            .collect::<Vec<_>>();
+
+        self.visit_type_expr(*ty, tree)?;
+        let ty = self.types.meta(*ty).to_mono().unwrap();
+
+        for var in vars.iter().rev() {
+            let name = var.get(tree).0;
+            self.type_scope.exit(&name);
+        }
+
+        let pt = PolyType {
+            vars: type_vars,
+            ty,
+        };
+        self.update_type(id, pt);
+
+        ControlFlow::Continue(())
+    }
+
+    fn visit_type_var(&mut self, id: Id<node::TypeVar>, tree: &T) -> ControlFlow<Self::BreakValue> {
+        // TODO is this only called for type variables that are looked up and not created? Hopefully
+        let node::TypeVar(name) = *id.get(tree);
+        let Some(pt) = self.type_scope.get(&name).cloned() else {
+            return ControlFlow::Break(Diagnostic::error(
+                self.span(id),
+                format!("Type variable not found in scope"),
+            ));
+        };
+
+        self.update_type(id, pt);
+        ControlFlow::Continue(())
+    }
+
+    fn visit_type_expr(
+        &mut self,
+        id: Id<node::TypeExpr>,
+        tree: &T,
+    ) -> ControlFlow<Self::BreakValue> {
+        self.walk_type_expr(id, tree)?;
+
+        // Are these all MonoTypes?
+        let pt = match *id.get(tree) {
+            node::TypeExpr::Error(_) => todo!(),
+            node::TypeExpr::Path(p) => self.types.meta(p).clone(),
+            node::TypeExpr::Func(f) => PolyType::new(self.types.meta(f).clone()),
+            node::TypeExpr::Application(a) => self.types.meta(a).clone(),
+            node::TypeExpr::Record(r) => PolyType::new(self.types.meta(r).clone()),
+            node::TypeExpr::Variant(v) => PolyType::new(self.types.meta(v).clone()),
+        };
+
+        self.update_type(id, pt);
+        ControlFlow::Continue(())
+    }
+
+    fn visit_type_path(
+        &mut self,
+        id: Id<node::TypePath>,
+        tree: &T,
+    ) -> ControlFlow<Self::BreakValue> {
+        let node::TypePath { path, ty } = *id.get(tree);
+
+        let name = ty.get(tree).0;
+
+        let span = self.span(id);
+
+        let pt = if let Some(path) = path {
+            let module_sym = *self.resolved.meta(path);
+
+            let type_sym = self.env[module_sym]
+                .get_type(name)
+                .expect("Value not found in module");
+
+            let pt = &self.env[type_sym];
+            pt.clone()
+        } else if let Some(pt) = self.type_scope.get(&name) {
+            pt.clone()
+        } else {
+            let name_str = self.interner.get(name).unwrap();
+
+            let t = match name_str {
+                "Bool" => MonoType::BOOL,
+                "Char" => MonoType::CHAR,
+                "Num" => MonoType::NUM,
+                "Str" => MonoType::STR,
+                _ => return ControlFlow::Break(Diagnostic::error(span, "Type not found in scope")),
+            };
+
+            PolyType::new(t)
+        };
+
+        self.update_type(id, pt);
+        ControlFlow::Continue(())
+    }
+
+    fn visit_func_type(
+        &mut self,
+        id: Id<node::FuncType>,
+        tree: &T,
+    ) -> ControlFlow<Self::BreakValue> {
+        let node::FuncType { input, output } = *id.get(tree);
+
+        self.visit_type_expr(input, tree)?;
+        let arg = self.types.meta(input).to_mono().unwrap();
+
+        self.visit_type_expr(output, tree)?;
+        let ret = self.types.meta(output).to_mono().unwrap();
+
+        let func_t = MonoType::func(arg, ret);
+
+        self.update_type(id, func_t);
+        ControlFlow::Continue(())
+    }
+
+    fn visit_type_application(
+        &mut self,
+        id: Id<node::TypeApplication>,
+        tree: &T,
+    ) -> ControlFlow<Self::BreakValue> {
+        let node::TypeApplication { constructor, arg } = *id.get(tree);
+
+        // Okay here is a problem again, as far as I can see it would be great if the
+        // ctor would be a PolyType and the arg a MonoType.
+
+        self.visit_type_expr(arg, tree)?;
+        let arg = self.types.meta(arg).to_mono().unwrap();
+
+        self.visit_type_expr(constructor, tree)?;
+        let PolyType { vars, ty } = self.types.meta(constructor);
+
+        let [first, rest @ ..] = vars.as_slice() else {
+            return ControlFlow::Break(Diagnostic::error(
+                self.span(id),
+                "Type application requires at least one type variable",
+            ));
+        };
+
+        // TODO should I really eagerly substitute here if my typer is essentially lazy constraint based ?
+        let mut subs = Substitution::unit(*first, arg);
+
+        let ty = ty.clone().apply(&mut subs);
+
+        let pt = PolyType {
+            ty,
+            vars: rest.to_vec(),
+        };
+
+        self.update_type(id, pt);
+        ControlFlow::Continue(())
+    }
+
+    fn visit_record_type(
+        &mut self,
+        id: Id<node::RecordType>,
+        tree: &T,
+    ) -> ControlFlow<Self::BreakValue> {
+        self.walk_record_type(id, tree)?;
+
+        let node::RecordType { fields, extension } = id.get(tree);
+
+        let tail = if let Some(ext) = extension {
+            self.visit_type_var(*ext, tree)?;
+            self.types.meta(*ext).to_mono().unwrap()
+        } else {
+            MonoType::empty_row()
+        };
+
+        let record_t = fields.iter().fold(tail, |acc, &field| {
+            let head = self.types.meta(field).clone();
+            MonoType::row(head, acc)
+        });
+
+        // TODO extension handling
+
+        self.update_type(id, record_t);
+        ControlFlow::Continue(())
+    }
+
+    fn visit_record_field_type(
+        &mut self,
+        id: Id<node::RecordFieldType>,
+        tree: &T,
+    ) -> ControlFlow<Self::BreakValue> {
+        let node::RecordFieldType { name, ty } = *id.get(tree);
+
+        let label = name.get(tree).0;
+
+        self.visit_type_expr(ty, tree)?;
+        let ty = self.types.meta(ty).to_mono().unwrap();
+
+        let labeled_t = LabeledType { label, ty };
+
+        self.update_type(id, labeled_t);
+        ControlFlow::Continue(())
+    }
+
+    fn visit_variant_type(
+        &mut self,
+        id: Id<node::VariantType>,
+        tree: &T,
+    ) -> ControlFlow<Self::BreakValue> {
+        self.walk_variant_type(id, tree)?;
+
+        let node::VariantType { cases, extension } = id.get(tree);
+
+        let tail = if let Some(ext) = extension {
+            self.visit_type_var(*ext, tree)?;
+            self.types.meta(*ext).to_mono().unwrap()
+        } else {
+            MonoType::empty_row()
+        };
+
+        let variant_t = cases.iter().fold(tail, |acc, &case| {
+            let head = self.types.meta(case).clone();
+            MonoType::row(head, acc)
+        });
+
+        // TODO extension handling
+
+        self.update_type(id, variant_t);
+        ControlFlow::Continue(())
+    }
+
+    fn visit_variant_case_type(
+        &mut self,
+        id: Id<node::VariantCaseType>,
+        tree: &T,
+    ) -> ControlFlow<Self::BreakValue> {
+        let node::VariantCaseType { name, ty } = *id.get(tree);
+
+        let label = name.get(tree).0;
+
+        let ty = if let Some(ty) = ty {
+            self.visit_type_expr(ty, tree)?;
+            self.types.meta(ty).to_mono().unwrap()
+        } else {
+            MonoType::UNIT
+        };
+
+        let labeled_t = LabeledType { label, ty };
+
+        self.update_type(id, labeled_t);
         ControlFlow::Continue(())
     }
 
@@ -356,9 +631,9 @@ where
 
             let field_t = MonoType::variable();
 
-            let head = Property {
-                k: field.get(tree).0.clone(),
-                v: field_t.clone(),
+            let head = LabeledType {
+                label: field.get(tree).0.clone(),
+                ty: field_t.clone(),
             };
 
             self.cons
@@ -380,10 +655,10 @@ where
 
         let node::RecordField { field, value } = *id.get(tree);
 
-        let k = field.get(tree).0.clone();
-        let v = self.types.meta(value).clone();
+        let label = field.get(tree).0.clone();
+        let ty = self.types.meta(value).clone();
 
-        self.update_type(id, Property { k, v });
+        self.update_type(id, LabeledType { label, ty });
         ControlFlow::Continue(())
     }
 
@@ -437,9 +712,9 @@ where
         self.cons.constrain_kind(Kind::Record, t1.clone(), span);
 
         // TODO handle record field path
-        let head = Property {
-            k: field.get(tree).0.clone(),
-            v: t0.clone(),
+        let head = LabeledType {
+            label: field.get(tree).0.clone(),
+            ty: t0.clone(),
         };
         let row = MonoType::row(head, t1.clone());
 
@@ -493,9 +768,9 @@ where
         let t0 = self.partial_restrict(source, field, span, tree);
         let t2 = self.types.meta(value).clone();
 
-        let head = Property {
-            k: field.get(tree).0.clone(),
-            v: t2,
+        let head = LabeledType {
+            label: field.get(tree).0.clone(),
+            ty: t2,
         };
         let row = MonoType::row(head, t0);
 
@@ -822,7 +1097,14 @@ mod tests {
 
         let mut report = Report::new();
 
-        Typer::new(root_id, spans, &TypeEnv::new(), &ResolvedNodes::new()).solve(&tree, &mut report)
+        Typer::new(
+            root_id,
+            spans,
+            &TypeEnv::new(),
+            &StrInterner::new(), // TODO for tests with builtin types the interner should be passed
+            &ResolvedNodes::new(),
+        )
+        .solve(&tree, &mut report)
     }
 
     #[test]

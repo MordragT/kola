@@ -1,6 +1,13 @@
 use kola_utils::{errors::Errors, fmt::DisplayWithInterner, interner::StrKey};
+use thiserror::Error;
 
-use crate::types::{Kind, MonoType, TypeVar};
+use crate::types::{Kind, MonoType, PolyType, TypeVar};
+
+#[derive(Debug, Clone, Error)]
+pub enum TypeConversionError {
+    #[error("Cannot convert `{0}` to a monomorphic type")]
+    NotMonomorphic(PolyType),
+}
 
 pub type TypeErrors = Errors<TypeError>;
 

@@ -40,6 +40,7 @@ impl Driver {
             module_scopes,
             entry_points,
             value_orders,
+            type_orders,
         } = resolve(
             path,
             &self.io,
@@ -62,6 +63,7 @@ impl Driver {
             &module_graph,
             &module_scopes,
             &value_orders,
+            &type_orders,
             &self.arena,
             &mut self.interner,
             &mut self.report,

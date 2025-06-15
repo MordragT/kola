@@ -21,12 +21,15 @@
         else if score >= 70 then 'C'
         else 'F',
 
-    # Complex arithmetic with multiple binary operations
-    formula = fn x => fn y =>
-        let sum = x + y in
-        let diff = x - y in
-        let product = sum * diff in
-        product / 2,
+    export module Formula = {
+
+        # Complex arithmetic with multiple binary operations
+        export formula = fn x => fn y =>
+            let sum = x + y in
+            let diff = x - y in
+            let product = sum * diff in
+            product / 2,
+    },
 
     # Entry point that exercises everything
     main =
@@ -34,6 +37,6 @@
         let result1 = (compute test_num) in
         let result2 = ((max result1) 100) in
         let grade = (categorize 85) in
-        let final_calc = ((formula result2) 50) in
+        let final_calc = ((Formula::formula result2) 50) in
         final_calc + 1000,
 }
