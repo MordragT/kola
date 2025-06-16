@@ -99,14 +99,6 @@ impl Constraints {
 // Generalization
 // Γ'(τ) quantifies all monotype variables not bound in Γ
 
-// TODO τ for normal types
-// r for record types ?
-
-// TODO: Since I have "open polytypes" that need final substitution,
-// I should defer populating the public `TypeEnvironment`
-// until **after** constraint solving and substitution.
-// for that I need to cache the NodeIDs of the "public" types
-
 pub struct Typer<'a, N> {
     root_id: Id<N>,
     subs: Substitution,
@@ -599,12 +591,13 @@ where
     ///
     /// Record Selection:
     /// ```
-    /// ∆;Γ ⊢ r : r_t
-    /// field_t = newvar()
+    /// ∆;Γ ⊢ record : record_t
+    /// value_t = newvar()
     /// tail_t = newvar()
-    /// unify(r_t, { l : field_t | tail_t })
+    /// head_t = ("label" : value_t)
+    /// unify(record_t, { head_t | tail_t })
     /// -----------------------
-    /// ∆;Γ ⊢ r.l : field_t
+    /// ∆;Γ ⊢ record.label : value_t
     /// ```
     ///
     /// Variable Lookup:
@@ -654,11 +647,12 @@ where
             self.cons
                 .constrain_kind(Kind::Record, record_t.clone(), span);
 
-            let field_t = MonoType::variable();
+            let value_t = MonoType::variable();
+            let label = field.get(tree).0.clone();
 
             let head_t = LabeledType {
-                label: field.get(tree).0.clone(),
-                ty: field_t.clone(),
+                label,
+                ty: value_t.clone(),
             };
 
             self.cons.constrain(
@@ -667,7 +661,7 @@ where
                 span,
             );
 
-            field_t
+            value_t
         });
 
         self.update_type(id, result_t);
@@ -678,8 +672,9 @@ where
     ///
     /// ```
     /// ∆;Γ ⊢ value : value_t
+    /// head_t = ("label" : value_t)
     /// -----------------------
-    /// ∆;Γ ⊢ field : value : LabeledType { field, value_t } // TODO I do not like this
+    /// ∆;Γ ⊢ (label : value) : head_t
     /// ```
     ///
     /// Implementation:
@@ -697,16 +692,25 @@ where
         let node::RecordField { field, value } = *id.get(tree);
 
         let label = field.get(tree).0.clone();
-        let ty = self.types.meta(value).clone();
+        let value_t = self.types.meta(value).clone();
 
-        self.update_type(id, LabeledType { label, ty });
+        self.update_type(id, LabeledType { label, ty: value_t });
         ControlFlow::Continue(())
     }
 
-    // Rule for Record Instantiation via Induction
-    // ∆;Γ ⊢ R : { l0 : t0, ..., ln : tn | {} }
-    // -----------------------
-    // ∆;Γ ⊢ R : { { l1 : t1, ..., ln : tn } | +l0 : τ0 | {} } // TODO can't I use this recursive rule def ?
+    /// Rule for Record Expression
+    ///
+    /// ```
+    /// ∆;Γ ⊢ v0 : t0
+    /// head_t0 = ("l0" : t0)
+    /// ...
+    /// ∆;Γ ⊢ vn : tn
+    /// head_tn = ("ln" : tn)
+    /// -----------------------
+    /// ∆;Γ ⊢ { l0 : v0, ..., ln : vn } : { head_t0, ..., head_tn | {} }
+    /// ```
+    ///
+    /// Type signature: Build record type from field types
     fn visit_record_expr(
         &mut self,
         id: Id<node::RecordExpr>,
@@ -725,13 +729,14 @@ where
         ControlFlow::Continue(())
     }
 
-    /// Rule for Record Extension of `r` with label `l` and value `v`
+    /// Rule for Record Extension of `source` with a new field `label` and value `value`
     ///
     /// ```
-    /// ∆;Γ ⊢ v : value_t
-    /// ∆;Γ ⊢ r : source_t where source_t is of kind Record
+    /// ∆;Γ ⊢ value : value_t
+    /// ∆;Γ ⊢ source : source_t where source_t is of kind Record
+    /// head_t = ("label" : value_t)
     /// -----------------------
-    /// ∆;Γ ⊢ { r | +l = v } : { l : value_t | source_t }
+    /// ∆;Γ ⊢ { source | +label = value } : { head_t | source_t }
     /// ```
     ///
     /// Type signature: `∀r α. α → {r} → {l : α | r}`
@@ -756,9 +761,9 @@ where
         self.cons
             .constrain_kind(Kind::Record, source_t.clone(), span);
 
-        // TODO handle record field path
+        let label = field.get(tree).0.clone();
         let head_t = LabeledType {
-            label: field.get(tree).0.clone(),
+            label,
             ty: value_t.clone(),
         };
         let result_t = MonoType::row(head_t, source_t.clone());
@@ -771,11 +776,12 @@ where
     ///
     /// ```
     /// ∆;Γ ⊢ source : source_t
-    /// field_t = newvar()
+    /// value_t = newvar()
     /// tail_t = newvar()
-    /// unify(source_t, { field : field_t | tail_t })
+    /// head_t = ("label" : value_t)
+    /// unify(source_t, { head_t | tail_t })
     /// -----------------------
-    /// ∆;Γ ⊢ { source | -field } : tail_t
+    /// ∆;Γ ⊢ { source | -label } : tail_t
     /// ```
     ///
     /// Implementation:
@@ -783,7 +789,7 @@ where
     /// - Unify `source` with `{ field : field_t | tail_t }` to decompose the record
     /// - Result is `tail_t` (the remaining record without the restricted field)
     ///
-    /// Type signature: `∀r α. {field : α | r} → r`
+    /// Type signature: `∀r α. {"label" : α | r} → r`
     fn visit_record_restrict_expr(
         &mut self,
         id: Id<node::RecordRestrictExpr>,
@@ -799,11 +805,9 @@ where
         self.cons
             .constrain_kind(Kind::Record, source_t.clone(), span);
 
-        let field_t = MonoType::variable();
-        let head_t = LabeledType {
-            label: field.get(tree).0.clone(),
-            ty: field_t,
-        };
+        let value_t = MonoType::variable();
+        let label = field.get(tree).0.clone();
+        let head_t = LabeledType { label, ty: value_t };
         let tail_t = MonoType::variable();
         self.cons.constrain(
             MonoType::row(head_t, tail_t.clone()),
@@ -853,22 +857,23 @@ where
     /// ```
     /// ∆;Γ ⊢ source : source_t
     /// tail_t = newvar()
-    /// old_field_t = newvar()
-    /// unify(source_t, { field : old_field_t | tail_t })
+    /// old_value_t = newvar()
+    /// old_head_t = ("label" : old_value_t)
+    /// unify(source_t, { old_head_t | tail_t })
     ///
-    /// ∆;Γ ⊢ value : value_t
-    /// ∆;Γ ⊢ op : old_field_t → new_field_t
-    /// unify(value_t, new_field_t)
+    /// ∆;Γ ⊢ value : new_value_t
+    /// ∆;Γ ⊢ op : old_value_t → new_value_t
+    /// new_head_t = ("label" : new_value_t)
     /// -----------------------
-    /// ∆;Γ ⊢ { source | field op value } : { field : new_field_t | tail_t }
+    /// ∆;Γ ⊢ { source | label op value } : { new_head_t | tail_t }
     /// ```
     ///
     /// Implementation:
-    /// - Unify `source_t` with `{ field : old_field_t | tail_t }` to decompose the record
-    /// - Unify `op` with `old_field_t → new_field_t` to constrain the operation
-    /// - Result is `{ field : new_field_t | tail_t }` (record with updated field type)
+    /// - Unify `source_t` with `{ label : old_value_t | tail_t }` to decompose the record
+    /// - Unify `op` with `old_value_t → new_value_t` to constrain the operation
+    /// - Result is `{ label : new_value_t | tail_t }` (record with updated field type)
     ///
-    /// Type signature: `∀r α β. {field : α | r} → (α → β) → β → {field : β | r}`
+    /// Type signature: `∀r α β. {"label" : α | r} → (α → β) → β → {"label" : β | r}`
     fn visit_record_update_expr(
         &mut self,
         id: Id<node::RecordUpdateExpr>,
@@ -889,10 +894,11 @@ where
         self.cons
             .constrain_kind(Kind::Record, source_t.clone(), span);
 
-        let old_field_t = MonoType::variable();
+        let old_value_t = MonoType::variable();
+        let label = field.get(tree).0.clone();
         let old_head_t = LabeledType {
-            label: field.get(tree).0.clone(),
-            ty: old_field_t.clone(),
+            label: label.clone(),
+            ty: old_value_t.clone(),
         };
         let tail_t = MonoType::variable();
         self.cons.constrain(
@@ -901,19 +907,19 @@ where
             span,
         );
 
-        let new_field_t = self.types.meta(value).clone();
+        let new_value_t = self.types.meta(value).clone();
 
-        // Treat the update operation as a function: old_field_t -> new_field_t
+        // Treat the update operation as a function: old_value_t -> new_value_t
         let op_t = self.types.meta(op).clone();
         self.cons.constrain(
             op_t,
-            MonoType::func(old_field_t.clone(), new_field_t.clone()),
+            MonoType::func(old_value_t.clone(), new_value_t.clone()),
             span,
         );
 
         let new_head_t = LabeledType {
-            label: field.get(tree).0.clone(),
-            ty: new_field_t,
+            label,
+            ty: new_value_t,
         };
         let result_t = MonoType::row(new_head_t, tail_t);
 
@@ -1075,9 +1081,9 @@ where
     /// ```
     /// ∆;Γ ⊢ value : value_t
     /// value_pt = generalize(value_t, ftv(Γ))
-    /// ∆;Γ, x : value_pt ⊢ body : result_t
+    /// ∆;Γ, name : value_pt ⊢ inside : result_t
     /// -----------------------
-    /// ∆;Γ ⊢ let x = value in body : result_t
+    /// ∆;Γ ⊢ let name = value in inside : result_t
     /// ```
     ///
     /// Implementation uses generalization to allow polymorphic let-bindings
@@ -1087,9 +1093,6 @@ where
             value,
             inside,
         } = id.get(tree);
-
-        // TODO unsure if name is already populated by init inside self.types
-        // otherwise implement traverse function for name
 
         let name = name.get(tree).0.clone();
 
@@ -1124,11 +1127,11 @@ where
     /// ```
     /// ∆;Γ ⊢ predicate : predicate_t
     /// ∆;Γ ⊢ then : then_t
-    /// ∆;Γ ⊢ else : else_t
+    /// ∆;Γ ⊢ or : or_t
     /// unify(predicate_t, Bool)
     /// unify(then_t, else_t)
     /// -----------------------
-    /// ∆;Γ ⊢ if predicate then then else else : then_t
+    /// ∆;Γ ⊢ if predicate then then else or : then_t
     /// ```
     ///
     /// Type signature: `Bool → α → α → α`
@@ -1160,9 +1163,9 @@ where
     ///
     /// ```
     /// param_t = newvar()
-    /// ∆;Γ, x : param_t ⊢ body : body_t
+    /// ∆;Γ, param : param_t ⊢ body : body_t
     /// -----------------------
-    /// ∆;Γ ⊢ λx → body : param_t → body_t
+    /// ∆;Γ ⊢ λparam → body : param_t → body_t
     /// ```
     ///
     /// Type signature: `(α → β)` where α is parameter type, β is body type
