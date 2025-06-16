@@ -406,79 +406,6 @@ impl<'a> Notate<'a> for IrPrinter<'a, LetExpr> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct LetInExpr {
-    pub bind: Symbol,
-    pub value: Id<Expr>,
-    pub inside: Id<Expr>,
-    pub next: Id<Expr>,
-}
-
-impl LetInExpr {
-    pub fn new(
-        bind: Symbol,
-        value: impl Into<Expr>,
-        inside: impl Into<Expr>,
-        next: impl Into<Expr>,
-        builder: &mut IrBuilder,
-    ) -> Self {
-        let value = builder.add(value.into());
-        let inside = builder.add(inside.into());
-        let next = builder.add(next.into());
-
-        Self {
-            bind,
-            value,
-            inside,
-            next,
-        }
-    }
-}
-
-// <bind> = <value> in <inside>;
-// <bind> =
-//    <value>
-//    in
-//    <inside>;
-impl<'a> Notate<'a> for IrPrinter<'a, LetInExpr> {
-    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
-        let LetInExpr {
-            bind,
-            value,
-            inside,
-            next,
-        } = self.node;
-
-        let bind = bind.display_in(arena);
-        let value = self.to(value).notate(arena);
-        let inside = self.to(inside).notate(arena);
-        let next = arena.newline().then(self.to(next).notate(arena), arena);
-
-        let single = [
-            bind.clone(),
-            arena.notate(" = "),
-            value.clone().flatten(arena),
-            arena.notate(" in "),
-            inside.clone().flatten(arena),
-        ]
-        .concat_in(arena);
-
-        let multi = [
-            bind,
-            arena.newline(),
-            arena.notate("= "),
-            value,
-            arena.newline(),
-            arena.notate("in "),
-            inside,
-        ]
-        .concat_in(arena)
-        .indent(arena);
-
-        single.or(multi, arena).then(next, arena)
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct UnaryExpr {
     pub bind: Symbol,
     pub op: UnaryOp,
@@ -1073,7 +1000,7 @@ pub enum Expr {
     Call(CallExpr),
     If(IfExpr),
     Let(LetExpr),
-    LetIn(LetInExpr),
+    // LetIn(LetInExpr),
     Unary(UnaryExpr),
     Binary(BinaryExpr),
     Record(RecordExpr),
@@ -1101,7 +1028,6 @@ impl_try_as!(
     Call(CallExpr),
     If(IfExpr),
     Let(LetExpr),
-    LetIn(LetInExpr),
     Unary(UnaryExpr),
     Binary(BinaryExpr)
 );
@@ -1113,7 +1039,6 @@ impl<'a> Notate<'a> for IrPrinter<'a, Id<Expr>> {
             Expr::Call(expr) => self.to(expr).notate(arena),
             Expr::If(expr) => self.to(expr).notate(arena),
             Expr::Let(expr) => self.to(expr).notate(arena),
-            Expr::LetIn(expr) => self.to(expr).notate(arena),
             Expr::Unary(expr) => self.to(expr).notate(arena),
             Expr::Binary(expr) => self.to(expr).notate(arena),
             Expr::Record(expr) => self.to(expr).notate(arena),

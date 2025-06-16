@@ -1,8 +1,11 @@
+use std::rc::Rc;
+
 use crate::env::Env;
 use kola_ir::{
     id::Id,
     instr::{Atom, Expr, Func, Symbol},
 };
+use kola_utils::interner::StrInterner;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum ReturnClause {
@@ -124,12 +127,12 @@ pub struct ContFrame {
 
 impl ContFrame {
     /// Creates the identity continuation frame  ([ ], (∅, {return x → x}))
-    pub fn identity() -> Self {
+    pub fn identity(interner: impl Into<Rc<StrInterner>>) -> Self {
         Self {
             pure: PureCont::empty(),
             handler_closure: HandlerClosure {
                 handler: Handler::identity(),
-                env: Env::new(),
+                env: Env::new(interner),
             },
         }
     }
@@ -149,10 +152,10 @@ impl Cont {
     }
 
     /// Creates the identity continuation κ0 = [([ ], (∅, {return x → x}))]
-    pub fn identity() -> Self {
+    pub fn identity(interner: impl Into<Rc<StrInterner>>) -> Self {
         // Return continuation with single frame
         Self {
-            frames: vec![ContFrame::identity()],
+            frames: vec![ContFrame::identity(interner)],
         }
     }
 
@@ -164,8 +167,10 @@ impl Cont {
         self.frames.pop()
     }
 
-    pub fn pop_or_identity(&mut self) -> ContFrame {
-        self.frames.pop().unwrap_or_else(ContFrame::identity)
+    pub fn pop_or_identity(&mut self, interner: impl Into<Rc<StrInterner>>) -> ContFrame {
+        self.frames
+            .pop()
+            .unwrap_or_else(|| ContFrame::identity(interner))
     }
 
     pub fn top(&self) -> Option<&ContFrame> {

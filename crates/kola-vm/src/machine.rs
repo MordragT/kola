@@ -1,3 +1,5 @@
+use std::rc::Rc;
+
 use crate::{
     config::{MachineState, OperationConfig, StandardConfig},
     cont::{Cont, ContFrame},
@@ -6,6 +8,7 @@ use crate::{
     value::Value,
 };
 use kola_ir::{instr::Func, ir::Ir};
+use kola_utils::interner::StrInterner;
 
 /// CEK-style abstract machine for interpreting the language
 #[derive(Debug, Clone)]
@@ -18,13 +21,15 @@ pub struct CekMachine {
 
 impl CekMachine {
     /// Create a new CEK machine to evaluate an expression
-    pub fn new(ir: Ir) -> Self {
+    pub fn new(ir: Ir, interner: StrInterner) -> Self {
+        let interner = Rc::new(interner);
+
         // Initial configuration (M-INIT in the paper)
         // C = hM | ∅ | κ0i
         let config = StandardConfig {
             control: *ir.root().get(&ir),
-            env: Env::new(),
-            cont: Cont::identity(),
+            env: Env::new(interner.clone()),
+            cont: Cont::identity(interner.clone()),
         };
 
         Self {
@@ -158,7 +163,7 @@ mod tests {
 
         let ir = ir.finish(root);
 
-        let mut machine = CekMachine::new(ir);
+        let mut machine = CekMachine::new(ir, StrInterner::new());
         let result = machine.run().unwrap();
 
         match result {
@@ -207,7 +212,7 @@ mod tests {
         let ir = ir.finish(root);
 
         // Run the machine
-        let mut machine = CekMachine::new(ir);
+        let mut machine = CekMachine::new(ir, StrInterner::new());
         let result = machine.run().unwrap();
 
         // Check the result
@@ -250,7 +255,7 @@ mod tests {
         let ir = ir.finish(root);
 
         // Run the machine
-        let mut machine = CekMachine::new(ir);
+        let mut machine = CekMachine::new(ir, StrInterner::new());
         let result = machine.run().unwrap();
 
         // Check the result - should be the value of the x field (10)
@@ -299,7 +304,7 @@ mod tests {
         let ir = ir.finish(root);
 
         // Run the machine
-        let mut machine = CekMachine::new(ir);
+        let mut machine = CekMachine::new(ir, StrInterner::new());
         let result = machine.run().unwrap();
 
         // Check the result - should be the value of the y field (20)
@@ -352,7 +357,7 @@ mod tests {
         let ir = ir.finish(root);
 
         // Run the machine
-        let mut machine = CekMachine::new(ir);
+        let mut machine = CekMachine::new(ir, StrInterner::new());
         let result = machine.run().unwrap();
 
         // Check the result - should be the updated value of x (20)

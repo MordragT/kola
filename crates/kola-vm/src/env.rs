@@ -1,43 +1,58 @@
+use std::{ops::Index, rc::Rc};
+
 use kola_collections::ImHashMap;
 use kola_ir::instr::Symbol;
+use kola_utils::interner::{StrInterner, StrKey};
 
 use crate::value::Value;
 
-pub type Env = ImHashMap<Symbol, Value>;
+#[derive(Debug, Clone, PartialEq)]
+pub struct Env {
+    pub bindings: ImHashMap<Symbol, Value>,
+    pub interner: Rc<StrInterner>,
+}
 
-// /// Values in the environment should be fully evaluated (Atom)
-// #[derive(Debug, Clone, PartialEq)]
-// pub struct Env {
-//     pub parent: Option<Box<Env>>,
-//     pub bindings: HashMap<Symbol, Value>,
-// }
+impl Env {
+    pub fn new(interner: impl Into<Rc<StrInterner>>) -> Self {
+        Self {
+            bindings: ImHashMap::new(),
+            interner: interner.into(),
+        }
+    }
 
-// impl Env {
-//     pub fn empty() -> Self {
-//         Self {
-//             bindings: HashMap::new(),
-//             parent: None,
-//         }
-//     }
+    pub fn insert(&mut self, name: Symbol, value: Value) {
+        self.bindings.insert(name, value);
+    }
 
-//     pub fn with_parent(parent: Env) -> Self {
-//         Self {
-//             bindings: HashMap::new(),
-//             parent: Some(Box::new(parent)),
-//         }
-//     }
+    pub fn get(&self, name: &Symbol) -> Option<&Value> {
+        self.bindings.get(name)
+    }
 
-//     pub fn lookup(&self, name: &Symbol) -> Option<&Value> {
-//         if let Some(value) = self.bindings.get(name) {
-//             Some(value)
-//         } else if let Some(parent) = &self.parent {
-//             parent.lookup(name)
-//         } else {
-//             None
-//         }
-//     }
+    pub fn get_str(&self, key: StrKey) -> Option<&str> {
+        self.interner.get(key)
+    }
 
-//     pub fn extend(&mut self, name: Symbol, value: Value) {
-//         self.bindings.insert(name, value);
-//     }
-// }
+    pub fn interner(&self) -> Rc<StrInterner> {
+        self.interner.clone()
+    }
+}
+
+impl Index<Symbol> for Env {
+    type Output = Value;
+
+    fn index(&self, index: Symbol) -> &Self::Output {
+        self.bindings
+            .get(&index)
+            .expect("Symbol not found in environment")
+    }
+}
+
+impl Index<StrKey> for Env {
+    type Output = str;
+
+    fn index(&self, index: StrKey) -> &Self::Output {
+        self.interner
+            .get(index)
+            .expect("String key not found in interner")
+    }
+}

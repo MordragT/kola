@@ -24,6 +24,10 @@ pub enum Value {
 }
 
 impl Value {
+    pub fn str(s: impl Into<String>) -> Self {
+        Value::Str(s.into())
+    }
+
     pub fn is_bool(&self) -> bool {
         matches!(self, Value::Bool(_))
     }

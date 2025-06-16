@@ -11,5 +11,5 @@
 
     person_b = { person_a | name = "Bob" },
 
-    main = 'A',
+    main = "Peter Hans Wuergen",
 }

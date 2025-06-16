@@ -416,7 +416,7 @@ mod tests {
 
         let resolved = mock_resolved(&builder);
         let ir = normalize(builder, lit, &resolved);
-        let mut machine = CekMachine::new(ir);
+        let mut machine = CekMachine::new(ir, StrInterner::new());
         let value = machine.run().unwrap();
 
         assert_eq!(value, Value::Num(10.0))
@@ -439,7 +439,7 @@ mod tests {
 
         let resolved = mock_resolved(&builder);
         let ir = normalize(builder, path_expr, &resolved);
-        let mut machine = CekMachine::new(ir);
+        let mut machine = CekMachine::new(ir, interner);
 
         // Expect unbound symbol error.
         let _err = machine.run().unwrap_err();
@@ -474,7 +474,7 @@ mod tests {
         resolved.insert_meta(let_expr, x_sym);
 
         let ir = normalize(builder, let_expr, &resolved);
-        let mut machine = CekMachine::new(ir);
+        let mut machine = CekMachine::new(ir, interner);
         let value = machine.run().unwrap();
 
         // Should evaluate to 42 (the value bound to x)
@@ -518,7 +518,7 @@ mod tests {
         let call_expr = builder.insert(node::CallExpr { func: lambda, arg });
 
         let ir = normalize(builder, call_expr, &resolved);
-        let mut machine = CekMachine::new(ir);
+        let mut machine = CekMachine::new(ir, interner);
         let value = machine.run().unwrap();
 
         // Should evaluate to 42 (identity function returns its argument)

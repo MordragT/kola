@@ -7,9 +7,9 @@ use crate::{
 use kola_collections::ImShadowMap;
 use kola_ir::{
     instr::{
-        Atom, BinaryExpr, BinaryOp, CallExpr, Expr, Func, IfExpr, LetExpr, LetInExpr,
-        RecordAccessExpr, RecordExpr, RecordExtendExpr, RecordField, RecordRestrictExpr,
-        RecordUpdateExpr, RecordUpdateOp, RetExpr, Symbol, UnaryExpr, UnaryOp,
+        Atom, BinaryExpr, BinaryOp, CallExpr, Expr, Func, IfExpr, LetExpr, RecordAccessExpr,
+        RecordExpr, RecordExtendExpr, RecordField, RecordRestrictExpr, RecordUpdateExpr,
+        RecordUpdateOp, RetExpr, Symbol, UnaryExpr, UnaryOp,
     },
     ir::Ir,
 };
@@ -26,7 +26,7 @@ pub fn eval_atom(atom: Atom, env: &Env) -> Result<Value, String> {
         Atom::Bool(b) => Ok(Value::Bool(b)),
         Atom::Char(c) => Ok(Value::Char(c)),
         Atom::Num(n) => Ok(Value::Num(n)),
-        Atom::Str(s) => todo!(),
+        Atom::Str(s) => Ok(Value::str(&env[s])),
         Atom::Func(f) => {
             // Create a closure by capturing the current environment
             Ok(Value::Func(env.clone(), f))
@@ -44,7 +44,6 @@ impl Eval for Expr {
         match self {
             Expr::Ret(ret_expr) => ret_expr.eval(env, cont, ir),
             Expr::Let(let_expr) => let_expr.eval(env, cont, ir),
-            Expr::LetIn(let_in_expr) => let_in_expr.eval(env, cont, ir),
             Expr::Call(call) => call.eval(env, cont, ir),
             Expr::If(if_expr) => if_expr.eval(env, cont, ir),
             Expr::Unary(unary_expr) => unary_expr.eval(env, cont, ir),
@@ -54,7 +53,6 @@ impl Eval for Expr {
             Expr::RecordRestrict(record_restrict_expr) => record_restrict_expr.eval(env, cont, ir),
             Expr::RecordUpdate(record_update_expr) => record_update_expr.eval(env, cont, ir),
             Expr::RecordAccess(record_access_expr) => record_access_expr.eval(env, cont, ir),
-            // _ => todo!(),
         }
     }
 }
@@ -170,7 +168,7 @@ impl Eval for LetExpr {
             env: env.clone(),
         };
 
-        let mut frame = cont.pop_or_identity();
+        let mut frame = cont.pop_or_identity(env.interner());
         frame.pure.push(pure_frame);
         cont.push(frame);
 
@@ -180,13 +178,6 @@ impl Eval for LetExpr {
             env,
             cont,
         })
-    }
-}
-
-// TODO maybe remove `LetInExpr` altogether and just use `LetExpr`
-impl Eval for LetInExpr {
-    fn eval(&self, env: Env, mut cont: Cont, ir: &Ir) -> MachineState {
-        todo!()
     }
 }
 
@@ -226,7 +217,7 @@ impl Eval for CallExpr {
         };
 
         // Add the frame to the continuation
-        let mut frame = cont.pop_or_identity();
+        let mut frame = cont.pop_or_identity(env.interner());
         frame.pure.push(pure_frame);
         cont.push(frame);
 
@@ -300,7 +291,7 @@ impl Eval for IfExpr {
         };
 
         // Add the frame to the continuation
-        let mut frame = cont.pop_or_identity();
+        let mut frame = cont.pop_or_identity(env.interner());
         frame.pure.push(pure_frame);
         cont.push(frame);
 

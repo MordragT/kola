@@ -85,7 +85,7 @@ impl Driver {
             ir_printer.print(self.print_options, &self.arena);
         }
 
-        let mut machine = CekMachine::new(ir);
+        let mut machine = CekMachine::new(ir, self.interner);
 
         match machine.run() {
             Ok(value) => println!("Execution result: {:?}", value),
