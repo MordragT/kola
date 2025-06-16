@@ -1,5 +1,5 @@
 use derive_more::From;
-use kola_collections::ImShadowMap;
+use kola_collections::{ImShadowMap, ImVec};
 use kola_ir::instr::{Func, Symbol};
 use kola_utils::as_variant;
 use std::fmt;
@@ -21,6 +21,7 @@ pub enum Value {
     Variant(Symbol, Box<Self>),
     /// A record (map of labels to values)
     Record(Record),
+    List(List),
 }
 
 impl Value {
@@ -138,6 +139,7 @@ impl fmt::Display for Value {
             Value::Cont(_) => write!(f, "<continuation>"),
             Value::Variant(label, value) => write!(f, "{}({})", label, value),
             Value::Record(r) => write!(f, "{}", r),
+            Value::List(l) => write!(f, "{}", l),
         }
     }
 }
@@ -197,9 +199,49 @@ impl fmt::Display for Record {
             if !first {
                 write!(f, ", ")?;
             }
-            write!(f, "{} = {}", key, value)?;
+            write!(f, "{key} = {value}")?;
             first = false;
         }
         write!(f, "}}")
+    }
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub struct List(ImVec<Value>);
+
+impl List {
+    pub fn new() -> Self {
+        Self(ImVec::new())
+    }
+
+    pub fn prepend(&mut self, value: Value) {
+        self.0.push_front(value);
+    }
+
+    pub fn append(&mut self, value: Value) {
+        self.0.push_back(value);
+    }
+
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.0.is_empty()
+    }
+}
+
+impl fmt::Display for List {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "[")?;
+        let mut first = true;
+        for value in self.0.iter() {
+            if !first {
+                write!(f, ", ")?;
+            }
+            write!(f, "{value}")?;
+            first = false;
+        }
+        write!(f, "]")
     }
 }

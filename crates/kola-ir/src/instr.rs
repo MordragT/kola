@@ -1,10 +1,14 @@
-use std::fmt;
+use std::{fmt, mem};
 
 use derive_more::{Display, From};
 use kola_print::prelude::*;
 use kola_utils::{impl_try_as, interner::StrKey};
 
-use crate::{id::Id, ir::IrBuilder, print::IrPrinter};
+use crate::{
+    id::Id,
+    ir::{IrBuilder, IrView},
+    print::IrPrinter,
+};
 
 // TODO Symbol scoping
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -21,10 +25,12 @@ impl fmt::Display for Symbol {
 
 #[derive(Debug, From, Clone, PartialEq)]
 pub enum Instr {
+    Noop,
     Symbol(Symbol),
     Atom(Atom),
     Expr(Expr),
-    RecordFields(Vec<RecordField>),
+    Field(RecordField),
+    Item(ListItem),
 }
 
 impl_try_as!(
@@ -32,8 +38,14 @@ impl_try_as!(
     Symbol(Symbol),
     Atom(Atom),
     Expr(Expr),
-    RecordFields(Vec<RecordField>)
+    Field(RecordField),
+    Item(ListItem)
 );
+
+const _: () = {
+    // Ensure that the size of Instr is not too large
+    assert!(mem::size_of::<Instr>() <= 24 * mem::size_of::<u8>());
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Func {
@@ -103,7 +115,7 @@ impl_try_as!(
 
 impl<'a> Notate<'a> for IrPrinter<'a, Id<Atom>> {
     fn notate(&self, arena: &'a Bump) -> Notation<'a> {
-        let notation = match *self.ir.instr(self.node) {
+        let notation = match self.ir.instr(self.node) {
             Atom::Bool(b) => b.green().display_in(arena),
             Atom::Char(c) => format!("'{}'", c.green()).display_in(arena),
             Atom::Num(n) => n.green().display_in(arena),
@@ -557,47 +569,252 @@ impl<'a> Notate<'a> for IrPrinter<'a, BinaryExpr> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct ListItem {
+    pub value: Id<Atom>,
+    pub next: Option<Id<ListItem>>,
+    pub prev: Option<Id<ListItem>>,
+}
+
+impl ListItem {
+    pub fn new(value: impl Into<Atom>, builder: &mut IrBuilder) -> Self {
+        let value = builder.add(value.into());
+        Self {
+            value,
+            next: None,
+            prev: None,
+        }
+    }
+
+    pub fn with_next(value: impl Into<Atom>, next: Id<ListItem>, builder: &mut IrBuilder) -> Self {
+        let value = builder.add(value.into());
+        Self {
+            value,
+            next: Some(next),
+            prev: None,
+        }
+    }
+}
+
+impl<'a> Notate<'a> for IrPrinter<'a, ListItem> {
+    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
+        let ListItem { value, next, .. } = self.node;
+
+        let value = self.to(value).notate(arena);
+        let next = next
+            .map(|next| {
+                let next = self.to(self.ir.instr(next)).notate(arena);
+
+                let single = ", "
+                    .display_in(arena)
+                    .then(next.clone(), arena)
+                    .flatten(arena);
+                let multi = [arena.newline(), arena.just(','), next]
+                    .concat_in(arena)
+                    .indent(arena);
+
+                single.or(multi, arena)
+            })
+            .or_not(arena);
+
+        [value, next].concat_in(arena)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct ListExpr {
+    pub bind: Symbol,
+    pub head: Option<Id<ListItem>>,
+    pub tail: Option<Id<ListItem>>,
+    pub next: Id<Expr>,
+}
+
+impl ListExpr {
+    pub fn empty(bind: Symbol, next: impl Into<Expr>, builder: &mut IrBuilder) -> Self {
+        let next = builder.add(next.into());
+
+        Self {
+            bind,
+            head: None,
+            tail: None,
+            next,
+        }
+    }
+
+    pub fn with_items(
+        bind: Symbol,
+        next: impl Into<Expr>,
+        items: impl IntoIterator<Item = Atom>,
+        builder: &mut IrBuilder,
+    ) -> Self {
+        let next = builder.add(next.into());
+        let mut head = None;
+        let mut tail = None;
+
+        for item in items {
+            let item = ListItem::new(item, builder);
+            let item_id = builder.add(item);
+            if head.is_none() {
+                head = Some(item_id);
+                tail = Some(item_id);
+            } else {
+                tail = Some(item_id);
+            }
+        }
+
+        Self {
+            bind,
+            head,
+            tail,
+            next,
+        }
+    }
+
+    pub fn prepend(&mut self, item: impl Into<Atom>, builder: &mut IrBuilder) -> Id<ListItem> {
+        todo!()
+    }
+
+    pub fn append(&mut self, item: impl Into<Atom>, builder: &mut IrBuilder) -> Id<ListItem> {
+        todo!()
+    }
+}
+
+// <bind> = [ <item>, ... ];
+// <bind> =
+//      [ <item>
+//      , ...
+//      , <item> ];
+impl<'a> Notate<'a> for IrPrinter<'a, ListExpr> {
+    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
+        let ListExpr {
+            bind, head, next, ..
+        } = self.node;
+
+        let bind = bind.display_in(arena);
+        let items = head
+            .map(|head| self.to(self.ir.instr(head)).notate(arena))
+            .or_not(arena);
+        let next = arena.newline().then(self.to(next).notate(arena), arena);
+
+        let single = [
+            bind.clone(),
+            arena.notate(" = [ "),
+            items.clone().flatten(arena),
+            arena.notate(" ]"),
+        ]
+        .concat_in(arena);
+
+        let multi = [
+            bind,
+            arena.newline(),
+            arena.notate("= ["),
+            arena.newline(),
+            items.indent(arena),
+            arena.newline(),
+            arena.just(']'),
+        ]
+        .concat_in(arena);
+
+        single.or(multi, arena).then(next, arena)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct RecordField {
     pub label: Symbol,
     pub value: Id<Atom>,
+    pub next: Option<Id<RecordField>>,
 }
 
 impl RecordField {
     pub fn new(label: Symbol, value: impl Into<Atom>, builder: &mut IrBuilder) -> Self {
         let value = builder.add(value.into());
-        Self { label, value }
+        Self {
+            label,
+            value,
+            next: None,
+        }
+    }
+
+    pub fn with_next(
+        label: Symbol,
+        value: impl Into<Atom>,
+        next: Id<RecordField>,
+        builder: &mut IrBuilder,
+    ) -> Self {
+        let value = builder.add(value.into());
+        Self {
+            label,
+            value,
+            next: Some(next),
+        }
     }
 }
 
 impl<'a> Notate<'a> for IrPrinter<'a, RecordField> {
     fn notate(&self, arena: &'a Bump) -> Notation<'a> {
-        let RecordField { label, value } = self.node;
+        let RecordField { label, value, next } = self.node;
 
         let label = label.display_in(arena);
         let value = self.to(value).notate(arena);
 
-        [label, arena.notate(" = "), value].concat_in(arena)
+        let field = [label, arena.notate(" = "), value].concat_in(arena);
+
+        let next = next
+            .map(|next| {
+                let next = self.to(self.ir.instr(next)).notate(arena);
+
+                let single = ", "
+                    .display_in(arena)
+                    .then(next.clone(), arena)
+                    .flatten(arena);
+                let multi = [arena.newline(), arena.just(','), next]
+                    .concat_in(arena)
+                    .indent(arena);
+
+                single.or(multi, arena)
+            })
+            .or_not(arena);
+
+        [field, next].concat_in(arena)
     }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct RecordExpr {
     pub bind: Symbol,
-    pub fields: Id<Vec<RecordField>>,
+    pub head: Option<Id<RecordField>>,
     pub next: Id<Expr>,
 }
 
 impl RecordExpr {
-    pub fn new(
+    pub fn empty(bind: Symbol, next: impl Into<Expr>, builder: &mut IrBuilder) -> Self {
+        let next = builder.add(next.into());
+
+        Self {
+            bind,
+            next,
+            head: None,
+        }
+    }
+
+    pub fn with_fields(
         bind: Symbol,
-        fields: impl Into<Vec<RecordField>>,
+        fields: impl IntoIterator<Item = (Symbol, Atom)>,
         next: impl Into<Expr>,
         builder: &mut IrBuilder,
     ) -> Self {
-        let fields = builder.add(fields.into());
         let next = builder.add(next.into());
+        let mut head = None;
 
-        Self { bind, fields, next }
+        for field in fields {
+            head = Some(builder.add_field(field, head));
+        }
+
+        Self { bind, next, head }
+    }
+
+    pub fn add_field(&mut self, field: (Symbol, Atom), builder: &mut IrBuilder) {
+        self.head = Some(builder.add_field(field, self.head));
     }
 }
 
@@ -608,21 +825,18 @@ impl RecordExpr {
 //      , <label> = <value> };
 impl<'a> Notate<'a> for IrPrinter<'a, RecordExpr> {
     fn notate(&self, arena: &'a Bump) -> Notation<'a> {
-        let RecordExpr { bind, fields, next } = self.node;
+        let RecordExpr { bind, head, next } = self.node;
 
         let bind = bind.display_in(arena);
-        let fields = fields
-            .get(self.ir)
-            .iter()
-            .copied()
-            .map(|field| self.to(field).notate(arena))
-            .collect_in::<BumpVec<_>>(arena);
+        let fields = head
+            .map(|head| self.to(self.ir.instr(head)).notate(arena))
+            .or_not(arena);
         let next = arena.newline().then(self.to(next).notate(arena), arena);
 
         let single = [
             bind.clone(),
             arena.notate(" = { "),
-            fields.clone().concat_by(arena.notate(", "), arena),
+            fields.clone().flatten(arena),
             arena.notate(" }"),
         ]
         .concat_in(arena);
@@ -632,9 +846,7 @@ impl<'a> Notate<'a> for IrPrinter<'a, RecordExpr> {
             arena.newline(),
             arena.notate("= {"),
             arena.newline(),
-            fields
-                .concat_by([arena.notate(","), arena.newline()].concat_in(arena), arena)
-                .indent(arena),
+            fields.indent(arena),
             arena.newline(),
             arena.just('}'),
         ]
@@ -1003,6 +1215,7 @@ pub enum Expr {
     // LetIn(LetInExpr),
     Unary(UnaryExpr),
     Binary(BinaryExpr),
+    List(ListExpr),
     Record(RecordExpr),
     RecordExtend(RecordExtendExpr),
     RecordRestrict(RecordRestrictExpr),
@@ -1034,13 +1247,14 @@ impl_try_as!(
 
 impl<'a> Notate<'a> for IrPrinter<'a, Id<Expr>> {
     fn notate(&self, arena: &'a Bump) -> Notation<'a> {
-        match *self.ir.instr(self.node) {
+        match self.ir.instr(self.node) {
             Expr::Ret(expr) => self.to(expr).notate(arena),
             Expr::Call(expr) => self.to(expr).notate(arena),
             Expr::If(expr) => self.to(expr).notate(arena),
             Expr::Let(expr) => self.to(expr).notate(arena),
             Expr::Unary(expr) => self.to(expr).notate(arena),
             Expr::Binary(expr) => self.to(expr).notate(arena),
+            Expr::List(expr) => self.to(expr).notate(arena),
             Expr::Record(expr) => self.to(expr).notate(arena),
             Expr::RecordExtend(expr) => self.to(expr).notate(arena),
             Expr::RecordRestrict(expr) => self.to(expr).notate(arena),

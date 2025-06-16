@@ -100,8 +100,6 @@
 //! - **Open Records**: Module extension and record operations
 //! - **Hot Reloading**: Individual module recompilation and replacement
 
-use std::u32;
-
 use kola_ir::{
     id::Id as InstrId,
     instr as ir,
@@ -183,23 +181,21 @@ pub fn lower_module(
 
     // Start with the module result (record creation)
     let bind = ir::Symbol(scope.info.sym.id());
-    let mut fields = Vec::new();
+    let mut fields = ir::RecordExpr {
+        bind,
+        head: None,
+        next,
+    };
 
     // Collect field information first
     for &value_sym in value_order {
         let id = scope.defs[value_sym].id();
         let hole = symbols.symbol_of(id);
-        let value = builder.add(ir::Atom::Symbol(hole));
-        fields.push(ir::RecordField { label: hole, value });
+        fields.add_field((hole, ir::Atom::Symbol(hole)), builder);
     }
 
     // Create the record expression with the continuation
-    let fields_id = builder.add(fields);
-    let record_expr = builder.add(ir::Expr::Record(ir::RecordExpr {
-        bind,
-        fields: fields_id,
-        next,
-    }));
+    let record_expr = builder.add(ir::Expr::Record(fields));
 
     // Now process value bindings in reverse order to build let-chain
     let mut next = record_expr;

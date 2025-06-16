@@ -7,7 +7,7 @@ use crate::{
     eval::Eval,
     value::Value,
 };
-use kola_ir::{instr::Func, ir::Ir};
+use kola_ir::ir::Ir;
 use kola_utils::interner::StrInterner;
 
 /// CEK-style abstract machine for interpreting the language
@@ -27,7 +27,7 @@ impl CekMachine {
         // Initial configuration (M-INIT in the paper)
         // C = hM | ∅ | κ0i
         let config = StandardConfig {
-            control: *ir.root().get(&ir),
+            control: ir.root().get(&ir),
             env: Env::new(interner.clone()),
             cont: Cont::identity(interner.clone()),
         };
@@ -242,13 +242,10 @@ mod tests {
         let access_x = RecordAccessExpr::new(z_sym, r_ref, x_sym, ret_z, &mut ir);
 
         // Create record fields
-        let fields = vec![
-            RecordField::new(x_sym, Atom::Num(10.0), &mut ir),
-            RecordField::new(y_sym, Atom::Num(20.0), &mut ir),
-        ];
+        let fields = [(x_sym, Atom::Num(10.0)), (y_sym, Atom::Num(20.0))];
 
         // r = {x: 10, y: 20}
-        let record_expr = RecordExpr::new(r_sym, fields, access_x, &mut ir);
+        let record_expr = RecordExpr::with_fields(r_sym, fields, access_x, &mut ir);
 
         let root = ir.add(record_expr.into());
 
@@ -291,13 +288,10 @@ mod tests {
             RecordExtendExpr::new(r2_sym, r1_ref, z_sym, Atom::Num(30.0), access_y, &mut ir);
 
         // Create record fields
-        let fields = vec![
-            RecordField::new(x_sym, Atom::Num(10.0), &mut ir),
-            RecordField::new(y_sym, Atom::Num(20.0), &mut ir),
-        ];
+        let fields = [(x_sym, Atom::Num(10.0)), (y_sym, Atom::Num(20.0))];
 
         // r1 = {x: 10, y: 20}
-        let record_expr = RecordExpr::new(r1_sym, fields, extend_r1, &mut ir);
+        let record_expr = RecordExpr::with_fields(r1_sym, fields, extend_r1, &mut ir);
 
         let root = ir.add(record_expr.into());
 
@@ -349,8 +343,8 @@ mod tests {
         );
 
         // Create initial record {x: 10} and bind to r1
-        let fields = vec![RecordField::new(x_sym, Atom::Num(10.0), &mut ir)];
-        let record_expr = RecordExpr::new(r1_sym, fields, update_r1, &mut ir);
+        let record_expr =
+            RecordExpr::with_fields(r1_sym, [(x_sym, Atom::Num(10.0))], update_r1, &mut ir);
 
         // Add the expression to the IR and set as root
         let root = ir.add(record_expr.into());

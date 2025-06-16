@@ -2,16 +2,16 @@ use crate::{
     config::{MachineState, StandardConfig},
     cont::{Cont, ContFrame, HandlerClosure, PureContFrame, ReturnClause},
     env::Env,
-    value::{Record, Value},
+    value::{List, Record, Value},
 };
 use kola_collections::ImShadowMap;
 use kola_ir::{
     instr::{
-        Atom, BinaryExpr, BinaryOp, CallExpr, Expr, Func, IfExpr, LetExpr, RecordAccessExpr,
-        RecordExpr, RecordExtendExpr, RecordField, RecordRestrictExpr, RecordUpdateExpr,
-        RecordUpdateOp, RetExpr, Symbol, UnaryExpr, UnaryOp,
+        Atom, BinaryExpr, BinaryOp, CallExpr, Expr, Func, IfExpr, LetExpr, ListExpr, ListItem,
+        RecordAccessExpr, RecordExpr, RecordExtendExpr, RecordField, RecordRestrictExpr,
+        RecordUpdateExpr, RecordUpdateOp, RetExpr, Symbol, UnaryExpr, UnaryOp,
     },
-    ir::Ir,
+    ir::{Ir, IrView},
 };
 
 pub fn eval_symbol(symbol: Symbol, env: &Env) -> Result<Value, String> {
@@ -48,6 +48,7 @@ impl Eval for Expr {
             Expr::If(if_expr) => if_expr.eval(env, cont, ir),
             Expr::Unary(unary_expr) => unary_expr.eval(env, cont, ir),
             Expr::Binary(binary_expr) => binary_expr.eval(env, cont, ir),
+            Expr::List(list_expr) => list_expr.eval(env, cont, ir),
             Expr::Record(record_expr) => record_expr.eval(env, cont, ir),
             Expr::RecordExtend(record_extend_expr) => record_extend_expr.eval(env, cont, ir),
             Expr::RecordRestrict(record_restrict_expr) => record_restrict_expr.eval(env, cont, ir),
@@ -61,7 +62,7 @@ impl Eval for Expr {
 impl Eval for RetExpr {
     fn eval(&self, env: Env, mut cont: Cont, ir: &Ir) -> MachineState {
         // Evaluate the return machine state of value
-        let value = match eval_atom(*self.arg.get(ir), &env) {
+        let value = match eval_atom(self.arg.get(ir), &env) {
             Ok(value) => value,
             Err(err) => return MachineState::Error(err),
         };
@@ -111,7 +112,7 @@ impl Eval for RetExpr {
 
                     // Evaluate the return handler body
                     MachineState::Standard(StandardConfig {
-                        control: *body.get(ir),
+                        control: body.get(ir),
                         env,
                         cont,
                     })
@@ -143,7 +144,7 @@ impl Eval for RetExpr {
 
         // Continue with the next expression
         MachineState::Standard(StandardConfig {
-            control: *body.get(ir),
+            control: body.get(ir),
             env,
             cont,
         })
@@ -199,12 +200,12 @@ impl Eval for CallExpr {
         } = *self;
 
         // Get the function and argument
-        let func_val = match eval_atom(*func.get(ir), &env) {
+        let func_val = match eval_atom(func.get(ir), &env) {
             Ok(value) => value,
             Err(err) => return MachineState::Error(err),
         };
 
-        let arg_val = match eval_atom(*arg.get(ir), &env) {
+        let arg_val = match eval_atom(arg.get(ir), &env) {
             Ok(value) => value,
             Err(err) => return MachineState::Error(err),
         };
@@ -228,7 +229,7 @@ impl Eval for CallExpr {
 
             // Evaluate the function body
             MachineState::Standard(StandardConfig {
-                control: *body.get(ir),
+                control: body.get(ir),
                 env,
                 cont,
             })
@@ -278,7 +279,7 @@ impl Eval for IfExpr {
         } = *self;
 
         // Evaluate the predicate
-        let pred_val = match eval_atom(*predicate.get(ir), &env) {
+        let pred_val = match eval_atom(predicate.get(ir), &env) {
             Ok(value) => value,
             Err(err) => return MachineState::Error(err),
         };
@@ -309,7 +310,7 @@ impl Eval for IfExpr {
 
         // Evaluate the selected branch
         MachineState::Standard(StandardConfig {
-            control: *branch.get(ir),
+            control: branch.get(ir),
             env,
             cont,
         })
@@ -347,7 +348,7 @@ impl Eval for UnaryExpr {
         } = *self;
 
         // Evaluate the operand
-        let arg_val = match eval_atom(*arg.get(ir), &env) {
+        let arg_val = match eval_atom(arg.get(ir), &env) {
             Ok(value) => value,
             Err(err) => return MachineState::Error(err),
         };
@@ -363,7 +364,7 @@ impl Eval for UnaryExpr {
 
         // Continue directly with the next expression
         MachineState::Standard(StandardConfig {
-            control: *next.get(ir),
+            control: next.get(ir),
             env,
             cont,
         })
@@ -414,13 +415,13 @@ impl Eval for BinaryExpr {
         } = *self;
 
         // Evaluate the left operand
-        let left_val = match eval_atom(*lhs.get(ir), &env) {
+        let left_val = match eval_atom(lhs.get(ir), &env) {
             Ok(value) => value,
             Err(err) => return MachineState::Error(err),
         };
 
         // Evaluate the right operand
-        let right_val = match eval_atom(*rhs.get(ir), &env) {
+        let right_val = match eval_atom(rhs.get(ir), &env) {
             Ok(value) => value,
             Err(err) => return MachineState::Error(err),
         };
@@ -436,7 +437,36 @@ impl Eval for BinaryExpr {
 
         // Continue directly with the next expression
         MachineState::Standard(StandardConfig {
-            control: *next.get(ir),
+            control: next.get(ir),
+            env,
+            cont,
+        })
+    }
+}
+
+impl Eval for ListExpr {
+    fn eval(&self, mut env: Env, cont: Cont, ir: &Ir) -> MachineState {
+        let ListExpr {
+            bind,
+            head,
+            tail: _,
+            next,
+        } = *self;
+
+        let mut list = List::new();
+
+        for ListItem { value, .. } in ir.iter_items_forward(head) {
+            match eval_atom(value.get(ir), &env) {
+                Ok(value) => list.append(value),
+                Err(err) => return MachineState::Error(err),
+            }
+        }
+
+        let list_value = Value::List(list);
+        env.insert(bind, list_value);
+
+        MachineState::Standard(StandardConfig {
+            control: next.get(ir),
             env,
             cont,
         })
@@ -452,14 +482,14 @@ impl Eval for BinaryExpr {
 // 4. We continue with the next expression
 impl Eval for RecordExpr {
     fn eval(&self, mut env: Env, cont: Cont, ir: &Ir) -> MachineState {
-        let Self { bind, fields, next } = *self;
+        let RecordExpr { bind, head, next } = *self;
 
         let mut record = ImShadowMap::new();
 
         // Evaluate each field value
-        for RecordField { label, value } in fields.get(ir) {
-            match eval_atom(*value.get(ir), &env) {
-                Ok(value) => record.insert(*label, value),
+        for RecordField { label, value, .. } in ir.iter_fields(head) {
+            match eval_atom(value.get(ir), &env) {
+                Ok(value) => record.insert(label, value),
                 Err(err) => return MachineState::Error(err),
             }
         }
@@ -472,7 +502,7 @@ impl Eval for RecordExpr {
 
         // Continue with the next expression
         MachineState::Standard(StandardConfig {
-            control: *next.get(ir),
+            control: next.get(ir),
             env,
             cont,
         })
@@ -497,13 +527,13 @@ impl Eval for RecordExtendExpr {
         } = *self;
 
         // Evaluate the base record
-        let record_val = match eval_atom(*base.get(ir), &env) {
+        let record_val = match eval_atom(base.get(ir), &env) {
             Ok(value) => value,
             Err(err) => return MachineState::Error(err),
         };
 
         // Evaluate the value to extend with
-        let value = match eval_atom(*value.get(ir), &env) {
+        let value = match eval_atom(value.get(ir), &env) {
             Ok(value) => value,
             Err(err) => return MachineState::Error(err),
         };
@@ -523,7 +553,7 @@ impl Eval for RecordExtendExpr {
 
         // Continue with the next expression
         MachineState::Standard(StandardConfig {
-            control: *next.get(ir),
+            control: next.get(ir),
             env,
             cont,
         })
@@ -547,7 +577,7 @@ impl Eval for RecordRestrictExpr {
         } = *self;
 
         // Evaluate the base record
-        let value = match eval_atom(*base.get(ir), &env) {
+        let value = match eval_atom(base.get(ir), &env) {
             Ok(value) => value,
             Err(err) => return MachineState::Error(err),
         };
@@ -565,7 +595,7 @@ impl Eval for RecordRestrictExpr {
 
         // Continue with the next expression
         MachineState::Standard(StandardConfig {
-            control: *next.get(ir),
+            control: next.get(ir),
             env,
             cont,
         })
@@ -607,13 +637,13 @@ impl Eval for RecordUpdateExpr {
         } = *self;
 
         // Evaluate the base record
-        let record_val = match eval_atom(*base.get(ir), &env) {
+        let record_val = match eval_atom(base.get(ir), &env) {
             Ok(value) => value,
             Err(err) => return MachineState::Error(err),
         };
 
         // Evaluate the value to update with
-        let update_val = match eval_atom(*value.get(ir), &env) {
+        let update_val = match eval_atom(value.get(ir), &env) {
             Ok(value) => value,
             Err(err) => return MachineState::Error(err),
         };
@@ -642,7 +672,7 @@ impl Eval for RecordUpdateExpr {
 
         // Continue with the next expression
         MachineState::Standard(StandardConfig {
-            control: *next.get(ir),
+            control: next.get(ir),
             env,
             cont,
         })
@@ -666,7 +696,7 @@ impl Eval for RecordAccessExpr {
         } = *self;
 
         // Evaluate the record
-        let record_val = match eval_atom(*base.get(ir), &env) {
+        let record_val = match eval_atom(base.get(ir), &env) {
             Ok(value) => value,
             Err(err) => return MachineState::Error(err),
         };
@@ -689,7 +719,7 @@ impl Eval for RecordAccessExpr {
 
         // Continue with the next expression
         MachineState::Standard(StandardConfig {
-            control: *next.get(ir),
+            control: next.get(ir),
             env,
             cont,
         })

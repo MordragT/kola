@@ -271,6 +271,40 @@ where
         self.visit_expr(predicate, tree)
     }
 
+    fn visit_unary_expr(
+        &mut self,
+        id: TreeId<node::UnaryExpr>,
+        tree: &T,
+    ) -> ControlFlow<Self::BreakValue> {
+        let node::UnaryExpr { op, operand } = *id.get(tree);
+
+        // Create a fresh symbol for the operand
+        let operand_sym = self.next_symbol();
+        let operand_atom = self.builder.add(ir::Atom::Symbol(operand_sym));
+
+        // Get the unary operator
+        let unary_op = match *op.get(tree) {
+            node::UnaryOp::Neg => ir::UnaryOp::Neg,
+            node::UnaryOp::Not => ir::UnaryOp::Not,
+        };
+
+        // Create the unary expression that will be the "context" for our normalization
+        let unary_expr = self.builder.add(ir::Expr::Unary(ir::UnaryExpr {
+            bind: self.hole,
+            op: unary_op,
+            arg: operand_atom,
+            next: self.next,
+        }));
+
+        // Normalize in CPS style:
+        // First, set up context for operand normalization
+        self.next = unary_expr;
+        self.hole = operand_sym;
+
+        // Normalize the operand expression
+        self.visit_expr(operand, tree)
+    }
+
     fn visit_binary_expr(
         &mut self,
         id: TreeId<node::BinaryExpr>,
@@ -327,38 +361,41 @@ where
         self.visit_expr(right, tree)
     }
 
-    fn visit_unary_expr(
+    fn visit_list_expr(
         &mut self,
-        id: TreeId<node::UnaryExpr>,
+        id: TreeId<node::ListExpr>,
         tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
-        let node::UnaryExpr { op, operand } = *id.get(tree);
+        let items = &id.get(tree).0;
 
-        // Create a fresh symbol for the operand
-        let operand_sym = self.next_symbol();
-        let operand_atom = self.builder.add(ir::Atom::Symbol(operand_sym));
+        // let list_expr = items.iter().rfold(
+        //     ir::ListExpr {
+        //         bind: self.hole,
+        //         head: None,
+        //         tail: None,
+        //         next: self.next,
+        //     },
+        //     |list, prev| {
+        //         let item_sym = self.next_symbol();
+        //         let item_atom = self.builder.add(ir::Atom::Symbol(item_sym));
+        //         self.hole = item_sym;
+        //         self.visit_expr(*prev, tree)?;
+        //         // list.prepend(item, self.builder);
+        //         list
+        //     },
+        // );
 
-        // Get the unary operator
-        let unary_op = match *op.get(tree) {
-            node::UnaryOp::Neg => ir::UnaryOp::Neg,
-            node::UnaryOp::Not => ir::UnaryOp::Not,
-        };
+        todo!()
+    }
 
-        // Create the unary expression that will be the "context" for our normalization
-        let unary_expr = self.builder.add(ir::Expr::Unary(ir::UnaryExpr {
-            bind: self.hole,
-            op: unary_op,
-            arg: operand_atom,
-            next: self.next,
-        }));
+    fn visit_record_expr(
+        &mut self,
+        id: TreeId<node::RecordExpr>,
+        tree: &T,
+    ) -> ControlFlow<Self::BreakValue> {
+        let fields = &id.get(tree).0;
 
-        // Normalize in CPS style:
-        // First, set up context for operand normalization
-        self.next = unary_expr;
-        self.hole = operand_sym;
-
-        // Normalize the operand expression
-        self.visit_expr(operand, tree)
+        todo!()
     }
 }
 

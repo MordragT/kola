@@ -1,26 +1,42 @@
-use kola_print::prelude::*;
 use kola_utils::convert::TryAsRef;
-use std::{hash::Hash, marker::PhantomData};
+use std::{hash::Hash, marker::PhantomData, mem, num::NonZeroU32};
 
-use crate::{instr::Instr, ir::Ir, print::IrPrinter};
+use crate::{
+    instr::Instr,
+    ir::{Ir, IrView},
+};
 
 #[derive(Debug)]
 pub struct Id<T> {
-    id: u32,
+    id: NonZeroU32,
     t: PhantomData<T>,
 }
 
+const _: () = {
+    // Ensure that Id<T> is always 4 bytes in size
+    // and using nieche optimization for Option<Id<T>>.
+    assert!(mem::size_of::<Id<()>>() >= 4);
+    assert!(mem::size_of::<Option<Id<()>>>() >= 4);
+};
+
 impl<T> Id<T> {
     pub(crate) fn new(id: u32) -> Self {
+        let id = NonZeroU32::new(id).expect("Id cannot be zero");
+
         Self { id, t: PhantomData }
     }
 
-    pub fn as_usize(&self) -> usize {
-        self.id as usize
+    pub fn as_u32(&self) -> u32 {
+        self.id.get()
     }
 
-    pub fn get(self, ir: &Ir) -> &T
+    pub fn as_usize(&self) -> usize {
+        self.id.get() as usize
+    }
+
+    pub fn get(self, ir: &Ir) -> T
     where
+        T: Copy,
         Instr: TryAsRef<T>,
     {
         ir.instr(self)
