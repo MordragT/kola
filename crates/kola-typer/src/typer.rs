@@ -196,31 +196,6 @@ impl<'a, N> Typer<'a, N> {
     {
         *self.spans.meta(id)
     }
-
-    fn partial_restrict(
-        &mut self,
-        source: Id<node::Expr>,
-        field: Id<node::ValueName>,
-        span: Loc,
-        tree: &impl TreeView,
-    ) -> MonoType {
-        let t = self.types.meta(source);
-
-        self.cons.constrain_kind(Kind::Record, t.clone(), span);
-
-        let t_prime = MonoType::variable();
-
-        // TODO handle field path
-        let head = LabeledType {
-            label: field.get(tree).0.clone(),
-            ty: MonoType::variable(),
-        };
-
-        self.cons
-            .constrain(MonoType::row(head, t_prime.clone()), t.clone(), span);
-
-        t_prime
-    }
 }
 
 impl<'a, T, N> Visitor<T> for Typer<'a, N>
@@ -759,9 +734,23 @@ where
 
         let node::RecordRestrictExpr { source, field } = *id.get(tree);
 
-        let t_prime = self.partial_restrict(source, field, span, tree);
+        let source_t = self.types.meta(source);
+        self.cons
+            .constrain_kind(Kind::Record, source_t.clone(), span);
 
-        self.update_type(id, t_prime);
+        let field_t = MonoType::variable();
+        let head_t = LabeledType {
+            label: field.get(tree).0.clone(),
+            ty: field_t,
+        };
+        let tail_t = MonoType::variable();
+        self.cons.constrain(
+            MonoType::row(head_t, tail_t.clone()),
+            source_t.clone(),
+            span,
+        );
+
+        self.update_type(id, tail_t);
         ControlFlow::Continue(())
     }
 
@@ -811,25 +800,39 @@ where
             value,
         } = *id.get(tree);
 
-        let t0 = self.partial_restrict(source, field, span, tree);
-        let t2 = self.types.meta(value).clone();
+        let source_t = self.types.meta(source);
+        self.cons
+            .constrain_kind(Kind::Record, source_t.clone(), span);
+
+        let field_t = MonoType::variable();
+        let head_t = LabeledType {
+            label: field.get(tree).0.clone(),
+            ty: field_t.clone(),
+        };
+        let tail_t = MonoType::variable();
+        self.cons.constrain(
+            MonoType::row(head_t, tail_t.clone()),
+            source_t.clone(),
+            span,
+        );
+
+        let value_t = self.types.meta(value).clone();
 
         // Treat the update operation as a function: old_value -> new_value
         // For =: any -> any
         // For +=: addable -> addable
         // For -=,*=,/=,%=: num -> num
         let op_t = self.types.meta(op).clone();
-        let t_prime = MonoType::variable();
         self.cons
-            .constrain(op_t, MonoType::func(t2.clone(), t_prime.clone()), span);
+            .constrain(op_t, MonoType::func(field_t.clone(), value_t.clone()), span);
 
-        let head = LabeledType {
+        let new_head_t = LabeledType {
             label: field.get(tree).0.clone(),
-            ty: t_prime,
+            ty: value_t,
         };
-        let row = MonoType::row(head, t0);
+        let t = MonoType::row(new_head_t, tail_t);
 
-        self.update_type(id, row);
+        self.update_type(id, t);
         ControlFlow::Continue(())
     }
 
