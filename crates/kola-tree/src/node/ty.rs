@@ -57,18 +57,24 @@ impl<'a> Notate<'a> for NodePrinter<'a, TypePath> {
 
         let head = "TypePath".cyan().display_in(arena);
 
-        let path = path.map(|p| self.to(p).notate(arena)).or_not(arena);
+        let path = path.map(|p| self.to(p).notate(arena));
         let ty = self.to(ty).notate(arena);
 
         // TODO fix newlines/spacings if path is None
 
-        let single = [arena.just(' '), path.clone(), arena.just(' '), ty.clone()]
-            .concat_in(arena)
-            .flatten(arena);
+        let single = if let Some(path) = path.clone() {
+            [arena.just(' '), path, arena.just(' '), ty.clone()].concat_in(arena)
+        } else {
+            [arena.just(' '), ty.clone()].concat_in(arena)
+        }
+        .flatten(arena);
 
-        let multi = [arena.newline(), path, arena.newline(), ty]
-            .concat_in(arena)
-            .indent(arena);
+        let multi = if let Some(path) = path {
+            [arena.newline(), path, arena.newline(), ty].concat_in(arena)
+        } else {
+            [arena.newline(), ty].concat_in(arena)
+        }
+        .indent(arena);
 
         head.then(single.or(multi, arena), arena)
     }

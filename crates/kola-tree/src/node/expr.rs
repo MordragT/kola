@@ -3,7 +3,7 @@ use kola_print::prelude::*;
 use kola_utils::{as_variant, interner::StrKey};
 use serde::{Deserialize, Serialize};
 
-use super::{Name, Pat};
+use super::Pat;
 use crate::{
     id::Id,
     node::{ModulePath, ValueName},
@@ -108,29 +108,29 @@ impl<'a> Notate<'a> for NodePrinter<'a, PathExpr> {
 
         let path = path.map(|p| self.to_id(p).notate(arena)).or_not(arena);
         let binding = self.to_id(*binding).notate(arena);
-        let select = self.to_slice(select).gather(arena);
+        let mut select = self.to_slice(select).gather(arena);
 
-        let single = path
+        select.insert(0, path);
+        select.insert(1, binding);
+
+        let single = select
             .clone()
-            .then(binding.clone(), arena)
-            .then(
-                select
-                    .clone()
-                    .concat_map(|s| arena.just(' ').then(s, arena), arena),
-                arena,
-            )
+            .concat_by(arena.just(' '), arena)
             .flatten(arena);
 
-        let multi = path
-            .clone()
-            .then(binding, arena)
-            .then(
-                select
-                    .clone()
-                    .concat_map(|s| arena.newline().then(s, arena), arena),
-                arena,
-            )
-            .indent(arena);
+        let multi = select.concat_by(arena.newline(), arena).indent(arena);
+
+        // let single = [
+        //     path.clone(),
+        //     binding.clone(),
+        //     select.clone().concat_by(arena.just(' '), arena),
+        // ]
+        // .concat_in(arena)
+        // .flatten(arena);
+
+        // let multi = [path, binding, select.concat_by(arena.newline(), arena)]
+        //     .concat_in(arena)
+        //     .indent(arena);
 
         head.then(single.or(multi, arena), arena)
     }

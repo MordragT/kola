@@ -122,10 +122,10 @@ impl fmt::Display for PolyType {
         let Self { vars, ty } = self;
 
         if !vars.is_empty() {
-            write!(f, "forall ")?;
+            write!(f, "forall")?;
 
             for tv in vars {
-                write!(f, "{tv}")?;
+                write!(f, " {tv}")?;
             }
 
             write!(f, " . ")?;

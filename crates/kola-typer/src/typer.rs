@@ -327,7 +327,6 @@ where
         let node::TypePath { path, ty } = *id.get(tree);
 
         let name = ty.get(tree).0;
-
         let span = self.span(id);
 
         let pt = if let Some(path) = path {
@@ -639,6 +638,11 @@ where
             pt.instantiate()
         } else if let Some(pt) = self.type_scope.get(&name) {
             pt.instantiate()
+        }
+        // For the future: Builtin's should be checked before the type env because they probably
+        // do not populate the "resolved" map
+        else if let Some(pt) = self.env.get_value(*self.resolved.meta(id)) {
+            pt.instantiate()
         } else {
             return ControlFlow::Break(Diagnostic::error(span, "Value not found in scope"));
         };
@@ -761,6 +765,31 @@ where
         ControlFlow::Continue(())
     }
 
+    fn visit_record_update_op(
+        &mut self,
+        id: Id<node::RecordUpdateOp>,
+        tree: &T,
+    ) -> ControlFlow<Self::BreakValue> {
+        let t = match id.get(tree) {
+            node::RecordUpdateOp::Assign => MonoType::variable(),
+            node::RecordUpdateOp::AddAssign => {
+                let t = MonoType::variable();
+                self.cons
+                    .constrain_kind(Kind::Addable, t.clone(), self.span(id));
+                t
+            }
+            node::RecordUpdateOp::SubAssign
+            | node::RecordUpdateOp::MulAssign
+            | node::RecordUpdateOp::DivAssign
+            | node::RecordUpdateOp::RemAssign => MonoType::NUM,
+        };
+
+        let func = MonoType::func(t.clone(), t);
+
+        self.update_type(id, func);
+        ControlFlow::Continue(())
+    }
+
     // Rule for Record Update of 'r' with label 'l' and value 'v'
     // ∆;Γ ⊢ r : { τ0 | l : τ1 }
     // ∆;Γ ⊢ v : τ2
@@ -785,9 +814,18 @@ where
         let t0 = self.partial_restrict(source, field, span, tree);
         let t2 = self.types.meta(value).clone();
 
+        // Treat the update operation as a function: old_value -> new_value
+        // For =: any -> any
+        // For +=: addable -> addable
+        // For -=,*=,/=,%=: num -> num
+        let op_t = self.types.meta(op).clone();
+        let t_prime = MonoType::variable();
+        self.cons
+            .constrain(op_t, MonoType::func(t2.clone(), t_prime.clone()), span);
+
         let head = LabeledType {
             label: field.get(tree).0.clone(),
-            ty: t2,
+            ty: t_prime,
         };
         let row = MonoType::row(head, t0);
 

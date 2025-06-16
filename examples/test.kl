@@ -7,9 +7,9 @@
 
     type Person = forall a . { name : Str | a },
 
-    person_a : forall a . Person a = { name = "Alice" },
+    person_a = { name = "Alice" },
 
-    person_b : forall a . Person a = { name = "Bob", age = 30 },
+    person_b = { person_a | name = "Bob" },
 
     main = 'A',
 }
