@@ -205,15 +205,6 @@ where
 {
     type BreakValue = Diagnostic;
 
-    fn visit_module_bind(
-        &mut self,
-        _id: Id<node::ModuleBind>,
-        _tree: &T,
-    ) -> ControlFlow<Self::BreakValue> {
-        // Skip module binds altogether
-        ControlFlow::Continue(())
-    }
-
     fn visit_type_bind(
         &mut self,
         id: Id<node::TypeBind>,
@@ -533,9 +524,18 @@ where
 
     // Expr
 
-    // Unit rule
-    // -----------------------
-    // Γ ⊢ () : unit
+    /// Rule for Literal Expressions
+    ///
+    /// ```
+    /// -----------------------
+    /// ∆;Γ ⊢ literal : literal_type
+    /// ```
+    ///
+    /// Type signatures:
+    /// - Bool literals: `Bool`
+    /// - Char literals: `Char`
+    /// - Num literals: `Num`
+    /// - Str literals: `Str`
     fn visit_literal_expr(
         &mut self,
         id: Id<node::LiteralExpr>,
@@ -552,6 +552,22 @@ where
         ControlFlow::Continue(())
     }
 
+    /// Rule for List Expression
+    ///
+    /// ```
+    /// ∆;Γ ⊢ e0 : element_t
+    /// ∆;Γ ⊢ e1 : element_t
+    /// ...
+    /// ∆;Γ ⊢ en : element_t
+    /// -----------------------
+    /// ∆;Γ ⊢ [e0, e1, ..., en] : [element_t]
+    /// ```
+    ///
+    /// Implementation:
+    /// - All elements must have the same type
+    /// - Empty lists are allowed but need type inference from context
+    ///
+    /// Type signature: `∀α. [α]` (list of elements of type α)
     fn visit_list_expr(
         &mut self,
         id: Id<node::ListExpr>,
@@ -561,32 +577,44 @@ where
 
         let node::ListExpr(list) = id.get(tree);
 
-        if let Some(&el) = list.first() {
-            let expected = self.types.meta(el).clone();
+        if let Some(&first_elem) = list.first() {
+            let first_t = self.types.meta(first_elem).clone();
 
-            self.update_type(id, MonoType::list(expected.clone()));
+            self.update_type(id, MonoType::list(first_t.clone()));
 
-            for &el in list {
+            for &elem in list {
                 let span = self.span(id);
-                let actual = self.types.meta(el).clone();
+                let elem_t = self.types.meta(elem).clone();
 
-                self.cons.constrain(expected.clone(), actual, span);
+                self.cons.constrain(first_t.clone(), elem_t, span);
             }
+        } else {
+            todo!() // Handle empty lists by checking if it has annotations
         }
 
         ControlFlow::Continue(())
     }
 
-    // Rule for Record Selection of 'r' with label 'l'
-    // τ' = newvar()
-    // ∆;Γ ⊢ r : { τ0 | l : τ' } where τ0 is of kind Record
-    // -----------------------
-    // ∆;Γ ⊢ r.l : τ'
-    //
-    // Var rule to infer variable 'x'
-    // x : σ ∈ Γ   τ = inst(σ)
-    // -----------------------
-    // ∆;Γ ⊢ x : τ
+    /// Rule for Record Selection and Variable Lookup
+    ///
+    /// Record Selection:
+    /// ```
+    /// ∆;Γ ⊢ r : r_t
+    /// field_t = newvar()
+    /// tail_t = newvar()
+    /// unify(r_t, { l : field_t | tail_t })
+    /// -----------------------
+    /// ∆;Γ ⊢ r.l : field_t
+    /// ```
+    ///
+    /// Variable Lookup:
+    /// ```
+    /// x : σ ∈ Γ   base_t = inst(σ)
+    /// -----------------------
+    /// ∆;Γ ⊢ x : base_t
+    /// ```
+    ///
+    /// Type signature: `∀r α. {l : α | r} → α` (for field selection)
     fn visit_path_expr(
         &mut self,
         id: Id<node::PathExpr>,
@@ -602,7 +630,7 @@ where
 
         let name = binding.get(tree).0;
 
-        let t = if let Some(path) = *path {
+        let base_t = if let Some(path) = *path {
             let module_sym = *self.resolved.meta(path);
 
             let value_sym = self.env[module_sym]
@@ -622,26 +650,43 @@ where
             return ControlFlow::Break(Diagnostic::error(span, "Value not found in scope"));
         };
 
-        let field_t = select.iter().fold(t, |t, field| {
-            self.cons.constrain_kind(Kind::Record, t.clone(), span);
+        let result_t = select.iter().fold(base_t, |record_t, field| {
+            self.cons
+                .constrain_kind(Kind::Record, record_t.clone(), span);
 
             let field_t = MonoType::variable();
 
-            let head = LabeledType {
+            let head_t = LabeledType {
                 label: field.get(tree).0.clone(),
                 ty: field_t.clone(),
             };
 
-            self.cons
-                .constrain(MonoType::row(head, MonoType::variable()), t.clone(), span);
+            self.cons.constrain(
+                MonoType::row(head_t, MonoType::variable()),
+                record_t.clone(),
+                span,
+            );
 
             field_t
         });
 
-        self.update_type(id, field_t);
+        self.update_type(id, result_t);
         ControlFlow::Continue(())
     }
 
+    /// Rule for Record Field
+    ///
+    /// ```
+    /// ∆;Γ ⊢ value : value_t
+    /// -----------------------
+    /// ∆;Γ ⊢ field : value : LabeledType { field, value_t } // TODO I do not like this
+    /// ```
+    ///
+    /// Implementation:
+    /// - Creates a labeled type associating the field name with the value's type
+    /// - Used as building blocks for record types
+    ///
+    /// Type signature: Creates `LabeledType` for record construction
     fn visit_record_field(
         &mut self,
         id: Id<node::RecordField>,
@@ -661,7 +706,7 @@ where
     // Rule for Record Instantiation via Induction
     // ∆;Γ ⊢ R : { l0 : t0, ..., ln : tn | {} }
     // -----------------------
-    // ∆;Γ ⊢ R : { { l1 : t1, ..., ln : tn } | +l0 : τ0 | {} }
+    // ∆;Γ ⊢ R : { { l1 : t1, ..., ln : tn } | +l0 : τ0 | {} } // TODO can't I use this recursive rule def ?
     fn visit_record_expr(
         &mut self,
         id: Id<node::RecordExpr>,
@@ -669,24 +714,27 @@ where
     ) -> ControlFlow<Self::BreakValue> {
         self.walk_record_expr(id, tree)?;
 
-        let mut r = MonoType::empty_row();
+        let mut record_t = MonoType::empty_row();
 
         for &field in id.get(tree) {
-            let head = self.types.meta(field).clone();
-            r = MonoType::row(head, r);
+            let head_t = self.types.meta(field).clone();
+            record_t = MonoType::row(head_t, record_t);
         }
 
-        self.update_type(id, r);
+        self.update_type(id, record_t);
         ControlFlow::Continue(())
     }
 
-    // Rule for Record Extension of 'r' with label 'l' and Value 'v'
-    // ∆;Γ ⊢ v : τ0
-    // ∆;Γ ⊢ r : τ1 where τ1 is of kind Record
-    // -----------------------
-    // ∆;Γ ⊢ { r | +l = v } : { τ1 | +l : τ0 }
-
-    // old: ∀rα. α → {r} → {l :: α | r}
+    /// Rule for Record Extension of `r` with label `l` and value `v`
+    ///
+    /// ```
+    /// ∆;Γ ⊢ v : value_t
+    /// ∆;Γ ⊢ r : source_t where source_t is of kind Record
+    /// -----------------------
+    /// ∆;Γ ⊢ { r | +l = v } : { l : value_t | source_t }
+    /// ```
+    ///
+    /// Type signature: `∀r α. α → {r} → {l : α | r}`
     fn visit_record_extend_expr(
         &mut self,
         id: Id<node::RecordExtendExpr>,
@@ -702,27 +750,40 @@ where
             value,
         } = *id.get(tree);
 
-        let t0 = self.types.meta(value);
-        let t1 = self.types.meta(source);
+        let value_t = self.types.meta(value);
+        let source_t = self.types.meta(source);
 
-        self.cons.constrain_kind(Kind::Record, t1.clone(), span);
+        self.cons
+            .constrain_kind(Kind::Record, source_t.clone(), span);
 
         // TODO handle record field path
-        let head = LabeledType {
+        let head_t = LabeledType {
             label: field.get(tree).0.clone(),
-            ty: t0.clone(),
+            ty: value_t.clone(),
         };
-        let row = MonoType::row(head, t1.clone());
+        let result_t = MonoType::row(head_t, source_t.clone());
 
-        self.update_type(id, row);
+        self.update_type(id, result_t);
         ControlFlow::Continue(())
     }
 
-    // Rule for Record Restriction of 'r' with label 'l'
-    // ∆;Γ ⊢ r : { τ0 | l : τ1 }
-    // -----------------------
-    // ∆;Γ ⊢ { r | -l } : τ0
-    // ∀rα. {l :: α | r} → {r}
+    /// Rule for Record Restriction of `source` with label `field`
+    ///
+    /// ```
+    /// ∆;Γ ⊢ source : source_t
+    /// field_t = newvar()
+    /// tail_t = newvar()
+    /// unify(source_t, { field : field_t | tail_t })
+    /// -----------------------
+    /// ∆;Γ ⊢ { source | -field } : tail_t
+    /// ```
+    ///
+    /// Implementation:
+    /// - Constrain `source` to be of kind Record
+    /// - Unify `source` with `{ field : field_t | tail_t }` to decompose the record
+    /// - Result is `tail_t` (the remaining record without the restricted field)
+    ///
+    /// Type signature: `∀r α. {field : α | r} → r`
     fn visit_record_restrict_expr(
         &mut self,
         id: Id<node::RecordRestrictExpr>,
@@ -754,18 +815,26 @@ where
         ControlFlow::Continue(())
     }
 
+    /// Rule for Record Update Operations
+    ///
+    /// Type signatures:
+    /// - `=`: `∀α. α → α`
+    /// - `+=`: `∀α. α → α` where `α : Addable`
+    /// - `-=`, `*=`, `/=`, `%=`: `Num → Num`
     fn visit_record_update_op(
         &mut self,
         id: Id<node::RecordUpdateOp>,
         tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
-        let t = match id.get(tree) {
+        let span = self.span(id);
+
+        let value_t = match id.get(tree) {
             node::RecordUpdateOp::Assign => MonoType::variable(),
             node::RecordUpdateOp::AddAssign => {
-                let t = MonoType::variable();
+                let addable_t = MonoType::variable();
                 self.cons
-                    .constrain_kind(Kind::Addable, t.clone(), self.span(id));
-                t
+                    .constrain_kind(Kind::Addable, addable_t.clone(), span);
+                addable_t
             }
             node::RecordUpdateOp::SubAssign
             | node::RecordUpdateOp::MulAssign
@@ -773,17 +842,33 @@ where
             | node::RecordUpdateOp::RemAssign => MonoType::NUM,
         };
 
-        let func = MonoType::func(t.clone(), t);
+        let update_func_t = MonoType::func(value_t.clone(), value_t);
 
-        self.update_type(id, func);
+        self.update_type(id, update_func_t);
         ControlFlow::Continue(())
     }
 
-    // Rule for Record Update of 'r' with label 'l' and value 'v'
-    // ∆;Γ ⊢ r : { τ0 | l : τ1 }
-    // ∆;Γ ⊢ v : τ2
-    // -----------------------
-    // ∆;Γ ⊢ { r | l = v } : { r | -l | +l : τ2 }
+    /// Rule for Record Update of `source` with label `field` and value `value`
+    ///
+    /// ```
+    /// ∆;Γ ⊢ source : source_t
+    /// tail_t = newvar()
+    /// old_field_t = newvar()
+    /// unify(source_t, { field : old_field_t | tail_t })
+    ///
+    /// ∆;Γ ⊢ value : value_t
+    /// ∆;Γ ⊢ op : old_field_t → new_field_t
+    /// unify(value_t, new_field_t)
+    /// -----------------------
+    /// ∆;Γ ⊢ { source | field op value } : { field : new_field_t | tail_t }
+    /// ```
+    ///
+    /// Implementation:
+    /// - Unify `source_t` with `{ field : old_field_t | tail_t }` to decompose the record
+    /// - Unify `op` with `old_field_t → new_field_t` to constrain the operation
+    /// - Result is `{ field : new_field_t | tail_t }` (record with updated field type)
+    ///
+    /// Type signature: `∀r α β. {field : α | r} → (α → β) → β → {field : β | r}`
     fn visit_record_update_expr(
         &mut self,
         id: Id<node::RecordUpdateExpr>,
@@ -804,62 +889,67 @@ where
         self.cons
             .constrain_kind(Kind::Record, source_t.clone(), span);
 
-        let field_t = MonoType::variable();
-        let head_t = LabeledType {
+        let old_field_t = MonoType::variable();
+        let old_head_t = LabeledType {
             label: field.get(tree).0.clone(),
-            ty: field_t.clone(),
+            ty: old_field_t.clone(),
         };
         let tail_t = MonoType::variable();
         self.cons.constrain(
-            MonoType::row(head_t, tail_t.clone()),
+            MonoType::row(old_head_t, tail_t.clone()),
             source_t.clone(),
             span,
         );
 
-        let value_t = self.types.meta(value).clone();
+        let new_field_t = self.types.meta(value).clone();
 
-        // Treat the update operation as a function: old_value -> new_value
-        // For =: any -> any
-        // For +=: addable -> addable
-        // For -=,*=,/=,%=: num -> num
+        // Treat the update operation as a function: old_field_t -> new_field_t
         let op_t = self.types.meta(op).clone();
-        self.cons
-            .constrain(op_t, MonoType::func(field_t.clone(), value_t.clone()), span);
+        self.cons.constrain(
+            op_t,
+            MonoType::func(old_field_t.clone(), new_field_t.clone()),
+            span,
+        );
 
         let new_head_t = LabeledType {
             label: field.get(tree).0.clone(),
-            ty: value_t,
+            ty: new_field_t,
         };
-        let t = MonoType::row(new_head_t, tail_t);
+        let result_t = MonoType::row(new_head_t, tail_t);
 
-        self.update_type(id, t);
+        self.update_type(id, result_t);
         ControlFlow::Continue(())
     }
 
-    // Abstraction rule
-    // τ = newvar()
-    // Γ, x : τ ⊢ e : τ'
-    // ___________________
-    // Γ ⊢ \x -> e : τ -> τ'
+    /// Rule for Unary Operations
+    ///
+    /// Type signatures:
+    /// - `-`: `Num → Num` (numeric negation)
+    /// - `!`: `Bool → Bool` (logical negation)
     fn visit_unary_op(&mut self, id: Id<node::UnaryOp>, tree: &T) -> ControlFlow<Self::BreakValue> {
-        let t = match id.get(tree) {
+        let operand_t = match id.get(tree) {
             &node::UnaryOp::Neg => MonoType::NUM,
             &node::UnaryOp::Not => MonoType::BOOL,
         };
 
-        let func = MonoType::func(t.clone(), t);
+        let unary_func_t = MonoType::func(operand_t.clone(), operand_t);
 
-        self.update_type(id, func);
+        self.update_type(id, unary_func_t);
         ControlFlow::Continue(())
     }
 
-    // Application rule
-    // Γ ⊢ f : τ0
-    // Γ ⊢ x : τ1
-    // τ' = newvar()
-    // unify(τ0, τ1 -> τ')
-    // --------------------
-    // Γ ⊢ f x : τ'
+    /// Rule for Unary Expression (Application of unary operator)
+    ///
+    /// ```
+    /// ∆;Γ ⊢ op : op_t
+    /// ∆;Γ ⊢ operand : operand_t
+    /// result_t = newvar()
+    /// unify(op_t, operand_t → result_t)
+    /// -----------------------
+    /// ∆;Γ ⊢ op operand : result_t
+    /// ```
+    ///
+    /// Type signature: `(α → β) → α → β`
     fn visit_unary_expr(
         &mut self,
         id: Id<node::UnaryExpr>,
@@ -871,18 +961,27 @@ where
 
         let node::UnaryExpr { op, operand } = *id.get(tree);
 
-        let t0 = self.types.meta(op).clone();
-        let t1 = self.types.meta(operand).clone();
+        let op_t = self.types.meta(op).clone();
+        let operand_t = self.types.meta(operand).clone();
 
-        let t_prime = MonoType::variable();
+        let result_t = MonoType::variable();
 
+        // Constrain the operator to be a function from operand type to result type
         self.cons
-            .constrain(t0, MonoType::func(t1, t_prime.clone()), span);
+            .constrain(op_t, MonoType::func(operand_t, result_t.clone()), span);
 
-        self.update_type(id, t_prime);
+        self.update_type(id, result_t);
         ControlFlow::Continue(())
     }
 
+    /// Rule for Binary Operations
+    ///
+    /// Type signatures:
+    /// - `+`: `∀α. α → α → Num` where `α : Addable`
+    /// - `-`, `*`, `/`, `%`: `Num → Num → Num`
+    /// - `<`, `>`, `<=`, `>=`: `∀α. α → α → Bool` where `α : Comparable`
+    /// - `&&`, `||`, `xor`: `Bool → Bool → Bool`
+    /// - `==`, `!=`: `∀α. α → α → Bool` where `α : Equatable`
     fn visit_binary_op(
         &mut self,
         id: Id<node::BinaryOp>,
@@ -890,11 +989,12 @@ where
     ) -> ControlFlow<Self::BreakValue> {
         let span = self.span(id);
 
-        let (t, t_prime) = match id.get(tree) {
+        let (operand_t, result_t) = match id.get(tree) {
             node::BinaryOp::Add => {
-                let t = MonoType::variable();
-                self.cons.constrain_kind(Kind::Addable, t.clone(), span);
-                (t, MonoType::NUM)
+                let addable_t = MonoType::variable();
+                self.cons
+                    .constrain_kind(Kind::Addable, addable_t.clone(), span);
+                (addable_t, MonoType::NUM)
             }
             node::BinaryOp::Sub
             | node::BinaryOp::Mul
@@ -905,9 +1005,10 @@ where
             | node::BinaryOp::Greater
             | node::BinaryOp::LessEq
             | node::BinaryOp::GreaterEq => {
-                let t = MonoType::variable();
-                self.cons.constrain_kind(Kind::Comparable, t.clone(), span);
-                (t, MonoType::BOOL)
+                let comparable_t = MonoType::variable();
+                self.cons
+                    .constrain_kind(Kind::Comparable, comparable_t.clone(), span);
+                (comparable_t, MonoType::BOOL)
             }
             // Logical
             node::BinaryOp::And | node::BinaryOp::Or | node::BinaryOp::Xor => {
@@ -915,9 +1016,10 @@ where
             }
             // Equality
             node::BinaryOp::Eq | node::BinaryOp::NotEq => {
-                let t = MonoType::variable();
-                self.cons.constrain_kind(Kind::Equatable, t.clone(), span);
-                (t, MonoType::BOOL)
+                let equatable_t = MonoType::variable();
+                self.cons
+                    .constrain_kind(Kind::Equatable, equatable_t.clone(), span);
+                (equatable_t, MonoType::BOOL)
             }
             // Record
             node::BinaryOp::Merge => {
@@ -925,19 +1027,25 @@ where
             }
         };
 
-        let func = MonoType::func(t.clone(), MonoType::func(t, t_prime));
+        let binary_func_t = MonoType::func(operand_t.clone(), MonoType::func(operand_t, result_t));
 
-        self.update_type(id, func);
+        self.update_type(id, binary_func_t);
         ControlFlow::Continue(())
     }
 
-    // Application rule
-    // Γ ⊢ f : τ0
-    // Γ ⊢ x : τ1
-    // τ' = newvar()
-    // unify(τ0, τ1 -> τ')
-    // --------------------
-    // Γ ⊢ f x : τ'
+    /// Rule for Binary Expression (Application of binary operator)
+    ///
+    /// ```
+    /// ∆;Γ ⊢ op : op_t
+    /// ∆;Γ ⊢ left : left_t
+    /// ∆;Γ ⊢ right : right_t
+    /// result_t = newvar()
+    /// unify(op_t, left_t → right_t → result_t)
+    /// -----------------------
+    /// ∆;Γ ⊢ left op right : result_t
+    /// ```
+    ///
+    /// Type signature: `(α → β → γ) → α → β → γ`
     fn visit_binary_expr(
         &mut self,
         id: Id<node::BinaryExpr>,
@@ -949,24 +1057,30 @@ where
 
         let node::BinaryExpr { left, op, right } = *id.get(tree);
 
-        let t0 = self.types.meta(op).clone();
-        let lhs = self.types.meta(left).clone();
-        let rhs = self.types.meta(right).clone();
+        let op_t = self.types.meta(op).clone();
+        let left_t = self.types.meta(left).clone();
+        let right_t = self.types.meta(right).clone();
 
-        let t_prime = MonoType::variable();
+        let result_t = MonoType::variable();
 
-        let func = MonoType::func(lhs, MonoType::func(rhs, t_prime.clone()));
-        self.cons.constrain(t0, func, span);
+        let expected_op_t = MonoType::func(left_t, MonoType::func(right_t, result_t.clone()));
+        self.cons.constrain(op_t, expected_op_t, span);
 
-        self.update_type(id, t_prime);
+        self.update_type(id, result_t);
         ControlFlow::Continue(())
     }
 
-    // Let rule
-    // Γ ⊢ e0 : τ
-    // Γ, x : Γ'(τ) ⊢ e1 : τ'
-    // --------------------
-    // Γ ⊢ let x = e0 in e1 : τ'
+    /// Rule for Let Expression
+    ///
+    /// ```
+    /// ∆;Γ ⊢ value : value_t
+    /// value_pt = generalize(value_t, ftv(Γ))
+    /// ∆;Γ, x : value_pt ⊢ body : result_t
+    /// -----------------------
+    /// ∆;Γ ⊢ let x = value in body : result_t
+    /// ```
+    ///
+    /// Implementation uses generalization to allow polymorphic let-bindings
     fn visit_let_expr(&mut self, id: Id<node::LetExpr>, tree: &T) -> ControlFlow<Self::BreakValue> {
         let &node::LetExpr {
             name,
@@ -984,15 +1098,15 @@ where
         TypeVar::exit();
 
         // due to explicit traversal this is known
-        let t = self.types.meta(value).clone();
-        let pt = t.generalize(&self.type_scope.bound_vars());
+        let value_t = self.types.meta(value).clone();
+        let value_pt = value_t.generalize(&self.type_scope.bound_vars());
 
-        self.type_scope.enter(name, pt);
+        self.type_scope.enter(name, value_pt);
         self.visit_expr(inside, tree)?;
         self.type_scope.exit(&name);
 
-        let t_prime = self.types.meta(inside).clone();
-        self.update_type(id, t_prime);
+        let result_t = self.types.meta(inside).clone();
+        self.update_type(id, result_t);
 
         ControlFlow::Continue(())
     }
@@ -1005,12 +1119,19 @@ where
         todo!()
     }
 
-    // If
-    // Γ ⊢ predicate : Bool
-    // Γ ⊢ e0 : τ
-    // Γ ⊢ e1 : τ
-    // --------------------------
-    // Γ ⊢ if predicate then e0 else e1 : τ
+    /// Rule for If Expression
+    ///
+    /// ```
+    /// ∆;Γ ⊢ predicate : predicate_t
+    /// ∆;Γ ⊢ then : then_t
+    /// ∆;Γ ⊢ else : else_t
+    /// unify(predicate_t, Bool)
+    /// unify(then_t, else_t)
+    /// -----------------------
+    /// ∆;Γ ⊢ if predicate then then else else : then_t
+    /// ```
+    ///
+    /// Type signature: `Bool → α → α → α`
     fn visit_if_expr(&mut self, id: Id<node::IfExpr>, tree: &T) -> ControlFlow<Self::BreakValue> {
         self.walk_if_expr(id, tree)?;
 
@@ -1022,53 +1143,63 @@ where
             or,
         } = *id.get(tree);
 
-        let t0 = self.types.meta(predicate).clone();
+        let predicate_t = self.types.meta(predicate).clone();
 
-        self.cons.constrain(MonoType::BOOL, t0, span);
+        self.cons.constrain(MonoType::BOOL, predicate_t, span);
 
-        let then = self.types.meta(then).clone();
-        let or = self.types.meta(or).clone();
+        let then_t = self.types.meta(then).clone();
+        let or_t = self.types.meta(or).clone();
 
-        self.cons.constrain(then.clone(), or, span);
+        self.cons.constrain(then_t.clone(), or_t, span);
 
-        self.update_type(id, then);
+        self.update_type(id, then_t);
         ControlFlow::Continue(())
     }
 
-    // Abstraction rule
-    // τ = newvar()
-    // Γ, x : τ ⊢ e : τ'
-    // --------------------
-    // Γ ⊢ \x -> e : t -> t'
+    /// Rule for Lambda Expression
+    ///
+    /// ```
+    /// param_t = newvar()
+    /// ∆;Γ, x : param_t ⊢ body : body_t
+    /// -----------------------
+    /// ∆;Γ ⊢ λx → body : param_t → body_t
+    /// ```
+    ///
+    /// Type signature: `(α → β)` where α is parameter type, β is body type
     fn visit_lambda_expr(
         &mut self,
         id: Id<node::LambdaExpr>,
         tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
         let node::LambdaExpr { param, body } = *id.get(tree);
-        let t = MonoType::variable();
+        let param_t = MonoType::variable();
 
         // let name = self.types.meta(func.param).clone();
         let name = param.get(tree).0.clone();
 
-        self.type_scope.enter(name, PolyType::from(t.clone()));
+        self.type_scope.enter(name, PolyType::from(param_t.clone()));
         self.visit_expr(body, tree)?;
         self.type_scope.exit(&name);
 
-        let t_prime = self.types.meta(body).clone();
-        let func = MonoType::func(t, t_prime);
+        let body_t = self.types.meta(body).clone();
+        let lambda_t = MonoType::func(param_t, body_t);
 
-        self.update_type(id, func);
+        self.update_type(id, lambda_t);
         ControlFlow::Continue(())
     }
 
-    // Application rule
-    // Γ ⊢ f : τ0
-    // Γ ⊢ x : τ1
-    // τ' = newvar()
-    // unify(τ0, τ1 -> τ')
-    // --------------------
-    // Γ ⊢ f x : τ'
+    /// Rule for Function Application
+    ///
+    /// ```
+    /// ∆;Γ ⊢ func : func_t
+    /// ∆;Γ ⊢ arg : arg_t
+    /// result_t = newvar()
+    /// unify(func_t, arg_t → result_t)
+    /// -----------------------
+    /// ∆;Γ ⊢ func arg : result_t
+    /// ```
+    ///
+    /// Type signature: `(α → β) → α → β`
     fn visit_call_expr(
         &mut self,
         id: Id<node::CallExpr>,
@@ -1080,21 +1211,21 @@ where
 
         let node::CallExpr { func, arg } = *id.get(tree);
 
-        let t0 = self.types.meta(func).clone();
-        let t1 = self.types.meta(arg).clone();
-        let t_prime = MonoType::variable();
+        let func_t = self.types.meta(func).clone();
+        let arg_t = self.types.meta(arg).clone();
+        let result_t = MonoType::variable();
 
         self.cons
-            .constrain(t0, MonoType::func(t1, t_prime.clone()), span);
+            .constrain(func_t, MonoType::func(arg_t, result_t.clone()), span);
 
-        self.update_type(id, t_prime);
+        self.update_type(id, result_t);
         ControlFlow::Continue(())
     }
 
     fn visit_expr(&mut self, id: Id<node::Expr>, tree: &T) -> ControlFlow<Self::BreakValue> {
         self.walk_expr(id, tree)?;
 
-        let t = match *id.get(tree) {
+        let expr_t = match *id.get(tree) {
             node::Expr::Error(_) => todo!(),
             node::Expr::Literal(id) => self.types.meta(id),
             node::Expr::Path(id) => self.types.meta(id),
@@ -1113,7 +1244,7 @@ where
         }
         .clone();
 
-        self.update_type(id, t);
+        self.update_type(id, expr_t);
         ControlFlow::Continue(())
     }
 }
