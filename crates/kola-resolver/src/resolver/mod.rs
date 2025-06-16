@@ -72,11 +72,6 @@ pub fn resolve(
         });
     }
 
-    let module_symbols = module_scopes
-        .iter()
-        .map(|scope| scope.info.sym)
-        .collect::<Vec<_>>();
-
     let ModuleResolution { mut module_scopes } =
         module::resolve_modules(module_scopes, interner, report, &mut module_graph);
 
@@ -92,11 +87,9 @@ pub fn resolve(
         });
     }
 
-    let TypeResolution { type_orders } =
-        ty::resolve_types(&module_symbols, &mut module_scopes, report);
+    let TypeResolution { type_orders } = ty::resolve_types(&mut module_scopes, report);
 
-    let ValueResolution { value_orders } =
-        value::resolve_values(&module_symbols, &mut module_scopes, report);
+    let ValueResolution { value_orders } = value::resolve_values(&mut module_scopes, report);
 
     for (sym, scope) in &module_scopes {
         let source = scope.info.source;

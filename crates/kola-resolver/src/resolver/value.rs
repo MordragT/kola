@@ -5,7 +5,6 @@ use super::ValueOrders;
 use crate::{
     refs::ValueRef,
     scope::{ModuleScope, ModuleScopes},
-    symbol::ModuleSym,
 };
 
 pub struct ValueResolution {
@@ -37,21 +36,15 @@ phase have a single clear responsibility: discovery collects information,
 resolution creates relationships.
 */
 
-pub fn resolve_values(
-    symbols: &[ModuleSym],
-    scopes: &mut ModuleScopes,
-    report: &mut Report,
-) -> ValueResolution {
+pub fn resolve_values(scopes: &mut ModuleScopes, report: &mut Report) -> ValueResolution {
     let mut value_orders = ValueOrders::new();
 
-    for module_sym in symbols {
-        let scope = &mut scopes[module_sym];
-
+    for (sym, scope) in scopes {
         resolve_values_in_module(scope, report);
 
         match scope.value_graph.topological_sort() {
             Ok(order) => {
-                value_orders.insert(*module_sym, order);
+                value_orders.insert(*sym, order);
             }
             Err(_) => {
                 report.add_diagnostic(

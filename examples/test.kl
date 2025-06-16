@@ -1,4 +1,10 @@
 {
+    export module test = {},
+
+    module test2 = {
+        module test3 = super::test,
+    },
+
     type Person = forall a . { name : Str | a },
 
     person_a : forall a . Person a = { name = "Alice" },

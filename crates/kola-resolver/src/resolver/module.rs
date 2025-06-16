@@ -107,6 +107,114 @@ pub fn resolve_modules(
     }
 }
 
+pub fn resolve_module_scope(
+    scope_sym: ModuleSym,
+    report: &mut Report,
+    module_graph: &mut ModuleGraph,
+    visit: &mut VisitMap<ModuleSym>,
+    scopes: &mut ModuleScopes,
+) {
+    visit[scope_sym] = VisitState::Visiting;
+
+    for (bind_sym, bind_ref) in scopes[&scope_sym].refs.module_binds().clone() {
+        match visit[bind_sym] {
+            VisitState::Unvisited => resolve_module_bind_ref(
+                bind_sym,
+                bind_ref,
+                scope_sym,
+                report,
+                module_graph,
+                visit,
+                scopes,
+            ),
+            VisitState::Visiting => {
+                report.add_diagnostic(Diagnostic::error(
+                    scopes[&scope_sym].info.loc,
+                    "Module cycle detected",
+                ));
+                visit[bind_sym] = VisitState::Visited;
+            }
+            VisitState::Visited => (),
+        }
+    }
+
+    visit[scope_sym] = VisitState::Visited;
+}
+
+// TODO return error type instead of on the fly reporting.
+pub fn resolve_module_bind_ref(
+    bind_sym: ModuleSym,
+    bind_ref: ModuleBindRef,
+    source_sym: ModuleSym,
+    report: &mut Report,
+    module_graph: &mut ModuleGraph,
+    visit: &mut VisitMap<ModuleSym>,
+    scopes: &mut ModuleScopes,
+) {
+    visit[bind_sym] = VisitState::Visiting;
+
+    let mut path = bind_ref.path();
+    let mut scope = &scopes[&source_sym].clone();
+
+    while let Some((name, rest)) = path.split_first() {
+        let Some(sym) = scope.shape.get_module(*name) else {
+            report.add_diagnostic(Diagnostic::error(scope.info.loc, "Module not found"));
+            visit[bind_sym] = VisitState::Visited;
+            return;
+        };
+
+        let def = scope.defs[sym];
+
+        // Check if the module is exported or part of the current module.
+        if def.vis != Vis::Export && scope.info.sym != source_sym {
+            report.add_diagnostic(
+                Diagnostic::error(def.loc, "Module not exported")
+                    .with_help("Only exported modules can be used in paths."),
+            );
+            visit[bind_sym] = VisitState::Visited;
+            return;
+        }
+
+        if visit[sym] == VisitState::Visiting {
+            report.add_diagnostic(Diagnostic::error(def.loc, "Module cycle detected"));
+            visit[sym] = VisitState::Visited;
+            return;
+        }
+
+        if visit[sym] == VisitState::Unvisited {
+            if scopes.contains_key(&sym) {
+                resolve_module_scope(sym, report, module_graph, visit, scopes);
+            } else if let Some(module_ref) = scope.refs.get_module_bind(sym).cloned() {
+                resolve_module_bind_ref(
+                    sym,
+                    module_ref,
+                    scope.info.sym,
+                    report,
+                    module_graph,
+                    visit,
+                    scopes,
+                );
+            } else {
+                unreachable!()
+            }
+        }
+
+        scope = if let Some(scope) = scopes.get(&sym) {
+            scope
+        } else {
+            report.add_diagnostic(Diagnostic::error(def.loc, "Module scope not found"));
+            visit[bind_sym] = VisitState::Visited;
+            return;
+        };
+
+        path = rest;
+    }
+
+    visit[bind_sym] = VisitState::Visited;
+    module_graph.add_dependency(source_sym, scope.info.sym);
+    scopes.insert(bind_sym, scope.clone());
+}
+
 pub fn resolve_module_ref(
     source_sym: ModuleSym,
     module_ref: &ModuleRef,
@@ -156,112 +264,4 @@ pub fn resolve_module_ref(
 
     module_graph.add_dependency(source_sym, target);
     scopes[&source_sym].resolved.insert_meta(*id, target);
-}
-
-pub fn resolve_module_scope(
-    scope_sym: ModuleSym,
-    report: &mut Report,
-    module_graph: &mut ModuleGraph,
-    visit: &mut VisitMap<ModuleSym>,
-    scopes: &mut ModuleScopes,
-) {
-    visit[scope_sym] = VisitState::Visiting;
-
-    for (bind_sym, bind_ref) in scopes[&scope_sym].refs.module_binds().clone() {
-        match visit[bind_sym] {
-            VisitState::Unvisited => resolve_module_path_bind(
-                bind_sym,
-                bind_ref,
-                scope_sym,
-                report,
-                module_graph,
-                visit,
-                scopes,
-            ),
-            VisitState::Visiting => {
-                report.add_diagnostic(Diagnostic::error(
-                    scopes[&scope_sym].info.loc,
-                    "Module cycle detected",
-                ));
-                visit[bind_sym] = VisitState::Visited;
-            }
-            VisitState::Visited => (),
-        }
-    }
-
-    visit[scope_sym] = VisitState::Visited;
-}
-
-// TODO return error type instead of on the fly reporting.
-pub fn resolve_module_path_bind(
-    bind_sym: ModuleSym,
-    bind_ref: ModuleBindRef,
-    source_sym: ModuleSym,
-    report: &mut Report,
-    module_graph: &mut ModuleGraph,
-    visit: &mut VisitMap<ModuleSym>,
-    scopes: &mut ModuleScopes,
-) {
-    visit[bind_sym] = VisitState::Visiting;
-
-    let mut path = bind_ref.path();
-    let mut scope = &scopes[&source_sym].clone();
-
-    while let Some((name, rest)) = path.split_first() {
-        let Some(sym) = scope.shape.get_module(*name) else {
-            report.add_diagnostic(Diagnostic::error(scope.info.loc, "Module not found"));
-            visit[bind_sym] = VisitState::Visited;
-            return;
-        };
-
-        let def = scope.defs[sym];
-
-        // Check if the module is exported or part of the current module.
-        if def.vis != Vis::Export && scope.info.sym != source_sym {
-            report.add_diagnostic(
-                Diagnostic::error(def.loc, "Module not exported")
-                    .with_help("Only exported modules can be used in paths."),
-            );
-            visit[bind_sym] = VisitState::Visited;
-            return;
-        }
-
-        if visit[sym] == VisitState::Visiting {
-            report.add_diagnostic(Diagnostic::error(def.loc, "Module cycle detected"));
-            visit[sym] = VisitState::Visited;
-            return;
-        }
-
-        if visit[sym] == VisitState::Unvisited {
-            if scopes.contains_key(&sym) {
-                resolve_module_scope(sym, report, module_graph, visit, scopes);
-            } else if let Some(module_ref) = scope.refs.get_module_bind(sym).cloned() {
-                resolve_module_path_bind(
-                    sym,
-                    module_ref,
-                    scope.info.sym,
-                    report,
-                    module_graph,
-                    visit,
-                    scopes,
-                );
-            } else {
-                unreachable!()
-            }
-        }
-
-        scope = if let Some(scope) = scopes.get(&sym) {
-            scope
-        } else {
-            report.add_diagnostic(Diagnostic::error(def.loc, "Module scope not found"));
-            visit[bind_sym] = VisitState::Visited;
-            return;
-        };
-
-        path = rest;
-    }
-
-    visit[bind_sym] = VisitState::Visited;
-    module_graph.add_dependency(source_sym, scope.info.sym);
-    scopes.insert(bind_sym, scope.clone());
 }

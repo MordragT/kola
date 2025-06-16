@@ -91,26 +91,6 @@ pub fn type_check(
             break;
         }
 
-        {
-            let loc_decorator = LocDecorator(&spans);
-            let type_decorator = TypeDecorator(&module_annotations);
-            let resolution_decorator = ResolutionDecorator(&module_scope.resolved);
-            let decorators = Decorators::new()
-                .with(&loc_decorator)
-                .with(&resolution_decorator)
-                .with(&type_decorator);
-
-            let tree_printer = TreePrinter::new(&tree, &interner, decorators, info.id);
-
-            debug!(
-                "{} SourceId {}, ModuleSym {}\n{}",
-                "Typed Abstract Syntax Tree".bold().bright_white(),
-                info.source,
-                module_sym,
-                tree_printer.render(print_options, arena)
-            );
-        }
-
         for &value_sym in value_order {
             let id = module_scope.defs[value_sym].id();
 
@@ -139,9 +119,11 @@ pub fn type_check(
         let module_type = ModuleType::from(module_scope.shape.clone());
         type_env.insert_module(module_sym, module_type);
 
-        let loc_decorator = LocDecorator(&spans);
+        let resolution_decorator = ResolutionDecorator(&module_scope.resolved);
         let type_decorator = TypeDecorator(&module_annotations);
-        let decorators = Decorators::new().with(&loc_decorator).with(&type_decorator);
+        let decorators = Decorators::new()
+            .with(&resolution_decorator)
+            .with(&type_decorator);
 
         let tree_printer = TreePrinter::new(&tree, &interner, decorators, info.id);
 

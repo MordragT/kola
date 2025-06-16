@@ -524,6 +524,8 @@ where
     ) -> ControlFlow<Self::BreakValue> {
         let node::ValueBind { ty, value, .. } = *id.get(tree);
 
+        let span = self.span(id);
+
         TypeVar::enter();
         self.visit_expr(value, tree)?;
         TypeVar::exit();
@@ -535,17 +537,21 @@ where
 
         if let Some(ty) = ty {
             self.visit_type(ty, tree)?;
-            let expected_pt = self.types.meta(ty);
+            let expected_pt = self.types.meta(ty).clone();
 
-            if !pt.alpha_equivalent(&expected_pt) {
-                return ControlFlow::Break(Diagnostic::error(
-                    self.span(id),
-                    format!("Type mismatch: expected {}, found {}", expected_pt, pt),
-                ));
-            }
+            // if !pt.alpha_equivalent(&expected_pt) {
+            //     return ControlFlow::Break(Diagnostic::error(
+            //         self.span(id),
+            //         format!("Type mismatch: expected {}, found {}", expected_pt, pt),
+            //     ));
+            // }
+
+            self.cons.constrain(expected_pt.instantiate(), t, span);
+            self.update_type(id, expected_pt); // type ascription
+        } else {
+            self.update_type(id, pt);
         }
 
-        self.update_type(id, pt);
         ControlFlow::Continue(())
     }
 
