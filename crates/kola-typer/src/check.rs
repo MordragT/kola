@@ -3,16 +3,17 @@ use kola_resolver::{
     forest::Forest,
     info::ModuleGraph,
     prelude::Topography,
+    print::ResolutionDecorator,
     resolver::{TypeOrders, ValueOrders},
     scope::ModuleScopes,
 };
-use kola_span::{IntoDiagnostic, Issue, Report};
+use kola_span::{Issue, Report};
 use kola_syntax::loc::LocDecorator;
 use kola_tree::{
     meta::MetaView,
     print::{Decorators, TreePrinter},
 };
-use kola_utils::{fmt::StrInternerExt, interner::StrInterner};
+use kola_utils::interner::StrInterner;
 use log::debug;
 
 use crate::{
@@ -75,13 +76,10 @@ pub fn type_check(
                 interner,
                 &module_scope.resolved,
             );
-            let typed_nodes = match typer.solve(tree, report) {
-                Ok(typed_nodes) => typed_nodes,
-                Err((errors, span)) => {
-                    let diag = interner.display(&errors).into_diagnostic(span);
-                    report.add_diagnostic(diag);
-                    continue;
-                }
+
+            let Some(typed_nodes) = typer.solve(tree, interner, report) else {
+                // If there are errors in type checking types, break out early
+                break;
             };
 
             type_env.insert_type(type_sym, typed_nodes.meta(id).clone());
@@ -91,6 +89,26 @@ pub fn type_check(
         if !report.is_empty() {
             // If there are errors in type checking types, break out early
             break;
+        }
+
+        {
+            let loc_decorator = LocDecorator(&spans);
+            let type_decorator = TypeDecorator(&module_annotations);
+            let resolution_decorator = ResolutionDecorator(&module_scope.resolved);
+            let decorators = Decorators::new()
+                .with(&loc_decorator)
+                .with(&resolution_decorator)
+                .with(&type_decorator);
+
+            let tree_printer = TreePrinter::new(&tree, &interner, decorators, info.id);
+
+            debug!(
+                "{} SourceId {}, ModuleSym {}\n{}",
+                "Typed Abstract Syntax Tree".bold().bright_white(),
+                info.source,
+                module_sym,
+                tree_printer.render(print_options, arena)
+            );
         }
 
         for &value_sym in value_order {
@@ -103,13 +121,10 @@ pub fn type_check(
                 interner,
                 &module_scope.resolved,
             );
-            let typed_nodes = match typer.solve(tree, report) {
-                Ok(typed_nodes) => typed_nodes,
-                Err((errors, span)) => {
-                    let diag = interner.display(&errors).into_diagnostic(span);
-                    report.add_diagnostic(diag);
-                    continue;
-                }
+
+            let Some(typed_nodes) = typer.solve(tree, interner, report) else {
+                // If there are errors in type checking types, break out early
+                break;
             };
 
             type_env.insert_value(value_sym, typed_nodes.meta(id).clone());
@@ -124,15 +139,11 @@ pub fn type_check(
         let module_type = ModuleType::from(module_scope.shape.clone());
         type_env.insert_module(module_sym, module_type);
 
-        // dbg!(&module_annotations);
+        let loc_decorator = LocDecorator(&spans);
+        let type_decorator = TypeDecorator(&module_annotations);
+        let decorators = Decorators::new().with(&loc_decorator).with(&type_decorator);
 
-        // TODO both decorators should take Rc's instead of needing to clone here
-        let decorators = Decorators::new()
-            .with(LocDecorator(spans.to_vec()))
-            .with(TypeDecorator(module_annotations.clone()));
-
-        // TODO I should use NodePrinter here and use the global_id.id as root
-        let tree_printer = TreePrinter::new(&tree, &interner, &decorators, info.id);
+        let tree_printer = TreePrinter::new(&tree, &interner, decorators, info.id);
 
         debug!(
             "{} SourceId {}, ModuleSym {}\n{}",

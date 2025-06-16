@@ -2,6 +2,7 @@ use derive_more::From;
 use kola_tree::node::{ModuleNamespace, NamespaceKind, TypeNamespace, ValueNamespace};
 use kola_utils::define_unique_leveled_id;
 use std::{
+    fmt,
     hash::Hash,
     marker::PhantomData,
     sync::atomic::{AtomicU32, Ordering},
@@ -52,6 +53,24 @@ impl<T: ?Sized> Default for Sym<T> {
 pub type ModuleSym = Sym<ModuleNamespace>;
 pub type TypeSym = Sym<TypeNamespace>;
 pub type ValueSym = Sym<ValueNamespace>;
+
+impl fmt::Display for ModuleSym {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "m{}", self.id())
+    }
+}
+
+impl fmt::Display for TypeSym {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "t{}", self.id())
+    }
+}
+
+impl fmt::Display for ValueSym {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "v{}", self.id())
+    }
+}
 
 #[derive(Debug, From, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum AnySym {

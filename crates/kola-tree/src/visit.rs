@@ -724,7 +724,7 @@ pub trait Visitor<T: TreeView> {
         }
 
         if let Some(ext) = extension {
-            self.visit_type_var(*ext, tree)?;
+            self.visit_type_name(*ext, tree)?;
         }
 
         ControlFlow::Continue(())
@@ -773,7 +773,7 @@ pub trait Visitor<T: TreeView> {
         }
 
         if let Some(ext) = extension {
-            self.visit_type_var(*ext, tree)?;
+            self.visit_type_name(*ext, tree)?;
         }
 
         ControlFlow::Continue(())

@@ -125,9 +125,9 @@ pub enum ModuleExpr {
 impl<'a> Notate<'a> for NodePrinter<'a, ModuleExpr> {
     fn notate(&self, arena: &'a Bump) -> Notation<'a> {
         match *self.value {
-            ModuleExpr::Module(id) => self.to_node(id.get(self.tree)).notate(arena),
-            ModuleExpr::Import(id) => self.to_node(id.get(self.tree)).notate(arena),
-            ModuleExpr::Path(id) => self.to_node(id.get(self.tree)).notate(arena),
+            ModuleExpr::Module(id) => self.to(id).notate(arena),
+            ModuleExpr::Import(id) => self.to(id).notate(arena),
+            ModuleExpr::Path(id) => self.to(id).notate(arena),
         }
     }
 }
@@ -146,11 +146,11 @@ pub enum Bind {
 impl<'a> Notate<'a> for NodePrinter<'a, Bind> {
     fn notate(&self, arena: &'a Bump) -> Notation<'a> {
         match *self.value {
-            Bind::Value(v) => self.to_node(v.get(self.tree)).notate(arena),
-            Bind::Type(t) => self.to_node(t.get(self.tree)).notate(arena),
-            Bind::OpaqueType(o) => self.to_node(o.get(self.tree)).notate(arena),
-            Bind::Module(m) => self.to_node(m.get(self.tree)).notate(arena),
-            Bind::ModuleType(mt) => self.to_node(mt.get(self.tree)).notate(arena),
+            Bind::Value(v) => self.to(v).notate(arena),
+            Bind::Type(t) => self.to(t).notate(arena),
+            Bind::OpaqueType(o) => self.to(o).notate(arena),
+            Bind::Module(m) => self.to(m).notate(arena),
+            Bind::ModuleType(mt) => self.to(mt).notate(arena),
         }
     }
 }
@@ -538,10 +538,10 @@ pub enum Spec {
 impl<'a> Notate<'a> for NodePrinter<'a, Spec> {
     fn notate(&self, arena: &'a Bump) -> Notation<'a> {
         match *self.value {
-            Spec::Value(v) => self.to_node(v.get(self.tree)).notate(arena),
-            Spec::TypeBind(t) => self.to_node(t.get(self.tree)).notate(arena),
-            Spec::OpaqueType(o) => self.to_node(o.get(self.tree)).notate(arena),
-            Spec::Module(m) => self.to_node(m.get(self.tree)).notate(arena),
+            Spec::Value(v) => self.to(v).notate(arena),
+            Spec::TypeBind(t) => self.to(t).notate(arena),
+            Spec::OpaqueType(o) => self.to(o).notate(arena),
+            Spec::Module(m) => self.to(m).notate(arena),
         }
     }
 }

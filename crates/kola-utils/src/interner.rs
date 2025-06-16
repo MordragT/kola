@@ -20,6 +20,12 @@ impl<T: ?Sized> Key<T> {
     }
 }
 
+impl<T: ?Sized> fmt::Display for Key<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.id)
+    }
+}
+
 pub type PathKey = Key<Utf8Path>;
 pub type PathInterner<S = RandomState> = Interner<Utf8Path, S>;
 

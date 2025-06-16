@@ -11,15 +11,10 @@ impl UniformPhase for LocPhase {
 pub type Locations = MetaVec<LocPhase>;
 
 #[derive(Debug, Clone)]
-pub struct LocDecorator(pub Locations);
+pub struct LocDecorator<'a>(pub &'a Locations);
 
-impl Decorator for LocDecorator {
-    fn decorate<'a>(
-        &'a self,
-        notation: Notation<'a>,
-        with: usize,
-        arena: &'a Bump,
-    ) -> Notation<'a> {
+impl<'a> Decorator<'a> for LocDecorator<'a> {
+    fn decorate(&self, notation: Notation<'a>, with: usize, arena: &'a Bump) -> Notation<'a> {
         let span = self.0.get(with).inner_ref();
         let head = span.display_in(arena);
 

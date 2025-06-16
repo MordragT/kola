@@ -2,7 +2,7 @@ use kola_span::{Diagnostic, Report};
 use kola_tree::meta::MetaMapExt;
 
 use crate::{
-    refs::TypeRef,
+    refs::{TypeBindRef, TypeRef},
     scope::{ModuleScope, ModuleScopes},
     symbol::ModuleSym,
 };
@@ -43,12 +43,12 @@ pub fn resolve_types(
 
 fn resolve_types_in_module(scope: &mut ModuleScope, report: &mut Report) {
     // Resolve type references similar to value references
-    for &TypeRef {
+    for &TypeBindRef {
         name,
         id,
         source,
         loc,
-    } in scope.refs.types()
+    } in scope.refs.type_binds()
     {
         if let Some(target) = scope.shape.get_type(name) {
             scope.type_graph.add_dependency(source, target);
@@ -56,6 +56,17 @@ fn resolve_types_in_module(scope: &mut ModuleScope, report: &mut Report) {
         } else {
             report.add_diagnostic(
                 Diagnostic::error(loc, "Type not found")
+                    .with_help("Check that the type is defined in this module."),
+            );
+        }
+    }
+
+    for &TypeRef { name, id, loc } in scope.refs.types() {
+        if let Some(type_sym) = scope.shape.get_type(name) {
+            scope.resolved.insert_meta(id, type_sym);
+        } else {
+            report.add_diagnostic(
+                Diagnostic::error(loc, "Type not found in annotation")
                     .with_help("Check that the type is defined in this module."),
             );
         }

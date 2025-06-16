@@ -15,12 +15,6 @@ macro_rules! define_id {
             }
         }
 
-        impl std::fmt::Display for $name {
-            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                write!(f, "{}", self.id)
-            }
-        }
-
         impl $name {
             pub fn as_usize(&self) -> usize {
                 self.id as usize
@@ -54,12 +48,6 @@ macro_rules! define_leveled_id {
                     self.id,
                     self.level
                 )
-            }
-        }
-
-        impl std::fmt::Display for $name {
-            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                write!(f, "{}", self.id)
             }
         }
 
@@ -129,12 +117,6 @@ macro_rules! define_unique_id {
         impl<T: ?Sized> std::fmt::Debug for $name<T> {
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
                 write!(f, "{}({})", stringify!($name), self.id)
-            }
-        }
-
-        impl<T: ?Sized> std::fmt::Display for $name<T> {
-            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                write!(f, "{}", self.id)
             }
         }
 
@@ -209,12 +191,6 @@ macro_rules! define_unique_leveled_id {
                     self.id,
                     self.level
                 )
-            }
-        }
-
-        impl<T: ?Sized> std::fmt::Display for $name<T> {
-            fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                write!(f, "{}", self.id)
             }
         }
 

@@ -1,7 +1,9 @@
 {
     type Person = forall a . { name : Str | a },
 
-    person_a : Person = { name = "Alice" },
+    person_a : forall a . Person a = { name = "Alice" },
 
-    person_b : Person = { name = "Bob", age = 30 },
+    person_b : forall a . Person a = { name = "Bob", age = 30 },
+
+    main = 'A',
 }

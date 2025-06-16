@@ -60,8 +60,15 @@ impl<'a> Notate<'a> for NodePrinter<'a, TypePath> {
         let path = path.map(|p| self.to(p).notate(arena)).or_not(arena);
         let ty = self.to(ty).notate(arena);
 
-        let single = path.clone().then(ty.clone(), arena).flatten(arena);
-        let multi = path.then(ty, arena).indent(arena);
+        // TODO fix newlines/spacings if path is None
+
+        let single = [arena.just(' '), path.clone(), arena.just(' '), ty.clone()]
+            .concat_in(arena)
+            .flatten(arena);
+
+        let multi = [arena.newline(), path, arena.newline(), ty]
+            .concat_in(arena)
+            .indent(arena);
 
         head.then(single.or(multi, arena), arena)
     }
@@ -166,7 +173,7 @@ impl<'a> Notate<'a> for NodePrinter<'a, RecordFieldType> {
 #[derive(Debug, From, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct RecordType {
     pub fields: Vec<Id<RecordFieldType>>,
-    pub extension: Option<Id<TypeVar>>,
+    pub extension: Option<Id<TypeName>>,
 }
 
 impl RecordType {
@@ -256,7 +263,7 @@ impl<'a> Notate<'a> for NodePrinter<'a, VariantCaseType> {
 #[derive(Debug, From, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct VariantType {
     pub cases: Vec<Id<VariantCaseType>>,
-    pub extension: Option<Id<TypeVar>>,
+    pub extension: Option<Id<TypeName>>,
 }
 
 impl VariantType {
@@ -395,12 +402,12 @@ pub enum TypeExpr {
 impl<'a> Notate<'a> for NodePrinter<'a, TypeExpr> {
     fn notate(&self, arena: &'a Bump) -> Notation<'a> {
         match *self.value {
-            TypeExpr::Error(e) => self.to_node(e.get(self.tree)).notate(arena),
-            TypeExpr::Path(p) => self.to_node(p.get(self.tree)).notate(arena),
-            TypeExpr::Record(r) => self.to_node(r.get(self.tree)).notate(arena),
-            TypeExpr::Variant(v) => self.to_node(v.get(self.tree)).notate(arena),
-            TypeExpr::Func(f) => self.to_node(f.get(self.tree)).notate(arena),
-            TypeExpr::Application(a) => self.to_node(a.get(self.tree)).notate(arena),
+            TypeExpr::Error(e) => self.to(e).notate(arena),
+            TypeExpr::Path(p) => self.to(p).notate(arena),
+            TypeExpr::Record(r) => self.to(r).notate(arena),
+            TypeExpr::Variant(v) => self.to(v).notate(arena),
+            TypeExpr::Func(f) => self.to(f).notate(arena),
+            TypeExpr::Application(a) => self.to(a).notate(arena),
         }
     }
 }
@@ -663,7 +670,7 @@ mod inspector {
             NodeInspector::new(field_id, self.tree, self.interner)
         }
 
-        pub fn extension(self) -> Option<NodeInspector<'t, Id<TypeVar>, S>> {
+        pub fn extension(self) -> Option<NodeInspector<'t, Id<TypeName>, S>> {
             let record_type = self.node.get(self.tree);
             record_type
                 .extension
@@ -713,7 +720,7 @@ mod inspector {
             NodeInspector::new(case_id, self.tree, self.interner)
         }
 
-        pub fn extension(self) -> Option<NodeInspector<'t, Id<TypeVar>, S>> {
+        pub fn extension(self) -> Option<NodeInspector<'t, Id<TypeName>, S>> {
             let variant_type = self.node.get(self.tree);
             variant_type
                 .extension

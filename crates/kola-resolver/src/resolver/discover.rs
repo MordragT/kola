@@ -16,7 +16,7 @@ use crate::{
     info::ModuleInfo,
     phase::ResolvePhase,
     prelude::Topography,
-    refs::{ModuleRef, TypeRef, ValueRef},
+    refs::{ModuleRef, TypeBindRef, TypeRef, ValueRef},
     scope::{ModuleScope, ModuleScopeStack},
     symbol::{ModuleSym, TypeSym, ValueSym},
 };
@@ -77,15 +77,19 @@ pub fn discover(
         });
     };
 
-    let decorators = Decorators::new().with(LocDecorator(spans.clone()));
-    let tree_printer = TreePrinter::root(&tree, interner, &decorators);
+    {
+        // let loc_decorator = LocDecorator(&spans);
+        // let decorators = Decorators::new().with(&loc_decorator);
+        let decorators = Decorators::new();
+        let tree_printer = TreePrinter::root(&tree, interner, decorators);
 
-    debug!(
-        "{} {:?}\n{}",
-        "Untyped Abstract Syntax Tree".bold().bright_white(),
-        &path,
-        tree_printer.render(print_options, arena)
-    );
+        debug!(
+            "{} {:?}\n{}",
+            "Untyped Abstract Syntax Tree".bold().bright_white(),
+            &path,
+            tree_printer.render(print_options, arena)
+        );
+    }
 
     let mut forest = Forest::new();
     let mut topography = Topography::new();
@@ -277,6 +281,10 @@ where
         // Add dependency from current module to this new module
         if let Some(info) = self.stack.try_info() {
             self.module_graph.add_dependency(info.sym, sym);
+        } else {
+            // If there is no current module, this is the root module
+            // and we need to add it to the module graph
+            self.module_graph.add_node(sym);
         }
 
         // Create a new scope for this module
@@ -355,8 +363,10 @@ where
             return ControlFlow::Continue(());
         };
 
-        let decorators = Decorators::new().with(LocDecorator(spans.clone()));
-        let tree_printer = TreePrinter::root(&tree, &self.interner, &decorators);
+        // let loc_decorator = LocDecorator(&spans);
+        // let decorators = Decorators::new().with(&loc_decorator);
+        let decorators = Decorators::new();
+        let tree_printer = TreePrinter::root(&tree, &self.interner, decorators);
 
         debug!(
             "{} {:?}\n{}",
@@ -424,7 +434,12 @@ where
         id: Id<node::ValueBind>,
         tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
-        let node::ValueBind { vis, name, .. } = *tree.node(id);
+        let node::ValueBind {
+            vis,
+            name,
+            ty,
+            value,
+        } = *tree.node(id);
 
         let name = *tree.node(name);
         let vis = tree.node(vis);
@@ -449,7 +464,16 @@ where
             self.report.add_diagnostic(e.into());
         }
 
-        self.walk_value_bind(id, tree) // walk to discover module paths in expressions
+        if let Some(ty) = ty {
+            // If there is a type annotation, we need to visit it
+            self.visit_type(ty, tree)?;
+        }
+
+        self.visit_expr(value, tree)?;
+
+        self.current_value_bind_sym = None;
+
+        ControlFlow::Continue(())
     }
 
     fn visit_let_expr(&mut self, id: Id<node::LetExpr>, tree: &T) -> ControlFlow<Self::BreakValue> {
@@ -468,9 +492,9 @@ where
         let sym = ValueSym::new();
         self.insert_symbol(id, sym);
 
-        self.stack.lexical_mut().enter(name, sym);
+        self.stack.value_scope_mut().enter(name, sym);
         self.walk_expr(inside, tree)?;
-        self.stack.lexical_mut().exit(&name);
+        self.stack.value_scope_mut().exit(&name);
 
         ControlFlow::Continue(())
     }
@@ -487,9 +511,9 @@ where
         let sym = ValueSym::new();
         self.insert_symbol(id, sym);
 
-        self.stack.lexical_mut().enter(name, sym);
+        self.stack.value_scope_mut().enter(name, sym);
         self.walk_expr(body, tree)?;
-        self.stack.lexical_mut().exit(&name);
+        self.stack.value_scope_mut().exit(&name);
 
         ControlFlow::Continue(())
     }
@@ -506,7 +530,7 @@ where
         if let Some(path) = path {
             // Just visit the module path if it exists
             self.visit_module_path(*path, tree)
-        } else if let Some(value_sym) = self.stack.lexical().get(&name) {
+        } else if let Some(value_sym) = self.stack.value_scope().get(&name) {
             // Local binding will not create value bind cycle either
             self.insert_symbol(id, *value_sym);
             ControlFlow::Continue(())
@@ -539,7 +563,7 @@ where
         id: Id<node::TypeBind>,
         tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
-        let node::TypeBind { name, .. } = *tree.node(id);
+        let node::TypeBind { name, ty } = *tree.node(id);
 
         let name = *tree.node(name);
 
@@ -558,7 +582,34 @@ where
             self.report.add_diagnostic(e.into());
         }
 
-        self.walk_type_bind(id, tree) // walk to discover module paths in type expressions
+        self.visit_type(ty, tree)?; // walk to discover module paths in type expressions
+
+        self.current_type_bind_sym = None;
+
+        ControlFlow::Continue(())
+    }
+
+    fn visit_type(&mut self, id: Id<node::Type>, tree: &T) -> ControlFlow<Self::BreakValue> {
+        let node::Type { vars, ty } = id.get(tree);
+
+        // Enter type parameter scope
+        for &var_id in vars {
+            let name = var_id.get(tree).0.into();
+            let sym = TypeSym::new();
+
+            self.insert_symbol(var_id, sym);
+            self.stack.type_scope_mut().enter(name, sym);
+        }
+
+        self.visit_type_expr(*ty, tree)?;
+
+        // Exit type parameter scope (in reverse order)
+        for var in vars.iter().rev() {
+            let name = var.get(tree).0.into();
+            self.stack.type_scope_mut().exit(&name);
+        }
+
+        ControlFlow::Continue(())
     }
 
     fn visit_type_path(
@@ -570,6 +621,8 @@ where
 
         let name = *ty.get(tree);
 
+        let loc = self.span(id);
+
         if let Some(path) = path {
             // Just visit the module path if it exists
             self.visit_module_path(path, tree)
@@ -579,21 +632,38 @@ where
 
             self.insert_symbol(id, type_sym);
 
-            let current_sym = self.current_type_bind_sym.unwrap();
-            self.stack
-                .type_graph_mut()
-                .add_dependency(current_sym, type_sym);
+            // Type Path's can occur in both type binds and type annotations.
+            // Only in the former case we need to add a dependency.
+            if let Some(current_sym) = self.current_type_bind_sym {
+                // Add dependency from the current type bind to this type
+                self.stack
+                    .type_graph_mut()
+                    .add_dependency(current_sym, type_sym);
+            }
+
+            ControlFlow::Continue(())
+        } else if let Some(type_sym) = self.stack.type_scope().get(&name) {
+            // Local quantifier will not create type bind cycle either
+            self.insert_symbol(id, *type_sym);
+            ControlFlow::Continue(())
+        } else if self.interner.get(name.0).is_some_and(is_builtin_type) {
+            ControlFlow::Continue(())
+        } else
+        // Either a forward reference or not found in the current module scope
+        if let Some(current_sym) = self.current_type_bind_sym {
+            let ref_ = TypeBindRef::new(name, id, current_sym, loc);
+            self.stack.refs_mut().insert_type_bind(ref_);
 
             ControlFlow::Continue(())
         } else {
-            // Either a forward reference or not found in the current module scope
-
-            let current_sym = self.current_type_bind_sym.unwrap();
-            let ref_ = TypeRef::new(name, id, current_sym, self.span(id));
-
+            let ref_ = TypeRef::new(name, id, loc);
             self.stack.refs_mut().insert_type(ref_);
 
             ControlFlow::Continue(())
         }
     }
+}
+
+fn is_builtin_type(name: &str) -> bool {
+    matches!(name, "Bool" | "Num" | "Str" | "Char")
 }

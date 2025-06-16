@@ -94,7 +94,7 @@ impl Phase for ResolvePhase {
     // Type expressions are not needed for the untyped lowerer phase
     // Future: When adding typed IR, these could get ModuleSym for qualified types
     type TypePath = TypeSym;
-    type TypeVar = !;
+    type TypeVar = TypeSym; // Type variables only occur in forall quantifier definitions
     type RecordFieldType = !; // Field names exist in value namespace but no symbols needed here
     type RecordType = !; // Structural type, no symbols
     type VariantCaseType = !; // Variant cases exist in value namespace

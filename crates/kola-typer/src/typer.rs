@@ -1,10 +1,10 @@
 use std::{ops::ControlFlow, rc::Rc};
 
-use kola_resolver::{GlobalId, phase::ResolvedNodes};
-use kola_span::{Diagnostic, Loc, Located, Report};
+use kola_resolver::phase::ResolvedNodes;
+use kola_span::{Diagnostic, IntoDiagnostic, Loc, Located, Report};
 use kola_syntax::prelude::*;
 use kola_tree::prelude::*;
-use kola_utils::{errors::Errors, interner::StrInterner};
+use kola_utils::{errors::Errors, fmt::StrInternerExt, interner::StrInterner};
 
 use crate::{
     env::{KindEnv, TypeEnv},
@@ -145,8 +145,9 @@ impl<'a, N> Typer<'a, N> {
     pub fn solve<Tree>(
         mut self,
         tree: &Tree,
+        interner: &'a StrInterner,
         report: &mut Report,
-    ) -> Result<TypedNodes, Located<TypeErrors>>
+    ) -> Option<TypedNodes>
     where
         Tree: TreeView,
         Id<N>: Visitable<Tree>,
@@ -156,7 +157,7 @@ impl<'a, N> Typer<'a, N> {
         match root.visit_by(&mut self, tree) {
             ControlFlow::Break(e) => {
                 report.add_diagnostic(e);
-                return Ok(self.types);
+                return None;
             }
             ControlFlow::Continue(()) => (),
         }
@@ -169,10 +170,14 @@ impl<'a, N> Typer<'a, N> {
             ..
         } = self;
 
-        cons.solve(&mut subs, &mut k_env)?;
+        if let Err((errs, loc)) = cons.solve(&mut subs, &mut k_env) {
+            let diag = interner.display(&errs).into_diagnostic(loc);
+            report.add_diagnostic(diag);
+            return None;
+        }
         types.apply_mut(&mut subs);
 
-        Ok(types)
+        Some(types)
     }
 
     #[inline]
@@ -281,20 +286,6 @@ where
         ControlFlow::Continue(())
     }
 
-    fn visit_type_var(&mut self, id: Id<node::TypeVar>, tree: &T) -> ControlFlow<Self::BreakValue> {
-        // TODO is this only called for type variables that are looked up and not created? Hopefully
-        let node::TypeVar(name) = *id.get(tree);
-        let Some(pt) = self.type_scope.get(&name).cloned() else {
-            return ControlFlow::Break(Diagnostic::error(
-                self.span(id),
-                format!("Type variable not found in scope"),
-            ));
-        };
-
-        self.update_type(id, pt);
-        ControlFlow::Continue(())
-    }
-
     fn visit_type_expr(
         &mut self,
         id: Id<node::TypeExpr>,
@@ -321,6 +312,18 @@ where
         id: Id<node::TypePath>,
         tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
+        fn builtin_type(name: &str) -> Option<MonoType> {
+            let t = match name {
+                "Bool" => MonoType::BOOL,
+                "Char" => MonoType::CHAR,
+                "Num" => MonoType::NUM,
+                "Str" => MonoType::STR,
+                _ => return None,
+            };
+
+            Some(t)
+        }
+
         let node::TypePath { path, ty } = *id.get(tree);
 
         let name = ty.get(tree).0;
@@ -328,6 +331,7 @@ where
         let span = self.span(id);
 
         let pt = if let Some(path) = path {
+            // Module-qualified path
             let module_sym = *self.resolved.meta(path);
 
             let type_sym = self.env[module_sym]
@@ -337,19 +341,18 @@ where
             let pt = &self.env[type_sym];
             pt.clone()
         } else if let Some(pt) = self.type_scope.get(&name) {
+            // Local type parameter (like 'a' in forall a)
+            pt.clone()
+        }
+        // Builtin's must be handled before checking the type env,
+        // because they do not populate the "resolved" map (would cause a panic)
+        else if let Some(t) = self.interner.get(name).and_then(builtin_type) {
+            PolyType::new(t)
+        } else if let Some(pt) = self.env.get_type(*self.resolved.meta(id)) {
+            // Module-level type definition (like 'Person')
             pt.clone()
         } else {
-            let name_str = self.interner.get(name).unwrap();
-
-            let t = match name_str {
-                "Bool" => MonoType::BOOL,
-                "Char" => MonoType::CHAR,
-                "Num" => MonoType::NUM,
-                "Str" => MonoType::STR,
-                _ => return ControlFlow::Break(Diagnostic::error(span, "Type not found in scope")),
-            };
-
-            PolyType::new(t)
+            return ControlFlow::Break(Diagnostic::error(span, "Type not found in scope"));
         };
 
         self.update_type(id, pt);
@@ -422,8 +425,14 @@ where
         let node::RecordType { fields, extension } = id.get(tree);
 
         let tail = if let Some(ext) = extension {
-            self.visit_type_var(*ext, tree)?;
-            self.types.meta(*ext).to_mono().unwrap()
+            let name = ext.get(tree).0;
+            let Some(pt) = self.type_scope.get(&name).cloned() else {
+                return ControlFlow::Break(Diagnostic::error(
+                    self.span(id),
+                    format!("Type variable not found in scope"),
+                ));
+            };
+            pt.to_mono().unwrap()
         } else {
             MonoType::empty_row()
         };
@@ -432,8 +441,6 @@ where
             let head = self.types.meta(field).clone();
             MonoType::row(head, acc)
         });
-
-        // TODO extension handling
 
         self.update_type(id, record_t);
         ControlFlow::Continue(())
@@ -467,8 +474,14 @@ where
         let node::VariantType { cases, extension } = id.get(tree);
 
         let tail = if let Some(ext) = extension {
-            self.visit_type_var(*ext, tree)?;
-            self.types.meta(*ext).to_mono().unwrap()
+            let name = ext.get(tree).0;
+            let Some(pt) = self.type_scope.get(&name).cloned() else {
+                return ControlFlow::Break(Diagnostic::error(
+                    self.span(id),
+                    "Type variable not found in scope",
+                ));
+            };
+            pt.to_mono().unwrap()
         } else {
             MonoType::empty_row()
         };
@@ -477,8 +490,6 @@ where
             let head = self.types.meta(case).clone();
             MonoType::row(head, acc)
         });
-
-        // TODO extension handling
 
         self.update_type(id, variant_t);
         ControlFlow::Continue(())
@@ -1062,7 +1073,7 @@ where
 
 #[cfg(test)]
 mod tests {
-    use std::rc::Rc;
+    use std::{ops::ControlFlow, rc::Rc};
 
     use camino::Utf8PathBuf;
     use kola_resolver::phase::ResolvedNodes;
@@ -1075,6 +1086,7 @@ mod tests {
     use crate::{
         env::TypeEnv,
         error::{TypeError, TypeErrors},
+        prelude::Substitutable,
         types::*,
     };
 
@@ -1095,16 +1107,31 @@ mod tests {
         let source_id = mocked_source();
         let spans = Rc::new(mocked_spans(source_id, &tree));
 
-        let mut report = Report::new();
+        let type_env = TypeEnv::new();
+        let interner = StrInterner::new(); // TODO for tests with builtin types the interner should be passed
+        let resolved = ResolvedNodes::new();
 
-        Typer::new(
-            root_id,
-            spans,
-            &TypeEnv::new(),
-            &StrInterner::new(), // TODO for tests with builtin types the interner should be passed
-            &ResolvedNodes::new(),
-        )
-        .solve(&tree, &mut report)
+        let mut typer = Typer::new(root_id, spans, &type_env, &interner, &resolved);
+
+        match root_id.visit_by(&mut typer, &tree) {
+            ControlFlow::Break(e) => {
+                panic!("Error during type checking: {}", e);
+            }
+            ControlFlow::Continue(()) => (),
+        }
+
+        let Typer {
+            mut subs,
+            cons,
+            mut kind_scope,
+            mut types,
+            ..
+        } = typer;
+
+        cons.solve(&mut subs, &mut kind_scope)?;
+        types.apply_mut(&mut subs);
+
+        Ok(types)
     }
 
     #[test]

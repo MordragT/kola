@@ -13,7 +13,9 @@ use crate::{
 };
 
 pub type ModuleScopes = IndexMap<ModuleSym, ModuleScope>;
-pub type LexicalScope = LinearScope<ValueName, ValueSym>;
+
+pub type ValueScope = LinearScope<ValueName, ValueSym>;
+pub type TypeScope = LinearScope<TypeName, TypeSym>;
 
 #[derive(Debug, Clone)]
 pub struct ModuleScope {
@@ -22,8 +24,9 @@ pub struct ModuleScope {
     pub defs: Definitions,
     pub refs: References,
     pub resolved: ResolvedNodes,
-    pub lexical: LexicalScope,
+    pub value_scope: ValueScope,
     pub value_graph: ValueGraph,
+    pub type_scope: TypeScope,
     pub type_graph: TypeGraph,
 }
 
@@ -35,8 +38,9 @@ impl ModuleScope {
             defs: Definitions::new(),
             refs: References::new(),
             resolved: ResolvedNodes::new(),
-            lexical: LexicalScope::new(),
+            value_scope: ValueScope::new(),
             value_graph: ValueGraph::new(),
+            type_scope: TypeScope::new(),
             type_graph: TypeGraph::new(),
         }
     }
@@ -254,23 +258,43 @@ impl ModuleScopeStack {
     }
 
     #[inline]
-    pub fn try_lexical(&self) -> Option<&LexicalScope> {
-        self.todo.last().map(|scope| &scope.lexical)
+    pub fn try_value_scope(&self) -> Option<&ValueScope> {
+        self.todo.last().map(|scope| &scope.value_scope)
     }
 
     #[inline]
-    pub fn lexical(&self) -> &LexicalScope {
-        self.try_lexical().unwrap()
+    pub fn value_scope(&self) -> &ValueScope {
+        self.try_value_scope().unwrap()
     }
 
     #[inline]
-    pub fn try_lexical_mut(&mut self) -> Option<&mut LexicalScope> {
-        self.todo.last_mut().map(|scope| &mut scope.lexical)
+    pub fn try_value_scope_mut(&mut self) -> Option<&mut ValueScope> {
+        self.todo.last_mut().map(|scope| &mut scope.value_scope)
     }
 
     #[inline]
-    pub fn lexical_mut(&mut self) -> &mut LexicalScope {
-        self.try_lexical_mut().unwrap()
+    pub fn value_scope_mut(&mut self) -> &mut ValueScope {
+        self.try_value_scope_mut().unwrap()
+    }
+
+    #[inline]
+    pub fn try_type_scope(&self) -> Option<&TypeScope> {
+        self.todo.last().map(|scope| &scope.type_scope)
+    }
+
+    #[inline]
+    pub fn type_scope(&self) -> &TypeScope {
+        self.try_type_scope().unwrap()
+    }
+
+    #[inline]
+    pub fn try_type_scope_mut(&mut self) -> Option<&mut TypeScope> {
+        self.todo.last_mut().map(|scope| &mut scope.type_scope)
+    }
+
+    #[inline]
+    pub fn type_scope_mut(&mut self) -> &mut TypeScope {
+        self.try_type_scope_mut().unwrap()
     }
 
     #[inline]

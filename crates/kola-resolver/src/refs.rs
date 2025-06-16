@@ -75,7 +75,7 @@ impl ValueRef {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct TypeRef {
+pub struct TypeBindRef {
     /// The name of the value reference.
     pub name: TypeName,
     /// The identifier of the type path that references some other type bind..
@@ -86,7 +86,7 @@ pub struct TypeRef {
     pub loc: Loc,
 }
 
-impl TypeRef {
+impl TypeBindRef {
     pub fn new(name: TypeName, id: Id<node::TypePath>, source: TypeSym, loc: Loc) -> Self {
         Self {
             name,
@@ -97,10 +97,27 @@ impl TypeRef {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct TypeRef {
+    /// The name of the value reference.
+    pub name: TypeName,
+    /// The identifier of the type path that references some other type bind..
+    pub id: Id<node::TypePath>,
+    /// The location of the type reference in the source code.
+    pub loc: Loc,
+}
+
+impl TypeRef {
+    pub fn new(name: TypeName, id: Id<node::TypePath>, loc: Loc) -> Self {
+        Self { name, id, loc }
+    }
+}
+
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct References {
     module_binds: HashMap<ModuleSym, ModuleBindRef>,
     modules: Vec<ModuleRef>,
+    type_binds: Vec<TypeBindRef>,
     types: Vec<TypeRef>,
     values: Vec<ValueRef>,
 }
@@ -116,6 +133,10 @@ impl References {
 
     pub fn insert_module(&mut self, module_ref: ModuleRef) {
         self.modules.push(module_ref);
+    }
+
+    pub fn insert_type_bind(&mut self, type_ref: TypeBindRef) {
+        self.type_binds.push(type_ref);
     }
 
     pub fn insert_type(&mut self, type_ref: TypeRef) {
@@ -136,6 +157,10 @@ impl References {
 
     pub fn modules(&self) -> &[ModuleRef] {
         &self.modules
+    }
+
+    pub fn type_binds(&self) -> &[TypeBindRef] {
+        &self.type_binds
     }
 
     pub fn types(&self) -> &[TypeRef] {

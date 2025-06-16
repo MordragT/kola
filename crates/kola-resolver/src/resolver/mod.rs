@@ -5,12 +5,16 @@ use indexmap::IndexMap;
 
 use kola_print::prelude::*;
 use kola_span::{Report, SourceManager};
+use kola_syntax::loc::LocDecorator;
+use kola_tree::print::{Decorators, TreePrinter};
 use kola_utils::{interner::StrInterner, io::FileSystem};
+use log::debug;
 
 use crate::{
     forest::Forest,
     info::ModuleGraph,
     prelude::Topography,
+    print::ResolutionDecorator,
     resolver::ty::TypeResolution,
     scope::ModuleScopes,
     symbol::{ModuleSym, TypeSym, ValueSym},
@@ -93,6 +97,29 @@ pub fn resolve(
 
     let ValueResolution { value_orders } =
         value::resolve_values(&module_symbols, &mut module_scopes, report);
+
+    for (sym, scope) in &module_scopes {
+        let source = scope.info.source;
+
+        let tree = &*forest[source];
+        // let spans = &*topography[source];
+
+        // let loc_decorator = LocDecorator(spans);
+        let resolution_decorator = ResolutionDecorator(&scope.resolved);
+        let decorators = Decorators::new()
+            // .with(&loc_decorator)
+            .with(&resolution_decorator);
+
+        let tree_printer = TreePrinter::new(tree, interner, decorators, scope.info.id);
+
+        debug!(
+            "{} SourceId {}, ModuleSym {}\n{}",
+            "Resolved Abstract Syntax Tree".bold().bright_white(),
+            source,
+            sym,
+            tree_printer.render(print_options, arena)
+        );
+    }
 
     Ok(ResolveOutput {
         source_manager,

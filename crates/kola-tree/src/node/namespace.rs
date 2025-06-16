@@ -1,4 +1,4 @@
-use derive_more::From;
+use derive_more::{Display, From};
 use serde::{Deserialize, Serialize};
 use std::{borrow::Borrow, marker::PhantomData, ops::Deref};
 
@@ -7,7 +7,9 @@ use kola_utils::interner::StrKey;
 
 use crate::print::NodePrinter;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[derive(
+    Debug, Display, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+)]
 pub enum NamespaceKind {
     Module,
     Type,
@@ -233,6 +235,35 @@ impl AnyName {
         match self {
             AnyName::Value(name) => Some(name),
             _ => None,
+        }
+    }
+}
+
+mod inspector {
+    use std::hash::BuildHasher;
+
+    use kola_utils::convert::TryAsRef;
+
+    use super::{Name, Namespace};
+    use crate::{id::Id, inspector::*, node::Node};
+
+    impl<'t, S: BuildHasher, N: Namespace> NodeInspector<'t, Id<Name<N>>, S>
+    where
+        Node: TryAsRef<Name<N>>,
+    {
+        pub fn has_name(self, expected: &str) -> Self {
+            let name = self.node.get(self.tree);
+            let name = self.interner.get(name.0).expect("Symbol not found");
+
+            assert_eq!(
+                name,
+                expected,
+                "Expected {} name '{}' but found '{}'",
+                N::KIND,
+                expected,
+                name
+            );
+            self
         }
     }
 }

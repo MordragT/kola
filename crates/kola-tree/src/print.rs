@@ -1,3 +1,5 @@
+use std::convert::identity;
+
 use kola_print::prelude::*;
 use kola_utils::{convert::TryAsRef, interner::StrInterner};
 
@@ -7,33 +9,35 @@ use crate::{
     tree::{Tree, TreeView},
 };
 
-pub trait Decorator {
-    fn decorate<'a>(&'a self, notation: Notation<'a>, with: usize, arena: &'a Bump)
-    -> Notation<'a>;
+pub trait Decorator<'a> {
+    fn decorate(&self, notation: Notation<'a>, with: usize, arena: &'a Bump) -> Notation<'a>;
 }
 
-pub struct Decorators(Vec<Box<dyn Decorator>>);
+#[derive(Clone, Copy)]
+pub struct Decorators<'a>([Option<&'a dyn Decorator<'a>>; 4]);
 
-impl Decorators {
+impl<'a> Decorators<'a> {
     pub fn new() -> Self {
-        Self(Vec::new())
+        Self([None; 4])
     }
 
-    pub fn with(mut self, decorator: impl Decorator + 'static) -> Self {
-        self.0.push(Box::new(decorator));
-        self
+    pub fn with(mut self, decorator: &'a impl Decorator<'a>) -> Self {
+        for slot in &mut self.0 {
+            if slot.is_none() {
+                *slot = Some(decorator);
+                return self;
+            }
+        }
+
+        panic!("No available slot for decorator");
     }
 }
 
-impl Decorator for Decorators {
-    fn decorate<'a>(
-        &'a self,
-        notation: Notation<'a>,
-        with: usize,
-        arena: &'a Bump,
-    ) -> Notation<'a> {
+impl<'a> Decorator<'a> for Decorators<'a> {
+    fn decorate(&self, notation: Notation<'a>, with: usize, arena: &'a Bump) -> Notation<'a> {
         self.0
-            .iter()
+            .into_iter()
+            .filter_map(identity)
             .fold(notation, |n, d| d.decorate(n, with, arena))
     }
 }
@@ -42,7 +46,7 @@ impl Decorator for Decorators {
 pub struct TreePrinter<'a, T> {
     pub tree: &'a Tree,
     pub interner: &'a StrInterner,
-    pub decorators: &'a Decorators,
+    pub decorators: Decorators<'a>,
     pub value: T,
 }
 
@@ -51,7 +55,7 @@ pub type IdPrinter<'a, T> = TreePrinter<'a, Id<T>>;
 pub type SlicePrinter<'a, T> = TreePrinter<'a, &'a [Id<T>]>;
 
 impl<'a> IdPrinter<'a, crate::node::Module> {
-    pub fn root(tree: &'a Tree, interner: &'a StrInterner, decorators: &'a Decorators) -> Self {
+    pub fn root(tree: &'a Tree, interner: &'a StrInterner, decorators: Decorators<'a>) -> Self {
         Self {
             tree,
             interner,
@@ -65,7 +69,7 @@ impl<'a, T> TreePrinter<'a, T> {
     pub fn new(
         tree: &'a Tree,
         interner: &'a StrInterner,
-        decorators: &'a Decorators,
+        decorators: Decorators<'a>,
         value: T,
     ) -> Self {
         Self {

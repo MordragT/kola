@@ -870,7 +870,7 @@ pub fn type_expr_parser<'t>() -> impl KolaParser<'t, Id<node::TypeExpr>> + Clone
             .boxed();
 
         let row_var = ctrl(CtrlT::PIPE)
-            .ignore_then(symbol().map_to_node(node::TypeVar))
+            .ignore_then(type_name_parser())
             .or_not()
             .boxed();
 

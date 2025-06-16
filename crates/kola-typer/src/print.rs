@@ -5,15 +5,10 @@ use owo_colors::OwoColorize;
 use crate::phase::TypedNodes;
 
 #[derive(Debug, Clone)]
-pub struct TypeDecorator(pub TypedNodes);
+pub struct TypeDecorator<'a>(pub &'a TypedNodes);
 
-impl Decorator for TypeDecorator {
-    fn decorate<'a>(
-        &'a self,
-        notation: Notation<'a>,
-        with: usize,
-        arena: &'a Bump,
-    ) -> Notation<'a> {
+impl<'a> Decorator<'a> for TypeDecorator<'a> {
+    fn decorate(&self, notation: Notation<'a>, with: usize, arena: &'a Bump) -> Notation<'a> {
         let Some(meta) = self.0.get(&with) else {
             return notation;
         };
@@ -83,12 +78,10 @@ impl Decorator for TypeDecorator {
             | Meta::ModuleType(_) => return notation,
         };
 
-        let single = [
-            notation.clone().flatten(arena),
-            arena.notate(" : "),
-            ty.clone().flatten(arena),
-        ]
-        .concat_in(arena);
+        let single = [notation.clone(), arena.notate(" : "), ty.clone()]
+            .concat_in(arena)
+            .flatten(arena);
+
         let multi = [notation, arena.newline(), arena.notate(": "), ty]
             .concat_in(arena)
             .indent(arena);
