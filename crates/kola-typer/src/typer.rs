@@ -197,6 +197,19 @@ where
 {
     type BreakValue = Diagnostic;
 
+    /// Rule for Type Binding
+    ///
+    /// ```
+    /// ∆;Γ ⊢ ty : poly_t
+    /// -----------------------
+    /// ∆;Γ ⊢ type name = ty : poly_t
+    /// ```
+    ///
+    /// Implementation:
+    /// - Visits the type expression to compute its polymorphic type
+    /// - Propagates the type to the binding node
+    ///
+    /// Type signature: Binds a name to a polymorphic type
     fn visit_type_bind(
         &mut self,
         id: Id<node::TypeBind>,
@@ -205,41 +218,58 @@ where
         let node::TypeBind { name, ty } = *id.get(tree);
 
         self.visit_type(ty, tree)?;
-        let pt = self.types.meta(ty).clone();
+        let poly_t = self.types.meta(ty).clone();
 
-        self.update_type(id, pt);
+        self.update_type(id, poly_t);
         ControlFlow::Continue(())
     }
 
+    /// Rule for Polymorphic Type with Type Variables
+    ///
+    /// ```
+    /// type_vars = [α₁, ..., αₙ]
+    /// ∆, α₁, ..., αₙ; Γ, α₁ : *, ..., αₙ : * ⊢ ty_expr : mono_t
+    /// -----------------------
+    /// ∆;Γ ⊢ ∀α₁...αₙ. ty_expr : PolyType { vars: type_vars, ty: mono_t }
+    /// ```
+    ///
+    /// Implementation:
+    /// - Creates fresh type variables for each declared variable
+    /// - Enters type variables into scope
+    /// - Visits the type expression in the extended scope
+    /// - Exits type variables from scope in reverse order
+    /// - Constructs polymorphic type with collected variables
+    ///
+    /// Type signature: `∀α₁...αₙ. τ` where τ is the inner type
     fn visit_type(&mut self, id: Id<node::Type>, tree: &T) -> ControlFlow<Self::BreakValue> {
         let node::Type { vars, ty } = id.get(tree);
 
         let type_vars = vars
             .iter()
-            .map(|v| {
+            .map(|var_node| {
                 let type_var = TypeVar::new();
 
-                let name = v.get(tree).0;
-                let pt = PolyType::new(type_var.into());
+                let var_name = var_node.get(tree).0;
+                let var_poly_t = PolyType::new(type_var.into());
 
-                self.type_scope.enter(name, pt);
+                self.type_scope.enter(var_name, var_poly_t);
                 type_var
             })
             .collect::<Vec<_>>();
 
         self.visit_type_expr(*ty, tree)?;
-        let ty = self.types.meta(*ty).to_mono().unwrap();
+        let mono_t = self.types.meta(*ty).to_mono().unwrap();
 
-        for var in vars.iter().rev() {
-            let name = var.get(tree).0;
-            self.type_scope.exit(&name);
+        for var_node in vars.iter().rev() {
+            let var_name = var_node.get(tree).0;
+            self.type_scope.exit(&var_name);
         }
 
-        let pt = PolyType {
+        let poly_t = PolyType {
             vars: type_vars,
-            ty,
+            ty: mono_t,
         };
-        self.update_type(id, pt);
+        self.update_type(id, poly_t);
 
         ControlFlow::Continue(())
     }
@@ -251,27 +281,56 @@ where
     ) -> ControlFlow<Self::BreakValue> {
         self.walk_type_expr(id, tree)?;
 
-        // Are these all MonoTypes?
-        let pt = match *id.get(tree) {
+        let poly_t = match *id.get(tree) {
             node::TypeExpr::Error(_) => todo!(),
-            node::TypeExpr::Path(p) => self.types.meta(p).clone(),
-            node::TypeExpr::Func(f) => PolyType::new(self.types.meta(f).clone()),
-            node::TypeExpr::Application(a) => self.types.meta(a).clone(),
-            node::TypeExpr::Record(r) => PolyType::new(self.types.meta(r).clone()),
-            node::TypeExpr::Variant(v) => PolyType::new(self.types.meta(v).clone()),
+            node::TypeExpr::Path(path_id) => self.types.meta(path_id).clone(),
+            node::TypeExpr::Func(func_id) => PolyType::new(self.types.meta(func_id).clone()),
+            node::TypeExpr::Application(app_id) => self.types.meta(app_id).clone(),
+            node::TypeExpr::Record(record_id) => PolyType::new(self.types.meta(record_id).clone()),
+            node::TypeExpr::Variant(variant_id) => {
+                PolyType::new(self.types.meta(variant_id).clone())
+            }
         };
 
-        self.update_type(id, pt);
+        self.update_type(id, poly_t);
         ControlFlow::Continue(())
     }
 
+    /// Rule for Type Path Resolution
+    ///
+    /// Module-qualified Path:
+    /// ```
+    /// module : σ ∈ Γ   type_name : τ ∈ module
+    /// -----------------------
+    /// ∆;Γ ⊢ module.type_name : τ
+    /// ```
+    ///
+    /// Local Type Variable:
+    /// ```
+    /// type_name : τ ∈ Γ
+    /// -----------------------
+    /// ∆;Γ ⊢ type_name : τ
+    /// ```
+    ///
+    /// Builtin Type:
+    /// ```
+    /// type_name ∈ {Bool, Char, Num, Str}
+    /// -----------------------
+    /// ∆;Γ ⊢ type_name : builtin_type(type_name)
+    /// ```
+    ///
+    /// Implementation:
+    /// - Resolves type names through module system, local scope, or builtins
+    /// - Returns appropriate polymorphic type for the resolved name
+    ///
+    /// Type signature: Resolves names to their associated types
     fn visit_type_path(
         &mut self,
         id: Id<node::TypePath>,
         tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
-        fn builtin_type(name: &str) -> Option<MonoType> {
-            let t = match name {
+        fn builtin_type(type_name: &str) -> Option<MonoType> {
+            let builtin_t = match type_name {
                 "Bool" => MonoType::BOOL,
                 "Char" => MonoType::CHAR,
                 "Num" => MonoType::NUM,
@@ -279,43 +338,57 @@ where
                 _ => return None,
             };
 
-            Some(t)
+            Some(builtin_t)
         }
 
         let node::TypePath { path, ty } = *id.get(tree);
 
-        let name = ty.get(tree).0;
+        let type_name = ty.get(tree).0;
         let span = self.span(id);
 
-        let pt = if let Some(path) = path {
+        let poly_t = if let Some(path) = path {
             // Module-qualified path
             let module_sym = *self.resolved.meta(path);
 
             let type_sym = self.env[module_sym]
-                .get_type(name)
-                .expect("Value not found in module");
+                .get_type(type_name)
+                .expect("Type not found in module");
 
-            let pt = &self.env[type_sym];
-            pt.clone()
-        } else if let Some(pt) = self.type_scope.get(&name) {
+            let module_poly_t = &self.env[type_sym];
+            module_poly_t.clone()
+        } else if let Some(local_poly_t) = self.type_scope.get(&type_name) {
             // Local type parameter (like 'a' in forall a)
-            pt.clone()
+            local_poly_t.clone()
         }
         // Builtin's must be handled before checking the type env,
         // because they do not populate the "resolved" map (would cause a panic)
-        else if let Some(t) = self.interner.get(name).and_then(builtin_type) {
-            PolyType::new(t)
-        } else if let Some(pt) = self.env.get_type(*self.resolved.meta(id)) {
+        else if let Some(builtin_t) = self.interner.get(type_name).and_then(builtin_type) {
+            PolyType::new(builtin_t)
+        } else if let Some(global_poly_t) = self.env.get_type(*self.resolved.meta(id)) {
             // Module-level type definition (like 'Person')
-            pt.clone()
+            global_poly_t.clone()
         } else {
             return ControlFlow::Break(Diagnostic::error(span, "Type not found in scope"));
         };
 
-        self.update_type(id, pt);
+        self.update_type(id, poly_t);
         ControlFlow::Continue(())
     }
 
+    /// Rule for Function Type
+    ///
+    /// ```
+    /// ∆;Γ ⊢ input : input_t
+    /// ∆;Γ ⊢ output : output_t
+    /// -----------------------
+    /// ∆;Γ ⊢ input → output : input_t → output_t
+    /// ```
+    ///
+    /// Implementation:
+    /// - Visits both input and output type expressions
+    /// - Constructs function type from the resolved types
+    ///
+    /// Type signature: `α → β` where α is input type, β is output type
     fn visit_func_type(
         &mut self,
         id: Id<node::FuncType>,
@@ -324,17 +397,36 @@ where
         let node::FuncType { input, output } = *id.get(tree);
 
         self.visit_type_expr(input, tree)?;
-        let arg = self.types.meta(input).to_mono().unwrap();
+        let input_t = self.types.meta(input).to_mono().unwrap();
 
         self.visit_type_expr(output, tree)?;
-        let ret = self.types.meta(output).to_mono().unwrap();
+        let output_t = self.types.meta(output).to_mono().unwrap();
 
-        let func_t = MonoType::func(arg, ret);
+        let func_t = MonoType::func(input_t, output_t);
 
         self.update_type(id, func_t);
         ControlFlow::Continue(())
     }
 
+    /// Rule for Type Application
+    ///
+    /// ```
+    /// ∆;Γ ⊢ constructor : PolyType { vars: [α₁, ..., αₙ], ty: constructor_t }
+    /// ∆;Γ ⊢ arg : arg_t
+    /// n ≥ 1
+    /// substitution = [α₁ ↦ arg_t]
+    /// result_t = constructor_t[α₁ ↦ arg_t]
+    /// -----------------------
+    /// ∆;Γ ⊢ constructor arg : PolyType { vars: [α₂, ..., αₙ], ty: result_t }
+    /// ```
+    ///
+    /// Implementation:
+    /// - Visits argument type expression (must be monomorphic)
+    /// - Visits constructor type expression (must be polymorphic)
+    /// - Applies first type variable to the argument type
+    /// - Returns partially applied type constructor
+    ///
+    /// Type signature: `(∀α₁...αₙ. τ) → σ → (∀α₂...αₙ. τ[α₁ ↦ σ])`
     fn visit_type_application(
         &mut self,
         id: Id<node::TypeApplication>,
@@ -342,36 +434,57 @@ where
     ) -> ControlFlow<Self::BreakValue> {
         let node::TypeApplication { constructor, arg } = *id.get(tree);
 
-        // Okay here is a problem again, as far as I can see it would be great if the
-        // ctor would be a PolyType and the arg a MonoType.
-
         self.visit_type_expr(arg, tree)?;
-        let arg = self.types.meta(arg).to_mono().unwrap();
+        let arg_t = self.types.meta(arg).to_mono().unwrap();
 
         self.visit_type_expr(constructor, tree)?;
         let PolyType { vars, ty } = self.types.meta(constructor);
 
-        let [first, rest @ ..] = vars.as_slice() else {
+        let [first_var, remaining_vars @ ..] = vars.as_slice() else {
             return ControlFlow::Break(Diagnostic::error(
                 self.span(id),
                 "Type application requires at least one type variable",
             ));
         };
 
-        // TODO should I really eagerly substitute here if my typer is essentially lazy constraint based ?
-        let mut subs = Substitution::unit(*first, arg);
+        let mut substitution = Substitution::unit(*first_var, arg_t);
+        let result_t = ty.clone().apply(&mut substitution);
 
-        let ty = ty.clone().apply(&mut subs);
-
-        let pt = PolyType {
-            ty,
-            vars: rest.to_vec(),
+        let poly_t = PolyType {
+            ty: result_t,
+            vars: remaining_vars.to_vec(),
         };
 
-        self.update_type(id, pt);
+        self.update_type(id, poly_t);
         ControlFlow::Continue(())
     }
 
+    /// Rule for Record Type
+    ///
+    /// With extension:
+    /// ```
+    /// ∆;Γ ⊢ field₁ : head_t₁
+    /// ...
+    /// ∆;Γ ⊢ fieldₙ : head_tₙ
+    /// extension : tail_t ∈ Γ
+    /// -----------------------
+    /// ∆;Γ ⊢ { field₁, ..., fieldₙ | extension } : { head_t₁, ..., head_tₙ | tail_t }
+    /// ```
+    ///
+    /// Without extension:
+    /// ```
+    /// ∆;Γ ⊢ field₁ : head_t₁
+    /// ...
+    /// ∆;Γ ⊢ fieldₙ : head_tₙ
+    /// -----------------------
+    /// ∆;Γ ⊢ { field₁, ..., fieldₙ } : { head_t₁, ..., head_tₙ | {} }
+    /// ```
+    ///
+    /// Implementation:
+    /// - Resolves extension type variable if present, or uses empty row
+    /// - Folds field types into a row type structure
+    ///
+    /// Type signature: `{ label₁ : τ₁, ..., labelₙ : τₙ | r }`
     fn visit_record_type(
         &mut self,
         id: Id<node::RecordType>,
@@ -381,28 +494,42 @@ where
 
         let node::RecordType { fields, extension } = id.get(tree);
 
-        let tail = if let Some(ext) = extension {
-            let name = ext.get(tree).0;
-            let Some(pt) = self.type_scope.get(&name).cloned() else {
+        let tail_t = if let Some(extension_var) = extension {
+            let extension_name = extension_var.get(tree).0;
+            let Some(extension_poly_t) = self.type_scope.get(&extension_name).cloned() else {
                 return ControlFlow::Break(Diagnostic::error(
                     self.span(id),
-                    format!("Type variable not found in scope"),
+                    "Type variable not found in scope",
                 ));
             };
-            pt.to_mono().unwrap()
+            extension_poly_t.to_mono().unwrap()
         } else {
             MonoType::empty_row()
         };
 
-        let record_t = fields.iter().fold(tail, |acc, &field| {
-            let head = self.types.meta(field).clone();
-            MonoType::row(head, acc)
+        let record_t = fields.iter().fold(tail_t, |acc_t, &field| {
+            let head_t = self.types.meta(field).clone();
+            MonoType::row(head_t, acc_t)
         });
 
         self.update_type(id, record_t);
         ControlFlow::Continue(())
     }
 
+    /// Rule for Record Field Type
+    ///
+    /// ```
+    /// ∆;Γ ⊢ ty : value_t
+    /// head_t = ("label" : value_t)
+    /// -----------------------
+    /// ∆;Γ ⊢ (label : ty) : head_t
+    /// ```
+    ///
+    /// Implementation:
+    /// - Visits the type expression to get the field's type
+    /// - Creates a labeled type associating the label with the type
+    ///
+    /// Type signature: Creates `LabeledType` for record type construction
     fn visit_record_field_type(
         &mut self,
         id: Id<node::RecordFieldType>,
@@ -413,14 +540,40 @@ where
         let label = name.get(tree).0;
 
         self.visit_type_expr(ty, tree)?;
-        let ty = self.types.meta(ty).to_mono().unwrap();
+        let value_t = self.types.meta(ty).to_mono().unwrap();
 
-        let labeled_t = LabeledType { label, ty };
+        let head_t = LabeledType { label, ty: value_t };
 
-        self.update_type(id, labeled_t);
+        self.update_type(id, head_t);
         ControlFlow::Continue(())
     }
 
+    /// Rule for Variant Type
+    ///
+    /// With extension:
+    /// ```
+    /// ∆;Γ ⊢ case₁ : head_t₁
+    /// ...
+    /// ∆;Γ ⊢ caseₙ : head_tₙ
+    /// extension : tail_t ∈ Γ
+    /// -----------------------
+    /// ∆;Γ ⊢ [ case₁ | ... | caseₙ | extension ] : [ head_t₁ | ... | head_tₙ | tail_t ]
+    /// ```
+    ///
+    /// Without extension:
+    /// ```
+    /// ∆;Γ ⊢ case₁ : head_t₁
+    /// ...
+    /// ∆;Γ ⊢ caseₙ : head_tₙ
+    /// -----------------------
+    /// ∆;Γ ⊢ [ case₁ | ... | caseₙ ] : [ head_t₁ | ... | head_tₙ | {} ]
+    /// ```
+    ///
+    /// Implementation:
+    /// - Resolves extension type variable if present, or uses empty row
+    /// - Folds case types into a row type structure
+    ///
+    /// Type signature: `[ label₁ : τ₁ | ... | labelₙ : τₙ | r ]`
     fn visit_variant_type(
         &mut self,
         id: Id<node::VariantType>,
@@ -430,28 +583,50 @@ where
 
         let node::VariantType { cases, extension } = id.get(tree);
 
-        let tail = if let Some(ext) = extension {
-            let name = ext.get(tree).0;
-            let Some(pt) = self.type_scope.get(&name).cloned() else {
+        let tail_t = if let Some(extension_var) = extension {
+            let extension_name = extension_var.get(tree).0;
+            let Some(extension_poly_t) = self.type_scope.get(&extension_name).cloned() else {
                 return ControlFlow::Break(Diagnostic::error(
                     self.span(id),
                     "Type variable not found in scope",
                 ));
             };
-            pt.to_mono().unwrap()
+            extension_poly_t.to_mono().unwrap()
         } else {
             MonoType::empty_row()
         };
 
-        let variant_t = cases.iter().fold(tail, |acc, &case| {
-            let head = self.types.meta(case).clone();
-            MonoType::row(head, acc)
+        let variant_t = cases.iter().fold(tail_t, |acc_t, &case| {
+            let head_t = self.types.meta(case).clone();
+            MonoType::row(head_t, acc_t)
         });
 
         self.update_type(id, variant_t);
         ControlFlow::Continue(())
     }
 
+    /// Rule for Variant Case Type
+    ///
+    /// With payload:
+    /// ```
+    /// ∆;Γ ⊢ ty : value_t
+    /// head_t = ("label" : value_t)
+    /// -----------------------
+    /// ∆;Γ ⊢ (label : ty) : head_t
+    /// ```
+    ///
+    /// Without payload:
+    /// ```
+    /// head_t = ("label" : Unit)
+    /// -----------------------
+    /// ∆;Γ ⊢ label : head_t
+    /// ```
+    ///
+    /// Implementation:
+    /// - Visits the payload type if present, or uses Unit type
+    /// - Creates a labeled type for the variant case
+    ///
+    /// Type signature: Creates `LabeledType` for variant type construction
     fn visit_variant_case_type(
         &mut self,
         id: Id<node::VariantCaseType>,
@@ -461,19 +636,46 @@ where
 
         let label = name.get(tree).0;
 
-        let ty = if let Some(ty) = ty {
-            self.visit_type_expr(ty, tree)?;
-            self.types.meta(ty).to_mono().unwrap()
+        let value_t = if let Some(payload_ty) = ty {
+            self.visit_type_expr(payload_ty, tree)?;
+            self.types.meta(payload_ty).to_mono().unwrap()
         } else {
             MonoType::UNIT
         };
 
-        let labeled_t = LabeledType { label, ty };
+        let head_t = LabeledType { label, ty: value_t };
 
-        self.update_type(id, labeled_t);
+        self.update_type(id, head_t);
         ControlFlow::Continue(())
     }
 
+    /// Rule for Value Binding with Optional Type Annotation
+    ///
+    /// With type annotation:
+    /// ```
+    /// ∆;Γ ⊢ value : value_t
+    /// inferred_poly_t = generalize(value_t, [])
+    /// ∆;Γ ⊢ ty : expected_poly_t
+    /// unify(instantiate(expected_poly_t), value_t)
+    /// -----------------------
+    /// ∆;Γ ⊢ name : ty = value : expected_poly_t
+    /// ```
+    ///
+    /// Without type annotation:
+    /// ```
+    /// ∆;Γ ⊢ value : value_t
+    /// inferred_poly_t = generalize(value_t, [])
+    /// -----------------------
+    /// ∆;Γ ⊢ name = value : inferred_poly_t
+    /// ```
+    ///
+    /// Implementation:
+    /// - Infers type from value expression with fresh type variable scope
+    /// - Generalizes inferred type (top-level binding)
+    /// - If type annotation present, constrains inferred type against annotation
+    /// - Uses type annotation as final type, or inferred type if no annotation
+    ///
+    /// Type signature: Binds value to polymorphic type with optional constraint
     fn visit_value_bind(
         &mut self,
         id: Id<node::ValueBind>,
@@ -487,26 +689,18 @@ where
         self.visit_expr(value, tree)?;
         TypeVar::exit();
 
-        // due to explicit traversal this is known
-        let t = self.types.meta(value).clone();
-        // generalize with no bound type vars because this is a top-level binding.
-        let pt = t.generalize(&[]);
+        let value_t = self.types.meta(value).clone();
+        let inferred_poly_t = value_t.generalize(&[]);
 
-        if let Some(ty) = ty {
-            self.visit_type(ty, tree)?;
-            let expected_pt = self.types.meta(ty).clone();
+        if let Some(annotation_ty) = ty {
+            self.visit_type(annotation_ty, tree)?;
+            let expected_poly_t = self.types.meta(annotation_ty).clone();
 
-            // if !pt.alpha_equivalent(&expected_pt) {
-            //     return ControlFlow::Break(Diagnostic::error(
-            //         self.span(id),
-            //         format!("Type mismatch: expected {}, found {}", expected_pt, pt),
-            //     ));
-            // }
-
-            self.cons.constrain(expected_pt.instantiate(), t, span);
-            self.update_type(id, expected_pt); // type ascription
+            self.cons
+                .constrain(expected_poly_t.instantiate(), value_t, span);
+            self.update_type(id, expected_poly_t); // Use type annotation
         } else {
-            self.update_type(id, pt);
+            self.update_type(id, inferred_poly_t);
         }
 
         ControlFlow::Continue(())
