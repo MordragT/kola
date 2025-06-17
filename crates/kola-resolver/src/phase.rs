@@ -99,9 +99,9 @@ impl Phase for ResolvePhase {
     type VariantType = !; // Structural type, no symbols
     type FuncType = !;
     type TypeApplication = !;
-    type TypeExpr = !;
-    type TypeError = !;
     type Type = !;
+    type TypeError = !;
+    type TypeScheme = !;
 
     // ===== BINDINGS =====
     // Top-level binding constructs - create symbols for what they bind

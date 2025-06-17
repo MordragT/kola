@@ -308,9 +308,9 @@ impl_meta_substitutable!(
     VariantType,
     FuncType,
     TypeApplication,
-    TypeExpr,
-    TypeError,
     Type,
+    TypeError,
+    TypeScheme,
     // Modules
     Vis,
     ValueBind,

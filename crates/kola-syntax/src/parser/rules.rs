@@ -107,7 +107,11 @@ pub fn module_parser<'t>() -> impl KolaParser<'t, Id<node::Module>> + Clone {
         let value_bind = vis
             .clone()
             .then(value_name_parser())
-            .then(ctrl(CtrlT::COLON).ignore_then(type_parser()).or_not())
+            .then(
+                ctrl(CtrlT::COLON)
+                    .ignore_then(type_scheme_parser())
+                    .or_not(),
+            )
             .then_ignore(op(OpT::ASSIGN))
             .then(expr_parser())
             .map_to_node(|(((vis, name), ty), value)| node::ValueBind {
@@ -159,7 +163,7 @@ pub fn module_type_parser<'t>() -> impl KolaParser<'t, Id<node::ModuleType>> + C
     recursive(|module_type| {
         let value_spec = value_name_parser()
             .then_ignore(ctrl(CtrlT::COLON))
-            .then(type_parser())
+            .then(type_scheme_parser())
             .map_to_node(|(name, ty)| node::ValueSpec { name, ty })
             .to_spec();
 
@@ -764,7 +768,7 @@ pub fn expr_parser<'t>() -> impl KolaParser<'t, Id<node::Expr>> + Clone {
 ///
 /// type_path       ::= name ('.' name)*  // Path to a type (like Num or std.List)
 /// ```
-pub fn type_expr_parser<'t>() -> impl KolaParser<'t, Id<node::TypeExpr>> + Clone {
+pub fn type_parser<'t>() -> impl KolaParser<'t, Id<node::Type>> + Clone {
     recursive(|ty| {
         let path = symbol()
             .spanned()
@@ -792,7 +796,7 @@ pub fn type_expr_parser<'t>() -> impl KolaParser<'t, Id<node::TypeExpr>> + Clone
                 node::TypePath { path, ty }
             })
             .to_node()
-            .to_type_expr()
+            .to_type()
             .boxed();
 
         let row_var = ctrl(CtrlT::PIPE)
@@ -813,7 +817,7 @@ pub fn type_expr_parser<'t>() -> impl KolaParser<'t, Id<node::TypeExpr>> + Clone
                 .collect()
                 .then(row_var.clone())
                 .map_to_node(|(fields, extension)| node::RecordType { fields, extension })
-                .to_type_expr(),
+                .to_type(),
             Delim::Brace,
             |_span| node::TypeError,
         );
@@ -829,7 +833,7 @@ pub fn type_expr_parser<'t>() -> impl KolaParser<'t, Id<node::TypeExpr>> + Clone
                 .collect()
                 .then(row_var)
                 .map_to_node(|(cases, extension)| node::VariantType { cases, extension })
-                .to_type_expr(),
+                .to_type(),
             Delim::Angle,
             |_span| node::TypeError,
         );
@@ -847,10 +851,7 @@ pub fn type_expr_parser<'t>() -> impl KolaParser<'t, Id<node::TypeExpr>> + Clone
                 let span = e.span();
                 let tree: &mut State = e.state();
 
-                tree.insert_as::<node::TypeExpr, _>(
-                    node::TypeApplication { constructor, arg },
-                    span,
-                )
+                tree.insert_as::<node::Type, _>(node::TypeApplication { constructor, arg }, span)
             })
             .boxed();
 
@@ -862,7 +863,7 @@ pub fn type_expr_parser<'t>() -> impl KolaParser<'t, Id<node::TypeExpr>> + Clone
                     let span = e.span();
                     let tree: &mut State = e.state();
 
-                    tree.insert_as::<node::TypeExpr, _>(node::FuncType { input, output }, span)
+                    tree.insert_as::<node::Type, _>(node::FuncType { input, output }, span)
                 },
             )
             .boxed();
@@ -878,7 +879,7 @@ pub fn type_expr_parser<'t>() -> impl KolaParser<'t, Id<node::TypeExpr>> + Clone
 /// type      ::= 'forall' name+ '.' type_expression
 ///             | type_expression
 /// ```
-pub fn type_parser<'t>() -> impl KolaParser<'t, Id<node::Type>> + Clone {
+pub fn type_scheme_parser<'t>() -> impl KolaParser<'t, Id<node::TypeScheme>> + Clone {
     // hindley milner only allows standard polymorphism (top-level forall)
     // higher-rank polymorphism (nested forall) is undecidable for full type-inference
     kw(KwT::FORALL)
@@ -891,8 +892,8 @@ pub fn type_parser<'t>() -> impl KolaParser<'t, Id<node::Type>> + Clone {
         )
         .then_ignore(ctrl(CtrlT::DOT))
         .or_not()
-        .then(type_expr_parser())
-        .map_to_node(|(vars, ty)| node::Type {
+        .then(type_parser())
+        .map_to_node(|(vars, ty)| node::TypeScheme {
             vars: vars.unwrap_or_default(),
             ty,
         })
@@ -909,7 +910,7 @@ pub fn type_bind_parser<'t>() -> impl KolaParser<'t, Id<node::TypeBind>> + Clone
     kw(KwT::TYPE)
         .ignore_then(type_name_parser())
         .then_ignore(op(OpT::ASSIGN))
-        .then(type_parser())
+        .then(type_scheme_parser())
         .map_to_node(|(name, ty)| node::TypeBind { name, ty })
         .boxed()
 }
@@ -973,8 +974,8 @@ mod tests {
     use kola_utils::interner::{PathInterner, StrInterner};
 
     use super::{
-        expr_parser, module_parser, module_type_parser, pat_parser, type_bind_parser,
-        type_expr_parser, type_parser,
+        expr_parser, module_parser, module_type_parser, pat_parser, type_bind_parser, type_parser,
+        type_scheme_parser,
     };
     use crate::{
         lexer::{LexInput, try_tokenize},
@@ -1224,7 +1225,7 @@ mod tests {
 
         let ParseResult { node, builder, .. } = try_parse_str_with(
             "Num -> { a : Num, b : Num -> Num } -> Str",
-            type_expr_parser(),
+            type_parser(),
             &mut interner,
         );
 
@@ -1244,7 +1245,7 @@ mod tests {
         record
             .field_at(0)
             .has_field_name("a")
-            .type_expr()
+            .type_()
             .as_path()
             .unwrap()
             .has_type_name("Num");
@@ -1252,7 +1253,7 @@ mod tests {
         record
             .field_at(1)
             .has_field_name("b")
-            .type_expr()
+            .type_()
             .as_function()
             .unwrap();
 
@@ -1265,7 +1266,7 @@ mod tests {
 
         let ParseResult { node, builder, .. } = try_parse_str_with(
             "Map (Num -> Str) (std::List Str)",
-            type_expr_parser(),
+            type_parser(),
             &mut interner,
         );
 
@@ -1299,7 +1300,7 @@ mod tests {
 
         let ParseResult { node, builder, .. } = try_parse_str_with(
             "forall a b . { left : a, right : Num -> b }",
-            type_parser(),
+            type_scheme_parser(),
             &mut interner,
         );
 
@@ -1316,13 +1317,13 @@ mod tests {
             assert_eq!(interner.get(name.get(tree).0).unwrap(), "b");
         });
 
-        let record = inspector.type_expr().as_record().unwrap();
+        let record = inspector.type_().as_record().unwrap();
         record.has_fields(2);
 
         record
             .field_at(0)
             .has_field_name("left")
-            .type_expr()
+            .type_()
             .as_path()
             .unwrap()
             .has_type_name("a");
@@ -1330,7 +1331,7 @@ mod tests {
         let right_field = record.field_at(1);
         right_field.has_field_name("right");
 
-        let fn_type = right_field.type_expr().as_function().unwrap();
+        let fn_type = right_field.type_().as_function().unwrap();
 
         fn_type.input().as_path().unwrap().has_type_name("Num");
         fn_type.output().as_path().unwrap().has_type_name("b");
@@ -1350,10 +1351,10 @@ mod tests {
 
         inspector.has_name("Person");
 
-        let type_node = inspector.type_node();
+        let type_node = inspector.type_scheme();
         type_node.has_type_vars(1);
 
-        let record = type_node.type_expr().as_record().unwrap();
+        let record = type_node.type_().as_record().unwrap();
         record.has_fields(3);
     }
 
@@ -1371,7 +1372,7 @@ mod tests {
 
         inspector.has_name("Option");
 
-        let type_node = inspector.type_node();
+        let type_node = inspector.type_scheme();
         type_node
             .has_type_vars(2)
             .type_var_at(0)
@@ -1379,25 +1380,19 @@ mod tests {
                 assert_eq!(interner.get(name.get(tree).0).unwrap(), "a");
             });
 
-        let variant = type_node.type_expr().as_variant().unwrap();
+        let variant = type_node.type_().as_variant().unwrap();
         variant.has_cases(2);
 
         variant
             .case_at(0)
             .has_case_name("Some")
-            .type_expr()
+            .type_()
             .unwrap()
             .as_path()
             .unwrap()
             .has_type_name("a");
 
-        assert!(
-            variant
-                .case_at(1)
-                .has_case_name("None")
-                .type_expr()
-                .is_none()
-        );
+        assert!(variant.case_at(1).has_case_name("None").type_().is_none());
 
         variant.extension().unwrap().has_name("b");
     }
@@ -1428,8 +1423,8 @@ mod tests {
             .as_type()
             .unwrap()
             .has_name("T")
-            .type_node()
-            .type_expr()
+            .type_scheme()
+            .type_()
             .as_path()
             .unwrap()
             .has_type_name("Num");
@@ -1455,7 +1450,7 @@ mod tests {
             .unwrap()
             .has_name("x")
             .type_node()
-            .type_expr()
+            .type_()
             .as_path()
             .unwrap()
             .has_type_name("Num");
@@ -1465,8 +1460,8 @@ mod tests {
             .as_type_bind()
             .unwrap()
             .has_name("T")
-            .type_node()
-            .type_expr()
+            .type_scheme()
+            .type_()
             .as_path()
             .unwrap()
             .has_type_name("Str");
@@ -1528,7 +1523,7 @@ mod tests {
             .unwrap()
             .has_name("x")
             .type_node()
-            .type_expr()
+            .type_()
             .as_path()
             .unwrap()
             .has_type_name("Num");

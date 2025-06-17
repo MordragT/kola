@@ -56,8 +56,8 @@ impl<'a> Decorator<'a> for TypeDecorator<'a> {
             }
             Meta::TypePath(pt)
             | Meta::TypeApplication(pt)
-            | Meta::TypeExpr(pt)
-            | Meta::Type(pt) => pt.green().display_in(arena),
+            | Meta::Type(pt)
+            | Meta::TypeScheme(pt) => pt.green().display_in(arena),
             Meta::TypeVar(_) | Meta::TypeError(_) => return notation,
 
             // Modules

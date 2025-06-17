@@ -4,7 +4,7 @@ use serde::{Deserialize, Serialize};
 use kola_print::prelude::*;
 use kola_utils::as_variant;
 
-use super::{Expr, ModuleName, Type};
+use super::{Expr, ModuleName, TypeScheme};
 use crate::{
     id::Id,
     node::{TypeName, ValueName},
@@ -159,7 +159,7 @@ impl Bind {
     pub fn value_in(
         vis: Vis,
         name: ValueName,
-        ty: Option<Type>,
+        ty: Option<TypeScheme>,
         value: Expr,
         builder: &mut TreeBuilder,
     ) -> Id<Self> {
@@ -228,7 +228,7 @@ impl<'a> Notate<'a> for NodePrinter<'a, Vis> {
 pub struct ValueBind {
     pub vis: Id<Vis>,
     pub name: Id<ValueName>,
-    pub ty: Option<Id<Type>>,
+    pub ty: Option<Id<TypeScheme>>,
     pub value: Id<Expr>,
 }
 
@@ -286,7 +286,7 @@ impl ValueBind {
     pub fn new_in(
         vis: Vis,
         name: ValueName,
-        ty: Option<Type>,
+        ty: Option<TypeScheme>,
         value: Expr,
         builder: &mut TreeBuilder,
     ) -> Id<Self> {
@@ -307,7 +307,7 @@ impl ValueBind {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct TypeBind {
     pub name: Id<TypeName>,
-    pub ty: Id<Type>,
+    pub ty: Id<TypeScheme>,
 }
 
 impl<'a> Notate<'a> for NodePrinter<'a, TypeBind> {
@@ -345,7 +345,7 @@ impl<'a> Notate<'a> for NodePrinter<'a, TypeBind> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct OpaqueTypeBind {
     pub name: Id<TypeName>,
-    pub ty: Id<Type>,
+    pub ty: Id<TypeScheme>,
 }
 
 impl<'a> Notate<'a> for NodePrinter<'a, OpaqueTypeBind> {
@@ -584,7 +584,7 @@ impl Spec {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct ValueSpec {
     pub name: Id<ValueName>,
-    pub ty: Id<Type>,
+    pub ty: Id<TypeScheme>,
 }
 
 impl<'a> Notate<'a> for NodePrinter<'a, ValueSpec> {
@@ -945,7 +945,7 @@ mod inspector {
             self
         }
 
-        pub fn type_node(self) -> NodeInspector<'t, Id<Type>, S> {
+        pub fn type_node(self) -> NodeInspector<'t, Id<TypeScheme>, S> {
             let opaque_type_bind = self.node.get(self.tree);
             NodeInspector::new(opaque_type_bind.ty, self.tree, self.interner)
         }
@@ -1033,7 +1033,7 @@ mod inspector {
             self
         }
 
-        pub fn type_node(self) -> NodeInspector<'t, Id<Type>, S> {
+        pub fn type_node(self) -> NodeInspector<'t, Id<TypeScheme>, S> {
             let value_spec = self.node.get(self.tree);
             NodeInspector::new(value_spec.ty, self.tree, self.interner)
         }
@@ -1057,7 +1057,7 @@ mod inspector {
             self
         }
 
-        pub fn type_node(self) -> Option<NodeInspector<'t, Id<Type>, S>> {
+        pub fn type_node(self) -> Option<NodeInspector<'t, Id<TypeScheme>, S>> {
             let value_bind = self.node.get(self.tree);
             value_bind
                 .ty
@@ -1083,7 +1083,7 @@ mod inspector {
             self
         }
 
-        pub fn type_node(self) -> NodeInspector<'t, Id<Type>, S> {
+        pub fn type_scheme(self) -> NodeInspector<'t, Id<TypeScheme>, S> {
             let type_bind = self.node.get(self.tree);
             NodeInspector::new(type_bind.ty, self.tree, self.interner)
         }

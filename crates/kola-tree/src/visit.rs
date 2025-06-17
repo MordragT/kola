@@ -71,9 +71,9 @@ impl_visitable!(
     VariantType,
     FuncType,
     TypeApplication,
-    TypeExpr,
-    TypeError,
     Type,
+    TypeError,
+    TypeScheme,
     // Modules
     Vis,
     ValueBind,
@@ -716,7 +716,7 @@ pub trait Visitor<T: TreeView> {
         let node::RecordFieldType { name, ty } = id.get(tree);
 
         self.visit_value_name(*name, tree)?;
-        self.visit_type_expr(*ty, tree)?;
+        self.visit_type(*ty, tree)?;
 
         ControlFlow::Continue(())
     }
@@ -764,7 +764,7 @@ pub trait Visitor<T: TreeView> {
 
         self.visit_value_name(*name, tree)?;
         if let Some(ty) = ty {
-            self.visit_type_expr(*ty, tree)?;
+            self.visit_type(*ty, tree)?;
         }
 
         ControlFlow::Continue(())
@@ -811,8 +811,8 @@ pub trait Visitor<T: TreeView> {
     ) -> ControlFlow<Self::BreakValue> {
         let node::FuncType { input, output } = id.get(tree);
 
-        self.visit_type_expr(*input, tree)?;
-        self.visit_type_expr(*output, tree)?;
+        self.visit_type(*input, tree)?;
+        self.visit_type(*output, tree)?;
 
         ControlFlow::Continue(())
     }
@@ -832,8 +832,8 @@ pub trait Visitor<T: TreeView> {
     ) -> ControlFlow<Self::BreakValue> {
         let node::TypeApplication { constructor, arg } = id.get(tree);
 
-        self.visit_type_expr(*constructor, tree)?;
-        self.visit_type_expr(*arg, tree)?;
+        self.visit_type(*constructor, tree)?;
+        self.visit_type(*arg, tree)?;
 
         ControlFlow::Continue(())
     }
@@ -854,12 +854,8 @@ pub trait Visitor<T: TreeView> {
         ControlFlow::Continue(())
     }
 
-    fn walk_type_expr(
-        &mut self,
-        id: Id<node::TypeExpr>,
-        tree: &T,
-    ) -> ControlFlow<Self::BreakValue> {
-        use node::TypeExpr::*;
+    fn walk_type(&mut self, id: Id<node::Type>, tree: &T) -> ControlFlow<Self::BreakValue> {
+        use node::Type::*;
 
         match *id.get(tree) {
             Error(id) => self.visit_type_error(id, tree),
@@ -871,27 +867,31 @@ pub trait Visitor<T: TreeView> {
         }
     }
 
-    fn visit_type_expr(
-        &mut self,
-        id: Id<node::TypeExpr>,
-        tree: &T,
-    ) -> ControlFlow<Self::BreakValue> {
-        self.walk_type_expr(id, tree)
+    fn visit_type(&mut self, id: Id<node::Type>, tree: &T) -> ControlFlow<Self::BreakValue> {
+        self.walk_type(id, tree)
     }
 
-    fn walk_type(&mut self, id: Id<node::Type>, tree: &T) -> ControlFlow<Self::BreakValue> {
-        let node::Type { vars, ty } = id.get(tree);
+    fn walk_type_scheme(
+        &mut self,
+        id: Id<node::TypeScheme>,
+        tree: &T,
+    ) -> ControlFlow<Self::BreakValue> {
+        let node::TypeScheme { vars, ty } = id.get(tree);
 
         for var in vars {
             self.visit_type_var(*var, tree)?;
         }
-        self.visit_type_expr(*ty, tree)?;
+        self.visit_type(*ty, tree)?;
 
         ControlFlow::Continue(())
     }
 
-    fn visit_type(&mut self, id: Id<node::Type>, tree: &T) -> ControlFlow<Self::BreakValue> {
-        self.walk_type(id, tree)
+    fn visit_type_scheme(
+        &mut self,
+        id: Id<node::TypeScheme>,
+        tree: &T,
+    ) -> ControlFlow<Self::BreakValue> {
+        self.walk_type_scheme(id, tree)
     }
 
     fn walk_module(&mut self, id: Id<node::Module>, tree: &T) -> ControlFlow<Self::BreakValue> {
@@ -986,7 +986,7 @@ pub trait Visitor<T: TreeView> {
         self.visit_vis(vis, tree)?;
         self.visit_value_name(name, tree)?;
         if let Some(ty) = ty {
-            self.visit_type(ty, tree)?;
+            self.visit_type_scheme(ty, tree)?;
         }
         self.visit_expr(value, tree)?;
 
@@ -1009,7 +1009,7 @@ pub trait Visitor<T: TreeView> {
         let node::TypeBind { name, ty } = *id.get(tree);
 
         self.visit_type_name(name, tree)?;
-        self.visit_type(ty, tree)?;
+        self.visit_type_scheme(ty, tree)?;
 
         ControlFlow::Continue(())
     }
@@ -1030,7 +1030,7 @@ pub trait Visitor<T: TreeView> {
         let node::OpaqueTypeBind { name, ty } = *id.get(tree);
 
         self.visit_type_name(name, tree)?;
-        self.visit_type(ty, tree)?;
+        self.visit_type_scheme(ty, tree)?;
 
         ControlFlow::Continue(())
     }
@@ -1118,7 +1118,7 @@ pub trait Visitor<T: TreeView> {
         let node::ValueSpec { name, ty } = *id.get(tree);
 
         self.visit_value_name(name, tree)?;
-        self.visit_type(ty, tree)?;
+        self.visit_type_scheme(ty, tree)?;
 
         ControlFlow::Continue(())
     }

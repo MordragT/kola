@@ -110,9 +110,9 @@ define_nodes!(
     VariantType,
     FuncType,
     TypeApplication,
-    TypeExpr,
-    TypeError,
     Type,
+    TypeError,
+    TypeScheme,
     // Modules
     Vis,
     ValueBind,

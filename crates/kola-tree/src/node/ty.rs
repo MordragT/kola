@@ -141,7 +141,7 @@ impl<'a> Notate<'a> for NodePrinter<'a, TypeVar> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct RecordFieldType {
     pub name: Id<ValueName>,
-    pub ty: Id<TypeExpr>,
+    pub ty: Id<Type>,
 }
 
 impl<'a> Notate<'a> for NodePrinter<'a, RecordFieldType> {
@@ -230,7 +230,7 @@ impl<'a> Notate<'a> for NodePrinter<'a, RecordType> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct VariantCaseType {
     pub name: Id<ValueName>,
-    pub ty: Option<Id<TypeExpr>>,
+    pub ty: Option<Id<Type>>,
 }
 
 impl<'a> Notate<'a> for NodePrinter<'a, VariantCaseType> {
@@ -319,8 +319,8 @@ impl<'a> Notate<'a> for NodePrinter<'a, VariantType> {
 // TODO this needs to be disambiguated with parentheses if a function should be one argument
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct FuncType {
-    pub input: Id<TypeExpr>,
-    pub output: Id<TypeExpr>,
+    pub input: Id<Type>,
+    pub output: Id<Type>,
 }
 
 impl<'a> Notate<'a> for NodePrinter<'a, FuncType> {
@@ -357,8 +357,8 @@ impl<'a> Notate<'a> for NodePrinter<'a, FuncType> {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct TypeApplication {
-    pub constructor: Id<TypeExpr>,
-    pub arg: Id<TypeExpr>,
+    pub constructor: Id<Type>,
+    pub arg: Id<Type>,
 }
 
 impl<'a> Notate<'a> for NodePrinter<'a, TypeApplication> {
@@ -396,7 +396,7 @@ impl<'a> Notate<'a> for NodePrinter<'a, TypeApplication> {
 #[derive(
     Debug, From, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
 )]
-pub enum TypeExpr {
+pub enum Type {
     Error(Id<TypeError>),
     Path(Id<TypePath>),
     Record(Id<RecordType>),
@@ -405,20 +405,20 @@ pub enum TypeExpr {
     Application(Id<TypeApplication>),
 }
 
-impl<'a> Notate<'a> for NodePrinter<'a, TypeExpr> {
+impl<'a> Notate<'a> for NodePrinter<'a, Type> {
     fn notate(&self, arena: &'a Bump) -> Notation<'a> {
         match *self.value {
-            TypeExpr::Error(e) => self.to(e).notate(arena),
-            TypeExpr::Path(p) => self.to(p).notate(arena),
-            TypeExpr::Record(r) => self.to(r).notate(arena),
-            TypeExpr::Variant(v) => self.to(v).notate(arena),
-            TypeExpr::Func(f) => self.to(f).notate(arena),
-            TypeExpr::Application(a) => self.to(a).notate(arena),
+            Type::Error(e) => self.to(e).notate(arena),
+            Type::Path(p) => self.to(p).notate(arena),
+            Type::Record(r) => self.to(r).notate(arena),
+            Type::Variant(v) => self.to(v).notate(arena),
+            Type::Func(f) => self.to(f).notate(arena),
+            Type::Application(a) => self.to(a).notate(arena),
         }
     }
 }
 
-impl TypeExpr {
+impl Type {
     #[inline]
     pub fn to_error(self) -> Option<Id<TypeError>> {
         as_variant!(self, Self::Error)
@@ -481,16 +481,16 @@ impl TypeExpr {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
-pub struct Type {
+pub struct TypeScheme {
     pub vars: Vec<Id<TypeVar>>,
-    pub ty: Id<TypeExpr>,
+    pub ty: Id<Type>,
 }
 
-impl<'a> Notate<'a> for NodePrinter<'a, Type> {
+impl<'a> Notate<'a> for NodePrinter<'a, TypeScheme> {
     fn notate(&self, arena: &'a Bump) -> Notation<'a> {
-        let Type { vars, ty } = self.value;
+        let TypeScheme { vars, ty } = self.value;
 
-        let head = "Type".green().display_in(arena);
+        let head = "TypeScheme".green().display_in(arena);
 
         let vars = self.to_slice(vars).gather(arena);
         let ty = self.to_id(*ty).notate(arena);
@@ -537,7 +537,7 @@ mod inspector {
 
     use super::*;
     use crate::inspector::*;
-    impl<'t, S: BuildHasher> NodeInspector<'t, Id<Type>, S> {
+    impl<'t, S: BuildHasher> NodeInspector<'t, Id<TypeScheme>, S> {
         pub fn as_type_path(self) -> Option<NodeInspector<'t, Id<TypePath>, S>> {
             let ty = self.node.get(self.tree);
             ty.ty
@@ -600,7 +600,7 @@ mod inspector {
             NodeInspector::new(var_id, self.tree, self.interner)
         }
 
-        pub fn type_expr(self) -> NodeInspector<'t, Id<TypeExpr>, S> {
+        pub fn type_(self) -> NodeInspector<'t, Id<Type>, S> {
             let ty = self.node.get(self.tree);
             NodeInspector::new(ty.ty, self.tree, self.interner)
         }
@@ -642,12 +642,12 @@ mod inspector {
     }
 
     impl<'t, S: BuildHasher> NodeInspector<'t, Id<FuncType>, S> {
-        pub fn input(self) -> NodeInspector<'t, Id<TypeExpr>, S> {
+        pub fn input(self) -> NodeInspector<'t, Id<Type>, S> {
             let function_type = self.node.get(self.tree);
             NodeInspector::new(function_type.input, self.tree, self.interner)
         }
 
-        pub fn output(self) -> NodeInspector<'t, Id<TypeExpr>, S> {
+        pub fn output(self) -> NodeInspector<'t, Id<Type>, S> {
             let function_type = self.node.get(self.tree);
             NodeInspector::new(function_type.output, self.tree, self.interner)
         }
@@ -697,7 +697,7 @@ mod inspector {
             self
         }
 
-        pub fn type_expr(self) -> NodeInspector<'t, Id<TypeExpr>, S> {
+        pub fn type_(self) -> NodeInspector<'t, Id<Type>, S> {
             let field = self.node.get(self.tree);
             NodeInspector::new(field.ty, self.tree, self.interner)
         }
@@ -747,14 +747,14 @@ mod inspector {
             self
         }
 
-        pub fn type_expr(self) -> Option<NodeInspector<'t, Id<TypeExpr>, S>> {
+        pub fn type_(self) -> Option<NodeInspector<'t, Id<Type>, S>> {
             let case = self.node.get(self.tree);
             case.ty
                 .map(|ty_id| NodeInspector::new(ty_id, self.tree, self.interner))
         }
     }
 
-    impl<'t, S: BuildHasher> NodeInspector<'t, Id<TypeExpr>, S> {
+    impl<'t, S: BuildHasher> NodeInspector<'t, Id<Type>, S> {
         pub fn as_error(self) -> Option<NodeInspector<'t, Id<TypeError>, S>> {
             let type_expr = self.node.get(self.tree);
             type_expr
@@ -799,12 +799,12 @@ mod inspector {
     }
 
     impl<'t, S: BuildHasher> NodeInspector<'t, Id<TypeApplication>, S> {
-        pub fn constructor(self) -> NodeInspector<'t, Id<TypeExpr>, S> {
+        pub fn constructor(self) -> NodeInspector<'t, Id<Type>, S> {
             let type_app = self.node.get(self.tree);
             NodeInspector::new(type_app.constructor, self.tree, self.interner)
         }
 
-        pub fn arg(self) -> NodeInspector<'t, Id<TypeExpr>, S> {
+        pub fn arg(self) -> NodeInspector<'t, Id<Type>, S> {
             let type_app = self.node.get(self.tree);
             NodeInspector::new(type_app.arg, self.tree, self.interner)
         }

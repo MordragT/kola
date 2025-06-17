@@ -74,9 +74,9 @@ define_folder_trait!(
     VariantType,
     FuncType,
     TypeApplication,
-    TypeExpr,
-    TypeError,
     Type,
+    TypeError,
+    TypeScheme,
     // Modules
     Vis,
     ValueBind,

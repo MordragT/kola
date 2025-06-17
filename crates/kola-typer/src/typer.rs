@@ -217,7 +217,7 @@ where
     ) -> ControlFlow<Self::BreakValue> {
         let node::TypeBind { name, ty } = *id.get(tree);
 
-        self.visit_type(ty, tree)?;
+        self.visit_type_scheme(ty, tree)?;
         let poly_t = self.types.meta(ty).clone();
 
         self.update_type(id, poly_t);
@@ -241,8 +241,12 @@ where
     /// - Constructs polymorphic type with collected variables
     ///
     /// Type signature: `∀α₁...αₙ. τ` where τ is the inner type
-    fn visit_type(&mut self, id: Id<node::Type>, tree: &T) -> ControlFlow<Self::BreakValue> {
-        let node::Type { vars, ty } = id.get(tree);
+    fn visit_type_scheme(
+        &mut self,
+        id: Id<node::TypeScheme>,
+        tree: &T,
+    ) -> ControlFlow<Self::BreakValue> {
+        let node::TypeScheme { vars, ty } = id.get(tree);
 
         let type_vars = vars
             .iter()
@@ -257,7 +261,7 @@ where
             })
             .collect::<Vec<_>>();
 
-        self.visit_type_expr(*ty, tree)?;
+        self.visit_type(*ty, tree)?;
         let mono_t = self.types.meta(*ty).to_mono().unwrap();
 
         for var_node in vars.iter().rev() {
@@ -274,22 +278,16 @@ where
         ControlFlow::Continue(())
     }
 
-    fn visit_type_expr(
-        &mut self,
-        id: Id<node::TypeExpr>,
-        tree: &T,
-    ) -> ControlFlow<Self::BreakValue> {
-        self.walk_type_expr(id, tree)?;
+    fn visit_type(&mut self, id: Id<node::Type>, tree: &T) -> ControlFlow<Self::BreakValue> {
+        self.walk_type(id, tree)?;
 
         let poly_t = match *id.get(tree) {
-            node::TypeExpr::Error(_) => todo!(),
-            node::TypeExpr::Path(path_id) => self.types.meta(path_id).clone(),
-            node::TypeExpr::Func(func_id) => PolyType::new(self.types.meta(func_id).clone()),
-            node::TypeExpr::Application(app_id) => self.types.meta(app_id).clone(),
-            node::TypeExpr::Record(record_id) => PolyType::new(self.types.meta(record_id).clone()),
-            node::TypeExpr::Variant(variant_id) => {
-                PolyType::new(self.types.meta(variant_id).clone())
-            }
+            node::Type::Error(_) => todo!(),
+            node::Type::Path(path_id) => self.types.meta(path_id).clone(),
+            node::Type::Func(func_id) => PolyType::new(self.types.meta(func_id).clone()),
+            node::Type::Application(app_id) => self.types.meta(app_id).clone(),
+            node::Type::Record(record_id) => PolyType::new(self.types.meta(record_id).clone()),
+            node::Type::Variant(variant_id) => PolyType::new(self.types.meta(variant_id).clone()),
         };
 
         self.update_type(id, poly_t);
@@ -396,10 +394,10 @@ where
     ) -> ControlFlow<Self::BreakValue> {
         let node::FuncType { input, output } = *id.get(tree);
 
-        self.visit_type_expr(input, tree)?;
+        self.visit_type(input, tree)?;
         let input_t = self.types.meta(input).to_mono().unwrap();
 
-        self.visit_type_expr(output, tree)?;
+        self.visit_type(output, tree)?;
         let output_t = self.types.meta(output).to_mono().unwrap();
 
         let func_t = MonoType::func(input_t, output_t);
@@ -434,10 +432,10 @@ where
     ) -> ControlFlow<Self::BreakValue> {
         let node::TypeApplication { constructor, arg } = *id.get(tree);
 
-        self.visit_type_expr(arg, tree)?;
+        self.visit_type(arg, tree)?;
         let arg_t = self.types.meta(arg).to_mono().unwrap();
 
-        self.visit_type_expr(constructor, tree)?;
+        self.visit_type(constructor, tree)?;
         let PolyType { vars, ty } = self.types.meta(constructor);
 
         let [first_var, remaining_vars @ ..] = vars.as_slice() else {
@@ -539,7 +537,7 @@ where
 
         let label = name.get(tree).0;
 
-        self.visit_type_expr(ty, tree)?;
+        self.visit_type(ty, tree)?;
         let value_t = self.types.meta(ty).to_mono().unwrap();
 
         let head_t = LabeledType { label, ty: value_t };
@@ -637,7 +635,7 @@ where
         let label = name.get(tree).0;
 
         let value_t = if let Some(payload_ty) = ty {
-            self.visit_type_expr(payload_ty, tree)?;
+            self.visit_type(payload_ty, tree)?;
             self.types.meta(payload_ty).to_mono().unwrap()
         } else {
             MonoType::UNIT
@@ -693,7 +691,7 @@ where
         let inferred_poly_t = value_t.generalize(&[]);
 
         if let Some(annotation_ty) = ty {
-            self.visit_type(annotation_ty, tree)?;
+            self.visit_type_scheme(annotation_ty, tree)?;
             let expected_poly_t = self.types.meta(annotation_ty).clone();
 
             self.cons

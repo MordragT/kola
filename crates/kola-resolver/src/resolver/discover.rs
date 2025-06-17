@@ -466,7 +466,7 @@ where
 
         if let Some(ty) = ty {
             // If there is a type annotation, we need to visit it
-            self.visit_type(ty, tree)?;
+            self.visit_type_scheme(ty, tree)?;
         }
 
         self.visit_expr(value, tree)?;
@@ -586,15 +586,19 @@ where
             self.report.add_diagnostic(e.into());
         }
 
-        self.visit_type(ty, tree)?; // walk to discover module paths in type expressions
+        self.visit_type_scheme(ty, tree)?; // walk to discover module paths in type expressions
 
         self.current_type_bind_sym = None;
 
         ControlFlow::Continue(())
     }
 
-    fn visit_type(&mut self, id: Id<node::Type>, tree: &T) -> ControlFlow<Self::BreakValue> {
-        let node::Type { vars, ty } = id.get(tree);
+    fn visit_type_scheme(
+        &mut self,
+        id: Id<node::TypeScheme>,
+        tree: &T,
+    ) -> ControlFlow<Self::BreakValue> {
+        let node::TypeScheme { vars, ty } = id.get(tree);
 
         // Enter type parameter scope
         for &var_id in vars {
@@ -605,7 +609,7 @@ where
             self.stack.type_scope_mut().enter(name, sym);
         }
 
-        self.visit_type_expr(*ty, tree)?;
+        self.visit_type(*ty, tree)?;
 
         // Exit type parameter scope (in reverse order)
         for var in vars.iter().rev() {

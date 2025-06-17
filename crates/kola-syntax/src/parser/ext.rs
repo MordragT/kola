@@ -55,11 +55,11 @@ pub trait KolaParser<'t, T>: Parser<'t, ParseInput<'t>, T, Extra<'t>> + Sized {
     }
 
     #[inline]
-    fn to_type_expr(self) -> impl Parser<'t, ParseInput<'t>, Id<node::TypeExpr>, Extra<'t>>
+    fn to_type(self) -> impl Parser<'t, ParseInput<'t>, Id<node::Type>, Extra<'t>>
     where
-        node::TypeExpr: From<T>,
+        node::Type: From<T>,
     {
-        self.map(node::TypeExpr::from).to_node()
+        self.map(node::Type::from).to_node()
     }
 
     #[inline]

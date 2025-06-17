@@ -56,9 +56,9 @@ impl Phase for TypePhase {
     type VariantType = types::MonoType;
     type FuncType = types::MonoType;
     type TypeApplication = types::PolyType;
-    type TypeExpr = types::PolyType;
-    type TypeError = !;
     type Type = types::PolyType;
+    type TypeError = !;
+    type TypeScheme = types::PolyType;
 
     type Vis = !;
     type ValueBind = types::PolyType;
