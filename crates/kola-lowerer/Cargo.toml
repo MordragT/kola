@@ -8,6 +8,8 @@ kola-ir.workspace = true
 kola-tree.workspace = true
 kola-resolver.workspace = true
 kola-collections.workspace = true
+kola-print.workspace = true
+log.workspace = true
 
 [dev-dependencies]
 kola-vm.workspace = true

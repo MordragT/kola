@@ -15,8 +15,8 @@ pub struct Id<T> {
 const _: () = {
     // Ensure that Id<T> is always 4 bytes in size
     // and using nieche optimization for Option<Id<T>>.
-    assert!(mem::size_of::<Id<()>>() >= 4);
-    assert!(mem::size_of::<Option<Id<()>>>() >= 4);
+    assert!(mem::size_of::<Id<()>>() == 4 * mem::size_of::<u8>());
+    assert!(mem::size_of::<Option<Id<()>>>() == 4 * mem::size_of::<u8>());
 };
 
 impl<T> Id<T> {

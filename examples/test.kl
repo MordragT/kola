@@ -11,7 +11,9 @@
 
     person_b = { person_a | name = "Bob" },
 
-    #eine_liste : List Str = ["eins", "zwei", "drei"],
+    eine_liste : List Str = ["eins", "zwei", "drei"],
 
-    main = [1, 2, 3],
+    #main = [1, 2, 3],
+
+    main = person_b
 }

@@ -9,6 +9,8 @@ use camino::Utf8Path;
 
 use crate::define_unique_id;
 
+// TODO nieche optimization: use a more efficient ID type
+
 define_unique_id!(Key);
 
 impl<T: ?Sized> Key<T> {

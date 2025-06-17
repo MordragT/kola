@@ -455,7 +455,7 @@ impl Eval for ListExpr {
 
         let mut list = List::new();
 
-        for ListItem { value, .. } in ir.iter_items_forward(head) {
+        for ListItem { value, .. } in ir.iter_items(head) {
             match eval_atom(value.get(ir), &env) {
                 Ok(value) => list.append(value),
                 Err(err) => return MachineState::Error(err),
@@ -588,7 +588,7 @@ impl Eval for RecordRestrictExpr {
         };
 
         // Remove the specified field from the record
-        record.remove(&label);
+        record.remove(label);
 
         // Bind the restricted record to the variable in the environment
         env.insert(bind, record.into());
@@ -656,7 +656,7 @@ impl Eval for RecordUpdateExpr {
             ));
         };
 
-        let Some(current_val) = record.get(&label).cloned() else {
+        let Some(current_val) = record.get(label).cloned() else {
             return MachineState::Error(format!("Cannot update non-existing field: {:?}", label));
         };
 
@@ -710,7 +710,7 @@ impl Eval for RecordAccessExpr {
         };
 
         // Access the specified field from the record
-        let Some(value) = record.get(&label).cloned() else {
+        let Some(value) = record.get(label).cloned() else {
             return MachineState::Error(format!("Field {:?} not found in record", label));
         };
 

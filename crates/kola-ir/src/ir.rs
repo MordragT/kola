@@ -1,8 +1,11 @@
-use kola_utils::convert::{TryAsMut, TryAsRef};
+use kola_utils::{
+    convert::{TryAsMut, TryAsRef},
+    interner::StrKey,
+};
 
 use crate::{
     id::Id,
-    instr::{Atom, Expr, Instr, ListItem, RecordField, Symbol},
+    instr::{Atom, Expr, Instr, ListItem, RecordField},
 };
 
 pub trait IrView {
@@ -15,12 +18,8 @@ pub trait IrView {
         FieldIter::new(self, head)
     }
 
-    fn iter_items_forward(&self, head: Option<Id<ListItem>>) -> ForwardItemIter<'_, Self> {
-        ForwardItemIter::new(self, head)
-    }
-
-    fn iter_items_backward(&self, tail: Option<Id<ListItem>>) -> BackwardItemIter<'_, Self> {
-        BackwardItemIter::new(self, tail)
+    fn iter_items(&self, head: Option<Id<ListItem>>) -> ItemIter<'_, Self> {
+        ItemIter::new(self, head)
     }
 }
 
@@ -49,49 +48,24 @@ impl<'a, T: IrView + ?Sized> Iterator for FieldIter<'a, T> {
     }
 }
 
-pub struct ForwardItemIter<'a, T: IrView + ?Sized> {
+pub struct ItemIter<'a, T: IrView + ?Sized> {
     ir: &'a T,
     current: Option<Id<ListItem>>,
 }
 
-impl<'a, T: IrView + ?Sized> ForwardItemIter<'a, T> {
+impl<'a, T: IrView + ?Sized> ItemIter<'a, T> {
     pub fn new(ir: &'a T, head: Option<Id<ListItem>>) -> Self {
         Self { ir, current: head }
     }
 }
 
-impl<'a, T: IrView + ?Sized> Iterator for ForwardItemIter<'a, T> {
+impl<'a, T: IrView + ?Sized> Iterator for ItemIter<'a, T> {
     type Item = ListItem;
 
     fn next(&mut self) -> Option<Self::Item> {
         if let Some(item_id) = self.current {
             let item = self.ir.instr(item_id);
             self.current = item.next;
-            Some(item)
-        } else {
-            None
-        }
-    }
-}
-
-pub struct BackwardItemIter<'a, T: IrView + ?Sized> {
-    ir: &'a T,
-    current: Option<Id<ListItem>>,
-}
-
-impl<'a, T: IrView + ?Sized> BackwardItemIter<'a, T> {
-    pub fn new(ir: &'a T, head: Option<Id<ListItem>>) -> Self {
-        Self { ir, current: head }
-    }
-}
-
-impl<'a, T: IrView + ?Sized> Iterator for BackwardItemIter<'a, T> {
-    type Item = ListItem;
-
-    fn next(&mut self) -> Option<Self::Item> {
-        if let Some(item_id) = self.current {
-            let item = self.ir.instr(item_id);
-            self.current = item.prev;
             Some(item)
         } else {
             None
@@ -133,9 +107,11 @@ impl IrBuilder {
     }
 
     /// Prepends a field to the head of the record fields.
+
+    #[inline]
     pub fn add_field(
         &mut self,
-        field: (Symbol, Atom),
+        field: (StrKey, Atom),
         head: Option<Id<RecordField>>,
     ) -> Id<RecordField> {
         let (label, atom) = field;
@@ -148,32 +124,56 @@ impl IrBuilder {
         field
     }
 
-    pub fn prepend_item(&mut self, item: Atom, head: Option<Id<ListItem>>) -> Id<ListItem> {
-        let value = self.add(item);
-        let item = self.add(ListItem {
-            value,
-            next: head,
-            prev: None,
-        });
-        if let Some(head_id) = head {
-            let head_item = self.instr_mut(head_id);
-            head_item.prev = Some(item);
+    pub fn extend_fields(
+        &mut self,
+        fields: impl IntoIterator<Item = (StrKey, Atom)>,
+        mut head: Option<Id<RecordField>>,
+    ) -> Option<Id<RecordField>> {
+        for field in fields {
+            head = Some(self.add_field(field, head));
+        }
+
+        head
+    }
+
+    #[inline]
+    pub fn prepend_item(
+        &mut self,
+        atom: impl Into<Atom>,
+        head: Option<Id<ListItem>>,
+    ) -> Id<ListItem> {
+        let value = self.add(atom.into());
+        let item = self.add(ListItem { value, next: head });
+        item
+    }
+
+    #[inline]
+    pub fn append_item(
+        &mut self,
+        atom: impl Into<Atom>,
+        tail: Option<Id<ListItem>>,
+    ) -> Id<ListItem> {
+        let value = self.add(atom.into());
+        let item = self.add(ListItem { value, next: None });
+        if let Some(tail) = tail {
+            let tail_item = self.instr_mut(tail);
+            // For true appending, the next item of the tail must be None.
+            debug_assert!(tail_item.next.is_none());
+            tail_item.next = Some(item);
         }
         item
     }
 
-    pub fn append_item(&mut self, item: Atom, tail: Option<Id<ListItem>>) -> Id<ListItem> {
-        let value = self.add(item);
-        let item = self.add(ListItem {
-            value,
-            next: None,
-            prev: tail,
-        });
-        if let Some(tail_id) = tail {
-            let tail_item = self.instr_mut(tail_id);
-            tail_item.next = Some(item);
+    pub fn prepend_all_items(
+        &mut self,
+        items: impl IntoIterator<Item = Atom>,
+        mut head: Option<Id<ListItem>>,
+    ) -> Option<Id<ListItem>> {
+        for item in items {
+            head = Some(self.prepend_item(item, head));
         }
-        item
+
+        head
     }
 
     pub fn finish(self, root: Id<Expr>) -> Ir {

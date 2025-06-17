@@ -104,14 +104,17 @@ use kola_ir::{
     id::Id as InstrId,
     instr as ir,
     ir::{Ir, IrBuilder},
+    print::IrPrinter,
 };
+use kola_print::prelude::*;
 use kola_resolver::{
     forest::Forest,
     resolver::ValueOrders,
     scope::{ModuleScope, ModuleScopes},
     symbol::{ModuleSym, ValueSym},
 };
-use kola_tree::{node, tree::Tree};
+use kola_tree::tree::Tree;
+use log::debug;
 
 use crate::{normalizer::Normalizer, symbol::SymbolEnv};
 
@@ -190,8 +193,9 @@ pub fn lower_module(
     // Collect field information first
     for &value_sym in value_order {
         let id = scope.defs[value_sym].id();
+        let label = id.get(tree).name.get(tree).0;
         let hole = symbols.symbol_of(id);
-        fields.add_field((hole, ir::Atom::Symbol(hole)), builder);
+        fields.add_field((label, ir::Atom::Symbol(hole)), builder);
     }
 
     // Create the record expression with the continuation
@@ -237,6 +241,8 @@ pub fn lower(
     scopes: &ModuleScopes,
     value_orders: &ValueOrders,
     forest: &Forest,
+    arena: &Bump,
+    print_options: PrintOptions,
 ) -> Program {
     let mut builder = IrBuilder::new();
     let mut modules = Vec::new();
@@ -254,8 +260,14 @@ pub fn lower(
         modules.push(LoweredModule { sym });
     }
 
-    Program {
-        ir: builder.finish(next),
-        modules,
-    }
+    let ir = builder.finish(next);
+    let ir_printer = IrPrinter::new(&ir, next);
+
+    debug!(
+        "{}\n{}",
+        "Intermediate Representation".bold().bright_white(),
+        ir_printer.render(print_options, arena)
+    );
+
+    Program { ir, modules }
 }

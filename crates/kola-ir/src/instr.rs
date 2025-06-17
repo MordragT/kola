@@ -33,6 +33,15 @@ pub enum Instr {
     Item(ListItem),
 }
 
+impl<T> From<&T> for Instr
+where
+    T: Into<Instr> + Copy,
+{
+    fn from(value: &T) -> Self {
+        (*value).into()
+    }
+}
+
 impl_try_as!(
     Instr,
     Symbol(Symbol),
@@ -101,6 +110,15 @@ pub enum Atom {
     Str(StrKey),
     Func(Func),
     Symbol(Symbol),
+}
+
+impl<T> From<&T> for Atom
+where
+    T: Into<Atom> + Copy,
+{
+    fn from(value: &T) -> Self {
+        (*value).into()
+    }
 }
 
 impl_try_as!(
@@ -370,6 +388,7 @@ impl<'a> Notate<'a> for IrPrinter<'a, IfExpr> {
     }
 }
 
+// TODO can this be removed?
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct LetExpr {
     pub bind: Symbol,
@@ -572,17 +591,12 @@ impl<'a> Notate<'a> for IrPrinter<'a, BinaryExpr> {
 pub struct ListItem {
     pub value: Id<Atom>,
     pub next: Option<Id<ListItem>>,
-    pub prev: Option<Id<ListItem>>,
 }
 
 impl ListItem {
     pub fn new(value: impl Into<Atom>, builder: &mut IrBuilder) -> Self {
         let value = builder.add(value.into());
-        Self {
-            value,
-            next: None,
-            prev: None,
-        }
+        Self { value, next: None }
     }
 
     pub fn with_next(value: impl Into<Atom>, next: Id<ListItem>, builder: &mut IrBuilder) -> Self {
@@ -590,7 +604,6 @@ impl ListItem {
         Self {
             value,
             next: Some(next),
-            prev: None,
         }
     }
 }
@@ -629,7 +642,7 @@ pub struct ListExpr {
 }
 
 impl ListExpr {
-    pub fn empty(bind: Symbol, next: impl Into<Expr>, builder: &mut IrBuilder) -> Self {
+    pub fn new(bind: Symbol, next: impl Into<Expr>, builder: &mut IrBuilder) -> Self {
         let next = builder.add(next.into());
 
         Self {
@@ -640,41 +653,38 @@ impl ListExpr {
         }
     }
 
-    pub fn with_items(
-        bind: Symbol,
-        next: impl Into<Expr>,
-        items: impl IntoIterator<Item = Atom>,
-        builder: &mut IrBuilder,
-    ) -> Self {
-        let next = builder.add(next.into());
-        let mut head = None;
-        let mut tail = None;
+    pub fn prepend(&mut self, item: impl Into<Atom>, builder: &mut IrBuilder) {
+        let item_id = builder.prepend_item(item, self.head);
 
-        for item in items {
-            let item = ListItem::new(item, builder);
-            let item_id = builder.add(item);
-            if head.is_none() {
-                head = Some(item_id);
-                tail = Some(item_id);
-            } else {
-                tail = Some(item_id);
-            }
+        if self.tail.is_none() {
+            self.tail = Some(item_id);
         }
-
-        Self {
-            bind,
-            head,
-            tail,
-            next,
-        }
+        self.head = Some(item_id);
     }
 
-    pub fn prepend(&mut self, item: impl Into<Atom>, builder: &mut IrBuilder) -> Id<ListItem> {
-        todo!()
+    pub fn append(&mut self, item: impl Into<Atom>, builder: &mut IrBuilder) {
+        let item_id = builder.append_item(item, self.tail);
+
+        if self.head.is_none() {
+            self.head = Some(item_id);
+        }
+        self.tail = Some(item_id);
     }
 
-    pub fn append(&mut self, item: impl Into<Atom>, builder: &mut IrBuilder) -> Id<ListItem> {
-        todo!()
+    pub fn prepend_all<I>(&mut self, items: I, builder: &mut IrBuilder)
+    where
+        I: IntoIterator<Item = Atom>,
+    {
+        let mut items = items.into_iter();
+
+        if let Some(first) = items.next() {
+            self.prepend(first, builder);
+        } else {
+            return;
+        }
+
+        let head_id = builder.prepend_all_items(items, self.head);
+        self.head = head_id;
     }
 }
 
@@ -720,13 +730,13 @@ impl<'a> Notate<'a> for IrPrinter<'a, ListExpr> {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct RecordField {
-    pub label: Symbol,
+    pub label: StrKey,
     pub value: Id<Atom>,
     pub next: Option<Id<RecordField>>,
 }
 
 impl RecordField {
-    pub fn new(label: Symbol, value: impl Into<Atom>, builder: &mut IrBuilder) -> Self {
+    pub fn new(label: StrKey, value: impl Into<Atom>, builder: &mut IrBuilder) -> Self {
         let value = builder.add(value.into());
         Self {
             label,
@@ -736,7 +746,7 @@ impl RecordField {
     }
 
     pub fn with_next(
-        label: Symbol,
+        label: StrKey,
         value: impl Into<Atom>,
         next: Id<RecordField>,
         builder: &mut IrBuilder,
@@ -787,7 +797,7 @@ pub struct RecordExpr {
 }
 
 impl RecordExpr {
-    pub fn empty(bind: Symbol, next: impl Into<Expr>, builder: &mut IrBuilder) -> Self {
+    pub fn new(bind: Symbol, next: impl Into<Expr>, builder: &mut IrBuilder) -> Self {
         let next = builder.add(next.into());
 
         Self {
@@ -797,24 +807,15 @@ impl RecordExpr {
         }
     }
 
-    pub fn with_fields(
-        bind: Symbol,
-        fields: impl IntoIterator<Item = (Symbol, Atom)>,
-        next: impl Into<Expr>,
-        builder: &mut IrBuilder,
-    ) -> Self {
-        let next = builder.add(next.into());
-        let mut head = None;
-
-        for field in fields {
-            head = Some(builder.add_field(field, head));
-        }
-
-        Self { bind, next, head }
+    pub fn add_field(&mut self, field: (StrKey, Atom), builder: &mut IrBuilder) {
+        self.head = Some(builder.add_field(field, self.head));
     }
 
-    pub fn add_field(&mut self, field: (Symbol, Atom), builder: &mut IrBuilder) {
-        self.head = Some(builder.add_field(field, self.head));
+    pub fn extend<I>(&mut self, fields: I, builder: &mut IrBuilder)
+    where
+        I: IntoIterator<Item = (StrKey, Atom)>,
+    {
+        self.head = builder.extend_fields(fields, self.head);
     }
 }
 
@@ -860,7 +861,7 @@ impl<'a> Notate<'a> for IrPrinter<'a, RecordExpr> {
 pub struct RecordExtendExpr {
     pub bind: Symbol,
     pub base: Id<Atom>,
-    pub label: Symbol,
+    pub label: StrKey,
     pub value: Id<Atom>,
     pub next: Id<Expr>,
 }
@@ -869,7 +870,7 @@ impl RecordExtendExpr {
     pub fn new(
         bind: Symbol,
         base: impl Into<Atom>,
-        label: Symbol,
+        label: StrKey,
         value: impl Into<Atom>,
         next: impl Into<Expr>,
         builder: &mut IrBuilder,
@@ -945,7 +946,7 @@ impl<'a> Notate<'a> for IrPrinter<'a, RecordExtendExpr> {
 pub struct RecordRestrictExpr {
     pub bind: Symbol,
     pub base: Id<Atom>,
-    pub label: Symbol,
+    pub label: StrKey,
     pub next: Id<Expr>,
 }
 
@@ -953,7 +954,7 @@ impl RecordRestrictExpr {
     pub fn new(
         bind: Symbol,
         base: impl Into<Atom>,
-        label: Symbol,
+        label: StrKey,
         next: impl Into<Expr>,
         builder: &mut IrBuilder,
     ) -> Self {
@@ -1042,7 +1043,7 @@ impl fmt::Display for RecordUpdateOp {
 pub struct RecordUpdateExpr {
     pub bind: Symbol,
     pub base: Id<Atom>,
-    pub label: Symbol,
+    pub label: StrKey,
     pub op: RecordUpdateOp,
     pub value: Id<Atom>,
     pub next: Id<Expr>,
@@ -1052,7 +1053,7 @@ impl RecordUpdateExpr {
     pub fn new(
         bind: Symbol,
         base: impl Into<Atom>,
-        label: Symbol,
+        label: StrKey,
         op: RecordUpdateOp,
         value: impl Into<Atom>,
         next: impl Into<Expr>,
@@ -1136,7 +1137,7 @@ impl<'a> Notate<'a> for IrPrinter<'a, RecordUpdateExpr> {
 pub struct RecordAccessExpr {
     pub bind: Symbol,
     pub base: Id<Atom>,
-    pub label: Symbol,
+    pub label: StrKey,
     pub next: Id<Expr>,
 }
 
@@ -1144,7 +1145,7 @@ impl RecordAccessExpr {
     pub fn new(
         bind: Symbol,
         base: impl Into<Atom>,
-        label: Symbol,
+        label: StrKey,
         next: impl Into<Expr>,
         builder: &mut IrBuilder,
     ) -> Self {
@@ -1233,6 +1234,15 @@ pub enum Expr {
     //     continuation: InstrId<Atom>,
     //     value: InstrId<Atom>,
     // },
+}
+
+impl<T> From<&T> for Expr
+where
+    T: Into<Expr> + Copy,
+{
+    fn from(value: &T) -> Self {
+        (*value).into()
+    }
 }
 
 impl_try_as!(

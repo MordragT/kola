@@ -1,7 +1,11 @@
 use derive_more::From;
 use kola_collections::{ImShadowMap, ImVec};
-use kola_ir::instr::{Func, Symbol};
-use kola_utils::as_variant;
+use kola_ir::instr::Func;
+use kola_utils::{
+    as_variant,
+    fmt::DisplayWithInterner,
+    interner::{StrInterner, StrKey},
+};
 use std::fmt;
 
 use crate::{cont::Cont, env::Env};
@@ -9,24 +13,33 @@ use crate::{cont::Cont, env::Env};
 /// Values produced by evaluating expressions
 #[derive(Debug, From, Clone, PartialEq)]
 pub enum Value {
+    /// A boolean value
     Bool(bool),
+    /// A character value
     Char(char),
+    /// A numeric value (floating point)
     Num(f64),
+    /// A string value
     Str(String),
     /// A function closure (environment, function definition)
     Func(Env, Func),
     /// A captured continuation
     Cont(Cont),
     /// A variant (label, value)
-    Variant(Symbol, Box<Self>),
+    Variant(Variant),
     /// A record (map of labels to values)
     Record(Record),
+    /// A list of values
     List(List),
 }
 
 impl Value {
     pub fn str(s: impl Into<String>) -> Self {
         Value::Str(s.into())
+    }
+
+    pub fn variant(label: StrKey, value: Self) -> Self {
+        Value::Variant(Variant::new(label, value))
     }
 
     pub fn is_bool(&self) -> bool {
@@ -54,7 +67,7 @@ impl Value {
     }
 
     pub fn is_variant(&self) -> bool {
-        matches!(self, Value::Variant(_, _))
+        matches!(self, Value::Variant(_))
     }
 
     pub fn is_record(&self) -> bool {
@@ -85,8 +98,8 @@ impl Value {
         as_variant!(self, Self::Cont)
     }
 
-    pub fn as_variant(&self) -> Option<(&Symbol, &Value)> {
-        todo!()
+    pub fn as_variant(&self) -> Option<&Variant> {
+        as_variant!(self, Self::Variant)
     }
 
     pub fn as_record(&self) -> Option<&Record> {
@@ -118,9 +131,8 @@ impl Value {
         as_variant!(self, Self::Cont)
     }
 
-    pub fn into_variant(self) -> Option<(Symbol, Value)> {
-        // as_variant!(self, Self::Variant)
-        todo!()
+    pub fn into_variant(self) -> Option<Variant> {
+        as_variant!(self, Self::Variant)
     }
 
     pub fn into_record(self) -> Option<Record> {
@@ -128,8 +140,8 @@ impl Value {
     }
 }
 
-impl fmt::Display for Value {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl DisplayWithInterner for Value {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>, interner: &StrInterner) -> fmt::Result {
         match self {
             Value::Bool(b) => write!(f, "{}", b),
             Value::Char(c) => write!(f, "{}", c),
@@ -137,109 +149,159 @@ impl fmt::Display for Value {
             Value::Str(s) => write!(f, "{}", s),
             Value::Func(_, _) => write!(f, "<function>"),
             Value::Cont(_) => write!(f, "<continuation>"),
-            Value::Variant(label, value) => write!(f, "{}({})", label, value),
-            Value::Record(r) => write!(f, "{}", r),
-            Value::List(l) => write!(f, "{}", l),
+            Value::Variant(v) => v.fmt(f, interner),
+            Value::Record(r) => r.fmt(f, interner),
+            Value::List(l) => l.fmt(f, interner),
         }
     }
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct Record(ImShadowMap<Symbol, Value>);
+pub struct Variant {
+    label: StrKey,
+    value: Box<Value>,
+}
+
+impl Variant {
+    #[inline]
+    pub fn new(label: StrKey, value: Value) -> Self {
+        Self {
+            label,
+            value: Box::new(value),
+        }
+    }
+
+    #[inline]
+    pub fn label(&self) -> StrKey {
+        self.label
+    }
+
+    #[inline]
+    pub fn value(&self) -> &Value {
+        &self.value
+    }
+}
+
+impl DisplayWithInterner for Variant {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>, interner: &StrInterner) -> fmt::Result {
+        write!(f, "{}(", interner[self.label])?;
+        self.value.fmt(f, interner)?;
+        write!(f, ")")
+    }
+}
+
+#[derive(Debug, From, Clone, PartialEq)]
+pub struct Record(ImShadowMap<StrKey, Value>);
 
 impl Record {
+    #[inline]
     pub fn new() -> Self {
         Self(ImShadowMap::new())
     }
 
-    pub fn from_shadow_map(map: ImShadowMap<Symbol, Value>) -> Self {
-        Self(map)
+    #[inline]
+    pub fn unit(label: StrKey, value: Value) -> Self {
+        let mut record = Self::new();
+        record.insert(label, value);
+        record
     }
 
-    pub fn insert(&mut self, key: Symbol, value: Value) {
+    #[inline]
+    pub fn insert(&mut self, key: StrKey, value: Value) {
         self.0.insert(key, value);
     }
 
-    pub fn get(&self, key: &Symbol) -> Option<&Value> {
-        self.0.get(key)
+    #[inline]
+    pub fn get(&self, key: StrKey) -> Option<&Value> {
+        self.0.get(&key)
     }
 
-    pub fn remove(&mut self, key: &Symbol) -> Option<Value> {
-        self.0.remove(key)
+    #[inline]
+    pub fn remove(&mut self, key: StrKey) -> Option<Value> {
+        self.0.remove(&key)
     }
 
-    pub fn contains_key(&self, key: &Symbol) -> bool {
-        self.0.contains_key(key)
+    #[inline]
+    pub fn contains_key(&self, key: StrKey) -> bool {
+        self.0.contains_key(&key)
     }
 
-    pub fn keys(&self) -> impl Iterator<Item = &Symbol> {
-        self.0.keys()
+    #[inline]
+    pub fn keys(&self) -> impl Iterator<Item = StrKey> {
+        self.0.keys().copied()
     }
 
+    #[inline]
     pub fn values(&self) -> impl Iterator<Item = &Value> {
         self.0.values()
     }
 
+    #[inline]
     pub fn is_empty(&self) -> bool {
         self.0.is_empty()
     }
 }
 
-impl From<ImShadowMap<Symbol, Value>> for Record {
-    fn from(map: ImShadowMap<Symbol, Value>) -> Self {
-        Self(map)
-    }
-}
-
-impl fmt::Display for Record {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl DisplayWithInterner for Record {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>, interner: &StrInterner) -> fmt::Result {
         write!(f, "{{")?;
         let mut first = true;
         for (key, value) in self.0.iter() {
             if !first {
                 write!(f, ", ")?;
             }
-            write!(f, "{key} = {value}")?;
+            write!(f, "{} = ", interner[*key])?;
+            value.fmt(f, interner)?;
             first = false;
         }
         write!(f, "}}")
     }
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, From, Clone, PartialEq)]
 pub struct List(ImVec<Value>);
 
 impl List {
+    #[inline]
     pub fn new() -> Self {
         Self(ImVec::new())
     }
 
+    #[inline]
+    pub fn unit(value: Value) -> Self {
+        Self(ImVec::unit(value))
+    }
+
+    #[inline]
     pub fn prepend(&mut self, value: Value) {
         self.0.push_front(value);
     }
 
+    #[inline]
     pub fn append(&mut self, value: Value) {
         self.0.push_back(value);
     }
 
+    #[inline]
     pub fn len(&self) -> usize {
         self.0.len()
     }
 
+    #[inline]
     pub fn is_empty(&self) -> bool {
         self.0.is_empty()
     }
 }
 
-impl fmt::Display for List {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+impl DisplayWithInterner for List {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>, interner: &StrInterner) -> fmt::Result {
         write!(f, "[")?;
         let mut first = true;
         for value in self.0.iter() {
             if !first {
                 write!(f, ", ")?;
             }
-            write!(f, "{value}")?;
+            value.fmt(f, interner)?;
             first = false;
         }
         write!(f, "]")

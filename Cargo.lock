@@ -416,10 +416,12 @@ version = "0.1.0"
 dependencies = [
  "kola-collections",
  "kola-ir",
+ "kola-print",
  "kola-resolver",
  "kola-tree",
  "kola-utils",
  "kola-vm",
+ "log",
 ]
 
 [[package]]

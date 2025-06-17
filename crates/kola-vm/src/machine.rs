@@ -21,8 +21,8 @@ pub struct CekMachine {
 
 impl CekMachine {
     /// Create a new CEK machine to evaluate an expression
-    pub fn new(ir: Ir, interner: StrInterner) -> Self {
-        let interner = Rc::new(interner);
+    pub fn new(ir: Ir, interner: impl Into<Rc<StrInterner>>) -> Self {
+        let interner = interner.into();
 
         // Initial configuration (M-INIT in the paper)
         // C = hM | ∅ | κ0i
@@ -224,11 +224,15 @@ mod tests {
 
     #[test]
     fn test_record_creation_and_access() {
+        let mut interner = StrInterner::new();
+
+        // Create labels for record fields
+        let x_label = interner.intern("x");
+        let y_label = interner.intern("y");
+
         // Create symbols
         let r_sym = Symbol(0);
-        let x_sym = Symbol(1);
-        let y_sym = Symbol(2);
-        let z_sym = Symbol(3);
+        let z_sym = Symbol(1);
 
         let mut ir = IrBuilder::new();
 
@@ -239,20 +243,21 @@ mod tests {
         // z = r.x
         let r_ref = Atom::Symbol(r_sym);
         let ret_z = RetExpr::new(Atom::Symbol(z_sym), &mut ir);
-        let access_x = RecordAccessExpr::new(z_sym, r_ref, x_sym, ret_z, &mut ir);
+        let access_x = RecordAccessExpr::new(z_sym, r_ref, x_label, ret_z, &mut ir);
 
         // Create record fields
-        let fields = [(x_sym, Atom::Num(10.0)), (y_sym, Atom::Num(20.0))];
+        let fields = [(x_label, Atom::Num(10.0)), (y_label, Atom::Num(20.0))];
 
         // r = {x: 10, y: 20}
-        let record_expr = RecordExpr::with_fields(r_sym, fields, access_x, &mut ir);
+        let mut record_expr = RecordExpr::new(r_sym, access_x, &mut ir);
+        record_expr.extend(fields, &mut ir);
 
         let root = ir.add(record_expr.into());
 
         let ir = ir.finish(root);
 
         // Run the machine
-        let mut machine = CekMachine::new(ir, StrInterner::new());
+        let mut machine = CekMachine::new(ir, interner);
         let result = machine.run().unwrap();
 
         // Check the result - should be the value of the x field (10)
@@ -264,78 +269,89 @@ mod tests {
 
     #[test]
     fn test_record_extension() {
+        let mut interner = StrInterner::new();
+
+        // Create labels for record fields
+        let x_label = interner.intern("x");
+        let y_label = interner.intern("y");
+        let z_label = interner.intern("z");
+
         // Create symbols
         let r1_sym = Symbol(0);
         let r2_sym = Symbol(1);
-        let x_sym = Symbol(2);
-        let y_sym = Symbol(3);
-        let z_sym = Symbol(4);
+        let result_sym = Symbol(2);
 
         let mut ir = IrBuilder::new();
 
-        // Create a record {x: 10} and extend it with {y: 20}
-        // Then access the y field
+        // Create a record {x: 10, y: 20} and extend it with {z: 30}
+        // Then access the z field
         // And return its value
 
-        // Return r2.y
+        // Return r2.z
         let r2_ref = Atom::Symbol(r2_sym);
-        let ret_y = RetExpr::new(Atom::Symbol(y_sym), &mut ir);
-        let access_y = RecordAccessExpr::new(y_sym, r2_ref, y_sym, ret_y, &mut ir);
+        let ret_result = RetExpr::new(Atom::Symbol(result_sym), &mut ir);
+        let access_z = RecordAccessExpr::new(result_sym, r2_ref, z_label, ret_result, &mut ir);
 
         // r2 = r1.{z = 30}
         let r1_ref = Atom::Symbol(r1_sym);
         let extend_r1 =
-            RecordExtendExpr::new(r2_sym, r1_ref, z_sym, Atom::Num(30.0), access_y, &mut ir);
+            RecordExtendExpr::new(r2_sym, r1_ref, z_label, Atom::Num(30.0), access_z, &mut ir);
 
         // Create record fields
-        let fields = [(x_sym, Atom::Num(10.0)), (y_sym, Atom::Num(20.0))];
+        let fields = [(x_label, Atom::Num(10.0)), (y_label, Atom::Num(20.0))];
 
         // r1 = {x: 10, y: 20}
-        let record_expr = RecordExpr::with_fields(r1_sym, fields, extend_r1, &mut ir);
+        let mut record_expr = RecordExpr::new(r1_sym, extend_r1, &mut ir);
+        record_expr.extend(fields, &mut ir);
 
         let root = ir.add(record_expr.into());
 
         let ir = ir.finish(root);
 
         // Run the machine
-        let mut machine = CekMachine::new(ir, StrInterner::new());
+        let mut machine = CekMachine::new(ir, interner);
         let result = machine.run().unwrap();
 
-        // Check the result - should be the value of the y field (20)
+        // Check the result - should be the value of the z field (30)
         match result {
-            Value::Num(n) => assert_eq!(n, 20.0),
-            other => panic!("Expected Num(20), got {:?}", other),
+            Value::Num(n) => assert_eq!(n, 30.0),
+            other => panic!("Expected Num(30), got {:?}", other),
         }
     }
 
     #[test]
     fn test_record_update() {
+        let mut interner = StrInterner::new();
+
+        // Create labels for record fields
+        let x_label = interner.intern("x");
+
         // Create symbols for use in the IR
         let r1_sym = Symbol(0);
         let r2_sym = Symbol(1);
-        let x_sym = Symbol(2);
+        let result_sym = Symbol(2);
 
         let mut ir = IrBuilder::new();
 
         // This test creates and tests the following program:
         // let r1 = {x: 10} in
         //   let r2 = { r1 | x = 20 } in  // Update the x field from 10 to 20
-        //     let x = r2.x in        // Access the updated field
-        //       return x             // Should return 20
+        //     let result = r2.x in        // Access the updated field
+        //       return result             // Should return 20
 
-        // Return expression with x after access
-        let ret_x = RetExpr::new(Atom::Symbol(x_sym), &mut ir);
+        // Return expression with result after access
+        let ret_result = RetExpr::new(Atom::Symbol(result_sym), &mut ir);
 
         // Access the x field from r2 record
         let r2_ref = Atom::Symbol(r2_sym);
-        let access_x = RecordAccessExpr::new(x_sym, r2_ref, x_sym, ret_x, &mut ir);
+        let access_x = RecordAccessExpr::new(result_sym, r2_ref, x_label, ret_result, &mut ir);
 
         // Update r1's x field to 20 and bind to r2
         let r1_ref = Atom::Symbol(r1_sym);
         let update_r1 = RecordUpdateExpr::new(
             r2_sym,
             r1_ref,
-            x_sym,
+            x_label,
             RecordUpdateOp::Assign, // Simple assignment
             Atom::Num(20.0),
             access_x,
@@ -343,15 +359,16 @@ mod tests {
         );
 
         // Create initial record {x: 10} and bind to r1
-        let record_expr =
-            RecordExpr::with_fields(r1_sym, [(x_sym, Atom::Num(10.0))], update_r1, &mut ir);
+        let fields = [(x_label, Atom::Num(10.0))];
+        let mut record_expr = RecordExpr::new(r1_sym, update_r1, &mut ir);
+        record_expr.extend(fields, &mut ir);
 
         // Add the expression to the IR and set as root
         let root = ir.add(record_expr.into());
         let ir = ir.finish(root);
 
         // Run the machine
-        let mut machine = CekMachine::new(ir, StrInterner::new());
+        let mut machine = CekMachine::new(ir, interner);
         let result = machine.run().unwrap();
 
         // Check the result - should be the updated value of x (20)

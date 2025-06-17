@@ -368,24 +368,30 @@ where
     ) -> ControlFlow<Self::BreakValue> {
         let items = &id.get(tree).0;
 
-        // let list_expr = items.iter().rfold(
-        //     ir::ListExpr {
-        //         bind: self.hole,
-        //         head: None,
-        //         tail: None,
-        //         next: self.next,
-        //     },
-        //     |list, prev| {
-        //         let item_sym = self.next_symbol();
-        //         let item_atom = self.builder.add(ir::Atom::Symbol(item_sym));
-        //         self.hole = item_sym;
-        //         self.visit_expr(*prev, tree)?;
-        //         // list.prepend(item, self.builder);
-        //         list
-        //     },
-        // );
+        let mut list_expr = ir::ListExpr {
+            bind: self.hole,
+            head: None,
+            tail: None,
+            next: self.next,
+        };
 
-        todo!()
+        // Create symbols for each item
+        let item_syms = (0..items.len())
+            .map(|_| self.next_symbol())
+            .collect::<Vec<_>>();
+
+        // Build list expression with symbols
+        list_expr.prepend_all(item_syms.iter().map(ir::Atom::from), self.builder);
+
+        self.next = self.builder.add(ir::Expr::List(list_expr));
+
+        // Normalize expressions in reverse order (CPS style)
+        for (&expr, sym) in items.iter().rev().zip(item_syms) {
+            self.hole = sym;
+            self.visit_expr(expr, tree)?;
+        }
+
+        ControlFlow::Continue(())
     }
 
     fn visit_record_expr(
@@ -395,7 +401,39 @@ where
     ) -> ControlFlow<Self::BreakValue> {
         let fields = &id.get(tree).0;
 
-        todo!()
+        let mut record_expr = ir::RecordExpr {
+            bind: self.hole,
+            head: None,
+            next: self.next,
+        };
+
+        // Create symbols for each field value
+        let field_value_syms: Vec<_> = (0..fields.len()).map(|_| self.next_symbol()).collect();
+
+        // Extract field labels and pair with value symbols
+        let field_pairs: Vec<_> = fields
+            .iter()
+            .zip(&field_value_syms)
+            .map(|(field_id, &value_sym)| {
+                let field = field_id.get(tree);
+                let label = field.field.get(tree).0;
+                (label, ir::Atom::Symbol(value_sym))
+            })
+            .collect();
+
+        // Build record with (label, value_symbol) pairs
+        record_expr.extend(field_pairs, self.builder);
+
+        self.next = self.builder.add(ir::Expr::Record(record_expr));
+
+        // Normalize field values in reverse order (CPS style)
+        for (field_id, &value_sym) in fields.iter().rev().zip(field_value_syms.iter().rev()) {
+            let field = field_id.get(tree);
+            self.hole = value_sym;
+            self.visit_expr(field.value, tree)?;
+        }
+
+        ControlFlow::Continue(())
     }
 }
 

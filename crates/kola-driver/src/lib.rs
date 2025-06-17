@@ -1,4 +1,4 @@
-use std::io;
+use std::{io, rc::Rc};
 
 use camino::Utf8Path;
 use kola_ir::print::IrPrinter;
@@ -7,7 +7,7 @@ use kola_print::{PrintOptions, prelude::*};
 use kola_resolver::prelude::*;
 use kola_span::Report;
 use kola_typer::check::{TypeCheckOutput, type_check};
-use kola_utils::{interner::StrInterner, io::FileSystem};
+use kola_utils::{fmt::StrInternerExt, interner::StrInterner, io::FileSystem};
 use kola_vm::machine::CekMachine;
 
 pub enum DriverOptions {}
@@ -75,21 +75,23 @@ impl Driver {
         }
 
         // TODO entry_points logic
-        let Program { ir, modules } =
-            lower(entry_points[0], &module_scopes, &value_orders, &forest);
+        let Program { ir, modules } = lower(
+            entry_points[0],
+            &module_scopes,
+            &value_orders,
+            &forest,
+            &self.arena,
+            self.print_options,
+        );
 
-        // Ir Printing should be in another function
-        {
-            let root_id = ir.root();
-            let ir_printer = IrPrinter::new(&ir, root_id);
-            ir_printer.print(self.print_options, &self.arena);
-        }
-
-        let mut machine = CekMachine::new(ir, self.interner);
+        let interner = Rc::new(self.interner);
+        let mut machine = CekMachine::new(ir, interner.clone());
 
         match machine.run() {
-            Ok(value) => println!("Execution result: {:?}", value),
-            Err(e) => eprintln!("Runtime error: {}", e),
+            Ok(value) => {
+                println!("\nExecution result: {}", interner.display(&value))
+            }
+            Err(e) => eprintln!("\nRuntime error: {}", e),
         }
 
         Ok(())
