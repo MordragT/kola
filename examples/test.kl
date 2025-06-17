@@ -13,6 +13,12 @@
 
     #main = [1, 2, 3],
 
+    nested_a = { id = 1, info = { person = { age = 30 } } },
+
+    nested_b = { nested_a.info | person.age += 1 },
+
+    #main = nested_b,
+
     #main = person_b.name,
 
     main = inner::pi,

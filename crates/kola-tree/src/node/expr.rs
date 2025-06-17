@@ -14,6 +14,12 @@ use crate::{
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct ExprError;
 
+impl ExprError {
+    pub fn new_in(builder: &mut TreeBuilder) -> Id<Self> {
+        builder.insert(Self)
+    }
+}
+
 impl<'a> Notate<'a> for NodePrinter<'a, ExprError> {
     fn notate(&self, arena: &'a Bump) -> Notation<'a> {
         "ExprError".red().display_in(arena)
@@ -29,6 +35,10 @@ pub enum LiteralExpr {
 }
 
 impl LiteralExpr {
+    pub fn new_in(value: impl Into<Self>, builder: &mut TreeBuilder) -> Id<Self> {
+        builder.insert(value.into())
+    }
+
     pub fn to_bool(&self) -> Option<bool> {
         as_variant!(self, Self::Bool).copied()
     }
@@ -92,6 +102,20 @@ impl<'a> Notate<'a> for NodePrinter<'a, LiteralExpr> {
 #[into_iterator(owned, ref)]
 pub struct ListExpr(pub Vec<Id<Expr>>);
 
+impl ListExpr {
+    pub fn new_in<I>(elements: I, builder: &mut TreeBuilder) -> Id<Self>
+    where
+        I: IntoIterator,
+        I::Item: Into<Expr>,
+    {
+        let elements = elements
+            .into_iter()
+            .map(|e| builder.insert(e.into()))
+            .collect();
+        builder.insert(Self(elements))
+    }
+}
+
 impl<'a> Notate<'a> for NodePrinter<'a, ListExpr> {
     fn notate(&self, arena: &'a Bump) -> Notation<'a> {
         let head = "List".blue().display_in(arena);
@@ -117,6 +141,17 @@ pub struct RecordField {
 }
 
 impl RecordField {
+    pub fn new_in(
+        field: impl Into<ValueName>,
+        value: impl Into<Expr>,
+        builder: &mut TreeBuilder,
+    ) -> Id<Self> {
+        let field = builder.insert(field.into());
+        let value = builder.insert(value.into());
+
+        builder.insert(Self { field, value })
+    }
+
     pub fn field(self, tree: &impl TreeView) -> ValueName {
         *self.field.get(tree)
     }
@@ -165,6 +200,16 @@ impl<'a> Notate<'a> for NodePrinter<'a, RecordField> {
 #[into_iterator(owned, ref)]
 pub struct RecordExpr(pub Vec<Id<RecordField>>);
 
+impl RecordExpr {
+    pub fn new_in<I>(fields: I, builder: &mut TreeBuilder) -> Id<Self>
+    where
+        I: IntoIterator<Item = Id<RecordField>>,
+    {
+        let fields = fields.into_iter().collect();
+        builder.insert(Self(fields))
+    }
+}
+
 // impl RecordExpr {
 //     pub fn get(&self, name: impl AsRef<str>, tree: &impl TreeView) -> Option<RecordField> {
 //         self.0.iter().find_map(|id| {
@@ -198,17 +243,34 @@ impl<'a> Notate<'a> for NodePrinter<'a, RecordExpr> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct RecordExtendExpr {
     pub source: Id<Expr>,
-    pub field: Id<ValueName>,
+    pub select: Id<FieldPath>,
     pub value: Id<Expr>,
 }
 
 impl RecordExtendExpr {
+    pub fn new_in(
+        source: impl Into<Expr>,
+        select: impl Into<FieldPath>,
+        value: impl Into<Expr>,
+        builder: &mut TreeBuilder,
+    ) -> Id<Self> {
+        let source = builder.insert(source.into());
+        let select = builder.insert(select.into());
+        let value = builder.insert(value.into());
+
+        builder.insert(Self {
+            source,
+            select,
+            value,
+        })
+    }
+
     pub fn source(self, tree: &impl TreeView) -> Expr {
         *self.source.get(tree)
     }
 
-    pub fn field(self, tree: &impl TreeView) -> ValueName {
-        *self.field.get(tree)
+    pub fn select(self, tree: &impl TreeView) -> &FieldPath {
+        self.select.get(tree)
     }
 
     pub fn value(self, tree: &impl TreeView) -> Expr {
@@ -220,14 +282,14 @@ impl<'a> Notate<'a> for NodePrinter<'a, RecordExtendExpr> {
     fn notate(&self, arena: &'a Bump) -> Notation<'a> {
         let RecordExtendExpr {
             source,
-            field,
+            select,
             value,
         } = self.value;
 
         let head = "RecordExtend".blue().display_in(arena);
 
         let source = self.to_id(*source).notate(arena);
-        let field = self.to_id(*field).notate(arena);
+        let field = self.to_id(*select).notate(arena);
         let value = self.to_id(*value).notate(arena);
 
         let single = [
@@ -262,27 +324,38 @@ impl<'a> Notate<'a> for NodePrinter<'a, RecordExtendExpr> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct RecordRestrictExpr {
     pub source: Id<Expr>,
-    pub field: Id<ValueName>,
+    pub select: Id<FieldPath>,
 }
 
 impl RecordRestrictExpr {
+    pub fn new_in(
+        source: impl Into<Expr>,
+        select: impl Into<FieldPath>,
+        builder: &mut TreeBuilder,
+    ) -> Id<Self> {
+        let source = builder.insert(source.into());
+        let select = builder.insert(select.into());
+
+        builder.insert(Self { source, select })
+    }
+
     pub fn source(self, tree: &impl TreeView) -> Expr {
         *self.source.get(tree)
     }
 
-    pub fn field(self, tree: &impl TreeView) -> ValueName {
-        *self.field.get(tree)
+    pub fn select(self, tree: &impl TreeView) -> &FieldPath {
+        self.select.get(tree)
     }
 }
 
 impl<'a> Notate<'a> for NodePrinter<'a, RecordRestrictExpr> {
     fn notate(&self, arena: &'a Bump) -> Notation<'a> {
-        let RecordRestrictExpr { source, field } = self.value;
+        let RecordRestrictExpr { source, select } = self.value;
 
         let head = "RecordRestrict".blue().display_in(arena);
 
         let source = self.to_id(*source).notate(arena);
-        let field = self.to_id(*field).notate(arena);
+        let field = self.to_id(*select).notate(arena);
 
         let single = [
             arena.notate(" source = "),
@@ -329,18 +402,38 @@ impl<'a> Notate<'a> for NodePrinter<'a, RecordUpdateOp> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct RecordUpdateExpr {
     pub source: Id<Expr>,
-    pub field: Id<ValueName>,
+    pub select: Id<FieldPath>,
     pub op: Id<RecordUpdateOp>,
     pub value: Id<Expr>,
 }
 
 impl RecordUpdateExpr {
+    pub fn new_in(
+        source: impl Into<Expr>,
+        select: impl Into<FieldPath>,
+        op: RecordUpdateOp,
+        value: impl Into<Expr>,
+        builder: &mut TreeBuilder,
+    ) -> Id<Self> {
+        let source = builder.insert(source.into());
+        let select = builder.insert(select.into());
+        let op = builder.insert(op);
+        let value = builder.insert(value.into());
+
+        builder.insert(Self {
+            source,
+            select,
+            op,
+            value,
+        })
+    }
+
     pub fn source(self, tree: &impl TreeView) -> Expr {
         *self.source.get(tree)
     }
 
-    pub fn field(self, tree: &impl TreeView) -> ValueName {
-        *self.field.get(tree)
+    pub fn select(self, tree: &impl TreeView) -> &FieldPath {
+        self.select.get(tree)
     }
 
     pub fn op(self, tree: &impl TreeView) -> RecordUpdateOp {
@@ -356,7 +449,7 @@ impl<'a> Notate<'a> for NodePrinter<'a, RecordUpdateExpr> {
     fn notate(&self, arena: &'a Bump) -> Notation<'a> {
         let RecordUpdateExpr {
             source,
-            field,
+            select,
             op,
             value,
         } = self.value;
@@ -364,7 +457,7 @@ impl<'a> Notate<'a> for NodePrinter<'a, RecordUpdateExpr> {
         let head = "RecordUpdate".blue().display_in(arena);
 
         let source = self.to_id(*source).notate(arena);
-        let field = self.to_id(*field).notate(arena);
+        let field = self.to_id(*select).notate(arena);
         let op = self.to_id(*op).notate(arena);
         let value = self.to_id(*value).notate(arena);
 
@@ -400,48 +493,64 @@ impl<'a> Notate<'a> for NodePrinter<'a, RecordUpdateExpr> {
         head.then(single.or(multi, arena), arena)
     }
 }
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
-pub struct SelectExpr {
-    pub source: Id<ValueName>,
-    pub fields: Vec<Id<ValueName>>,
-}
 
-impl SelectExpr {
+#[derive(
+    Debug,
+    From,
+    IntoIterator,
+    Default,
+    Clone,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
+)]
+#[from(forward)]
+#[into_iterator(owned, ref)]
+pub struct FieldPath(pub Vec<Id<ValueName>>);
+
+impl FieldPath {
+    pub fn new_in<I>(fields: I, builder: &mut TreeBuilder) -> Id<Self>
+    where
+        I: IntoIterator,
+        I::Item: Into<ValueName>,
+    {
+        let fields = fields
+            .into_iter()
+            .map(|f| builder.insert(f.into()))
+            .collect();
+        builder.insert(Self(fields))
+    }
+
     pub fn get(&self, index: usize, tree: &impl TreeView) -> ValueName {
-        *self.fields[index].get(tree)
+        *self.0[index].get(tree)
+    }
+
+    pub fn iter(&self) -> std::slice::Iter<'_, Id<ValueName>> {
+        (&self).into_iter()
     }
 }
 
-impl<'a> Notate<'a> for NodePrinter<'a, SelectExpr> {
+impl<'a> Notate<'a> for NodePrinter<'a, FieldPath> {
     fn notate(&self, arena: &'a Bump) -> Notation<'a> {
-        let SelectExpr { source, fields } = self.value;
+        let fields = &self.value.0;
 
-        let head = "SelectExpr".cyan().display_in(arena);
+        let head = "FieldPath".cyan().display_in(arena);
 
-        let source = self.to_id(*source).notate(arena);
         let fields = self.to_slice(fields).gather(arena);
 
-        let single = [
-            arena.notate(" source = "),
-            source.clone().flatten(arena),
-            arena.notate(", fields = "),
-            fields
-                .clone()
-                .concat_by(arena.just(' '), arena)
-                .flatten(arena),
-        ]
-        .concat_in(arena);
+        let single = arena
+            .just(' ')
+            .then(fields.clone().concat_by(arena.just(' '), arena), arena)
+            .flatten(arena);
 
-        let multi = [
-            arena.newline(),
-            arena.notate("source = "),
-            source,
-            arena.newline(),
-            arena.notate("fields = "),
-            fields.concat_by(arena.newline(), arena).indent(arena),
-        ]
-        .concat_in(arena)
-        .indent(arena);
+        let multi = arena
+            .newline()
+            .then(fields.concat_by(arena.newline(), arena), arena)
+            .indent(arena);
 
         head.then(single.or(multi, arena), arena)
     }
@@ -449,36 +558,65 @@ impl<'a> Notate<'a> for NodePrinter<'a, SelectExpr> {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct PathExpr {
-    /// The path to the module, e.g. `std::io`
     pub path: Option<Id<ModulePath>>,
-    /// A selection expr e.g. `File.open`
-    pub select: Id<SelectExpr>,
+    pub source: Id<ValueName>,
+    pub fields: Id<FieldPath>,
+}
+
+impl PathExpr {
+    pub fn new_in(
+        path: Option<ModulePath>,
+        source: impl Into<ValueName>,
+        fields: impl Into<FieldPath>,
+        builder: &mut TreeBuilder,
+    ) -> Id<Self> {
+        let path = path.map(|p| builder.insert(p));
+        let source = builder.insert(source.into());
+        let fields = builder.insert(fields.into());
+
+        builder.insert(Self {
+            path,
+            source,
+            fields,
+        })
+    }
 }
 
 impl<'a> Notate<'a> for NodePrinter<'a, PathExpr> {
     fn notate(&self, arena: &'a Bump) -> Notation<'a> {
-        let PathExpr { path, select } = *self.value;
+        let PathExpr {
+            path,
+            source,
+            fields,
+        } = *self.value;
 
         let head = "PathExpr".cyan().display_in(arena);
 
         let path = path.map(|p| self.to_id(p).notate(arena)).or_not(arena);
-        let select = self.to(select).notate(arena);
+        let source = self.to(source).notate(arena);
+        let fields = self.to(fields).notate(arena);
 
         let single = [
             arena.notate(" path = "),
-            path.clone().flatten(arena),
-            arena.notate(", select = "),
-            select.clone().flatten(arena),
+            path.clone(),
+            arena.notate(" source = "),
+            source.clone(),
+            arena.notate(", fields = "),
+            fields.clone(),
         ]
-        .concat_in(arena);
+        .concat_in(arena)
+        .flatten(arena);
 
         let multi = [
             arena.newline(),
             arena.notate("path = "),
             path,
             arena.newline(),
-            arena.notate("select = "),
-            select,
+            arena.notate("source = "),
+            arena.newline(),
+            source,
+            arena.notate("fields = "),
+            fields,
         ]
         .concat_in(arena)
         .indent(arena);
@@ -508,9 +646,9 @@ pub struct UnaryExpr {
 }
 
 impl UnaryExpr {
-    pub fn new_in(op: UnaryOp, target: Expr, builder: &mut TreeBuilder) -> Id<Self> {
+    pub fn new_in(op: UnaryOp, operand: impl Into<Expr>, builder: &mut TreeBuilder) -> Id<Self> {
         let op = builder.insert(op);
-        let operand = builder.insert(target);
+        let operand = builder.insert(operand.into());
 
         builder.insert(Self { op, operand })
     }
@@ -588,10 +726,15 @@ pub struct BinaryExpr {
 }
 
 impl BinaryExpr {
-    pub fn new_in(op: BinaryOp, left: Expr, right: Expr, builder: &mut TreeBuilder) -> Id<Self> {
+    pub fn new_in(
+        op: BinaryOp,
+        left: impl Into<Expr>,
+        right: impl Into<Expr>,
+        builder: &mut TreeBuilder,
+    ) -> Id<Self> {
         let op = builder.insert(op);
-        let left = builder.insert(left);
-        let right = builder.insert(right);
+        let left = builder.insert(left.into());
+        let right = builder.insert(right.into());
 
         builder.insert(Self { op, left, right })
     }
@@ -653,14 +796,14 @@ pub struct LetExpr {
 
 impl LetExpr {
     pub fn new_in(
-        name: ValueName,
-        value: Expr,
-        inside: Expr,
+        name: impl Into<ValueName>,
+        value: impl Into<Expr>,
+        inside: impl Into<Expr>,
         builder: &mut TreeBuilder,
     ) -> Id<Self> {
-        let name = builder.insert(name);
-        let value = builder.insert(value);
-        let inside = builder.insert(inside);
+        let name = builder.insert(name.into());
+        let value = builder.insert(value.into());
+        let inside = builder.insert(inside.into());
 
         builder.insert(Self {
             name,
@@ -732,10 +875,15 @@ pub struct IfExpr {
 }
 
 impl IfExpr {
-    pub fn new_in(predicate: Expr, then: Expr, or: Expr, builder: &mut TreeBuilder) -> Id<Self> {
-        let predicate = builder.insert(predicate);
-        let then = builder.insert(then);
-        let or = builder.insert(or);
+    pub fn new_in(
+        predicate: impl Into<Expr>,
+        then: impl Into<Expr>,
+        or: impl Into<Expr>,
+        builder: &mut TreeBuilder,
+    ) -> Id<Self> {
+        let predicate = builder.insert(predicate.into());
+        let then = builder.insert(then.into());
+        let or = builder.insert(or.into());
 
         builder.insert(Self {
             predicate,
@@ -806,6 +954,17 @@ pub struct CaseBranch {
 }
 
 impl CaseBranch {
+    pub fn new_in(
+        pat: impl Into<Pat>,
+        matches: impl Into<Expr>,
+        builder: &mut TreeBuilder,
+    ) -> Id<Self> {
+        let pat = builder.insert(pat.into());
+        let matches = builder.insert(matches.into());
+
+        builder.insert(Self { pat, matches })
+    }
+
     pub fn pat(self, tree: &impl TreeView) -> Pat {
         *self.pat.get(tree)
     }
@@ -854,6 +1013,16 @@ pub struct CaseExpr {
 }
 
 impl CaseExpr {
+    pub fn new_in<I>(source: impl Into<Expr>, branches: I, builder: &mut TreeBuilder) -> Id<Self>
+    where
+        I: IntoIterator<Item = Id<CaseBranch>>,
+    {
+        let source = builder.insert(source.into());
+        let branches = branches.into_iter().collect();
+
+        builder.insert(Self { source, branches })
+    }
+
     pub fn source(&self, tree: &impl TreeView) -> Expr {
         *self.source.get(tree)
     }
@@ -898,6 +1067,17 @@ pub struct CallExpr {
 }
 
 impl CallExpr {
+    pub fn new_in(
+        func: impl Into<Expr>,
+        arg: impl Into<Expr>,
+        builder: &mut TreeBuilder,
+    ) -> Id<Self> {
+        let func = builder.insert(func.into());
+        let arg = builder.insert(arg.into());
+
+        builder.insert(Self { func, arg })
+    }
+
     pub fn func(self, tree: &impl TreeView) -> Expr {
         *self.func.get(tree)
     }
@@ -946,6 +1126,17 @@ pub struct LambdaExpr {
 }
 
 impl LambdaExpr {
+    pub fn new_in(
+        param: impl Into<ValueName>,
+        body: impl Into<Expr>,
+        builder: &mut TreeBuilder,
+    ) -> Id<Self> {
+        let param = builder.insert(param.into());
+        let body = builder.insert(body.into());
+
+        builder.insert(Self { param, body })
+    }
+
     pub fn param(self, tree: &impl TreeView) -> ValueName {
         *self.param.get(tree)
     }
@@ -1349,20 +1540,20 @@ mod inspector {
                 .map(|p| NodeInspector::new(p, self.tree, self.interner))
         }
 
-        pub fn select(self) -> NodeInspector<'t, Id<SelectExpr>, S> {
+        pub fn source(self) -> NodeInspector<'t, Id<ValueName>, S> {
             let path = self.node.get(self.tree);
-            NodeInspector::new(path.select, self.tree, self.interner)
+            NodeInspector::new(path.source, self.tree, self.interner)
+        }
+
+        pub fn select(self) -> NodeInspector<'t, Id<FieldPath>, S> {
+            let path = self.node.get(self.tree);
+            NodeInspector::new(path.fields, self.tree, self.interner)
         }
     }
 
-    impl<'t, S: BuildHasher> NodeInspector<'t, Id<SelectExpr>, S> {
-        pub fn source(self) -> NodeInspector<'t, Id<ValueName>, S> {
-            let select = self.node.get(self.tree);
-            NodeInspector::new(select.source, self.tree, self.interner)
-        }
-
+    impl<'t, S: BuildHasher> NodeInspector<'t, Id<FieldPath>, S> {
         pub fn has_fields(self, count: usize) -> Self {
-            let fields_len = self.node.get(self.tree).fields.len();
+            let fields_len = self.node.get(self.tree).0.len();
             assert_eq!(
                 fields_len, count,
                 "Expected {} fields but found {}",
@@ -1372,14 +1563,14 @@ mod inspector {
         }
 
         pub fn field_at_is(self, index: usize, expected: &str) -> Self {
-            let select = self.node.get(self.tree);
+            let field_path = self.node.get(self.tree);
             assert!(
-                index < select.fields.len(),
+                index < field_path.0.len(),
                 "Field index {} out of bounds (max {})",
                 index,
-                select.fields.len() - 1
+                field_path.0.len() - 1
             );
-            let field = select.get(index, self.tree);
+            let field = field_path.get(index, self.tree);
             let s = self.interner.get(field.0).expect("Symbol not found");
 
             assert_eq!(
@@ -1642,9 +1833,9 @@ mod inspector {
             NodeInspector::new(extend.source, self.tree, self.interner)
         }
 
-        pub fn field(self) -> NodeInspector<'t, Id<ValueName>, S> {
+        pub fn select(self) -> NodeInspector<'t, Id<FieldPath>, S> {
             let extend = self.node.get(self.tree);
-            NodeInspector::new(extend.field, self.tree, self.interner)
+            NodeInspector::new(extend.select, self.tree, self.interner)
         }
 
         pub fn value(self) -> NodeInspector<'t, Id<Expr>, S> {
@@ -1659,9 +1850,9 @@ mod inspector {
             NodeInspector::new(restrict.source, self.tree, self.interner)
         }
 
-        pub fn field(self) -> NodeInspector<'t, Id<ValueName>, S> {
+        pub fn select(self) -> NodeInspector<'t, Id<FieldPath>, S> {
             let restrict = self.node.get(self.tree);
-            NodeInspector::new(restrict.field, self.tree, self.interner)
+            NodeInspector::new(restrict.select, self.tree, self.interner)
         }
     }
 
@@ -1671,9 +1862,9 @@ mod inspector {
             NodeInspector::new(update.source, self.tree, self.interner)
         }
 
-        pub fn field(self) -> NodeInspector<'t, Id<ValueName>, S> {
+        pub fn select(self) -> NodeInspector<'t, Id<FieldPath>, S> {
             let update = self.node.get(self.tree);
-            NodeInspector::new(update.field, self.tree, self.interner)
+            NodeInspector::new(update.select, self.tree, self.interner)
         }
 
         pub fn op(self) -> RecordUpdateOp {

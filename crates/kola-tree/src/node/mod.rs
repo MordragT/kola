@@ -1,5 +1,6 @@
 use derive_more::{From, TryInto};
 use serde::{Deserialize, Serialize};
+use std::mem;
 
 use kola_utils::impl_try_as;
 
@@ -86,7 +87,7 @@ define_nodes!(
     RecordRestrictExpr,
     RecordUpdateOp,
     RecordUpdateExpr,
-    SelectExpr,
+    FieldPath,
     PathExpr,
     UnaryOp,
     UnaryExpr,
@@ -131,3 +132,7 @@ define_nodes!(
     Spec,
     ModuleType
 );
+
+const _: () = {
+    assert!(mem::size_of::<Node>() == 40 * mem::size_of::<u8>());
+};

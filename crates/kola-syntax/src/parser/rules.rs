@@ -390,14 +390,14 @@ pub fn expr_parser<'t>() -> impl KolaParser<'t, Id<node::Expr>> + Clone {
             ctrl(CtrlT::DOT)
                 .ignore_then(value_name_parser())
                 .repeated()
-                .collect::<Vec<_>>(),
+                .collect()
+                .map_to_node(node::FieldPath),
         ))
         .map_with(|(mut source, mut path, fields), e| {
-            let loc = e.span();
             let tree: &mut State = e.state();
 
-            let (path, select_span) = if path.is_empty() {
-                (None, loc)
+            let path = if path.is_empty() {
+                None
             } else {
                 // For a::b::c.field1.field2:
                 // - Original: source=a, path=[b, c]
@@ -408,8 +408,6 @@ pub fn expr_parser<'t>() -> impl KolaParser<'t, Id<node::Expr>> + Clone {
                 source = new_source;
 
                 let path_loc = Loc::covering_located(&path).unwrap(); // Safety: Path is not empty
-                // TODO: Does this work ??
-                let select_loc = loc.after(path_loc).unwrap_or(loc);
 
                 let path = path
                     .into_iter()
@@ -417,13 +415,16 @@ pub fn expr_parser<'t>() -> impl KolaParser<'t, Id<node::Expr>> + Clone {
                     .collect();
                 let path = tree.insert(node::ModulePath(path), path_loc);
 
-                (Some(path), select_loc)
+                Some(path)
             };
 
             let source = tree.insert(node::ValueName::new(source.0), source.1);
-            let select = tree.insert(node::SelectExpr { source, fields }, select_span);
 
-            node::PathExpr { path, select }
+            node::PathExpr {
+                path,
+                source,
+                fields,
+            }
         })
         .to_node()
         .to_expr()
@@ -469,20 +470,20 @@ pub fn expr_parser<'t>() -> impl KolaParser<'t, Id<node::Expr>> + Clone {
             .boxed();
 
         enum RecordOp {
-            Extend(Vec<Id<node::ValueName>>, Id<node::Expr>),
-            Restrict(Vec<Id<node::ValueName>>),
+            Extend(Id<node::FieldPath>, Id<node::Expr>),
+            Restrict(Id<node::FieldPath>),
             Update(
-                Vec<Id<node::ValueName>>,
+                Id<node::FieldPath>,
                 Id<node::RecordUpdateOp>,
                 Id<node::Expr>,
             ),
         }
 
-        // TODO use SelectExpr directly inside RecordOpNodes instead of desugaring here ?
         let field_path = name
             .clone()
             .separated_by(ctrl(CtrlT::DOT))
             .collect()
+            .map_to_node(node::FieldPath)
             .boxed();
 
         let extend = op(OpT::ADD)
@@ -513,127 +514,37 @@ pub fn expr_parser<'t>() -> impl KolaParser<'t, Id<node::Expr>> + Clone {
 
         let inner_op = ctrl(CtrlT::PIPE)
             .ignore_then(choice((extend, restrict, update)))
-            .spanned()
             .repeated()
             .at_least(1);
 
         let record_op = path
             .clone()
-            .foldl_with(inner_op, |source, (op, op_loc), e| {
+            .foldl_with(inner_op, |source, op, e| {
                 let span = e.span();
                 let tree: &mut State = e.state();
 
-                let path_expr = source
-                    .get(&tree.builder)
-                    .to_path()
-                    .unwrap()
-                    .get(&tree.builder);
-                let path = path_expr.path;
-                let mut select_expr = path_expr.select.get(&tree.builder).clone();
-
                 match op {
-                    RecordOp::Extend(mut fields, mut value) => {
-                        select_expr.fields.append(&mut fields);
-
-                        let field = select_expr.fields.pop().unwrap();
-                        let select = tree.insert(select_expr.clone(), span);
-                        let source =
-                            tree.insert_as::<node::Expr, _>(node::PathExpr { path, select }, span);
-                        value = tree.insert_as::<node::Expr, _>(
-                            node::RecordExtendExpr {
-                                source,
-                                field,
-                                value,
-                            },
-                            span,
-                        );
-                        while select_expr.fields.len() > 1 {
-                            let field = select_expr.fields.pop().unwrap();
-                            let op = tree.insert(node::RecordUpdateOp::Assign, span);
-                            let select = tree.insert(select_expr.clone(), span);
-                            let source = tree
-                                .insert_as::<node::Expr, _>(node::PathExpr { path, select }, span);
-                            value = tree.insert_as::<node::Expr, _>(
-                                node::RecordUpdateExpr {
-                                    source,
-                                    field,
-                                    op,
-                                    value,
-                                },
-                                span,
-                            );
-                        }
-
-                        value
-                    }
-                    RecordOp::Restrict(mut field_path) => {
-                        select_expr.fields.append(&mut field_path);
-
-                        let field = select_expr.fields.pop().unwrap();
-                        let select = tree.insert(select_expr.clone(), span);
-                        let source =
-                            tree.insert_as::<node::Expr, _>(node::PathExpr { path, select }, span);
-                        let mut value = tree.insert_as::<node::Expr, _>(
-                            node::RecordRestrictExpr { source, field },
-                            span,
-                        );
-
-                        while select_expr.fields.len() > 1 {
-                            let field = select_expr.fields.pop().unwrap();
-                            let op = tree.insert(node::RecordUpdateOp::Assign, span);
-                            let select = tree.insert(select_expr.clone(), span);
-                            let source = tree
-                                .insert_as::<node::Expr, _>(node::PathExpr { path, select }, span);
-                            value = tree.insert_as::<node::Expr, _>(
-                                node::RecordUpdateExpr {
-                                    source,
-                                    field,
-                                    op,
-                                    value,
-                                },
-                                span,
-                            );
-                        }
-
-                        value
-                    }
-
-                    RecordOp::Update(mut field_path, op, mut value) => {
-                        select_expr.fields.append(&mut field_path);
-
-                        let field = select_expr.fields.pop().unwrap();
-                        let select = tree.insert(select_expr.clone(), span);
-                        let source =
-                            tree.insert_as::<node::Expr, _>(node::PathExpr { path, select }, span);
-                        value = tree.insert_as::<node::Expr, _>(
-                            node::RecordUpdateExpr {
-                                source,
-                                field,
-                                op,
-                                value,
-                            },
-                            span,
-                        );
-
-                        while select_expr.fields.len() > 1 {
-                            let field = select_expr.fields.pop().unwrap();
-                            let op = tree.insert(node::RecordUpdateOp::Assign, span);
-                            let select = tree.insert(select_expr.clone(), span);
-                            let source = tree
-                                .insert_as::<node::Expr, _>(node::PathExpr { path, select }, span);
-                            value = tree.insert_as::<node::Expr, _>(
-                                node::RecordUpdateExpr {
-                                    source,
-                                    field,
-                                    op,
-                                    value,
-                                },
-                                span,
-                            );
-                        }
-
-                        value
-                    }
+                    RecordOp::Extend(select, value) => tree.insert_as::<node::Expr, _>(
+                        node::RecordExtendExpr {
+                            source,
+                            select,
+                            value,
+                        },
+                        span,
+                    ),
+                    RecordOp::Restrict(select) => tree.insert_as::<node::Expr, _>(
+                        node::RecordRestrictExpr { source, select },
+                        span,
+                    ),
+                    RecordOp::Update(select, op, value) => tree.insert_as::<node::Expr, _>(
+                        node::RecordUpdateExpr {
+                            source,
+                            select,
+                            op,
+                            value,
+                        },
+                        span,
+                    ),
                 }
             })
             .boxed();
@@ -1148,12 +1059,7 @@ mod tests {
 
         let case = inspector.as_case().unwrap();
 
-        case.source()
-            .as_path()
-            .unwrap()
-            .select()
-            .source()
-            .has_name("x");
+        case.source().as_path().unwrap().source().has_name("x");
 
         case.has_branches(2);
 
@@ -1245,16 +1151,9 @@ mod tests {
             .predicate()
             .as_path()
             .unwrap()
-            .select()
             .source()
             .has_name("y");
-        if_expr
-            .then()
-            .as_path()
-            .unwrap()
-            .select()
-            .source()
-            .has_name("x");
+        if_expr.then().as_path().unwrap().source().has_name("x");
         if_expr.or().as_literal().unwrap().is_num(0.0);
     }
 
@@ -1267,9 +1166,9 @@ mod tests {
 
         let inspector = NodeInspector::new(node, &builder, &interner);
 
-        let select = inspector.as_path().unwrap().select();
-        select.source().has_name("x");
-        select.field_at_is(0, "y").field_at_is(1, "z");
+        let path_expr = inspector.as_path().unwrap();
+        path_expr.source().has_name("x");
+        path_expr.select().field_at_is(0, "y").field_at_is(1, "z");
     }
 
     #[test]
@@ -1283,15 +1182,8 @@ mod tests {
 
         let extend = inspector.as_record_extend().unwrap();
 
-        extend.field();
-
-        extend
-            .source()
-            .as_path()
-            .unwrap()
-            .select()
-            .source()
-            .has_name("y");
+        extend.source().as_path().unwrap().source().has_name("y");
+        extend.select().field_at_is(0, "x");
         extend.value().as_literal().unwrap().is_num(10.0);
     }
 

@@ -344,13 +344,13 @@ pub trait Visitor<T: TreeView> {
     ) -> ControlFlow<Self::BreakValue> {
         let node::RecordExtendExpr {
             source,
-            field,
+            select,
             value,
-        } = id.get(tree);
+        } = *id.get(tree);
 
-        self.visit_expr(*source, tree)?;
-        self.visit_value_name(*field, tree)?;
-        self.visit_expr(*value, tree)?;
+        self.visit_expr(source, tree)?;
+        self.visit_field_path(select, tree)?;
+        self.visit_expr(value, tree)?;
 
         ControlFlow::Continue(())
     }
@@ -368,10 +368,10 @@ pub trait Visitor<T: TreeView> {
         id: Id<node::RecordRestrictExpr>,
         tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
-        let node::RecordRestrictExpr { source, field } = id.get(tree);
+        let node::RecordRestrictExpr { source, select } = *id.get(tree);
 
-        self.visit_expr(*source, tree)?;
-        self.visit_value_name(*field, tree)?;
+        self.visit_expr(source, tree)?;
+        self.visit_field_path(select, tree)?;
 
         ControlFlow::Continue(())
     }
@@ -391,15 +391,15 @@ pub trait Visitor<T: TreeView> {
     ) -> ControlFlow<Self::BreakValue> {
         let node::RecordUpdateExpr {
             source,
-            field,
+            select,
             op,
             value,
-        } = id.get(tree);
+        } = *id.get(tree);
 
-        self.visit_expr(*source, tree)?;
-        self.visit_value_name(*field, tree)?;
-        self.visit_record_update_op(*op, tree)?;
-        self.visit_expr(*value, tree)?;
+        self.visit_expr(source, tree)?;
+        self.visit_field_path(select, tree)?;
+        self.visit_record_update_op(op, tree)?;
+        self.visit_expr(value, tree)?;
 
         ControlFlow::Continue(())
     }
@@ -412,27 +412,24 @@ pub trait Visitor<T: TreeView> {
         self.walk_record_update_expr(id, tree)
     }
 
-    fn walk_select_expr(
+    fn walk_field_path(
         &mut self,
-        id: Id<node::SelectExpr>,
+        id: Id<node::FieldPath>,
         tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
-        let node::SelectExpr { source, fields } = id.get(tree);
-
-        self.visit_value_name(*source, tree)?;
-        for field in fields {
+        for field in id.get(tree) {
             self.visit_value_name(*field, tree)?;
         }
 
         ControlFlow::Continue(())
     }
 
-    fn visit_select_expr(
+    fn visit_field_path(
         &mut self,
-        id: Id<node::SelectExpr>,
+        id: Id<node::FieldPath>,
         tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
-        self.walk_select_expr(id, tree)
+        self.walk_field_path(id, tree)
     }
 
     fn walk_path_expr(
@@ -440,13 +437,18 @@ pub trait Visitor<T: TreeView> {
         id: Id<node::PathExpr>,
         tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
-        let node::PathExpr { path, select } = *id.get(tree);
+        let node::PathExpr {
+            path,
+            source,
+            fields,
+        } = *id.get(tree);
 
         if let Some(path) = path {
             self.visit_module_path(path, tree)?;
         }
 
-        self.visit_select_expr(select, tree)?;
+        self.visit_value_name(source, tree)?;
+        self.visit_field_path(fields, tree)?;
 
         ControlFlow::Continue(())
     }

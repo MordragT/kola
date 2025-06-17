@@ -5,7 +5,7 @@ use kola_utils::{
 
 use crate::{
     id::Id,
-    instr::{Atom, Expr, Instr, ListItem, RecordField},
+    instr::{Atom, Expr, FieldPath, Instr, ListItem, RecordField},
 };
 
 pub trait IrView {
@@ -20,6 +20,10 @@ pub trait IrView {
 
     fn iter_items(&self, head: Option<Id<ListItem>>) -> ItemIter<'_, Self> {
         ItemIter::new(self, head)
+    }
+
+    fn iter_path(&self, head: Option<Id<FieldPath>>) -> PathIter<'_, Self> {
+        PathIter::new(self, head)
     }
 }
 
@@ -67,6 +71,31 @@ impl<'a, T: IrView + ?Sized> Iterator for ItemIter<'a, T> {
             let item = self.ir.instr(item_id);
             self.current = item.next;
             Some(item)
+        } else {
+            None
+        }
+    }
+}
+
+pub struct PathIter<'a, T: IrView + ?Sized> {
+    ir: &'a T,
+    current: Option<Id<FieldPath>>,
+}
+
+impl<'a, T: IrView + ?Sized> PathIter<'a, T> {
+    pub fn new(ir: &'a T, head: Option<Id<FieldPath>>) -> Self {
+        Self { ir, current: head }
+    }
+}
+
+impl<'a, T: IrView + ?Sized> Iterator for PathIter<'a, T> {
+    type Item = FieldPath;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if let Some(path_id) = self.current {
+            let path = self.ir.instr(path_id);
+            self.current = path.next;
+            Some(path)
         } else {
             None
         }
@@ -131,6 +160,32 @@ impl IrBuilder {
     ) -> Option<Id<RecordField>> {
         for field in fields {
             head = Some(self.add_field(field, head));
+        }
+
+        head
+    }
+
+    /// Prepends a field path component to the head of the field path.
+    #[inline]
+    pub fn add_path_component(
+        &mut self,
+        label: StrKey,
+        head: Option<Id<FieldPath>>,
+    ) -> Id<FieldPath> {
+        let path = self.add(FieldPath {
+            label,
+            next: head,
+        });
+        path
+    }
+
+    pub fn extend_path(
+        &mut self,
+        labels: impl IntoIterator<Item = StrKey>,
+        mut head: Option<Id<FieldPath>>,
+    ) -> Option<Id<FieldPath>> {
+        for label in labels {
+            head = Some(self.add_path_component(label, head));
         }
 
         head

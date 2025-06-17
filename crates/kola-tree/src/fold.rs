@@ -51,7 +51,7 @@ define_folder_trait!(
     RecordRestrictExpr,
     RecordUpdateOp,
     RecordUpdateExpr,
-    SelectExpr,
+    FieldPath,
     PathExpr,
     UnaryOp,
     UnaryExpr,

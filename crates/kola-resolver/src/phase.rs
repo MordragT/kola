@@ -72,8 +72,8 @@ impl Phase for ResolvePhase {
     type ExprError = !;
     type Expr = !;
 
-    type PathExpr = !; // Navigational node - contains Select- and ModulePathExpr
-    type SelectExpr = ValueSym; // Resolves to the referenced value symbol
+    type PathExpr = ValueSym;
+    type FieldPath = !;
 
     // Record operations - structural, no new symbols needed
     type RecordField = !;

@@ -56,7 +56,7 @@ pub struct ValueRef {
     /// The name of the value reference.
     pub name: ValueName,
     /// The identifier of the path expression that references some other value bind..
-    pub id: Id<node::SelectExpr>,
+    pub id: Id<node::PathExpr>,
     /// The symbol of the value bind, this reference occured inside.
     pub source: ValueSym,
     /// The location of the value reference in the source code.
@@ -64,7 +64,7 @@ pub struct ValueRef {
 }
 
 impl ValueRef {
-    pub fn new(name: ValueName, id: Id<node::SelectExpr>, source: ValueSym, loc: Loc) -> Self {
+    pub fn new(name: ValueName, id: Id<node::PathExpr>, source: ValueSym, loc: Loc) -> Self {
         Self {
             name,
             id,

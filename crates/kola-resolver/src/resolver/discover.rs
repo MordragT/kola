@@ -523,26 +523,18 @@ where
         id: Id<node::PathExpr>,
         tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
-        let node::PathExpr { path, select } = *tree.node(id);
+        let node::PathExpr {
+            path,
+            source,
+            fields,
+        } = *tree.node(id);
+
+        let name = *source.get(tree);
 
         if let Some(path) = path {
             // Just visit the module path if it exists
             self.visit_module_path(path, tree)
-        } else {
-            self.visit_select_expr(select, tree)
-        }
-    }
-
-    fn visit_select_expr(
-        &mut self,
-        id: Id<node::SelectExpr>,
-        tree: &T,
-    ) -> ControlFlow<Self::BreakValue> {
-        let node::SelectExpr { source, fields: _ } = id.get(tree);
-
-        let name = *source.get(tree);
-
-        if let Some(value_sym) = self.stack.value_scope().get(&name) {
+        } else if let Some(value_sym) = self.stack.value_scope().get(&name) {
             // Local binding will not create value bind cycle either
             self.insert_symbol(id, *value_sym);
             ControlFlow::Continue(())

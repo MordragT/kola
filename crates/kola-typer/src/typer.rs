@@ -809,8 +809,11 @@ where
     ) -> ControlFlow<Self::BreakValue> {
         let span = self.span(id);
 
-        let node::PathExpr { path, select } = *id.get(tree);
-        let node::SelectExpr { source, fields } = select.get(tree);
+        let node::PathExpr {
+            path,
+            source,
+            fields,
+        } = *id.get(tree);
 
         let name = source.get(tree).0;
 
@@ -828,13 +831,13 @@ where
         }
         // For the future: Builtin's should be checked before the type env because they probably
         // do not populate the "resolved" map
-        else if let Some(pt) = self.env.get_value(*self.resolved.meta(select)) {
+        else if let Some(pt) = self.env.get_value(*self.resolved.meta(id)) {
             pt.instantiate()
         } else {
             return ControlFlow::Break(Diagnostic::error(span, "Value not found in scope"));
         };
 
-        let result_t = fields.iter().fold(base_t, |record_t, field| {
+        let result_t = fields.get(tree).iter().fold(base_t, |record_t, field| {
             self.cons
                 .constrain_kind(Kind::Record, record_t.clone(), span);
 
@@ -942,12 +945,38 @@ where
 
         let node::RecordExtendExpr {
             source,
-            field,
+            select,
             value,
         } = *id.get(tree);
 
+        let mut source_t = self.types.meta(source).clone();
+
+        // Split path into navigation fields and final extension field
+        // Safety: `select` is always non-empty
+        let (field, fields) = select.get(tree).0.as_slice().split_last().unwrap();
+
+        for field_id in fields {
+            self.cons
+                .constrain_kind(Kind::Record, source_t.clone(), span);
+
+            let value_t = MonoType::variable();
+            let label = field_id.get(tree).0;
+
+            let head_t = LabeledType {
+                label,
+                ty: value_t.clone(),
+            };
+
+            self.cons.constrain(
+                MonoType::row(head_t, MonoType::variable()),
+                source_t.clone(),
+                span,
+            );
+
+            source_t = value_t;
+        }
+
         let value_t = self.types.meta(value);
-        let source_t = self.types.meta(source);
 
         self.cons
             .constrain_kind(Kind::Record, source_t.clone(), span);
@@ -957,7 +986,7 @@ where
             label,
             ty: value_t.clone(),
         };
-        let result_t = MonoType::row(head_t, source_t.clone());
+        let result_t = MonoType::row(head_t, source_t);
 
         self.update_type(id, result_t);
         ControlFlow::Continue(())
@@ -990,9 +1019,37 @@ where
 
         let span = self.span(id);
 
-        let node::RecordRestrictExpr { source, field } = *id.get(tree);
+        let node::RecordRestrictExpr { source, select } = *id.get(tree);
 
-        let source_t = self.types.meta(source);
+        let mut source_t = self.types.meta(source).clone();
+
+        // Split path into navigation fields and final restriction field
+        // Safety: `select` is always non-empty
+        let (field, fields) = select.get(tree).0.as_slice().split_last().unwrap();
+
+        // Navigate through all fields except the last
+        for field_id in fields {
+            self.cons
+                .constrain_kind(Kind::Record, source_t.clone(), span);
+
+            let value_t = MonoType::variable();
+            let label = field_id.get(tree).0;
+
+            let head_t = LabeledType {
+                label,
+                ty: value_t.clone(),
+            };
+
+            self.cons.constrain(
+                MonoType::row(head_t, MonoType::variable()),
+                source_t.clone(),
+                span,
+            );
+
+            source_t = value_t;
+        }
+
+        // Restrict the final field
         self.cons
             .constrain_kind(Kind::Record, source_t.clone(), span);
 
@@ -1000,6 +1057,7 @@ where
         let label = field.get(tree).0.clone();
         let head_t = LabeledType { label, ty: value_t };
         let tail_t = MonoType::variable();
+
         self.cons.constrain(
             MonoType::row(head_t, tail_t.clone()),
             source_t.clone(),
@@ -1076,12 +1134,40 @@ where
 
         let node::RecordUpdateExpr {
             source,
-            field,
+            select,
             op,
             value,
         } = *id.get(tree);
 
-        let source_t = self.types.meta(source);
+        let mut source_t = self.types.meta(source).clone();
+
+        // Split path into navigation fields and final update field
+        // Safety: `select` is always non-empty
+        let (field, fields) = select.get(tree).0.as_slice().split_last().unwrap();
+
+        // Navigate through all fields except the last
+        for field_id in fields {
+            self.cons
+                .constrain_kind(Kind::Record, source_t.clone(), span);
+
+            let value_t = MonoType::variable();
+            let label = field_id.get(tree).0;
+
+            let head_t = LabeledType {
+                label,
+                ty: value_t.clone(),
+            };
+
+            self.cons.constrain(
+                MonoType::row(head_t, MonoType::variable()),
+                source_t.clone(),
+                span,
+            );
+
+            source_t = value_t;
+        }
+
+        // Update the final field
         self.cons
             .constrain_kind(Kind::Record, source_t.clone(), span);
 
@@ -1521,7 +1607,7 @@ mod tests {
         let mut builder = TreeBuilder::new();
 
         let target = builder.insert(node::LiteralExpr::Num(10.0));
-        let unary = node::UnaryExpr::new_in(node::UnaryOp::Neg, target.into(), &mut builder);
+        let unary = node::UnaryExpr::new_in(node::UnaryOp::Neg, target, &mut builder);
 
         let types = solve(builder, unary).unwrap();
 
@@ -1533,7 +1619,7 @@ mod tests {
         let mut builder = TreeBuilder::new();
 
         let target = builder.insert(node::LiteralExpr::Num(10.0));
-        let unary = node::UnaryExpr::new_in(node::UnaryOp::Not, target.into(), &mut builder);
+        let unary = node::UnaryExpr::new_in(node::UnaryOp::Not, target, &mut builder);
 
         let (errors, _) = solve(builder, unary).unwrap_err();
 
@@ -1552,8 +1638,7 @@ mod tests {
 
         let left = builder.insert(node::LiteralExpr::Bool(true));
         let right = builder.insert(node::LiteralExpr::Num(10.0));
-        let binary =
-            node::BinaryExpr::new_in(node::BinaryOp::Eq, left.into(), right.into(), &mut builder);
+        let binary = node::BinaryExpr::new_in(node::BinaryOp::Eq, left, right, &mut builder);
 
         let (errors, _) = solve(builder, binary).unwrap_err();
 
@@ -1572,18 +1657,8 @@ mod tests {
         let mut builder = TreeBuilder::new();
 
         let value = builder.insert(node::LiteralExpr::Num(10.0));
-        let binding = builder.insert(node::Name::from(interner.intern("x")));
-        let select = builder.insert(node::SelectExpr {
-            source: binding.into(),
-            fields: vec![],
-        });
-        let inside = builder.insert(node::PathExpr { path: None, select });
-        let let_ = node::LetExpr::new_in(
-            node::Name::from(interner.intern("x")),
-            value.into(),
-            inside.into(),
-            &mut builder,
-        );
+        let inside = node::PathExpr::new_in(None, interner.intern("x"), Vec::new(), &mut builder);
+        let let_ = node::LetExpr::new_in(interner.intern("x"), value, inside, &mut builder);
 
         let types = solve(builder, let_).unwrap();
 
@@ -1597,7 +1672,7 @@ mod tests {
         let predicate = builder.insert(node::LiteralExpr::Bool(true));
         let then = builder.insert(node::LiteralExpr::Num(5.0));
         let or = builder.insert(node::LiteralExpr::Num(10.0));
-        let if_ = node::IfExpr::new_in(predicate.into(), then.into(), or.into(), &mut builder);
+        let if_ = node::IfExpr::new_in(predicate, then, or, &mut builder);
 
         let types = solve(builder, if_).unwrap();
 
@@ -1611,7 +1686,7 @@ mod tests {
         let predicate = builder.insert(node::LiteralExpr::Bool(true));
         let then = builder.insert(node::LiteralExpr::Num(5.0));
         let or = builder.insert(node::LiteralExpr::Char('x'));
-        let if_ = node::IfExpr::new_in(predicate.into(), then.into(), or.into(), &mut builder);
+        let if_ = node::IfExpr::new_in(predicate, then, or, &mut builder);
 
         let (errors, _) = solve(builder, if_).unwrap_err();
 

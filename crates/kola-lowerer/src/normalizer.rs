@@ -104,6 +104,24 @@ impl<'a, Node> Normalizer<'a, Node> {
 
         self.next
     }
+
+    // Helper method to build FieldPath from AST field path
+    fn build_field_path<T>(
+        &mut self,
+        field_path: &[TreeId<node::ValueName>],
+        tree: &T,
+    ) -> InstrId<ir::FieldPath>
+    where
+        T: TreeView,
+    {
+        field_path
+            .iter()
+            .rfold(None, |path_id, &field_id| {
+                let label = field_id.get(tree).0;
+                Some(self.builder.add(ir::FieldPath::new(label, path_id)))
+            })
+            .expect("Field path should not be empty")
+    }
 }
 
 impl<'a, T, Node> Visitor<T> for Normalizer<'a, Node>
@@ -134,27 +152,22 @@ where
         id: TreeId<node::PathExpr>,
         tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
-        let node::PathExpr { path, select } = *id.get(tree);
+        let node::PathExpr {
+            path,
+            source,
+            fields,
+        } = *id.get(tree);
 
         if let Some(_path) = path {
             // Module path resolution is not yet supported
             todo!("Module path resolution not implemented")
-        } else {
-            // No module path, so this is just a select expression in the current module
-            self.visit_select_expr(select, tree)
         }
-    }
-
-    fn visit_select_expr(
-        &mut self,
-        id: TreeId<node::SelectExpr>,
-        tree: &T,
-    ) -> ControlFlow<Self::BreakValue> {
-        let node::SelectExpr { source: _, fields } = id.get(tree);
 
         // Create symbol and corresponding atom
-        let source_sym = self.symbol_of(id);
+        let source_sym = self.symbol_of(id); // This is only defined if path is None so be careful about moving this
         let mut source_atom = self.builder.add(ir::Atom::Symbol(source_sym));
+
+        let fields = &fields.get(tree).0;
 
         if fields.is_empty() {
             // If there are no fields, we just return the source atom
@@ -162,6 +175,7 @@ where
             return ControlFlow::Continue(());
         }
 
+        // TODO use split_last
         for field_id in fields.iter().take(fields.len() - 1) {
             let field_label = field_id.get(tree).0;
 
@@ -465,7 +479,7 @@ where
     ) -> ControlFlow<Self::BreakValue> {
         let node::RecordExtendExpr {
             source,
-            field,
+            select,
             value,
         } = *id.get(tree);
 
@@ -476,13 +490,17 @@ where
         let value_atom = self.builder.add(ir::Atom::Symbol(value_sym));
         let source_atom = self.builder.add(ir::Atom::Symbol(source_sym));
 
+        // Build FieldPath from AST field path
+        let field_path = select.get(tree).0.as_slice();
+        let path = self.build_field_path(field_path, tree);
+
         // Create the record extend expression context and set continuation
         let extend_expr = self
             .builder
             .add(ir::Expr::RecordExtend(ir::RecordExtendExpr {
                 bind: self.hole,
                 base: source_atom,
-                label: field.get(tree).0,
+                path,
                 value: value_atom,
                 next: self.next,
             }));
@@ -503,11 +521,15 @@ where
         id: TreeId<node::RecordRestrictExpr>,
         tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
-        let node::RecordRestrictExpr { source, field } = *id.get(tree);
+        let node::RecordRestrictExpr { source, select } = *id.get(tree);
 
         // Create fresh symbol and corresponding atom
         let source_sym = self.next_symbol();
         let source_atom = self.builder.add(ir::Atom::Symbol(source_sym));
+
+        // Build FieldPath from AST field path
+        let field_path = select.get(tree).0.as_slice();
+        let path = self.build_field_path(field_path, tree);
 
         // Create the record restrict expression context and set continuation
         let restrict_expr = self
@@ -515,7 +537,7 @@ where
             .add(ir::Expr::RecordRestrict(ir::RecordRestrictExpr {
                 bind: self.hole,
                 base: source_atom,
-                label: field.get(tree).0,
+                path,
                 next: self.next,
             }));
         self.next = restrict_expr;
@@ -534,7 +556,7 @@ where
     ) -> ControlFlow<Self::BreakValue> {
         let node::RecordUpdateExpr {
             source,
-            field,
+            select,
             op,
             value,
         } = *id.get(tree);
@@ -545,6 +567,10 @@ where
 
         let value_atom = self.builder.add(ir::Atom::Symbol(value_sym));
         let source_atom = self.builder.add(ir::Atom::Symbol(source_sym));
+
+        // Build FieldPath from AST field path
+        let field_path = select.get(tree).0.as_slice();
+        let path = self.build_field_path(field_path, tree);
 
         let op = match *op.get(tree) {
             node::RecordUpdateOp::Assign => ir::RecordUpdateOp::Assign,
@@ -561,7 +587,7 @@ where
             .add(ir::Expr::RecordUpdate(ir::RecordUpdateExpr {
                 bind: self.hole,
                 base: source_atom,
-                label: field.get(tree).0,
+                path,
                 op,
                 value: value_atom,
                 next: self.next,
@@ -598,7 +624,7 @@ mod tests {
     fn mock_resolved(tree: &impl TreeView) -> ResolvedNodes {
         let mut resolved = ResolvedNodes::default();
 
-        for query in tree.query3::<node::SelectExpr, node::LetExpr, node::LambdaExpr>() {
+        for query in tree.query3::<node::PathExpr, node::LetExpr, node::LambdaExpr>() {
             match query {
                 Query3::V0(id, _path) => resolved.insert_meta(id, ValueSym::new()),
                 Query3::V1(id, _let) => resolved.insert_meta(id, ValueSym::new()),
@@ -647,12 +673,7 @@ mod tests {
         let x = interner.intern("x");
 
         // Build a simple path expression: x (no module path, just binding)
-        let source = builder.insert(node::ValueName::new(x));
-        let select = builder.insert(node::SelectExpr {
-            source,
-            fields: Vec::new(),
-        });
-        let path_expr = builder.insert(node::PathExpr { path: None, select });
+        let path_expr = node::PathExpr::new_in(None, x, Vec::new(), &mut builder);
 
         let resolved = mock_resolved(&builder);
         let ir = normalize(builder, path_expr, &resolved);
@@ -672,22 +693,10 @@ mod tests {
         let x_sym = ValueSym::new();
 
         // Build: let x = 42 in x
-        let name = builder.insert(node::ValueName::new(x));
-        let value = builder.insert(node::LiteralExpr::Num(42.0));
-        let value = builder.insert(node::Expr::Literal(value));
-        let select = builder.insert(node::SelectExpr {
-            source: name,
-            fields: vec![],
-        });
-        resolved.insert_meta(select, x_sym);
-        let inside = builder.insert(node::PathExpr { path: None, select });
-        let inside = builder.insert(node::Expr::Path(inside));
 
-        let let_expr = builder.insert(node::LetExpr {
-            name,
-            value,
-            inside,
-        });
+        let inside = node::PathExpr::new_in(None, x, Vec::new(), &mut builder);
+        let value = builder.insert(node::LiteralExpr::Num(42.0));
+        let let_expr = node::LetExpr::new_in(x, value, inside, &mut builder);
         resolved.insert_meta(let_expr, x_sym);
 
         let ir = normalize(builder, let_expr, &resolved);
@@ -710,13 +719,13 @@ mod tests {
         // Build: (\x => x) 42  (identity function applied to 42)
 
         // Create the lambda parameter reference in body: x
-        let param_name = builder.insert(node::ValueName::new(x));
-        let select = builder.insert(node::SelectExpr {
+        let param_name = builder.insert(node::ValueName::new(x)); // Reference to parameter
+        let fields = builder.insert(node::FieldPath::default());
+        let lambda_body_path = builder.insert(node::PathExpr {
+            path: None,
             source: param_name,
-            fields: vec![],
+            fields,
         });
-        resolved.insert_meta(select, x_sym); // Reference to parameter
-        let lambda_body_path = builder.insert(node::PathExpr { path: None, select });
         let lambda_body = builder.insert(node::Expr::Path(lambda_body_path));
 
         // Create the lambda: \x => x

@@ -217,7 +217,7 @@ define!(
     RecordRestrictExpr,
     RecordUpdateOp,
     RecordUpdateExpr,
-    SelectExpr,
+    FieldPath,
     PathExpr,
     UnaryOp,
     UnaryExpr,

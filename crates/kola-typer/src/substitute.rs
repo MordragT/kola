@@ -285,7 +285,7 @@ impl_meta_substitutable!(
     RecordRestrictExpr,
     RecordUpdateOp,
     RecordUpdateExpr,
-    SelectExpr,
+    FieldPath,
     PathExpr,
     UnaryOp,
     UnaryExpr,

@@ -33,7 +33,7 @@ impl Phase for TypePhase {
     type RecordRestrictExpr = types::MonoType;
     type RecordUpdateOp = types::MonoType;
     type RecordUpdateExpr = types::MonoType;
-    type SelectExpr = types::MonoType;
+    type FieldPath = types::MonoType;
     type PathExpr = types::MonoType;
     type UnaryOp = types::MonoType;
     type UnaryExpr = types::MonoType;

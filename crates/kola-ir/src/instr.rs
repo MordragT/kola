@@ -35,6 +35,7 @@ pub enum Instr {
     Expr(Expr),
     Field(RecordField),
     Item(ListItem),
+    Path(FieldPath),
 }
 
 impl<T> From<&T> for Instr
@@ -52,7 +53,8 @@ impl_try_as!(
     Atom(Atom),
     Expr(Expr),
     Field(RecordField),
-    Item(ListItem)
+    Item(ListItem),
+    Path(FieldPath)
 );
 
 const _: () = {
@@ -861,10 +863,55 @@ impl<'a> Notate<'a> for IrPrinter<'a, RecordExpr> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct FieldPath {
+    pub label: StrKey,
+    pub next: Option<Id<FieldPath>>,
+}
+
+impl FieldPath {
+    pub fn new(label: StrKey, next: Option<Id<FieldPath>>) -> Self {
+        Self { label, next }
+    }
+
+    pub fn with_next(label: StrKey, next: Id<FieldPath>) -> Self {
+        Self {
+            label,
+            next: Some(next),
+        }
+    }
+}
+
+impl<'a> Notate<'a> for IrPrinter<'a, FieldPath> {
+    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
+        let FieldPath { label, next } = self.node;
+
+        let label = self.interner[label].display_in(arena);
+
+        let next = next
+            .map(|next| {
+                let next = self.to(self.ir.instr(next)).notate(arena);
+
+                let single = ", "
+                    .display_in(arena)
+                    .then(next.clone(), arena)
+                    .flatten(arena);
+                let multi = [arena.newline(), arena.just(','), next]
+                    .concat_in(arena)
+                    .indent(arena);
+
+                single.or(multi, arena)
+            })
+            .or_not(arena);
+
+        [label, next].concat_in(arena)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct RecordExtendExpr {
     pub bind: Symbol,
     pub base: Id<Atom>,
-    pub label: StrKey,
+    pub path: Id<FieldPath>,
     pub value: Id<Atom>,
     pub next: Id<Expr>,
 }
@@ -882,10 +929,12 @@ impl RecordExtendExpr {
         let value = builder.add(value.into());
         let next = builder.add(next.into());
 
+        let path = builder.add(FieldPath::new(label, None));
+
         Self {
             bind,
             base,
-            label,
+            path,
             value,
             next,
         }
@@ -902,14 +951,14 @@ impl<'a> Notate<'a> for IrPrinter<'a, RecordExtendExpr> {
         let RecordExtendExpr {
             bind,
             base,
-            label,
+            path,
             value,
             next,
         } = self.node;
 
         let bind = bind.display_in(arena);
         let base = self.to(base).notate(arena);
-        let label = self.interner[label].display_in(arena);
+        let path = self.to(self.ir.instr(path)).notate(arena);
         let value = self.to(value).notate(arena);
         let next = arena.newline().then(self.to(next).notate(arena), arena);
 
@@ -918,7 +967,7 @@ impl<'a> Notate<'a> for IrPrinter<'a, RecordExtendExpr> {
             arena.notate(" = { "),
             base.clone().flatten(arena),
             arena.notate(" | +"),
-            label.clone(),
+            path.clone(),
             arena.notate(" = "),
             value.clone().flatten(arena),
             arena.notate(" }"),
@@ -932,7 +981,7 @@ impl<'a> Notate<'a> for IrPrinter<'a, RecordExtendExpr> {
             base,
             arena.newline(),
             arena.notate("  | +"),
-            label,
+            path,
             arena.newline(),
             arena.notate("  = "),
             value,
@@ -949,7 +998,7 @@ impl<'a> Notate<'a> for IrPrinter<'a, RecordExtendExpr> {
 pub struct RecordRestrictExpr {
     pub bind: Symbol,
     pub base: Id<Atom>,
-    pub label: StrKey,
+    pub path: Id<FieldPath>,
     pub next: Id<Expr>,
 }
 
@@ -964,10 +1013,12 @@ impl RecordRestrictExpr {
         let base = builder.add(base.into());
         let next = builder.add(next.into());
 
+        let path = builder.add(FieldPath::new(label, None));
+
         Self {
             bind,
             base,
-            label,
+            path,
             next,
         }
     }
@@ -982,13 +1033,13 @@ impl<'a> Notate<'a> for IrPrinter<'a, RecordRestrictExpr> {
         let RecordRestrictExpr {
             bind,
             base,
-            label,
+            path,
             next,
         } = self.node;
 
         let bind = bind.display_in(arena);
         let base = self.to(base).notate(arena);
-        let label = self.interner[label].display_in(arena);
+        let path = self.to(self.ir.instr(path)).notate(arena);
         let next = arena.newline().then(self.to(next).notate(arena), arena);
 
         let single = [
@@ -996,7 +1047,7 @@ impl<'a> Notate<'a> for IrPrinter<'a, RecordRestrictExpr> {
             arena.notate(" = { "),
             base.clone().flatten(arena),
             arena.notate(" | -"),
-            label.clone(),
+            path.clone(),
             arena.notate(" }"),
         ]
         .concat_in(arena);
@@ -1008,7 +1059,7 @@ impl<'a> Notate<'a> for IrPrinter<'a, RecordRestrictExpr> {
             base,
             arena.newline(),
             arena.notate("  | -"),
-            label,
+            path,
             arena.newline(),
             arena.notate("}"),
         ]
@@ -1046,7 +1097,7 @@ impl fmt::Display for RecordUpdateOp {
 pub struct RecordUpdateExpr {
     pub bind: Symbol,
     pub base: Id<Atom>,
-    pub label: StrKey,
+    pub path: Id<FieldPath>,
     pub op: RecordUpdateOp,
     pub value: Id<Atom>,
     pub next: Id<Expr>,
@@ -1066,10 +1117,12 @@ impl RecordUpdateExpr {
         let value = builder.add(value.into());
         let next = builder.add(next.into());
 
+        let path = builder.add(FieldPath::new(label, None));
+
         Self {
             bind,
             base,
-            label,
+            path,
             op,
             value,
             next,
@@ -1087,7 +1140,7 @@ impl<'a> Notate<'a> for IrPrinter<'a, RecordUpdateExpr> {
         let RecordUpdateExpr {
             bind,
             base,
-            label,
+            path,
             op,
             value,
             next,
@@ -1095,7 +1148,7 @@ impl<'a> Notate<'a> for IrPrinter<'a, RecordUpdateExpr> {
 
         let bind = bind.display_in(arena);
         let base = self.to(base).notate(arena);
-        let label = self.interner[label].display_in(arena);
+        let path = self.to(self.ir.instr(path)).notate(arena);
         let op = op.display_in(arena);
         let value = self.to(value).notate(arena);
         let next = arena.newline().then(self.to(next).notate(arena), arena);
@@ -1105,7 +1158,7 @@ impl<'a> Notate<'a> for IrPrinter<'a, RecordUpdateExpr> {
             arena.notate(" = { "),
             base.clone().flatten(arena),
             arena.notate(" | "),
-            label.clone(),
+            path.clone(),
             arena.just(' '),
             op.clone(),
             arena.just(' '),
@@ -1121,7 +1174,7 @@ impl<'a> Notate<'a> for IrPrinter<'a, RecordUpdateExpr> {
             base,
             arena.newline(),
             arena.notate("  | "),
-            label,
+            path,
             arena.newline(),
             arena.notate("  "),
             op,
