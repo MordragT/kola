@@ -1,8 +1,6 @@
 {
-    export module test = {},
-
-    module test2 = {
-        module test3 = super::test,
+    module inner = {
+        pi = 3.14,
     },
 
     type Person = forall a . { name : Str | a },
@@ -15,5 +13,7 @@
 
     #main = [1, 2, 3],
 
-    main = person_b.name,
+    #main = person_b.name,
+
+    main = inner::pi,
 }

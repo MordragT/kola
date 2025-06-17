@@ -1,6 +1,6 @@
 use chumsky::prelude::*;
 
-use kola_span::Loc;
+use kola_span::{Loc, Span};
 use kola_tree::prelude::*;
 
 use super::{KolaParser, State, primitives::*};
@@ -407,8 +407,9 @@ pub fn expr_parser<'t>() -> impl KolaParser<'t, Id<node::Expr>> + Clone {
                 path.insert(0, source);
                 source = new_source;
 
-                let path_loc = loc.map_span(|span| span.after(&source.1.span).unwrap());
-                let select_loc = loc.map_span(|span| span.after(&path_loc.span).unwrap());
+                let path_loc = Loc::covering_located(&path).unwrap(); // Safety: Path is not empty
+                // TODO: Does this work ??
+                let select_loc = loc.after(path_loc).unwrap_or(loc);
 
                 let path = path
                     .into_iter()
@@ -477,6 +478,7 @@ pub fn expr_parser<'t>() -> impl KolaParser<'t, Id<node::Expr>> + Clone {
             ),
         }
 
+        // TODO use SelectExpr directly inside RecordOpNodes instead of desugaring here ?
         let field_path = name
             .clone()
             .separated_by(ctrl(CtrlT::DOT))
@@ -859,16 +861,13 @@ pub fn type_expr_parser<'t>() -> impl KolaParser<'t, Id<node::TypeExpr>> + Clone
             .at_least(1)
             .collect::<Vec<_>>()
             .map_with(|mut path, e| {
-                let loc = e.span();
                 let tree: &mut State = e.state();
 
                 let (ty_name, ty_loc) = path.pop().unwrap();
                 let ty = tree.insert(node::TypeName::new(ty_name), ty_loc);
 
                 let path = if !path.is_empty() {
-                    let module_loc = path.iter().fold(loc, |loc, (_, other)| {
-                        loc.map_span(|span| span.union(&other.span))
-                    });
+                    let module_loc = Loc::covering_located(&path).unwrap(); // Safety: Path is not empty
                     let module_path = path
                         .into_iter()
                         .map(|(name, span)| tree.insert(node::ModuleName::new(name), span))

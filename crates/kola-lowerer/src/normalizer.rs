@@ -81,8 +81,6 @@ impl<'a, Node> Normalizer<'a, Node> {
 
         // Run the nested normalization
         let _ = f(self, tree);
-
-        // Get the result
         let result = self.next;
 
         // Restore original state

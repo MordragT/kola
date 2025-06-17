@@ -37,24 +37,104 @@ impl Loc {
     }
 
     #[inline]
-    pub fn source(&self) -> SourceId {
+    pub fn source(self) -> SourceId {
         self.path
     }
 
     #[inline]
-    pub fn span(&self) -> Span {
+    pub fn span(self) -> Span {
         self.span
     }
 
+    /// Returns the length of the loc
     #[inline]
-    pub fn map_span<F>(&self, f: F) -> Self
+    pub fn len(self) -> usize {
+        self.span.len()
+    }
+
+    /// Returns true if the loc is empty
+    #[inline]
+    pub fn is_empty(self) -> bool {
+        self.span.is_empty()
+    }
+
+    /// Returns true if this loc completely contains the other loc
+    #[inline]
+    pub fn contains(self, other: Self) -> bool {
+        debug_assert_eq!(self.path, other.path);
+
+        self.span.contains(other.span)
+    }
+
+    /// Returns true if this loc contains the given position
+    #[inline]
+    pub fn contains_pos(self, pos: usize) -> bool {
+        self.span.contains_pos(pos)
+    }
+
+    /// Returns the union of two locs (smallest loc that contains both)
+    #[inline]
+    pub fn union(self, other: Self) -> Self {
+        debug_assert_eq!(self.path, other.path);
+
+        Self::new(self.path, self.span.union(other.span))
+    }
+
+    /// Returns the intersection of two locs, or None if they don't overlap
+    #[inline]
+    pub fn intersection(self, other: Self) -> Option<Self> {
+        debug_assert_eq!(self.path, other.path);
+
+        self.span
+            .intersection(other.span)
+            .map(|span| Self::new(self.path, span))
+    }
+
+    /// Returns a loc from the start of self up to (but not including) the start of other
+    /// Useful for "everything before" operations
+    #[inline]
+    pub fn before(self, other: Self) -> Option<Self> {
+        debug_assert_eq!(self.path, other.path);
+
+        self.span
+            .before(other.span)
+            .map(|span| Self::new(self.path, span))
+    }
+
+    /// Returns a loc from the end of other to the end of self
+    /// Useful for "everything after" operations
+    #[inline]
+    pub fn after(self, other: Self) -> Option<Self> {
+        debug_assert_eq!(self.path, other.path);
+
+        self.span
+            .after(other.span)
+            .map(|span| Self::new(self.path, span))
+    }
+
+    /// Creates a loc that covers all the given locs
+    #[inline]
+    pub fn covering<I>(locs: I) -> Option<Self>
     where
-        F: FnOnce(Span) -> Span,
+        I: IntoIterator<Item = Self>,
     {
-        Self {
-            path: self.path,
-            span: f(self.span),
-        }
+        locs.into_iter().reduce(|acc, span| {
+            debug_assert_eq!(acc.path, span.path);
+
+            acc.union(span)
+        })
+    }
+
+    /// Creates a loc that covers all the locs in the given iterator of `Located<T>`
+    pub fn covering_located<'a, T, I>(located_iter: I) -> Option<Loc>
+    where
+        I: IntoIterator<Item = &'a Located<T>>,
+        T: 'a,
+    {
+        located_iter
+            .into_iter()
+            .map(|&(_, loc)| loc)
+            .reduce(Loc::union)
     }
 }
 
