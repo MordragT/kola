@@ -435,6 +435,71 @@ where
 
         ControlFlow::Continue(())
     }
+
+    fn visit_record_extend_expr(
+        &mut self,
+        id: TreeId<node::RecordExtendExpr>,
+        tree: &T,
+    ) -> ControlFlow<Self::BreakValue> {
+        let node::RecordExtendExpr {
+            source,
+            field,
+            value,
+        } = *id.get(tree);
+
+        // Create a fresh symbols
+        let value_sym = self.next_symbol();
+        let source_sym = self.next_symbol();
+
+        // Create an atoms for the symbols
+        let value_atom = self.builder.add(ir::Atom::Symbol(value_sym));
+        let source_atom = self.builder.add(ir::Atom::Symbol(source_sym));
+
+        // Create the record extend expression that will be the "context" for our normalization
+        let extend_expr = self
+            .builder
+            .add(ir::Expr::RecordExtend(ir::RecordExtendExpr {
+                bind: self.hole,
+                base: source_atom,
+                label: field.get(tree).0,
+                value: value_atom,
+                next: self.next,
+            }));
+        self.next = extend_expr;
+
+        self.hole = value_sym;
+        self.visit_expr(value, tree)?;
+
+        self.hole = source_sym;
+        self.visit_expr(source, tree)?;
+
+        ControlFlow::Continue(())
+    }
+
+    fn visit_record_restrict_expr(
+        &mut self,
+        id: TreeId<node::RecordRestrictExpr>,
+        tree: &T,
+    ) -> ControlFlow<Self::BreakValue> {
+        let node::RecordRestrictExpr { source, field } = *id.get(tree);
+
+        todo!()
+    }
+
+    fn visit_record_update_expr(
+        &mut self,
+        id: TreeId<node::RecordUpdateExpr>,
+        tree: &T,
+    ) -> ControlFlow<Self::BreakValue> {
+        let node::RecordUpdateExpr {
+            source,
+            field,
+            op,
+            value,
+        } = *id.get(tree);
+
+        todo!()
+    }
 }
 
 #[cfg(test)]

@@ -9,9 +9,9 @@
 
     person_a = { name = "Alice" },
 
-    person_b = { person_a | name = "Bob" },
+    person_b = { person_a | +age = 30 },
 
-    eine_liste : List Str = ["eins", "zwei", "drei"],
+    #eine_liste : List Str = ["eins", "zwei", "drei"],
 
     #main = [1, 2, 3],
 
