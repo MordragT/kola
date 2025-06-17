@@ -108,6 +108,7 @@ pub struct IrBuilder {
 }
 
 impl IrBuilder {
+    #[inline]
     pub fn new() -> Self {
         // Reserve slot 0 with a dummy instruction.
         let instructions = vec![Instr::Noop];
@@ -115,6 +116,7 @@ impl IrBuilder {
         Self { instructions }
     }
 
+    #[inline]
     pub fn add<T>(&mut self, instr: T) -> Id<T>
     where
         T: Into<Instr>,
@@ -127,6 +129,7 @@ impl IrBuilder {
         Id::new(id)
     }
 
+    #[inline]
     pub fn instr_mut<T>(&mut self, id: Id<T>) -> &mut T
     where
         Instr: TryAsMut<T>,
@@ -153,6 +156,7 @@ impl IrBuilder {
         field
     }
 
+    #[inline]
     pub fn extend_fields(
         &mut self,
         fields: impl IntoIterator<Item = (StrKey, Atom)>,
@@ -167,25 +171,19 @@ impl IrBuilder {
 
     /// Prepends a field path component to the head of the field path.
     #[inline]
-    pub fn add_path_component(
-        &mut self,
-        label: StrKey,
-        head: Option<Id<FieldPath>>,
-    ) -> Id<FieldPath> {
-        let path = self.add(FieldPath {
-            label,
-            next: head,
-        });
+    pub fn add_path(&mut self, label: StrKey, head: Option<Id<FieldPath>>) -> Id<FieldPath> {
+        let path = self.add(FieldPath { label, next: head });
         path
     }
 
+    #[inline]
     pub fn extend_path(
         &mut self,
         labels: impl IntoIterator<Item = StrKey>,
         mut head: Option<Id<FieldPath>>,
     ) -> Option<Id<FieldPath>> {
         for label in labels {
-            head = Some(self.add_path_component(label, head));
+            head = Some(self.add_path(label, head));
         }
 
         head
@@ -219,6 +217,7 @@ impl IrBuilder {
         item
     }
 
+    #[inline]
     pub fn prepend_all_items(
         &mut self,
         items: impl IntoIterator<Item = Atom>,
@@ -231,6 +230,7 @@ impl IrBuilder {
         head
     }
 
+    #[inline]
     pub fn finish(self, root: Id<Expr>) -> Ir {
         let Self { instructions } = self;
         Ir { instructions, root }

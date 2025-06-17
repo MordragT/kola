@@ -158,48 +158,53 @@ where
             fields,
         } = *id.get(tree);
 
-        if let Some(_path) = path {
-            // Module path resolution is not yet supported
-            todo!("Module path resolution not implemented")
+        if let Some(path) = path {
+            let module_sym = self.symbol_of(path);
+            let module_atom = self.builder.add(ir::Atom::Symbol(module_sym));
+
+            let name = source.get(tree).0;
+
+            let access_expr = self
+                .builder
+                .add(ir::Expr::RecordAccess(ir::RecordAccessExpr {
+                    bind: self.hole,
+                    base: module_atom,
+                    label: name,
+                    next: self.next,
+                }));
+            self.next = access_expr;
+
+            return ControlFlow::Continue(());
         }
 
         // Create symbol and corresponding atom
         let source_sym = self.symbol_of(id); // This is only defined if path is None so be careful about moving this
         let mut source_atom = self.builder.add(ir::Atom::Symbol(source_sym));
 
-        let fields = &fields.get(tree).0;
+        if let Some((last_field_id, fields)) = fields.get(tree).0.split_last() {
+            for field_id in fields {
+                let field_label = field_id.get(tree).0;
 
-        if fields.is_empty() {
-            // If there are no fields, we just return the source atom
-            self.emit(source_atom);
-            return ControlFlow::Continue(());
-        }
+                // Create a fresh symbol for this intermediate result
+                let next_sym = self.next_symbol();
+                let next_atom = self.builder.add(ir::Atom::Symbol(next_sym));
 
-        // TODO use split_last
-        for field_id in fields.iter().take(fields.len() - 1) {
-            let field_label = field_id.get(tree).0;
+                // Create the record access expression
+                let access_expr = self
+                    .builder
+                    .add(ir::Expr::RecordAccess(ir::RecordAccessExpr {
+                        bind: next_sym,
+                        base: source_atom,
+                        label: field_label,
+                        next: self.next,
+                    }));
 
-            // Create a fresh symbol for this intermediate result
-            let next_sym = self.next_symbol();
-            let next_atom = self.builder.add(ir::Atom::Symbol(next_sym));
+                // Update for next iteration
+                self.next = access_expr;
+                source_atom = next_atom;
+            }
 
-            // Create the record access expression
-            let access_expr = self
-                .builder
-                .add(ir::Expr::RecordAccess(ir::RecordAccessExpr {
-                    bind: next_sym,
-                    base: source_atom,
-                    label: field_label,
-                    next: self.next,
-                }));
-
-            // Update for next iteration
-            self.next = access_expr;
-            source_atom = next_atom;
-        }
-
-        // Handle the final field access - this binds to self.hole
-        if let Some(last_field_id) = fields.last() {
+            // Handle the final field access - this binds to self.hole
             let field_label = last_field_id.get(tree).0;
 
             let final_access = self
@@ -212,6 +217,9 @@ where
                 }));
 
             self.next = final_access;
+        } else {
+            // If there are no fields, we just return the source atom
+            self.emit(source_atom);
         }
 
         ControlFlow::Continue(())

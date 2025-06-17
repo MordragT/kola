@@ -891,11 +891,11 @@ impl<'a> Notate<'a> for IrPrinter<'a, FieldPath> {
             .map(|next| {
                 let next = self.to(self.ir.instr(next)).notate(arena);
 
-                let single = ", "
+                let single = "."
                     .display_in(arena)
                     .then(next.clone(), arena)
                     .flatten(arena);
-                let multi = [arena.newline(), arena.just(','), next]
+                let multi = [arena.newline(), arena.just('.'), next]
                     .concat_in(arena)
                     .indent(arena);
 
