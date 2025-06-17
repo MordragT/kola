@@ -27,13 +27,14 @@ impl<'a> Decorator<'a> for TypeDecorator<'a> {
 
             // Expressions
             Meta::LiteralExpr(t)
-            | Meta::PathExpr(t)
             | Meta::ListExpr(t)
             | Meta::RecordExpr(t)
             | Meta::RecordExtendExpr(t)
             | Meta::RecordRestrictExpr(t)
             | Meta::RecordUpdateOp(t)
             | Meta::RecordUpdateExpr(t)
+            | Meta::SelectExpr(t)
+            | Meta::PathExpr(t)
             | Meta::UnaryOp(t)
             | Meta::UnaryExpr(t)
             | Meta::BinaryOp(t)

@@ -12,7 +12,7 @@ impl<'a> Decorator<'a> for ResolutionDecorator<'a> {
         };
 
         let sym = match meta {
-            Meta::PathExpr(value_sym)
+            Meta::SelectExpr(value_sym)
             | Meta::LetExpr(value_sym)
             | Meta::LambdaExpr(value_sym)
             | Meta::ValueBind(value_sym) => value_sym.red().display_in(arena),

@@ -136,27 +136,70 @@ where
         id: TreeId<node::PathExpr>,
         tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
-        let node::PathExpr {
-            path,
-            binding,
-            select,
-        } = id.get(tree);
+        let node::PathExpr { path, select } = *id.get(tree);
 
-        if !select.is_empty() {
-            todo!()
+        if let Some(_path) = path {
+            // Module path resolution is not yet supported
+            todo!("Module path resolution not implemented")
+        } else {
+            // No module path, so this is just a select expression in the current module
+            self.visit_select_expr(select, tree)
+        }
+    }
+
+    fn visit_select_expr(
+        &mut self,
+        id: TreeId<node::SelectExpr>,
+        tree: &T,
+    ) -> ControlFlow<Self::BreakValue> {
+        let node::SelectExpr { source: _, fields } = id.get(tree);
+
+        // Create symbol and corresponding atom
+        let source_sym = self.symbol_of(id);
+        let mut source_atom = self.builder.add(ir::Atom::Symbol(source_sym));
+
+        if fields.is_empty() {
+            // If there are no fields, we just return the source atom
+            self.emit(source_atom);
+            return ControlFlow::Continue(());
         }
 
-        if let Some(path) = path {
-            todo!()
-        } else {
-            // This is a bit weird, I should definitely split the PathExpr so that I get a SelectExpr,
-            // but essentially this is currently the symbol of the value bind in the current module,
-            // if the module path is empty.
-            // Otherwise this would be the symbol of a value bind in another module, which is not yet supported.
-            let symbol = self.symbol_of(id);
-            let atom = self.builder.add(ir::Atom::Symbol(symbol));
+        for field_id in fields.iter().take(fields.len() - 1) {
+            let field_label = field_id.get(tree).0;
 
-            self.emit(atom)
+            // Create a fresh symbol for this intermediate result
+            let next_sym = self.next_symbol();
+            let next_atom = self.builder.add(ir::Atom::Symbol(next_sym));
+
+            // Create the record access expression
+            let access_expr = self
+                .builder
+                .add(ir::Expr::RecordAccess(ir::RecordAccessExpr {
+                    bind: next_sym,
+                    base: source_atom,
+                    label: field_label,
+                    next: self.next,
+                }));
+
+            // Update for next iteration
+            self.next = access_expr;
+            source_atom = next_atom;
+        }
+
+        // Handle the final field access - this binds to self.hole
+        if let Some(last_field_id) = fields.last() {
+            let field_label = last_field_id.get(tree).0;
+
+            let final_access = self
+                .builder
+                .add(ir::Expr::RecordAccess(ir::RecordAccessExpr {
+                    bind: self.hole,
+                    base: source_atom,
+                    label: field_label,
+                    next: self.next,
+                }));
+
+            self.next = final_access;
         }
 
         ControlFlow::Continue(())
@@ -557,7 +600,7 @@ mod tests {
     fn mock_resolved(tree: &impl TreeView) -> ResolvedNodes {
         let mut resolved = ResolvedNodes::default();
 
-        for query in tree.query3::<node::PathExpr, node::LetExpr, node::LambdaExpr>() {
+        for query in tree.query3::<node::SelectExpr, node::LetExpr, node::LambdaExpr>() {
             match query {
                 Query3::V0(id, _path) => resolved.insert_meta(id, ValueSym::new()),
                 Query3::V1(id, _let) => resolved.insert_meta(id, ValueSym::new()),
@@ -606,12 +649,12 @@ mod tests {
         let x = interner.intern("x");
 
         // Build a simple path expression: x (no module path, just binding)
-        let binding = builder.insert(node::ValueName::new(x));
-        let path_expr = builder.insert(node::PathExpr {
-            path: None,
-            binding,
-            select: vec![],
+        let source = builder.insert(node::ValueName::new(x));
+        let select = builder.insert(node::SelectExpr {
+            source,
+            fields: Vec::new(),
         });
+        let path_expr = builder.insert(node::PathExpr { path: None, select });
 
         let resolved = mock_resolved(&builder);
         let ir = normalize(builder, path_expr, &resolved);
@@ -634,12 +677,12 @@ mod tests {
         let name = builder.insert(node::ValueName::new(x));
         let value = builder.insert(node::LiteralExpr::Num(42.0));
         let value = builder.insert(node::Expr::Literal(value));
-        let inside = builder.insert(node::PathExpr {
-            path: None,
-            binding: name,
-            select: vec![],
+        let select = builder.insert(node::SelectExpr {
+            source: name,
+            fields: vec![],
         });
-        resolved.insert_meta(inside, x_sym);
+        resolved.insert_meta(select, x_sym);
+        let inside = builder.insert(node::PathExpr { path: None, select });
         let inside = builder.insert(node::Expr::Path(inside));
 
         let let_expr = builder.insert(node::LetExpr {
@@ -670,12 +713,12 @@ mod tests {
 
         // Create the lambda parameter reference in body: x
         let param_name = builder.insert(node::ValueName::new(x));
-        let lambda_body_path = builder.insert(node::PathExpr {
-            path: None,
-            binding: param_name,
-            select: vec![],
+        let select = builder.insert(node::SelectExpr {
+            source: param_name,
+            fields: vec![],
         });
-        resolved.insert_meta(lambda_body_path, x_sym); // Reference to parameter
+        resolved.insert_meta(select, x_sym); // Reference to parameter
+        let lambda_body_path = builder.insert(node::PathExpr { path: None, select });
         let lambda_body = builder.insert(node::Expr::Path(lambda_body_path));
 
         // Create the lambda: \x => x
@@ -701,54 +744,3 @@ mod tests {
         assert_eq!(value, Value::Num(42.0));
     }
 }
-
-// from typing import Callable, Union
-
-// def is_value(m):
-//     """Checks if the given expression is a value."""
-//     return isinstance(m, (int, float, bool, str))
-
-// def normalize_term(m, k):
-//     """Normalizes a given expression."""
-//     if isinstance(m, list):
-//         if m[0] == 'lambda':
-//             params, body = m[1:]
-//             return normalize_term(body, lambda n: ['lambda', params, n])
-//         elif m[0] == 'let':
-//             var, m1, m2 = m[1:]
-//             return normalize_term(m1, lambda n1: ['let', [var, n1], normalize_term(m2, k)])
-//         elif m[0] == 'if':
-//             m1, m2, m3 = m[1:]
-//             return normalize_term(m1, lambda t: ['if', t, normalize_term(m2, k), normalize_term(m3, k)])
-//         elif m[0] in ['+', '-', '*', '/', '=']:
-//             return normalize_name(m, k)
-//         else:
-//             return normalize_name(m, k)
-//     elif is_value(m):
-//         return k(m)
-//     else:
-//         raise ValueError("Invalid expression")
-
-// def normalize_name(m, k):
-//     """Normalizes a name or generates a fresh symbol for it."""
-//     if is_value(m):
-//         return k(m)
-//     else:
-//         # Generate a fresh symbol (implementation depends on your environment)
-//         fresh_symbol = generate_fresh_symbol()
-//         return ['let', [fresh_symbol, m], k(fresh_symbol)]
-
-// def normalize_name_list(m_list, k):
-//     """Normalizes a list of expressions."""
-//     if not m_list:
-//         return k([])
-//     else:
-//         head = m_list[0]
-//         tail = m_list[1:]
-//         return normalize_name(head, lambda t: normalize_name_list(tail, lambda t_tail: k([t] + t_tail)))
-
-// def generate_fresh_symbol():
-//     """Generates a unique symbol (e.g., 'x', 'y', 'z', ...)."""
-//     # Implementation depends on your environment
-//     # (e.g., using a counter)
-//     pass

@@ -79,7 +79,6 @@ define_nodes!(
     Pat,
     // Expressions
     LiteralExpr,
-    PathExpr,
     ListExpr,
     RecordField,
     RecordExpr,
@@ -87,6 +86,8 @@ define_nodes!(
     RecordRestrictExpr,
     RecordUpdateOp,
     RecordUpdateExpr,
+    SelectExpr,
+    PathExpr,
     UnaryOp,
     UnaryExpr,
     BinaryOp,

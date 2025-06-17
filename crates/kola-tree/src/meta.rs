@@ -210,7 +210,6 @@ define!(
     Pat,
     // Expressions
     LiteralExpr,
-    PathExpr,
     ListExpr,
     RecordField,
     RecordExpr,
@@ -218,6 +217,8 @@ define!(
     RecordRestrictExpr,
     RecordUpdateOp,
     RecordUpdateExpr,
+    SelectExpr,
+    PathExpr,
     UnaryOp,
     UnaryExpr,
     BinaryOp,

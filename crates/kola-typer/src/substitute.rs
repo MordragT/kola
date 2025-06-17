@@ -278,7 +278,6 @@ impl_meta_substitutable!(
     Pat,
     // Expressions
     LiteralExpr,
-    PathExpr,
     ListExpr,
     RecordField,
     RecordExpr,
@@ -286,6 +285,8 @@ impl_meta_substitutable!(
     RecordRestrictExpr,
     RecordUpdateOp,
     RecordUpdateExpr,
+    SelectExpr,
+    PathExpr,
     UnaryOp,
     UnaryExpr,
     BinaryOp,

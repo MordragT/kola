@@ -86,62 +86,6 @@ impl<'a> Notate<'a> for NodePrinter<'a, LiteralExpr> {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
-pub struct PathExpr {
-    /// The path to the module, e.g. `std::io`
-    pub path: Option<Id<ModulePath>>,
-    /// The binding of the path, e.g. `File`
-    pub binding: Id<ValueName>,
-    /// The selected field of a record e.g. `File.open`
-    pub select: Vec<Id<ValueName>>,
-}
-
-impl<'a> Notate<'a> for NodePrinter<'a, PathExpr> {
-    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
-        let PathExpr {
-            path,
-            binding,
-            select,
-        } = self.value;
-
-        let head = "PathExpr".cyan().display_in(arena);
-
-        let path = path.map(|p| self.to_id(p).notate(arena)).or_not(arena);
-        let binding = self.to_id(*binding).notate(arena);
-        let mut select = self.to_slice(select).gather(arena);
-
-        select.insert(0, path);
-        select.insert(1, binding);
-
-        let single = select
-            .clone()
-            .concat_by(arena.just(' '), arena)
-            .flatten(arena);
-
-        let multi = select.concat_by(arena.newline(), arena).indent(arena);
-
-        // let single = [
-        //     path.clone(),
-        //     binding.clone(),
-        //     select.clone().concat_by(arena.just(' '), arena),
-        // ]
-        // .concat_in(arena)
-        // .flatten(arena);
-
-        // let multi = [path, binding, select.concat_by(arena.newline(), arena)]
-        //     .concat_in(arena)
-        //     .indent(arena);
-
-        head.then(single.or(multi, arena), arena)
-    }
-}
-
-impl PathExpr {
-    pub fn get(&self, index: usize, tree: &impl TreeView) -> ValueName {
-        *self.select[index].get(tree)
-    }
-}
-
 #[derive(
     Debug, From, IntoIterator, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
 )]
@@ -231,6 +175,7 @@ pub struct RecordExpr(pub Vec<Id<RecordField>>);
 //         })
 //     }
 // }
+
 impl<'a> Notate<'a> for NodePrinter<'a, RecordExpr> {
     fn notate(&self, arena: &'a Bump) -> Notation<'a> {
         let head = "Record".blue().display_in(arena);
@@ -448,6 +393,92 @@ impl<'a> Notate<'a> for NodePrinter<'a, RecordUpdateExpr> {
             arena.newline(),
             arena.notate("value = "),
             value,
+        ]
+        .concat_in(arena)
+        .indent(arena);
+
+        head.then(single.or(multi, arena), arena)
+    }
+}
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+pub struct SelectExpr {
+    pub source: Id<ValueName>,
+    pub fields: Vec<Id<ValueName>>,
+}
+
+impl SelectExpr {
+    pub fn get(&self, index: usize, tree: &impl TreeView) -> ValueName {
+        *self.fields[index].get(tree)
+    }
+}
+
+impl<'a> Notate<'a> for NodePrinter<'a, SelectExpr> {
+    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
+        let SelectExpr { source, fields } = self.value;
+
+        let head = "SelectExpr".cyan().display_in(arena);
+
+        let source = self.to_id(*source).notate(arena);
+        let fields = self.to_slice(fields).gather(arena);
+
+        let single = [
+            arena.notate(" source = "),
+            source.clone().flatten(arena),
+            arena.notate(", fields = "),
+            fields
+                .clone()
+                .concat_by(arena.just(' '), arena)
+                .flatten(arena),
+        ]
+        .concat_in(arena);
+
+        let multi = [
+            arena.newline(),
+            arena.notate("source = "),
+            source,
+            arena.newline(),
+            arena.notate("fields = "),
+            fields.concat_by(arena.newline(), arena).indent(arena),
+        ]
+        .concat_in(arena)
+        .indent(arena);
+
+        head.then(single.or(multi, arena), arena)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+pub struct PathExpr {
+    /// The path to the module, e.g. `std::io`
+    pub path: Option<Id<ModulePath>>,
+    /// A selection expr e.g. `File.open`
+    pub select: Id<SelectExpr>,
+}
+
+impl<'a> Notate<'a> for NodePrinter<'a, PathExpr> {
+    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
+        let PathExpr { path, select } = *self.value;
+
+        let head = "PathExpr".cyan().display_in(arena);
+
+        let path = path.map(|p| self.to_id(p).notate(arena)).or_not(arena);
+        let select = self.to(select).notate(arena);
+
+        let single = [
+            arena.notate(" path = "),
+            path.clone().flatten(arena),
+            arena.notate(", select = "),
+            select.clone().flatten(arena),
+        ]
+        .concat_in(arena);
+
+        let multi = [
+            arena.newline(),
+            arena.notate("path = "),
+            path,
+            arena.newline(),
+            arena.notate("select = "),
+            select,
         ]
         .concat_in(arena)
         .indent(arena);
@@ -1318,42 +1349,42 @@ mod inspector {
                 .map(|p| NodeInspector::new(p, self.tree, self.interner))
         }
 
-        pub fn has_binding_name(self, expected: &str) -> Self {
-            let name = self.node.get(self.tree).binding.get(self.tree);
-            let s = self.interner.get(name.0).expect("Symbol not found");
-
-            assert_eq!(
-                s, expected,
-                "Expected binding name '{}' but found '{}'",
-                expected, s
-            );
-            self
-        }
-
-        pub fn has_segments(self, count: usize) -> Self {
-            let segments_len = self.node.get(self.tree).select.len();
-            assert_eq!(
-                segments_len, count,
-                "Expected {} segments but found {}",
-                count, segments_len
-            );
-            self
-        }
-
-        pub fn segment_at_is(self, index: usize, expected: &str) -> Self {
+        pub fn select(self) -> NodeInspector<'t, Id<SelectExpr>, S> {
             let path = self.node.get(self.tree);
-            assert!(
-                index < path.select.len(),
-                "Segment index {} out of bounds (max {})",
-                index,
-                path.select.len() - 1
+            NodeInspector::new(path.select, self.tree, self.interner)
+        }
+    }
+
+    impl<'t, S: BuildHasher> NodeInspector<'t, Id<SelectExpr>, S> {
+        pub fn source(self) -> NodeInspector<'t, Id<ValueName>, S> {
+            let select = self.node.get(self.tree);
+            NodeInspector::new(select.source, self.tree, self.interner)
+        }
+
+        pub fn has_fields(self, count: usize) -> Self {
+            let fields_len = self.node.get(self.tree).fields.len();
+            assert_eq!(
+                fields_len, count,
+                "Expected {} fields but found {}",
+                count, fields_len
             );
-            let segment = path.get(index, self.tree);
-            let s = self.interner.get(segment.0).expect("Symbol not found");
+            self
+        }
+
+        pub fn field_at_is(self, index: usize, expected: &str) -> Self {
+            let select = self.node.get(self.tree);
+            assert!(
+                index < select.fields.len(),
+                "Field index {} out of bounds (max {})",
+                index,
+                select.fields.len() - 1
+            );
+            let field = select.get(index, self.tree);
+            let s = self.interner.get(field.0).expect("Symbol not found");
 
             assert_eq!(
                 s, expected,
-                "Expected segment '{}' but found '{}'",
+                "Expected field '{}' but found '{}'",
                 expected, s
             );
             self

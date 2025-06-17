@@ -392,7 +392,6 @@ impl<'a> Notate<'a> for IrPrinter<'a, IfExpr> {
     }
 }
 
-// TODO can this be removed?
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct LetExpr {
     pub bind: Symbol,
@@ -1217,7 +1216,6 @@ pub enum Expr {
     Call(CallExpr),
     If(IfExpr),
     Let(LetExpr),
-    // LetIn(LetInExpr),
     Unary(UnaryExpr),
     Binary(BinaryExpr),
     List(ListExpr),

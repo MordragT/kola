@@ -72,10 +72,8 @@ impl Phase for ResolvePhase {
     type ExprError = !;
     type Expr = !;
 
-    // Path expressions - resolve to existing value symbols
-    // TODO: Consider splitting into PathExpr { path: Option<ModulePath>, select: SelectExpr }
-    // where only SelectExpr gets the ValueSym for cleaner separation of navigation vs. selection
-    type PathExpr = ValueSym; // Resolves to the referenced value symbol
+    type PathExpr = !; // Navigational node - contains Select- and ModulePathExpr
+    type SelectExpr = ValueSym; // Resolves to the referenced value symbol
 
     // Record operations - structural, no new symbols needed
     type RecordField = !;

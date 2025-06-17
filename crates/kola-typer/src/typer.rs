@@ -199,7 +199,7 @@ where
 
     /// Rule for Type Binding
     ///
-    /// ```
+    /// ```ignore
     /// ∆;Γ ⊢ ty : poly_t
     /// -----------------------
     /// ∆;Γ ⊢ type name = ty : poly_t
@@ -226,7 +226,7 @@ where
 
     /// Rule for Polymorphic Type with Type Variables
     ///
-    /// ```
+    /// ```ignore
     /// type_vars = [α₁, ..., αₙ]
     /// ∆, α₁, ..., αₙ; Γ, α₁ : *, ..., αₙ : * ⊢ ty_expr : mono_t
     /// -----------------------
@@ -299,21 +299,21 @@ where
     /// Rule for Type Path Resolution
     ///
     /// Module-qualified Path:
-    /// ```
+    /// ```ignore
     /// module : σ ∈ Γ   type_name : τ ∈ module
     /// -----------------------
     /// ∆;Γ ⊢ module.type_name : τ
     /// ```
     ///
     /// Local Type Variable:
-    /// ```
+    /// ```ignore
     /// type_name : τ ∈ Γ
     /// -----------------------
     /// ∆;Γ ⊢ type_name : τ
     /// ```
     ///
     /// Builtin Type:
-    /// ```
+    /// ```ignore
     /// type_name ∈ {Bool, Char, Num, Str}
     /// -----------------------
     /// ∆;Γ ⊢ type_name : builtin_type(type_name)
@@ -377,7 +377,7 @@ where
 
     /// Rule for Function Type
     ///
-    /// ```
+    /// ```ignore
     /// ∆;Γ ⊢ input : input_t
     /// ∆;Γ ⊢ output : output_t
     /// -----------------------
@@ -410,7 +410,7 @@ where
 
     /// Rule for Type Application
     ///
-    /// ```
+    /// ```ignore
     /// ∆;Γ ⊢ constructor : PolyType { vars: [α₁, ..., αₙ], ty: constructor_t }
     /// ∆;Γ ⊢ arg : arg_t
     /// n ≥ 1
@@ -462,7 +462,7 @@ where
     /// Rule for Record Type
     ///
     /// With extension:
-    /// ```
+    /// ```ignore
     /// ∆;Γ ⊢ field₁ : head_t₁
     /// ...
     /// ∆;Γ ⊢ fieldₙ : head_tₙ
@@ -472,7 +472,7 @@ where
     /// ```
     ///
     /// Without extension:
-    /// ```
+    /// ```ignore
     /// ∆;Γ ⊢ field₁ : head_t₁
     /// ...
     /// ∆;Γ ⊢ fieldₙ : head_tₙ
@@ -518,7 +518,7 @@ where
 
     /// Rule for Record Field Type
     ///
-    /// ```
+    /// ```ignore
     /// ∆;Γ ⊢ ty : value_t
     /// head_t = ("label" : value_t)
     /// -----------------------
@@ -551,7 +551,7 @@ where
     /// Rule for Variant Type
     ///
     /// With extension:
-    /// ```
+    /// ```ignore
     /// ∆;Γ ⊢ case₁ : head_t₁
     /// ...
     /// ∆;Γ ⊢ caseₙ : head_tₙ
@@ -561,7 +561,7 @@ where
     /// ```
     ///
     /// Without extension:
-    /// ```
+    /// ```ignore
     /// ∆;Γ ⊢ case₁ : head_t₁
     /// ...
     /// ∆;Γ ⊢ caseₙ : head_tₙ
@@ -608,7 +608,7 @@ where
     /// Rule for Variant Case Type
     ///
     /// With payload:
-    /// ```
+    /// ```ignore
     /// ∆;Γ ⊢ ty : value_t
     /// head_t = ("label" : value_t)
     /// -----------------------
@@ -616,7 +616,7 @@ where
     /// ```
     ///
     /// Without payload:
-    /// ```
+    /// ```ignore
     /// head_t = ("label" : Unit)
     /// -----------------------
     /// ∆;Γ ⊢ label : head_t
@@ -652,7 +652,7 @@ where
     /// Rule for Value Binding with Optional Type Annotation
     ///
     /// With type annotation:
-    /// ```
+    /// ```ignore
     /// ∆;Γ ⊢ value : value_t
     /// inferred_poly_t = generalize(value_t, [])
     /// ∆;Γ ⊢ ty : expected_poly_t
@@ -662,7 +662,7 @@ where
     /// ```
     ///
     /// Without type annotation:
-    /// ```
+    /// ```ignore
     /// ∆;Γ ⊢ value : value_t
     /// inferred_poly_t = generalize(value_t, [])
     /// -----------------------
@@ -712,7 +712,7 @@ where
 
     /// Rule for Literal Expressions
     ///
-    /// ```
+    /// ```ignore
     /// -----------------------
     /// ∆;Γ ⊢ literal : literal_type
     /// ```
@@ -740,7 +740,7 @@ where
 
     /// Rule for List Expression
     ///
-    /// ```
+    /// ```ignore
     /// ∆;Γ ⊢ e0 : element_t
     /// ∆;Γ ⊢ e1 : element_t
     /// ...
@@ -784,7 +784,7 @@ where
     /// Rule for Record Selection and Variable Lookup
     ///
     /// Record Selection:
-    /// ```
+    /// ```ignore
     /// ∆;Γ ⊢ record : record_t
     /// value_t = newvar()
     /// tail_t = newvar()
@@ -795,7 +795,7 @@ where
     /// ```
     ///
     /// Variable Lookup:
-    /// ```
+    /// ```ignore
     /// x : σ ∈ Γ   base_t = inst(σ)
     /// -----------------------
     /// ∆;Γ ⊢ x : base_t
@@ -809,15 +809,12 @@ where
     ) -> ControlFlow<Self::BreakValue> {
         let span = self.span(id);
 
-        let node::PathExpr {
-            path,
-            binding,
-            select,
-        } = id.get(tree);
+        let node::PathExpr { path, select } = *id.get(tree);
+        let node::SelectExpr { source, fields } = select.get(tree);
 
-        let name = binding.get(tree).0;
+        let name = source.get(tree).0;
 
-        let base_t = if let Some(path) = *path {
+        let base_t = if let Some(path) = path {
             let module_sym = *self.resolved.meta(path);
 
             let value_sym = self.env[module_sym]
@@ -831,13 +828,13 @@ where
         }
         // For the future: Builtin's should be checked before the type env because they probably
         // do not populate the "resolved" map
-        else if let Some(pt) = self.env.get_value(*self.resolved.meta(id)) {
+        else if let Some(pt) = self.env.get_value(*self.resolved.meta(select)) {
             pt.instantiate()
         } else {
             return ControlFlow::Break(Diagnostic::error(span, "Value not found in scope"));
         };
 
-        let result_t = select.iter().fold(base_t, |record_t, field| {
+        let result_t = fields.iter().fold(base_t, |record_t, field| {
             self.cons
                 .constrain_kind(Kind::Record, record_t.clone(), span);
 
@@ -864,7 +861,7 @@ where
 
     /// Rule for Record Field
     ///
-    /// ```
+    /// ```ignore
     /// ∆;Γ ⊢ value : value_t
     /// head_t = ("label" : value_t)
     /// -----------------------
@@ -894,7 +891,7 @@ where
 
     /// Rule for Record Expression
     ///
-    /// ```
+    /// ```ignore
     /// ∆;Γ ⊢ v0 : t0
     /// head_t0 = ("l0" : t0)
     /// ...
@@ -925,7 +922,7 @@ where
 
     /// Rule for Record Extension of `source` with a new field `label` and value `value`
     ///
-    /// ```
+    /// ```ignore
     /// ∆;Γ ⊢ value : value_t
     /// ∆;Γ ⊢ source : source_t where source_t is of kind Record
     /// head_t = ("label" : value_t)
@@ -968,7 +965,7 @@ where
 
     /// Rule for Record Restriction of `source` with label `field`
     ///
-    /// ```
+    /// ```ignore
     /// ∆;Γ ⊢ source : source_t
     /// value_t = newvar()
     /// tail_t = newvar()
@@ -1048,7 +1045,7 @@ where
 
     /// Rule for Record Update of `source` with label `field` and value `value`
     ///
-    /// ```
+    /// ```ignore
     /// ∆;Γ ⊢ source : source_t
     /// tail_t = newvar()
     /// old_value_t = newvar()
@@ -1140,7 +1137,7 @@ where
 
     /// Rule for Unary Expression (Application of unary operator)
     ///
-    /// ```
+    /// ```ignore
     /// ∆;Γ ⊢ op : op_t
     /// ∆;Γ ⊢ operand : operand_t
     /// result_t = newvar()
@@ -1235,7 +1232,7 @@ where
 
     /// Rule for Binary Expression (Application of binary operator)
     ///
-    /// ```
+    /// ```ignore
     /// ∆;Γ ⊢ op : op_t
     /// ∆;Γ ⊢ left : left_t
     /// ∆;Γ ⊢ right : right_t
@@ -1272,7 +1269,7 @@ where
 
     /// Rule for Let Expression
     ///
-    /// ```
+    /// ```ignore
     /// ∆;Γ ⊢ value : value_t
     /// value_pt = generalize(value_t, ftv(Γ))
     /// ∆;Γ, name : value_pt ⊢ inside : result_t
@@ -1318,7 +1315,7 @@ where
 
     /// Rule for If Expression
     ///
-    /// ```
+    /// ```ignore
     /// ∆;Γ ⊢ predicate : predicate_t
     /// ∆;Γ ⊢ then : then_t
     /// ∆;Γ ⊢ or : or_t
@@ -1355,7 +1352,7 @@ where
 
     /// Rule for Lambda Expression
     ///
-    /// ```
+    /// ```ignore
     /// param_t = newvar()
     /// ∆;Γ, param : param_t ⊢ body : body_t
     /// -----------------------
@@ -1387,7 +1384,7 @@ where
 
     /// Rule for Function Application
     ///
-    /// ```
+    /// ```ignore
     /// ∆;Γ ⊢ func : func_t
     /// ∆;Γ ⊢ arg : arg_t
     /// result_t = newvar()
@@ -1576,11 +1573,11 @@ mod tests {
 
         let value = builder.insert(node::LiteralExpr::Num(10.0));
         let binding = builder.insert(node::Name::from(interner.intern("x")));
-        let inside = builder.insert(node::PathExpr {
-            path: None,
-            binding,
-            select: vec![],
+        let select = builder.insert(node::SelectExpr {
+            source: binding.into(),
+            fields: vec![],
         });
+        let inside = builder.insert(node::PathExpr { path: None, select });
         let let_ = node::LetExpr::new_in(
             node::Name::from(interner.intern("x")),
             value.into(),

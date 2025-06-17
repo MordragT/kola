@@ -44,7 +44,6 @@ define_folder_trait!(
     Pat,
     // Expressions
     LiteralExpr,
-    PathExpr,
     ListExpr,
     RecordField,
     RecordExpr,
@@ -52,6 +51,8 @@ define_folder_trait!(
     RecordRestrictExpr,
     RecordUpdateOp,
     RecordUpdateExpr,
+    SelectExpr,
+    PathExpr,
     UnaryOp,
     UnaryExpr,
     BinaryOp,

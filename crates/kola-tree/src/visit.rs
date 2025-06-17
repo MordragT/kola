@@ -286,38 +286,6 @@ pub trait Visitor<T: TreeView> {
         ControlFlow::Continue(())
     }
 
-    fn walk_path_expr(
-        &mut self,
-        id: Id<node::PathExpr>,
-        tree: &T,
-    ) -> ControlFlow<Self::BreakValue> {
-        let node::PathExpr {
-            path,
-            binding,
-            select,
-        } = id.get(tree);
-
-        if let Some(path) = path {
-            self.visit_module_path(*path, tree)?;
-        }
-
-        self.visit_value_name(*binding, tree)?;
-
-        for id in select {
-            self.visit_value_name(*id, tree)?;
-        }
-
-        ControlFlow::Continue(())
-    }
-
-    fn visit_path_expr(
-        &mut self,
-        id: Id<node::PathExpr>,
-        tree: &T,
-    ) -> ControlFlow<Self::BreakValue> {
-        self.walk_path_expr(id, tree)
-    }
-
     fn walk_record_field(
         &mut self,
         id: Id<node::RecordField>,
@@ -442,6 +410,53 @@ pub trait Visitor<T: TreeView> {
         tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
         self.walk_record_update_expr(id, tree)
+    }
+
+    fn walk_select_expr(
+        &mut self,
+        id: Id<node::SelectExpr>,
+        tree: &T,
+    ) -> ControlFlow<Self::BreakValue> {
+        let node::SelectExpr { source, fields } = id.get(tree);
+
+        self.visit_value_name(*source, tree)?;
+        for field in fields {
+            self.visit_value_name(*field, tree)?;
+        }
+
+        ControlFlow::Continue(())
+    }
+
+    fn visit_select_expr(
+        &mut self,
+        id: Id<node::SelectExpr>,
+        tree: &T,
+    ) -> ControlFlow<Self::BreakValue> {
+        self.walk_select_expr(id, tree)
+    }
+
+    fn walk_path_expr(
+        &mut self,
+        id: Id<node::PathExpr>,
+        tree: &T,
+    ) -> ControlFlow<Self::BreakValue> {
+        let node::PathExpr { path, select } = *id.get(tree);
+
+        if let Some(path) = path {
+            self.visit_module_path(path, tree)?;
+        }
+
+        self.visit_select_expr(select, tree)?;
+
+        ControlFlow::Continue(())
+    }
+
+    fn visit_path_expr(
+        &mut self,
+        id: Id<node::PathExpr>,
+        tree: &T,
+    ) -> ControlFlow<Self::BreakValue> {
+        self.walk_path_expr(id, tree)
     }
 
     fn visit_unary_op(
