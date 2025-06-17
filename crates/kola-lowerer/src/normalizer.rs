@@ -206,24 +206,23 @@ where
     ) -> ControlFlow<Self::BreakValue> {
         let node::CallExpr { func, arg } = *id.get(tree);
 
-        // Create fresh symbols for function and argument
+        // Create fresh symbols and corresponding atoms
         let f_sym = self.next_symbol();
         let x_sym = self.next_symbol();
 
-        // Create atoms for the symbols
         let f_atom = self.builder.add(ir::Atom::Symbol(f_sym));
         let x_atom = self.builder.add(ir::Atom::Symbol(x_sym));
 
-        // Create the call expression that will be the "context" for our normalizations
+        // Create the call expression context and set continuation
         let call_expr = self.builder.add(ir::Expr::Call(ir::CallExpr {
-            bind: self.hole, // Result goes into current hole
-            func: f_atom,    // Function symbol
-            arg: x_atom,     // Argument symbol
-            next: self.next, // Current continuation
+            bind: self.hole,
+            func: f_atom,
+            arg: x_atom,
+            next: self.next,
         }));
         self.next = call_expr;
 
-        // Now normalize in reverse order (CPS style):
+        // Normalize in reverse order (CPS style)
         self.hole = x_sym;
         self.visit_expr(arg, tree)?;
 
@@ -244,15 +243,14 @@ where
             or,
         } = *id.get(tree);
 
-        // Create a fresh symbol for the predicate
+        // Create fresh symbol and corresponding atom
         let pred_sym = self.next_symbol();
         let pred_atom = self.builder.add(ir::Atom::Symbol(pred_sym));
 
-        // Normalize the then and else branches in fresh contexts
         let then_expr = self.with_fresh_context(tree, |this, tree| this.visit_expr(then, tree));
         let or_expr = self.with_fresh_context(tree, |this, tree| this.visit_expr(or, tree));
 
-        // Create the if expression that will be the "context" for our normalization
+        // Create the if expression context and set continuation
         let if_expr = self.builder.add(ir::Expr::If(ir::IfExpr {
             bind: self.hole,
             predicate: pred_atom,
@@ -262,7 +260,7 @@ where
         }));
         self.next = if_expr;
 
-        // Normalize the predicate expression
+        // Normalize predicate
         self.hole = pred_sym;
         self.visit_expr(predicate, tree)
     }
@@ -274,30 +272,26 @@ where
     ) -> ControlFlow<Self::BreakValue> {
         let node::UnaryExpr { op, operand } = *id.get(tree);
 
-        // Create a fresh symbol for the operand
+        // Create fresh symbol and corresponding atom
         let operand_sym = self.next_symbol();
         let operand_atom = self.builder.add(ir::Atom::Symbol(operand_sym));
 
-        // Get the unary operator
         let unary_op = match *op.get(tree) {
             node::UnaryOp::Neg => ir::UnaryOp::Neg,
             node::UnaryOp::Not => ir::UnaryOp::Not,
         };
 
-        // Create the unary expression that will be the "context" for our normalization
+        // Create the unary expression context and set continuation
         let unary_expr = self.builder.add(ir::Expr::Unary(ir::UnaryExpr {
             bind: self.hole,
             op: unary_op,
             arg: operand_atom,
             next: self.next,
         }));
-
-        // Normalize in CPS style:
-        // First, set up context for operand normalization
         self.next = unary_expr;
-        self.hole = operand_sym;
 
-        // Normalize the operand expression
+        // Normalize operand
+        self.hole = operand_sym;
         self.visit_expr(operand, tree)
     }
 
@@ -360,21 +354,19 @@ where
     ) -> ControlFlow<Self::BreakValue> {
         let items = &id.get(tree).0;
 
+        // Create fresh symbols for each item
+        let item_syms = (0..items.len())
+            .map(|_| self.next_symbol())
+            .collect::<Vec<_>>();
+
+        // Create the list expression context and set continuation
         let mut list_expr = ir::ListExpr {
             bind: self.hole,
             head: None,
             tail: None,
             next: self.next,
         };
-
-        // Create symbols for each item
-        let item_syms = (0..items.len())
-            .map(|_| self.next_symbol())
-            .collect::<Vec<_>>();
-
-        // Build list expression with symbols
         list_expr.prepend_all(item_syms.iter().map(ir::Atom::from), self.builder);
-
         self.next = self.builder.add(ir::Expr::List(list_expr));
 
         // Normalize expressions in reverse order (CPS style)
@@ -393,16 +385,9 @@ where
     ) -> ControlFlow<Self::BreakValue> {
         let fields = &id.get(tree).0;
 
-        let mut record_expr = ir::RecordExpr {
-            bind: self.hole,
-            head: None,
-            next: self.next,
-        };
-
-        // Create symbols for each field value
+        // Create fresh symbols for each field value
         let field_value_syms: Vec<_> = (0..fields.len()).map(|_| self.next_symbol()).collect();
 
-        // Extract field labels and pair with value symbols
         let field_pairs: Vec<_> = fields
             .iter()
             .zip(&field_value_syms)
@@ -413,9 +398,13 @@ where
             })
             .collect();
 
-        // Build record with (label, value_symbol) pairs
+        // Create the record expression context and set continuation
+        let mut record_expr = ir::RecordExpr {
+            bind: self.hole,
+            head: None,
+            next: self.next,
+        };
         record_expr.extend(field_pairs, self.builder);
-
         self.next = self.builder.add(ir::Expr::Record(record_expr));
 
         // Normalize field values in reverse order (CPS style)
@@ -439,26 +428,24 @@ where
             value,
         } = *id.get(tree);
 
-        // Create a fresh symbols
+        // Create fresh symbols and corresponding atoms
         let value_sym = self.next_symbol();
         let source_sym = self.next_symbol();
 
-        // Create an atoms for the symbols
         let value_atom = self.builder.add(ir::Atom::Symbol(value_sym));
         let source_atom = self.builder.add(ir::Atom::Symbol(source_sym));
 
-        // Create the record extend expression that will be the "context" for our normalization
-        let extend_expr = self
-            .builder
-            .add(ir::Expr::RecordExtend(ir::RecordExtendExpr {
-                bind: self.hole,
-                base: source_atom,
-                label: field.get(tree).0,
-                value: value_atom,
-                next: self.next,
-            }));
+        // Create the record extend expression context and set continuation
+        let extend_expr = self.builder.add(ir::Expr::RecordExtend(ir::RecordExtendExpr {
+            bind: self.hole,
+            base: source_atom,
+            label: field.get(tree).0,
+            value: value_atom,
+            next: self.next,
+        }));
         self.next = extend_expr;
 
+        // Normalize in reverse order (CPS style)
         self.hole = value_sym;
         self.visit_expr(value, tree)?;
 
