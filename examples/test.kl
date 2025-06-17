@@ -1,7 +1,4 @@
 {
-    module inner = {
-        pi = 3.14,
-    },
 
     type Person = forall a . { name : Str | a },
 
@@ -13,6 +10,11 @@
 
     #main = [1, 2, 3],
 
+
+
+
+
+
     nested_a = { id = 1, info = { person = { age = 30 } } },
 
     nested_b = { nested_a.info | person.age += 1 },
@@ -21,5 +23,23 @@
 
     #main = person_b.name,
 
+
+    module inner = {
+        pi = 3.14,
+    },
+
+
+
+
     main = inner::pi,
+
+
+
+
+
+    #main = (f "Hello, World!"),
+    #main = (f 10),
+
+
+    f = fn x : Num => x + 1,
 }

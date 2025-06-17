@@ -613,15 +613,20 @@ pub fn expr_parser<'t>() -> impl KolaParser<'t, Id<node::Expr>> + Clone {
             .boxed();
 
         // Allow type annotation of ident
-        let func = kw(KwT::FN)
-            .ignore_then(name.clone())
-            .then_ignore(ctrl(CtrlT::DOUBLE_ARROW))
-            .then(expr.clone())
-            .map_to_node(|(param, body)| node::LambdaExpr { param, body })
-            .to_expr()
-            .labelled("FuncExpr")
-            .as_context()
-            .boxed();
+        let func = group((
+            kw(KwT::FN).ignore_then(name.clone()),
+            ctrl(CtrlT::COLON).ignore_then(type_parser()).or_not(),
+            ctrl(CtrlT::DOUBLE_ARROW).ignore_then(expr.clone()),
+        ))
+        .map_to_node(|(param, param_type, body)| node::LambdaExpr {
+            param,
+            param_type,
+            body,
+        })
+        .to_expr()
+        .labelled("FuncExpr")
+        .as_context()
+        .boxed();
 
         // TODO allow "recursive" (a (b c)) and maybe also syntactic sugar (a b c)
         let call = recursive(|call| {

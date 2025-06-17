@@ -4,6 +4,8 @@ use kola_collections::{HashMap, ImHashMap, ImOrdMap, ImVec, OrdMap};
 use kola_print::prelude::OwoColorize;
 use kola_tree::prelude::*;
 
+use crate::scope::BoundVars;
+
 use super::types::{MonoType, TypeVar};
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
@@ -60,6 +62,10 @@ impl Substitution {
         self.cache.get(tv).or_else(|| self.table.get(tv))
     }
 
+    pub fn contains(&self, tv: &TypeVar) -> bool {
+        self.cache.contains_key(tv) || self.table.contains_key(tv)
+    }
+
     pub fn insert(&mut self, tv: TypeVar, ty: MonoType) -> Option<MonoType> {
         self.table.insert(tv, ty)
     }
@@ -78,6 +84,12 @@ impl Substitution {
     pub fn clear(&mut self) {
         self.table.clear();
         self.cache.clear();
+    }
+}
+
+impl BoundVars for Substitution {
+    fn extend_bound_vars(&self, vars: &mut Vec<TypeVar>) {
+        vars.extend(self.table.keys());
     }
 }
 

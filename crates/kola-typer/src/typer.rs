@@ -1449,10 +1449,24 @@ where
         id: Id<node::LambdaExpr>,
         tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
-        let node::LambdaExpr { param, body } = *id.get(tree);
+        let node::LambdaExpr {
+            param,
+            param_type,
+            body,
+        } = *id.get(tree);
+
         let param_t = MonoType::variable();
 
-        // let name = self.types.meta(func.param).clone();
+        if let Some(param_type) = param_type {
+            self.visit_type(param_type, tree)?;
+            // Safety: `param_type` can only be a simple type by construction
+            let expected_param_t = self.types.meta(param_type).to_mono().unwrap();
+
+            // Constrain the parameter type against the expected type
+            self.cons
+                .constrain(expected_param_t, param_t.clone(), self.span(id));
+        }
+
         let name = param.get(tree).0.clone();
 
         self.type_scope.enter(name, PolyType::from(param_t.clone()));

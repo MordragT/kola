@@ -3,7 +3,7 @@ use kola_print::prelude::*;
 use kola_utils::{as_variant, interner::StrKey};
 use serde::{Deserialize, Serialize};
 
-use super::Pat;
+use super::{Pat, Type};
 use crate::{
     id::Id,
     node::{ModulePath, ValueName},
@@ -1122,19 +1122,26 @@ impl<'a> Notate<'a> for NodePrinter<'a, CallExpr> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct LambdaExpr {
     pub param: Id<ValueName>, // TODO pattern
+    pub param_type: Option<Id<Type>>,
     pub body: Id<Expr>,
 }
 
 impl LambdaExpr {
     pub fn new_in(
         param: impl Into<ValueName>,
+        param_type: Option<Type>,
         body: impl Into<Expr>,
         builder: &mut TreeBuilder,
     ) -> Id<Self> {
         let param = builder.insert(param.into());
+        let param_type = param_type.map(|t| builder.insert(t));
         let body = builder.insert(body.into());
 
-        builder.insert(Self { param, body })
+        builder.insert(Self {
+            param,
+            param_type,
+            body,
+        })
     }
 
     pub fn param(self, tree: &impl TreeView) -> ValueName {
@@ -1148,25 +1155,39 @@ impl LambdaExpr {
 
 impl<'a> Notate<'a> for NodePrinter<'a, LambdaExpr> {
     fn notate(&self, arena: &'a Bump) -> Notation<'a> {
-        let LambdaExpr { param, body } = self.value;
+        let LambdaExpr {
+            param,
+            param_type,
+            body,
+        } = self.value;
 
         let head = "Func".blue().display_in(arena);
 
         let param = self.to_id(*param).notate(arena);
+        let param_type = param_type.map(|t| self.to_id(t).notate(arena));
         let body = self.to_id(*body).notate(arena);
 
         let single = [
             arena.notate(" param = "),
-            param.clone().flatten(arena),
+            param.clone(),
+            param_type
+                .clone()
+                .map(|t| arena.notate(", param_type = ").then(t, arena))
+                .or_not(arena),
             arena.notate(", body = "),
-            body.clone().flatten(arena),
+            body.clone(),
         ]
-        .concat_in(arena);
+        .concat_in(arena)
+        .flatten(arena);
 
         let multi = [
             arena.newline(),
             arena.notate("param = "),
             param,
+            param_type
+                .clone()
+                .map(|t| [arena.newline(), arena.notate("param_type = "), t].concat_in(arena))
+                .or_not(arena),
             arena.newline(),
             arena.notate("body = "),
             body,

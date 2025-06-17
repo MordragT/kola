@@ -135,62 +135,46 @@ impl fmt::Display for PolyType {
     }
 }
 
-// TODO is the following really correct ?
-// The only expression that has a polytype also in the TypedNodes is the ValueBind
-// and since it is at the top-level ??
-// But then at the same time I need ordering of multiple top-level value binds,
-// because they might depend on each other.
-// And then I definitely need to apply the substitution to the polytype.
-
 /// Substitution of Polytypes in Constraint-Based Type Inference
 ///
-/// This implementation handles substitution for polytypes in a constraint-based type inference
-/// system where generalization occurs during inference and final substitution is deferred.
+/// This handles substitution for polytypes in a constraint-based system where
+/// generalization occurs during inference and final substitution is deferred.
 ///
-/// ## Algorithmic Context
+/// ## The Problem
 ///
-/// Unlike Algorithm W (which applies substitutions eagerly), this implementation follows a
-/// constraint-based approach:
-/// 1. Generate constraints and generalize types during inference traversal
-/// 2. Solve all constraints at the end to produce a global substitution
-/// 3. Apply the final substitution to all types, including polytypes
-///
-/// ## The "Open Polytype" Problem
-///
-/// When generalization occurs during inference (e.g., at let-bindings), polytypes may contain
-/// free variables that need later substitution:
+/// When generalization occurs during inference, polytypes may contain free variables
+/// that need later substitution:
 ///
 /// ```
-/// // During let-expression inference with outer scope containing T1:
+/// // During inference with outer scope containing T1:
 /// let x = expr_of_type(T1 -> T2) in body
 ///
-/// // Generalization with bound_vars = [T1] produces:
+/// // Generalization produces:
 /// PolyType { vars: [T2], ty: T1 -> T2 }
 /// //                        ^^     ^^
 /// //                     free   bound
 ///
-/// // Later constraint solving determines T1 = Int
-/// // Final substitution should produce:
+/// // After constraint solving (T1 = Int):
 /// PolyType { vars: [T2], ty: Int -> T2 }
 /// ```
 ///
-/// ## Substitution Rules
+/// ## Substitution Strategy
 ///
-/// When applying substitution to a polytype:
-/// 1. Apply substitution to the inner monotype (`ty` field)
-/// 2. Preserve all quantified variables (`vars` field unchanged)
-/// 3. The inner monotype's substitution will automatically avoid bound variables
-///    due to how MonoType substitution handles variable scoping
-///
-/// This is essential for correctness in systems where generalization and constraint
-/// solving are temporally separated, which is common in modern type checkers for
-/// better error reporting and incremental compilation.
+/// 1. Apply substitution to the inner monotype
+/// 2. Remove quantified variables that are resolved by the substitution
+/// 3. Keep only variables that remain truly quantified
 impl Substitutable for PolyType {
     fn try_apply(&self, s: &mut Substitution) -> Option<Self> {
-        // Apply substitution to the inner monotype while preserving quantified variables
-        self.ty.try_apply(s).map(|ty| PolyType {
-            vars: self.vars.clone(), // Quantified variables remain unchanged
-            ty,                      // Free variables in inner type get substituted
+        self.ty.try_apply(s).map(|ty| {
+            // Remove quantified variables that have been resolved by substitution
+            let vars = self
+                .vars
+                .iter()
+                .filter(|var| !s.contains(var))
+                .copied()
+                .collect();
+
+            PolyType { vars, ty }
         })
     }
 }

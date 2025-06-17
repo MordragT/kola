@@ -250,7 +250,7 @@ where
         id: TreeId<node::LambdaExpr>,
         tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
-        let node::LambdaExpr { param, body } = *id.get(tree);
+        let node::LambdaExpr { body, .. } = *id.get(tree);
 
         let param = self.symbol_of(id);
         let body = self.with_fresh_context(tree, |this, tree| this.visit_expr(body, tree));
@@ -727,20 +727,10 @@ mod tests {
         // Build: (\x => x) 42  (identity function applied to 42)
 
         // Create the lambda parameter reference in body: x
-        let param_name = builder.insert(node::ValueName::new(x)); // Reference to parameter
-        let fields = builder.insert(node::FieldPath::default());
-        let lambda_body_path = builder.insert(node::PathExpr {
-            path: None,
-            source: param_name,
-            fields,
-        });
-        let lambda_body = builder.insert(node::Expr::Path(lambda_body_path));
+        let lambda_body = node::PathExpr::new_in(None, x, Vec::new(), &mut builder);
 
         // Create the lambda: \x => x
-        let lambda_expr = builder.insert(node::LambdaExpr {
-            param: param_name,
-            body: lambda_body,
-        });
+        let lambda_expr = node::LambdaExpr::new_in(x, None, lambda_body, &mut builder);
         resolved.insert_meta(lambda_expr, x_sym); // Lambda gets parameter symbol
         let lambda = builder.insert(node::Expr::Lambda(lambda_expr));
 

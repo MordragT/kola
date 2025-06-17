@@ -504,12 +504,20 @@ where
         id: Id<node::LambdaExpr>,
         tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
-        let node::LambdaExpr { param, body } = *tree.node(id);
+        let node::LambdaExpr {
+            param,
+            param_type,
+            body,
+        } = *tree.node(id);
 
         let name = *tree.node(param);
 
         let sym = ValueSym::new();
         self.insert_symbol(id, sym);
+
+        if let Some(param_type) = param_type {
+            self.visit_type(param_type, tree)?;
+        }
 
         self.stack.value_scope_mut().enter(name, sym);
         self.walk_expr(body, tree)?;

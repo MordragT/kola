@@ -605,9 +605,18 @@ pub trait Visitor<T: TreeView> {
         id: Id<node::LambdaExpr>,
         tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
-        let node::LambdaExpr { param, body } = id.get(tree);
+        let node::LambdaExpr {
+            param,
+            param_type,
+            body,
+        } = id.get(tree);
 
         self.visit_value_name(*param, tree)?;
+
+        if let Some(param_type) = param_type {
+            self.visit_type(*param_type, tree)?;
+        }
+
         self.visit_expr(*body, tree)?;
 
         ControlFlow::Continue(())
