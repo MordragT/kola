@@ -9,6 +9,7 @@ kola-tree.workspace = true
 kola-resolver.workspace = true
 kola-collections.workspace = true
 kola-print.workspace = true
+kola-utils.workspace = true
 log.workspace = true
 
 [dev-dependencies]

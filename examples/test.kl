@@ -9,11 +9,11 @@
 
     person_a = { name = "Alice" },
 
-    person_b = { person_a | +age = 30 },
+    person_b = { person_a | name = "Bob" },
 
     #eine_liste : List Str = ["eins", "zwei", "drei"],
 
     #main = [1, 2, 3],
 
-    main = 10 - 5,
+    main = person_b,
 }

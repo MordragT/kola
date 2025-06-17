@@ -114,6 +114,7 @@ use kola_resolver::{
     symbol::{ModuleSym, ValueSym},
 };
 use kola_tree::tree::Tree;
+use kola_utils::interner::StrInterner;
 use log::debug;
 
 use crate::{normalizer::Normalizer, symbol::SymbolEnv};
@@ -242,6 +243,7 @@ pub fn lower(
     value_orders: &ValueOrders,
     forest: &Forest,
     arena: &Bump,
+    interner: &StrInterner,
     print_options: PrintOptions,
 ) -> Program {
     let mut builder = IrBuilder::new();
@@ -261,7 +263,7 @@ pub fn lower(
     }
 
     let ir = builder.finish(next);
-    let ir_printer = IrPrinter::new(&ir, next);
+    let ir_printer = IrPrinter::new(&ir, interner, next);
 
     debug!(
         "{}\n{}",

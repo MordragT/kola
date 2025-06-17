@@ -81,6 +81,7 @@ impl Driver {
             &value_orders,
             &forest,
             &self.arena,
+            &self.interner,
             self.print_options,
         );
 

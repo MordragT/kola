@@ -436,13 +436,15 @@ where
         let source_atom = self.builder.add(ir::Atom::Symbol(source_sym));
 
         // Create the record extend expression context and set continuation
-        let extend_expr = self.builder.add(ir::Expr::RecordExtend(ir::RecordExtendExpr {
-            bind: self.hole,
-            base: source_atom,
-            label: field.get(tree).0,
-            value: value_atom,
-            next: self.next,
-        }));
+        let extend_expr = self
+            .builder
+            .add(ir::Expr::RecordExtend(ir::RecordExtendExpr {
+                bind: self.hole,
+                base: source_atom,
+                label: field.get(tree).0,
+                value: value_atom,
+                next: self.next,
+            }));
         self.next = extend_expr;
 
         // Normalize in reverse order (CPS style)
@@ -462,7 +464,26 @@ where
     ) -> ControlFlow<Self::BreakValue> {
         let node::RecordRestrictExpr { source, field } = *id.get(tree);
 
-        todo!()
+        // Create fresh symbol and corresponding atom
+        let source_sym = self.next_symbol();
+        let source_atom = self.builder.add(ir::Atom::Symbol(source_sym));
+
+        // Create the record restrict expression context and set continuation
+        let restrict_expr = self
+            .builder
+            .add(ir::Expr::RecordRestrict(ir::RecordRestrictExpr {
+                bind: self.hole,
+                base: source_atom,
+                label: field.get(tree).0,
+                next: self.next,
+            }));
+        self.next = restrict_expr;
+
+        // Normalize in reverse order (CPS style)
+        self.hole = source_sym;
+        self.visit_expr(source, tree)?;
+
+        ControlFlow::Continue(())
     }
 
     fn visit_record_update_expr(
@@ -477,7 +498,43 @@ where
             value,
         } = *id.get(tree);
 
-        todo!()
+        // Create fresh symbols and corresponding atoms
+        let value_sym = self.next_symbol();
+        let source_sym = self.next_symbol();
+
+        let value_atom = self.builder.add(ir::Atom::Symbol(value_sym));
+        let source_atom = self.builder.add(ir::Atom::Symbol(source_sym));
+
+        let op = match *op.get(tree) {
+            node::RecordUpdateOp::Assign => ir::RecordUpdateOp::Assign,
+            node::RecordUpdateOp::AddAssign => ir::RecordUpdateOp::AddAssign,
+            node::RecordUpdateOp::SubAssign => ir::RecordUpdateOp::SubAssign,
+            node::RecordUpdateOp::MulAssign => ir::RecordUpdateOp::MulAssign,
+            node::RecordUpdateOp::DivAssign => ir::RecordUpdateOp::DivAssign,
+            node::RecordUpdateOp::RemAssign => ir::RecordUpdateOp::RemAssign,
+        };
+
+        // Create the record update expression context and set continuation
+        let update_expr = self
+            .builder
+            .add(ir::Expr::RecordUpdate(ir::RecordUpdateExpr {
+                bind: self.hole,
+                base: source_atom,
+                label: field.get(tree).0,
+                op,
+                value: value_atom,
+                next: self.next,
+            }));
+        self.next = update_expr;
+
+        // Normalize in reverse order (CPS style)
+        self.hole = value_sym;
+        self.visit_expr(value, tree)?;
+
+        self.hole = source_sym;
+        self.visit_expr(source, tree)?;
+
+        ControlFlow::Continue(())
     }
 }
 

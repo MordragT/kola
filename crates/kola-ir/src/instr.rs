@@ -2,7 +2,11 @@ use std::{fmt, mem};
 
 use derive_more::{Display, From};
 use kola_print::prelude::*;
-use kola_utils::{impl_try_as, interner::StrKey};
+use kola_utils::{
+    fmt::{DisplayWithInterner, StrInternerExt},
+    impl_try_as,
+    interner::StrKey,
+};
 
 use crate::{
     id::Id,
@@ -137,7 +141,7 @@ impl<'a> Notate<'a> for IrPrinter<'a, Id<Atom>> {
             Atom::Bool(b) => b.green().display_in(arena),
             Atom::Char(c) => format!("'{}'", c.green()).display_in(arena),
             Atom::Num(n) => n.green().display_in(arena),
-            Atom::Str(s) => format!("\"{}\"", s.green()).display_in(arena),
+            Atom::Str(s) => format!("\"{}\"", self.interner[s].green()).display_in(arena),
             Atom::Func(f) => self.to(f).notate(arena),
             Atom::Symbol(s) => s.display_in(arena),
         };
@@ -764,7 +768,7 @@ impl<'a> Notate<'a> for IrPrinter<'a, RecordField> {
     fn notate(&self, arena: &'a Bump) -> Notation<'a> {
         let RecordField { label, value, next } = self.node;
 
-        let label = label.display_in(arena);
+        let label = self.interner[label].display_in(arena);
         let value = self.to(value).notate(arena);
 
         let field = [label, arena.notate(" = "), value].concat_in(arena);
@@ -906,7 +910,7 @@ impl<'a> Notate<'a> for IrPrinter<'a, RecordExtendExpr> {
 
         let bind = bind.display_in(arena);
         let base = self.to(base).notate(arena);
-        let label = label.display_in(arena);
+        let label = self.interner[label].display_in(arena);
         let value = self.to(value).notate(arena);
         let next = arena.newline().then(self.to(next).notate(arena), arena);
 
@@ -985,7 +989,7 @@ impl<'a> Notate<'a> for IrPrinter<'a, RecordRestrictExpr> {
 
         let bind = bind.display_in(arena);
         let base = self.to(base).notate(arena);
-        let label = label.display_in(arena);
+        let label = self.interner[label].display_in(arena);
         let next = arena.newline().then(self.to(next).notate(arena), arena);
 
         let single = [
@@ -1092,7 +1096,7 @@ impl<'a> Notate<'a> for IrPrinter<'a, RecordUpdateExpr> {
 
         let bind = bind.display_in(arena);
         let base = self.to(base).notate(arena);
-        let label = label.display_in(arena);
+        let label = self.interner[label].display_in(arena);
         let op = op.display_in(arena);
         let value = self.to(value).notate(arena);
         let next = arena.newline().then(self.to(next).notate(arena), arena);
@@ -1176,7 +1180,7 @@ impl<'a> Notate<'a> for IrPrinter<'a, RecordAccessExpr> {
 
         let bind = bind.display_in(arena);
         let base = self.to(base).notate(arena);
-        let label = label.display_in(arena);
+        let label = self.interner[label].display_in(arena);
         let next = arena.newline().then(self.to(next).notate(arena), arena);
 
         let single = [
