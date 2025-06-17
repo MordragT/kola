@@ -221,18 +221,16 @@ where
             arg: x_atom,     // Argument symbol
             next: self.next, // Current continuation
         }));
+        self.next = call_expr;
 
         // Now normalize in reverse order (CPS style):
-        // First, set up context for function normalization
-        self.next = call_expr;
-        self.hole = f_sym;
+        self.hole = x_sym;
+        self.visit_expr(arg, tree)?;
 
-        // Normalize the function expression
+        self.hole = f_sym;
         self.visit_expr(func, tree)?;
 
-        // Then, normalize the argument into x_sym
-        self.hole = x_sym;
-        self.visit_expr(arg, tree)
+        ControlFlow::Continue(())
     }
 
     fn visit_if_expr(
@@ -262,12 +260,10 @@ where
             or: or_expr,
             next: self.next,
         }));
-
-        // Set up context for predicate normalization
         self.next = if_expr;
-        self.hole = pred_sym;
 
         // Normalize the predicate expression
+        self.hole = pred_sym;
         self.visit_expr(predicate, tree)
     }
 
@@ -312,15 +308,13 @@ where
     ) -> ControlFlow<Self::BreakValue> {
         let node::BinaryExpr { left, op, right } = *id.get(tree);
 
-        // Create fresh symbols for left and right operands
+        // Create fresh symbols and correpsonding atoms
         let left_sym = self.next_symbol();
         let right_sym = self.next_symbol();
 
-        // Create atoms for the symbols
         let left_atom = self.builder.add(ir::Atom::Symbol(left_sym));
         let right_atom = self.builder.add(ir::Atom::Symbol(right_sym));
 
-        // Get the binary operator
         let binary_op = match *op.get(tree) {
             node::BinaryOp::Add => ir::BinaryOp::Add,
             node::BinaryOp::Sub => ir::BinaryOp::Sub,
@@ -347,18 +341,16 @@ where
             rhs: right_atom,
             next: self.next,
         }));
-
-        // Normalize in CPS style:
-        // First, set up context for left operand normalization
         self.next = binary_expr;
-        self.hole = left_sym;
 
-        // Normalize the left expression
+        // Normalize in reverse order (CPS style):
+        self.hole = right_sym;
+        self.visit_expr(right, tree)?;
+
+        self.hole = left_sym;
         self.visit_expr(left, tree)?;
 
-        // Then, normalize the right operand into right_sym
-        self.hole = right_sym;
-        self.visit_expr(right, tree)
+        ControlFlow::Continue(())
     }
 
     fn visit_list_expr(
