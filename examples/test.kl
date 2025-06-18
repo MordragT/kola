@@ -1,19 +1,10 @@
 {
 
-    type Person = forall a . { name : Str | a },
 
-    person_a = { name = "Alice" },
-
-    person_b = { person_a | name = "Bob" },
 
     #eine_liste : List Str = ["eins", "zwei", "drei"],
 
     #main = [1, 2, 3],
-
-
-
-
-
 
     nested_a = { id = 1, info = { person = { age = 30 } } },
 
@@ -23,23 +14,25 @@
 
     #main = person_b.name,
 
-
     module inner = {
         pi = 3.14,
     },
 
-
-
-
-    main = inner::pi,
-
-
-
-
+    #main = inner::pi,
 
     #main = (f "Hello, World!"),
     #main = (f 10),
 
 
     f = fn x : Num => x + 1,
+
+
+    type Person = forall a . { name : Str | a },
+
+    person_a = { name = "Alice" },
+
+    person_b = { person_a | name = "Bob" },
+
+    main = { person_a : Person = person_a },
+
 }

@@ -137,19 +137,26 @@ impl<'a> Notate<'a> for NodePrinter<'a, ListExpr> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct RecordField {
     pub field: Id<ValueName>,
+    pub type_: Option<Id<Type>>,
     pub value: Id<Expr>,
 }
 
 impl RecordField {
     pub fn new_in(
         field: impl Into<ValueName>,
+        type_: Option<Type>,
         value: impl Into<Expr>,
         builder: &mut TreeBuilder,
     ) -> Id<Self> {
         let field = builder.insert(field.into());
+        let type_ = type_.map(|t| builder.insert(t));
         let value = builder.insert(value.into());
 
-        builder.insert(Self { field, value })
+        builder.insert(Self {
+            field,
+            type_,
+            value,
+        })
     }
 
     pub fn field(self, tree: &impl TreeView) -> ValueName {
@@ -163,25 +170,38 @@ impl RecordField {
 
 impl<'a> Notate<'a> for NodePrinter<'a, RecordField> {
     fn notate(&self, arena: &'a Bump) -> Notation<'a> {
-        let RecordField { field, value } = *self.value;
+        let RecordField {
+            field,
+            type_,
+            value,
+        } = *self.value;
 
         let head = "RecordField".blue().display_in(arena);
 
         let field = self.to_id(field).notate(arena);
+        let type_ = type_.map(|t| self.to_id(t).notate(arena));
         let value = self.to_id(value).notate(arena);
 
         let single = [
-            arena.notate(" key = "),
-            field.clone().flatten(arena),
+            arena.notate(" label = "),
+            field.clone(),
+            type_
+                .clone()
+                .map(|t| arena.notate(", type = ").then(t, arena))
+                .or_not(arena),
             arena.notate(", value = "),
-            value.clone().flatten(arena),
+            value.clone(),
         ]
-        .concat_in(arena);
+        .concat_in(arena)
+        .flatten(arena);
 
         let multi = [
             arena.newline(),
-            arena.notate("key = "),
+            arena.notate("label = "),
             field,
+            type_
+                .map(|t| [arena.newline(), arena.notate("type = "), t].concat_in(arena))
+                .or_not(arena),
             arena.newline(),
             arena.notate("value = "),
             value,

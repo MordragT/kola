@@ -262,7 +262,10 @@ where
             .collect::<Vec<_>>();
 
         self.visit_type(*ty, tree)?;
-        let mono_t = self.types.meta(*ty).to_mono().unwrap();
+        let mono_t = match self.types.meta(*ty).to_mono() {
+            Ok(t) => t,
+            Err(e) => return ControlFlow::Break(e.into_diagnostic(self.span(id))),
+        };
 
         for var_node in vars.iter().rev() {
             let var_name = var_node.get(tree).0;
@@ -395,10 +398,16 @@ where
         let node::FuncType { input, output } = *id.get(tree);
 
         self.visit_type(input, tree)?;
-        let input_t = self.types.meta(input).to_mono().unwrap();
+        let input_t = match self.types.meta(input).to_mono() {
+            Ok(t) => t,
+            Err(e) => return ControlFlow::Break(e.into_diagnostic(self.span(id))),
+        };
 
         self.visit_type(output, tree)?;
-        let output_t = self.types.meta(output).to_mono().unwrap();
+        let output_t = match self.types.meta(output).to_mono() {
+            Ok(t) => t,
+            Err(e) => return ControlFlow::Break(e.into_diagnostic(self.span(id))),
+        };
 
         let func_t = MonoType::func(input_t, output_t);
 
@@ -433,7 +442,10 @@ where
         let node::TypeApplication { constructor, arg } = *id.get(tree);
 
         self.visit_type(arg, tree)?;
-        let arg_t = self.types.meta(arg).to_mono().unwrap();
+        let arg_t = match self.types.meta(arg).to_mono() {
+            Ok(t) => t,
+            Err(e) => return ControlFlow::Break(e.into_diagnostic(self.span(id))),
+        };
 
         self.visit_type(constructor, tree)?;
         let PolyType { vars, ty } = self.types.meta(constructor);
@@ -500,7 +512,10 @@ where
                     "Type variable not found in scope",
                 ));
             };
-            extension_poly_t.to_mono().unwrap()
+            match extension_poly_t.to_mono() {
+                Ok(t) => t,
+                Err(e) => return ControlFlow::Break(e.into_diagnostic(self.span(id))),
+            }
         } else {
             MonoType::empty_row()
         };
@@ -538,7 +553,10 @@ where
         let label = name.get(tree).0;
 
         self.visit_type(ty, tree)?;
-        let value_t = self.types.meta(ty).to_mono().unwrap();
+        let value_t = match self.types.meta(ty).to_mono() {
+            Ok(t) => t,
+            Err(e) => return ControlFlow::Break(e.into_diagnostic(self.span(id))),
+        };
 
         let head_t = LabeledType { label, ty: value_t };
 
@@ -589,7 +607,10 @@ where
                     "Type variable not found in scope",
                 ));
             };
-            extension_poly_t.to_mono().unwrap()
+            match extension_poly_t.to_mono() {
+                Ok(t) => t,
+                Err(e) => return ControlFlow::Break(e.into_diagnostic(self.span(id))),
+            }
         } else {
             MonoType::empty_row()
         };
@@ -636,7 +657,10 @@ where
 
         let value_t = if let Some(payload_ty) = ty {
             self.visit_type(payload_ty, tree)?;
-            self.types.meta(payload_ty).to_mono().unwrap()
+            match self.types.meta(payload_ty).to_mono() {
+                Ok(t) => t,
+                Err(e) => return ControlFlow::Break(e.into_diagnostic(self.span(id))),
+            }
         } else {
             MonoType::UNIT
         };
@@ -881,10 +905,26 @@ where
     ) -> ControlFlow<Self::BreakValue> {
         self.walk_record_field(id, tree)?;
 
-        let node::RecordField { field, value } = *id.get(tree);
+        let node::RecordField {
+            field,
+            type_,
+            value,
+        } = *id.get(tree);
 
         let label = field.get(tree).0.clone();
         let value_t = self.types.meta(value).clone();
+
+        if let Some(type_) = type_ {
+            self.visit_type(type_, tree)?;
+
+            let expected_t = match self.types.meta(type_).to_mono() {
+                Ok(t) => t,
+                Err(e) => return ControlFlow::Break(e.into_diagnostic(self.span(id))),
+            };
+
+            self.cons
+                .constrain(expected_t, value_t.clone(), self.span(id));
+        }
 
         self.update_type(id, LabeledType { label, ty: value_t });
         ControlFlow::Continue(())
@@ -1460,7 +1500,10 @@ where
         if let Some(param_type) = param_type {
             self.visit_type(param_type, tree)?;
             // Safety: `param_type` can only be a simple type by construction
-            let expected_param_t = self.types.meta(param_type).to_mono().unwrap();
+            let expected_param_t = match self.types.meta(param_type).to_mono() {
+                Ok(t) => t,
+                Err(e) => return ControlFlow::Break(e.into_diagnostic(self.span(id))),
+            };
 
             // Constrain the parameter type against the expected type
             self.cons

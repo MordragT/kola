@@ -291,9 +291,18 @@ pub trait Visitor<T: TreeView> {
         id: Id<node::RecordField>,
         tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
-        let node::RecordField { field, value } = id.get(tree);
+        let node::RecordField {
+            field,
+            type_,
+            value,
+        } = id.get(tree);
 
         self.visit_value_name(*field, tree)?;
+
+        if let Some(type_) = type_ {
+            self.visit_type(*type_, tree)?;
+        }
+
         self.visit_expr(*value, tree)?;
 
         ControlFlow::Continue(())

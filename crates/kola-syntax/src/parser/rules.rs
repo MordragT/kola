@@ -458,12 +458,17 @@ pub fn expr_parser<'t>() -> impl KolaParser<'t, Id<node::Expr>> + Clone {
 
         // record operations
 
-        let field = name
-            .clone()
-            .then_ignore(op(OpT::ASSIGN))
-            .then(expr.clone())
-            .map(|(field, value)| node::RecordField { field, value })
-            .to_node();
+        let field = group((
+            name.clone(),
+            ctrl(CtrlT::COLON).ignore_then(type_parser()).or_not(),
+            op(OpT::ASSIGN).ignore_then(expr.clone()),
+        ))
+        .map(|(field, type_, value)| node::RecordField {
+            field,
+            type_,
+            value,
+        })
+        .to_node();
 
         let instantiate = field
             .separated_by(ctrl(CtrlT::COMMA))

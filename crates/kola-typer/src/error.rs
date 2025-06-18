@@ -1,3 +1,4 @@
+use kola_span::IntoDiagnostic;
 use kola_utils::{errors::Errors, fmt::DisplayWithInterner, interner::StrKey};
 use thiserror::Error;
 
@@ -8,6 +9,8 @@ pub enum TypeConversionError {
     #[error("Cannot convert `{0}` to a monomorphic type")]
     NotMonomorphic(PolyType),
 }
+
+impl IntoDiagnostic for TypeConversionError {}
 
 pub type TypeErrors = Errors<TypeError>;
 
