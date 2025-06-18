@@ -977,14 +977,16 @@ where
         id: Id<node::RecordExtendExpr>,
         tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
-        self.walk_record_extend_expr(id, tree)?;
+        self.walk_record_extend_expr(id, tree)?; // TODO maybe make this explicit ?
 
         let span = self.span(id);
 
         let node::RecordExtendExpr {
             source,
+            source_type,
             select,
             value,
+            value_type,
         } = *id.get(tree);
 
         let mut source_t = self.types.meta(source).clone();
@@ -1014,10 +1016,28 @@ where
             source_t = value_t;
         }
 
-        let value_t = self.types.meta(value);
+        if let Some(type_) = source_type {
+            let expected_t = match self.types.meta(type_).to_mono() {
+                Ok(t) => t,
+                Err(e) => return ControlFlow::Break(e.into_diagnostic(span)),
+            };
+
+            self.cons.constrain(expected_t, source_t.clone(), span);
+        }
 
         self.cons
             .constrain_kind(Kind::Record, source_t.clone(), span);
+
+        let value_t = self.types.meta(value);
+
+        if let Some(type_) = value_type {
+            let expected_t = match self.types.meta(type_).to_mono() {
+                Ok(t) => t,
+                Err(e) => return ControlFlow::Break(e.into_diagnostic(span)),
+            };
+
+            self.cons.constrain(expected_t, value_t.clone(), span);
+        }
 
         let label = field.get(tree).0.clone();
         let head_t = LabeledType {

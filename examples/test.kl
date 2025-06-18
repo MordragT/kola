@@ -33,6 +33,10 @@
 
     person_b = { person_a | name = "Bob" },
 
-    main = { person_a : Person = person_a },
+
+    #main = { person_a : Person = person_a },
+
+
+    main = { nested_a.info : { person : { age : Num } } | +person.job : Str = "IT" },
 
 }

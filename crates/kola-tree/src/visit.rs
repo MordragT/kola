@@ -353,13 +353,24 @@ pub trait Visitor<T: TreeView> {
     ) -> ControlFlow<Self::BreakValue> {
         let node::RecordExtendExpr {
             source,
+            source_type,
             select,
             value,
+            value_type,
         } = *id.get(tree);
 
         self.visit_expr(source, tree)?;
+
+        if let Some(type_) = source_type {
+            self.visit_type(type_, tree)?;
+        }
+
         self.visit_field_path(select, tree)?;
         self.visit_expr(value, tree)?;
+
+        if let Some(type_) = value_type {
+            self.visit_type(type_, tree)?;
+        }
 
         ControlFlow::Continue(())
     }

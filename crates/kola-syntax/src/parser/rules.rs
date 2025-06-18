@@ -479,7 +479,7 @@ pub fn expr_parser<'t>() -> impl KolaParser<'t, Id<node::Expr>> + Clone {
             .boxed();
 
         enum RecordOp {
-            Extend(Id<node::FieldPath>, Id<node::Expr>),
+            Extend(Id<node::FieldPath>, Option<Id<node::Type>>, Id<node::Expr>),
             Restrict(Id<node::FieldPath>),
             Update(
                 Id<node::FieldPath>,
@@ -495,12 +495,13 @@ pub fn expr_parser<'t>() -> impl KolaParser<'t, Id<node::Expr>> + Clone {
             .map_to_node(node::FieldPath)
             .boxed();
 
-        let extend = op(OpT::ADD)
-            .ignore_then(field_path.clone())
-            .then_ignore(op(OpT::ASSIGN))
-            .then(expr.clone())
-            .map(|(field, value)| RecordOp::Extend(field, value))
-            .boxed();
+        let extend = group((
+            op(OpT::ADD).ignore_then(field_path.clone()),
+            ctrl(CtrlT::COLON).ignore_then(type_parser()).or_not(),
+            op(OpT::ASSIGN).ignore_then(expr.clone()),
+        ))
+        .map(|(field, type_, value)| RecordOp::Extend(field, type_, value))
+        .boxed();
 
         let restrict = op(OpT::SUB)
             .ignore_then(field_path.clone())
@@ -528,16 +529,19 @@ pub fn expr_parser<'t>() -> impl KolaParser<'t, Id<node::Expr>> + Clone {
 
         let record_op = path
             .clone()
-            .foldl_with(inner_op, |source, op, e| {
+            .then(ctrl(CtrlT::COLON).ignore_then(type_parser()).or_not())
+            .foldl_with(inner_op, |(source, source_type), op, e| {
                 let span = e.span();
                 let tree: &mut State = e.state();
 
-                match op {
-                    RecordOp::Extend(select, value) => tree.insert_as::<node::Expr, _>(
+                let expr = match op {
+                    RecordOp::Extend(select, value_type, value) => tree.insert_as::<node::Expr, _>(
                         node::RecordExtendExpr {
                             source,
+                            source_type,
                             select,
                             value,
+                            value_type,
                         },
                         span,
                     ),
@@ -554,8 +558,11 @@ pub fn expr_parser<'t>() -> impl KolaParser<'t, Id<node::Expr>> + Clone {
                         },
                         span,
                     ),
-                }
+                };
+
+                (expr, source_type)
             })
+            .map(|(expr, _)| expr)
             .boxed();
 
         let record_expr = nested_parser(record_op.or(instantiate), Delim::Brace, |_span| {

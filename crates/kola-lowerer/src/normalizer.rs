@@ -489,6 +489,7 @@ where
             source,
             select,
             value,
+            ..
         } = *id.get(tree);
 
         // Create fresh symbols and corresponding atoms
