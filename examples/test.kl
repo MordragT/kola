@@ -1,6 +1,7 @@
 {
     simple = { a = { b = 10 } },
-    main = { simple | -a.b },
+    main = { simple : { a : { b : Num } } | a.b : Num += 20 },
+    #main = { simple : { b : Num } | a.b : Num += 20 },
     #main = simple.a,
     #result : { b : Num } = simple.a,
     #main = result,

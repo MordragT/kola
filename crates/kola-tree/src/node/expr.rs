@@ -163,6 +163,10 @@ impl RecordField {
         *self.field.get(tree)
     }
 
+    pub fn type_(self, tree: &impl TreeView) -> Option<Type> {
+        self.type_.map(|t| *t.get(tree))
+    }
+
     pub fn value(self, tree: &impl TreeView) -> Expr {
         *self.value.get(tree)
     }
@@ -409,8 +413,16 @@ impl RecordRestrictExpr {
         *self.source.get(tree)
     }
 
+    pub fn source_type(self, tree: &impl TreeView) -> Option<Type> {
+        self.source_type.map(|t| *t.get(tree))
+    }
+
     pub fn select(self, tree: &impl TreeView) -> &FieldPath {
         self.select.get(tree)
+    }
+
+    pub fn value_type(self, tree: &impl TreeView) -> Option<Type> {
+        self.value_type.map(|t| *t.get(tree))
     }
 }
 
@@ -489,34 +501,46 @@ impl<'a> Notate<'a> for NodePrinter<'a, RecordUpdateOp> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct RecordUpdateExpr {
     pub source: Id<Expr>,
+    pub source_type: Option<Id<Type>>,
     pub select: Id<FieldPath>,
     pub op: Id<RecordUpdateOp>,
     pub value: Id<Expr>,
+    pub value_type: Option<Id<Type>>,
 }
 
 impl RecordUpdateExpr {
     pub fn new_in(
         source: impl Into<Expr>,
+        source_type: Option<Type>,
         select: impl Into<FieldPath>,
         op: RecordUpdateOp,
         value: impl Into<Expr>,
+        value_type: Option<Type>,
         builder: &mut TreeBuilder,
     ) -> Id<Self> {
         let source = builder.insert(source.into());
+        let source_type = source_type.map(|t| builder.insert(t));
         let select = builder.insert(select.into());
         let op = builder.insert(op);
         let value = builder.insert(value.into());
+        let value_type = value_type.map(|t| builder.insert(t));
 
         builder.insert(Self {
             source,
+            source_type,
             select,
             op,
             value,
+            value_type,
         })
     }
 
     pub fn source(self, tree: &impl TreeView) -> Expr {
         *self.source.get(tree)
+    }
+
+    pub fn source_type(self, tree: &impl TreeView) -> Option<Type> {
+        self.source_type.map(|t| *t.get(tree))
     }
 
     pub fn select(self, tree: &impl TreeView) -> &FieldPath {
@@ -530,40 +554,60 @@ impl RecordUpdateExpr {
     pub fn value(self, tree: &impl TreeView) -> Expr {
         *self.value.get(tree)
     }
+
+    pub fn value_type(self, tree: &impl TreeView) -> Option<Type> {
+        self.value_type.map(|t| *t.get(tree))
+    }
 }
 
 impl<'a> Notate<'a> for NodePrinter<'a, RecordUpdateExpr> {
     fn notate(&self, arena: &'a Bump) -> Notation<'a> {
         let RecordUpdateExpr {
             source,
+            source_type,
             select,
             op,
             value,
+            value_type,
         } = self.value;
 
         let head = "RecordUpdate".blue().display_in(arena);
 
         let source = self.to_id(*source).notate(arena);
+        let source_type = source_type.map(|t| self.to(t).notate(arena));
         let field = self.to_id(*select).notate(arena);
         let op = self.to_id(*op).notate(arena);
         let value = self.to_id(*value).notate(arena);
+        let value_type = value_type.map(|t| self.to(t).notate(arena));
 
         let single = [
             arena.notate(" source = "),
-            source.clone().flatten(arena),
+            source.clone(),
+            source_type
+                .clone()
+                .map(|t| arena.notate(", source_type = ").then(t, arena))
+                .or_not(arena),
             arena.notate(", field = "),
-            field.clone().flatten(arena),
+            field.clone(),
             arena.notate(", op = "),
-            op.clone().flatten(arena),
+            op.clone(),
             arena.notate(", value = "),
-            value.clone().flatten(arena),
+            value.clone(),
+            value_type
+                .clone()
+                .map(|t| arena.notate(", value_type = ").then(t, arena))
+                .or_not(arena),
         ]
-        .concat_in(arena);
+        .concat_in(arena)
+        .flatten(arena);
 
         let multi = [
             arena.newline(),
             arena.notate("source = "),
             source,
+            source_type
+                .map(|t| [arena.newline(), arena.notate("source_type = "), t].concat_in(arena))
+                .or_not(arena),
             arena.newline(),
             arena.notate("field = "),
             field,
@@ -573,6 +617,9 @@ impl<'a> Notate<'a> for NodePrinter<'a, RecordUpdateExpr> {
             arena.newline(),
             arena.notate("value = "),
             value,
+            value_type
+                .map(|t| [arena.newline(), arena.notate("value_type = "), t].concat_in(arena))
+                .or_not(arena),
         ]
         .concat_in(arena)
         .indent(arena);

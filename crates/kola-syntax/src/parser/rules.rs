@@ -483,6 +483,7 @@ pub fn expr_parser<'t>() -> impl KolaParser<'t, Id<node::Expr>> + Clone {
             Restrict(Id<node::FieldPath>, Option<Id<node::Type>>),
             Update(
                 Id<node::FieldPath>,
+                Option<Id<node::Type>>,
                 Id<node::RecordUpdateOp>,
                 Id<node::Expr>,
             ),
@@ -519,9 +520,14 @@ pub fn expr_parser<'t>() -> impl KolaParser<'t, Id<node::Expr>> + Clone {
         ))
         .to_node();
 
-        let update = group((field_path.clone(), update_op, expr.clone()))
-            .map(|(field, op, value)| RecordOp::Update(field, op, value))
-            .boxed();
+        let update = group((
+            field_path.clone(),
+            ctrl(CtrlT::COLON).ignore_then(type_parser()).or_not(),
+            update_op,
+            expr.clone(),
+        ))
+        .map(|(field, type_, op, value)| RecordOp::Update(field, type_, op, value))
+        .boxed();
 
         let inner_op = ctrl(CtrlT::PIPE)
             .ignore_then(choice((extend, restrict, update)))
@@ -555,15 +561,18 @@ pub fn expr_parser<'t>() -> impl KolaParser<'t, Id<node::Expr>> + Clone {
                         },
                         span,
                     ),
-                    RecordOp::Update(select, op, value) => tree.insert_as::<node::Expr, _>(
-                        node::RecordUpdateExpr {
-                            source,
-                            select,
-                            op,
-                            value,
-                        },
-                        span,
-                    ),
+                    RecordOp::Update(select, value_type, op, value) => tree
+                        .insert_as::<node::Expr, _>(
+                            node::RecordUpdateExpr {
+                                source,
+                                source_type,
+                                select,
+                                op,
+                                value,
+                                value_type,
+                            },
+                            span,
+                        ),
                 };
 
                 (expr, source_type)

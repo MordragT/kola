@@ -1060,6 +1060,17 @@ where
 
         let mut source_t = self.types.meta(source).clone();
 
+        if let Some(type_) = source_type {
+            self.visit_type(type_, tree)?;
+            let expected_t = match self.types.meta(type_).to_mono() {
+                Ok(t) => t,
+                Err(e) => return ControlFlow::Break(e.into_diagnostic(span)),
+            };
+
+            self.cons
+                .constrain_check(expected_t, source_t.clone(), span);
+        }
+
         // Split path into navigation fields and final extension field
         // Safety: `select` is always non-empty
         let (field, fields) = select.get(tree).0.as_slice().split_last().unwrap();
@@ -1086,16 +1097,6 @@ where
         }
 
         self.update_type(select, source_t.clone());
-
-        if let Some(type_) = source_type {
-            let expected_t = match self.types.meta(type_).to_mono() {
-                Ok(t) => t,
-                Err(e) => return ControlFlow::Break(e.into_diagnostic(span)),
-            };
-
-            self.cons
-                .constrain_check(expected_t, source_t.clone(), span);
-        }
 
         self.cons
             .constrain_kind(Kind::Record, source_t.clone(), span);
@@ -1159,6 +1160,17 @@ where
         self.visit_expr(source, tree)?;
         let mut source_t = self.types.meta(source).clone();
 
+        if let Some(type_) = source_type {
+            self.visit_type(type_, tree)?;
+            let expected_t = match self.types.meta(type_).to_mono() {
+                Ok(t) => t,
+                Err(e) => return ControlFlow::Break(e.into_diagnostic(span)),
+            };
+
+            self.cons
+                .constrain_check(expected_t, source_t.clone(), span);
+        }
+
         // Split path into navigation fields and final restriction field
         // Safety: `select` is always non-empty
         let (field, fields) = select.get(tree).0.as_slice().split_last().unwrap();
@@ -1186,17 +1198,6 @@ where
         }
 
         self.update_type(select, source_t.clone());
-
-        if let Some(type_) = source_type {
-            self.visit_type(type_, tree)?;
-            let expected_t = match self.types.meta(type_).to_mono() {
-                Ok(t) => t,
-                Err(e) => return ControlFlow::Break(e.into_diagnostic(span)),
-            };
-
-            self.cons
-                .constrain_check(expected_t, source_t.clone(), span);
-        }
 
         // Restrict the final field
         self.cons
@@ -1294,12 +1295,25 @@ where
 
         let node::RecordUpdateExpr {
             source,
+            source_type,
             select,
             op,
             value,
+            value_type,
         } = *id.get(tree);
 
         let mut source_t = self.types.meta(source).clone();
+
+        if let Some(type_) = source_type {
+            self.visit_type(type_, tree)?;
+            let expected_t = match self.types.meta(type_).to_mono() {
+                Ok(t) => t,
+                Err(e) => return ControlFlow::Break(e.into_diagnostic(span)),
+            };
+
+            self.cons
+                .constrain_check(expected_t, source_t.clone(), span);
+        }
 
         // Split path into navigation fields and final update field
         // Safety: `select` is always non-empty
@@ -1327,7 +1341,9 @@ where
             source_t = value_t;
         }
 
-        // Update the final field
+        self.update_type(select, source_t.clone());
+
+        // Restrict the final field
         self.cons
             .constrain_kind(Kind::Record, source_t.clone(), span);
 
@@ -1345,6 +1361,17 @@ where
         );
 
         let new_value_t = self.types.meta(value).clone();
+
+        if let Some(type_) = value_type {
+            self.visit_type(type_, tree)?;
+            let expected_t = match self.types.meta(type_).to_mono() {
+                Ok(t) => t,
+                Err(e) => return ControlFlow::Break(e.into_diagnostic(span)),
+            };
+
+            self.cons
+                .constrain_check(expected_t, new_value_t.clone(), span);
+        }
 
         // Treat the update operation as a function: old_value_t -> new_value_t
         let op_t = self.types.meta(op).clone();
