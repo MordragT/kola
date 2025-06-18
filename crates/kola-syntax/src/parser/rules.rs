@@ -587,21 +587,24 @@ pub fn expr_parser<'t>() -> impl KolaParser<'t, Id<node::Expr>> + Clone {
         .as_context();
 
         // TODO allow type annotation
-        let let_ = kw(KwT::LET)
-            .ignore_then(name.clone())
-            .then_ignore(op(OpT::ASSIGN))
-            .then(expr.clone())
-            .then_ignore(kw(KwT::IN))
-            .then(expr.clone())
-            .map_to_node(|((name, value), inside)| node::LetExpr {
-                name,
-                value,
-                inside,
-            })
-            .to_expr()
-            .labelled("LetExpr")
-            .as_context()
-            .boxed();
+        let let_ = group((
+            kw(KwT::LET).ignore_then(name.clone()),
+            ctrl(CtrlT::COLON)
+                .ignore_then(type_scheme_parser())
+                .or_not(),
+            op(OpT::ASSIGN).ignore_then(expr.clone()),
+            kw(KwT::IN).ignore_then(expr.clone()),
+        ))
+        .map_to_node(|(name, value_type, value, inside)| node::LetExpr {
+            name,
+            value_type,
+            value,
+            inside,
+        })
+        .to_expr()
+        .labelled("LetExpr")
+        .as_context()
+        .boxed();
 
         let if_ = kw(KwT::IF)
             .ignore_then(expr.clone())

@@ -5,5 +5,8 @@
     alice : forall a . Person a = { name = "Alice", age = 30 },
     bob : forall a . Person a = { name = "Bob", car = "BMW" },
 
-    main = bob,
+    #main = let people : forall a  b . { zero : Person a, one : Person b } = { zero = alice, one = bob } in people,
+
+    # This one should fail
+    main = let people : forall a . { zero : Person a, one : Person a } = { zero = alice, one = bob } in people,
 }

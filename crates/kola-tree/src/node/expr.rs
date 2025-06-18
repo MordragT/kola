@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 use super::{Pat, Type};
 use crate::{
     id::Id,
-    node::{ModulePath, ValueName},
+    node::{ModulePath, TypeScheme, ValueName},
     print::NodePrinter,
     tree::{TreeBuilder, TreeView},
 };
@@ -923,6 +923,7 @@ impl<'a> Notate<'a> for NodePrinter<'a, BinaryExpr> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct LetExpr {
     pub name: Id<ValueName>,
+    pub value_type: Option<Id<TypeScheme>>,
     pub value: Id<Expr>,
     pub inside: Id<Expr>,
 }
@@ -930,16 +931,19 @@ pub struct LetExpr {
 impl LetExpr {
     pub fn new_in(
         name: impl Into<ValueName>,
+        value_type: Option<TypeScheme>,
         value: impl Into<Expr>,
         inside: impl Into<Expr>,
         builder: &mut TreeBuilder,
     ) -> Id<Self> {
         let name = builder.insert(name.into());
+        let value_type = value_type.map(|t| builder.insert(t));
         let value = builder.insert(value.into());
         let inside = builder.insert(inside.into());
 
         builder.insert(Self {
             name,
+            value_type,
             value,
             inside,
         })
@@ -947,6 +951,10 @@ impl LetExpr {
 
     pub fn name(self, tree: &impl TreeView) -> ValueName {
         *self.name.get(tree)
+    }
+
+    pub fn value_type(self, tree: &impl TreeView) -> Option<&TypeScheme> {
+        self.value_type.map(|t| t.get(tree))
     }
 
     pub fn value(self, tree: &impl TreeView) -> Expr {
@@ -962,6 +970,7 @@ impl<'a> Notate<'a> for NodePrinter<'a, LetExpr> {
     fn notate(&self, arena: &'a Bump) -> Notation<'a> {
         let LetExpr {
             name,
+            value_type,
             value,
             inside,
         } = self.value;
@@ -969,12 +978,17 @@ impl<'a> Notate<'a> for NodePrinter<'a, LetExpr> {
         let head = "Let".blue().display_in(arena);
 
         let name = self.to_id(*name).notate(arena);
+        let value_type = value_type.map(|t| self.to(t).notate(arena));
         let value = self.to_id(*value).notate(arena);
         let inside = self.to_id(*inside).notate(arena);
 
         let single = [
             arena.notate(" name = "),
             name.clone().flatten(arena),
+            value_type
+                .clone()
+                .map(|t| arena.notate(", value_type = ").then(t, arena))
+                .or_not(arena),
             arena.notate(", value = "),
             value.clone().flatten(arena),
             arena.notate(", inside = "),
@@ -986,6 +1000,9 @@ impl<'a> Notate<'a> for NodePrinter<'a, LetExpr> {
             arena.newline(),
             arena.notate("name = "),
             name,
+            value_type
+                .map(|t| [arena.newline(), arena.notate("value_type = "), t].concat_in(arena))
+                .or_not(arena),
             arena.newline(),
             arena.notate("value = "),
             value,

@@ -1,3 +1,24 @@
+//! Type inference engine implementing Hindley-Milner with row polymorphism extensions.
+//!
+//! This module provides constraint-based type inference that supports:
+//! - **Standard HM inference**: Let-polymorphism with principal types
+//! - **Row polymorphism**: Extensible records with type-safe field access
+//! - **Kind constraints**: Ensuring type variables respect their intended usage
+//! - **Type annotations**: Bidirectional typing with user-provided type hints
+//!
+//! ## Key Design Decisions
+//!
+//! **Constraint-based solving**: Type and kind constraints are solved incrementally
+//! in the order they're generated, providing better error locality and fail-fast behavior.
+//!
+//! **Annotation semantics**: Type annotations on let-bindings use the annotation type
+//! for the binding (not a generalization of the inferred type), enabling proper
+//! row polymorphic constraints and predictable type behavior.
+//!
+//! **Unified constraint handling**: Type unification and kind checking are interleaved
+//! rather than separated into phases, matching constraint satisfaction solving and
+//! ensuring row variable bindings are validated immediately.
+
 use std::{ops::ControlFlow, rc::Rc};
 
 use kola_resolver::phase::ResolvedNodes;
@@ -5,6 +26,7 @@ use kola_span::{Diagnostic, IntoDiagnostic, Loc, Located, Report};
 use kola_syntax::prelude::*;
 use kola_tree::prelude::*;
 use kola_utils::{errors::Errors, fmt::StrInternerExt, interner::StrInterner};
+use log::debug;
 
 use crate::{
     env::{KindEnv, TypeEnv},
@@ -106,10 +128,14 @@ impl Constraints {
                     let lhs = expected.apply_cow(s);
                     let rhs = actual.apply_cow(s);
 
+                    debug!("SOLVING: {} ≈ {}", lhs, rhs);
+
                     lhs.try_unify(&rhs, s).map_err(|errors| ((errors, span)))?;
                 }
             }
         }
+
+        dbg!(s);
 
         Ok(())
     }
@@ -1508,6 +1534,7 @@ where
     fn visit_let_expr(&mut self, id: Id<node::LetExpr>, tree: &T) -> ControlFlow<Self::BreakValue> {
         let &node::LetExpr {
             name,
+            value_type,
             value,
             inside,
         } = id.get(tree);
@@ -1518,11 +1545,26 @@ where
         self.visit_expr(value, tree)?;
         TypeVar::exit();
 
-        // due to explicit traversal this is known
         let value_t = self.types.meta(value).clone();
-        let value_pt = value_t.generalize(&self.type_scope.bound_vars());
 
-        self.type_scope.enter(name, value_pt);
+        // First: Handle type annotation constraint if present
+        if let Some(type_) = value_type {
+            self.visit_type_scheme(type_, tree)?;
+            let expected_pt = self.types.meta(type_).clone();
+
+            // Constrain the value type against the annotation
+            self.cons
+                .constrain(expected_pt.instantiate(), value_t.clone(), self.span(id));
+
+            // Use the annotation type for the binding (like in visit_value_bind)
+            let binding_type = expected_pt;
+            self.type_scope.enter(name, binding_type);
+        } else {
+            // No annotation: generalize the inferred type
+            let value_pt = value_t.generalize(&self.type_scope.bound_vars());
+            self.type_scope.enter(name, value_pt);
+        }
+
         self.visit_expr(inside, tree)?;
         self.type_scope.exit(&name);
 
@@ -1816,7 +1858,7 @@ mod tests {
 
         let value = builder.insert(node::LiteralExpr::Num(10.0));
         let inside = node::PathExpr::new_in(None, interner.intern("x"), Vec::new(), &mut builder);
-        let let_ = node::LetExpr::new_in(interner.intern("x"), value, inside, &mut builder);
+        let let_ = node::LetExpr::new_in(interner.intern("x"), None, value, inside, &mut builder);
 
         let types = solve(builder, let_).unwrap();
 

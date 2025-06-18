@@ -479,21 +479,26 @@ where
     fn visit_let_expr(&mut self, id: Id<node::LetExpr>, tree: &T) -> ControlFlow<Self::BreakValue> {
         let node::LetExpr {
             name,
+            value_type,
             value,
             inside,
         } = *tree.node(id);
 
         let name = *tree.node(name);
 
+        if let Some(type_) = value_type {
+            self.visit_type_scheme(type_, tree)?;
+        }
+
         ValueSym::enter();
-        self.walk_expr(value, tree)?;
+        self.visit_expr(value, tree)?;
         ValueSym::exit();
 
         let sym = ValueSym::new();
         self.insert_symbol(id, sym);
 
         self.stack.value_scope_mut().enter(name, sym);
-        self.walk_expr(inside, tree)?;
+        self.visit_expr(inside, tree)?;
         self.stack.value_scope_mut().exit(&name);
 
         ControlFlow::Continue(())
@@ -520,7 +525,7 @@ where
         }
 
         self.stack.value_scope_mut().enter(name, sym);
-        self.walk_expr(body, tree)?;
+        self.visit_expr(body, tree)?;
         self.stack.value_scope_mut().exit(&name);
 
         ControlFlow::Continue(())

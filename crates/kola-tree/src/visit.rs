@@ -568,13 +568,19 @@ pub trait Visitor<T: TreeView> {
     fn walk_let_expr(&mut self, id: Id<node::LetExpr>, tree: &T) -> ControlFlow<Self::BreakValue> {
         let node::LetExpr {
             name,
+            value_type,
             value,
             inside,
-        } = id.get(tree);
+        } = *id.get(tree);
 
-        self.visit_value_name(*name, tree)?;
-        self.visit_expr(*value, tree)?;
-        self.visit_expr(*inside, tree)?;
+        self.visit_value_name(name, tree)?;
+
+        if let Some(type_) = value_type {
+            self.visit_type_scheme(type_, tree)?;
+        }
+
+        self.visit_expr(value, tree)?;
+        self.visit_expr(inside, tree)?;
 
         ControlFlow::Continue(())
     }

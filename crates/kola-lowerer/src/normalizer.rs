@@ -232,11 +232,7 @@ where
         id: TreeId<node::LetExpr>,
         tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
-        let node::LetExpr {
-            name,
-            value,
-            inside,
-        } = *id.get(tree);
+        let node::LetExpr { value, inside, .. } = *id.get(tree);
 
         self.visit_expr(inside, tree)?;
         self.hole = self.symbol_of(id);
@@ -706,7 +702,7 @@ mod tests {
 
         let inside = node::PathExpr::new_in(None, x, Vec::new(), &mut builder);
         let value = builder.insert(node::LiteralExpr::Num(42.0));
-        let let_expr = node::LetExpr::new_in(x, value, inside, &mut builder);
+        let let_expr = node::LetExpr::new_in(x, None, value, inside, &mut builder);
         resolved.insert_meta(let_expr, x_sym);
 
         let ir = normalize(builder, let_expr, &resolved);
