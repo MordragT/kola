@@ -1,20 +1,20 @@
 {
-    # Helper functions
+    # Helper
     add_one = fn x => x + 1,
     multiply = fn x => fn y => x * y,
 
-    # Conditional logic
+    # Conditional
     max = fn a => fn b =>
         if a > b then a else b,
 
-    # More complex expressions with nested calls and operations
+    # More complex expressions
     compute = fn n =>
         let doubled = n * 2 in
         let incremented = (add_one doubled) in
         let multiplier = (multiply 3) in
         (multiplier incremented),
 
-    # Nested if expressions
+    # Nested if
     categorize = fn score =>
         if score >= 90 then 'A'
         else if score >= 80 then 'B'
@@ -23,7 +23,7 @@
 
     export module Formula = {
 
-        # Complex arithmetic with multiple binary operations
+        # Complex arithmetic
         export formula = fn x => fn y =>
             let sum = x + y in
             let diff = x - y in
@@ -31,12 +31,12 @@
             product / 2,
     },
 
-    # Entry point that exercises everything
+    # Entry point
     main =
-        let test_num = 15 in
-        let result1 = (compute test_num) in
-        let result2 = ((max result1) 100) in
-        let grade = (categorize 85) in
-        let final_calc = ((Formula::formula result2) 50) in
-        final_calc + 1000,
+        let test_num = 15 in                                    # 15
+        let result1 = (compute test_num) in                     # 93
+        let result2 = ((max result1) 100) in                    # 100
+        let grade = (categorize 85) in                          # 'B'
+        let final_calc = ((Formula::formula result2) 50) in     # 3750
+        final_calc + 1000,                                      # 4750
 }

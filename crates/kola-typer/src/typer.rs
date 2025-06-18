@@ -5,7 +5,6 @@ use kola_span::{Diagnostic, IntoDiagnostic, Loc, Located, Report};
 use kola_syntax::prelude::*;
 use kola_tree::prelude::*;
 use kola_utils::{errors::Errors, fmt::StrInternerExt, interner::StrInterner};
-use log::debug;
 
 use crate::{
     env::{KindEnv, TypeEnv},
@@ -18,7 +17,6 @@ use crate::{
 };
 
 // https://blog.stimsina.com/post/implementing-a-hindley-milner-type-system-part-2
-
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Constraint {
     Kind {
@@ -34,126 +32,82 @@ pub enum Constraint {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct KindConstraint {
-    pub expected: Kind,
-    pub actual: MonoType,
-    pub span: Loc,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct InferConstraint {
-    pub expected: MonoType,
-    pub actual: MonoType,
-    pub span: Loc,
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct CheckConstraint {
-    pub expected: MonoType,
-    pub actual: MonoType,
-    pub span: Loc,
-}
-
-#[derive(Debug, Clone, Default, PartialEq, Eq, Hash)]
-pub struct Constraints {
-    kinds: Vec<KindConstraint>,
-    infers: Vec<InferConstraint>,
-    checks: Vec<CheckConstraint>,
-}
+pub struct Constraints(Vec<Constraint>);
 
 impl Constraints {
     pub fn new() -> Self {
-        Self::default()
+        Self(Vec::new())
     }
 
     pub fn constrain(&mut self, expected: MonoType, actual: MonoType, span: Loc) {
-        let c = InferConstraint {
+        let c = Constraint::Ty {
             expected,
             actual,
             span,
         };
-        self.infers.push(c);
+        self.0.push(c);
+    }
+
+    // Same as constrains for debugging
+    pub fn constrain_check(&mut self, expected: MonoType, actual: MonoType, span: Loc) {
+        let c = Constraint::Ty {
+            expected,
+            actual,
+            span,
+        };
+        self.0.push(c);
     }
 
     pub fn constrain_kind(&mut self, expected: Kind, actual: MonoType, span: Loc) {
-        let c = KindConstraint {
+        let c = Constraint::Kind {
             expected,
             actual,
             span,
         };
-        self.kinds.push(c);
+        self.0.push(c);
     }
 
-    pub fn constrain_check(&mut self, expected: MonoType, actual: MonoType, span: Loc) {
-        let c = CheckConstraint {
-            expected,
-            actual,
-            span,
-        };
-        self.checks.push(c);
-    }
-
+    /// Solves type and kind constraints in the order they were generated during inference.
+    ///
+    /// This mixed approach is preferred over separating unification and kind checking because:
+    /// 1. **Preserves logical flow**: Constraints are solved in the same order as type inference,
+    ///    maintaining the semantic relationship between type construction and validation
+    /// 2. **Fail-fast**: Kind violations are caught immediately when the relevant substitution
+    ///    becomes available, rather than deferring all kind checks to the end
+    /// 3. **Better error locality**: Errors are reported at the point where the constraint
+    ///    was actually generated, making debugging easier
+    /// 4. **Theoretical soundness**: Matches constraint satisfaction solving where constraints
+    ///    interact and should be resolved incrementally rather than in isolated phases
+    ///
+    /// For row polymorphism, this ensures that row variable bindings are validated against
+    /// their Kind::Record constraints as soon as the unification occurs.
     pub fn solve(
         self,
         s: &mut Substitution,
         kind_env: &mut KindEnv,
     ) -> Result<(), Located<TypeErrors>> {
-        for InferConstraint {
-            expected,
-            actual,
-            span,
-        } in self.infers
-        {
-            let lhs = actual.apply_cow(s);
-            let rhs = expected.apply_cow(s);
+        for c in self.0 {
+            match c {
+                Constraint::Kind {
+                    expected,
+                    actual,
+                    span,
+                } => {
+                    actual
+                        .apply_cow(s)
+                        .constrain(expected, kind_env)
+                        .map_err(|e| (Errors::unit(e), span))?;
+                }
+                Constraint::Ty {
+                    expected,
+                    actual,
+                    span,
+                } => {
+                    let lhs = expected.apply_cow(s);
+                    let rhs = actual.apply_cow(s);
 
-            lhs.try_unify(&rhs, s).map_err(|errors| (errors, span))?;
-        }
-
-        for KindConstraint {
-            expected,
-            actual,
-            span,
-        } in self.kinds
-        {
-            actual
-                .apply_cow(s)
-                .constrain(expected, kind_env)
-                .map_err(|e| (Errors::unit(e), span))?;
-        }
-
-        for CheckConstraint {
-            expected,
-            actual,
-            span,
-        } in self.checks
-        {
-            let mut dummy = Substitution::empty();
-
-            let lhs = actual.apply_cow(s);
-            let rhs = expected.apply_cow(s);
-
-            // Try unification with a dummy substitution to check structural equivalence
-            // If types are compatible, unification should succeed without creating new bindings
-            lhs.try_unify(&rhs, &mut dummy)
-                .map_err(|errors| (errors, span))?;
-
-            // If unification required additional substitutions, the types are not structurally equivalent
-            // This indicates either:
-            // - Different concrete types (e.g., Int vs Str)
-            // - Incompatible row types (e.g., {a:Int} vs {b:Str})
-            // - Unresolved type variables that shouldn't exist at this point
-            if !dummy.is_empty() {
-                // TODO: Implement proper error message for incompatible types
-                // For now, this indicates a likely bug in constraint collection or variable scoping
-                todo!(
-                    "Type compatibility check failed: types required additional substitutions. \
-                         This suggests incompatible type annotation or unresolved type variables. \
-                         Expected: {}, Actual: {}, Substitutions needed: {:?}",
-                    lhs,
-                    rhs,
-                    dummy,
-                );
+                    lhs.try_unify(&rhs, s).map_err(|errors| ((errors, span)))?;
+                }
             }
         }
 
@@ -225,12 +179,12 @@ impl<'a, N> Typer<'a, N> {
         let Self {
             mut subs,
             cons,
-            kind_scope: mut k_env,
+            mut kind_scope,
             mut types,
             ..
         } = self;
 
-        if let Err((errs, loc)) = cons.solve(&mut subs, &mut k_env) {
+        if let Err((errs, loc)) = cons.solve(&mut subs, &mut kind_scope) {
             let diag = interner.display(&errs).into_diagnostic(loc);
             report.add_diagnostic(diag);
             return None;

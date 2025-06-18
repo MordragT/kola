@@ -1,0 +1,55 @@
+{
+    # This is a comment
+
+    # Basic literals
+    my_bool = true,
+    my_number = 42.5,
+    my_string = "Hello World",
+    my_char = 'A',
+
+    # Simple list
+    my_list = [1, 2, 3],
+
+    # Simple record
+    simple_record = { a = 1, b = 2 },
+
+    # Nested record
+    nested_record = { a = { b = { c = 10 } } },
+
+    # Lambda function
+    add_one = fn x => x + 1,
+
+    # Arithmetic and comparison expressions
+    math_expr = 10 + 5 - 2 * 3 / 2 % 4,
+    comparison = 5 < 10 and 8 >= 3 or 2 != 1,
+    equality_check = 5 == 5 and 3 <= 7 and 9 > 4,
+
+    # Let expression
+    let_example = let x = 5 in x * 2 + 1,
+
+    # Function call
+    result = (add_one 10),
+
+    # If-then-else expression
+    conditional = if my_bool then "yes" else "no",
+
+    # Record restriction (removing a field)
+    base_record = { subrecord = { field1 = 1, field2 = 2 } },
+    restricted = { base_record.subrecord | -field2 },
+
+    # Record extension (adding a field)
+    extended = { base_record.subrecord | +new_field = 99 },
+
+    # Record update (modifying a field)
+    updated = { base_record.subrecord | field1 += 10 },
+
+    # Path expression (accessing nested fields)
+    nested_value = nested_record.a.b.c,
+
+    # Complex expression combining multiple constructs
+    #complex_expr = let temp = if 5 > 3 then [1, 2] else [3, 4] in
+    #               { data = temp, computed = (add_one 20) },
+
+    # Main entry point
+    main = "Program completed successfully",
+}
