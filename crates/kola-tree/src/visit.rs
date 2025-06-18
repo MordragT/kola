@@ -388,10 +388,24 @@ pub trait Visitor<T: TreeView> {
         id: Id<node::RecordRestrictExpr>,
         tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
-        let node::RecordRestrictExpr { source, select } = *id.get(tree);
+        let node::RecordRestrictExpr {
+            source,
+            source_type,
+            select,
+            value_type,
+        } = *id.get(tree);
 
         self.visit_expr(source, tree)?;
+
+        if let Some(type_) = source_type {
+            self.visit_type(type_, tree)?;
+        }
+
         self.visit_field_path(select, tree)?;
+
+        if let Some(type_) = value_type {
+            self.visit_type(type_, tree)?;
+        }
 
         ControlFlow::Continue(())
     }

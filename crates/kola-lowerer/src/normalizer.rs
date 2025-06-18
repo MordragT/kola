@@ -530,7 +530,7 @@ where
         id: TreeId<node::RecordRestrictExpr>,
         tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
-        let node::RecordRestrictExpr { source, select } = *id.get(tree);
+        let node::RecordRestrictExpr { source, select, .. } = *id.get(tree);
 
         // Create fresh symbol and corresponding atom
         let source_sym = self.next_symbol();

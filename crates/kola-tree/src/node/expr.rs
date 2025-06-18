@@ -259,7 +259,7 @@ impl<'a> Notate<'a> for NodePrinter<'a, RecordExpr> {
     }
 }
 
-// { y | +x = 10 }
+// { y [: type] | +x [: type] = 10 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct RecordExtendExpr {
     pub source: Id<Expr>,
@@ -375,23 +375,34 @@ impl<'a> Notate<'a> for NodePrinter<'a, RecordExtendExpr> {
     }
 }
 
-// { y | -x }
+// { y [: type] | -x [: type] }
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct RecordRestrictExpr {
     pub source: Id<Expr>,
+    pub source_type: Option<Id<Type>>,
     pub select: Id<FieldPath>,
+    pub value_type: Option<Id<Type>>,
 }
 
 impl RecordRestrictExpr {
     pub fn new_in(
         source: impl Into<Expr>,
+        source_type: Option<Type>,
         select: impl Into<FieldPath>,
+        value_type: Option<Type>,
         builder: &mut TreeBuilder,
     ) -> Id<Self> {
         let source = builder.insert(source.into());
+        let source_type = source_type.map(|t| builder.insert(t));
         let select = builder.insert(select.into());
+        let value_type = value_type.map(|t| builder.insert(t));
 
-        builder.insert(Self { source, select })
+        builder.insert(Self {
+            source,
+            source_type,
+            select,
+            value_type,
+        })
     }
 
     pub fn source(self, tree: &impl TreeView) -> Expr {
@@ -405,18 +416,33 @@ impl RecordRestrictExpr {
 
 impl<'a> Notate<'a> for NodePrinter<'a, RecordRestrictExpr> {
     fn notate(&self, arena: &'a Bump) -> Notation<'a> {
-        let RecordRestrictExpr { source, select } = self.value;
+        let RecordRestrictExpr {
+            source,
+            source_type,
+            select,
+            value_type,
+        } = self.value;
 
         let head = "RecordRestrict".blue().display_in(arena);
 
         let source = self.to_id(*source).notate(arena);
+        let source_type = source_type.map(|t| self.to(t).notate(arena));
         let field = self.to_id(*select).notate(arena);
+        let value_type = value_type.map(|t| self.to(t).notate(arena));
 
         let single = [
             arena.notate(" source = "),
             source.clone().flatten(arena),
+            source_type
+                .clone()
+                .map(|t| arena.notate(", source_type = ").then(t, arena))
+                .or_not(arena),
             arena.notate(", field = "),
             field.clone().flatten(arena),
+            value_type
+                .clone()
+                .map(|t| arena.notate(", value_type = ").then(t, arena))
+                .or_not(arena),
         ]
         .concat_in(arena);
 
@@ -424,9 +450,15 @@ impl<'a> Notate<'a> for NodePrinter<'a, RecordRestrictExpr> {
             arena.newline(),
             arena.notate("source = "),
             source,
+            source_type
+                .map(|t| [arena.newline(), arena.notate("source_type = "), t].concat_in(arena))
+                .or_not(arena),
             arena.newline(),
             arena.notate("field = "),
             field,
+            value_type
+                .map(|t| [arena.newline(), arena.notate("value_type = "), t].concat_in(arena))
+                .or_not(arena),
         ]
         .concat_in(arena)
         .indent(arena);
@@ -647,13 +679,14 @@ impl<'a> Notate<'a> for NodePrinter<'a, PathExpr> {
 
         let head = "PathExpr".cyan().display_in(arena);
 
-        let path = path.map(|p| self.to_id(p).notate(arena)).or_not(arena);
+        let path = path.map(|p| self.to_id(p).notate(arena));
         let source = self.to(source).notate(arena);
         let fields = self.to(fields).notate(arena);
 
         let single = [
-            arena.notate(" path = "),
-            path.clone(),
+            path.clone()
+                .map(|p| [arena.notate(" path = "), p, arena.just(',')].concat_in(arena))
+                .or_not(arena),
             arena.notate(" source = "),
             source.clone(),
             arena.notate(", fields = "),
@@ -663,12 +696,10 @@ impl<'a> Notate<'a> for NodePrinter<'a, PathExpr> {
         .flatten(arena);
 
         let multi = [
-            arena.newline(),
-            arena.notate("path = "),
-            path,
+            path.map(|p| [arena.newline(), arena.notate("path = "), p].concat_in(arena))
+                .or_not(arena),
             arena.newline(),
             arena.notate("source = "),
-            arena.newline(),
             source,
             arena.notate("fields = "),
             fields,

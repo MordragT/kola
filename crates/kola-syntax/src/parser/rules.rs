@@ -480,7 +480,7 @@ pub fn expr_parser<'t>() -> impl KolaParser<'t, Id<node::Expr>> + Clone {
 
         enum RecordOp {
             Extend(Id<node::FieldPath>, Option<Id<node::Type>>, Id<node::Expr>),
-            Restrict(Id<node::FieldPath>),
+            Restrict(Id<node::FieldPath>, Option<Id<node::Type>>),
             Update(
                 Id<node::FieldPath>,
                 Id<node::RecordUpdateOp>,
@@ -500,12 +500,13 @@ pub fn expr_parser<'t>() -> impl KolaParser<'t, Id<node::Expr>> + Clone {
             ctrl(CtrlT::COLON).ignore_then(type_parser()).or_not(),
             op(OpT::ASSIGN).ignore_then(expr.clone()),
         ))
-        .map(|(field, type_, value)| RecordOp::Extend(field, type_, value))
+        .map(|(select, type_, value)| RecordOp::Extend(select, type_, value))
         .boxed();
 
         let restrict = op(OpT::SUB)
             .ignore_then(field_path.clone())
-            .map(RecordOp::Restrict)
+            .then(ctrl(CtrlT::COLON).ignore_then(type_parser()).or_not())
+            .map(|(select, type_)| RecordOp::Restrict(select, type_))
             .boxed();
 
         let update_op = choice((
@@ -545,8 +546,13 @@ pub fn expr_parser<'t>() -> impl KolaParser<'t, Id<node::Expr>> + Clone {
                         },
                         span,
                     ),
-                    RecordOp::Restrict(select) => tree.insert_as::<node::Expr, _>(
-                        node::RecordRestrictExpr { source, select },
+                    RecordOp::Restrict(select, value_type) => tree.insert_as::<node::Expr, _>(
+                        node::RecordRestrictExpr {
+                            source,
+                            source_type,
+                            select,
+                            value_type,
+                        },
                         span,
                     ),
                     RecordOp::Update(select, op, value) => tree.insert_as::<node::Expr, _>(

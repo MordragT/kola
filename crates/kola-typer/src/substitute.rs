@@ -81,6 +81,10 @@ impl Substitution {
             .or_insert_with(|| ty.clone());
     }
 
+    pub fn is_empty(&self) -> bool {
+        self.table.is_empty() && self.cache.is_empty()
+    }
+
     pub fn clear(&mut self) {
         self.table.clear();
         self.cache.clear();

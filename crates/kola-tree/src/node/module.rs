@@ -84,11 +84,9 @@ impl<'a> Notate<'a> for NodePrinter<'a, ModulePath> {
 
         let single = path
             .clone()
-            .concat_map(|s| arena.just(' ').then(s, arena), arena)
+            .concat_by(arena.just(' '), arena)
             .flatten(arena);
-        let multi = path
-            .concat_map(|s| arena.newline().then(s, arena), arena)
-            .indent(arena);
+        let multi = path.concat_by(arena.newline(), arena).indent(arena);
 
         head.then(single.or(multi, arena), arena)
     }

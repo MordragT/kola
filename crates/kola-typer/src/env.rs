@@ -91,47 +91,49 @@ impl TypeEnv {
         self.modules.get(&sym)
     }
 
-    pub fn value_equivalent(&mut self, a: ValueSym, b: ValueSym) -> bool {
-        if let Some(result) = self.equiv_values.get(a, b) {
-            return result;
-        }
+    // TODO alpha equivalence isn't properly implemented yet
 
-        let result = match (self.values.get(&a), self.values.get(&b)) {
-            (Some(a), Some(b)) => a.alpha_equivalent(b),
-            _ => false,
-        };
+    // pub fn value_equivalent(&mut self, a: ValueSym, b: ValueSym) -> bool {
+    //     if let Some(result) = self.equiv_values.get(a, b) {
+    //         return result;
+    //     }
 
-        self.equiv_values.insert(a, b, result);
-        result
-    }
+    //     let result = match (self.values.get(&a), self.values.get(&b)) {
+    //         (Some(a), Some(b)) => a.alpha_equivalent(b),
+    //         _ => false,
+    //     };
 
-    pub fn type_equivalent(&mut self, a: TypeSym, b: TypeSym) -> bool {
-        if let Some(result) = self.equiv_types.get(a, b) {
-            return result;
-        }
+    //     self.equiv_values.insert(a, b, result);
+    //     result
+    // }
 
-        let result = match (self.types.get(&a), self.types.get(&b)) {
-            (Some(a), Some(b)) => a.alpha_equivalent(b),
-            _ => false,
-        };
+    // pub fn type_equivalent(&mut self, a: TypeSym, b: TypeSym) -> bool {
+    //     if let Some(result) = self.equiv_types.get(a, b) {
+    //         return result;
+    //     }
 
-        self.equiv_types.insert(a, b, result);
-        result
-    }
+    //     let result = match (self.types.get(&a), self.types.get(&b)) {
+    //         (Some(a), Some(b)) => a.alpha_equivalent(b),
+    //         _ => false,
+    //     };
 
-    pub fn module_equivalent(&mut self, a: ModuleSym, b: ModuleSym) -> bool {
-        if let Some(result) = self.equiv_modules.get(a, b) {
-            return result;
-        }
+    //     self.equiv_types.insert(a, b, result);
+    //     result
+    // }
 
-        let result = match (self.modules.get(&a), self.modules.get(&b)) {
-            (Some(a), Some(b)) => a.alpha_equivalent(b, self),
-            _ => false,
-        };
+    // pub fn module_equivalent(&mut self, a: ModuleSym, b: ModuleSym) -> bool {
+    //     if let Some(result) = self.equiv_modules.get(a, b) {
+    //         return result;
+    //     }
 
-        self.equiv_modules.insert(a, b, result);
-        result
-    }
+    //     let result = match (self.modules.get(&a), self.modules.get(&b)) {
+    //         (Some(a), Some(b)) => a.alpha_equivalent(b, self),
+    //         _ => false,
+    //     };
+
+    //     self.equiv_modules.insert(a, b, result);
+    //     result
+    // }
 }
 
 impl Index<ValueSym> for TypeEnv {

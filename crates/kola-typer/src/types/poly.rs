@@ -107,7 +107,10 @@ impl PolyType {
         let mut rhs = other.ty.clone();
         rhs.apply_mut(&mut Substitution::new(sub_other));
 
-        lhs == rhs
+        // lhs == rhs
+
+        // Structural alpha equivalence for RowTypes is not just a simple equality check.
+        todo!()
     }
 }
 

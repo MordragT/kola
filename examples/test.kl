@@ -1,42 +1,9 @@
 {
-
-
-
-    #eine_liste : List Str = ["eins", "zwei", "drei"],
-
-    #main = [1, 2, 3],
-
-    nested_a = { id = 1, info = { person = { age = 30 } } },
-
-    nested_b = { nested_a.info | person.age += 1 },
-
-    #main = nested_b,
-
-    #main = person_b.name,
-
-    module inner = {
-        pi = 3.14,
-    },
-
-    #main = inner::pi,
-
-    #main = (f "Hello, World!"),
-    #main = (f 10),
-
-
-    f = fn x : Num => x + 1,
-
-
-    type Person = forall a . { name : Str | a },
-
-    person_a = { name = "Alice" },
-
-    person_b = { person_a | name = "Bob" },
-
-
-    #main = { person_a : Person = person_a },
-
-
-    main = { nested_a.info : { person : { age : Num } } | +person.job : Str = "IT" },
-
+    simple = { a = { b = 10 } },
+    main = { simple | -a.b },
+    #main = simple.a,
+    #result : { b : Num } = simple.a,
+    #main = result,
+    #intermediate = simple.a,
+    #main = { intermediate : { b : Num } | -b : Num },
 }

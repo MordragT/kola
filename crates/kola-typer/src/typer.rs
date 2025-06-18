@@ -5,6 +5,7 @@ use kola_span::{Diagnostic, IntoDiagnostic, Loc, Located, Report};
 use kola_syntax::prelude::*;
 use kola_tree::prelude::*;
 use kola_utils::{errors::Errors, fmt::StrInternerExt, interner::StrInterner};
+use log::debug;
 
 use crate::{
     env::{KindEnv, TypeEnv},
@@ -33,59 +34,126 @@ pub enum Constraint {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct Constraints(Vec<Constraint>);
+pub struct KindConstraint {
+    pub expected: Kind,
+    pub actual: MonoType,
+    pub span: Loc,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct InferConstraint {
+    pub expected: MonoType,
+    pub actual: MonoType,
+    pub span: Loc,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct CheckConstraint {
+    pub expected: MonoType,
+    pub actual: MonoType,
+    pub span: Loc,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq, Hash)]
+pub struct Constraints {
+    kinds: Vec<KindConstraint>,
+    infers: Vec<InferConstraint>,
+    checks: Vec<CheckConstraint>,
+}
 
 impl Constraints {
     pub fn new() -> Self {
-        Self(Vec::new())
+        Self::default()
     }
 
     pub fn constrain(&mut self, expected: MonoType, actual: MonoType, span: Loc) {
-        let c = Constraint::Ty {
+        let c = InferConstraint {
             expected,
             actual,
             span,
         };
-        self.0.push(c);
+        self.infers.push(c);
     }
 
     pub fn constrain_kind(&mut self, expected: Kind, actual: MonoType, span: Loc) {
-        let c = Constraint::Kind {
+        let c = KindConstraint {
             expected,
             actual,
             span,
         };
-        self.0.push(c);
+        self.kinds.push(c);
     }
 
-    // TODO error handling do not propagate but keep trace of errors
+    pub fn constrain_check(&mut self, expected: MonoType, actual: MonoType, span: Loc) {
+        let c = CheckConstraint {
+            expected,
+            actual,
+            span,
+        };
+        self.checks.push(c);
+    }
+
     pub fn solve(
         self,
         s: &mut Substitution,
         kind_env: &mut KindEnv,
     ) -> Result<(), Located<TypeErrors>> {
-        // TODO infer Types first ?
-        for c in self.0 {
-            match c {
-                Constraint::Kind {
-                    expected,
-                    actual,
-                    span,
-                } => {
-                    actual
-                        .apply_cow(s)
-                        .constrain(expected, kind_env)
-                        .map_err(|e| (Errors::unit(e), span))?;
-                }
-                Constraint::Ty {
-                    expected,
-                    actual,
-                    span,
-                } => {
-                    expected
-                        .try_unify(&actual, s)
-                        .map_err(|errors| ((errors, span)))?;
-                }
+        for InferConstraint {
+            expected,
+            actual,
+            span,
+        } in self.infers
+        {
+            let lhs = actual.apply_cow(s);
+            let rhs = expected.apply_cow(s);
+
+            lhs.try_unify(&rhs, s).map_err(|errors| (errors, span))?;
+        }
+
+        for KindConstraint {
+            expected,
+            actual,
+            span,
+        } in self.kinds
+        {
+            actual
+                .apply_cow(s)
+                .constrain(expected, kind_env)
+                .map_err(|e| (Errors::unit(e), span))?;
+        }
+
+        for CheckConstraint {
+            expected,
+            actual,
+            span,
+        } in self.checks
+        {
+            let mut dummy = Substitution::empty();
+
+            let lhs = actual.apply_cow(s);
+            let rhs = expected.apply_cow(s);
+
+            // Try unification with a dummy substitution to check structural equivalence
+            // If types are compatible, unification should succeed without creating new bindings
+            lhs.try_unify(&rhs, &mut dummy)
+                .map_err(|errors| (errors, span))?;
+
+            // If unification required additional substitutions, the types are not structurally equivalent
+            // This indicates either:
+            // - Different concrete types (e.g., Int vs Str)
+            // - Incompatible row types (e.g., {a:Int} vs {b:Str})
+            // - Unresolved type variables that shouldn't exist at this point
+            if !dummy.is_empty() {
+                // TODO: Implement proper error message for incompatible types
+                // For now, this indicates a likely bug in constraint collection or variable scoping
+                todo!(
+                    "Type compatibility check failed: types required additional substitutions. \
+                         This suggests incompatible type annotation or unresolved type variables. \
+                         Expected: {}, Actual: {}, Substitutions needed: {:?}",
+                    lhs,
+                    rhs,
+                    dummy,
+                );
             }
         }
 
@@ -719,7 +787,7 @@ where
             let expected_poly_t = self.types.meta(annotation_ty).clone();
 
             self.cons
-                .constrain(expected_poly_t.instantiate(), value_t, span);
+                .constrain_check(expected_poly_t.instantiate(), value_t, span);
             self.update_type(id, expected_poly_t); // Use type annotation
         } else {
             self.update_type(id, inferred_poly_t);
@@ -880,6 +948,7 @@ where
             value_t
         });
 
+        self.update_type(fields, result_t.clone());
         self.update_type(id, result_t);
         ControlFlow::Continue(())
     }
@@ -923,7 +992,7 @@ where
             };
 
             self.cons
-                .constrain(expected_t, value_t.clone(), self.span(id));
+                .constrain_check(expected_t, value_t.clone(), self.span(id));
         }
 
         self.update_type(id, LabeledType { label, ty: value_t });
@@ -1016,13 +1085,16 @@ where
             source_t = value_t;
         }
 
+        self.update_type(select, source_t.clone());
+
         if let Some(type_) = source_type {
             let expected_t = match self.types.meta(type_).to_mono() {
                 Ok(t) => t,
                 Err(e) => return ControlFlow::Break(e.into_diagnostic(span)),
             };
 
-            self.cons.constrain(expected_t, source_t.clone(), span);
+            self.cons
+                .constrain_check(expected_t, source_t.clone(), span);
         }
 
         self.cons
@@ -1036,7 +1108,7 @@ where
                 Err(e) => return ControlFlow::Break(e.into_diagnostic(span)),
             };
 
-            self.cons.constrain(expected_t, value_t.clone(), span);
+            self.cons.constrain_check(expected_t, value_t.clone(), span);
         }
 
         let label = field.get(tree).0.clone();
@@ -1073,12 +1145,18 @@ where
         id: Id<node::RecordRestrictExpr>,
         tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
-        self.walk_record_restrict_expr(id, tree)?;
+        // self.walk_record_restrict_expr(id, tree)?;
 
         let span = self.span(id);
 
-        let node::RecordRestrictExpr { source, select } = *id.get(tree);
+        let node::RecordRestrictExpr {
+            source,
+            source_type,
+            select,
+            value_type,
+        } = *id.get(tree);
 
+        self.visit_expr(source, tree)?;
         let mut source_t = self.types.meta(source).clone();
 
         // Split path into navigation fields and final restriction field
@@ -1107,11 +1185,35 @@ where
             source_t = value_t;
         }
 
+        self.update_type(select, source_t.clone());
+
+        if let Some(type_) = source_type {
+            self.visit_type(type_, tree)?;
+            let expected_t = match self.types.meta(type_).to_mono() {
+                Ok(t) => t,
+                Err(e) => return ControlFlow::Break(e.into_diagnostic(span)),
+            };
+
+            self.cons
+                .constrain_check(expected_t, source_t.clone(), span);
+        }
+
         // Restrict the final field
         self.cons
             .constrain_kind(Kind::Record, source_t.clone(), span);
 
         let value_t = MonoType::variable();
+
+        if let Some(type_) = value_type {
+            self.visit_type(type_, tree)?;
+            let expected_t = match self.types.meta(type_).to_mono() {
+                Ok(t) => t,
+                Err(e) => return ControlFlow::Break(e.into_diagnostic(span)),
+            };
+
+            self.cons.constrain_check(expected_t, value_t.clone(), span);
+        }
+
         let label = field.get(tree).0.clone();
         let head_t = LabeledType { label, ty: value_t };
         let tail_t = MonoType::variable();
@@ -1527,7 +1629,7 @@ where
 
             // Constrain the parameter type against the expected type
             self.cons
-                .constrain(expected_param_t, param_t.clone(), self.span(id));
+                .constrain_check(expected_param_t, param_t.clone(), self.span(id));
         }
 
         let name = param.get(tree).0.clone();
