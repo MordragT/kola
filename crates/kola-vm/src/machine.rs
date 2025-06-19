@@ -44,8 +44,6 @@ impl CekMachine {
     pub fn step(&mut self) -> bool {
         let state = std::mem::replace(&mut self.state, MachineState::InProgress);
 
-        // dbg!(&state);
-
         self.state = match state {
             MachineState::Standard(config) => Self::step_standard(config, &self.ir),
             MachineState::Operation(config) => Self::step_operation(config, &self.ir),

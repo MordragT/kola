@@ -254,7 +254,10 @@ impl Record {
         } else {
             // Recursive case: navigate deeper
             let label = field_path[0];
-            let nested = self.get(label).cloned().unwrap_or_else(|| Value::Record(Record::new()));
+            let nested = self
+                .get(label)
+                .cloned()
+                .unwrap_or_else(|| Value::Record(Record::new()));
             let Value::Record(mut nested_record) = nested else {
                 return Err(format!("Cannot extend non-record at field path"));
             };
@@ -362,6 +365,8 @@ impl List {
     pub fn append(&mut self, value: Value) {
         self.0.push_back(value);
     }
+
+    // __builtin_first
 
     #[inline]
     pub fn len(&self) -> usize {

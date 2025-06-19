@@ -32,7 +32,7 @@ use crate::{
     env::{KindEnv, TypeEnv},
     error::TypeErrors,
     phase::{TypePhase, TypedNodes},
-    scope::{BoundVars, TypeScope},
+    scope::{BoundVars, LocalTypeScope, ModuleTypeScope},
     substitute::{Substitutable, Substitution},
     types::{Kind, LabeledType, MonoType, PolyType, TypeVar, Typed},
     unify::Unifiable,
@@ -135,8 +135,6 @@ impl Constraints {
             }
         }
 
-        dbg!(s);
-
         Ok(())
     }
 }
@@ -149,12 +147,11 @@ impl Constraints {
 
 pub struct Typer<'a, N> {
     root_id: Id<N>,
-    subs: Substitution,
-    cons: Constraints,
-    type_scope: TypeScope,
-    kind_scope: KindEnv,
+    scope: LocalTypeScope,
+    module_scope: &'a ModuleTypeScope,
     types: TypedNodes,
     spans: Rc<Locations>,
+    cons: &'a mut Constraints,
     env: &'a TypeEnv,
     interner: &'a StrInterner,
     resolved: &'a ResolvedNodes,
@@ -164,30 +161,26 @@ impl<'a, N> Typer<'a, N> {
     pub fn new(
         root_id: Id<N>,
         spans: Rc<Locations>,
+        cons: &'a mut Constraints,
+        module_scope: &'a ModuleTypeScope,
         env: &'a TypeEnv,
         interner: &'a StrInterner,
         resolved: &'a ResolvedNodes,
     ) -> Self {
         Self {
             root_id,
-            subs: Substitution::empty(),
-            cons: Constraints::new(),
-            type_scope: TypeScope::new(),
-            kind_scope: KindEnv::new(),
+            scope: LocalTypeScope::new(),
+            module_scope,
             types: TypedNodes::new(),
             spans,
             env,
             interner,
             resolved,
+            cons,
         }
     }
 
-    pub fn solve<Tree>(
-        mut self,
-        tree: &Tree,
-        interner: &'a StrInterner,
-        report: &mut Report,
-    ) -> Option<TypedNodes>
+    pub fn run<Tree>(mut self, tree: &Tree, report: &mut Report) -> Option<TypedNodes>
     where
         Tree: TreeView,
         Id<N>: Visitable<Tree>,
@@ -202,31 +195,15 @@ impl<'a, N> Typer<'a, N> {
             ControlFlow::Continue(()) => (),
         }
 
-        let Self {
-            mut subs,
-            cons,
-            mut kind_scope,
-            mut types,
-            ..
-        } = self;
-
-        if let Err((errs, loc)) = cons.solve(&mut subs, &mut kind_scope) {
-            let diag = interner.display(&errs).into_diagnostic(loc);
-            report.add_diagnostic(diag);
-            return None;
-        }
-        types.apply_mut(&mut subs);
-
-        Some(types)
+        Some(self.types)
     }
 
     #[inline]
-    fn update_type<T>(&mut self, id: Id<T>, t: T::Meta)
+    fn insert_type<T>(&mut self, id: Id<T>, t: T::Meta)
     where
         T: MetaCast<TypePhase>,
     {
-        // self.types.update_meta(id, t)
-        self.types.insert(id.as_usize(), T::upcast(t));
+        self.types.insert_meta(id, t)
     }
 
     #[inline]
@@ -268,7 +245,7 @@ where
         self.visit_type_scheme(ty, tree)?;
         let poly_t = self.types.meta(ty).clone();
 
-        self.update_type(id, poly_t);
+        self.insert_type(id, poly_t);
         ControlFlow::Continue(())
     }
 
@@ -299,12 +276,10 @@ where
         let type_vars = vars
             .iter()
             .map(|var_node| {
+                let var_name = var_node.get(tree).0;
                 let type_var = TypeVar::new();
 
-                let var_name = var_node.get(tree).0;
-                let var_poly_t = PolyType::new(type_var.into());
-
-                self.type_scope.enter(var_name, var_poly_t);
+                self.scope.enter(var_name, MonoType::Var(type_var));
                 type_var
             })
             .collect::<Vec<_>>();
@@ -317,14 +292,14 @@ where
 
         for var_node in vars.iter().rev() {
             let var_name = var_node.get(tree).0;
-            self.type_scope.exit(&var_name);
+            self.scope.exit(&var_name);
         }
 
         let poly_t = PolyType {
             vars: type_vars,
             ty: mono_t,
         };
-        self.update_type(id, poly_t);
+        self.insert_type(id, poly_t);
 
         ControlFlow::Continue(())
     }
@@ -341,7 +316,7 @@ where
             node::Type::Variant(variant_id) => PolyType::new(self.types.meta(variant_id).clone()),
         };
 
-        self.update_type(id, poly_t);
+        self.insert_type(id, poly_t);
         ControlFlow::Continue(())
     }
 
@@ -405,9 +380,9 @@ where
 
             let module_poly_t = &self.env[type_sym];
             module_poly_t.clone()
-        } else if let Some(local_poly_t) = self.type_scope.get(&type_name) {
+        } else if let Some(local_t) = self.scope.get(&type_name) {
             // Local type parameter (like 'a' in forall a)
-            local_poly_t.clone()
+            PolyType::new(local_t.clone())
         }
         // Builtin's must be handled before checking the type env,
         // because they do not populate the "resolved" map (would cause a panic)
@@ -415,12 +390,13 @@ where
             PolyType::new(builtin_t)
         } else if let Some(global_poly_t) = self.env.get_type(*self.resolved.meta(id)) {
             // Module-level type definition (like 'Person')
+            // unlike module-level value binds, these are properly solved and ready to use
             global_poly_t.clone()
         } else {
             return ControlFlow::Break(Diagnostic::error(span, "Type not found in scope"));
         };
 
-        self.update_type(id, poly_t);
+        self.insert_type(id, poly_t);
         ControlFlow::Continue(())
     }
 
@@ -459,7 +435,7 @@ where
 
         let func_t = MonoType::func(input_t, output_t);
 
-        self.update_type(id, func_t);
+        self.insert_type(id, func_t);
         ControlFlow::Continue(())
     }
 
@@ -513,7 +489,7 @@ where
             vars: remaining_vars.to_vec(),
         };
 
-        self.update_type(id, poly_t);
+        self.insert_type(id, poly_t);
         ControlFlow::Continue(())
     }
 
@@ -554,16 +530,13 @@ where
 
         let tail_t = if let Some(extension_var) = extension {
             let extension_name = extension_var.get(tree).0;
-            let Some(extension_poly_t) = self.type_scope.get(&extension_name).cloned() else {
+            let Some(extension_t) = self.scope.get(&extension_name).cloned() else {
                 return ControlFlow::Break(Diagnostic::error(
                     self.span(id),
                     "Type variable not found in scope",
                 ));
             };
-            match extension_poly_t.to_mono() {
-                Ok(t) => t,
-                Err(e) => return ControlFlow::Break(e.into_diagnostic(self.span(id))),
-            }
+            extension_t
         } else {
             MonoType::empty_row()
         };
@@ -573,7 +546,7 @@ where
             MonoType::row(head_t, acc_t)
         });
 
-        self.update_type(id, record_t);
+        self.insert_type(id, record_t);
         ControlFlow::Continue(())
     }
 
@@ -608,7 +581,7 @@ where
 
         let head_t = LabeledType { label, ty: value_t };
 
-        self.update_type(id, head_t);
+        self.insert_type(id, head_t);
         ControlFlow::Continue(())
     }
 
@@ -649,16 +622,13 @@ where
 
         let tail_t = if let Some(extension_var) = extension {
             let extension_name = extension_var.get(tree).0;
-            let Some(extension_poly_t) = self.type_scope.get(&extension_name).cloned() else {
+            let Some(extensions_t) = self.scope.get(&extension_name).cloned() else {
                 return ControlFlow::Break(Diagnostic::error(
                     self.span(id),
                     "Type variable not found in scope",
                 ));
             };
-            match extension_poly_t.to_mono() {
-                Ok(t) => t,
-                Err(e) => return ControlFlow::Break(e.into_diagnostic(self.span(id))),
-            }
+            extensions_t
         } else {
             MonoType::empty_row()
         };
@@ -668,7 +638,7 @@ where
             MonoType::row(head_t, acc_t)
         });
 
-        self.update_type(id, variant_t);
+        self.insert_type(id, variant_t);
         ControlFlow::Continue(())
     }
 
@@ -715,7 +685,7 @@ where
 
         let head_t = LabeledType { label, ty: value_t };
 
-        self.update_type(id, head_t);
+        self.insert_type(id, head_t);
         ControlFlow::Continue(())
     }
 
@@ -760,18 +730,15 @@ where
         TypeVar::exit();
 
         let value_t = self.types.meta(value).clone();
-        let inferred_poly_t = value_t.generalize(&[]);
 
         if let Some(annotation_ty) = ty {
             self.visit_type_scheme(annotation_ty, tree)?;
-            let expected_poly_t = self.types.meta(annotation_ty).clone();
+            let expected_t = self.types.meta(annotation_ty).instantiate();
 
-            self.cons
-                .constrain_check(expected_poly_t.instantiate(), value_t, span);
-            self.update_type(id, expected_poly_t); // Use type annotation
-        } else {
-            self.update_type(id, inferred_poly_t);
+            self.cons.constrain_check(expected_t, value_t.clone(), span);
         }
+
+        self.insert_type(id, PolyType::new(value_t)); // Use fake PolyType to aid printer
 
         ControlFlow::Continue(())
     }
@@ -804,7 +771,7 @@ where
             &node::LiteralExpr::Str(_) => MonoType::STR,
         };
 
-        self.update_type(id, actual);
+        self.insert_type(id, actual);
         ControlFlow::Continue(())
     }
 
@@ -836,7 +803,7 @@ where
         if let Some(&first_elem) = list.first() {
             let first_t = self.types.meta(first_elem).clone();
 
-            self.update_type(id, MonoType::list(first_t.clone()));
+            self.insert_type(id, MonoType::list(first_t.clone()));
 
             for &elem in list {
                 let span = self.span(id);
@@ -888,6 +855,7 @@ where
         let name = source.get(tree).0;
 
         let base_t = if let Some(path) = path {
+            // Case 1: Other module (real PolyType)
             let module_sym = *self.resolved.meta(path);
 
             let value_sym = self.env[module_sym]
@@ -896,13 +864,17 @@ where
 
             let pt = &self.env[value_sym];
             pt.instantiate()
-        } else if let Some(pt) = self.type_scope.get(&name) {
-            pt.instantiate()
+        } else if let Some(t) = self.scope.get(&name) {
+            // Case 2: Let-bind (MonoType)
+
+            t.clone()
         }
         // For the future: Builtin's should be checked before the type env because they probably
         // do not populate the "resolved" map
-        else if let Some(pt) = self.env.get_value(*self.resolved.meta(id)) {
-            pt.instantiate()
+        else if let Some(t) = self.module_scope.get(self.resolved.meta(id)) {
+            // Case 3: Module local value-bind (fake PolyType not yet generalized)
+
+            t.clone()
         } else {
             return ControlFlow::Break(Diagnostic::error(span, "Value not found in scope"));
         };
@@ -928,8 +900,8 @@ where
             value_t
         });
 
-        self.update_type(fields, result_t.clone());
-        self.update_type(id, result_t);
+        self.insert_type(fields, result_t.clone());
+        self.insert_type(id, result_t);
         ControlFlow::Continue(())
     }
 
@@ -975,7 +947,7 @@ where
                 .constrain_check(expected_t, value_t.clone(), self.span(id));
         }
 
-        self.update_type(id, LabeledType { label, ty: value_t });
+        self.insert_type(id, LabeledType { label, ty: value_t });
         ControlFlow::Continue(())
     }
 
@@ -1006,7 +978,7 @@ where
             record_t = MonoType::row(head_t, record_t);
         }
 
-        self.update_type(id, record_t);
+        self.insert_type(id, record_t);
         ControlFlow::Continue(())
     }
 
@@ -1076,7 +1048,7 @@ where
             source_t = value_t;
         }
 
-        self.update_type(select, source_t.clone());
+        self.insert_type(select, source_t.clone());
 
         self.cons
             .constrain_kind(Kind::Record, source_t.clone(), span);
@@ -1099,7 +1071,7 @@ where
         };
         let result_t = MonoType::row(head_t, source_t);
 
-        self.update_type(id, result_t);
+        self.insert_type(id, result_t);
         ControlFlow::Continue(())
     }
 
@@ -1177,7 +1149,7 @@ where
             source_t = value_t;
         }
 
-        self.update_type(select, source_t.clone());
+        self.insert_type(select, source_t.clone());
 
         // Restrict the final field
         self.cons
@@ -1205,7 +1177,7 @@ where
             span,
         );
 
-        self.update_type(id, tail_t);
+        self.insert_type(id, tail_t);
         ControlFlow::Continue(())
     }
 
@@ -1238,7 +1210,7 @@ where
 
         let update_func_t = MonoType::func(value_t.clone(), value_t);
 
-        self.update_type(id, update_func_t);
+        self.insert_type(id, update_func_t);
         ControlFlow::Continue(())
     }
 
@@ -1321,7 +1293,7 @@ where
             source_t = value_t;
         }
 
-        self.update_type(select, source_t.clone());
+        self.insert_type(select, source_t.clone());
 
         // Restrict the final field
         self.cons
@@ -1367,7 +1339,7 @@ where
         };
         let result_t = MonoType::row(new_head_t, tail_t);
 
-        self.update_type(id, result_t);
+        self.insert_type(id, result_t);
         ControlFlow::Continue(())
     }
 
@@ -1384,7 +1356,7 @@ where
 
         let unary_func_t = MonoType::func(operand_t.clone(), operand_t);
 
-        self.update_type(id, unary_func_t);
+        self.insert_type(id, unary_func_t);
         ControlFlow::Continue(())
     }
 
@@ -1420,7 +1392,7 @@ where
         self.cons
             .constrain(op_t, MonoType::func(operand_t, result_t.clone()), span);
 
-        self.update_type(id, result_t);
+        self.insert_type(id, result_t);
         ControlFlow::Continue(())
     }
 
@@ -1479,7 +1451,7 @@ where
 
         let binary_func_t = MonoType::func(operand_t.clone(), MonoType::func(operand_t, result_t));
 
-        self.update_type(id, binary_func_t);
+        self.insert_type(id, binary_func_t);
         ControlFlow::Continue(())
     }
 
@@ -1516,10 +1488,11 @@ where
         let expected_op_t = MonoType::func(left_t, MonoType::func(right_t, result_t.clone()));
         self.cons.constrain(op_t, expected_op_t, span);
 
-        self.update_type(id, result_t);
+        self.insert_type(id, result_t);
         ControlFlow::Continue(())
     }
 
+    // TODO I do not generalize let anymore
     /// Rule for Let Expression
     ///
     /// ```ignore
@@ -1549,27 +1522,23 @@ where
 
         // First: Handle type annotation constraint if present
         if let Some(type_) = value_type {
-            self.visit_type_scheme(type_, tree)?;
-            let expected_pt = self.types.meta(type_).clone();
+            self.visit_type(type_, tree)?;
+            let expected_t = match self.types.meta(type_).to_mono() {
+                Ok(t) => t,
+                Err(e) => return ControlFlow::Break(e.into_diagnostic(self.span(id))),
+            };
 
             // Constrain the value type against the annotation
             self.cons
-                .constrain(expected_pt.instantiate(), value_t.clone(), self.span(id));
-
-            // Use the annotation type for the binding (like in visit_value_bind)
-            let binding_type = expected_pt;
-            self.type_scope.enter(name, binding_type);
-        } else {
-            // No annotation: generalize the inferred type
-            let value_pt = value_t.generalize(&self.type_scope.bound_vars());
-            self.type_scope.enter(name, value_pt);
+                .constrain(expected_t, value_t.clone(), self.span(id));
         }
+        self.scope.enter(name, value_t);
 
         self.visit_expr(inside, tree)?;
-        self.type_scope.exit(&name);
+        self.scope.exit(&name);
 
         let result_t = self.types.meta(inside).clone();
-        self.update_type(id, result_t);
+        self.insert_type(id, result_t);
 
         ControlFlow::Continue(())
     }
@@ -1615,7 +1584,7 @@ where
 
         self.cons.constrain(then_t.clone(), or_t, span);
 
-        self.update_type(id, then_t);
+        self.insert_type(id, then_t);
         ControlFlow::Continue(())
     }
 
@@ -1644,7 +1613,7 @@ where
 
         if let Some(param_type) = param_type {
             self.visit_type(param_type, tree)?;
-            // Safety: `param_type` can only be a simple type by construction
+
             let expected_param_t = match self.types.meta(param_type).to_mono() {
                 Ok(t) => t,
                 Err(e) => return ControlFlow::Break(e.into_diagnostic(self.span(id))),
@@ -1657,14 +1626,14 @@ where
 
         let name = param.get(tree).0.clone();
 
-        self.type_scope.enter(name, PolyType::from(param_t.clone()));
+        self.scope.enter(name, param_t.clone());
         self.visit_expr(body, tree)?;
-        self.type_scope.exit(&name);
+        self.scope.exit(&name);
 
         let body_t = self.types.meta(body).clone();
         let lambda_t = MonoType::func(param_t, body_t);
 
-        self.update_type(id, lambda_t);
+        self.insert_type(id, lambda_t);
         ControlFlow::Continue(())
     }
 
@@ -1698,7 +1667,7 @@ where
         self.cons
             .constrain(func_t, MonoType::func(arg_t, result_t.clone()), span);
 
-        self.update_type(id, result_t);
+        self.insert_type(id, result_t);
         ControlFlow::Continue(())
     }
 
@@ -1724,7 +1693,7 @@ where
         }
         .clone();
 
-        self.update_type(id, expr_t);
+        self.insert_type(id, expr_t);
         ControlFlow::Continue(())
     }
 }
@@ -1742,9 +1711,11 @@ mod tests {
 
     use super::{TypedNodes, Typer};
     use crate::{
-        env::TypeEnv,
+        env::{KindEnv, TypeEnv},
         error::{TypeError, TypeErrors},
-        prelude::Substitutable,
+        prelude::{Substitutable, Substitution},
+        scope::ModuleTypeScope,
+        typer::Constraints,
         types::*,
     };
 
@@ -1766,10 +1737,20 @@ mod tests {
         let spans = Rc::new(mocked_spans(source_id, &tree));
 
         let type_env = TypeEnv::new();
+        let module_scope = ModuleTypeScope::new();
         let interner = StrInterner::new(); // TODO for tests with builtin types the interner should be passed
         let resolved = ResolvedNodes::new();
 
-        let mut typer = Typer::new(root_id, spans, &type_env, &interner, &resolved);
+        let mut cons = Constraints::new();
+        let mut typer = Typer::new(
+            root_id,
+            spans,
+            &mut cons,
+            &module_scope,
+            &type_env,
+            &interner,
+            &resolved,
+        );
 
         match root_id.visit_by(&mut typer, &tree) {
             ControlFlow::Break(e) => {
@@ -1778,15 +1759,12 @@ mod tests {
             ControlFlow::Continue(()) => (),
         }
 
-        let Typer {
-            mut subs,
-            cons,
-            mut kind_scope,
-            mut types,
-            ..
-        } = typer;
+        let Typer { mut types, .. } = typer;
 
-        cons.solve(&mut subs, &mut kind_scope)?;
+        let mut subs = Substitution::empty();
+        let mut kind_env = KindEnv::new();
+
+        cons.solve(&mut subs, &mut kind_env)?;
         types.apply_mut(&mut subs);
 
         Ok(types)

@@ -61,7 +61,7 @@ impl Phase for TypePhase {
     type TypeScheme = types::PolyType;
 
     type Vis = !;
-    type ValueBind = types::PolyType;
+    type ValueBind = types::PolyType; // is a MonoType for the typer but a PolyType for the Printer (after generalization)
     type TypeBind = types::PolyType;
     type OpaqueTypeBind = !;
     type ModuleBind = !;

@@ -4,7 +4,12 @@ use indexmap::IndexMap;
 use kola_resolver::symbol::{ModuleSym, Sym, TypeSym, ValueSym};
 use kola_tree::node::{ModuleNamespace, TypeNamespace, ValueNamespace};
 
-use crate::types::{Kind, ModuleType, PolyType, TypeVar};
+use crate::{
+    prelude::{Substitutable, Substitution},
+    scope::BoundVars,
+    substitute::merge,
+    types::{Kind, ModuleType, PolyType, TypeVar},
+};
 
 pub type KindEnv = IndexMap<TypeVar, Vec<Kind>>;
 
@@ -134,6 +139,41 @@ impl TypeEnv {
     //     self.equiv_modules.insert(a, b, result);
     //     result
     // }
+}
+
+impl Substitutable for TypeEnv {
+    // TODO this is probably not very performant
+    fn try_apply(&self, s: &mut Substitution) -> Option<Self> {
+        if let Some((values, types)) = merge(
+            self.values.try_apply(s),
+            || self.values.clone(),
+            self.types.try_apply(s),
+            || self.types.clone(),
+        ) {
+            Some(Self {
+                values,
+                types,
+                modules: self.modules.clone(),
+                equiv_values: self.equiv_values.clone(),
+                equiv_types: self.equiv_types.clone(),
+                equiv_modules: self.equiv_modules.clone(),
+            })
+        } else {
+            None
+        }
+    }
+
+    fn apply_mut(&mut self, s: &mut Substitution) {
+        self.values.apply_mut(s);
+        self.types.apply_mut(s);
+    }
+}
+
+impl BoundVars for TypeEnv {
+    fn extend_bound_vars(&self, vars: &mut Vec<TypeVar>) {
+        vars.extend(self.values.values().flat_map(PolyType::bound_vars))
+        // TODO also bound vars in types?
+    }
 }
 
 impl Index<ValueSym> for TypeEnv {

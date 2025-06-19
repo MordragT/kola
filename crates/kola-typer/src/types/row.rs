@@ -16,6 +16,13 @@ pub struct LabeledType {
     pub ty: MonoType,
 }
 
+impl LabeledType {
+    /// Creates a new `LabeledType` with the given label and type.
+    pub fn new(label: StrKey, ty: MonoType) -> Self {
+        Self { label, ty }
+    }
+}
+
 impl fmt::Display for LabeledType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{} : {}", self.label, self.ty)

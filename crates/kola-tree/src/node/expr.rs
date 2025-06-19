@@ -923,7 +923,7 @@ impl<'a> Notate<'a> for NodePrinter<'a, BinaryExpr> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct LetExpr {
     pub name: Id<ValueName>,
-    pub value_type: Option<Id<TypeScheme>>,
+    pub value_type: Option<Id<Type>>,
     pub value: Id<Expr>,
     pub inside: Id<Expr>,
 }
@@ -931,7 +931,7 @@ pub struct LetExpr {
 impl LetExpr {
     pub fn new_in(
         name: impl Into<ValueName>,
-        value_type: Option<TypeScheme>,
+        value_type: Option<Type>,
         value: impl Into<Expr>,
         inside: impl Into<Expr>,
         builder: &mut TreeBuilder,
@@ -953,7 +953,7 @@ impl LetExpr {
         *self.name.get(tree)
     }
 
-    pub fn value_type(self, tree: &impl TreeView) -> Option<&TypeScheme> {
+    pub fn value_type(self, tree: &impl TreeView) -> Option<&Type> {
         self.value_type.map(|t| t.get(tree))
     }
 

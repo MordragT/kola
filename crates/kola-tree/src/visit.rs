@@ -576,7 +576,7 @@ pub trait Visitor<T: TreeView> {
         self.visit_value_name(name, tree)?;
 
         if let Some(type_) = value_type {
-            self.visit_type_scheme(type_, tree)?;
+            self.visit_type(type_, tree)?;
         }
 
         self.visit_expr(value, tree)?;

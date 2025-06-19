@@ -589,9 +589,7 @@ pub fn expr_parser<'t>() -> impl KolaParser<'t, Id<node::Expr>> + Clone {
         // TODO allow type annotation
         let let_ = group((
             kw(KwT::LET).ignore_then(name.clone()),
-            ctrl(CtrlT::COLON)
-                .ignore_then(type_scheme_parser())
-                .or_not(),
+            ctrl(CtrlT::COLON).ignore_then(type_parser()).or_not(),
             op(OpT::ASSIGN).ignore_then(expr.clone()),
             kw(KwT::IN).ignore_then(expr.clone()),
         ))

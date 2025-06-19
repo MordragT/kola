@@ -23,7 +23,7 @@ pub mod prelude {
     pub use crate::error::{TypeError, TypeErrors};
     pub use crate::phase::{TypeAnnotations, TypePhase};
     pub use crate::print::TypeDecorator;
-    pub use crate::scope::{BoundVars, TypeScope};
+    pub use crate::scope::{BoundVars, LocalTypeScope};
     pub use crate::substitute::{Substitutable, Substitution};
     pub use crate::typer::{Constraint, Constraints, Typer};
     pub use crate::types::*;

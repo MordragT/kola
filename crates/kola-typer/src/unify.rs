@@ -55,7 +55,7 @@ impl Unifiable for MonoType {
 impl Unifiable for RowType {
     fn try_unify(&self, rhs: &Self, s: &mut Substitution) -> Result<(), TypeErrors> {
         let mut unifier = Unifier::new(s);
-        unifier.unify_record(self, rhs);
+        unifier.unify_row(self, rhs);
         if unifier.errors.has_errors() {
             Err(unifier.errors)
         } else {
@@ -131,10 +131,14 @@ impl<'s> Unifier<'s> {
     }
 
     fn unify_mono(&mut self, lhs: &MonoType, rhs: &MonoType) {
-        match (lhs, rhs) {
+        // Apply current substitution to resolve any already-bound variables
+        let lhs = lhs.apply_cow(self.substitution);
+        let rhs = rhs.apply_cow(self.substitution);
+
+        match (lhs.as_ref(), rhs.as_ref()) {
             (MonoType::Builtin(l), MonoType::Builtin(r)) => self.unify_builtin(l, r),
             (MonoType::Func(l), MonoType::Func(r)) => self.unify_func(l, r),
-            (MonoType::Row(l), MonoType::Row(r)) => self.unify_record(l, r),
+            (MonoType::Row(l), MonoType::Row(r)) => self.unify_row(l, r),
             (MonoType::Var(var), with) => self.bind_var(var, with),
             (with, MonoType::Var(var)) => self.bind_var(var, with),
             (l, r) => {
@@ -146,7 +150,7 @@ impl<'s> Unifier<'s> {
         }
     }
 
-    // Below are the rules for record unification. In what follows monotypes
+    // Below are the rules for row unification. In what follows monotypes
     // are denoted using lowercase letters, and type variables are denoted
     // by a lowercase letter preceded by an apostrophe `'`.
     //
@@ -158,17 +162,17 @@ impl<'s> Unifier<'s> {
     //
     //     if t unifies with u, then a must unify with b
     //
-    // 1. Two empty records always unify, producing an empty substitution.
+    // 1. Two empty rows always unify, producing an empty substitution.
     // 2. {a: t | 'r} = {b: u | 'r} => error
     // 3. {a: t | 'r} = {a: u | 'r} => t = u
     // 4. {a: t |  r} = {a: u |  s} => t = u, r = s
     // 5. {a: t |  r} = {b: u |  s} => r = {b: u | 'v}, s = {a: t | 'v}
     //
-    // Note rule 2. states that if two records extend the same type variable
+    // Note rule 2. states that if two rows extend the same type variable
     // they must have the same property name otherwise they cannot unify.
     //
     // self represents the expected type.
-    fn unify_record(&mut self, lhs: &RowType, rhs: &RowType) {
+    fn unify_row(&mut self, lhs: &RowType, rhs: &RowType) {
         match (lhs, rhs) {
             (RowType::Empty, RowType::Empty) => (),
             (
@@ -270,11 +274,6 @@ impl<'s> Unifier<'s> {
 
     fn unify_var(&mut self, lhs: &TypeVar, rhs: &TypeVar) {
         if lhs != rhs {
-            // ctx.error(InferError::CannotUnify {
-            //     expected: self.into(),
-            //     actual: with.into(),
-            // })
-
             // in former apply path compression via cache is already implemented
             // so this should not become essentially an inefficient linked list
             self.substitution.insert(*lhs, MonoType::Var(*rhs));
@@ -297,4 +296,257 @@ pub(crate) fn union<T: PartialEq>(mut vars: Vec<T>, mut with: Vec<T>) -> Vec<T> 
     with.retain(|tv| !vars.contains(tv));
     vars.append(&mut with);
     vars
+}
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use kola_utils::interner::StrInterner;
+
+    #[test]
+    fn test_same_row_variable_different_extensions_should_fail() {
+        let mut interner = StrInterner::new();
+        let mut subs = Substitution::empty();
+        let shared_var = TypeVar::new();
+
+        // Type 1: { name : Str | shared_var }
+        let type1 = MonoType::row(
+            LabeledType::new(interner.intern("name"), MonoType::STR),
+            MonoType::Var(shared_var),
+        );
+
+        // Type 2: { name : Str, age : Num }
+        let type2 = MonoType::row(
+            LabeledType::new(interner.intern("name"), MonoType::STR),
+            MonoType::row(
+                LabeledType::new(interner.intern("age"), MonoType::NUM),
+                MonoType::empty_row(),
+            ),
+        );
+
+        // This should succeed and bind shared_var = { age : Num | {} }
+        let result1 = type1.try_unify(&type2, &mut subs);
+        assert!(result1.is_ok());
+
+        // Type 3: { name : Str, car : Str }
+        let type3 = MonoType::row(
+            LabeledType::new(interner.intern("name"), MonoType::STR),
+            MonoType::row(
+                LabeledType::new(interner.intern("car"), MonoType::STR),
+                MonoType::empty_row(),
+            ),
+        );
+
+        // Type 4: { name : Str | shared_var } (same shared_var!)
+        let type4 = MonoType::row(
+            LabeledType::new(interner.intern("name"), MonoType::STR),
+            MonoType::Var(shared_var),
+        );
+
+        // This should FAIL because shared_var is already bound
+        let result2 = type4.try_unify(&type3, &mut subs);
+        assert!(
+            result2.is_err(),
+            "Should fail because shared_var cannot be both {{age:Num}} and {{car:Str}}"
+        );
+    }
+
+    #[test]
+    fn test_record_unification_with_annotation() {
+        let mut interner = StrInterner::new();
+        let mut subs = Substitution::empty();
+        let shared_row_var = TypeVar::new();
+
+        // Person a = { name : Str | a }
+        let person_a = MonoType::row(
+            LabeledType::new(interner.intern("name"), MonoType::STR),
+            MonoType::Var(shared_row_var),
+        );
+
+        // Annotation type: { zero : Person a, one : Person a }
+        let annotation = MonoType::row(
+            LabeledType::new(interner.intern("zero"), person_a.clone()),
+            MonoType::row(
+                LabeledType::new(interner.intern("one"), person_a.clone()),
+                MonoType::empty_row(),
+            ),
+        );
+
+        // alice_type = { name : Str, age : Num }
+        let alice_type = MonoType::row(
+            LabeledType::new(interner.intern("name"), MonoType::STR),
+            MonoType::row(
+                LabeledType::new(interner.intern("age"), MonoType::NUM),
+                MonoType::empty_row(),
+            ),
+        );
+
+        // bob_type = { name : Str, car : Str }
+        let bob_type = MonoType::row(
+            LabeledType::new(interner.intern("name"), MonoType::STR),
+            MonoType::row(
+                LabeledType::new(interner.intern("car"), MonoType::STR),
+                MonoType::empty_row(),
+            ),
+        );
+
+        let inferred = MonoType::row(
+            LabeledType::new(interner.intern("zero"), alice_type),
+            MonoType::row(
+                LabeledType::new(interner.intern("one"), bob_type),
+                MonoType::empty_row(),
+            ),
+        );
+
+        // This should FAIL because the same row variable cannot have different extensions
+        let result = annotation.try_unify(&inferred, &mut subs);
+        assert!(
+            result.is_err(),
+            "Should fail because the same row variable cannot have different extensions"
+        );
+    }
+
+    #[test]
+    fn test_occurs_check() {
+        let mut interner = StrInterner::new();
+        let mut subs = Substitution::empty();
+        let var = TypeVar::new();
+
+        // Create a recursive type: var = { field : var }
+        let recursive_type = MonoType::row(
+            LabeledType::new(interner.intern("field"), MonoType::Var(var)),
+            MonoType::empty_row(),
+        );
+
+        let result = MonoType::Var(var).try_unify(&recursive_type, &mut subs);
+        assert!(result.is_err(), "Should fail due to occurs check");
+    }
+
+    #[test]
+    fn test_function_unification() {
+        let mut subs = Substitution::empty();
+
+        // f1: Int -> String
+        let f1 = MonoType::func(MonoType::NUM, MonoType::STR);
+
+        // f2: Int -> Bool (should fail)
+        let f2 = MonoType::func(MonoType::NUM, MonoType::BOOL);
+
+        let result = f1.try_unify(&f2, &mut subs);
+        assert!(result.is_err(), "Should fail - different return types");
+    }
+
+    #[test]
+    fn test_function_with_variables() {
+        let mut subs = Substitution::empty();
+        let var_a = TypeVar::new();
+        let var_b = TypeVar::new();
+
+        // f1: a -> a (identity function)
+        let f1 = MonoType::func(MonoType::Var(var_a), MonoType::Var(var_a));
+
+        // f2: Int -> b
+        let f2 = MonoType::func(MonoType::NUM, MonoType::Var(var_b));
+
+        let result = f1.try_unify(&f2, &mut subs);
+        assert!(result.is_ok(), "Should unify with a=Int, b=Int");
+
+        // Check that both variables are bound to Int
+        let expected_int = MonoType::NUM;
+        assert_eq!(subs.get(&var_a), Some(&expected_int));
+        assert_eq!(subs.get(&var_b), Some(&expected_int));
+    }
+
+    #[test]
+    fn test_complex_row_reordering() {
+        let mut interner = StrInterner::new();
+        let mut subs = Substitution::empty();
+
+        // Type 1: { a : Int, b : String }
+        let type1 = MonoType::row(
+            LabeledType::new(interner.intern("a"), MonoType::NUM),
+            MonoType::row(
+                LabeledType::new(interner.intern("b"), MonoType::STR),
+                MonoType::empty_row(),
+            ),
+        );
+
+        // Type 2: { b : String, a : Int } (different order)
+        let type2 = MonoType::row(
+            LabeledType::new(interner.intern("b"), MonoType::STR),
+            MonoType::row(
+                LabeledType::new(interner.intern("a"), MonoType::NUM),
+                MonoType::empty_row(),
+            ),
+        );
+
+        let result = type1.try_unify(&type2, &mut subs);
+        assert!(result.is_ok(), "Should unify despite different field order");
+    }
+
+    #[test]
+    fn test_missing_and_extra_labels() {
+        let mut interner = StrInterner::new();
+        let mut subs = Substitution::empty();
+
+        // Type 1: { a : Int }
+        let type1 = MonoType::row(
+            LabeledType::new(interner.intern("a"), MonoType::NUM),
+            MonoType::empty_row(),
+        );
+
+        // Type 2: {} (empty record)
+        let type2 = MonoType::empty_row();
+
+        let result = type1.try_unify(&type2, &mut subs);
+        assert!(result.is_err(), "Should fail - missing label 'a'");
+
+        // Reverse: extra label
+        let result = type2.try_unify(&type1, &mut subs);
+        assert!(result.is_err(), "Should fail - extra label 'a'");
+    }
+
+    #[test]
+    fn test_row_variable_chaining() {
+        let mut interner = StrInterner::new();
+        let mut subs = Substitution::empty();
+        let var1 = TypeVar::new();
+        let var2 = TypeVar::new();
+
+        // First bind var1 = var2
+        let result1 = MonoType::Var(var1).try_unify(&MonoType::Var(var2), &mut subs);
+        assert!(result1.is_ok());
+
+        // Then bind var2 = { field : Int }
+        let concrete_type = MonoType::row(
+            LabeledType::new(interner.intern("field"), MonoType::NUM),
+            MonoType::empty_row(),
+        );
+
+        let result2 = MonoType::Var(var2).try_unify(&concrete_type, &mut subs);
+        assert!(result2.is_ok());
+
+        // Now var1 should resolve to the concrete type through var2
+        let resolved_var1 = MonoType::Var(var1).apply(&mut subs);
+        assert_eq!(resolved_var1, concrete_type);
+    }
+
+    #[test]
+    fn test_incompatible_types() {
+        let mut interner = StrInterner::new();
+        let mut subs = Substitution::empty();
+
+        let int_type = MonoType::NUM;
+        let str_type = MonoType::STR;
+        let record_type = MonoType::row(
+            LabeledType::new(interner.intern("field"), MonoType::NUM),
+            MonoType::empty_row(),
+        );
+        let func_type = MonoType::func(int_type.clone(), str_type.clone());
+
+        // Test all incompatible pairs
+        assert!(int_type.try_unify(&str_type, &mut subs).is_err());
+        assert!(int_type.try_unify(&record_type, &mut subs).is_err());
+        assert!(int_type.try_unify(&func_type, &mut subs).is_err());
+        assert!(record_type.try_unify(&func_type, &mut subs).is_err());
+    }
 }
