@@ -16,10 +16,10 @@ pub trait Unifiable<Rhs = Self> {
     fn try_unify(&self, rhs: &Rhs, s: &mut Substitution) -> Result<(), TypeErrors>;
 }
 
-impl Unifiable for BuiltinType {
+impl Unifiable for PrimitiveType {
     fn try_unify(&self, rhs: &Self, s: &mut Substitution) -> Result<(), TypeErrors> {
         let mut unifier = Unifier::new(s);
-        unifier.unify_builtin(self, rhs);
+        unifier.unify_primitive(self, rhs);
         if unifier.errors.has_errors() {
             Err(unifier.errors)
         } else {
@@ -114,7 +114,7 @@ impl<'s> Unifier<'s> {
         result
     }
 
-    fn unify_builtin(&mut self, lhs: &BuiltinType, rhs: &BuiltinType) {
+    fn unify_primitive(&mut self, lhs: &PrimitiveType, rhs: &PrimitiveType) {
         if lhs != rhs {
             self.errors.push(TypeError::CannotUnify {
                 expected: lhs.into(),
@@ -136,7 +136,7 @@ impl<'s> Unifier<'s> {
         let rhs = rhs.apply_cow(self.substitution);
 
         match (lhs.as_ref(), rhs.as_ref()) {
-            (MonoType::Builtin(l), MonoType::Builtin(r)) => self.unify_builtin(l, r),
+            (MonoType::Builtin(l), MonoType::Builtin(r)) => self.unify_primitive(l, r),
             (MonoType::Func(l), MonoType::Func(r)) => self.unify_func(l, r),
             (MonoType::Row(l), MonoType::Row(r)) => self.unify_row(l, r),
             (MonoType::Var(var), with) => self.bind_var(var, with),

@@ -1,5 +1,6 @@
 use std::{ops::ControlFlow, rc::Rc};
 
+use kola_builtins::{Builtin, BuiltinType};
 use kola_resolver::phase::ResolvedNodes;
 use kola_span::{Diagnostic, IntoDiagnostic, Loc, Report};
 use kola_syntax::prelude::*;
@@ -230,18 +231,6 @@ where
         id: Id<node::TypePath>,
         tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
-        fn builtin_type(type_name: &str) -> Option<MonoType> {
-            let builtin_t = match type_name {
-                "Bool" => MonoType::BOOL,
-                "Char" => MonoType::CHAR,
-                "Num" => MonoType::NUM,
-                "Str" => MonoType::STR,
-                _ => return None,
-            };
-
-            Some(builtin_t)
-        }
-
         let node::TypePath { path, ty } = *id.get(tree);
 
         let type_name = ty.get(tree).0;
@@ -260,15 +249,30 @@ where
         } else if let Some(local_t) = self.local_env.get(&type_name) {
             // Local type parameter (like 'a' in forall a)
             PolyType::new(local_t.clone())
-        }
-        // Builtin's must be handled before checking the type env,
-        // because they do not populate the "resolved" map (would cause a panic)
-        else if let Some(builtin_t) = self.interner.get(type_name).and_then(builtin_type) {
-            PolyType::new(builtin_t)
-        } else if let Some(global_poly_t) = self.global_env.get_type(*self.resolved.meta(id)) {
+        } else if let Some(global_poly_t) = self
+            .resolved
+            .meta(id)
+            .into_defined()
+            .and_then(|sym| self.global_env.get_type(sym))
+        {
             // Module-level type definition (like 'Person')
             // unlike module-level value binds, these are properly solved and ready to use
             global_poly_t.clone()
+        } else if let Some(builtin_t) = self.resolved.meta(id).into_builtin() {
+            match builtin_t {
+                BuiltinType::Unit => PolyType::new(MonoType::UNIT),
+                BuiltinType::Bool => PolyType::new(MonoType::BOOL),
+                BuiltinType::Num => PolyType::new(MonoType::NUM),
+                BuiltinType::Char => PolyType::new(MonoType::CHAR),
+                BuiltinType::Str => PolyType::new(MonoType::STR),
+                BuiltinType::List => {
+                    let var = TypeVar::new();
+                    PolyType {
+                        vars: vec![var],
+                        ty: MonoType::list(MonoType::Var(var)),
+                    }
+                }
+            }
         } else {
             return ControlFlow::Break(Diagnostic::error(span, "Type not found in scope"));
         };
@@ -732,13 +736,21 @@ where
             // Case 2: Let-bind (MonoType)
 
             t.clone()
-        }
-        // For the future: Builtin's should be checked before the type env because they probably
-        // do not populate the "resolved" map
-        else if let Some(t) = self.module_env.get(self.resolved.meta(id)) {
+        } else if let Some(t) = self
+            .resolved
+            .meta(id)
+            .into_defined()
+            .and_then(|sym| self.module_env.get(&sym))
+        {
             // Case 3: Module local value-bind (fake PolyType not yet generalized)
 
             t.clone()
+        } else if let Some(id) = self.resolved.meta(id).into_builtin() {
+            let builtin = Builtin::from_id(id);
+
+            // TODO this instantiate isn't really necessary
+            // from_protocols creates new variables anyway
+            PolyType::from_protocol(builtin.type_, self.interner).instantiate()
         } else {
             return ControlFlow::Break(Diagnostic::error(span, "Value not found in scope"));
         };

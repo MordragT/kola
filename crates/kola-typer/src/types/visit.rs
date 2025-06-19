@@ -3,7 +3,10 @@ use std::ops::ControlFlow;
 pub trait TypeVisitor: Sized {
     type BreakValue;
 
-    fn visit_builtin(&mut self, _builtin: &super::BuiltinType) -> ControlFlow<Self::BreakValue> {
+    fn visit_primitive(
+        &mut self,
+        _primitive: &super::PrimitiveType,
+    ) -> ControlFlow<Self::BreakValue> {
         ControlFlow::Continue(())
     }
 
@@ -20,7 +23,7 @@ pub trait TypeVisitor: Sized {
 
     fn visit_mono(&mut self, mono: &super::MonoType) -> ControlFlow<Self::BreakValue> {
         match mono {
-            super::MonoType::Builtin(b) => self.visit_builtin(b),
+            super::MonoType::Builtin(b) => self.visit_primitive(b),
             super::MonoType::Func(f) => self.visit_func(f),
             super::MonoType::List(l) => self.visit_list(l),
             super::MonoType::Row(r) => self.visit_record(r),
@@ -52,9 +55,9 @@ pub trait TypeVisitor: Sized {
 pub trait TypeVisitorMut: Sized {
     type BreakValue;
 
-    fn visit_builtin_mut(
+    fn visit_primitive_mut(
         &mut self,
-        _builtin: &mut super::BuiltinType,
+        _primitive: &mut super::PrimitiveType,
     ) -> ControlFlow<Self::BreakValue> {
         ControlFlow::Continue(())
     }
@@ -72,7 +75,7 @@ pub trait TypeVisitorMut: Sized {
 
     fn visit_mono_mut(&mut self, mono: &mut super::MonoType) -> ControlFlow<Self::BreakValue> {
         match mono {
-            super::MonoType::Builtin(b) => self.visit_builtin_mut(b),
+            super::MonoType::Builtin(b) => self.visit_primitive_mut(b),
             super::MonoType::Func(f) => self.visit_func_mut(f),
             super::MonoType::List(l) => self.visit_list_mut(l),
             super::MonoType::Row(r) => self.visit_record_mut(r),
@@ -113,19 +116,19 @@ pub trait TypeVisitable {
         V: TypeVisitorMut;
 }
 
-impl TypeVisitable for super::BuiltinType {
+impl TypeVisitable for super::PrimitiveType {
     fn visit_type_by<V>(&self, visitor: &mut V) -> ControlFlow<V::BreakValue>
     where
         V: TypeVisitor,
     {
-        visitor.visit_builtin(self)
+        visitor.visit_primitive(self)
     }
 
     fn visit_type_mut_by<V>(&mut self, visitor: &mut V) -> ControlFlow<V::BreakValue>
     where
         V: TypeVisitorMut,
     {
-        visitor.visit_builtin_mut(self)
+        visitor.visit_primitive_mut(self)
     }
 }
 

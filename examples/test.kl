@@ -1,10 +1,37 @@
 {
-    simple = { a = { b = 10 } },
-    main = { simple : { a : { b : Num } } | a.b : Num += 20 },
+    #simple = { a = { b = 10 } },
+    #main = { simple : { a : { b : Num } } | a.b : Num += 20 },
     #main = { simple : { b : Num } | a.b : Num += 20 },
     #main = simple.a,
     #result : { b : Num } = simple.a,
     #main = result,
     #intermediate = simple.a,
     #main = { intermediate : { b : Num } | -b : Num },
+
+
+
+
+    #main = (list_len [1, 2, 3]),
+
+    #id = fn x => x,
+    #a = (id 10),
+    #b = (id true),
+    #main = { a = a, b = b },
+
+
+    #main = let id = fn x => x in
+    #    let a = (id 10) in
+    #    let b = (id true) in
+    #    { a = a, b = b },
+
+
+    module  test = {
+        id = fn x => x,
+    },
+
+    #main = { a = (test::id 10), b = (test::id true) },
+
+    #main = (test::id 10),
+
+    main = list_len,
 }

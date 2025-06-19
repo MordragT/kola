@@ -5,7 +5,7 @@ use super::{Kind, Typed};
 use crate::{env::KindEnv, error::TypeError};
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub enum BuiltinType {
+pub enum PrimitiveType {
     Unit,
     Bool,
     Num,
@@ -13,7 +13,7 @@ pub enum BuiltinType {
     Str,
 }
 
-impl fmt::Display for BuiltinType {
+impl fmt::Display for PrimitiveType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Unit => write!(f, "Unit"),
@@ -25,35 +25,35 @@ impl fmt::Display for BuiltinType {
     }
 }
 
-impl Typed for BuiltinType {
+impl Typed for PrimitiveType {
     fn constrain(&self, with: Kind, _env: &mut KindEnv) -> Result<(), TypeError> {
         match self {
-            BuiltinType::Unit => Err(TypeError::CannotConstrain {
+            PrimitiveType::Unit => Err(TypeError::CannotConstrain {
                 expected: with,
                 actual: self.into(),
             }),
-            BuiltinType::Bool => match with {
+            PrimitiveType::Bool => match with {
                 Kind::Equatable | Kind::Stringable => Ok(()),
                 _ => Err(TypeError::CannotConstrain {
                     expected: with,
                     actual: self.into(),
                 }),
             },
-            BuiltinType::Num => match with {
+            PrimitiveType::Num => match with {
                 Kind::Addable | Kind::Comparable | Kind::Equatable | Kind::Stringable => Ok(()),
                 _ => Err(TypeError::CannotConstrain {
                     expected: with,
                     actual: self.into(),
                 }),
             },
-            BuiltinType::Char => match with {
+            PrimitiveType::Char => match with {
                 Kind::Equatable | Kind::Stringable => Ok(()),
                 _ => Err(TypeError::CannotConstrain {
                     expected: with,
                     actual: self.into(),
                 }),
             },
-            BuiltinType::Str => match with {
+            PrimitiveType::Str => match with {
                 Kind::Addable | Kind::Equatable | Kind::Stringable => Ok(()),
                 _ => Err(TypeError::CannotConstrain {
                     expected: with,

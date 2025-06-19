@@ -178,8 +178,8 @@ where
         }
 
         // Create symbol and corresponding atom
-        let source_sym = self.symbol_of(id); // This is only defined if path is None so be careful about moving this
-        let mut source_atom = self.builder.add(ir::Atom::Symbol(source_sym));
+        let source_atom = self.symbols.atom_of(id); // This is only defined if path is None so be careful about moving this
+        let mut source_atom = self.builder.add(source_atom);
 
         if let Some((last_field_id, fields)) = fields.get(tree).0.split_last() {
             for field_id in fields {
@@ -618,7 +618,10 @@ mod tests {
         instr as ir,
         ir::{Ir, IrBuilder},
     };
-    use kola_resolver::{phase::ResolvedNodes, symbol::ValueSym};
+    use kola_resolver::{
+        phase::{ResolvedNodes, ResolvedValue},
+        symbol::ValueSym,
+    };
     use kola_tree::prelude::*;
     use kola_utils::interner::StrInterner;
     use kola_vm::{machine::CekMachine, value::Value};
@@ -632,7 +635,9 @@ mod tests {
 
         for query in tree.query3::<node::PathExpr, node::LetExpr, node::LambdaExpr>() {
             match query {
-                Query3::V0(id, _path) => resolved.insert_meta(id, ValueSym::new()),
+                Query3::V0(id, _path) => {
+                    resolved.insert_meta(id, ResolvedValue::Defined(ValueSym::new()))
+                }
                 Query3::V1(id, _let) => resolved.insert_meta(id, ValueSym::new()),
                 Query3::V2(id, _lambda) => resolved.insert_meta(id, ValueSym::new()),
             }

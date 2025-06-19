@@ -1,12 +1,9 @@
 use std::{fmt, mem};
 
 use derive_more::{Display, From};
+use kola_builtins::BuiltinId;
 use kola_print::prelude::*;
-use kola_utils::{
-    fmt::{DisplayWithInterner, StrInternerExt},
-    impl_try_as,
-    interner::StrKey,
-};
+use kola_utils::{impl_try_as, interner::StrKey};
 
 use crate::{
     id::Id,
@@ -116,6 +113,7 @@ pub enum Atom {
     Str(StrKey),
     Func(Func),
     Symbol(Symbol),
+    Builtin(BuiltinId),
 }
 
 impl<T> From<&T> for Atom
@@ -134,7 +132,8 @@ impl_try_as!(
     Num(f64),
     Str(StrKey),
     Func(Func),
-    Symbol(Symbol)
+    Symbol(Symbol),
+    Builtin(BuiltinId)
 );
 
 impl<'a> Notate<'a> for IrPrinter<'a, Id<Atom>> {
@@ -146,6 +145,7 @@ impl<'a> Notate<'a> for IrPrinter<'a, Id<Atom>> {
             Atom::Str(s) => format!("\"{}\"", self.interner[s].green()).display_in(arena),
             Atom::Func(f) => self.to(f).notate(arena),
             Atom::Symbol(s) => s.display_in(arena),
+            Atom::Builtin(b) => b.display_in(arena),
         };
 
         notation
@@ -309,6 +309,78 @@ impl<'a> Notate<'a> for IrPrinter<'a, CallExpr> {
         single.or(multi, arena).then(next, arena)
     }
 }
+
+// #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+// pub struct BuiltinCallExpr {
+//     pub bind: Symbol,
+//     pub builtin: BuiltinId,
+//     pub arg: Id<Atom>,
+//     pub next: Id<Expr>,
+// }
+
+// impl BuiltinCallExpr {
+//     pub fn new(
+//         bind: Symbol,
+//         builtin: BuiltinId,
+//         arg: impl Into<Atom>,
+//         next: impl Into<Expr>,
+//         builder: &mut IrBuilder,
+//     ) -> Self {
+//         let arg = builder.add(arg.into());
+//         let next = builder.add(next.into());
+
+//         Self {
+//             bind,
+//             builtin,
+//             arg,
+//             next,
+//         }
+//     }
+// }
+
+// // <bind> = (__builtin_<builtin> <arg>);
+// // <bind> =
+// //     ( <func>
+// //     <arg> );
+// impl<'a> Notate<'a> for IrPrinter<'a, BuiltinCallExpr> {
+//     fn notate(&self, arena: &'a Bump) -> Notation<'a> {
+//         let BuiltinCallExpr {
+//             bind,
+//             builtin,
+//             arg,
+//             next,
+//         } = self.node;
+
+//         let bind = bind.display_in(arena);
+//         let func = format_args!("__builtin_{builtin}").display_in(arena);
+//         let arg = self.to(arg).notate(arena);
+//         let next = arena.newline().then(self.to(next).notate(arena), arena);
+
+//         let single = [
+//             bind.clone(),
+//             arena.notate(" = ("),
+//             func.clone().flatten(arena),
+//             arena.just(' '),
+//             arg.clone().flatten(arena),
+//             arena.just(')'),
+//         ]
+//         .concat_in(arena);
+
+//         let multi = [
+//             bind,
+//             arena.newline(),
+//             arena.notate("= ("),
+//             func,
+//             arena.newline(),
+//             arg,
+//             arena.just(')'),
+//         ]
+//         .concat_in(arena)
+//         .indent(arena);
+
+//         single.or(multi, arena).then(next, arena)
+//     }
+// }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct IfExpr {
@@ -1267,6 +1339,7 @@ impl<'a> Notate<'a> for IrPrinter<'a, RecordAccessExpr> {
 pub enum Expr {
     Ret(RetExpr),
     Call(CallExpr),
+    // BuiltinCall(BuiltinCallExpr),
     If(IfExpr),
     Let(LetExpr),
     Unary(UnaryExpr),
@@ -1315,6 +1388,7 @@ impl<'a> Notate<'a> for IrPrinter<'a, Id<Expr>> {
         match self.ir.instr(self.node) {
             Expr::Ret(expr) => self.to(expr).notate(arena),
             Expr::Call(expr) => self.to(expr).notate(arena),
+            // Expr::BuiltinCall(expr) => self.to(expr).notate(arena),
             Expr::If(expr) => self.to(expr).notate(arena),
             Expr::Let(expr) => self.to(expr).notate(arena),
             Expr::Unary(expr) => self.to(expr).notate(arena),

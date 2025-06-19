@@ -3,6 +3,7 @@ use kola_tree::meta::MetaMapExt;
 
 use super::ValueOrders;
 use crate::{
+    phase::ResolvedValue,
     refs::ValueRef,
     scope::{ModuleScope, ModuleScopes},
 };
@@ -69,7 +70,9 @@ fn resolve_values_in_module(scope: &mut ModuleScope, report: &mut Report) {
     {
         if let Some(target) = scope.shape.get_value(name) {
             scope.value_graph.add_dependency(source, target);
-            scope.resolved.insert_meta(id, target);
+            scope
+                .resolved
+                .insert_meta(id, ResolvedValue::Defined(target));
         } else {
             // Value not found in current module
             report.add_diagnostic(

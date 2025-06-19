@@ -4,6 +4,7 @@ use crate::{
     env::Env,
     value::{List, Record, Value},
 };
+use kola_builtins::BuiltinId;
 use kola_collections::ImShadowMap;
 use kola_ir::{
     instr::{
@@ -32,6 +33,7 @@ pub fn eval_atom(atom: Atom, env: &Env) -> Result<Value, String> {
             Ok(Value::Func(env.clone(), f))
         }
         Atom::Symbol(s) => eval_symbol(s, env),
+        Atom::Builtin(b) => Ok(Value::Builtin(b)),
     }
 }
 
@@ -191,7 +193,7 @@ impl Eval for LetExpr {
 // 4. Using an extended environment that adds the binding [x ↦ W] to the function's captured environment γ'
 // 5. The continuation κ remains unchanged during function application
 impl Eval for CallExpr {
-    fn eval(&self, env: Env, mut cont: Cont, ir: &Ir) -> MachineState {
+    fn eval(&self, mut env: Env, mut cont: Cont, ir: &Ir) -> MachineState {
         let Self {
             bind,
             func,
@@ -210,54 +212,124 @@ impl Eval for CallExpr {
             Err(err) => return MachineState::Error(err),
         };
 
-        // Create a pure continuation frame for the next expression
-        let pure_frame = PureContFrame {
-            var: bind,
-            body: next,
-            env: env.clone(),
-        };
+        match func_val {
+            // Apply the function to the argument
+            Value::Func(mut func_env, Func { param, body }) => {
+                // Create a pure continuation frame for the next expression
+                let pure_frame = PureContFrame {
+                    var: bind,
+                    body: next,
+                    env: env.clone(),
+                };
 
-        // Add the frame to the continuation
-        let mut frame = cont.pop_or_identity(env.interner());
-        frame.pure.push(pure_frame);
-        cont.push(frame);
+                // Add the frame to the continuation
+                let mut frame = cont.pop_or_identity(env.interner());
+                frame.pure.push(pure_frame);
+                cont.push(frame);
 
-        // Apply the function to the argument
-        if let Value::Func(mut env, Func { param, body }) = func_val {
-            // Create a new environment with the bound parameter
-            env.insert(param, arg_val);
+                // Create a new environment with the bound parameter
+                func_env.insert(param, arg_val);
 
-            // Evaluate the function body
-            MachineState::Standard(StandardConfig {
-                control: body.get(ir),
-                env,
-                cont,
-            })
-        } else if let Value::Cont(mut captured) = func_val {
-            // M-APPCONT: <V W | γ | κ> --> <return W | γ | κ' ++ κ>  if V = κ'
-            //
-            // This rule handles continuation application in the CEK machine:
-            // 1. When we apply a captured continuation value (V = κ') to an argument W
-            // 2. We transition to returning the argument value W
-            // 3. The environment γ remains unchanged
-            // 4. We prepend the captured continuation κ' to the current continuation κ,
-            //    effectively composing the continuations
-            // 5. This allows control to transfer to the point where the continuation was captured,
-            //    with the argument W becoming the returned value at that point
+                // Evaluate the function body
+                MachineState::Standard(StandardConfig {
+                    control: body.get(ir),
+                    env: func_env,
+                    cont,
+                })
+            }
+            // If the function is a continuation, we apply it to the argument
+            Value::Cont(mut captured) => {
+                // M-APPCONT: <V W | γ | κ> --> <return W | γ | κ' ++ κ>  if V = κ'
+                //
+                // This rule handles continuation application in the CEK machine:
+                // 1. When we apply a captured continuation value (V = κ') to an argument W
+                // 2. We transition to returning the argument value W
+                // 3. The environment γ remains unchanged
+                // 4. We prepend the captured continuation κ' to the current continuation κ,
+                //    effectively composing the continuations
+                // 5. This allows control to transfer to the point where the continuation was captured,
+                //    with the argument W becoming the returned value at that point
 
-            captured.append(&mut cont);
+                // Create a pure continuation frame for the next expression
+                let pure_frame = PureContFrame {
+                    var: bind,
+                    body: next,
+                    env: env.clone(),
+                };
 
-            // Apply the captured continuation to the argument
-            MachineState::Standard(StandardConfig {
-                control: Expr::from(RetExpr { arg }),
-                env,
-                cont: captured,
-            })
-        } else {
-            MachineState::Error(format!("Cannot apply non-function value: {:?}", func_val))
+                // Add the frame to the continuation
+                let mut frame = cont.pop_or_identity(env.interner());
+                frame.pure.push(pure_frame);
+                cont.push(frame);
+
+                captured.append(&mut cont);
+
+                // Apply the captured continuation to the argument
+                MachineState::Standard(StandardConfig {
+                    control: Expr::from(RetExpr { arg }),
+                    env,
+                    cont: captured,
+                })
+            }
+            Value::Builtin(builtin) => {
+                match eval_builtin(builtin, arg_val) {
+                    Ok(value) => {
+                        // Create a new environment with the result bound to the variable
+                        env.insert(bind, value);
+
+                        // Continue with the next expression
+                        MachineState::Standard(StandardConfig {
+                            control: next.get(ir),
+                            env,
+                            cont,
+                        })
+                    }
+                    Err(err) => MachineState::Error(err),
+                }
+            }
+            // If it's neither, return an error
+            _ => MachineState::Error(format!("Cannot apply non-function value: {:?}", func_val)),
         }
     }
 }
+
+fn eval_builtin(builtin: BuiltinId, arg: Value) -> Result<Value, String> {
+    match (builtin, arg) {
+        (BuiltinId::ListLen, Value::List(list)) => Ok(Value::Num(list.len() as f64)),
+        (_, value) => Err(format!("Cannot apply __builtin_{builtin} to: {:?}", value)),
+    }
+}
+
+// impl Eval for BuiltinCallExpr {
+//     fn eval(&self, mut env: Env, cont: Cont, ir: &Ir) -> MachineState {
+//         let Self {
+//             bind,
+//             builtin,
+//             arg,
+//             next,
+//         } = *self;
+
+//         // Get the argument
+//         let arg_val = match eval_atom(arg.get(ir), &env) {
+//             Ok(value) => value,
+//             Err(err) => return MachineState::Error(err),
+//         };
+
+//         // Apply the function to the argument
+//         let result = match eval_builtin(builtin, arg_val) {
+//             Ok(value) => value,
+//             Err(e) => return MachineState::Error(e),
+//         };
+
+//         env.insert(bind, result);
+
+//         MachineState::Standard(StandardConfig {
+//             control: next.get(ir),
+//             env,
+//             cont,
+//         })
+//     }
+// }
 
 // M-IF: <if V then M else N | γ | κ> --> <M | γ | κ>, if V evaluates to true
 //                                     --> <N | γ | κ>, if V evaluates to false
@@ -540,12 +612,15 @@ impl Eval for RecordExtendExpr {
 
         // Extract the record from the value
         let Value::Record(mut record) = record_val else {
-            return MachineState::Error(format!("Cannot extend non-record value: {:?}", record_val));
+            return MachineState::Error(format!(
+                "Cannot extend non-record value: {:?}",
+                record_val
+            ));
         };
 
         // Get field path as StrKeys
         let field_path: Vec<_> = ir.iter_path(Some(path)).map(|fp| fp.label).collect();
-        
+
         // Use Record's extend_at_path method
         if let Err(err) = record.extend_at_path(&field_path, extend_value) {
             return MachineState::Error(err);
@@ -587,12 +662,15 @@ impl Eval for RecordRestrictExpr {
 
         // Extract the record from the value
         let Value::Record(mut record) = record_val else {
-            return MachineState::Error(format!("Cannot restrict non-record value: {:?}", record_val));
+            return MachineState::Error(format!(
+                "Cannot restrict non-record value: {:?}",
+                record_val
+            ));
         };
 
         // Get field path as StrKeys
         let field_path: Vec<_> = ir.iter_path(Some(path)).map(|fp| fp.label).collect();
-        
+
         // Use Record's restrict_at_path method
         if let Err(err) = record.restrict_at_path(&field_path) {
             return MachineState::Error(err);
@@ -658,12 +736,15 @@ impl Eval for RecordUpdateExpr {
 
         // Extract the record from the value
         let Value::Record(mut record) = record_val else {
-            return MachineState::Error(format!("Cannot update non-record value: {:?}", record_val));
+            return MachineState::Error(format!(
+                "Cannot update non-record value: {:?}",
+                record_val
+            ));
         };
 
         // Get field path as StrKeys
         let field_path: Vec<_> = ir.iter_path(Some(path)).map(|fp| fp.label).collect();
-        
+
         // Use Record's update_at_path method
         let update_fn = |current_val: Value| eval_record_op(op, current_val, update_val.clone());
         if let Err(err) = record.update_at_path(&field_path, update_fn) {
@@ -681,8 +762,6 @@ impl Eval for RecordUpdateExpr {
         })
     }
 }
-
-
 
 // M-RECORDACCESS: <x = R.l; N | γ | κ> --> <N | γ[x ↦ (γ(R).l)] | κ>
 //

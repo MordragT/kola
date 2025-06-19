@@ -2,13 +2,13 @@ use std::u32;
 
 use kola_ir::instr as ir;
 use kola_resolver::{
-    phase::{ResolvePhase, ResolvedNodes},
+    phase::{ResolvePhase, ResolvedNodes, ResolvedValue},
     symbol::{Sym, ValueSym},
 };
 use kola_tree::{
     id::Id as TreeId,
     meta::{MetaCast, MetaView},
-    node::Namespace,
+    node::{self, Namespace},
 };
 
 #[derive(Debug, Clone, Copy)]
@@ -34,6 +34,13 @@ impl<'a> SymbolEnv<'a> {
     {
         let sym = self.resolved.meta(id);
         ir::Symbol(sym.id())
+    }
+
+    pub fn atom_of(&self, id: TreeId<node::PathExpr>) -> ir::Atom {
+        match *self.resolved.meta(id) {
+            ResolvedValue::Defined(sym) => ir::Atom::Symbol(ir::Symbol(sym.id())),
+            ResolvedValue::Builtin(b) => ir::Atom::Builtin(b),
+        }
     }
 }
 

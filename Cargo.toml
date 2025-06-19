@@ -3,6 +3,7 @@ members = ["crates/*"]
 
 [workspace.dependencies]
 # Kola Crates
+kola-builtins = { path = "crates/kola-builtins" }
 kola-collections = { path = "crates/kola-collections" }
 kola-driver = { path = "crates/kola-driver" }
 kola-ir = { path = "crates/kola-ir" }
@@ -30,6 +31,7 @@ derive_more = { version = "2.0", features = [
     "try_into",
     "display",
     "into_iterator",
+    "from_str",
 ] }
 owo-colors = "4.2"
 thiserror = "2.0"

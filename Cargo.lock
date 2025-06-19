@@ -377,6 +377,14 @@ dependencies = [
 ]
 
 [[package]]
+name = "kola-builtins"
+version = "0.1.0"
+dependencies = [
+ "derive_more",
+ "paste",
+]
+
+[[package]]
 name = "kola-collections"
 version = "0.1.0"
 dependencies = [
@@ -406,6 +414,7 @@ name = "kola-ir"
 version = "0.1.0"
 dependencies = [
  "derive_more",
+ "kola-builtins",
  "kola-print",
  "kola-utils",
 ]
@@ -439,6 +448,7 @@ dependencies = [
  "camino",
  "derive_more",
  "indexmap",
+ "kola-builtins",
  "kola-collections",
  "kola-print",
  "kola-span",
@@ -498,6 +508,7 @@ dependencies = [
  "derive_more",
  "either",
  "indexmap",
+ "kola-builtins",
  "kola-collections",
  "kola-print",
  "kola-resolver",
@@ -528,6 +539,7 @@ name = "kola-vm"
 version = "0.1.0"
 dependencies = [
  "derive_more",
+ "kola-builtins",
  "kola-collections",
  "kola-ir",
  "kola-utils",

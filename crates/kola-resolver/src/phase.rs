@@ -1,7 +1,11 @@
 // use std::ops::Index;
 
+use std::fmt;
+
+use kola_builtins::{BuiltinId, BuiltinType};
 // use kola_collections::HashMap;
 use kola_tree::meta::{MetaMap, Phase};
+use kola_utils::as_variant;
 
 use crate::symbol::{ModuleSym, TypeSym, ValueSym};
 
@@ -31,6 +35,56 @@ use crate::symbol::{ModuleSym, TypeSym, ValueSym};
 //             .expect("Module not found in resolutions")
 //     }
 // }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum ResolvedValue {
+    Defined(ValueSym),
+    Builtin(BuiltinId),
+}
+
+impl ResolvedValue {
+    pub fn into_builtin(self) -> Option<BuiltinId> {
+        as_variant!(self, Self::Builtin)
+    }
+
+    pub fn into_defined(self) -> Option<ValueSym> {
+        as_variant!(self, Self::Defined)
+    }
+}
+
+impl fmt::Display for ResolvedValue {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ResolvedValue::Defined(sym) => sym.fmt(f),
+            ResolvedValue::Builtin(id) => id.fmt(f),
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum ResolvedType {
+    Defined(TypeSym),
+    Builtin(BuiltinType),
+}
+
+impl ResolvedType {
+    pub fn into_builtin(self) -> Option<BuiltinType> {
+        as_variant!(self, Self::Builtin)
+    }
+
+    pub fn into_defined(self) -> Option<TypeSym> {
+        as_variant!(self, Self::Defined)
+    }
+}
+
+impl fmt::Display for ResolvedType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ResolvedType::Defined(sym) => sym.fmt(f),
+            ResolvedType::Builtin(ty) => ty.fmt(f),
+        }
+    }
+}
 
 pub type ResolvedNodes = MetaMap<ResolvePhase>;
 
@@ -72,7 +126,7 @@ impl Phase for ResolvePhase {
     type ExprError = !;
     type Expr = !;
 
-    type PathExpr = ValueSym;
+    type PathExpr = ResolvedValue;
     type FieldPath = !;
 
     // Record operations - structural, no new symbols needed
@@ -91,7 +145,7 @@ impl Phase for ResolvePhase {
     // ===== TYPES =====
     // Type expressions are not needed for the untyped lowerer phase
     // Future: When adding typed IR, these could get ModuleSym for qualified types
-    type TypePath = TypeSym;
+    type TypePath = ResolvedType;
     type TypeVar = TypeSym; // Type variables only occur in forall quantifier definitions
     type RecordFieldType = !; // Field names exist in value namespace but no symbols needed here
     type RecordType = !; // Structural type, no symbols

@@ -1,4 +1,5 @@
 use derive_more::From;
+use kola_builtins::BuiltinId;
 use kola_collections::{ImShadowMap, ImVec};
 use kola_ir::instr::Func;
 use kola_utils::{
@@ -25,6 +26,8 @@ pub enum Value {
     Func(Env, Func),
     /// A captured continuation
     Cont(Cont),
+    /// A built-in function (e.g., `__builtin_first`)
+    Builtin(BuiltinId),
     /// A variant (label, value)
     Variant(Variant),
     /// A record (map of labels to values)
@@ -149,6 +152,7 @@ impl DisplayWithInterner for Value {
             Value::Str(s) => write!(f, "{}", s),
             Value::Func(_, _) => write!(f, "<function>"),
             Value::Cont(_) => write!(f, "<continuation>"),
+            Value::Builtin(b) => write!(f, "__builtin_{b}"),
             Value::Variant(v) => v.fmt(f, interner),
             Value::Record(r) => r.fmt(f, interner),
             Value::List(l) => l.fmt(f, interner),

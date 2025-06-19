@@ -1,9 +1,10 @@
 use derive_more::From;
-use kola_utils::as_variant;
+use kola_builtins::TypeProtocol;
+use kola_utils::{as_variant, interner::StrInterner};
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
-use super::{BuiltinType, FuncType, LabeledType, ListType, PolyType, RowType, TypeVar, Typed};
+use super::{FuncType, LabeledType, ListType, PolyType, PrimitiveType, RowType, TypeVar, Typed};
 use crate::{
     env::KindEnv,
     error::{TypeConversionError, TypeError},
@@ -16,7 +17,7 @@ use crate::{
 /// τ ::= α | gn τ1 .. τn
 #[derive(Debug, From, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum MonoType {
-    Builtin(BuiltinType),
+    Builtin(PrimitiveType),
     Func(Box<FuncType>),
     List(Box<ListType>),
     Row(Box<RowType>),
@@ -24,11 +25,11 @@ pub enum MonoType {
 }
 
 impl MonoType {
-    pub const BOOL: Self = Self::Builtin(BuiltinType::Bool);
-    pub const NUM: Self = Self::Builtin(BuiltinType::Num);
-    pub const CHAR: Self = Self::Builtin(BuiltinType::Char);
-    pub const STR: Self = Self::Builtin(BuiltinType::Str);
-    pub const UNIT: Self = Self::Builtin(BuiltinType::Unit);
+    pub const BOOL: Self = Self::Builtin(PrimitiveType::Bool);
+    pub const NUM: Self = Self::Builtin(PrimitiveType::Num);
+    pub const CHAR: Self = Self::Builtin(PrimitiveType::Char);
+    pub const STR: Self = Self::Builtin(PrimitiveType::Str);
+    pub const UNIT: Self = Self::Builtin(PrimitiveType::Unit);
 }
 
 impl MonoType {
@@ -51,10 +52,39 @@ impl MonoType {
     pub fn empty_row() -> Self {
         Self::Row(Box::new(RowType::Empty))
     }
+
+    pub fn from_protocol(proto: TypeProtocol, bound: &[TypeVar], interner: &StrInterner) -> Self {
+        match proto {
+            TypeProtocol::Unit => Self::UNIT,
+            TypeProtocol::Bool => Self::BOOL,
+            TypeProtocol::Num => Self::NUM,
+            TypeProtocol::Char => Self::CHAR,
+            TypeProtocol::Str => Self::STR,
+            TypeProtocol::List(&el) => Self::list(Self::from_protocol(el, bound, interner)),
+            TypeProtocol::Record(fields) => {
+                let mut row = Self::empty_row();
+                for &(label, ty) in fields.iter().rev() {
+                    // TODO: I don't trust this unwrap in test cases so handle this better
+                    // Safety: `label` is guaranteed to be in the interner
+                    let labeled = LabeledType::new(
+                        interner.lookup(label).unwrap(),
+                        Self::from_protocol(ty, bound, interner),
+                    );
+                    row = Self::row(labeled, row);
+                }
+                row
+            }
+            TypeProtocol::Lambda(&arg, &ret) => Self::func(
+                Self::from_protocol(arg, bound, interner),
+                Self::from_protocol(ret, bound, interner),
+            ),
+            TypeProtocol::Var(id) => Self::Var(bound[id as usize]),
+        }
+    }
 }
 
 impl MonoType {
-    pub fn into_builtin(self) -> Option<BuiltinType> {
+    pub fn into_primitive(self) -> Option<PrimitiveType> {
         as_variant!(self, Self::Builtin)
     }
 
@@ -74,7 +104,7 @@ impl MonoType {
         as_variant!(self, Self::Var)
     }
 
-    pub fn as_builtin(&self) -> Option<&BuiltinType> {
+    pub fn as_primitive(&self) -> Option<&PrimitiveType> {
         as_variant!(self, Self::Builtin)
     }
 
@@ -169,8 +199,8 @@ impl Default for MonoType {
     }
 }
 
-impl From<&BuiltinType> for MonoType {
-    fn from(value: &BuiltinType) -> Self {
+impl From<&PrimitiveType> for MonoType {
+    fn from(value: &PrimitiveType) -> Self {
         Self::Builtin(*value)
     }
 }

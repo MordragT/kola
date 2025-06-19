@@ -3,6 +3,7 @@ use log::debug;
 use owo_colors::OwoColorize;
 use std::{io, ops::ControlFlow};
 
+use kola_builtins::{BuiltinType, find_builtin_id, is_builtin_type};
 use kola_print::prelude::*;
 use kola_span::{IntoDiagnostic, Loc, Report, SourceId, SourceManager};
 use kola_syntax::prelude::*;
@@ -14,7 +15,7 @@ use crate::{
     defs::Def,
     forest::Forest,
     info::ModuleInfo,
-    phase::ResolvePhase,
+    phase::{ResolvePhase, ResolvedType, ResolvedValue},
     prelude::Topography,
     refs::{ModuleRef, TypeBindRef, TypeRef, ValueRef},
     scope::{ModuleScope, ModuleScopeStack},
@@ -549,19 +550,23 @@ where
             self.visit_module_path(path, tree)
         } else if let Some(value_sym) = self.stack.value_scope().get(&name) {
             // Local binding will not create value bind cycle either
-            self.insert_symbol(id, *value_sym);
+            self.insert_symbol(id, ResolvedValue::Defined(*value_sym));
             ControlFlow::Continue(())
         } else if let Some(value_sym) = self.stack.shape().get_value(name) {
             // Found a value binding in the current module scope
             // which was defined before this path expression (no forward reference)
 
-            self.insert_symbol(id, value_sym);
+            self.insert_symbol(id, ResolvedValue::Defined(value_sym));
 
             let current_sym = self.current_value_bind_sym.unwrap();
             self.stack
                 .value_graph_mut()
                 .add_dependency(current_sym, value_sym);
 
+            ControlFlow::Continue(())
+        } else if let Some(builtin) = self.interner.get(name.0).and_then(find_builtin_id) {
+            // This is a builtin value - resolve immediately, no dependencies needed
+            self.insert_symbol(id, ResolvedValue::Builtin(builtin));
             ControlFlow::Continue(())
         } else {
             // Either a forward reference or not found in the current module scope
@@ -651,7 +656,7 @@ where
             // Found a type binding in the current module scope
             // which was defined before this type path (no forward reference)
 
-            self.insert_symbol(id, type_sym);
+            self.insert_symbol(id, ResolvedType::Defined(type_sym));
 
             // Type Path's can occur in both type binds and type annotations.
             // Only in the former case we need to add a dependency.
@@ -665,9 +670,11 @@ where
             ControlFlow::Continue(())
         } else if let Some(type_sym) = self.stack.type_scope().get(&name) {
             // Local quantifier will not create type bind cycle either
-            self.insert_symbol(id, *type_sym);
+            self.insert_symbol(id, ResolvedType::Defined(*type_sym));
             ControlFlow::Continue(())
-        } else if self.interner.get(name.0).is_some_and(is_builtin_type) {
+        } else if let Some(builtin) = self.interner.get(name.0).and_then(BuiltinType::from_name) {
+            // This is a builtin type - resolve immediately, no dependencies needed
+            self.insert_symbol(id, ResolvedType::Builtin(builtin));
             ControlFlow::Continue(())
         } else
         // Either a forward reference or not found in the current module scope
@@ -683,8 +690,4 @@ where
             ControlFlow::Continue(())
         }
     }
-}
-
-fn is_builtin_type(name: &str) -> bool {
-    matches!(name, "Bool" | "Num" | "Str" | "Char")
 }

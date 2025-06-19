@@ -1,5 +1,7 @@
 use std::{collections::HashMap, fmt};
 
+use kola_builtins::TypeSchemeProtocol;
+use kola_utils::interner::StrInterner;
 use serde::{Deserialize, Serialize};
 
 use super::{MonoType, TypeVar, Typed};
@@ -24,6 +26,24 @@ impl PolyType {
             vars: Vec::new(),
             ty,
         }
+    }
+
+    pub fn from_protocol(scheme: TypeSchemeProtocol, interner: &StrInterner) -> Self {
+        let TypeSchemeProtocol {
+            vars_count,
+            input,
+            output,
+        } = scheme;
+
+        // Create exactly vars_count TypeVars
+        let vars: Vec<TypeVar> = (0..vars_count).map(|_| TypeVar::new()).collect();
+
+        // Convert types using simple array indexing
+        let input = MonoType::from_protocol(input, &vars, interner);
+        let output = MonoType::from_protocol(output, &vars, interner);
+        let ty = MonoType::func(input, output);
+
+        PolyType { vars, ty }
     }
 
     pub fn bound_vars(&self) -> &Vec<TypeVar> {
@@ -137,6 +157,8 @@ impl fmt::Display for PolyType {
         ty.fmt(f)
     }
 }
+
+// TODO this comment is garbage, remove it also maybe change the implementation
 
 /// Substitution of Polytypes in Constraint-Based Type Inference
 ///

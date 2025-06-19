@@ -1,19 +1,19 @@
-pub use builtin::*;
 pub use func::*;
 pub use list::*;
 pub use module::*;
 pub use mono::*;
 pub use poly::*;
+pub use primitive::*;
 pub use row::*;
 pub use var::*;
 pub use visit::*;
 
-mod builtin;
 mod func;
 mod list;
 mod module;
 mod mono;
 mod poly;
+mod primitive;
 mod row;
 mod var;
 mod visit;
