@@ -55,7 +55,7 @@ impl Driver {
         }
 
         let TypeCheckOutput {
-            type_env,
+            global_env: type_env,
             type_annotations,
         } = type_check(
             &forest,

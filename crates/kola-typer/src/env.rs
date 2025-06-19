@@ -3,15 +3,29 @@ use std::{collections::HashMap, ops::Index};
 use indexmap::IndexMap;
 use kola_resolver::symbol::{ModuleSym, Sym, TypeSym, ValueSym};
 use kola_tree::node::{ModuleNamespace, TypeNamespace, ValueNamespace};
+use kola_utils::{interner::StrKey, scope::LinearScope};
 
-use crate::{
-    prelude::{Substitutable, Substitution},
-    scope::BoundVars,
-    substitute::merge,
-    types::{Kind, ModuleType, PolyType, TypeVar},
-};
+use crate::types::{Kind, ModuleType, MonoType, PolyType, TypeVar};
 
 pub type KindEnv = IndexMap<TypeVar, Vec<Kind>>;
+
+pub trait BoundVars {
+    /// Extends the given vector with the type variables that are bound in this type.
+    fn extend_bound_vars(&self, vars: &mut Vec<TypeVar>);
+
+    /// Returns the type variables that are bound in this type.
+    fn bound_vars(&self) -> Vec<TypeVar> {
+        let mut vars = Vec::new();
+        self.extend_bound_vars(&mut vars);
+        vars.sort_unstable();
+        vars.dedup();
+        vars
+    }
+}
+
+pub type LocalTypeEnv = LinearScope<StrKey, MonoType>;
+
+pub type ModuleTypeEnv = HashMap<ValueSym, MonoType>;
 
 #[derive(Debug, Clone, Default)]
 pub struct SymbolCache<T>(HashMap<(Sym<T>, Sym<T>), bool>);
@@ -56,7 +70,7 @@ pub type ValueCache = SymbolCache<ValueNamespace>;
 // ModuleSyms are not unique that's why this doesn't work :(
 
 #[derive(Debug, Clone, Default)]
-pub struct TypeEnv {
+pub struct GlobalTypeEnv {
     pub values: HashMap<ValueSym, PolyType>,
     pub equiv_values: ValueCache,
 
@@ -67,7 +81,7 @@ pub struct TypeEnv {
     pub equiv_modules: ModuleCache,
 }
 
-impl TypeEnv {
+impl GlobalTypeEnv {
     pub fn new() -> Self {
         Self::default()
     }
@@ -141,42 +155,7 @@ impl TypeEnv {
     // }
 }
 
-impl Substitutable for TypeEnv {
-    // TODO this is probably not very performant
-    fn try_apply(&self, s: &mut Substitution) -> Option<Self> {
-        if let Some((values, types)) = merge(
-            self.values.try_apply(s),
-            || self.values.clone(),
-            self.types.try_apply(s),
-            || self.types.clone(),
-        ) {
-            Some(Self {
-                values,
-                types,
-                modules: self.modules.clone(),
-                equiv_values: self.equiv_values.clone(),
-                equiv_types: self.equiv_types.clone(),
-                equiv_modules: self.equiv_modules.clone(),
-            })
-        } else {
-            None
-        }
-    }
-
-    fn apply_mut(&mut self, s: &mut Substitution) {
-        self.values.apply_mut(s);
-        self.types.apply_mut(s);
-    }
-}
-
-impl BoundVars for TypeEnv {
-    fn extend_bound_vars(&self, vars: &mut Vec<TypeVar>) {
-        vars.extend(self.values.values().flat_map(PolyType::bound_vars))
-        // TODO also bound vars in types?
-    }
-}
-
-impl Index<ValueSym> for TypeEnv {
+impl Index<ValueSym> for GlobalTypeEnv {
     type Output = PolyType;
 
     fn index(&self, sym: ValueSym) -> &Self::Output {
@@ -186,7 +165,7 @@ impl Index<ValueSym> for TypeEnv {
     }
 }
 
-impl Index<TypeSym> for TypeEnv {
+impl Index<TypeSym> for GlobalTypeEnv {
     type Output = PolyType;
 
     fn index(&self, sym: TypeSym) -> &Self::Output {
@@ -196,7 +175,7 @@ impl Index<TypeSym> for TypeEnv {
     }
 }
 
-impl Index<ModuleSym> for TypeEnv {
+impl Index<ModuleSym> for GlobalTypeEnv {
     type Output = ModuleType;
 
     fn index(&self, sym: ModuleSym) -> &Self::Output {

@@ -1,143 +1,20 @@
-//! Type inference engine implementing Hindley-Milner with row polymorphism extensions.
-//!
-//! This module provides constraint-based type inference that supports:
-//! - **Standard HM inference**: Let-polymorphism with principal types
-//! - **Row polymorphism**: Extensible records with type-safe field access
-//! - **Kind constraints**: Ensuring type variables respect their intended usage
-//! - **Type annotations**: Bidirectional typing with user-provided type hints
-//!
-//! ## Key Design Decisions
-//!
-//! **Constraint-based solving**: Type and kind constraints are solved incrementally
-//! in the order they're generated, providing better error locality and fail-fast behavior.
-//!
-//! **Annotation semantics**: Type annotations on let-bindings use the annotation type
-//! for the binding (not a generalization of the inferred type), enabling proper
-//! row polymorphic constraints and predictable type behavior.
-//!
-//! **Unified constraint handling**: Type unification and kind checking are interleaved
-//! rather than separated into phases, matching constraint satisfaction solving and
-//! ensuring row variable bindings are validated immediately.
-
 use std::{ops::ControlFlow, rc::Rc};
 
 use kola_resolver::phase::ResolvedNodes;
-use kola_span::{Diagnostic, IntoDiagnostic, Loc, Located, Report};
+use kola_span::{Diagnostic, IntoDiagnostic, Loc, Report};
 use kola_syntax::prelude::*;
 use kola_tree::prelude::*;
-use kola_utils::{errors::Errors, fmt::StrInternerExt, interner::StrInterner};
-use log::debug;
+use kola_utils::interner::StrInterner;
 
 use crate::{
-    env::{KindEnv, TypeEnv},
-    error::TypeErrors,
+    constraints::Constraints,
+    env::{GlobalTypeEnv, LocalTypeEnv, ModuleTypeEnv},
     phase::{TypePhase, TypedNodes},
-    scope::{BoundVars, LocalTypeScope, ModuleTypeScope},
     substitute::{Substitutable, Substitution},
-    types::{Kind, LabeledType, MonoType, PolyType, TypeVar, Typed},
-    unify::Unifiable,
+    types::{Kind, LabeledType, MonoType, PolyType, TypeVar},
 };
 
 // https://blog.stimsina.com/post/implementing-a-hindley-milner-type-system-part-2
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub enum Constraint {
-    Kind {
-        expected: Kind,
-        actual: MonoType,
-        span: Loc,
-    },
-    Ty {
-        expected: MonoType,
-        actual: MonoType,
-        span: Loc,
-    },
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct Constraints(Vec<Constraint>);
-
-impl Constraints {
-    pub fn new() -> Self {
-        Self(Vec::new())
-    }
-
-    pub fn constrain(&mut self, expected: MonoType, actual: MonoType, span: Loc) {
-        let c = Constraint::Ty {
-            expected,
-            actual,
-            span,
-        };
-        self.0.push(c);
-    }
-
-    // Same as constrains for debugging
-    pub fn constrain_check(&mut self, expected: MonoType, actual: MonoType, span: Loc) {
-        let c = Constraint::Ty {
-            expected,
-            actual,
-            span,
-        };
-        self.0.push(c);
-    }
-
-    pub fn constrain_kind(&mut self, expected: Kind, actual: MonoType, span: Loc) {
-        let c = Constraint::Kind {
-            expected,
-            actual,
-            span,
-        };
-        self.0.push(c);
-    }
-
-    /// Solves type and kind constraints in the order they were generated during inference.
-    ///
-    /// This mixed approach is preferred over separating unification and kind checking because:
-    /// 1. **Preserves logical flow**: Constraints are solved in the same order as type inference,
-    ///    maintaining the semantic relationship between type construction and validation
-    /// 2. **Fail-fast**: Kind violations are caught immediately when the relevant substitution
-    ///    becomes available, rather than deferring all kind checks to the end
-    /// 3. **Better error locality**: Errors are reported at the point where the constraint
-    ///    was actually generated, making debugging easier
-    /// 4. **Theoretical soundness**: Matches constraint satisfaction solving where constraints
-    ///    interact and should be resolved incrementally rather than in isolated phases
-    ///
-    /// For row polymorphism, this ensures that row variable bindings are validated against
-    /// their Kind::Record constraints as soon as the unification occurs.
-    pub fn solve(
-        self,
-        s: &mut Substitution,
-        kind_env: &mut KindEnv,
-    ) -> Result<(), Located<TypeErrors>> {
-        for c in self.0 {
-            match c {
-                Constraint::Kind {
-                    expected,
-                    actual,
-                    span,
-                } => {
-                    actual
-                        .apply_cow(s)
-                        .constrain(expected, kind_env)
-                        .map_err(|e| (Errors::unit(e), span))?;
-                }
-                Constraint::Ty {
-                    expected,
-                    actual,
-                    span,
-                } => {
-                    let lhs = expected.apply_cow(s);
-                    let rhs = actual.apply_cow(s);
-
-                    debug!("SOLVING: {} ≈ {}", lhs, rhs);
-
-                    lhs.try_unify(&rhs, s).map_err(|errors| ((errors, span)))?;
-                }
-            }
-        }
-
-        Ok(())
-    }
-}
 
 // ∆ = Kind Environment
 // Γ = Type Environment
@@ -147,12 +24,12 @@ impl Constraints {
 
 pub struct Typer<'a, N> {
     root_id: Id<N>,
-    scope: LocalTypeScope,
-    module_scope: &'a ModuleTypeScope,
-    types: TypedNodes,
     spans: Rc<Locations>,
+    types: TypedNodes,
+    local_env: LocalTypeEnv,
+    module_env: &'a ModuleTypeEnv,
+    global_env: &'a GlobalTypeEnv,
     cons: &'a mut Constraints,
-    env: &'a TypeEnv,
     interner: &'a StrInterner,
     resolved: &'a ResolvedNodes,
 }
@@ -162,18 +39,18 @@ impl<'a, N> Typer<'a, N> {
         root_id: Id<N>,
         spans: Rc<Locations>,
         cons: &'a mut Constraints,
-        module_scope: &'a ModuleTypeScope,
-        env: &'a TypeEnv,
+        module_scope: &'a ModuleTypeEnv,
+        env: &'a GlobalTypeEnv,
         interner: &'a StrInterner,
         resolved: &'a ResolvedNodes,
     ) -> Self {
         Self {
             root_id,
-            scope: LocalTypeScope::new(),
-            module_scope,
+            local_env: LocalTypeEnv::new(),
+            module_env: module_scope,
             types: TypedNodes::new(),
             spans,
-            env,
+            global_env: env,
             interner,
             resolved,
             cons,
@@ -240,7 +117,7 @@ where
         id: Id<node::TypeBind>,
         tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
-        let node::TypeBind { name, ty } = *id.get(tree);
+        let node::TypeBind { ty, .. } = *id.get(tree);
 
         self.visit_type_scheme(ty, tree)?;
         let poly_t = self.types.meta(ty).clone();
@@ -279,7 +156,7 @@ where
                 let var_name = var_node.get(tree).0;
                 let type_var = TypeVar::new();
 
-                self.scope.enter(var_name, MonoType::Var(type_var));
+                self.local_env.enter(var_name, MonoType::Var(type_var));
                 type_var
             })
             .collect::<Vec<_>>();
@@ -292,7 +169,7 @@ where
 
         for var_node in vars.iter().rev() {
             let var_name = var_node.get(tree).0;
-            self.scope.exit(&var_name);
+            self.local_env.exit(&var_name);
         }
 
         let poly_t = PolyType {
@@ -374,13 +251,13 @@ where
             // Module-qualified path
             let module_sym = *self.resolved.meta(path);
 
-            let type_sym = self.env[module_sym]
+            let type_sym = self.global_env[module_sym]
                 .get_type(type_name)
                 .expect("Type not found in module");
 
-            let module_poly_t = &self.env[type_sym];
+            let module_poly_t = &self.global_env[type_sym];
             module_poly_t.clone()
-        } else if let Some(local_t) = self.scope.get(&type_name) {
+        } else if let Some(local_t) = self.local_env.get(&type_name) {
             // Local type parameter (like 'a' in forall a)
             PolyType::new(local_t.clone())
         }
@@ -388,7 +265,7 @@ where
         // because they do not populate the "resolved" map (would cause a panic)
         else if let Some(builtin_t) = self.interner.get(type_name).and_then(builtin_type) {
             PolyType::new(builtin_t)
-        } else if let Some(global_poly_t) = self.env.get_type(*self.resolved.meta(id)) {
+        } else if let Some(global_poly_t) = self.global_env.get_type(*self.resolved.meta(id)) {
             // Module-level type definition (like 'Person')
             // unlike module-level value binds, these are properly solved and ready to use
             global_poly_t.clone()
@@ -530,7 +407,7 @@ where
 
         let tail_t = if let Some(extension_var) = extension {
             let extension_name = extension_var.get(tree).0;
-            let Some(extension_t) = self.scope.get(&extension_name).cloned() else {
+            let Some(extension_t) = self.local_env.get(&extension_name).cloned() else {
                 return ControlFlow::Break(Diagnostic::error(
                     self.span(id),
                     "Type variable not found in scope",
@@ -622,7 +499,7 @@ where
 
         let tail_t = if let Some(extension_var) = extension {
             let extension_name = extension_var.get(tree).0;
-            let Some(extensions_t) = self.scope.get(&extension_name).cloned() else {
+            let Some(extensions_t) = self.local_env.get(&extension_name).cloned() else {
                 return ControlFlow::Break(Diagnostic::error(
                     self.span(id),
                     "Type variable not found in scope",
@@ -689,33 +566,20 @@ where
         ControlFlow::Continue(())
     }
 
-    /// Rule for Value Binding with Optional Type Annotation
+    /// Rule for Value Bindings
     ///
-    /// With type annotation:
-    /// ```ignore
-    /// ∆;Γ ⊢ value : value_t
-    /// inferred_poly_t = generalize(value_t, [])
-    /// ∆;Γ ⊢ ty : expected_poly_t
-    /// unify(instantiate(expected_poly_t), value_t)
-    /// -----------------------
-    /// ∆;Γ ⊢ name : ty = value : expected_poly_t
-    /// ```
-    ///
-    /// Without type annotation:
-    /// ```ignore
-    /// ∆;Γ ⊢ value : value_t
-    /// inferred_poly_t = generalize(value_t, [])
-    /// -----------------------
-    /// ∆;Γ ⊢ name = value : inferred_poly_t
-    /// ```
+    /// In this constraint-based implementation, value bindings are processed in two phases:
+    /// 1. **Constraint Generation**: Infers type from value expression and creates constraints
+    /// 2. **Deferred Resolution**: Actual generalization happens later in the checker
     ///
     /// Implementation:
     /// - Infers type from value expression with fresh type variable scope
-    /// - Generalizes inferred type (top-level binding)
-    /// - If type annotation present, constrains inferred type against annotation
-    /// - Uses type annotation as final type, or inferred type if no annotation
+    /// - If type annotation present, constrains annotation against inferred type
+    /// - Stores inferred type (not annotation) for later generalization
+    /// - Does NOT generalize immediately (unlike traditional HM implementations)
     ///
-    /// Type signature: Binds value to polymorphic type with optional constraint
+    /// Note: The PolyType::new() wrapper is temporary for printing - actual generalization
+    /// happens in the checker after constraint solving.
     fn visit_value_bind(
         &mut self,
         id: Id<node::ValueBind>,
@@ -858,20 +722,20 @@ where
             // Case 1: Other module (real PolyType)
             let module_sym = *self.resolved.meta(path);
 
-            let value_sym = self.env[module_sym]
+            let value_sym = self.global_env[module_sym]
                 .get_value(name)
                 .expect("Value not found in module");
 
-            let pt = &self.env[value_sym];
+            let pt = &self.global_env[value_sym];
             pt.instantiate()
-        } else if let Some(t) = self.scope.get(&name) {
+        } else if let Some(t) = self.local_env.get(&name) {
             // Case 2: Let-bind (MonoType)
 
             t.clone()
         }
         // For the future: Builtin's should be checked before the type env because they probably
         // do not populate the "resolved" map
-        else if let Some(t) = self.module_scope.get(self.resolved.meta(id)) {
+        else if let Some(t) = self.module_env.get(self.resolved.meta(id)) {
             // Case 3: Module local value-bind (fake PolyType not yet generalized)
 
             t.clone()
@@ -1492,18 +1356,20 @@ where
         ControlFlow::Continue(())
     }
 
-    // TODO I do not generalize let anymore
-    /// Rule for Let Expression
+    /// Rule for Let Expressions (Monomorphic Implementation)
     ///
-    /// ```ignore
+    /// ```text
     /// ∆;Γ ⊢ value : value_t
-    /// value_pt = generalize(value_t, ftv(Γ))
-    /// ∆;Γ, name : value_pt ⊢ inside : result_t
+    /// ∆;Γ, name : value_t ⊢ inside : result_t
     /// -----------------------
     /// ∆;Γ ⊢ let name = value in inside : result_t
     /// ```
     ///
-    /// Implementation uses generalization to allow polymorphic let-bindings
+    /// Note: This implementation does NOT generalize let-bindings, making them
+    /// monomorphic. This simplifies the constraint-based algorithm while still
+    /// supporting polymorphism at top-level value bindings.
+    ///
+    /// For polymorphic local bindings, use (non-exported) top-level value bindings instead.
     fn visit_let_expr(&mut self, id: Id<node::LetExpr>, tree: &T) -> ControlFlow<Self::BreakValue> {
         let &node::LetExpr {
             name,
@@ -1532,10 +1398,10 @@ where
             self.cons
                 .constrain(expected_t, value_t.clone(), self.span(id));
         }
-        self.scope.enter(name, value_t);
+        self.local_env.enter(name, value_t);
 
         self.visit_expr(inside, tree)?;
-        self.scope.exit(&name);
+        self.local_env.exit(&name);
 
         let result_t = self.types.meta(inside).clone();
         self.insert_type(id, result_t);
@@ -1626,9 +1492,9 @@ where
 
         let name = param.get(tree).0.clone();
 
-        self.scope.enter(name, param_t.clone());
+        self.local_env.enter(name, param_t.clone());
         self.visit_expr(body, tree)?;
-        self.scope.exit(&name);
+        self.local_env.exit(&name);
 
         let body_t = self.types.meta(body).clone();
         let lambda_t = MonoType::func(param_t, body_t);
@@ -1704,17 +1570,16 @@ mod tests {
 
     use camino::Utf8PathBuf;
     use kola_resolver::phase::ResolvedNodes;
-    use kola_span::{Loc, Located, Report, SourceId, Span};
+    use kola_span::{Loc, Located, SourceId, Span};
     use kola_syntax::loc::Locations;
     use kola_tree::prelude::*;
     use kola_utils::interner::{PathInterner, StrInterner};
 
     use super::{TypedNodes, Typer};
     use crate::{
-        env::{KindEnv, TypeEnv},
+        env::{GlobalTypeEnv, KindEnv, ModuleTypeEnv},
         error::{TypeError, TypeErrors},
         prelude::{Substitutable, Substitution},
-        scope::ModuleTypeScope,
         typer::Constraints,
         types::*,
     };
@@ -1736,8 +1601,8 @@ mod tests {
         let source_id = mocked_source();
         let spans = Rc::new(mocked_spans(source_id, &tree));
 
-        let type_env = TypeEnv::new();
-        let module_scope = ModuleTypeScope::new();
+        let type_env = GlobalTypeEnv::new();
+        let module_scope = ModuleTypeEnv::new();
         let interner = StrInterner::new(); // TODO for tests with builtin types the interner should be passed
         let resolved = ResolvedNodes::new();
 

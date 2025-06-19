@@ -4,9 +4,10 @@ use kola_collections::{HashMap, ImHashMap, ImOrdMap, ImVec, OrdMap};
 use kola_print::prelude::OwoColorize;
 use kola_tree::prelude::*;
 
-use crate::scope::BoundVars;
-
-use super::types::{MonoType, TypeVar};
+use crate::{
+    env::BoundVars,
+    types::{MonoType, TypeVar},
+};
 
 #[derive(Debug, Clone, PartialEq, Eq, Default)]
 pub struct Substitution {

@@ -1,3 +1,40 @@
+//! This module implements the main type checking algorithm that processes modules
+//! in dependency order and coordinates constraint generation, solving, and generalization.
+//!
+//! ## Algorithm Implementation
+//!
+//! The type checker follows this precise algorithm for each module:
+//!
+//! ### Type Binds Processing
+//! 1. Create local Constraint-Set and Typer with fresh LexicalScope
+//! 2. Gather constraints for the bind and add to Constraint-Set
+//! 3. Solve constraints immediately (update module-local Substitution and KindEnv)
+//! 4. Apply substitution to the bind
+//! 5. Insert resolved type into module-local TypeEnv (available for subsequent binds)
+//!
+//! ### Value Binds Processing
+//! 1. Create Typer with fresh LexicalScope
+//! 2. Gather constraints for the bind and add to module-local Constraint-Set
+//! 3. Create fresh monotype variable and constrain it with bind's inferred type
+//! 4. Insert type variable into module-local TypeEnv (available for subsequent binds)
+//!
+//! ### Module Finalization
+//! 1. Solve all accumulated constraints for value binds
+//! 2. Apply substitution to all value bind types
+//! 3. Generalize all value binds (converting MonoTypes to PolyTypes)
+//! 4. Merge finalized types into global TypeEnv
+//!
+//! ## Key Design Decisions
+//!
+//! - **Module boundaries as constraint solving points**: Each module's constraints
+//!   are solved together, respecting semantic boundaries for type finalization
+//! - **Immediate type bind resolution**: Type binds are solved immediately since
+//!   subsequent binds need access to the resolved type definitions
+//! - **Deferred value bind resolution**: Value binds use placeholders during constraint
+//!   generation and are resolved together for better type inference
+//! - **No let-bind generalization**: Local let-binds remain monomorphic for algorithmic
+//!   simplicity while maintaining expressiveness through top-level polymorphism
+
 use kola_print::prelude::*;
 use kola_resolver::{
     forest::Forest,
@@ -16,69 +53,34 @@ use kola_utils::{fmt::StrInternerExt, interner::StrInterner};
 use log::debug;
 
 use crate::{
-    env::{KindEnv, TypeEnv},
+    constraints::Constraints,
+    env::{GlobalTypeEnv, KindEnv, ModuleTypeEnv},
     phase::{TypeAnnotations, TypedNodes},
     print::TypeDecorator,
-    scope::{BoundVars, ModuleTypeScope},
     substitute::{Substitutable, Substitution},
-    typer::{Constraints, Typer},
-    types::{ModuleType, MonoType, PolyType},
+    typer::Typer,
+    types::{ModuleType, MonoType},
 };
 
 #[derive(Debug, Clone, Default)]
 pub struct TypeCheckOutput {
-    pub type_env: TypeEnv,
+    pub global_env: GlobalTypeEnv,
     pub type_annotations: TypeAnnotations,
 }
 
-/*
-
-- module boundaries are natural points for constraint solving,
-    because they represent semantic boundaries
-    where types need to be finalized for export.
-- generalization must happen after constraint solving not before
-    - TODO okay what about let-bindings then ?
-    - Solution: don't generalize let-bindings, only value-binds
-- instantiatiated types must be tracked inside a type environment or constraint set
-
--------------------------------------------------
-
-ModuleEnv: Environment for Module data, holds per module: value types, type types, module types and their kinds
-ConstraintSet: Set of constraints to be solved per module
-Substitution: Substitutions for type variables, built up during constraint solving
-KindEnv: Environment for kinds, holds per module: type kinds (numerical, equatable, row etc.)
-TypeEnv: Environment for types, holds per module: value types, type types, module types
-LexicalScope: Holds types referenced by name, not by symbol
-Typer: Visits AST nodes, gathers constraints and fills module local TypeEnv
-
-1. Create a global ModuleEnv (TODO my KindEnv and TypeEnv are global using stable identifiers (symbols), so no need anymore for ModuleEnv)
-
-For each module in module-order:
-
-    1. Create a module local Substitution, TypeEnv and KindEnv (use ModuleEnv for dependencies)
-
-    For each type-bind in type-order:
-        1. Create a Constraint-Set and Typer with a new Lexical Scope
-        2. Gather constraints for the bind and add to Constraint-Set
-        3. Solve constraints for this bind (and thus update the module local Substitution and KindEnv)
-        4. Apply the module local substitution to the bind
-        5. Generalize the bind (probably not needed because they are already PolyTypes)
-        6. Insert into the module local TypeEnv (making it available for subsequent binds)
-
-    2. Create a module local Constraint-Set for value-bind constraints.
-
-    For each value-bind in value-order:
-        1. Create a Typer with a new Lexical Scope
-        2. Gather constraints for the bind and add to module local Constraint-Set
-        3. Create a fresh monotype variable and constraint it with the bind's current type (insert into Constraint-Set)
-        4. Insert this type variable (MonoType) into the module local TypeEnv (making it available for subsequent binds)
-
-    3. Solve the module local Constraint-Set with the module local Substitution and KindEnv
-    4. Apply the substitution to value-binds inside the module local TypeEnv
-    5. Generalize all value-binds in the TypeEnv changing them from being MonoTypes to PolyTypes
-    6. Insert the generalized value-binds and the type-binds data inside the TypeEnv into the global ModuleEnv (TODO: visibility)
-
- */
+/// Performs type checking on a collection of modules using constraint-based inference.
+///
+/// This function implements the main type checking algorithm that processes modules in
+/// dependency order, ensuring that each module's dependencies are fully typed before
+/// processing dependent modules.
+///
+/// # Algorithm Steps
+///
+/// For each module in topological dependency order:
+/// 1. **Type bind processing**: Immediately solve constraints for type definitions
+/// 2. **Value bind constraint generation**: Create constraints and placeholder types
+/// 3. **Module-level constraint solving**: Resolve all value bind constraints together
+/// 4. **Generalization and finalization**: Convert to polymorphic types and merge into global environment
 pub fn type_check(
     forest: &Forest,
     topography: &Topography,
@@ -91,7 +93,7 @@ pub fn type_check(
     report: &mut Report,
     print_options: PrintOptions,
 ) -> TypeCheckOutput {
-    let mut type_env = TypeEnv::new();
+    let mut global_env = GlobalTypeEnv::new();
     let mut kind_env = KindEnv::new();
     let mut type_annotations = TypeAnnotations::new();
 
@@ -117,7 +119,7 @@ pub fn type_check(
 
         let mut subs = Substitution::empty();
         let mut module_annotations = TypedNodes::new();
-        let mut module_type_scope = ModuleTypeScope::new();
+        let mut module_env = ModuleTypeEnv::new();
 
         for &type_sym in type_order {
             let id = module_scope.defs[type_sym].id();
@@ -128,8 +130,8 @@ pub fn type_check(
                 id,
                 spans.clone(),
                 &mut constraints,
-                &module_type_scope,
-                &type_env,
+                &module_env,
+                &global_env,
                 interner,
                 &module_scope.resolved,
             );
@@ -149,7 +151,7 @@ pub fn type_check(
 
             // TODO generalize ?
 
-            type_env.insert_type(type_sym, type_);
+            global_env.insert_type(type_sym, type_);
             module_annotations.extend(typed_nodes);
         }
 
@@ -167,8 +169,8 @@ pub fn type_check(
                 id,
                 spans.clone(),
                 &mut constraints,
-                &module_type_scope,
-                &type_env,
+                &module_env,
+                &global_env,
                 interner,
                 &module_scope.resolved,
             );
@@ -185,7 +187,7 @@ pub fn type_check(
             constraints.constrain(type_var.clone(), actual_type, *spans.meta(id));
 
             // Insert type variable as placeholder
-            module_type_scope.insert(value_sym, type_var);
+            module_env.insert(value_sym, type_var);
             module_annotations.extend(typed_nodes);
         }
 
@@ -202,9 +204,9 @@ pub fn type_check(
 
         module_annotations.apply_mut(&mut subs);
 
-        for (value_sym, mono_t) in module_type_scope {
+        for (value_sym, mono_t) in module_env {
             let poly_type = mono_t.apply(&mut subs).generalize(&[]); // TODO should bound be something ? &type_env.bound_vars()
-            type_env.insert_value(value_sym, poly_type.clone()); // replace
+            global_env.insert_value(value_sym, poly_type.clone()); // replace
 
             // Also update module annotations with the final type
             let id = module_scope.defs[value_sym].id();
@@ -212,7 +214,7 @@ pub fn type_check(
         }
 
         let module_type = ModuleType::from(module_scope.shape.clone());
-        type_env.insert_module(module_sym, module_type);
+        global_env.insert_module(module_sym, module_type);
 
         let resolution_decorator = ResolutionDecorator(&module_scope.resolved);
         let type_decorator = TypeDecorator(&module_annotations);
@@ -234,7 +236,7 @@ pub fn type_check(
     }
 
     TypeCheckOutput {
-        type_env,
+        global_env,
         type_annotations,
     }
 }
