@@ -310,78 +310,6 @@ impl<'a> Notate<'a> for IrPrinter<'a, CallExpr> {
     }
 }
 
-// #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-// pub struct BuiltinCallExpr {
-//     pub bind: Symbol,
-//     pub builtin: BuiltinId,
-//     pub arg: Id<Atom>,
-//     pub next: Id<Expr>,
-// }
-
-// impl BuiltinCallExpr {
-//     pub fn new(
-//         bind: Symbol,
-//         builtin: BuiltinId,
-//         arg: impl Into<Atom>,
-//         next: impl Into<Expr>,
-//         builder: &mut IrBuilder,
-//     ) -> Self {
-//         let arg = builder.add(arg.into());
-//         let next = builder.add(next.into());
-
-//         Self {
-//             bind,
-//             builtin,
-//             arg,
-//             next,
-//         }
-//     }
-// }
-
-// // <bind> = (__builtin_<builtin> <arg>);
-// // <bind> =
-// //     ( <func>
-// //     <arg> );
-// impl<'a> Notate<'a> for IrPrinter<'a, BuiltinCallExpr> {
-//     fn notate(&self, arena: &'a Bump) -> Notation<'a> {
-//         let BuiltinCallExpr {
-//             bind,
-//             builtin,
-//             arg,
-//             next,
-//         } = self.node;
-
-//         let bind = bind.display_in(arena);
-//         let func = format_args!("__builtin_{builtin}").display_in(arena);
-//         let arg = self.to(arg).notate(arena);
-//         let next = arena.newline().then(self.to(next).notate(arena), arena);
-
-//         let single = [
-//             bind.clone(),
-//             arena.notate(" = ("),
-//             func.clone().flatten(arena),
-//             arena.just(' '),
-//             arg.clone().flatten(arena),
-//             arena.just(')'),
-//         ]
-//         .concat_in(arena);
-
-//         let multi = [
-//             bind,
-//             arena.newline(),
-//             arena.notate("= ("),
-//             func,
-//             arena.newline(),
-//             arg,
-//             arena.just(')'),
-//         ]
-//         .concat_in(arena)
-//         .indent(arena);
-
-//         single.or(multi, arena).then(next, arena)
-//     }
-// }
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct IfExpr {
     pub bind: Symbol,
@@ -1339,7 +1267,6 @@ impl<'a> Notate<'a> for IrPrinter<'a, RecordAccessExpr> {
 pub enum Expr {
     Ret(RetExpr),
     Call(CallExpr),
-    // BuiltinCall(BuiltinCallExpr),
     If(IfExpr),
     Let(LetExpr),
     Unary(UnaryExpr),

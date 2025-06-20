@@ -300,37 +300,6 @@ fn eval_builtin(builtin: BuiltinId, arg: Value) -> Result<Value, String> {
     }
 }
 
-// impl Eval for BuiltinCallExpr {
-//     fn eval(&self, mut env: Env, cont: Cont, ir: &Ir) -> MachineState {
-//         let Self {
-//             bind,
-//             builtin,
-//             arg,
-//             next,
-//         } = *self;
-
-//         // Get the argument
-//         let arg_val = match eval_atom(arg.get(ir), &env) {
-//             Ok(value) => value,
-//             Err(err) => return MachineState::Error(err),
-//         };
-
-//         // Apply the function to the argument
-//         let result = match eval_builtin(builtin, arg_val) {
-//             Ok(value) => value,
-//             Err(e) => return MachineState::Error(e),
-//         };
-
-//         env.insert(bind, result);
-
-//         MachineState::Standard(StandardConfig {
-//             control: next.get(ir),
-//             env,
-//             cont,
-//         })
-//     }
-// }
-
 // M-IF: <if V then M else N | γ | κ> --> <M | γ | κ>, if V evaluates to true
 //                                     --> <N | γ | κ>, if V evaluates to false
 //

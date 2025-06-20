@@ -8,19 +8,7 @@
     #intermediate = simple.a,
     #main = { intermediate : { b : Num } | -b : Num },
 
-
-
-
     #main = (list_len [1, 2, 3]),
-
-    #main = let len = list_len in (len [1, 2, 3]),
-
-
-    module list = {
-        len = list_len,
-    },
-
-    main = (list::len [1, 2, 3]),
 
     #id = fn x => x,
     #a = (id 10),
@@ -34,13 +22,6 @@
     #    { a = a, b = b },
 
 
-    #module  test = {
-    #    id = fn x => x,
-    #},
-
-    #main = { a = (test::id 10), b = (test::id true) },
-
-    #main = (test::id 10),
-
-    #main = list_len,
+    type Option = forall a . < Some : a, None >,
+    main = (Some 10),
 }
