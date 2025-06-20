@@ -13,10 +13,19 @@
 
     #main = (list_len [1, 2, 3]),
 
-    id = fn x => x,
-    a = (id 10),
-    b = (id true),
-    main = { a = a, b = b },
+    #main = let len = list_len in (len [1, 2, 3]),
+
+
+    module list = {
+        len = list_len,
+    },
+
+    main = (list::len [1, 2, 3]),
+
+    #id = fn x => x,
+    #a = (id 10),
+    #b = (id true),
+    #main = { a = a, b = b },
 
 
     #main = let id = fn x => x in

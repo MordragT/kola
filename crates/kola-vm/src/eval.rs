@@ -296,7 +296,7 @@ impl Eval for CallExpr {
 fn eval_builtin(builtin: BuiltinId, arg: Value) -> Result<Value, String> {
     match (builtin, arg) {
         (BuiltinId::ListLen, Value::List(list)) => Ok(Value::Num(list.len() as f64)),
-        (_, value) => Err(format!("Cannot apply __builtin_{builtin} to: {:?}", value)),
+        (_, value) => Err(format!("Cannot apply {builtin} to: {:?}", value)),
     }
 }
 

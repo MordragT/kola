@@ -23,7 +23,7 @@ pub trait TypeVisitor: Sized {
 
     fn visit_mono(&mut self, mono: &super::MonoType) -> ControlFlow<Self::BreakValue> {
         match mono {
-            super::MonoType::Builtin(b) => self.visit_primitive(b),
+            super::MonoType::Primitive(b) => self.visit_primitive(b),
             super::MonoType::Func(f) => self.visit_func(f),
             super::MonoType::List(l) => self.visit_list(l),
             super::MonoType::Row(r) => self.visit_record(r),
@@ -75,7 +75,7 @@ pub trait TypeVisitorMut: Sized {
 
     fn visit_mono_mut(&mut self, mono: &mut super::MonoType) -> ControlFlow<Self::BreakValue> {
         match mono {
-            super::MonoType::Builtin(b) => self.visit_primitive_mut(b),
+            super::MonoType::Primitive(b) => self.visit_primitive_mut(b),
             super::MonoType::Func(f) => self.visit_func_mut(f),
             super::MonoType::List(l) => self.visit_list_mut(l),
             super::MonoType::Row(r) => self.visit_record_mut(r),

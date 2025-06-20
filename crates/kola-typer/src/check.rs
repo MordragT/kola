@@ -59,7 +59,7 @@ use crate::{
     print::TypeDecorator,
     substitute::{Substitutable, Substitution},
     typer::Typer,
-    types::{ModuleType, MonoType},
+    types::ModuleType,
 };
 
 #[derive(Debug, Clone, Default)]

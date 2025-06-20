@@ -152,7 +152,7 @@ impl DisplayWithInterner for Value {
             Value::Str(s) => write!(f, "{}", s),
             Value::Func(_, _) => write!(f, "<function>"),
             Value::Cont(_) => write!(f, "<continuation>"),
-            Value::Builtin(b) => write!(f, "__builtin_{b}"),
+            Value::Builtin(b) => write!(f, "{}", b),
             Value::Variant(v) => v.fmt(f, interner),
             Value::Record(r) => r.fmt(f, interner),
             Value::List(l) => l.fmt(f, interner),

@@ -130,14 +130,19 @@ impl<'s> Unifier<'s> {
         self.unify_mono(&l, &r);
     }
 
+    fn unify_list(&mut self, lhs: &ListType, rhs: &ListType) {
+        self.unify_mono(&lhs.el, &rhs.el);
+    }
+
     fn unify_mono(&mut self, lhs: &MonoType, rhs: &MonoType) {
         // Apply current substitution to resolve any already-bound variables
         let lhs = lhs.apply_cow(self.substitution);
         let rhs = rhs.apply_cow(self.substitution);
 
         match (lhs.as_ref(), rhs.as_ref()) {
-            (MonoType::Builtin(l), MonoType::Builtin(r)) => self.unify_primitive(l, r),
+            (MonoType::Primitive(l), MonoType::Primitive(r)) => self.unify_primitive(l, r),
             (MonoType::Func(l), MonoType::Func(r)) => self.unify_func(l, r),
+            (MonoType::List(l), MonoType::List(r)) => self.unify_list(l, r),
             (MonoType::Row(l), MonoType::Row(r)) => self.unify_row(l, r),
             (MonoType::Var(var), with) => self.bind_var(var, with),
             (with, MonoType::Var(var)) => self.bind_var(var, with),

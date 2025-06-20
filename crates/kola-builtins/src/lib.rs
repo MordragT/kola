@@ -1,4 +1,5 @@
 use derive_more::{Display, FromStr};
+use std::fmt;
 
 #[derive(Debug, Display, FromStr, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum BuiltinType {
@@ -141,7 +142,7 @@ macro_rules! define_builtins {
         ),* $(,)?
     ) => {
         paste::paste! {
-            #[derive(Debug, Display, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+            #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
             pub enum BuiltinId {
                 $(
                     [<$name:camel>],
@@ -156,6 +157,16 @@ macro_rules! define_builtins {
                             x if x == BuiltinId::[<$name:camel>] as usize => BuiltinId::[<$name:camel>],
                         )*
                         _ => panic!("Invalid BuiltinId"),
+                    }
+                }
+            }
+
+            impl fmt::Display for BuiltinId {
+                fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+                    match self {
+                        $(
+                            BuiltinId::[<$name:camel>] => write!(f, "__builtin_{}", stringify!($name)),
+                        )*
                     }
                 }
             }

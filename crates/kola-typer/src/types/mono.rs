@@ -17,7 +17,7 @@ use crate::{
 /// τ ::= α | gn τ1 .. τn
 #[derive(Debug, From, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum MonoType {
-    Builtin(PrimitiveType),
+    Primitive(PrimitiveType),
     Func(Box<FuncType>),
     List(Box<ListType>),
     Row(Box<RowType>),
@@ -25,11 +25,11 @@ pub enum MonoType {
 }
 
 impl MonoType {
-    pub const BOOL: Self = Self::Builtin(PrimitiveType::Bool);
-    pub const NUM: Self = Self::Builtin(PrimitiveType::Num);
-    pub const CHAR: Self = Self::Builtin(PrimitiveType::Char);
-    pub const STR: Self = Self::Builtin(PrimitiveType::Str);
-    pub const UNIT: Self = Self::Builtin(PrimitiveType::Unit);
+    pub const BOOL: Self = Self::Primitive(PrimitiveType::Bool);
+    pub const NUM: Self = Self::Primitive(PrimitiveType::Num);
+    pub const CHAR: Self = Self::Primitive(PrimitiveType::Char);
+    pub const STR: Self = Self::Primitive(PrimitiveType::Str);
+    pub const UNIT: Self = Self::Primitive(PrimitiveType::Unit);
 }
 
 impl MonoType {
@@ -85,7 +85,7 @@ impl MonoType {
 
 impl MonoType {
     pub fn into_primitive(self) -> Option<PrimitiveType> {
-        as_variant!(self, Self::Builtin)
+        as_variant!(self, Self::Primitive)
     }
 
     pub fn into_func(self) -> Option<FuncType> {
@@ -105,7 +105,7 @@ impl MonoType {
     }
 
     pub fn as_primitive(&self) -> Option<&PrimitiveType> {
-        as_variant!(self, Self::Builtin)
+        as_variant!(self, Self::Primitive)
     }
 
     pub fn as_func(&self) -> Option<&FuncType> {
@@ -124,8 +124,8 @@ impl MonoType {
         as_variant!(self, Self::Var)
     }
 
-    pub fn is_builtin(&self) -> bool {
-        matches!(self, Self::Builtin(_))
+    pub fn is_primitive(&self) -> bool {
+        matches!(self, Self::Primitive(_))
     }
 
     pub fn is_func(&self) -> bool {
@@ -160,7 +160,7 @@ impl MonoType {
 impl Typed for MonoType {
     fn constrain(&self, with: super::Kind, env: &mut KindEnv) -> Result<(), TypeError> {
         match self {
-            Self::Builtin(b) => b.constrain(with, env),
+            Self::Primitive(b) => b.constrain(with, env),
             Self::Func(f) => f.constrain(with, env),
             Self::List(l) => l.constrain(with, env),
             Self::Row(r) => r.constrain(with, env),
@@ -172,7 +172,7 @@ impl Typed for MonoType {
 impl Substitutable for MonoType {
     fn try_apply(&self, s: &mut Substitution) -> Option<Self> {
         match self {
-            Self::Builtin(_) => None,
+            Self::Primitive(_) => None,
             Self::Func(f) => f.try_apply(s).map(Into::into),
             Self::List(l) => l.try_apply(s).map(Into::into),
             Self::Row(r) => r.try_apply(s).map(Into::into),
@@ -184,7 +184,7 @@ impl Substitutable for MonoType {
 impl fmt::Display for MonoType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Builtin(b) => b.fmt(f),
+            Self::Primitive(b) => b.fmt(f),
             Self::Func(func) => func.fmt(f),
             Self::List(l) => l.fmt(f),
             Self::Row(r) => r.fmt(f),
@@ -201,7 +201,7 @@ impl Default for MonoType {
 
 impl From<&PrimitiveType> for MonoType {
     fn from(value: &PrimitiveType) -> Self {
-        Self::Builtin(*value)
+        Self::Primitive(*value)
     }
 }
 
