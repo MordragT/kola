@@ -736,15 +736,14 @@ where
             // Case 2: Let-bind (MonoType)
 
             t.clone()
-        } else if let Some(t) = self
+        } else if let Some(pt) = self
             .resolved
             .meta(id)
             .into_defined()
             .and_then(|sym| self.module_env.get(&sym))
         {
-            // Case 3: Module local value-bind (fake PolyType not yet generalized)
-
-            t.clone()
+            // Case 3: Module local value-bind
+            pt.instantiate()
         } else if let Some(id) = self.resolved.meta(id).into_builtin() {
             let builtin = Builtin::from_id(id);
 

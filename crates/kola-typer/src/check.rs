@@ -13,25 +13,25 @@
 //! 5. Insert resolved type into module-local TypeEnv (available for subsequent binds)
 //!
 //! ### Value Binds Processing
-//! 1. Create Typer with fresh LexicalScope
-//! 2. Gather constraints for the bind and add to module-local Constraint-Set
-//! 3. Create fresh monotype variable and constrain it with bind's inferred type
-//! 4. Insert type variable into module-local TypeEnv (available for subsequent binds)
+//! 1. Create local Constraint-Set and Typer with fresh LexicalScope
+//! 2. Gather constraints for the bind and add to fresh Constraint-Set
+//! 3. Solve constraints immediately (update module-local Substitution and KindEnv)
+//! 4. Apply substitution to the inferred type
+//! 5. Generalize the type immediately
+//! 6. Insert generalized type into module-local TypeEnv (available for subsequent binds)
 //!
 //! ### Module Finalization
-//! 1. Solve all accumulated constraints for value binds
-//! 2. Apply substitution to all value bind types
-//! 3. Generalize all value binds (converting MonoTypes to PolyTypes)
-//! 4. Merge finalized types into global TypeEnv
+//! 1. Apply final substitution to all annotations
+//! 2. Merge generalized types into global TypeEnv
 //!
 //! ## Key Design Decisions
 //!
-//! - **Module boundaries as constraint solving points**: Each module's constraints
-//!   are solved together, respecting semantic boundaries for type finalization
-//! - **Immediate type bind resolution**: Type binds are solved immediately since
-//!   subsequent binds need access to the resolved type definitions
-//! - **Deferred value bind resolution**: Value binds use placeholders during constraint
-//!   generation and are resolved together for better type inference
+//! - **Incremental constraint solving**: Each bind's constraints are solved immediately,
+//!   allowing subsequent binds to use the fully resolved and generalized types
+//! - **Immediate generalization**: Both type and value binds are generalized as soon as
+//!   they are processed, ensuring consistent polymorphic availability
+//! - **Module-local substitution accumulation**: Substitutions accumulate across binds
+//!   within a module, preserving type variable relationships
 //! - **No let-bind generalization**: Local let-binds remain monomorphic for algorithmic
 //!   simplicity while maintaining expressiveness through top-level polymorphism
 
@@ -77,10 +77,12 @@ pub struct TypeCheckOutput {
 /// # Algorithm Steps
 ///
 /// For each module in topological dependency order:
-/// 1. **Type bind processing**: Immediately solve constraints for type definitions
-/// 2. **Value bind constraint generation**: Create constraints and placeholder types
-/// 3. **Module-level constraint solving**: Resolve all value bind constraints together
-/// 4. **Generalization and finalization**: Convert to polymorphic types and merge into global environment
+/// 1. **Type bind processing**: Immediately solve constraints and generalize type definitions
+/// 2. **Value bind processing**: For each bind, generate constraints, solve immediately, and generalize
+/// 3. **Module finalization**: Apply final substitutions and merge into global environment
+///
+/// This incremental approach ensures that each binding is available in its fully generalized
+/// form to subsequent bindings within the same module, maintaining consistency with cross-module usage.
 pub fn type_check(
     forest: &Forest,
     topography: &Topography,
@@ -160,10 +162,10 @@ pub fn type_check(
             break;
         }
 
-        let mut constraints = Constraints::new();
-
         for &value_sym in value_order {
             let id = module_scope.defs[value_sym].id();
+
+            let mut constraints = Constraints::new();
 
             let typer = Typer::new(
                 id,
@@ -175,19 +177,25 @@ pub fn type_check(
                 &module_scope.resolved,
             );
 
-            let Some(typed_nodes) = typer.run(tree, report) else {
+            let Some(mut typed_nodes) = typer.run(tree, report) else {
                 // If there are errors in type checking types, break out early
                 break;
             };
 
-            let actual_type = typed_nodes.meta(id).to_mono().unwrap();
-            let type_var = MonoType::variable();
+            if let Err((errs, loc)) = constraints.solve(&mut subs, &mut kind_env) {
+                let diag = interner.display(&errs).into_diagnostic(loc);
+                report.add_diagnostic(diag);
+                break;
+            }
 
-            // Create constraint: type_var = actual_type
-            constraints.constrain(type_var.clone(), actual_type, *spans.meta(id));
+            let actual_t = typed_nodes.meta(id).to_mono().unwrap();
 
-            // Insert type variable as placeholder
-            module_env.insert(value_sym, type_var);
+            // Generalize immediately (making it available for subsequent binds)
+            let poly_type = actual_t.apply(&mut subs).generalize(&[]); // TODO should bound be something ? &type_env.bound_vars()
+            module_env.insert(value_sym, poly_type.clone()); // replace
+
+            // Update annotations with the final type
+            *typed_nodes.meta_mut(id) = poly_type;
             module_annotations.extend(typed_nodes);
         }
 
@@ -196,21 +204,11 @@ pub fn type_check(
             break;
         }
 
-        if let Err((errs, loc)) = constraints.solve(&mut subs, &mut kind_env) {
-            let diag = interner.display(&errs).into_diagnostic(loc);
-            report.add_diagnostic(diag);
-            break;
-        }
-
         module_annotations.apply_mut(&mut subs);
 
-        for (value_sym, mono_t) in module_env {
-            let poly_type = mono_t.apply(&mut subs).generalize(&[]); // TODO should bound be something ? &type_env.bound_vars()
-            global_env.insert_value(value_sym, poly_type.clone()); // replace
-
-            // Also update module annotations with the final type
-            let id = module_scope.defs[value_sym].id();
-            *module_annotations.meta_mut(id) = poly_type;
+        // Merge the generalized types into the global environment
+        for (value_sym, poly_type) in module_env {
+            global_env.insert_value(value_sym, poly_type);
         }
 
         let module_type = ModuleType::from(module_scope.shape.clone());

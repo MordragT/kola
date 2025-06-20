@@ -25,7 +25,7 @@ pub trait BoundVars {
 
 pub type LocalTypeEnv = LinearScope<StrKey, MonoType>;
 
-pub type ModuleTypeEnv = HashMap<ValueSym, MonoType>;
+pub type ModuleTypeEnv = HashMap<ValueSym, PolyType>;
 
 #[derive(Debug, Clone, Default)]
 pub struct SymbolCache<T>(HashMap<(Sym<T>, Sym<T>), bool>);
