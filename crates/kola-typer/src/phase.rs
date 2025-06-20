@@ -20,7 +20,7 @@ impl Phase for TypePhase {
     type IdentPat = types::MonoType;
     type RecordFieldPat = types::LabeledType;
     type RecordPat = types::MonoType;
-    type VariantCasePat = types::LabeledType;
+    type VariantTagPat = types::LabeledType;
     type VariantPat = types::MonoType;
     type PatError = !;
     type Pat = types::MonoType;
@@ -35,7 +35,7 @@ impl Phase for TypePhase {
     type RecordUpdateExpr = types::MonoType;
     type FieldPath = !;
     type QualifiedExpr = types::MonoType;
-    type SelectExpr = !;
+    type TagExpr = types::MonoType;
     type UnaryOp = types::MonoType;
     type UnaryExpr = types::MonoType;
     type BinaryOp = types::MonoType;
@@ -53,7 +53,7 @@ impl Phase for TypePhase {
     type TypeVar = types::PolyType;
     type RecordFieldType = types::LabeledType;
     type RecordType = types::MonoType;
-    type VariantCaseType = types::LabeledType;
+    type VariantTagType = types::LabeledType;
     type VariantType = types::MonoType;
     type FuncType = types::MonoType;
     type TypeApplication = types::PolyType;

@@ -3,7 +3,11 @@ use std::{fmt, mem};
 use derive_more::{Display, From};
 use kola_builtins::BuiltinId;
 use kola_print::prelude::*;
-use kola_utils::{impl_try_as, interner::StrKey};
+use kola_utils::{
+    fmt::{DisplayWithInterner, StrInternerExt},
+    impl_try_as,
+    interner::{StrInterner, StrKey},
+};
 
 use crate::{
     id::Id,
@@ -100,6 +104,15 @@ impl<'a> Notate<'a> for IrPrinter<'a, Func> {
     }
 }
 
+#[derive(Debug, From, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct Tag(pub StrKey);
+
+impl DisplayWithInterner for Tag {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>, interner: &StrInterner) -> fmt::Result {
+        write!(f, "#{}", interner[self.0].blue())
+    }
+}
+
 /// An expression is atomic if:
 /// - it is guaranteed to terminate
 /// - it causes no side effects
@@ -114,6 +127,7 @@ pub enum Atom {
     Func(Func),
     Symbol(Symbol),
     Builtin(BuiltinId),
+    Tag(Tag),
 }
 
 impl<T> From<&T> for Atom
@@ -142,10 +156,11 @@ impl<'a> Notate<'a> for IrPrinter<'a, Id<Atom>> {
             Atom::Bool(b) => b.green().display_in(arena),
             Atom::Char(c) => format!("'{}'", c.green()).display_in(arena),
             Atom::Num(n) => n.green().display_in(arena),
-            Atom::Str(s) => format!("\"{}\"", self.interner[s].green()).display_in(arena),
+            Atom::Str(s) => format_args!("\"{}\"", self.interner[s].green()).display_in(arena),
             Atom::Func(f) => self.to(f).notate(arena),
             Atom::Symbol(s) => s.display_in(arena),
             Atom::Builtin(b) => b.display_in(arena),
+            Atom::Tag(t) => self.interner.display(&t).display_in(arena),
         };
 
         notation
@@ -733,6 +748,76 @@ impl<'a> Notate<'a> for IrPrinter<'a, ListExpr> {
     }
 }
 
+// #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+// pub struct VariantExpr {
+//     pub bind: Symbol,
+//     pub tag: StrKey,
+//     pub value: Id<Atom>,
+//     pub next: Id<Expr>,
+// }
+
+// impl VariantExpr {
+//     pub fn new(
+//         bind: Symbol,
+//         tag: StrKey,
+//         value: impl Into<Atom>,
+//         next: impl Into<Expr>,
+//         builder: &mut IrBuilder,
+//     ) -> Self {
+//         let value = builder.add(value.into());
+//         let next = builder.add(next.into());
+
+//         Self {
+//             bind,
+//             tag,
+//             value,
+//             next,
+//         }
+//     }
+// }
+
+// // <bind> = <tag> <value>;
+// // <bind> =
+// //        <tag>
+// //        <value>;
+// impl<'a> Notate<'a> for IrPrinter<'a, VariantExpr> {
+//     fn notate(&self, arena: &'a Bump) -> Notation<'a> {
+//         let VariantExpr {
+//             bind,
+//             tag,
+//             value,
+//             next,
+//         } = self.node;
+
+//         let bind = bind.display_in(arena);
+//         let tag = self.interner[tag].display_in(arena);
+//         let value = self.to(value).notate(arena);
+//         let next = arena.newline().then(self.to(next).notate(arena), arena);
+
+//         let single = [
+//             bind.clone(),
+//             arena.notate(" = "),
+//             tag.clone(),
+//             arena.just(' '),
+//             value.clone().flatten(arena),
+//         ]
+//         .concat_in(arena);
+
+//         let multi = [
+//             bind,
+//             arena.newline(),
+//             arena.notate("= "),
+//             tag,
+//             arena.newline(),
+//             value,
+//         ]
+//         .concat_in(arena)
+//         .indent(arena);
+
+//         single.or(multi, arena).then(next, arena)
+//     }
+// }
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct RecordField {
     pub label: StrKey,
@@ -1283,7 +1368,6 @@ pub enum Expr {
     //     body: InstrId<Expr>,
     //     next: InstrId<Expr>,
     // },
-
     // // Jump with a value to a continuation
     // Jump {
     //     continuation: InstrId<Atom>,
@@ -1315,7 +1399,6 @@ impl<'a> Notate<'a> for IrPrinter<'a, Id<Expr>> {
         match self.ir.instr(self.node) {
             Expr::Ret(expr) => self.to(expr).notate(arena),
             Expr::Call(expr) => self.to(expr).notate(arena),
-            // Expr::BuiltinCall(expr) => self.to(expr).notate(arena),
             Expr::If(expr) => self.to(expr).notate(arena),
             Expr::Let(expr) => self.to(expr).notate(arena),
             Expr::Unary(expr) => self.to(expr).notate(arena),

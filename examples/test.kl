@@ -23,7 +23,9 @@
 
 
     type Option = forall a . < Some : a, None >,
-    main = (Option.Some 10),
+    main = (Some 10),
+
+    #main = None,
 
     #main = (Some 10), # make this a not panicing error
 

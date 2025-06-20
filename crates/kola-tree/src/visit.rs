@@ -36,14 +36,13 @@ impl_visitable!(
     IdentPat,
     RecordFieldPat,
     RecordPat,
-    VariantCasePat,
+    VariantTagPat,
     VariantPat,
     PatError,
     Pat,
     // Expressions
     LiteralExpr,
     QualifiedExpr,
-    SelectExpr,
     ListExpr,
     RecordField,
     RecordExpr,
@@ -61,6 +60,7 @@ impl_visitable!(
     IfExpr,
     LambdaExpr,
     CallExpr,
+    TagExpr,
     ExprError,
     Expr,
     // Types
@@ -68,7 +68,7 @@ impl_visitable!(
     TypeVar,
     RecordFieldType,
     RecordType,
-    VariantCaseType,
+    VariantTagType,
     VariantType,
     FuncType,
     TypeApplication,
@@ -187,12 +187,12 @@ pub trait Visitor<T: TreeView> {
         self.walk_record_pat(id, tree)
     }
 
-    fn walk_variant_case_pat(
+    fn walk_variant_tag_pat(
         &mut self,
-        id: Id<node::VariantCasePat>,
+        id: Id<node::VariantTagPat>,
         tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
-        let node::VariantCasePat { case, pat } = id.get(tree);
+        let node::VariantTagPat { case, pat } = id.get(tree);
 
         self.visit_value_name(*case, tree)?;
         if let Some(pat) = pat {
@@ -202,12 +202,12 @@ pub trait Visitor<T: TreeView> {
         ControlFlow::Continue(())
     }
 
-    fn visit_variant_case_pat(
+    fn visit_variant_tag_pat(
         &mut self,
-        id: Id<node::VariantCasePat>,
+        id: Id<node::VariantTagPat>,
         tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
-        self.walk_variant_case_pat(id, tree)
+        self.walk_variant_tag_pat(id, tree)
     }
 
     fn walk_variant_pat(
@@ -218,7 +218,7 @@ pub trait Visitor<T: TreeView> {
         let variant_pat = id.get(tree);
 
         for id in variant_pat {
-            self.visit_variant_case_pat(*id, tree)?;
+            self.visit_variant_tag_pat(*id, tree)?;
         }
 
         ControlFlow::Continue(())
@@ -493,7 +493,7 @@ pub trait Visitor<T: TreeView> {
             self.visit_module_path(path, tree)?;
         }
 
-        self.visit_select_expr(source, tree)?;
+        self.visit_value_name(source, tree)?;
 
         if let Some(fields) = fields {
             self.visit_field_path(fields, tree)?;
@@ -508,27 +508,6 @@ pub trait Visitor<T: TreeView> {
         tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
         self.walk_qualified_expr(id, tree)
-    }
-
-    fn walk_select_expr(
-        &mut self,
-        id: Id<node::SelectExpr>,
-        tree: &T,
-    ) -> ControlFlow<Self::BreakValue> {
-        use node::SelectExpr::*;
-
-        match *id.get(tree) {
-            Record(id) => self.visit_value_name(id, tree),
-            Variant(id) => self.visit_type_name(id, tree),
-        }
-    }
-
-    fn visit_select_expr(
-        &mut self,
-        id: Id<node::SelectExpr>,
-        tree: &T,
-    ) -> ControlFlow<Self::BreakValue> {
-        self.walk_select_expr(id, tree)
     }
 
     fn visit_unary_op(
@@ -727,6 +706,18 @@ pub trait Visitor<T: TreeView> {
         self.walk_call_expr(id, tree)
     }
 
+    fn walk_tag_expr(&mut self, id: Id<node::TagExpr>, tree: &T) -> ControlFlow<Self::BreakValue> {
+        let tag = id.get(tree).0;
+
+        self.visit_value_name(tag, tree)?;
+
+        ControlFlow::Continue(())
+    }
+
+    fn visit_tag_expr(&mut self, id: Id<node::TagExpr>, tree: &T) -> ControlFlow<Self::BreakValue> {
+        self.walk_tag_expr(id, tree)
+    }
+
     fn visit_expr_error(
         &mut self,
         _id: Id<node::ExprError>,
@@ -754,6 +745,7 @@ pub trait Visitor<T: TreeView> {
             Case(id) => self.visit_case_expr(id, tree),
             Lambda(id) => self.visit_lambda_expr(id, tree),
             Call(id) => self.visit_call_expr(id, tree),
+            Tag(id) => self.visit_tag_expr(id, tree),
         }
     }
 
@@ -840,12 +832,12 @@ pub trait Visitor<T: TreeView> {
         self.walk_record_type(id, tree)
     }
 
-    fn walk_variant_case_type(
+    fn walk_variant_tag_type(
         &mut self,
-        id: Id<node::VariantCaseType>,
+        id: Id<node::VariantTagType>,
         tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
-        let node::VariantCaseType { name, ty } = id.get(tree);
+        let node::VariantTagType { name, ty } = id.get(tree);
 
         self.visit_value_name(*name, tree)?;
         if let Some(ty) = ty {
@@ -855,12 +847,12 @@ pub trait Visitor<T: TreeView> {
         ControlFlow::Continue(())
     }
 
-    fn visit_variant_case_type(
+    fn visit_variant_tag_type(
         &mut self,
-        id: Id<node::VariantCaseType>,
+        id: Id<node::VariantTagType>,
         tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
-        self.walk_variant_case_type(id, tree)
+        self.walk_variant_tag_type(id, tree)
     }
 
     fn walk_variant_type(
@@ -871,7 +863,7 @@ pub trait Visitor<T: TreeView> {
         let node::VariantType { cases, extension } = id.get(tree);
 
         for id in cases {
-            self.visit_variant_case_type(*id, tree)?;
+            self.visit_variant_tag_type(*id, tree)?;
         }
 
         if let Some(ext) = extension {

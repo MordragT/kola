@@ -22,7 +22,7 @@ impl<'a> Decorator<'a> for TypeDecorator<'a> {
             | Meta::RecordPat(t)
             | Meta::VariantPat(t)
             | Meta::Pat(t) => t.green().display_in(arena),
-            Meta::RecordFieldPat(p) | Meta::VariantCasePat(p) => return notation,
+            Meta::RecordFieldPat(p) | Meta::VariantTagPat(p) => return notation,
             Meta::PatError(_) => return notation,
 
             // Expressions
@@ -44,14 +44,14 @@ impl<'a> Decorator<'a> for TypeDecorator<'a> {
             | Meta::IfExpr(t)
             | Meta::LambdaExpr(t)
             | Meta::CallExpr(t)
+            | Meta::TagExpr(t)
             | Meta::Expr(t) => t.green().display_in(arena),
             Meta::RecordField(lt) => return notation,
             Meta::ExprError(_) => return notation,
             Meta::FieldPath(_) => return notation,
-            Meta::SelectExpr(_) => todo!(),
 
             // Types
-            Meta::RecordFieldType(lt) | Meta::VariantCaseType(lt) => return notation,
+            Meta::RecordFieldType(lt) | Meta::VariantTagType(lt) => return notation,
             Meta::RecordType(t) | Meta::VariantType(t) | Meta::FuncType(t) => {
                 t.green().display_in(arena)
             }

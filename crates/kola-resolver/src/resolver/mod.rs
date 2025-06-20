@@ -19,7 +19,6 @@ use crate::{
     symbol::{ModuleSym, TypeSym, ValueSym},
 };
 
-mod ctor;
 mod discover;
 mod module;
 mod ty;
@@ -88,8 +87,6 @@ pub fn resolve(
     }
 
     let TypeResolution { type_orders } = ty::resolve_types(&mut module_scopes, report);
-
-    ctor::resolve_constructors(&mut module_scopes, report);
 
     let ValueResolution { value_orders } = value::resolve_values(&mut module_scopes, report);
 

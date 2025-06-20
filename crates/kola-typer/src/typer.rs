@@ -545,12 +545,12 @@ where
     /// - Creates a labeled type for the variant case
     ///
     /// Type signature: Creates `LabeledType` for variant type construction
-    fn visit_variant_case_type(
+    fn visit_variant_tag_type(
         &mut self,
-        id: Id<node::VariantCaseType>,
+        id: Id<node::VariantTagType>,
         tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
-        let node::VariantCaseType { name, ty } = *id.get(tree);
+        let node::VariantTagType { name, ty } = *id.get(tree);
 
         let label = name.get(tree).0;
 
@@ -720,15 +720,7 @@ where
             fields,
         } = *id.get(tree);
 
-        let name = match source.get(tree) {
-            node::SelectExpr::Record(name) => name.get(tree).0,
-            node::SelectExpr::Variant(name) => {
-                return ControlFlow::Break(Diagnostic::error(
-                    span,
-                    "Variant data constructors not implemented yet",
-                ));
-            }
-        };
+        let name = source.get(tree).0;
 
         let base_t = if let Some(path) = path {
             // Case 1: Other module (real PolyType)
@@ -1555,6 +1547,21 @@ where
         ControlFlow::Continue(())
     }
 
+    fn visit_tag_expr(&mut self, id: Id<node::TagExpr>, tree: &T) -> ControlFlow<Self::BreakValue> {
+        let tag = *id.get(tree).0.get(tree);
+
+        // We want to create an open row type for the tag expression
+        let row_var = MonoType::variable();
+
+        let arg_t = MonoType::variable();
+        let ret_t = MonoType::row(LabeledType::new(tag.0, arg_t.clone()), row_var);
+        let tag_t = MonoType::func(arg_t, ret_t);
+
+        self.insert_type(id, tag_t);
+
+        ControlFlow::Continue(())
+    }
+
     fn visit_expr(&mut self, id: Id<node::Expr>, tree: &T) -> ControlFlow<Self::BreakValue> {
         self.walk_expr(id, tree)?;
 
@@ -1574,6 +1581,7 @@ where
             node::Expr::Case(id) => self.types.meta(id),
             node::Expr::Lambda(id) => self.types.meta(id),
             node::Expr::Call(id) => self.types.meta(id),
+            node::Expr::Tag(id) => self.types.meta(id),
         }
         .clone();
 
@@ -1718,9 +1726,9 @@ mod tests {
         let mut builder = TreeBuilder::new();
 
         let value = builder.insert(node::LiteralExpr::Num(10.0));
-        let symbol = node::SelectExpr::record(interner.intern("x"), &mut builder);
-        let inside = node::QualifiedExpr::new_in(None, symbol, None, &mut builder);
-        let let_ = node::LetExpr::new_in(interner.intern("x"), None, value, inside, &mut builder);
+        let x = interner.intern("x");
+        let inside = node::QualifiedExpr::new_in(None, x, None, &mut builder);
+        let let_ = node::LetExpr::new_in(x, None, value, inside, &mut builder);
 
         let types = solve(builder, let_).unwrap();
 

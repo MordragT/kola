@@ -230,12 +230,12 @@ impl<'a> Notate<'a> for NodePrinter<'a, RecordPat> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
-pub struct VariantCasePat {
+pub struct VariantTagPat {
     pub case: Id<ValueName>,
     pub pat: Option<Id<Pat>>,
 }
 
-impl VariantCasePat {
+impl VariantTagPat {
     pub fn case(self, tree: &impl TreeView) -> ValueName {
         *self.case.get(tree)
     }
@@ -245,9 +245,9 @@ impl VariantCasePat {
     }
 }
 
-impl<'a> Notate<'a> for NodePrinter<'a, VariantCasePat> {
+impl<'a> Notate<'a> for NodePrinter<'a, VariantTagPat> {
     fn notate(&self, arena: &'a Bump) -> Notation<'a> {
-        let VariantCasePat { case, pat } = *self.value;
+        let VariantTagPat { case, pat } = *self.value;
 
         let head = "VariantCasePat".blue().display_in(arena);
 
@@ -281,7 +281,7 @@ impl<'a> Notate<'a> for NodePrinter<'a, VariantCasePat> {
     Debug, From, IntoIterator, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
 )]
 #[into_iterator(owned, ref)]
-pub struct VariantPat(pub Vec<Id<VariantCasePat>>);
+pub struct VariantPat(pub Vec<Id<VariantTagPat>>);
 
 // impl VariantPat {
 //     pub fn get(&self, name: impl AsRef<str>, tree: &impl TreeView) -> Option<VariantCasePat> {
@@ -581,7 +581,7 @@ mod inspector {
             self
         }
 
-        pub fn case_at(self, index: usize) -> NodeInspector<'t, Id<VariantCasePat>, S> {
+        pub fn case_at(self, index: usize) -> NodeInspector<'t, Id<VariantTagPat>, S> {
             let variant_pat = self.node.get(self.tree);
             assert!(
                 index < variant_pat.0.len(),
@@ -593,7 +593,7 @@ mod inspector {
             NodeInspector::new(case_id, self.tree, self.interner)
         }
 
-        pub fn case_named(self, name: &str) -> Option<NodeInspector<'t, Id<VariantCasePat>, S>> {
+        pub fn case_named(self, name: &str) -> Option<NodeInspector<'t, Id<VariantTagPat>, S>> {
             let variant_pat = self.node.get(self.tree);
             variant_pat
                 .0
@@ -606,7 +606,7 @@ mod inspector {
         }
     }
 
-    impl<'t, S: BuildHasher> NodeInspector<'t, Id<VariantCasePat>, S> {
+    impl<'t, S: BuildHasher> NodeInspector<'t, Id<VariantTagPat>, S> {
         pub fn has_case_name(self, expected: &str) -> Self {
             let name = self.node.get(self.tree).case(self.tree);
             let value = self.interner.get(name.0).expect("Symbol not found");

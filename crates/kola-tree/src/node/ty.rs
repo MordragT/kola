@@ -226,16 +226,15 @@ impl<'a> Notate<'a> for NodePrinter<'a, RecordType> {
     }
 }
 
-// TODO better name it Tag ??
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
-pub struct VariantCaseType {
+pub struct VariantTagType {
     pub name: Id<ValueName>, // These are data constructors, therefore ValueName is used
     pub ty: Option<Id<Type>>,
 }
 
-impl<'a> Notate<'a> for NodePrinter<'a, VariantCaseType> {
+impl<'a> Notate<'a> for NodePrinter<'a, VariantTagType> {
     fn notate(&self, arena: &'a Bump) -> Notation<'a> {
-        let VariantCaseType { name, ty } = *self.value;
+        let VariantTagType { name, ty } = *self.value;
 
         let head = "VariantCaseType".blue().display_in(arena);
 
@@ -268,12 +267,12 @@ impl<'a> Notate<'a> for NodePrinter<'a, VariantCaseType> {
 
 #[derive(Debug, From, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct VariantType {
-    pub cases: Vec<Id<VariantCaseType>>,
+    pub cases: Vec<Id<VariantTagType>>,
     pub extension: Option<Id<TypeName>>,
 }
 
 impl VariantType {
-    pub fn get(&self, index: usize, tree: &impl TreeView) -> VariantCaseType {
+    pub fn get(&self, index: usize, tree: &impl TreeView) -> VariantTagType {
         *self.cases[index].get(tree)
     }
 }
@@ -714,7 +713,7 @@ mod inspector {
             self
         }
 
-        pub fn case_at(self, index: usize) -> NodeInspector<'t, Id<VariantCaseType>, S> {
+        pub fn case_at(self, index: usize) -> NodeInspector<'t, Id<VariantTagType>, S> {
             let variant_type = self.node.get(self.tree);
             assert!(
                 index < variant_type.cases.len(),
@@ -734,7 +733,7 @@ mod inspector {
         }
     }
 
-    impl<'t, S: BuildHasher> NodeInspector<'t, Id<VariantCaseType>, S> {
+    impl<'t, S: BuildHasher> NodeInspector<'t, Id<VariantTagType>, S> {
         pub fn has_case_name(self, expected: &str) -> Self {
             let name = self.node.get(self.tree).name.get(self.tree);
             let name = self.interner.get(name.0).expect("Symbol not found");

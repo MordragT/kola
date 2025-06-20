@@ -537,49 +537,14 @@ where
         id: Id<node::QualifiedExpr>,
         tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
-        let node::QualifiedExpr {
-            path,
-            source,
-            fields,
-        } = *tree.node(id);
+        let node::QualifiedExpr { path, source, .. } = *tree.node(id);
+
+        let name = *source.get(tree);
 
         if let Some(path) = path {
             // Just visit the module path if it exists
-            return self.visit_module_path(path, tree);
-        }
-
-        let name_id = match *source.get(tree) {
-            node::SelectExpr::Record(name) => name,
-            node::SelectExpr::Variant(variant) => {
-                // TODO this whole thing is a bit of a hack
-                // would be great if the AST and parser could give more guarantees
-
-                let fields = &fields
-                    .expect("Cannot use variant type as data constructor")
-                    .get(tree)
-                    .0;
-
-                assert_eq!(
-                    fields.len(),
-                    1,
-                    "Data constructor's should not have nested fields"
-                );
-
-                let name = *fields[0].get(tree);
-
-                let current_sym = self.current_value_bind_sym.unwrap();
-                let ref_ =
-                    ConstructorRef::new(*variant.get(tree), name, id, current_sym, self.span(id));
-
-                self.stack.refs_mut().insert_constructor(ref_);
-
-                return ControlFlow::Continue(());
-            }
-        };
-
-        let name = *name_id.get(tree);
-
-        if let Some(value_sym) = self.stack.value_scope().get(&name) {
+            self.visit_module_path(path, tree)
+        } else if let Some(value_sym) = self.stack.value_scope().get(&name) {
             // Local binding will not create value bind cycle either
             self.insert_symbol(id, ResolvedValue::Defined(*value_sym));
             ControlFlow::Continue(())

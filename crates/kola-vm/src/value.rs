@@ -1,7 +1,7 @@
 use derive_more::From;
 use kola_builtins::BuiltinId;
 use kola_collections::{ImShadowMap, ImVec};
-use kola_ir::instr::Func;
+use kola_ir::instr::{Func, Tag};
 use kola_utils::{
     as_variant,
     fmt::DisplayWithInterner,
@@ -28,7 +28,9 @@ pub enum Value {
     Cont(Cont),
     /// A built-in function (e.g., `__builtin_first`)
     Builtin(BuiltinId),
-    /// A variant (label, value)
+    /// A tag
+    Tag(Tag),
+    /// A variant (tag, value)
     Variant(Variant),
     /// A record (map of labels to values)
     Record(Record),
@@ -41,8 +43,8 @@ impl Value {
         Value::Str(s.into())
     }
 
-    pub fn variant(label: StrKey, value: Self) -> Self {
-        Value::Variant(Variant::new(label, value))
+    pub fn variant(tag: Tag, value: Self) -> Self {
+        Value::Variant(Variant::new(tag, value))
     }
 
     pub fn is_bool(&self) -> bool {
@@ -67,6 +69,14 @@ impl Value {
 
     pub fn is_cont(&self) -> bool {
         matches!(self, Value::Cont(_))
+    }
+
+    pub fn is_builtin(&self) -> bool {
+        matches!(self, Value::Builtin(_))
+    }
+
+    pub fn is_tag(&self) -> bool {
+        matches!(self, Value::Tag(_))
     }
 
     pub fn is_variant(&self) -> bool {
@@ -99,6 +109,14 @@ impl Value {
 
     pub fn as_cont(&self) -> Option<&Cont> {
         as_variant!(self, Self::Cont)
+    }
+
+    pub fn as_builtin(&self) -> Option<&BuiltinId> {
+        as_variant!(self, Self::Builtin)
+    }
+
+    pub fn as_tag(&self) -> Option<&Tag> {
+        as_variant!(self, Self::Tag)
     }
 
     pub fn as_variant(&self) -> Option<&Variant> {
@@ -153,6 +171,7 @@ impl DisplayWithInterner for Value {
             Value::Func(_, _) => write!(f, "<function>"),
             Value::Cont(_) => write!(f, "<continuation>"),
             Value::Builtin(b) => write!(f, "{}", b),
+            Value::Tag(t) => t.fmt(f, interner),
             Value::Variant(v) => v.fmt(f, interner),
             Value::Record(r) => r.fmt(f, interner),
             Value::List(l) => l.fmt(f, interner),
@@ -162,22 +181,22 @@ impl DisplayWithInterner for Value {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Variant {
-    label: StrKey,
+    tag: Tag,
     value: Box<Value>,
 }
 
 impl Variant {
     #[inline]
-    pub fn new(label: StrKey, value: Value) -> Self {
+    pub fn new(tag: Tag, value: Value) -> Self {
         Self {
-            label,
+            tag,
             value: Box::new(value),
         }
     }
 
     #[inline]
-    pub fn label(&self) -> StrKey {
-        self.label
+    pub fn tag(&self) -> Tag {
+        self.tag
     }
 
     #[inline]
@@ -188,7 +207,8 @@ impl Variant {
 
 impl DisplayWithInterner for Variant {
     fn fmt(&self, f: &mut fmt::Formatter<'_>, interner: &StrInterner) -> fmt::Result {
-        write!(f, "{}(", interner[self.label])?;
+        self.tag.fmt(f, interner)?;
+        write!(f, "(")?;
         self.value.fmt(f, interner)?;
         write!(f, ")")
     }

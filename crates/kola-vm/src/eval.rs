@@ -34,6 +34,7 @@ pub fn eval_atom(atom: Atom, env: &Env) -> Result<Value, String> {
         }
         Atom::Symbol(s) => eval_symbol(s, env),
         Atom::Builtin(b) => Ok(Value::Builtin(b)),
+        Atom::Tag(t) => Ok(Value::Tag(t)),
     }
 }
 
@@ -286,6 +287,19 @@ impl Eval for CallExpr {
                     }
                     Err(err) => MachineState::Error(err),
                 }
+            }
+            Value::Tag(tag) => {
+                let value = Value::variant(tag, arg_val);
+
+                // Create a new environment with the result bound to the variable
+                env.insert(bind, value);
+
+                // Continue with the next expression
+                MachineState::Standard(StandardConfig {
+                    control: next.get(ir),
+                    env,
+                    cont,
+                })
             }
             // If it's neither, return an error
             _ => MachineState::Error(format!("Cannot apply non-function value: {:?}", func_val)),

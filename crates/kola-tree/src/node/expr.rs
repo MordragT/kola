@@ -805,14 +805,14 @@ impl<'a> Notate<'a> for NodePrinter<'a, FieldPath> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct QualifiedExpr {
     pub path: Option<Id<ModulePath>>,
-    pub source: Id<SelectExpr>,
+    pub source: Id<ValueName>,
     pub fields: Option<Id<FieldPath>>,
 }
 
 impl QualifiedExpr {
     pub fn new_in(
         path: Option<ModulePath>,
-        source: impl Into<SelectExpr>,
+        source: impl Into<ValueName>,
         fields: Option<FieldPath>,
         builder: &mut TreeBuilder,
     ) -> Id<Self> {
@@ -870,58 +870,6 @@ impl<'a> Notate<'a> for NodePrinter<'a, QualifiedExpr> {
         .indent(arena);
 
         head.then(single.or(multi, arena), arena)
-    }
-}
-
-#[derive(
-    Debug, From, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
-)]
-pub enum SelectExpr {
-    Record(Id<ValueName>),
-    Variant(Id<TypeName>),
-}
-
-impl SelectExpr {
-    pub fn record(name: impl Into<ValueName>, builder: &mut TreeBuilder) -> Self {
-        let name = builder.insert(name.into());
-        Self::Record(name)
-    }
-
-    pub fn variant(name: impl Into<TypeName>, builder: &mut TreeBuilder) -> Self {
-        let name = builder.insert(name.into());
-        Self::Variant(name)
-    }
-
-    pub fn str_key(&self, tree: &impl TreeView) -> StrKey {
-        match self {
-            Self::Record(name) => name.get(tree).0,
-            Self::Variant(name) => name.get(tree).0,
-        }
-    }
-
-    pub fn to_record(self) -> Option<Id<ValueName>> {
-        as_variant!(self, Self::Record)
-    }
-
-    pub fn to_variant(self) -> Option<Id<TypeName>> {
-        as_variant!(self, Self::Variant)
-    }
-}
-
-impl<'a> Notate<'a> for NodePrinter<'a, SelectExpr> {
-    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
-        match *self.value {
-            SelectExpr::Record(name) => {
-                let head = "RecordSelectExpr".cyan().display_in(arena);
-                let name = self.to(name).notate(arena);
-                head.then(arena.just(' ').then(name, arena), arena)
-            }
-            SelectExpr::Variant(name) => {
-                let head = "VariantSelectExpr".cyan().display_in(arena);
-                let name = self.to(name).notate(arena);
-                head.then(arena.just(' ').then(name, arena), arena)
-            }
-        }
     }
 }
 
@@ -1516,38 +1464,32 @@ impl<'a> Notate<'a> for NodePrinter<'a, LambdaExpr> {
     }
 }
 
-// #[derive(
-//     Debug, From, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
-// )]
-// pub struct ConstructorExpr(pub Id<ValueName>);
+#[derive(
+    Debug, From, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+)]
+pub struct TagExpr(pub Id<ValueName>);
 
-// impl ConstructorExpr {
-//     pub fn new_in(ctor: impl Into<ValueName>, builder: &mut TreeBuilder) -> Id<Self> {
-//         let ctor = builder.insert(ctor.into());
+impl TagExpr {
+    pub fn new_in(tag: impl Into<ValueName>, builder: &mut TreeBuilder) -> Id<Self> {
+        let tag = builder.insert(tag.into());
 
-//         builder.insert(Self(ctor))
-//     }
-// }
+        builder.insert(Self(tag))
+    }
+}
 
-// impl<'a> Notate<'a> for NodePrinter<'a, ConstructorExpr> {
-//     fn notate(&self, arena: &'a Bump) -> Notation<'a> {
-//         let head = "Constructor".blue().display_in(arena);
+impl<'a> Notate<'a> for NodePrinter<'a, TagExpr> {
+    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
+        let head = "TagExpr".blue().display_in(arena);
 
-//         let ctor = self.to_id(self.value.0).notate(arena);
+        let tag = self.to_id(self.value.0).notate(arena);
 
-//         let single = arena
-//             .notate(" ctor = ")
-//             .then(ctor.clone(), arena)
-//             .flatten(arena);
-//         let multi = arena
-//             .newline()
-//             .then(arena.notate("ctor = "), arena)
-//             .then(ctor, arena)
-//             .indent(arena);
+        let single = arena.just(' ').then(tag.clone(), arena).flatten(arena);
+        let multi = arena.newline().then(tag, arena).indent(arena);
 
-//         head.then(single.or(multi, arena), arena)
-//     }
-// }
+        head.then(single.or(multi, arena), arena)
+    }
+}
+
 #[derive(
     Debug, From, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
 )]
@@ -1567,6 +1509,7 @@ pub enum Expr {
     Case(Id<CaseExpr>),
     Call(Id<CallExpr>),
     Lambda(Id<LambdaExpr>),
+    Tag(Id<TagExpr>),
 }
 
 impl<'a> Notate<'a> for NodePrinter<'a, Expr> {
@@ -1587,6 +1530,7 @@ impl<'a> Notate<'a> for NodePrinter<'a, Expr> {
             Expr::Case(c) => self.to_id(c).notate(arena),
             Expr::Call(c) => self.to_id(c).notate(arena),
             Expr::Lambda(f) => self.to_id(f).notate(arena),
+            Expr::Tag(t) => self.to_id(t).notate(arena),
         }
     }
 }
@@ -1911,7 +1855,7 @@ mod inspector {
                 .map(|p| NodeInspector::new(p, self.tree, self.interner))
         }
 
-        pub fn source(self) -> NodeInspector<'t, Id<SelectExpr>, S> {
+        pub fn source(self) -> NodeInspector<'t, Id<ValueName>, S> {
             let qualified = self.node.get(self.tree);
             NodeInspector::new(qualified.source, self.tree, self.interner)
         }
@@ -1921,22 +1865,6 @@ mod inspector {
             qualified
                 .fields
                 .map(|f| NodeInspector::new(f, self.tree, self.interner))
-        }
-    }
-
-    impl<'t, S: BuildHasher> NodeInspector<'t, Id<SelectExpr>, S> {
-        pub fn as_record(self) -> Option<NodeInspector<'t, Id<ValueName>, S>> {
-            let primitive = self.node.get(self.tree);
-            primitive
-                .to_record()
-                .map(|name_id| NodeInspector::new(name_id, self.tree, self.interner))
-        }
-
-        pub fn as_variant(self) -> Option<NodeInspector<'t, Id<TypeName>, S>> {
-            let primitive = self.node.get(self.tree);
-            primitive
-                .to_variant()
-                .map(|type_id| NodeInspector::new(type_id, self.tree, self.interner))
         }
     }
 

@@ -1,6 +1,6 @@
 use chumsky::prelude::*;
 
-use kola_span::{Loc, Span};
+use kola_span::Loc;
 use kola_tree::prelude::*;
 
 use super::{KolaParser, State, primitives::*};
@@ -70,17 +70,24 @@ CallExpr := '(' Callable Expr ')'
 //     })
 // }
 
+// TODO case related errors
+
 pub fn module_name_parser<'t>() -> impl KolaParser<'t, Id<node::ModuleName>> + Clone {
-    symbol().map(node::ModuleName::new).to_node().boxed()
+    lower_symbol().map(node::ModuleName::new).to_node().boxed()
 }
 
 pub fn type_name_parser<'t>() -> impl KolaParser<'t, Id<node::TypeName>> + Clone {
     symbol().map(node::TypeName::new).to_node().boxed()
 }
 
-pub fn value_name_parser<'t>() -> impl KolaParser<'t, Id<node::ValueName>> + Clone {
-    symbol().map(node::ValueName::new).to_node().boxed()
+pub fn lower_value_name_parser<'t>() -> impl KolaParser<'t, Id<node::ValueName>> + Clone {
+    lower_symbol().map(node::ValueName::new).to_node().boxed()
 }
+
+pub fn upper_value_name_parser<'t>() -> impl KolaParser<'t, Id<node::ValueName>> + Clone {
+    upper_symbol().map(node::ValueName::new).to_node().boxed()
+}
+
 pub fn module_parser<'t>() -> impl KolaParser<'t, Id<node::Module>> + Clone {
     let module_type = module_type_parser();
 
@@ -106,7 +113,7 @@ pub fn module_parser<'t>() -> impl KolaParser<'t, Id<node::Module>> + Clone {
 
         let value_bind = vis
             .clone()
-            .then(value_name_parser())
+            .then(lower_value_name_parser())
             .then(
                 ctrl(CtrlT::COLON)
                     .ignore_then(type_scheme_parser())
@@ -161,7 +168,7 @@ pub fn module_parser<'t>() -> impl KolaParser<'t, Id<node::Module>> + Clone {
 
 pub fn module_type_parser<'t>() -> impl KolaParser<'t, Id<node::ModuleType>> + Clone {
     recursive(|module_type| {
-        let value_spec = value_name_parser()
+        let value_spec = lower_value_name_parser()
             .then_ignore(ctrl(CtrlT::COLON))
             .then(type_scheme_parser())
             .map_to_node(|(name, ty)| node::ValueSpec { name, ty })
@@ -346,7 +353,7 @@ pub fn pat_parser<'t>() -> impl KolaParser<'t, Id<node::Pat>> + Clone {
         let wildcard = ctrl(CtrlT::UNDERSCORE).to(node::AnyPat).to_node().to_pat();
         let literal = literal_parser().map_to_node(node::LiteralPat).to_pat();
 
-        let field = value_name_parser()
+        let field = lower_value_name_parser()
             .then(ctrl(CtrlT::COLON).ignore_then(pat.clone()).or_not())
             .map_to_node(|(field, pat)| node::RecordFieldPat { field, pat });
 
@@ -361,9 +368,9 @@ pub fn pat_parser<'t>() -> impl KolaParser<'t, Id<node::Pat>> + Clone {
             |_span| node::PatError,
         );
 
-        let case = value_name_parser()
+        let case = lower_value_name_parser()
             .then(ctrl(CtrlT::COLON).ignore_then(pat.clone()).or_not())
-            .map_to_node(|(case, pat)| node::VariantCasePat { case, pat });
+            .map_to_node(|(case, pat)| node::VariantTagPat { case, pat });
 
         let variant = nested_parser(
             case.separated_by(ctrl(CtrlT::COMMA))
@@ -382,24 +389,22 @@ pub fn pat_parser<'t>() -> impl KolaParser<'t, Id<node::Pat>> + Clone {
 
 pub fn expr_parser<'t>() -> impl KolaParser<'t, Id<node::Expr>> + Clone {
     recursive(|expr| {
-        let name = value_name_parser();
-
-        // let primitive = lower_symbol()
-        //     .map_to_node(node::ValueName::new)
-        //     .map_to_node(node::PrimitiveExpr::Symbol)
-        //     .or(upper_symbol()
-        //         .map_to_node(node::ValueName::new)
-        //         .map_to_node(node::PrimitiveExpr::Constructor));
+        let tag = upper_value_name_parser()
+            .map_to_node(node::TagExpr)
+            .to_expr()
+            .labelled("TagExpr")
+            .as_context()
+            .boxed();
 
         // Qualified expression (module::record.field) for variable and module access
         let qualified = group((
-            symbol().spanned(),
+            lower_symbol().spanned(),
             ctrl(CtrlT::DOUBLE_COLON)
-                .ignore_then(symbol().spanned())
+                .ignore_then(lower_symbol().spanned())
                 .repeated()
                 .collect::<Vec<_>>(),
             ctrl(CtrlT::DOT)
-                .ignore_then(value_name_parser())
+                .ignore_then(lower_value_name_parser())
                 .repeated()
                 .at_least(1)
                 .collect()
@@ -431,14 +436,7 @@ pub fn expr_parser<'t>() -> impl KolaParser<'t, Id<node::Expr>> + Clone {
                 Some(path)
             };
 
-            let primitive = if tree.interner[source.0].starts_with(char::is_lowercase) {
-                let name = tree.insert(node::ValueName::new(source.0), source.1);
-                node::SelectExpr::Record(name)
-            } else {
-                let name = tree.insert(node::TypeName::new(source.0), source.1);
-                node::SelectExpr::Variant(name)
-            };
-            let source = tree.insert(primitive, source.1);
+            let source = tree.insert(node::ValueName::new(source.0), source.1);
 
             node::QualifiedExpr {
                 path,
@@ -510,7 +508,7 @@ pub fn expr_parser<'t>() -> impl KolaParser<'t, Id<node::Expr>> + Clone {
         // record operations
 
         let field = group((
-            name.clone(),
+            lower_value_name_parser(),
             ctrl(CtrlT::COLON).ignore_then(type_parser()).or_not(),
             op(OpT::ASSIGN).ignore_then(expr.clone()),
         ))
@@ -540,8 +538,7 @@ pub fn expr_parser<'t>() -> impl KolaParser<'t, Id<node::Expr>> + Clone {
             ),
         }
 
-        let field_path = name
-            .clone()
+        let field_path = lower_value_name_parser()
             .separated_by(ctrl(CtrlT::DOT))
             .collect()
             .map_to_node(node::FieldPath)
@@ -639,7 +636,7 @@ pub fn expr_parser<'t>() -> impl KolaParser<'t, Id<node::Expr>> + Clone {
 
         // TODO allow type annotation
         let let_ = group((
-            kw(KwT::LET).ignore_then(name.clone()),
+            kw(KwT::LET).ignore_then(lower_value_name_parser()),
             ctrl(CtrlT::COLON).ignore_then(type_parser()).or_not(),
             op(OpT::ASSIGN).ignore_then(expr.clone()),
             kw(KwT::IN).ignore_then(expr.clone()),
@@ -693,7 +690,7 @@ pub fn expr_parser<'t>() -> impl KolaParser<'t, Id<node::Expr>> + Clone {
 
         // Allow type annotation of ident
         let func = group((
-            kw(KwT::FN).ignore_then(name.clone()),
+            kw(KwT::FN).ignore_then(lower_value_name_parser()),
             ctrl(CtrlT::COLON).ignore_then(type_parser()).or_not(),
             ctrl(CtrlT::DOUBLE_ARROW).ignore_then(expr.clone()),
         ))
@@ -709,7 +706,7 @@ pub fn expr_parser<'t>() -> impl KolaParser<'t, Id<node::Expr>> + Clone {
 
         // TODO allow "recursive" (a (b c)) and maybe also syntactic sugar (a b c)
         let call = recursive(|call| {
-            let callable = choice((qualified.clone(), func.clone(), call));
+            let callable = choice((qualified.clone(), tag.clone(), func.clone(), call));
 
             nested_parser(
                 callable
@@ -735,6 +732,7 @@ pub fn expr_parser<'t>() -> impl KolaParser<'t, Id<node::Expr>> + Clone {
             func,
             call,
             qualified,
+            tag,
         ))
         .boxed();
 
@@ -888,7 +886,7 @@ pub fn type_parser<'t>() -> impl KolaParser<'t, Id<node::Type>> + Clone {
             .or_not()
             .boxed();
 
-        let field = value_name_parser()
+        let field = lower_value_name_parser()
             .then_ignore(ctrl(CtrlT::COLON))
             .then(ty.clone())
             .map_to_node(|(name, ty)| node::RecordFieldType { name, ty });
@@ -906,9 +904,9 @@ pub fn type_parser<'t>() -> impl KolaParser<'t, Id<node::Type>> + Clone {
             |_span| node::TypeError,
         );
 
-        let case = value_name_parser()
+        let case = upper_value_name_parser()
             .then(ctrl(CtrlT::COLON).ignore_then(ty.clone()).or_not())
-            .map_to_node(|(name, ty)| node::VariantCaseType { name, ty });
+            .map_to_node(|(name, ty)| node::VariantTagType { name, ty });
 
         let variant = nested_parser(
             case.separated_by(ctrl(CtrlT::COMMA))
@@ -1144,13 +1142,7 @@ mod tests {
 
         let case = inspector.as_case().unwrap();
 
-        case.source()
-            .as_qualified()
-            .unwrap()
-            .source()
-            .as_record()
-            .unwrap()
-            .has_name("x");
+        case.source().as_qualified().unwrap().source().has_name("x");
 
         case.has_branches(2);
 
@@ -1243,16 +1235,12 @@ mod tests {
             .as_qualified()
             .unwrap()
             .source()
-            .as_record()
-            .unwrap()
             .has_name("y");
         if_expr
             .then()
             .as_qualified()
             .unwrap()
             .source()
-            .as_record()
-            .unwrap()
             .has_name("x");
         if_expr.or().as_literal().unwrap().is_num(0.0);
     }
@@ -1268,7 +1256,7 @@ mod tests {
         let inspector = NodeInspector::new(node, &builder, &interner);
 
         let path_expr = inspector.as_qualified().unwrap();
-        path_expr.source().as_record().unwrap().has_name("x");
+        path_expr.source().has_name("x");
         path_expr
             .fields()
             .unwrap()
@@ -1292,11 +1280,7 @@ mod tests {
         module_path.segment_at_is(1, "mod2");
 
         // Check the source symbol
-        qualified_expr
-            .source()
-            .as_record()
-            .unwrap()
-            .has_name("value");
+        qualified_expr.source().has_name("value");
 
         // Check the field path
         qualified_expr
@@ -1322,8 +1306,6 @@ mod tests {
             .as_qualified()
             .unwrap()
             .source()
-            .as_record()
-            .unwrap()
             .has_name("y");
         extend.select().field_at_is(0, "x");
         extend.value().as_literal().unwrap().is_num(10.0);
@@ -1613,13 +1595,13 @@ mod tests {
         let mut interner = StrInterner::new();
 
         let ParseResult { node, builder, .. } =
-            try_parse_str_with("{ module M = { x = 10 } }", module_parser(), &mut interner);
+            try_parse_str_with("{ module m = { x = 10 } }", module_parser(), &mut interner);
 
         let inspector = NodeInspector::new(node, &builder, &interner);
 
         inspector.has_binds(1);
 
-        let module_bind = inspector.bind_at(0).as_module().unwrap().has_name("M");
+        let module_bind = inspector.bind_at(0).as_module().unwrap().has_name("m");
 
         assert!(module_bind.module_type().is_none());
 
@@ -1643,7 +1625,7 @@ mod tests {
         let mut interner = StrInterner::new();
 
         let ParseResult { node, builder, .. } = try_parse_str_with(
-            "{ module M : { x : Num } = { x = 10 } }",
+            "{ module m : { x : Num } = { x = 10 } }",
             module_parser(),
             &mut interner,
         );
@@ -1652,7 +1634,7 @@ mod tests {
 
         inspector.has_binds(1);
 
-        let module_bind = inspector.bind_at(0).as_module().unwrap().has_name("M");
+        let module_bind = inspector.bind_at(0).as_module().unwrap().has_name("m");
 
         // Check interface
         let module_type = module_bind.module_type().unwrap();

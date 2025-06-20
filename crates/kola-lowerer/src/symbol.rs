@@ -40,7 +40,6 @@ impl<'a> SymbolEnv<'a> {
         match *self.resolved.meta(id) {
             ResolvedValue::Defined(sym) => ir::Atom::Symbol(ir::Symbol(sym.id())),
             ResolvedValue::Builtin(b) => ir::Atom::Builtin(b),
-            ResolvedValue::Constructor(ty, name) => todo!(),
         }
     }
 }

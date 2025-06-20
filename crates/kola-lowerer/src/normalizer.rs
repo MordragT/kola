@@ -162,7 +162,7 @@ where
             let module_sym = self.symbol_of(path);
             let module_atom = self.builder.add(ir::Atom::Symbol(module_sym));
 
-            let name = source.get(tree).str_key(tree);
+            let name = source.get(tree).0;
 
             let access_expr = self
                 .builder
@@ -222,6 +222,18 @@ where
             self.emit(source_atom);
         }
 
+        ControlFlow::Continue(())
+    }
+
+    fn visit_tag_expr(
+        &mut self,
+        id: TreeId<node::TagExpr>,
+        tree: &T,
+    ) -> ControlFlow<Self::BreakValue> {
+        let tag = id.get(tree).0.get(tree).0;
+        let tag_atom = self.builder.add(ir::Atom::Tag(tag.into()));
+
+        self.emit(tag_atom);
         ControlFlow::Continue(())
     }
 
@@ -622,7 +634,7 @@ mod tests {
         phase::{ResolvedNodes, ResolvedValue},
         symbol::ValueSym,
     };
-    use kola_tree::{node::SelectExpr, prelude::*};
+    use kola_tree::prelude::*;
     use kola_utils::interner::StrInterner;
     use kola_vm::{machine::CekMachine, value::Value};
 
@@ -681,7 +693,7 @@ mod tests {
         let mut interner = StrInterner::new();
         let mut builder = TreeBuilder::new();
 
-        let x = SelectExpr::record(interner.intern("x"), &mut builder);
+        let x = interner.intern("x");
 
         // Build a simple path expression: x (no module path, just binding)
         let path_expr = node::QualifiedExpr::new_in(None, x, None, &mut builder);
@@ -700,15 +712,14 @@ mod tests {
         let mut builder = TreeBuilder::new();
         let mut resolved = ResolvedNodes::default();
 
-        let x_name = interner.intern("x");
-        let x = SelectExpr::record(x_name, &mut builder);
+        let x = interner.intern("x");
         let x_sym = ValueSym::new();
 
         // Build: let x = 42 in x
 
         let inside = node::QualifiedExpr::new_in(None, x, None, &mut builder);
         let value = builder.insert(node::LiteralExpr::Num(42.0));
-        let let_expr = node::LetExpr::new_in(x_name, None, value, inside, &mut builder);
+        let let_expr = node::LetExpr::new_in(x, None, value, inside, &mut builder);
         resolved.insert_meta(let_expr, x_sym);
 
         let ir = normalize(builder, let_expr, &resolved);
@@ -725,8 +736,7 @@ mod tests {
         let mut builder = TreeBuilder::new();
         let mut resolved = ResolvedNodes::default();
 
-        let x_name = interner.intern("x");
-        let x = SelectExpr::record(x_name, &mut builder);
+        let x = interner.intern("x");
         let x_sym = ValueSym::new();
 
         // Build: (\x => x) 42  (identity function applied to 42)
@@ -735,7 +745,7 @@ mod tests {
         let lambda_body = node::QualifiedExpr::new_in(None, x, None, &mut builder);
 
         // Create the lambda: \x => x
-        let lambda_expr = node::LambdaExpr::new_in(x_name, None, lambda_body, &mut builder);
+        let lambda_expr = node::LambdaExpr::new_in(x, None, lambda_body, &mut builder);
         resolved.insert_meta(lambda_expr, x_sym); // Lambda gets parameter symbol
         let lambda = builder.insert(node::Expr::Lambda(lambda_expr));
 

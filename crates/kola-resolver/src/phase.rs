@@ -43,7 +43,6 @@ use crate::symbol::{ModuleSym, TypeSym, ValueSym};
 pub enum ResolvedValue {
     Defined(ValueSym),
     Builtin(BuiltinId),
-    Constructor(TypeSym, node::ValueName), // data constructor
 }
 
 impl ResolvedValue {
@@ -54,10 +53,6 @@ impl ResolvedValue {
     pub fn into_defined(self) -> Option<ValueSym> {
         as_variant!(self, Self::Defined)
     }
-
-    // pub fn into_constructor(self) -> Option<TypeSym> {
-    //     as_variant!(self, Self::Constructor)
-    // }
 }
 
 impl fmt::Display for ResolvedValue {
@@ -65,7 +60,6 @@ impl fmt::Display for ResolvedValue {
         match self {
             ResolvedValue::Defined(sym) => sym.fmt(f),
             ResolvedValue::Builtin(id) => id.fmt(f),
-            ResolvedValue::Constructor(t, _) => write!(f, "{t}._todo"),
         }
     }
 }
@@ -114,7 +108,7 @@ impl Phase for ResolvePhase {
     type IdentPat = !; // Future: ValueSym for pattern bindings
     type RecordFieldPat = !; // Future: ValueSym for destructured fields
     type RecordPat = !;
-    type VariantCasePat = !;
+    type VariantTagPat = !;
     type VariantPat = !;
     type PatError = !;
     type Pat = !;
@@ -136,7 +130,7 @@ impl Phase for ResolvePhase {
     type Expr = !;
 
     type QualifiedExpr = ResolvedValue;
-    type SelectExpr = !;
+    type TagExpr = !;
     type FieldPath = !;
 
     // Record operations - structural, no new symbols needed
@@ -159,7 +153,7 @@ impl Phase for ResolvePhase {
     type TypeVar = TypeSym; // Type variables only occur in forall quantifier definitions
     type RecordFieldType = !; // Field names exist in value namespace but no symbols needed here
     type RecordType = !; // Structural type, no symbols
-    type VariantCaseType = !; // Variant cases exist in value namespace
+    type VariantTagType = !; // Variant cases exist in value namespace
     type VariantType = !; // Structural type, no symbols
     type FuncType = !;
     type TypeApplication = !;
