@@ -39,7 +39,6 @@ define_folder_trait!(
     ListElPat,
     ListPat,
     RecordFieldPat,
-    RecordSpreadPat,
     RecordPat,
     VariantTagPat,
     VariantPat,

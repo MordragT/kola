@@ -21,7 +21,6 @@ impl<'a> Decorator<'a> for TypeDecorator<'a> {
             | Meta::BindPat(t)
             | Meta::ListElPat(t)
             | Meta::ListPat(t)
-            | Meta::RecordSpreadPat(t)
             | Meta::RecordPat(t)
             | Meta::VariantPat(t)
             | Meta::Pat(t) => t.green().display_in(arena),

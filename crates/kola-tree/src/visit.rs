@@ -203,28 +203,6 @@ pub trait Visitor<T: TreeView> {
         self.walk_record_field_pat(id, tree)
     }
 
-    fn walk_record_spread_pat(
-        &mut self,
-        id: Id<node::RecordSpreadPat>,
-        tree: &T,
-    ) -> ControlFlow<Self::BreakValue> {
-        let name = id.get(tree).0;
-
-        if let Some(name) = name {
-            self.visit_value_name(name, tree)?;
-        }
-
-        ControlFlow::Continue(())
-    }
-
-    fn visit_record_spread_pat(
-        &mut self,
-        id: Id<node::RecordSpreadPat>,
-        tree: &T,
-    ) -> ControlFlow<Self::BreakValue> {
-        self.walk_record_spread_pat(id, tree)
-    }
-
     fn walk_record_pat(
         &mut self,
         id: Id<node::RecordPat>,
@@ -234,10 +212,6 @@ pub trait Visitor<T: TreeView> {
 
         for field_id in &record_pat.fields {
             self.visit_record_field_pat(*field_id, tree)?;
-        }
-
-        if let Some(spread_id) = record_pat.spread {
-            self.visit_record_spread_pat(spread_id, tree)?;
         }
 
         ControlFlow::Continue(())

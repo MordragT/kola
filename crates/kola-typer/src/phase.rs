@@ -21,7 +21,6 @@ impl Phase for TypePhase {
     type ListElPat = types::MonoType;
     type ListPat = types::MonoType;
     type RecordFieldPat = types::LabeledType;
-    type RecordSpreadPat = types::MonoType;
     type RecordPat = types::MonoType;
     type VariantTagPat = types::LabeledType;
     type VariantPat = types::MonoType;

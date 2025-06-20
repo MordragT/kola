@@ -277,41 +277,11 @@ impl<'a> Notate<'a> for NodePrinter<'a, RecordFieldPat> {
         head.then(single.or(multi, arena), arena)
     }
 }
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
-pub struct RecordSpreadPat(pub Option<Id<ValueName>>);
-
-impl RecordSpreadPat {
-    pub fn new_in(name: Option<ValueName>, builder: &mut TreeBuilder) -> Id<Self> {
-        let name = name.map(|n| builder.insert(n));
-
-        builder.insert(Self(name))
-    }
-}
-
-impl<'a> Notate<'a> for NodePrinter<'a, RecordSpreadPat> {
-    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
-        let head = "RecordSpread".green().display_in(arena);
-
-        let name_notation = self.value.0.map(|n| self.to_id(n).notate(arena));
-
-        let single = [arena.notate(" ..."), name_notation.clone().or_not(arena)].concat_in(arena);
-
-        let multi = [
-            arena.newline(),
-            arena.notate("..."),
-            name_notation.or_not(arena),
-        ]
-        .concat_in(arena)
-        .indent(arena);
-
-        head.then(single.or(multi, arena), arena)
-    }
-}
 
 #[derive(Debug, From, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct RecordPat {
     pub fields: Vec<Id<RecordFieldPat>>,
-    pub spread: Option<Id<RecordSpreadPat>>,
+    pub polymorph: bool,
 }
 
 // impl RecordPat {
@@ -330,25 +300,28 @@ impl<'a> Notate<'a> for NodePrinter<'a, RecordPat> {
         let head = "RecordPat".blue().display_in(arena);
 
         let fields = self.to_slice(&self.value.fields).gather(arena);
-        let spread = self.value.spread.map(|s| self.to_id(s).notate(arena));
+        let polymorph = self.value.polymorph;
 
         let single = [
             fields.clone().concat_map(
                 |field| arena.notate(" ").then(field.flatten(arena), arena),
                 arena,
             ),
-            spread
-                .clone()
-                .map(|s| arena.notate(" ...").then(s, arena))
-                .or_not(arena),
+            if polymorph {
+                arena.notate(" ...").into()
+            } else {
+                arena.notate("").into()
+            },
         ]
         .concat_in(arena);
 
         let multi = [
             fields.concat_map(|field| arena.newline().then(field, arena), arena),
-            spread
-                .map(|s| [arena.newline(), arena.notate("..."), s].concat_in(arena))
-                .or_not(arena),
+            if polymorph {
+                arena.newline().then(arena.notate("..."), arena)
+            } else {
+                arena.notate("").into()
+            },
         ]
         .concat_in(arena);
 
@@ -756,41 +729,12 @@ mod inspector {
                 .map(|field_id| NodeInspector::new(*field_id, self.tree, self.interner))
         }
 
-        pub fn has_spread(self) -> Option<NodeInspector<'t, Id<RecordSpreadPat>, S>> {
+        pub fn is_polymorphic(self) -> Self {
             let record_pat = self.node.get(self.tree);
-            record_pat
-                .spread
-                .map(|spread_id| NodeInspector::new(spread_id, self.tree, self.interner))
-        }
-    }
-
-    impl<'t, S: BuildHasher> NodeInspector<'t, Id<RecordSpreadPat>, S> {
-        pub fn is_anonymous(self) -> Self {
-            let spread = self.node.get(self.tree);
             assert!(
-                spread.0.is_none(),
-                "Expected anonymous spread but found named spread"
+                record_pat.polymorph,
+                "Expected polymorphic record pattern but found non-polymorphic"
             );
-            self
-        }
-
-        pub fn has_name(self, expected: &str) -> Self {
-            let spread = self.node.get(self.tree);
-            match spread.0 {
-                Some(name_id) => {
-                    let name = name_id.get(self.tree);
-                    let actual = self.interner.get(name.0).expect("Symbol not found");
-                    assert_eq!(
-                        actual, expected,
-                        "Expected spread name '{}' but found '{}'",
-                        expected, actual
-                    );
-                }
-                None => panic!(
-                    "Expected named spread '{}' but found anonymous spread",
-                    expected
-                ),
-            }
             self
         }
     }

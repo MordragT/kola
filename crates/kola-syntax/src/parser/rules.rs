@@ -389,13 +389,11 @@ pub fn pat_parser<'t>() -> impl KolaParser<'t, Id<node::Pat>> + Clone {
             field
                 .separated_by(ctrl(CtrlT::COMMA))
                 .collect()
-                .then(
-                    ctrl(CtrlT::COMMA)
-                        .ignore_then(spread)
-                        .map_to_node(node::RecordSpreadPat)
-                        .or_not(),
-                )
-                .map_to_node(|(fields, spread)| node::RecordPat { fields, spread })
+                .then(ctrl(CtrlT::COMMA).then(ctrl(CtrlT::TRIPLE_DOT)).or_not())
+                .map_to_node(|(fields, spread)| node::RecordPat {
+                    fields,
+                    polymorph: spread.is_some(),
+                })
                 .to_pat(),
             Delim::Brace,
             |_span| node::PatError,
@@ -1359,8 +1357,7 @@ mod tests {
             .as_bind()
             .unwrap()
             .has_name("years");
-        let record_spread = record_pat1.has_spread().unwrap();
-        record_spread.has_name("extra");
+        record_pat1.is_polymorphic();
         case.branch_at(10)
             .matches()
             .as_literal()
@@ -1372,7 +1369,6 @@ mod tests {
         record_pat2.has_fields(2);
         record_pat2.field_at(0).has_field_name("x");
         record_pat2.field_at(1).has_field_name("y");
-        assert!(record_pat2.has_spread().is_none()); // no spread
         case.branch_at(11)
             .matches()
             .as_literal()
@@ -1382,7 +1378,6 @@ mod tests {
         // Test empty record pattern
         let empty_record = case.branch_at(12).pat().as_record().unwrap();
         empty_record.has_fields(0);
-        assert!(empty_record.has_spread().is_none());
         case.branch_at(12)
             .matches()
             .as_literal()

@@ -205,7 +205,6 @@ define!(
     ListElPat,
     ListPat,
     RecordFieldPat,
-    RecordSpreadPat,
     RecordPat,
     VariantTagPat,
     VariantPat,

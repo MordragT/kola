@@ -10,6 +10,7 @@ use kola_utils::interner::StrInterner;
 use crate::{
     constraints::Constraints,
     env::{GlobalTypeEnv, LocalTypeEnv, ModuleTypeEnv},
+    pattern_typer::PatternTyper,
     phase::{TypePhase, TypedNodes},
     substitute::{Substitutable, Substitution},
     types::{Kind, LabeledType, MonoType, PolyType, TypeVar},
@@ -1420,12 +1421,138 @@ where
         ControlFlow::Continue(())
     }
 
+    /// Rule for Case Expression (Pattern Matching)
+    ///
+    /// ```ignore
+    /// ∆;Γ ⊢ source : source_t
+    /// ∆;Γ ⊢ pattern₁ ⇒ source_t ⊣ Γ₁    Γ₁ ⊢ expr₁ : result_t
+    /// ∆;Γ ⊢ pattern₂ ⇒ source_t ⊣ Γ₂    Γ₂ ⊢ expr₂ : result_t
+    /// ...
+    /// ∆;Γ ⊢ patternₙ ⇒ source_t ⊣ Γₙ    Γₙ ⊢ exprₙ : result_t
+    /// -----------------------
+    /// ∆;Γ ⊢ case source of pattern₁ => expr₁ | pattern₂ => expr₂ | ... | patternₙ => exprₙ : result_t
+    /// ```
+    ///
+    /// Pattern Typing Rules:
+    ///
+    /// **Literal Patterns:**
+    /// ```ignore
+    /// ∆;Γ ⊢ 42 ⇒ Num ⊣ Γ
+    /// ∆;Γ ⊢ true ⇒ Bool ⊣ Γ
+    /// ∆;Γ ⊢ () ⇒ Unit ⊣ Γ
+    /// ```
+    ///
+    /// **Wildcard Pattern:**
+    /// ```ignore
+    /// α fresh
+    /// -----------------------
+    /// ∆;Γ ⊢ _ ⇒ α ⊣ Γ
+    /// ```
+    ///
+    /// **Bind Pattern:**
+    /// ```ignore
+    /// α fresh
+    /// -----------------------
+    /// ∆;Γ ⊢ x ⇒ α ⊣ Γ[x : α]
+    /// ```
+    ///
+    /// **Record Patterns:**
+    /// - Exact record: `{ l₁ : p₁, ..., lₙ : pₙ } ⇒ { l₁ : τ₁, ..., lₙ : τₙ }`
+    /// - Polymorphic record: `{ l₁ : p₁, ..., lₙ : pₙ, ... } ⇒ { l₁ : τ₁, ..., lₙ : τₙ | ρ }`
+    ///
+    /// **List Patterns:**
+    /// ```ignore
+    /// ∆;Γ ⊢ p₁ ⇒ τ ⊣ Γ₁    ∆;Γ₁ ⊢ p₂ ⇒ τ ⊣ Γ₂    ...    ∆;Γₙ₋₁ ⊢ pₙ ⇒ τ ⊣ Γₙ
+    /// -----------------------
+    /// ∆;Γ ⊢ [p₁, p₂, ..., pₙ] ⇒ List τ ⊣ Γₙ
+    /// ```
+    ///
+    /// **List Spread Patterns:**
+    /// ```ignore
+    /// ∆;Γ ⊢ p₁ ⇒ τ ⊣ Γ₁    ∆;Γ₁ ⊢ p₂ ⇒ τ ⊣ Γ₂    ...    ∆;Γₙ₋₁ ⊢ pₙ ⇒ τ ⊣ Γₙ
+    /// -----------------------
+    /// ∆;Γ ⊢ [p₁, p₂, ..., pₙ, ...x] ⇒ List τ ⊣ Γₙ[x : List τ]
+    /// ```
+    ///
+    /// **Variant Patterns:**
+    /// ```ignore
+    /// ∆;Γ ⊢ p₁ ⇒ τ₁ ⊣ Γ₁    ∆;Γ₁ ⊢ p₂ ⇒ τ₂ ⊣ Γ₂    ...    ρ fresh
+    /// -----------------------
+    /// ∆;Γ ⊢ < l₁ : p₁, l₂ : p₂, ... > ⇒ < l₁ : τ₁, l₂ : τ₂, ... | ρ > ⊣ Γₙ
+    /// ```
+    ///
+    /// Implementation:
+    /// - Type source expression to get discriminant type
+    /// - For each branch: type-check pattern against discriminant, bind pattern variables
+    /// - Type-check branch expressions in extended environments
+    /// - Constrain all branch expressions to have the same result type
+    ///
+    /// Type signature: `α → β` where α is discriminant type, β is unified result type
     fn visit_case_expr(
         &mut self,
-        _id: Id<node::CaseExpr>,
+        id: Id<node::CaseExpr>,
         tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
-        todo!()
+        let node::CaseExpr { source, branches } = id.get(tree);
+        let span = self.span(id);
+
+        // Step 1: Type the source expression to get discriminant type
+        self.visit_expr(*source, tree)?;
+        let source_t = self.types.meta(*source).clone();
+
+        // Step 2: Process each branch
+        let mut result_types = Vec::new();
+
+        for &branch_id in branches {
+            let node::CaseBranch { pat, matches } = *branch_id.get(tree);
+
+            // TODO: Implement proper pattern typing that:
+            // - Type-checks pattern against source type
+            // - Binds pattern variables in local environment
+            // - Extends environment for expression typing
+            //
+            // Pattern typing requires:
+            // 1. visit_pattern(pat, source_t) -> (pattern_t, env_extension)
+            // 2. constrain(pattern_t, source_t)
+            // 3. type check expression in extended environment
+            //
+            // For now, we provide a basic implementation that visits
+            // patterns and expressions but doesn't handle variable binding
+
+            // Save current environment to restore after pattern typing
+            let env = self.local_env.clone();
+
+            // Create fresh PatternTyper for this branch
+            let pattern_typer = PatternTyper::new(&mut self.local_env, self.cons, source_t.clone());
+            pattern_typer.run::<T, node::Pat>(pat, tree);
+
+            // Type branch expression with extended environment
+            self.visit_expr(matches, tree)?;
+
+            // TODO use better mechanism to restore the env
+            self.local_env = env;
+
+            let branch_t = self.types.meta(matches).clone();
+            result_types.push(branch_t);
+        }
+
+        // Step 3: Unify all branch result types
+        let Some((first, remaining)) = result_types.split_first() else {
+            return ControlFlow::Break(Diagnostic::error(
+                span,
+                "Case expression must have at least one branch",
+            ));
+        };
+
+        for branch_t in remaining {
+            // Constrain all branch expressions to have the same type
+            self.cons.constrain(first.clone(), branch_t.clone(), span);
+        }
+
+        // Assign the unified type to the case expression
+        self.insert_type(id, first.clone());
+
+        ControlFlow::Continue(())
     }
 
     /// Rule for If Expression

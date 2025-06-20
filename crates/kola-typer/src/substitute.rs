@@ -290,7 +290,6 @@ impl_meta_substitutable!(
     ListElPat,
     ListPat,
     RecordFieldPat,
-    RecordSpreadPat,
     RecordPat,
     VariantTagPat,
     VariantPat,

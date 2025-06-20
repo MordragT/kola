@@ -109,7 +109,6 @@ impl Phase for ResolvePhase {
     type ListElPat = !;
     type ListPat = !;
     type RecordFieldPat = !; // Future: ValueSym for destructured fields
-    type RecordSpreadPat = !;
     type RecordPat = !;
     type VariantTagPat = !;
     type VariantPat = !;

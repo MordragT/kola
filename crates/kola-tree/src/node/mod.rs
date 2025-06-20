@@ -75,7 +75,6 @@ define_nodes!(
     ListElPat,
     ListPat,
     RecordFieldPat,
-    RecordSpreadPat,
     RecordPat,
     VariantTagPat,
     VariantPat,
