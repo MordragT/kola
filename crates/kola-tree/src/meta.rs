@@ -201,8 +201,11 @@ define!(
     // Patterns
     AnyPat,
     LiteralPat,
-    IdentPat,
+    BindPat,
+    ListElPat,
+    ListPat,
     RecordFieldPat,
+    RecordSpreadPat,
     RecordPat,
     VariantTagPat,
     VariantPat,

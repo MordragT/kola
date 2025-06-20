@@ -28,6 +28,7 @@ impl<'a> Notate<'a> for NodePrinter<'a, ExprError> {
 
 #[derive(Debug, From, Clone, Copy, PartialEq, PartialOrd, Serialize, Deserialize)]
 pub enum LiteralExpr {
+    Unit,
     Bool(bool),
     Num(f64),
     Char(char),
@@ -55,6 +56,10 @@ impl LiteralExpr {
         as_variant!(self, Self::Str)
     }
 
+    pub fn is_unit(&self) -> bool {
+        matches!(self, Self::Unit)
+    }
+
     pub fn is_bool(&self) -> bool {
         matches!(self, Self::Bool(_))
     }
@@ -77,6 +82,7 @@ impl<'a> Notate<'a> for NodePrinter<'a, LiteralExpr> {
         let head = "LiteralExpr".purple().display_in(arena);
 
         let lit = match *self.value {
+            LiteralExpr::Unit => "Unit".yellow().display_in(arena),
             LiteralExpr::Bool(b) => b.yellow().display_in(arena),
             LiteralExpr::Num(n) => n.yellow().display_in(arena),
             LiteralExpr::Char(c) => c.yellow().display_in(arena),

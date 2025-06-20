@@ -633,6 +633,7 @@ where
         tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
         let actual = match id.get(tree) {
+            &node::LiteralExpr::Unit => MonoType::UNIT,
             &node::LiteralExpr::Bool(_) => MonoType::BOOL,
             &node::LiteralExpr::Char(_) => MonoType::CHAR,
             &node::LiteralExpr::Num(_) => MonoType::NUM,

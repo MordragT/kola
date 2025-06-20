@@ -167,6 +167,7 @@ where
         // Boolean literals
         just("true").to(LiteralT::Bool(true)),
         just("false").to(LiteralT::Bool(false)),
+        just("()").to(LiteralT::Unit),
     ))
     .map(Token::Literal)
     .boxed();
@@ -205,6 +206,7 @@ where
 
     // Two-character tokens
     let joint = choice((
+        just("...").to(Token::Atom("...")),
         just("+=").to(Token::Atom("+=")),
         just("-=").to(Token::Atom("-=")),
         just("*=").to(Token::Atom("*=")),

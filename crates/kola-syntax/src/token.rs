@@ -69,6 +69,7 @@ Actually it might be possible to use newtype structs over leave nodes.
 
 #[derive(Debug, Display, Clone, Copy, PartialEq)]
 pub enum LiteralT<'t> {
+    Unit,
     Num(f64),
     Bool(bool),
     Char(char),
@@ -243,6 +244,7 @@ define_token_type!(Kw {
 
 define_token_type!(Ctrl {
     Dot => ".",
+    TripleDot => "...",
     Colon => ":",
     DoubleColon => "::",
     Comma => ",",
@@ -278,6 +280,7 @@ pub type SemanticTokens = Vec<Located<SemanticToken>>;
     Debug, Display, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
 )]
 pub enum Literal {
+    Unit,
     Num,
     Bool,
     Char,
@@ -287,6 +290,7 @@ pub enum Literal {
 impl<'t> From<LiteralT<'t>> for Literal {
     fn from(value: LiteralT<'t>) -> Self {
         match value {
+            LiteralT::Unit => Literal::Unit,
             LiteralT::Num(_) => Literal::Num,
             LiteralT::Str(_) => Literal::Str,
             LiteralT::Bool(_) => Literal::Bool,

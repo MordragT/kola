@@ -111,7 +111,7 @@ impl IrBuilder {
     #[inline]
     pub fn new() -> Self {
         // Reserve slot 0 with a dummy instruction.
-        let instructions = vec![Instr::Noop];
+        let instructions = vec![Instr::Atom(Atom::Noop)];
 
         Self { instructions }
     }

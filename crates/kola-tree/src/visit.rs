@@ -33,7 +33,7 @@ impl_visitable!(
     // Patterns
     AnyPat,
     LiteralPat,
-    IdentPat,
+    BindPat,
     RecordFieldPat,
     RecordPat,
     VariantTagPat,
@@ -134,12 +134,50 @@ pub trait Visitor<T: TreeView> {
         ControlFlow::Continue(())
     }
 
-    fn visit_ident_pat(
+    fn visit_bind_pat(
         &mut self,
-        _id: Id<node::IdentPat>,
+        _id: Id<node::BindPat>,
         _tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
         ControlFlow::Continue(())
+    }
+
+    fn walk_list_el_pat(
+        &mut self,
+        id: Id<node::ListElPat>,
+        tree: &T,
+    ) -> ControlFlow<Self::BreakValue> {
+        match *id.get(tree) {
+            node::ListElPat::Pat(pat_id) => self.visit_pat(pat_id, tree),
+            node::ListElPat::Spread(name_opt) => {
+                if let Some(name_id) = name_opt {
+                    self.visit_value_name(name_id, tree)?;
+                }
+                ControlFlow::Continue(())
+            }
+        }
+    }
+
+    fn visit_list_el_pat(
+        &mut self,
+        id: Id<node::ListElPat>,
+        tree: &T,
+    ) -> ControlFlow<Self::BreakValue> {
+        self.walk_list_el_pat(id, tree)
+    }
+
+    fn walk_list_pat(&mut self, id: Id<node::ListPat>, tree: &T) -> ControlFlow<Self::BreakValue> {
+        let list_pat = id.get(tree);
+
+        for element_id in &list_pat.0 {
+            self.visit_list_el_pat(*element_id, tree)?;
+        }
+
+        ControlFlow::Continue(())
+    }
+
+    fn visit_list_pat(&mut self, id: Id<node::ListPat>, tree: &T) -> ControlFlow<Self::BreakValue> {
+        self.walk_list_pat(id, tree)
     }
 
     fn walk_record_field_pat(
@@ -165,6 +203,28 @@ pub trait Visitor<T: TreeView> {
         self.walk_record_field_pat(id, tree)
     }
 
+    fn walk_record_spread_pat(
+        &mut self,
+        id: Id<node::RecordSpreadPat>,
+        tree: &T,
+    ) -> ControlFlow<Self::BreakValue> {
+        let name = id.get(tree).0;
+
+        if let Some(name) = name {
+            self.visit_value_name(name, tree)?;
+        }
+
+        ControlFlow::Continue(())
+    }
+
+    fn visit_record_spread_pat(
+        &mut self,
+        id: Id<node::RecordSpreadPat>,
+        tree: &T,
+    ) -> ControlFlow<Self::BreakValue> {
+        self.walk_record_spread_pat(id, tree)
+    }
+
     fn walk_record_pat(
         &mut self,
         id: Id<node::RecordPat>,
@@ -172,8 +232,12 @@ pub trait Visitor<T: TreeView> {
     ) -> ControlFlow<Self::BreakValue> {
         let record_pat = id.get(tree);
 
-        for id in record_pat {
-            self.visit_record_field_pat(*id, tree)?;
+        for field_id in &record_pat.fields {
+            self.visit_record_field_pat(*field_id, tree)?;
+        }
+
+        if let Some(spread_id) = record_pat.spread {
+            self.visit_record_spread_pat(spread_id, tree)?;
         }
 
         ControlFlow::Continue(())
@@ -247,7 +311,8 @@ pub trait Visitor<T: TreeView> {
             Error(id) => self.visit_pat_error(id, tree),
             Any(id) => self.visit_any_pat(id, tree),
             Literal(id) => self.visit_literal_pat(id, tree),
-            Ident(id) => self.visit_ident_pat(id, tree),
+            Bind(id) => self.visit_bind_pat(id, tree),
+            List(id) => self.visit_list_pat(id, tree),
             Record(id) => self.visit_record_pat(id, tree),
             Variant(id) => self.visit_variant_pat(id, tree),
         }

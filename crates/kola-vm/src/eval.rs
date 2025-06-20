@@ -24,6 +24,7 @@ pub fn eval_symbol(symbol: Symbol, env: &Env) -> Result<Value, String> {
 
 pub fn eval_atom(atom: Atom, env: &Env) -> Result<Value, String> {
     match atom {
+        Atom::Noop => Ok(Value::None),
         Atom::Bool(b) => Ok(Value::Bool(b)),
         Atom::Char(c) => Ok(Value::Char(c)),
         Atom::Num(n) => Ok(Value::Num(n)),

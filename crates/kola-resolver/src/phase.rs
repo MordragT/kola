@@ -105,8 +105,11 @@ impl Phase for ResolvePhase {
     // For now, patterns don't introduce symbols in our resolver
     type AnyPat = !;
     type LiteralPat = !;
-    type IdentPat = !; // Future: ValueSym for pattern bindings
+    type BindPat = !; // Future: ValueSym for pattern bindings
+    type ListElPat = !;
+    type ListPat = !;
     type RecordFieldPat = !; // Future: ValueSym for destructured fields
+    type RecordSpreadPat = !;
     type RecordPat = !;
     type VariantTagPat = !;
     type VariantPat = !;

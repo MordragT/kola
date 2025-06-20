@@ -18,7 +18,10 @@ impl<'a> Decorator<'a> for TypeDecorator<'a> {
             // Patterns
             Meta::AnyPat(t)
             | Meta::LiteralPat(t)
-            | Meta::IdentPat(t)
+            | Meta::BindPat(t)
+            | Meta::ListElPat(t)
+            | Meta::ListPat(t)
+            | Meta::RecordSpreadPat(t)
             | Meta::RecordPat(t)
             | Meta::VariantPat(t)
             | Meta::Pat(t) => t.green().display_in(arena),

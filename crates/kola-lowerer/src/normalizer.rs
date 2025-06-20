@@ -136,6 +136,7 @@ where
         tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
         let atom = match *id.get(tree) {
+            node::LiteralExpr::Unit => ir::Atom::Noop,
             node::LiteralExpr::Num(n) => ir::Atom::Num(n),
             node::LiteralExpr::Str(s) => ir::Atom::Str(s),
             node::LiteralExpr::Bool(b) => ir::Atom::Bool(b),

@@ -17,8 +17,11 @@ impl Phase for TypePhase {
 
     type AnyPat = types::MonoType;
     type LiteralPat = types::MonoType;
-    type IdentPat = types::MonoType;
+    type BindPat = types::MonoType;
+    type ListElPat = types::MonoType;
+    type ListPat = types::MonoType;
     type RecordFieldPat = types::LabeledType;
+    type RecordSpreadPat = types::MonoType;
     type RecordPat = types::MonoType;
     type VariantTagPat = types::LabeledType;
     type VariantPat = types::MonoType;

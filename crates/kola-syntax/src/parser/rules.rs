@@ -209,6 +209,7 @@ pub fn literal_parser<'t>() -> impl KolaParser<'t, node::LiteralExpr> + Sized {
     literal().map_with(|l, e| {
         let state: &mut State = e.state();
         match l {
+            LiteralT::Unit => node::LiteralExpr::Unit,
             LiteralT::Num(n) => node::LiteralExpr::Num(n),
             LiteralT::Bool(b) => node::LiteralExpr::Bool(b),
             LiteralT::Char(c) => node::LiteralExpr::Char(c),
@@ -326,33 +327,60 @@ data scheme Machine : { ip : Str, cmd : Str }
     ~ validator
 
 */
-
 /// Parser for pattern expressions used in match statements.
 ///
 /// Grammar:
 /// ```bnf
-/// pat           ::= ident_pat
+/// pat           ::= bind_pat
 ///                 | wildcard_pat
 ///                 | literal_pat
+///                 | list_pat
 ///                 | record_pat
 ///                 | variant_pat
 ///
-/// ident_pat     ::= name
+/// bind_pat      ::= name
 /// wildcard_pat  ::= '_'
-/// literal_pat   ::= num | bool | char | str
+/// literal_pat   ::= '(' ')' | num | bool | char | str
 ///
-/// record_pat    ::= '{' (record_field_pat (',' record_field_pat)*)? '}'
+/// list_pat      ::= '[' (list_element_pat (',' list_element_pat)*)? ']'
+/// list_element_pat ::= pat | '...' name?
+///
+/// record_pat    ::= '{' (record_field_pat (',' record_field_pat)* (',' spread_pat)?)? '}'
 /// record_field_pat ::= name (':' pat)?
+/// spread_pat    ::= '...' name?
 ///
-/// variant_pat    ::= '<' (variant_case_pat (',' variant_case_pat)*)? '>'
+/// variant_pat   ::= '<' (variant_case_pat (',' variant_case_pat)*)? '>'
 /// variant_case_pat ::= name (':' pat)?
 /// ```
 pub fn pat_parser<'t>() -> impl KolaParser<'t, Id<node::Pat>> + Clone {
     recursive(|pat| {
-        let ident = symbol().map_to_node(node::IdentPat).to_pat();
+        let bind = symbol().map_to_node(node::BindPat).to_pat();
         let wildcard = ctrl(CtrlT::UNDERSCORE).to(node::AnyPat).to_node().to_pat();
-        let literal = literal_parser().map_to_node(node::LiteralPat).to_pat();
+        let literal = literal_parser()
+            .map_to_node(node::LiteralPat::from)
+            .to_pat();
 
+        let spread = ctrl(CtrlT::TRIPLE_DOT).ignore_then(lower_value_name_parser().or_not());
+
+        // List element pattern: either a pattern or a spread
+        let list_element = pat
+            .clone()
+            .map(node::ListElPat::Pat)
+            .or(spread.clone().map(node::ListElPat::Spread))
+            .to_node();
+
+        let list = nested_parser(
+            list_element
+                .separated_by(ctrl(CtrlT::COMMA))
+                .allow_trailing()
+                .collect()
+                .map_to_node(node::ListPat)
+                .to_pat(),
+            Delim::Bracket,
+            |_span| node::PatError,
+        );
+
+        // Record field pattern
         let field = lower_value_name_parser()
             .then(ctrl(CtrlT::COLON).ignore_then(pat.clone()).or_not())
             .map_to_node(|(field, pat)| node::RecordFieldPat { field, pat });
@@ -360,15 +388,21 @@ pub fn pat_parser<'t>() -> impl KolaParser<'t, Id<node::Pat>> + Clone {
         let record = nested_parser(
             field
                 .separated_by(ctrl(CtrlT::COMMA))
-                .allow_trailing()
                 .collect()
-                .map_to_node(node::RecordPat)
+                .then(
+                    ctrl(CtrlT::COMMA)
+                        .ignore_then(spread)
+                        .map_to_node(node::RecordSpreadPat)
+                        .or_not(),
+                )
+                .map_to_node(|(fields, spread)| node::RecordPat { fields, spread })
                 .to_pat(),
             Delim::Brace,
             |_span| node::PatError,
         );
 
-        let case = lower_value_name_parser()
+        // Variant case pattern
+        let case = upper_value_name_parser()
             .then(ctrl(CtrlT::COLON).ignore_then(pat.clone()).or_not())
             .map_to_node(|(case, pat)| node::VariantTagPat { case, pat });
 
@@ -382,7 +416,7 @@ pub fn pat_parser<'t>() -> impl KolaParser<'t, Id<node::Pat>> + Clone {
             |_span| node::PatError,
         );
 
-        choice((ident, wildcard, literal, record, variant)).boxed()
+        choice((bind, wildcard, literal, list, record, variant)).boxed()
     })
     .boxed()
 }
@@ -1161,6 +1195,252 @@ mod tests {
             .as_literal()
             .unwrap()
             .is_bool(false);
+    }
+
+    #[test]
+    fn complex_case_expr() {
+        let mut interner = StrInterner::new();
+
+        // Test comprehensive pattern matching with all pattern types
+        let test_case = r#"
+            case data of
+            () => "unit",
+            true => "bool true",
+            42 => "number",
+            'x' => "char",
+            "hello" => "string",
+            x => "bind pattern",
+            _ => "wildcard",
+            [a, b, ...rest] => "list with spread",
+            [head, ...] => "list anonymous spread",
+            [] => "empty list",
+            { name, age: years, ...extra } => "record with spread",
+            { x, y } => "simple record",
+            {} => "empty record",
+            < Some : value > => "variant some",
+            < None > => "variant none",
+            < Ok : result, Err : error > => "multiple variants"
+        "#;
+
+        let ParseResult { node, builder, .. } =
+            try_parse_str_with(test_case, expr_parser(), &mut interner);
+
+        let inspector = NodeInspector::new(node, &builder, &interner);
+        let case = inspector.as_case().unwrap();
+
+        case.source()
+            .as_qualified()
+            .unwrap()
+            .source()
+            .has_name("data");
+        case.has_branches(16);
+
+        // Test unit pattern
+        case.branch_at(0).pat().as_literal().unwrap().is_unit();
+        case.branch_at(0)
+            .matches()
+            .as_literal()
+            .unwrap()
+            .is_string("unit");
+
+        // Test bool pattern
+        case.branch_at(1).pat().as_literal().unwrap().is_bool(true);
+        case.branch_at(1)
+            .matches()
+            .as_literal()
+            .unwrap()
+            .is_string("bool true");
+
+        // Test number pattern
+        case.branch_at(2).pat().as_literal().unwrap().is_num(42.0);
+        case.branch_at(2)
+            .matches()
+            .as_literal()
+            .unwrap()
+            .is_string("number");
+
+        // Test char pattern
+        case.branch_at(3).pat().as_literal().unwrap().is_char('x');
+        case.branch_at(3)
+            .matches()
+            .as_literal()
+            .unwrap()
+            .is_string("char");
+
+        // Test string pattern
+        case.branch_at(4)
+            .pat()
+            .as_literal()
+            .unwrap()
+            .is_string("hello");
+        case.branch_at(4)
+            .matches()
+            .as_literal()
+            .unwrap()
+            .is_string("string");
+
+        // Test bind pattern
+        case.branch_at(5).pat().as_ident().unwrap().has_name("x");
+        case.branch_at(5)
+            .matches()
+            .as_literal()
+            .unwrap()
+            .is_string("bind pattern");
+
+        // Test wildcard pattern
+        case.branch_at(6).pat().as_any().unwrap().is_any();
+        case.branch_at(6)
+            .matches()
+            .as_literal()
+            .unwrap()
+            .is_string("wildcard");
+
+        // Test list pattern with named spread
+        let list_pat1 = case.branch_at(7).pat().as_list().unwrap();
+        list_pat1.has_elements(3);
+        list_pat1
+            .element_at(0)
+            .as_pattern()
+            .unwrap()
+            .as_ident()
+            .unwrap()
+            .has_name("a");
+        list_pat1
+            .element_at(1)
+            .as_pattern()
+            .unwrap()
+            .as_ident()
+            .unwrap()
+            .has_name("b");
+        let spread = list_pat1.element_at(2).as_spread().unwrap().unwrap();
+        spread.has_name("rest");
+        case.branch_at(7)
+            .matches()
+            .as_literal()
+            .unwrap()
+            .is_string("list with spread");
+
+        // Test list pattern with anonymous spread
+        let list_pat2 = case.branch_at(8).pat().as_list().unwrap();
+        list_pat2.has_elements(2);
+        list_pat2
+            .element_at(0)
+            .as_pattern()
+            .unwrap()
+            .as_ident()
+            .unwrap()
+            .has_name("head");
+        assert!(list_pat2.element_at(1).as_spread().unwrap().is_none()); // anonymous spread
+        case.branch_at(8)
+            .matches()
+            .as_literal()
+            .unwrap()
+            .is_string("list anonymous spread");
+
+        // Test empty list pattern
+        let empty_list = case.branch_at(9).pat().as_list().unwrap();
+        empty_list.has_elements(0);
+        case.branch_at(9)
+            .matches()
+            .as_literal()
+            .unwrap()
+            .is_string("empty list");
+
+        // Test record pattern with spread
+        let record_pat1 = case.branch_at(10).pat().as_record().unwrap();
+        record_pat1.has_fields(2);
+        record_pat1.field_at(0).has_field_name("name");
+        assert!(record_pat1.field_at(0).pattern().is_none()); // shorthand field
+        record_pat1.field_at(1).has_field_name("age");
+        record_pat1
+            .field_at(1)
+            .pattern()
+            .unwrap()
+            .as_ident()
+            .unwrap()
+            .has_name("years");
+        let record_spread = record_pat1.has_spread().unwrap();
+        record_spread.has_name("extra");
+        case.branch_at(10)
+            .matches()
+            .as_literal()
+            .unwrap()
+            .is_string("record with spread");
+
+        // Test simple record pattern
+        let record_pat2 = case.branch_at(11).pat().as_record().unwrap();
+        record_pat2.has_fields(2);
+        record_pat2.field_at(0).has_field_name("x");
+        record_pat2.field_at(1).has_field_name("y");
+        assert!(record_pat2.has_spread().is_none()); // no spread
+        case.branch_at(11)
+            .matches()
+            .as_literal()
+            .unwrap()
+            .is_string("simple record");
+
+        // Test empty record pattern
+        let empty_record = case.branch_at(12).pat().as_record().unwrap();
+        empty_record.has_fields(0);
+        assert!(empty_record.has_spread().is_none());
+        case.branch_at(12)
+            .matches()
+            .as_literal()
+            .unwrap()
+            .is_string("empty record");
+
+        // Test variant pattern with payload
+        let variant_pat1 = case.branch_at(13).pat().as_variant().unwrap();
+        variant_pat1.has_cases(1);
+        variant_pat1.case_at(0).has_case_name("Some");
+        variant_pat1
+            .case_at(0)
+            .pattern()
+            .unwrap()
+            .as_ident()
+            .unwrap()
+            .has_name("value");
+        case.branch_at(13)
+            .matches()
+            .as_literal()
+            .unwrap()
+            .is_string("variant some");
+
+        // Test variant pattern without payload
+        let variant_pat2 = case.branch_at(14).pat().as_variant().unwrap();
+        variant_pat2.has_cases(1);
+        variant_pat2.case_at(0).has_case_name("None");
+        assert!(variant_pat2.case_at(0).pattern().is_none()); // no payload
+        case.branch_at(14)
+            .matches()
+            .as_literal()
+            .unwrap()
+            .is_string("variant none");
+
+        // Test variant pattern with multiple cases
+        let variant_pat3 = case.branch_at(15).pat().as_variant().unwrap();
+        variant_pat3.has_cases(2);
+        variant_pat3.case_at(0).has_case_name("Ok");
+        variant_pat3
+            .case_at(0)
+            .pattern()
+            .unwrap()
+            .as_ident()
+            .unwrap()
+            .has_name("result");
+        variant_pat3.case_at(1).has_case_name("Err");
+        variant_pat3
+            .case_at(1)
+            .pattern()
+            .unwrap()
+            .as_ident()
+            .unwrap()
+            .has_name("error");
+        case.branch_at(15)
+            .matches()
+            .as_literal()
+            .unwrap()
+            .is_string("multiple variants");
     }
 
     #[test]

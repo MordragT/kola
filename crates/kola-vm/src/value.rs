@@ -14,6 +14,8 @@ use crate::{cont::Cont, env::Env};
 /// Values produced by evaluating expressions
 #[derive(Debug, From, Clone, PartialEq)]
 pub enum Value {
+    /// A unit value (no value)
+    None,
     /// A boolean value
     Bool(bool),
     /// A character value
@@ -164,6 +166,7 @@ impl Value {
 impl DisplayWithInterner for Value {
     fn fmt(&self, f: &mut fmt::Formatter<'_>, interner: &StrInterner) -> fmt::Result {
         match self {
+            Value::None => write!(f, "()"),
             Value::Bool(b) => write!(f, "{}", b),
             Value::Char(c) => write!(f, "{}", c),
             Value::Num(n) => write!(f, "{}", n),

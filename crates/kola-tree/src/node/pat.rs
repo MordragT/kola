@@ -5,8 +5,13 @@ use std::{borrow::Borrow, ops::Deref};
 use kola_print::prelude::*;
 use kola_utils::{as_variant, interner::StrKey};
 
-use super::{LiteralExpr, Name};
-use crate::{id::Id, node::ValueName, print::NodePrinter, tree::TreeView};
+use super::LiteralExpr;
+use crate::{
+    id::Id,
+    node::ValueName,
+    print::NodePrinter,
+    tree::{TreeBuilder, TreeView},
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct PatError;
@@ -27,56 +32,74 @@ impl<'a> Notate<'a> for NodePrinter<'a, AnyPat> {
 }
 
 #[derive(Debug, From, Clone, Copy, PartialEq, PartialOrd, Serialize, Deserialize)]
-pub struct LiteralPat(pub LiteralExpr);
+pub enum LiteralPat {
+    Unit,
+    Bool(bool),
+    Num(f64),
+    Char(char),
+    Str(StrKey),
+}
 
-// impl LiteralPat {
-//     pub fn to_bool(&self) -> Option<bool> {
-//         as_variant!(self, Self::Bool).copied()
-//     }
+impl LiteralPat {
+    pub fn to_bool(&self) -> Option<bool> {
+        as_variant!(self, Self::Bool).copied()
+    }
 
-//     pub fn to_num(&self) -> Option<f64> {
-//         as_variant!(self, Self::Num).copied()
-//     }
+    pub fn to_num(&self) -> Option<f64> {
+        as_variant!(self, Self::Num).copied()
+    }
 
-//     pub fn to_char(&self) -> Option<char> {
-//         as_variant!(self, Self::Char).copied()
-//     }
+    pub fn to_char(&self) -> Option<char> {
+        as_variant!(self, Self::Char).copied()
+    }
 
-//     pub fn to_str(&self) -> Option<&Symbol> {
-//         as_variant!(self, Self::Str)
-//     }
+    pub fn to_str(&self) -> Option<&StrKey> {
+        as_variant!(self, Self::Str)
+    }
 
-//     pub fn is_bool(&self) -> bool {
-//         matches!(self, Self::Bool(_))
-//     }
+    pub fn is_unit(&self) -> bool {
+        matches!(self, Self::Unit)
+    }
 
-//     pub fn is_num(&self) -> bool {
-//         matches!(self, Self::Num(_))
-//     }
+    pub fn is_bool(&self) -> bool {
+        matches!(self, Self::Bool(_))
+    }
 
-//     pub fn is_char(&self) -> bool {
-//         matches!(self, Self::Char(_))
-//     }
+    pub fn is_num(&self) -> bool {
+        matches!(self, Self::Num(_))
+    }
 
-//     pub fn is_str(&self) -> bool {
-//         matches!(self, Self::Str(_))
-//     }
-// }
+    pub fn is_char(&self) -> bool {
+        matches!(self, Self::Char(_))
+    }
+
+    pub fn is_str(&self) -> bool {
+        matches!(self, Self::Str(_))
+    }
+}
+
+impl From<LiteralExpr> for LiteralPat {
+    fn from(expr: LiteralExpr) -> Self {
+        match expr {
+            LiteralExpr::Unit => Self::Unit,
+            LiteralExpr::Bool(b) => Self::Bool(b),
+            LiteralExpr::Num(n) => Self::Num(n),
+            LiteralExpr::Char(c) => Self::Char(c),
+            LiteralExpr::Str(s) => Self::Str(s),
+        }
+    }
+}
 
 impl<'a> Notate<'a> for NodePrinter<'a, LiteralPat> {
     fn notate(&self, arena: &'a Bump) -> Notation<'a> {
         let kind = "LiteralPat".purple().display_in(arena);
 
-        let lit = match &self.value.0 {
-            LiteralExpr::Bool(b) => b.yellow().display_in(arena),
-            LiteralExpr::Num(n) => n.yellow().display_in(arena),
-            LiteralExpr::Char(c) => c.yellow().display_in(arena),
-            LiteralExpr::Str(s) => self
-                .interner
-                .get(*s)
-                .expect("Symbol not found")
-                .yellow()
-                .display_in(arena),
+        let lit = match *self.value {
+            LiteralPat::Unit => "Unit".yellow().display_in(arena),
+            LiteralPat::Bool(b) => b.yellow().display_in(arena),
+            LiteralPat::Num(n) => n.yellow().display_in(arena),
+            LiteralPat::Char(c) => c.yellow().display_in(arena),
+            LiteralPat::Str(s) => self.interner[s].yellow().display_in(arena),
         }
         .enclose_by(arena.just('"'), arena);
 
@@ -91,16 +114,16 @@ impl<'a> Notate<'a> for NodePrinter<'a, LiteralPat> {
     Debug, From, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
 )]
 #[from(forward)]
-pub struct IdentPat(pub StrKey);
+pub struct BindPat(pub StrKey);
 
-impl IdentPat {
+impl BindPat {
     #[inline]
     pub fn as_str_key(&self) -> &StrKey {
         &self.0
     }
 }
 
-impl Deref for IdentPat {
+impl Deref for BindPat {
     type Target = StrKey;
 
     fn deref(&self) -> &Self::Target {
@@ -108,30 +131,30 @@ impl Deref for IdentPat {
     }
 }
 
-impl AsRef<StrKey> for IdentPat {
+impl AsRef<StrKey> for BindPat {
     #[inline]
     fn as_ref(&self) -> &StrKey {
         &self.0
     }
 }
 
-impl Borrow<StrKey> for IdentPat {
+impl Borrow<StrKey> for BindPat {
     #[inline]
     fn borrow(&self) -> &StrKey {
         &self.0
     }
 }
 
-impl PartialEq<StrKey> for IdentPat {
+impl PartialEq<StrKey> for BindPat {
     #[inline]
     fn eq(&self, other: &StrKey) -> bool {
         self == other
     }
 }
 
-impl<'a> Notate<'a> for NodePrinter<'a, IdentPat> {
+impl<'a> Notate<'a> for NodePrinter<'a, BindPat> {
     fn notate(&self, arena: &'a Bump) -> Notation<'a> {
-        let head = "IdentPat".cyan().display_in(arena);
+        let head = "BindPat".cyan().display_in(arena);
 
         let ident = self
             .interner
@@ -143,6 +166,65 @@ impl<'a> Notate<'a> for NodePrinter<'a, IdentPat> {
 
         let single = [arena.just(' '), ident.clone()].concat_in(arena);
         let multi = [arena.newline(), ident].concat_in(arena).indent(arena);
+
+        head.then(single.or(multi, arena), arena)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+pub enum ListElPat {
+    Pat(Id<Pat>),
+    Spread(Option<Id<ValueName>>),
+}
+
+impl<'a> Notate<'a> for NodePrinter<'a, ListElPat> {
+    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
+        match *self.value {
+            ListElPat::Pat(pat) => {
+                let head = "ListElPat".green().display_in(arena);
+                let pat = self.to_id(pat).notate(arena);
+
+                let single = arena.just(' ').then(pat.clone(), arena);
+                let multi = arena.newline().then(pat, arena).indent(arena);
+
+                head.then(single.or(multi, arena), arena)
+            }
+            ListElPat::Spread(name) => {
+                let head = "ListSpread".green().display_in(arena);
+
+                let name_notation = name.map(|n| self.to_id(n).notate(arena));
+
+                let single =
+                    [arena.notate(" ..."), name_notation.clone().or_not(arena)].concat_in(arena);
+
+                let multi = [
+                    arena.newline(),
+                    arena.notate("..."),
+                    name_notation.or_not(arena),
+                ]
+                .concat_in(arena)
+                .indent(arena);
+
+                head.then(single.or(multi, arena), arena)
+            }
+        }
+    }
+}
+
+#[derive(Debug, From, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+pub struct ListPat(pub Vec<Id<ListElPat>>);
+
+impl<'a> Notate<'a> for NodePrinter<'a, ListPat> {
+    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
+        let head = "ListPat".blue().display_in(arena);
+
+        let elements = self.to_slice(&self.value.0).gather(arena);
+
+        let single = elements.clone().concat_map(
+            |element| arena.notate(" ").then(element.flatten(arena), arena),
+            arena,
+        );
+        let multi = elements.concat_map(|element| arena.newline().then(element, arena), arena);
 
         head.then(single.or(multi, arena), arena)
     }
@@ -195,12 +277,42 @@ impl<'a> Notate<'a> for NodePrinter<'a, RecordFieldPat> {
         head.then(single.or(multi, arena), arena)
     }
 }
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+pub struct RecordSpreadPat(pub Option<Id<ValueName>>);
 
-#[derive(
-    Debug, From, IntoIterator, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
-)]
-#[into_iterator(owned, ref)]
-pub struct RecordPat(pub Vec<Id<RecordFieldPat>>);
+impl RecordSpreadPat {
+    pub fn new_in(name: Option<ValueName>, builder: &mut TreeBuilder) -> Id<Self> {
+        let name = name.map(|n| builder.insert(n));
+
+        builder.insert(Self(name))
+    }
+}
+
+impl<'a> Notate<'a> for NodePrinter<'a, RecordSpreadPat> {
+    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
+        let head = "RecordSpread".green().display_in(arena);
+
+        let name_notation = self.value.0.map(|n| self.to_id(n).notate(arena));
+
+        let single = [arena.notate(" ..."), name_notation.clone().or_not(arena)].concat_in(arena);
+
+        let multi = [
+            arena.newline(),
+            arena.notate("..."),
+            name_notation.or_not(arena),
+        ]
+        .concat_in(arena)
+        .indent(arena);
+
+        head.then(single.or(multi, arena), arena)
+    }
+}
+
+#[derive(Debug, From, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+pub struct RecordPat {
+    pub fields: Vec<Id<RecordFieldPat>>,
+    pub spread: Option<Id<RecordSpreadPat>>,
+}
 
 // impl RecordPat {
 //     pub fn get(&self, name: impl AsRef<str>, tree: &impl TreeView) -> Option<RecordFieldPat> {
@@ -217,13 +329,28 @@ impl<'a> Notate<'a> for NodePrinter<'a, RecordPat> {
     fn notate(&self, arena: &'a Bump) -> Notation<'a> {
         let head = "RecordPat".blue().display_in(arena);
 
-        let fields = self.to_slice(&self.value.0).gather(arena);
+        let fields = self.to_slice(&self.value.fields).gather(arena);
+        let spread = self.value.spread.map(|s| self.to_id(s).notate(arena));
 
-        let single = fields.clone().concat_map(
-            |field| arena.notate(" ").then(field.flatten(arena), arena),
-            arena,
-        );
-        let multi = fields.concat_map(|field| arena.newline().then(field, arena), arena);
+        let single = [
+            fields.clone().concat_map(
+                |field| arena.notate(" ").then(field.flatten(arena), arena),
+                arena,
+            ),
+            spread
+                .clone()
+                .map(|s| arena.notate(" ...").then(s, arena))
+                .or_not(arena),
+        ]
+        .concat_in(arena);
+
+        let multi = [
+            fields.concat_map(|field| arena.newline().then(field, arena), arena),
+            spread
+                .map(|s| [arena.newline(), arena.notate("..."), s].concat_in(arena))
+                .or_not(arena),
+        ]
+        .concat_in(arena);
 
         head.then(single.or(multi, arena), arena)
     }
@@ -313,7 +440,8 @@ pub enum Pat {
     Error(Id<PatError>),
     Any(Id<AnyPat>),
     Literal(Id<LiteralPat>),
-    Ident(Id<IdentPat>),
+    Bind(Id<BindPat>),
+    List(Id<ListPat>),
     Record(Id<RecordPat>),
     Variant(Id<VariantPat>),
 }
@@ -324,7 +452,8 @@ impl<'a> Notate<'a> for NodePrinter<'a, Pat> {
             Pat::Error(e) => self.to_id(e).notate(arena),
             Pat::Any(w) => self.to_id(w).notate(arena),
             Pat::Literal(l) => self.to_id(l).notate(arena),
-            Pat::Ident(i) => self.to_id(i).notate(arena),
+            Pat::Bind(i) => self.to_id(i).notate(arena),
+            Pat::List(l) => self.to_id(l).notate(arena),
             Pat::Record(r) => self.to_id(r).notate(arena),
             Pat::Variant(v) => self.to_id(v).notate(arena),
         }
@@ -348,13 +477,23 @@ impl Pat {
     }
 
     #[inline]
-    pub fn to_ident(self) -> Option<Id<IdentPat>> {
-        as_variant!(self, Self::Ident)
+    pub fn to_ident(self) -> Option<Id<BindPat>> {
+        as_variant!(self, Self::Bind)
+    }
+
+    #[inline]
+    pub fn to_list(self) -> Option<Id<ListPat>> {
+        as_variant!(self, Self::List)
     }
 
     #[inline]
     pub fn to_record(self) -> Option<Id<RecordPat>> {
         as_variant!(self, Self::Record)
+    }
+
+    #[inline]
+    pub fn to_variant(self) -> Option<Id<VariantPat>> {
+        as_variant!(self, Self::Variant)
     }
 
     #[inline]
@@ -374,12 +513,22 @@ impl Pat {
 
     #[inline]
     pub fn is_ident(self) -> bool {
-        matches!(self, Self::Ident(_))
+        matches!(self, Self::Bind(_))
+    }
+
+    #[inline]
+    pub fn is_list(self) -> bool {
+        matches!(self, Self::List(_))
     }
 
     #[inline]
     pub fn is_record(self) -> bool {
         matches!(self, Self::Record(_))
+    }
+
+    #[inline]
+    pub fn is_variant(self) -> bool {
+        matches!(self, Self::Variant(_))
     }
 }
 
@@ -407,7 +556,7 @@ mod inspector {
                 .map(|lit_id| NodeInspector::new(lit_id, self.tree, self.interner))
         }
 
-        pub fn as_ident(self) -> Option<NodeInspector<'t, Id<IdentPat>, S>> {
+        pub fn as_ident(self) -> Option<NodeInspector<'t, Id<BindPat>, S>> {
             let pat = self.node.get(self.tree);
             pat.to_ident()
                 .map(|id_id| NodeInspector::new(id_id, self.tree, self.interner))
@@ -419,12 +568,16 @@ mod inspector {
                 .map(|rec_id| NodeInspector::new(rec_id, self.tree, self.interner))
         }
 
+        pub fn as_list(self) -> Option<NodeInspector<'t, Id<ListPat>, S>> {
+            let pat = self.node.get(self.tree);
+            pat.to_list()
+                .map(|list_id| NodeInspector::new(list_id, self.tree, self.interner))
+        }
+
         pub fn as_variant(self) -> Option<NodeInspector<'t, Id<VariantPat>, S>> {
             let pat = self.node.get(self.tree);
-            match pat {
-                Pat::Variant(v) => Some(NodeInspector::new(*v, self.tree, self.interner)),
-                _ => None,
-            }
+            pat.to_variant()
+                .map(|var_id| NodeInspector::new(var_id, self.tree, self.interner))
         }
     }
 
@@ -436,10 +589,19 @@ mod inspector {
     }
 
     impl<'t, S: BuildHasher> NodeInspector<'t, Id<LiteralPat>, S> {
+        pub fn is_unit(self) -> Self {
+            let lit_pat = self.node.get(self.tree);
+            match lit_pat {
+                LiteralPat::Unit => {}
+                _ => panic!("Expected unit literal pattern but found {:?}", lit_pat),
+            }
+            self
+        }
+
         pub fn is_bool(self, expected: bool) -> Self {
             let lit_pat = self.node.get(self.tree);
-            match &lit_pat.0 {
-                LiteralExpr::Bool(value) => {
+            match lit_pat {
+                LiteralPat::Bool(value) => {
                     assert_eq!(
                         *value, expected,
                         "Expected bool {} but found {}",
@@ -453,8 +615,8 @@ mod inspector {
 
         pub fn is_num(self, expected: f64) -> Self {
             let lit_pat = self.node.get(self.tree);
-            match &lit_pat.0 {
-                LiteralExpr::Num(value) => {
+            match lit_pat {
+                LiteralPat::Num(value) => {
                     assert_eq!(
                         *value, expected,
                         "Expected num {} but found {}",
@@ -468,8 +630,8 @@ mod inspector {
 
         pub fn is_char(self, expected: char) -> Self {
             let lit_pat = self.node.get(self.tree);
-            match &lit_pat.0 {
-                LiteralExpr::Char(value) => {
+            match lit_pat {
+                LiteralPat::Char(value) => {
                     assert_eq!(
                         *value, expected,
                         "Expected char {} but found {}",
@@ -483,8 +645,8 @@ mod inspector {
 
         pub fn is_string(self, expected: &str) -> Self {
             let lit_pat = self.node.get(self.tree);
-            match &lit_pat.0 {
-                LiteralExpr::Str(value) => {
+            match lit_pat {
+                LiteralPat::Str(value) => {
                     let value = self.interner.get(*value).expect("Symbol not found");
 
                     assert_eq!(
@@ -499,7 +661,7 @@ mod inspector {
         }
     }
 
-    impl<'t, S: BuildHasher> NodeInspector<'t, Id<IdentPat>, S> {
+    impl<'t, S: BuildHasher> NodeInspector<'t, Id<BindPat>, S> {
         pub fn has_name(self, expected: &str) -> Self {
             let ident = self.node.get(self.tree);
             let s = self.interner.get(ident.0).expect("Symbol not found");
@@ -513,9 +675,55 @@ mod inspector {
         }
     }
 
+    impl<'t, S: BuildHasher> NodeInspector<'t, Id<ListPat>, S> {
+        pub fn has_elements(self, count: usize) -> Self {
+            let elements_len = self.node.get(self.tree).0.len();
+            assert_eq!(
+                elements_len, count,
+                "Expected {} elements but found {}",
+                count, elements_len
+            );
+            self
+        }
+
+        pub fn element_at(self, index: usize) -> NodeInspector<'t, Id<ListElPat>, S> {
+            let list_pat = self.node.get(self.tree);
+            assert!(
+                index < list_pat.0.len(),
+                "Element index {} out of bounds (max {})",
+                index,
+                list_pat.0.len() - 1
+            );
+            let element_id = list_pat.0[index];
+            NodeInspector::new(element_id, self.tree, self.interner)
+        }
+    }
+
+    impl<'t, S: BuildHasher> NodeInspector<'t, Id<ListElPat>, S> {
+        pub fn as_pattern(self) -> Option<NodeInspector<'t, Id<Pat>, S>> {
+            let element = self.node.get(self.tree);
+            match element {
+                ListElPat::Pat(pat_id) => {
+                    Some(NodeInspector::new(*pat_id, self.tree, self.interner))
+                }
+                _ => None,
+            }
+        }
+
+        pub fn as_spread(self) -> Option<Option<NodeInspector<'t, Id<ValueName>, S>>> {
+            let element = self.node.get(self.tree);
+            match element {
+                ListElPat::Spread(name_opt) => Some(
+                    name_opt.map(|name_id| NodeInspector::new(name_id, self.tree, self.interner)),
+                ),
+                _ => None,
+            }
+        }
+    }
+
     impl<'t, S: BuildHasher> NodeInspector<'t, Id<RecordPat>, S> {
         pub fn has_fields(self, count: usize) -> Self {
-            let fields_len = self.node.get(self.tree).0.len();
+            let fields_len = self.node.get(self.tree).fields.len();
             assert_eq!(
                 fields_len, count,
                 "Expected {} fields but found {}",
@@ -527,25 +735,63 @@ mod inspector {
         pub fn field_at(self, index: usize) -> NodeInspector<'t, Id<RecordFieldPat>, S> {
             let record_pat = self.node.get(self.tree);
             assert!(
-                index < record_pat.0.len(),
+                index < record_pat.fields.len(),
                 "Field index {} out of bounds (max {})",
                 index,
-                record_pat.0.len() - 1
+                record_pat.fields.len() - 1
             );
-            let field_id = record_pat.0[index];
+            let field_id = record_pat.fields[index];
             NodeInspector::new(field_id, self.tree, self.interner)
         }
 
         pub fn field_named(self, name: &str) -> Option<NodeInspector<'t, Id<RecordFieldPat>, S>> {
             let record_pat = self.node.get(self.tree);
             record_pat
-                .0
+                .fields
                 .iter()
                 .find(|id| {
                     let field = id.get(self.tree).field(self.tree);
                     self.interner.get(field.0).expect("Symbol not found") == name
                 })
                 .map(|field_id| NodeInspector::new(*field_id, self.tree, self.interner))
+        }
+
+        pub fn has_spread(self) -> Option<NodeInspector<'t, Id<RecordSpreadPat>, S>> {
+            let record_pat = self.node.get(self.tree);
+            record_pat
+                .spread
+                .map(|spread_id| NodeInspector::new(spread_id, self.tree, self.interner))
+        }
+    }
+
+    impl<'t, S: BuildHasher> NodeInspector<'t, Id<RecordSpreadPat>, S> {
+        pub fn is_anonymous(self) -> Self {
+            let spread = self.node.get(self.tree);
+            assert!(
+                spread.0.is_none(),
+                "Expected anonymous spread but found named spread"
+            );
+            self
+        }
+
+        pub fn has_name(self, expected: &str) -> Self {
+            let spread = self.node.get(self.tree);
+            match spread.0 {
+                Some(name_id) => {
+                    let name = name_id.get(self.tree);
+                    let actual = self.interner.get(name.0).expect("Symbol not found");
+                    assert_eq!(
+                        actual, expected,
+                        "Expected spread name '{}' but found '{}'",
+                        expected, actual
+                    );
+                }
+                None => panic!(
+                    "Expected named spread '{}' but found anonymous spread",
+                    expected
+                ),
+            }
+            self
         }
     }
 

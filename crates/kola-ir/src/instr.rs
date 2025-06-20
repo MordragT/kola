@@ -30,7 +30,6 @@ impl fmt::Display for Symbol {
 
 #[derive(Debug, From, Clone, PartialEq)]
 pub enum Instr {
-    Noop,
     Symbol(Symbol),
     Atom(Atom),
     Expr(Expr),
@@ -120,6 +119,7 @@ impl DisplayWithInterner for Tag {
 /// - it never produces an error
 #[derive(Debug, From, Clone, Copy, PartialEq)]
 pub enum Atom {
+    Noop,
     Bool(bool),
     Char(char),
     Num(f64),
@@ -153,6 +153,7 @@ impl_try_as!(
 impl<'a> Notate<'a> for IrPrinter<'a, Id<Atom>> {
     fn notate(&self, arena: &'a Bump) -> Notation<'a> {
         let notation = match self.ir.instr(self.node) {
+            Atom::Noop => "noop".red().display_in(arena),
             Atom::Bool(b) => b.green().display_in(arena),
             Atom::Char(c) => format!("'{}'", c.green()).display_in(arena),
             Atom::Num(n) => n.green().display_in(arena),
