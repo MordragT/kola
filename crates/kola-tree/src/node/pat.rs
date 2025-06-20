@@ -156,7 +156,7 @@ impl<'a> Notate<'a> for NodePrinter<'a, BindPat> {
     fn notate(&self, arena: &'a Bump) -> Notation<'a> {
         let head = "BindPat".cyan().display_in(arena);
 
-        let ident = self
+        let bind = self
             .interner
             .get(self.value.0)
             .expect("Symbol not found")
@@ -164,8 +164,8 @@ impl<'a> Notate<'a> for NodePrinter<'a, BindPat> {
             .display_in(arena)
             .enclose_by(arena.just('"'), arena);
 
-        let single = [arena.just(' '), ident.clone()].concat_in(arena);
-        let multi = [arena.newline(), ident].concat_in(arena).indent(arena);
+        let single = [arena.just(' '), bind.clone()].concat_in(arena);
+        let multi = [arena.newline(), bind].concat_in(arena).indent(arena);
 
         head.then(single.or(multi, arena), arena)
     }
@@ -477,7 +477,7 @@ impl Pat {
     }
 
     #[inline]
-    pub fn to_ident(self) -> Option<Id<BindPat>> {
+    pub fn to_bind(self) -> Option<Id<BindPat>> {
         as_variant!(self, Self::Bind)
     }
 
@@ -512,7 +512,7 @@ impl Pat {
     }
 
     #[inline]
-    pub fn is_ident(self) -> bool {
+    pub fn is_bind(self) -> bool {
         matches!(self, Self::Bind(_))
     }
 
@@ -556,9 +556,9 @@ mod inspector {
                 .map(|lit_id| NodeInspector::new(lit_id, self.tree, self.interner))
         }
 
-        pub fn as_ident(self) -> Option<NodeInspector<'t, Id<BindPat>, S>> {
+        pub fn as_bind(self) -> Option<NodeInspector<'t, Id<BindPat>, S>> {
             let pat = self.node.get(self.tree);
-            pat.to_ident()
+            pat.to_bind()
                 .map(|id_id| NodeInspector::new(id_id, self.tree, self.interner))
         }
 
@@ -663,12 +663,12 @@ mod inspector {
 
     impl<'t, S: BuildHasher> NodeInspector<'t, Id<BindPat>, S> {
         pub fn has_name(self, expected: &str) -> Self {
-            let ident = self.node.get(self.tree);
-            let s = self.interner.get(ident.0).expect("Symbol not found");
+            let bind = self.node.get(self.tree);
+            let s = self.interner.get(bind.0).expect("Symbol not found");
 
             assert_eq!(
                 s, expected,
-                "Expected identifier pattern '{}' but found '{}'",
+                "Expected bind pattern '{}' but found '{}'",
                 expected, s
             );
             self

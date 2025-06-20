@@ -1132,7 +1132,7 @@ mod tests {
             .unwrap()
             .pattern()
             .unwrap()
-            .as_ident()
+            .as_bind()
             .unwrap()
             .has_name("x");
 
@@ -1280,7 +1280,7 @@ mod tests {
             .is_string("string");
 
         // Test bind pattern
-        case.branch_at(5).pat().as_ident().unwrap().has_name("x");
+        case.branch_at(5).pat().as_bind().unwrap().has_name("x");
         case.branch_at(5)
             .matches()
             .as_literal()
@@ -1302,14 +1302,14 @@ mod tests {
             .element_at(0)
             .as_pattern()
             .unwrap()
-            .as_ident()
+            .as_bind()
             .unwrap()
             .has_name("a");
         list_pat1
             .element_at(1)
             .as_pattern()
             .unwrap()
-            .as_ident()
+            .as_bind()
             .unwrap()
             .has_name("b");
         let spread = list_pat1.element_at(2).as_spread().unwrap().unwrap();
@@ -1327,7 +1327,7 @@ mod tests {
             .element_at(0)
             .as_pattern()
             .unwrap()
-            .as_ident()
+            .as_bind()
             .unwrap()
             .has_name("head");
         assert!(list_pat2.element_at(1).as_spread().unwrap().is_none()); // anonymous spread
@@ -1356,7 +1356,7 @@ mod tests {
             .field_at(1)
             .pattern()
             .unwrap()
-            .as_ident()
+            .as_bind()
             .unwrap()
             .has_name("years");
         let record_spread = record_pat1.has_spread().unwrap();
@@ -1397,7 +1397,7 @@ mod tests {
             .case_at(0)
             .pattern()
             .unwrap()
-            .as_ident()
+            .as_bind()
             .unwrap()
             .has_name("value");
         case.branch_at(13)
@@ -1425,7 +1425,7 @@ mod tests {
             .case_at(0)
             .pattern()
             .unwrap()
-            .as_ident()
+            .as_bind()
             .unwrap()
             .has_name("result");
         variant_pat3.case_at(1).has_case_name("Err");
@@ -1433,7 +1433,7 @@ mod tests {
             .case_at(1)
             .pattern()
             .unwrap()
-            .as_ident()
+            .as_bind()
             .unwrap()
             .has_name("error");
         case.branch_at(15)
