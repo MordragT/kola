@@ -25,10 +25,16 @@
     type Option = forall a . < Some : a, None >,
     #main = (Some 10),
 
-    main : forall a . Option a = (None ()),
+    #main : forall a . Option a = (None ()),
 
     #main = (Some 10), # make this a not panicing error
 
     #a = { a = 1, b = 2 },
     #main = { a : { a : Num, b : Num } | +c = 3 | a = 4 },
+
+    main = let data = [1, 2, 3] in
+        case data of
+            [] => "empty",
+            [x] => "single",
+            [a, b, ...rest] => "multiple",
 }

@@ -1433,57 +1433,9 @@ where
     /// ∆;Γ ⊢ case source of pattern₁ => expr₁ | pattern₂ => expr₂ | ... | patternₙ => exprₙ : result_t
     /// ```
     ///
-    /// Pattern Typing Rules:
-    ///
-    /// **Literal Patterns:**
-    /// ```ignore
-    /// ∆;Γ ⊢ 42 ⇒ Num ⊣ Γ
-    /// ∆;Γ ⊢ true ⇒ Bool ⊣ Γ
-    /// ∆;Γ ⊢ () ⇒ Unit ⊣ Γ
-    /// ```
-    ///
-    /// **Wildcard Pattern:**
-    /// ```ignore
-    /// α fresh
-    /// -----------------------
-    /// ∆;Γ ⊢ _ ⇒ α ⊣ Γ
-    /// ```
-    ///
-    /// **Bind Pattern:**
-    /// ```ignore
-    /// α fresh
-    /// -----------------------
-    /// ∆;Γ ⊢ x ⇒ α ⊣ Γ[x : α]
-    /// ```
-    ///
-    /// **Record Patterns:**
-    /// - Exact record: `{ l₁ : p₁, ..., lₙ : pₙ } ⇒ { l₁ : τ₁, ..., lₙ : τₙ }`
-    /// - Polymorphic record: `{ l₁ : p₁, ..., lₙ : pₙ, ... } ⇒ { l₁ : τ₁, ..., lₙ : τₙ | ρ }`
-    ///
-    /// **List Patterns:**
-    /// ```ignore
-    /// ∆;Γ ⊢ p₁ ⇒ τ ⊣ Γ₁    ∆;Γ₁ ⊢ p₂ ⇒ τ ⊣ Γ₂    ...    ∆;Γₙ₋₁ ⊢ pₙ ⇒ τ ⊣ Γₙ
-    /// -----------------------
-    /// ∆;Γ ⊢ [p₁, p₂, ..., pₙ] ⇒ List τ ⊣ Γₙ
-    /// ```
-    ///
-    /// **List Spread Patterns:**
-    /// ```ignore
-    /// ∆;Γ ⊢ p₁ ⇒ τ ⊣ Γ₁    ∆;Γ₁ ⊢ p₂ ⇒ τ ⊣ Γ₂    ...    ∆;Γₙ₋₁ ⊢ pₙ ⇒ τ ⊣ Γₙ
-    /// -----------------------
-    /// ∆;Γ ⊢ [p₁, p₂, ..., pₙ, ...x] ⇒ List τ ⊣ Γₙ[x : List τ]
-    /// ```
-    ///
-    /// **Variant Patterns:**
-    /// ```ignore
-    /// ∆;Γ ⊢ p₁ ⇒ τ₁ ⊣ Γ₁    ∆;Γ₁ ⊢ p₂ ⇒ τ₂ ⊣ Γ₂    ...    ρ fresh
-    /// -----------------------
-    /// ∆;Γ ⊢ < l₁ : p₁, l₂ : p₂, ... > ⇒ < l₁ : τ₁, l₂ : τ₂, ... | ρ > ⊣ Γₙ
-    /// ```
-    ///
     /// Implementation:
     /// - Type source expression to get discriminant type
-    /// - For each branch: type-check pattern against discriminant, bind pattern variables
+    /// - For each branch: delegate to PatternTyper to type-check pattern and bind variables
     /// - Type-check branch expressions in extended environments
     /// - Constrain all branch expressions to have the same result type
     ///
@@ -1515,15 +1467,13 @@ where
             // 1. visit_pattern(pat, source_t) -> (pattern_t, env_extension)
             // 2. constrain(pattern_t, source_t)
             // 3. type check expression in extended environment
-            //
-            // For now, we provide a basic implementation that visits
-            // patterns and expressions but doesn't handle variable binding
 
             // Save current environment to restore after pattern typing
             let env = self.local_env.clone();
 
             // Create fresh PatternTyper for this branch
-            let pattern_typer = PatternTyper::new(&mut self.local_env, self.cons, source_t.clone());
+            let pattern_typer =
+                PatternTyper::new(&mut self.local_env, self.cons, source_t.clone(), span);
             pattern_typer.run::<T, node::Pat>(pat, tree);
 
             // Type branch expression with extended environment
