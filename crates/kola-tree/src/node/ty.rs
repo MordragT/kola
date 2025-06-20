@@ -46,16 +46,16 @@ impl<'a> Notate<'a> for NodePrinter<'a, TypeError> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
-pub struct TypePath {
+pub struct QualifiedType {
     pub path: Option<Id<ModulePath>>,
     pub ty: Id<TypeName>,
 }
 
-impl<'a> Notate<'a> for NodePrinter<'a, TypePath> {
+impl<'a> Notate<'a> for NodePrinter<'a, QualifiedType> {
     fn notate(&self, arena: &'a Bump) -> Notation<'a> {
-        let TypePath { path, ty } = *self.value;
+        let QualifiedType { path, ty } = *self.value;
 
-        let head = "TypePath".cyan().display_in(arena);
+        let head = "QualifiedType".cyan().display_in(arena);
 
         let path = path.map(|p| self.to(p).notate(arena));
         let ty = self.to(ty).notate(arena);
@@ -229,7 +229,7 @@ impl<'a> Notate<'a> for NodePrinter<'a, RecordType> {
 // TODO better name it Tag ??
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct VariantCaseType {
-    pub name: Id<ValueName>,
+    pub name: Id<ValueName>, // These are data constructors, therefore ValueName is used
     pub ty: Option<Id<Type>>,
 }
 
@@ -398,7 +398,7 @@ impl<'a> Notate<'a> for NodePrinter<'a, TypeApplication> {
 )]
 pub enum Type {
     Error(Id<TypeError>),
-    Path(Id<TypePath>),
+    Qualified(Id<QualifiedType>),
     Record(Id<RecordType>),
     Variant(Id<VariantType>),
     Func(Id<FuncType>),
@@ -409,7 +409,7 @@ impl<'a> Notate<'a> for NodePrinter<'a, Type> {
     fn notate(&self, arena: &'a Bump) -> Notation<'a> {
         match *self.value {
             Type::Error(e) => self.to(e).notate(arena),
-            Type::Path(p) => self.to(p).notate(arena),
+            Type::Qualified(p) => self.to(p).notate(arena),
             Type::Record(r) => self.to(r).notate(arena),
             Type::Variant(v) => self.to(v).notate(arena),
             Type::Func(f) => self.to(f).notate(arena),
@@ -425,8 +425,8 @@ impl Type {
     }
 
     #[inline]
-    pub fn to_type_path(self) -> Option<Id<TypePath>> {
-        as_variant!(self, Self::Path)
+    pub fn to_qualified_type(self) -> Option<Id<QualifiedType>> {
+        as_variant!(self, Self::Qualified)
     }
 
     #[inline]
@@ -455,8 +455,8 @@ impl Type {
     }
 
     #[inline]
-    pub fn is_type_path(self) -> bool {
-        matches!(self, Self::Path(_))
+    pub fn is_qualified_type(self) -> bool {
+        matches!(self, Self::Qualified(_))
     }
 
     #[inline]
@@ -538,11 +538,11 @@ mod inspector {
     use super::*;
     use crate::inspector::*;
     impl<'t, S: BuildHasher> NodeInspector<'t, Id<TypeScheme>, S> {
-        pub fn as_type_path(self) -> Option<NodeInspector<'t, Id<TypePath>, S>> {
+        pub fn as_type_path(self) -> Option<NodeInspector<'t, Id<QualifiedType>, S>> {
             let ty = self.node.get(self.tree);
             ty.ty
                 .get(self.tree)
-                .to_type_path()
+                .to_qualified_type()
                 .map(|path_id| NodeInspector::new(path_id, self.tree, self.interner))
         }
 
@@ -606,7 +606,7 @@ mod inspector {
         }
     }
 
-    impl<'t, S: BuildHasher> NodeInspector<'t, Id<TypePath>, S> {
+    impl<'t, S: BuildHasher> NodeInspector<'t, Id<QualifiedType>, S> {
         pub fn module_path(self) -> Option<NodeInspector<'t, Id<ModulePath>, S>> {
             let type_path = self.node.get(self.tree);
             type_path
@@ -614,7 +614,7 @@ mod inspector {
                 .map(|path_id| NodeInspector::new(path_id, self.tree, self.interner))
         }
 
-        pub fn has_type_name(self, expected: &str) -> NodeInspector<'t, Id<TypePath>, S> {
+        pub fn has_type_name(self, expected: &str) -> NodeInspector<'t, Id<QualifiedType>, S> {
             let type_name = self.node.get(self.tree).ty.get(self.tree).0;
             let name = self.interner.get(type_name).expect("Symbol not found");
 
@@ -762,10 +762,10 @@ mod inspector {
                 .map(|err_id| NodeInspector::new(err_id, self.tree, self.interner))
         }
 
-        pub fn as_path(self) -> Option<NodeInspector<'t, Id<TypePath>, S>> {
+        pub fn as_path(self) -> Option<NodeInspector<'t, Id<QualifiedType>, S>> {
             let type_expr = self.node.get(self.tree);
             type_expr
-                .to_type_path()
+                .to_qualified_type()
                 .map(|path_id| NodeInspector::new(path_id, self.tree, self.interner))
         }
 

@@ -52,7 +52,8 @@ define_folder_trait!(
     RecordUpdateOp,
     RecordUpdateExpr,
     FieldPath,
-    PathExpr,
+    QualifiedExpr,
+    SelectExpr,
     UnaryOp,
     UnaryExpr,
     BinaryOp,
@@ -66,7 +67,7 @@ define_folder_trait!(
     ExprError,
     Expr,
     // Types
-    TypePath,
+    QualifiedType,
     TypeVar,
     RecordFieldType,
     RecordType,

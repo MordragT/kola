@@ -3,7 +3,7 @@ use log::debug;
 use owo_colors::OwoColorize;
 use std::{io, ops::ControlFlow};
 
-use kola_builtins::{BuiltinType, find_builtin_id, is_builtin_type};
+use kola_builtins::{BuiltinType, find_builtin_id};
 use kola_print::prelude::*;
 use kola_span::{IntoDiagnostic, Loc, Report, SourceId, SourceManager};
 use kola_syntax::prelude::*;
@@ -17,7 +17,7 @@ use crate::{
     info::ModuleInfo,
     phase::{ResolvePhase, ResolvedType, ResolvedValue},
     prelude::Topography,
-    refs::{ModuleRef, TypeBindRef, TypeRef, ValueRef},
+    refs::{ConstructorRef, ModuleRef, TypeBindRef, TypeRef, ValueRef},
     scope::{ModuleScope, ModuleScopeStack},
     symbol::{ModuleSym, TypeSym, ValueSym},
 };
@@ -532,23 +532,54 @@ where
         ControlFlow::Continue(())
     }
 
-    fn visit_path_expr(
+    fn visit_qualified_expr(
         &mut self,
-        id: Id<node::PathExpr>,
+        id: Id<node::QualifiedExpr>,
         tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
-        let node::PathExpr {
+        let node::QualifiedExpr {
             path,
             source,
             fields,
         } = *tree.node(id);
 
-        let name = *source.get(tree);
-
         if let Some(path) = path {
             // Just visit the module path if it exists
-            self.visit_module_path(path, tree)
-        } else if let Some(value_sym) = self.stack.value_scope().get(&name) {
+            return self.visit_module_path(path, tree);
+        }
+
+        let name_id = match *source.get(tree) {
+            node::SelectExpr::Record(name) => name,
+            node::SelectExpr::Variant(variant) => {
+                // TODO this whole thing is a bit of a hack
+                // would be great if the AST and parser could give more guarantees
+
+                let fields = &fields
+                    .expect("Cannot use variant type as data constructor")
+                    .get(tree)
+                    .0;
+
+                assert_eq!(
+                    fields.len(),
+                    1,
+                    "Data constructor's should not have nested fields"
+                );
+
+                let name = *fields[0].get(tree);
+
+                let current_sym = self.current_value_bind_sym.unwrap();
+                let ref_ =
+                    ConstructorRef::new(*variant.get(tree), name, id, current_sym, self.span(id));
+
+                self.stack.refs_mut().insert_constructor(ref_);
+
+                return ControlFlow::Continue(());
+            }
+        };
+
+        let name = *name_id.get(tree);
+
+        if let Some(value_sym) = self.stack.value_scope().get(&name) {
             // Local binding will not create value bind cycle either
             self.insert_symbol(id, ResolvedValue::Defined(*value_sym));
             ControlFlow::Continue(())
@@ -638,12 +669,12 @@ where
         ControlFlow::Continue(())
     }
 
-    fn visit_type_path(
+    fn visit_qualified_type(
         &mut self,
-        id: Id<node::TypePath>,
+        id: Id<node::QualifiedType>,
         tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
-        let node::TypePath { path, ty } = *tree.node(id);
+        let node::QualifiedType { path, ty } = *tree.node(id);
 
         let name = *ty.get(tree);
 

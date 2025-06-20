@@ -4,7 +4,10 @@ use std::fmt;
 
 use kola_builtins::{BuiltinId, BuiltinType};
 // use kola_collections::HashMap;
-use kola_tree::meta::{MetaMap, Phase};
+use kola_tree::{
+    meta::{MetaMap, Phase},
+    node,
+};
 use kola_utils::as_variant;
 
 use crate::symbol::{ModuleSym, TypeSym, ValueSym};
@@ -40,6 +43,7 @@ use crate::symbol::{ModuleSym, TypeSym, ValueSym};
 pub enum ResolvedValue {
     Defined(ValueSym),
     Builtin(BuiltinId),
+    Constructor(TypeSym, node::ValueName), // data constructor
 }
 
 impl ResolvedValue {
@@ -50,6 +54,10 @@ impl ResolvedValue {
     pub fn into_defined(self) -> Option<ValueSym> {
         as_variant!(self, Self::Defined)
     }
+
+    // pub fn into_constructor(self) -> Option<TypeSym> {
+    //     as_variant!(self, Self::Constructor)
+    // }
 }
 
 impl fmt::Display for ResolvedValue {
@@ -57,6 +65,7 @@ impl fmt::Display for ResolvedValue {
         match self {
             ResolvedValue::Defined(sym) => sym.fmt(f),
             ResolvedValue::Builtin(id) => id.fmt(f),
+            ResolvedValue::Constructor(t, _) => write!(f, "{t}._todo"),
         }
     }
 }
@@ -126,7 +135,8 @@ impl Phase for ResolvePhase {
     type ExprError = !;
     type Expr = !;
 
-    type PathExpr = ResolvedValue;
+    type QualifiedExpr = ResolvedValue;
+    type SelectExpr = !;
     type FieldPath = !;
 
     // Record operations - structural, no new symbols needed
@@ -145,7 +155,7 @@ impl Phase for ResolvePhase {
     // ===== TYPES =====
     // Type expressions are not needed for the untyped lowerer phase
     // Future: When adding typed IR, these could get ModuleSym for qualified types
-    type TypePath = ResolvedType;
+    type QualifiedType = ResolvedType;
     type TypeVar = TypeSym; // Type variables only occur in forall quantifier definitions
     type RecordFieldType = !; // Field names exist in value namespace but no symbols needed here
     type RecordType = !; // Structural type, no symbols

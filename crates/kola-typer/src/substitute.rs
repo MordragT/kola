@@ -303,7 +303,8 @@ impl_meta_substitutable!(
     RecordUpdateOp,
     RecordUpdateExpr,
     FieldPath,
-    PathExpr,
+    QualifiedExpr,
+    SelectExpr,
     UnaryOp,
     UnaryExpr,
     BinaryOp,
@@ -317,7 +318,7 @@ impl_meta_substitutable!(
     ExprError,
     Expr,
     // Types
-    TypePath,
+    QualifiedType,
     TypeVar,
     RecordFieldType,
     RecordType,

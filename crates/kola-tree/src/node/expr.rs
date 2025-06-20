@@ -3,10 +3,10 @@ use kola_print::prelude::*;
 use kola_utils::{as_variant, interner::StrKey};
 use serde::{Deserialize, Serialize};
 
-use super::{Pat, Type};
+use super::{ModulePath, Pat, Type, TypeName, ValueName};
 use crate::{
     id::Id,
-    node::{ModulePath, TypeScheme, ValueName},
+    node::ModuleName,
     print::NodePrinter,
     tree::{TreeBuilder, TreeView},
 };
@@ -628,6 +628,118 @@ impl<'a> Notate<'a> for NodePrinter<'a, RecordUpdateExpr> {
     }
 }
 
+// pub struct FieldPathIter<'a, T: TreeView> {
+//     tree: &'a T,
+//     current: Option<FieldPath>,
+// }
+
+// impl<'a, T: TreeView> FieldPathIter<'a, T> {
+//     pub fn new(tree: &'a T, path: FieldPath) -> Self {
+//         Self {
+//             tree,
+//             current: Some(path),
+//         }
+//     }
+// }
+
+// impl<T: TreeView> Iterator for FieldPathIter<'_, T> {
+//     type Item = Id<ValueName>;
+
+//     fn next(&mut self) -> Option<Self::Item> {
+//         match self.current {
+//             Some(FieldPath::Next(first, next)) => {
+//                 self.current = Some(*first.get(self.tree));
+//                 Some(next)
+//             }
+//             Some(FieldPath::First(name)) => {
+//                 self.current = None;
+//                 Some(name)
+//             }
+//             None => None,
+//         }
+//     }
+// }
+
+// #[derive(
+//     Debug, From, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+// )]
+// pub enum FieldPath {
+//     Next(Id<Self>, Id<ValueName>),
+//     First(Id<ValueName>),
+// }
+
+// impl FieldPath {
+//     pub fn new_in(name: impl Into<ValueName>, tree: &mut impl TreeView) -> Id<Self> {
+//         let name = tree.insert(name.into());
+//         tree.insert(FieldPath::First(name))
+//     }
+
+//     pub fn from_iter<T>(iter: impl IntoIterator<Item = ValueName>, tree: &mut T) -> Id<Self>
+//     where
+//         T: TreeView,
+//     {
+//         let mut iter = iter.into_iter();
+//         let first = iter
+//             .next()
+//             .map(|name| tree.insert(name))
+//             .expect("ModulePath must have at least one name");
+
+//         let path = iter.fold(FieldPath::First(first), |path, name| {
+//             let next = tree.insert(name);
+//             FieldPath::Next(tree.insert(path), next)
+//         });
+
+//         tree.insert(path)
+//     }
+
+//     pub fn iter_rev<T>(self, tree: &T) -> FieldPathIter<'_, T>
+//     where
+//         T: TreeView,
+//     {
+//         FieldPathIter::new(tree, self)
+//     }
+
+//     pub fn get_from_back(self, index: usize, tree: &impl TreeView) -> Option<Id<ValueName>> {
+//         self.iter_rev(tree).nth(index)
+//     }
+
+//     pub fn last(self, tree: &impl TreeView) -> Option<Id<ValueName>> {
+//         self.iter_rev(tree).next()
+//     }
+
+//     pub fn len(self, tree: &impl TreeView) -> usize {
+//         self.iter_rev(tree).count()
+//     }
+// }
+
+// impl<'a> Notate<'a> for NodePrinter<'a, FieldPath> {
+//     fn notate(&self, arena: &'a Bump) -> Notation<'a> {
+//         match *self.value {
+//             FieldPath::Next(first, next) => {
+//                 let first = self.to(first).notate(arena);
+//                 let next = self.to(next).notate(arena);
+
+//                 let single = [first.clone(), arena.just(' '), next.clone()]
+//                     .concat_in(arena)
+//                     .flatten(arena);
+//                 let multi = [first, arena.newline(), next]
+//                     .concat_in(arena)
+//                     .indent(arena);
+
+//                 single.or(multi, arena)
+//             }
+//             FieldPath::First(name) => {
+//                 let head = "FieldPath".cyan().display_in(arena);
+//                 let name = self.to(name).notate(arena);
+
+//                 [head, arena.just(' '), name]
+//                     .concat_in(arena)
+//                     .flatten(arena)
+//             }
+//         }
+//     }
+// }
+
 #[derive(
     Debug,
     From,
@@ -691,22 +803,22 @@ impl<'a> Notate<'a> for NodePrinter<'a, FieldPath> {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
-pub struct PathExpr {
+pub struct QualifiedExpr {
     pub path: Option<Id<ModulePath>>,
-    pub source: Id<ValueName>,
-    pub fields: Id<FieldPath>,
+    pub source: Id<SelectExpr>,
+    pub fields: Option<Id<FieldPath>>,
 }
 
-impl PathExpr {
+impl QualifiedExpr {
     pub fn new_in(
         path: Option<ModulePath>,
-        source: impl Into<ValueName>,
-        fields: impl Into<FieldPath>,
+        source: impl Into<SelectExpr>,
+        fields: Option<FieldPath>,
         builder: &mut TreeBuilder,
     ) -> Id<Self> {
         let path = path.map(|p| builder.insert(p));
         let source = builder.insert(source.into());
-        let fields = builder.insert(fields.into());
+        let fields = fields.map(|f| builder.insert(f));
 
         builder.insert(Self {
             path,
@@ -716,19 +828,19 @@ impl PathExpr {
     }
 }
 
-impl<'a> Notate<'a> for NodePrinter<'a, PathExpr> {
+impl<'a> Notate<'a> for NodePrinter<'a, QualifiedExpr> {
     fn notate(&self, arena: &'a Bump) -> Notation<'a> {
-        let PathExpr {
+        let QualifiedExpr {
             path,
             source,
             fields,
         } = *self.value;
 
-        let head = "PathExpr".cyan().display_in(arena);
+        let head = "QualifiedExpr".cyan().display_in(arena);
 
-        let path = path.map(|p| self.to_id(p).notate(arena));
+        let path = path.map(|p| self.to(p).notate(arena));
         let source = self.to(source).notate(arena);
-        let fields = self.to(fields).notate(arena);
+        let fields = fields.map(|f| self.to(f).notate(arena));
 
         let single = [
             path.clone()
@@ -736,8 +848,10 @@ impl<'a> Notate<'a> for NodePrinter<'a, PathExpr> {
                 .or_not(arena),
             arena.notate(" source = "),
             source.clone(),
-            arena.notate(", fields = "),
-            fields.clone(),
+            fields
+                .clone()
+                .map(|f| [arena.notate(", fields = "), f].concat_in(arena))
+                .or_not(arena),
         ]
         .concat_in(arena)
         .flatten(arena);
@@ -748,13 +862,66 @@ impl<'a> Notate<'a> for NodePrinter<'a, PathExpr> {
             arena.newline(),
             arena.notate("source = "),
             source,
-            arena.notate("fields = "),
-            fields,
+            fields
+                .map(|f| [arena.newline(), arena.notate("fields = "), f].concat_in(arena))
+                .or_not(arena),
         ]
         .concat_in(arena)
         .indent(arena);
 
         head.then(single.or(multi, arena), arena)
+    }
+}
+
+#[derive(
+    Debug, From, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+)]
+pub enum SelectExpr {
+    Record(Id<ValueName>),
+    Variant(Id<TypeName>),
+}
+
+impl SelectExpr {
+    pub fn record(name: impl Into<ValueName>, builder: &mut TreeBuilder) -> Self {
+        let name = builder.insert(name.into());
+        Self::Record(name)
+    }
+
+    pub fn variant(name: impl Into<TypeName>, builder: &mut TreeBuilder) -> Self {
+        let name = builder.insert(name.into());
+        Self::Variant(name)
+    }
+
+    pub fn str_key(&self, tree: &impl TreeView) -> StrKey {
+        match self {
+            Self::Record(name) => name.get(tree).0,
+            Self::Variant(name) => name.get(tree).0,
+        }
+    }
+
+    pub fn to_record(self) -> Option<Id<ValueName>> {
+        as_variant!(self, Self::Record)
+    }
+
+    pub fn to_variant(self) -> Option<Id<TypeName>> {
+        as_variant!(self, Self::Variant)
+    }
+}
+
+impl<'a> Notate<'a> for NodePrinter<'a, SelectExpr> {
+    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
+        match *self.value {
+            SelectExpr::Record(name) => {
+                let head = "RecordSelectExpr".cyan().display_in(arena);
+                let name = self.to(name).notate(arena);
+                head.then(arena.just(' ').then(name, arena), arena)
+            }
+            SelectExpr::Variant(name) => {
+                let head = "VariantSelectExpr".cyan().display_in(arena);
+                let name = self.to(name).notate(arena);
+                head.then(arena.just(' ').then(name, arena), arena)
+            }
+        }
     }
 }
 
@@ -1349,13 +1516,45 @@ impl<'a> Notate<'a> for NodePrinter<'a, LambdaExpr> {
     }
 }
 
+// #[derive(
+//     Debug, From, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+// )]
+// pub struct ConstructorExpr(pub Id<ValueName>);
+
+// impl ConstructorExpr {
+//     pub fn new_in(ctor: impl Into<ValueName>, builder: &mut TreeBuilder) -> Id<Self> {
+//         let ctor = builder.insert(ctor.into());
+
+//         builder.insert(Self(ctor))
+//     }
+// }
+
+// impl<'a> Notate<'a> for NodePrinter<'a, ConstructorExpr> {
+//     fn notate(&self, arena: &'a Bump) -> Notation<'a> {
+//         let head = "Constructor".blue().display_in(arena);
+
+//         let ctor = self.to_id(self.value.0).notate(arena);
+
+//         let single = arena
+//             .notate(" ctor = ")
+//             .then(ctor.clone(), arena)
+//             .flatten(arena);
+//         let multi = arena
+//             .newline()
+//             .then(arena.notate("ctor = "), arena)
+//             .then(ctor, arena)
+//             .indent(arena);
+
+//         head.then(single.or(multi, arena), arena)
+//     }
+// }
 #[derive(
     Debug, From, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
 )]
 pub enum Expr {
     Error(Id<ExprError>),
     Literal(Id<LiteralExpr>),
-    Path(Id<PathExpr>),
+    Qualified(Id<QualifiedExpr>),
     List(Id<ListExpr>),
     Record(Id<RecordExpr>),
     RecordExtend(Id<RecordExtendExpr>),
@@ -1366,8 +1565,8 @@ pub enum Expr {
     Let(Id<LetExpr>),
     If(Id<IfExpr>),
     Case(Id<CaseExpr>),
-    Lambda(Id<LambdaExpr>),
     Call(Id<CallExpr>),
+    Lambda(Id<LambdaExpr>),
 }
 
 impl<'a> Notate<'a> for NodePrinter<'a, Expr> {
@@ -1375,7 +1574,7 @@ impl<'a> Notate<'a> for NodePrinter<'a, Expr> {
         match *self.value {
             Expr::Error(e) => self.to_id(e).notate(arena),
             Expr::Literal(l) => self.to_id(l).notate(arena),
-            Expr::Path(p) => self.to_id(p).notate(arena),
+            Expr::Qualified(q) => self.to_id(q).notate(arena),
             Expr::List(l) => self.to_id(l).notate(arena),
             Expr::Record(r) => self.to_id(r).notate(arena),
             Expr::RecordExtend(r) => self.to_id(r).notate(arena),
@@ -1386,8 +1585,8 @@ impl<'a> Notate<'a> for NodePrinter<'a, Expr> {
             Expr::Let(l) => self.to_id(l).notate(arena),
             Expr::If(i) => self.to_id(i).notate(arena),
             Expr::Case(c) => self.to_id(c).notate(arena),
-            Expr::Lambda(f) => self.to_id(f).notate(arena),
             Expr::Call(c) => self.to_id(c).notate(arena),
+            Expr::Lambda(f) => self.to_id(f).notate(arena),
         }
     }
 }
@@ -1404,8 +1603,8 @@ impl Expr {
     }
 
     #[inline]
-    pub fn to_path(self) -> Option<Id<PathExpr>> {
-        as_variant!(self, Self::Path)
+    pub fn to_qualified(self) -> Option<Id<QualifiedExpr>> {
+        as_variant!(self, Self::Qualified)
     }
 
     #[inline]
@@ -1459,13 +1658,13 @@ impl Expr {
     }
 
     #[inline]
-    pub fn to_lambda(self) -> Option<Id<LambdaExpr>> {
-        as_variant!(self, Self::Lambda)
+    pub fn to_call(self) -> Option<Id<CallExpr>> {
+        as_variant!(self, Self::Call)
     }
 
     #[inline]
-    pub fn to_call(self) -> Option<Id<CallExpr>> {
-        as_variant!(self, Self::Call)
+    pub fn to_lambda(self) -> Option<Id<LambdaExpr>> {
+        as_variant!(self, Self::Lambda)
     }
 
     #[inline]
@@ -1479,8 +1678,8 @@ impl Expr {
     }
 
     #[inline]
-    pub fn is_path(self) -> bool {
-        matches!(self, Self::Path(_))
+    pub fn is_qualified(self) -> bool {
+        matches!(self, Self::Qualified(_))
     }
 
     #[inline]
@@ -1534,13 +1733,13 @@ impl Expr {
     }
 
     #[inline]
-    pub fn is_lambda(self) -> bool {
-        matches!(self, Self::Lambda(_))
+    pub fn is_call(self) -> bool {
+        matches!(self, Self::Call(_))
     }
 
     #[inline]
-    pub fn is_call(self) -> bool {
-        matches!(self, Self::Call(_))
+    pub fn is_lambda(self) -> bool {
+        matches!(self, Self::Lambda(_))
     }
 }
 mod inspector {
@@ -1561,10 +1760,10 @@ mod inspector {
                 .map(|lit_id| NodeInspector::new(lit_id, self.tree, self.interner))
         }
 
-        pub fn as_path(self) -> Option<NodeInspector<'t, Id<PathExpr>, S>> {
+        pub fn as_qualified(self) -> Option<NodeInspector<'t, Id<QualifiedExpr>, S>> {
             let expr = self.node.get(self.tree);
-            expr.to_path()
-                .map(|path_id| NodeInspector::new(path_id, self.tree, self.interner))
+            expr.to_qualified()
+                .map(|qualified_id| NodeInspector::new(qualified_id, self.tree, self.interner))
         }
 
         pub fn as_list(self) -> Option<NodeInspector<'t, Id<ListExpr>, S>> {
@@ -1627,16 +1826,16 @@ mod inspector {
                 .map(|case_id| NodeInspector::new(case_id, self.tree, self.interner))
         }
 
-        pub fn as_lambda(self) -> Option<NodeInspector<'t, Id<LambdaExpr>, S>> {
-            let expr = self.node.get(self.tree);
-            expr.to_lambda()
-                .map(|lambda_id| NodeInspector::new(lambda_id, self.tree, self.interner))
-        }
-
         pub fn as_call(self) -> Option<NodeInspector<'t, Id<CallExpr>, S>> {
             let expr = self.node.get(self.tree);
             expr.to_call()
                 .map(|call_id| NodeInspector::new(call_id, self.tree, self.interner))
+        }
+
+        pub fn as_lambda(self) -> Option<NodeInspector<'t, Id<LambdaExpr>, S>> {
+            let expr = self.node.get(self.tree);
+            expr.to_lambda()
+                .map(|lambda_id| NodeInspector::new(lambda_id, self.tree, self.interner))
         }
     }
 
@@ -1704,21 +1903,40 @@ mod inspector {
         }
     }
 
-    impl<'t, S: BuildHasher> NodeInspector<'t, Id<PathExpr>, S> {
+    impl<'t, S: BuildHasher> NodeInspector<'t, Id<QualifiedExpr>, S> {
         pub fn module_path(self) -> Option<NodeInspector<'t, Id<ModulePath>, S>> {
-            let path = self.node.get(self.tree);
-            path.path
+            let qualified = self.node.get(self.tree);
+            qualified
+                .path
                 .map(|p| NodeInspector::new(p, self.tree, self.interner))
         }
 
-        pub fn source(self) -> NodeInspector<'t, Id<ValueName>, S> {
-            let path = self.node.get(self.tree);
-            NodeInspector::new(path.source, self.tree, self.interner)
+        pub fn source(self) -> NodeInspector<'t, Id<SelectExpr>, S> {
+            let qualified = self.node.get(self.tree);
+            NodeInspector::new(qualified.source, self.tree, self.interner)
         }
 
-        pub fn select(self) -> NodeInspector<'t, Id<FieldPath>, S> {
-            let path = self.node.get(self.tree);
-            NodeInspector::new(path.fields, self.tree, self.interner)
+        pub fn fields(self) -> Option<NodeInspector<'t, Id<FieldPath>, S>> {
+            let qualified = self.node.get(self.tree);
+            qualified
+                .fields
+                .map(|f| NodeInspector::new(f, self.tree, self.interner))
+        }
+    }
+
+    impl<'t, S: BuildHasher> NodeInspector<'t, Id<SelectExpr>, S> {
+        pub fn as_record(self) -> Option<NodeInspector<'t, Id<ValueName>, S>> {
+            let primitive = self.node.get(self.tree);
+            primitive
+                .to_record()
+                .map(|name_id| NodeInspector::new(name_id, self.tree, self.interner))
+        }
+
+        pub fn as_variant(self) -> Option<NodeInspector<'t, Id<TypeName>, S>> {
+            let primitive = self.node.get(self.tree);
+            primitive
+                .to_variant()
+                .map(|type_id| NodeInspector::new(type_id, self.tree, self.interner))
         }
     }
 

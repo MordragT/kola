@@ -33,8 +33,7 @@ impl<'a> Decorator<'a> for TypeDecorator<'a> {
             | Meta::RecordRestrictExpr(t)
             | Meta::RecordUpdateOp(t)
             | Meta::RecordUpdateExpr(t)
-            | Meta::FieldPath(t)
-            | Meta::PathExpr(t)
+            | Meta::QualifiedExpr(t)
             | Meta::UnaryOp(t)
             | Meta::UnaryExpr(t)
             | Meta::BinaryOp(t)
@@ -48,13 +47,15 @@ impl<'a> Decorator<'a> for TypeDecorator<'a> {
             | Meta::Expr(t) => t.green().display_in(arena),
             Meta::RecordField(lt) => return notation,
             Meta::ExprError(_) => return notation,
+            Meta::FieldPath(_) => return notation,
+            Meta::SelectExpr(_) => todo!(),
 
             // Types
             Meta::RecordFieldType(lt) | Meta::VariantCaseType(lt) => return notation,
             Meta::RecordType(t) | Meta::VariantType(t) | Meta::FuncType(t) => {
                 t.green().display_in(arena)
             }
-            Meta::TypePath(pt)
+            Meta::QualifiedType(pt)
             | Meta::TypeApplication(pt)
             | Meta::Type(pt)
             | Meta::TypeScheme(pt) => pt.green().display_in(arena),

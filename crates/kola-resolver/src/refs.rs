@@ -56,7 +56,7 @@ pub struct ValueRef {
     /// The name of the value reference.
     pub name: ValueName,
     /// The identifier of the path expression that references some other value bind..
-    pub id: Id<node::PathExpr>,
+    pub id: Id<node::QualifiedExpr>,
     /// The symbol of the value bind, this reference occured inside.
     pub source: ValueSym,
     /// The location of the value reference in the source code.
@@ -64,8 +64,40 @@ pub struct ValueRef {
 }
 
 impl ValueRef {
-    pub fn new(name: ValueName, id: Id<node::PathExpr>, source: ValueSym, loc: Loc) -> Self {
+    pub fn new(name: ValueName, id: Id<node::QualifiedExpr>, source: ValueSym, loc: Loc) -> Self {
         Self {
+            name,
+            id,
+            source,
+            loc,
+        }
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct ConstructorRef {
+    /// The name of the type that this constructor belongs to.
+    pub variant: TypeName,
+    /// The name of the constructor reference.
+    pub name: ValueName,
+    /// The identifier of the expression that references some data constructor.
+    pub id: Id<node::QualifiedExpr>,
+    /// The symbol of the value bind, this reference occured inside.
+    pub source: ValueSym,
+    /// The location of the constructor reference in the source code.
+    pub loc: Loc,
+}
+
+impl ConstructorRef {
+    pub fn new(
+        variant: TypeName,
+        name: ValueName,
+        id: Id<node::QualifiedExpr>,
+        source: ValueSym,
+        loc: Loc,
+    ) -> Self {
+        Self {
+            variant,
             name,
             id,
             source,
@@ -79,7 +111,7 @@ pub struct TypeBindRef {
     /// The name of the value reference.
     pub name: TypeName,
     /// The identifier of the type path that references some other type bind..
-    pub id: Id<node::TypePath>,
+    pub id: Id<node::QualifiedType>,
     /// The symbol of the type bind, this reference occured inside.
     pub source: TypeSym,
     /// The location of the type reference in the source code.
@@ -87,7 +119,7 @@ pub struct TypeBindRef {
 }
 
 impl TypeBindRef {
-    pub fn new(name: TypeName, id: Id<node::TypePath>, source: TypeSym, loc: Loc) -> Self {
+    pub fn new(name: TypeName, id: Id<node::QualifiedType>, source: TypeSym, loc: Loc) -> Self {
         Self {
             name,
             id,
@@ -102,13 +134,13 @@ pub struct TypeRef {
     /// The name of the value reference.
     pub name: TypeName,
     /// The identifier of the type path that references some other type bind..
-    pub id: Id<node::TypePath>,
+    pub id: Id<node::QualifiedType>,
     /// The location of the type reference in the source code.
     pub loc: Loc,
 }
 
 impl TypeRef {
-    pub fn new(name: TypeName, id: Id<node::TypePath>, loc: Loc) -> Self {
+    pub fn new(name: TypeName, id: Id<node::QualifiedType>, loc: Loc) -> Self {
         Self { name, id, loc }
     }
 }
@@ -120,6 +152,7 @@ pub struct References {
     type_binds: Vec<TypeBindRef>,
     types: Vec<TypeRef>,
     values: Vec<ValueRef>,
+    constructors: Vec<ConstructorRef>,
 }
 
 impl References {
@@ -147,6 +180,10 @@ impl References {
         self.values.push(value_ref);
     }
 
+    pub fn insert_constructor(&mut self, constructor_ref: ConstructorRef) {
+        self.constructors.push(constructor_ref);
+    }
+
     pub fn get_module_bind(&self, sym: ModuleSym) -> Option<&ModuleBindRef> {
         self.module_binds.get(&sym)
     }
@@ -169,6 +206,10 @@ impl References {
 
     pub fn values(&self) -> &[ValueRef] {
         &self.values
+    }
+
+    pub fn constructors(&self) -> &[ConstructorRef] {
+        &self.constructors
     }
 }
 

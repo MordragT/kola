@@ -42,7 +42,8 @@ impl_visitable!(
     Pat,
     // Expressions
     LiteralExpr,
-    PathExpr,
+    QualifiedExpr,
+    SelectExpr,
     ListExpr,
     RecordField,
     RecordExpr,
@@ -63,7 +64,7 @@ impl_visitable!(
     ExprError,
     Expr,
     // Types
-    TypePath,
+    QualifiedType,
     TypeVar,
     RecordFieldType,
     RecordType,
@@ -477,12 +478,12 @@ pub trait Visitor<T: TreeView> {
         self.walk_field_path(id, tree)
     }
 
-    fn walk_path_expr(
+    fn walk_qualified_expr(
         &mut self,
-        id: Id<node::PathExpr>,
+        id: Id<node::QualifiedExpr>,
         tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
-        let node::PathExpr {
+        let node::QualifiedExpr {
             path,
             source,
             fields,
@@ -492,18 +493,42 @@ pub trait Visitor<T: TreeView> {
             self.visit_module_path(path, tree)?;
         }
 
-        self.visit_value_name(source, tree)?;
-        self.visit_field_path(fields, tree)?;
+        self.visit_select_expr(source, tree)?;
+
+        if let Some(fields) = fields {
+            self.visit_field_path(fields, tree)?;
+        }
 
         ControlFlow::Continue(())
     }
 
-    fn visit_path_expr(
+    fn visit_qualified_expr(
         &mut self,
-        id: Id<node::PathExpr>,
+        id: Id<node::QualifiedExpr>,
         tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
-        self.walk_path_expr(id, tree)
+        self.walk_qualified_expr(id, tree)
+    }
+
+    fn walk_select_expr(
+        &mut self,
+        id: Id<node::SelectExpr>,
+        tree: &T,
+    ) -> ControlFlow<Self::BreakValue> {
+        use node::SelectExpr::*;
+
+        match *id.get(tree) {
+            Record(id) => self.visit_value_name(id, tree),
+            Variant(id) => self.visit_type_name(id, tree),
+        }
+    }
+
+    fn visit_select_expr(
+        &mut self,
+        id: Id<node::SelectExpr>,
+        tree: &T,
+    ) -> ControlFlow<Self::BreakValue> {
+        self.walk_select_expr(id, tree)
     }
 
     fn visit_unary_op(
@@ -716,7 +741,7 @@ pub trait Visitor<T: TreeView> {
         match *id.get(tree) {
             Error(id) => self.visit_expr_error(id, tree),
             Literal(id) => self.visit_literal_expr(id, tree),
-            Path(id) => self.visit_path_expr(id, tree),
+            Qualified(id) => self.visit_qualified_expr(id, tree),
             List(id) => self.visit_list_expr(id, tree),
             Record(id) => self.visit_record_expr(id, tree),
             RecordExtend(id) => self.visit_record_extend_expr(id, tree),
@@ -736,12 +761,12 @@ pub trait Visitor<T: TreeView> {
         self.walk_expr(id, tree)
     }
 
-    fn walk_type_path(
+    fn walk_qualified_type(
         &mut self,
-        id: Id<node::TypePath>,
+        id: Id<node::QualifiedType>,
         tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
-        let node::TypePath { path, ty } = id.get(tree);
+        let node::QualifiedType { path, ty } = id.get(tree);
 
         if let Some(path) = path {
             self.visit_module_path(*path, tree)?;
@@ -752,12 +777,12 @@ pub trait Visitor<T: TreeView> {
         ControlFlow::Continue(())
     }
 
-    fn visit_type_path(
+    fn visit_qualified_type(
         &mut self,
-        id: Id<node::TypePath>,
+        id: Id<node::QualifiedType>,
         tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
-        self.walk_type_path(id, tree)
+        self.walk_qualified_type(id, tree)
     }
 
     fn visit_type_var(
@@ -919,7 +944,7 @@ pub trait Visitor<T: TreeView> {
 
         match *id.get(tree) {
             Error(id) => self.visit_type_error(id, tree),
-            Path(id) => self.visit_type_path(id, tree),
+            Qualified(id) => self.visit_qualified_type(id, tree),
             Record(id) => self.visit_record_type(id, tree),
             Variant(id) => self.visit_variant_type(id, tree),
             Func(id) => self.visit_func_type(id, tree),

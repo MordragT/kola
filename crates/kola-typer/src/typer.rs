@@ -187,7 +187,7 @@ where
 
         let poly_t = match *id.get(tree) {
             node::Type::Error(_) => todo!(),
-            node::Type::Path(path_id) => self.types.meta(path_id).clone(),
+            node::Type::Qualified(path_id) => self.types.meta(path_id).clone(),
             node::Type::Func(func_id) => PolyType::new(self.types.meta(func_id).clone()),
             node::Type::Application(app_id) => self.types.meta(app_id).clone(),
             node::Type::Record(record_id) => PolyType::new(self.types.meta(record_id).clone()),
@@ -226,12 +226,12 @@ where
     /// - Returns appropriate polymorphic type for the resolved name
     ///
     /// Type signature: Resolves names to their associated types
-    fn visit_type_path(
+    fn visit_qualified_type(
         &mut self,
-        id: Id<node::TypePath>,
+        id: Id<node::QualifiedType>,
         tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
-        let node::TypePath { path, ty } = *id.get(tree);
+        let node::QualifiedType { path, ty } = *id.get(tree);
 
         let type_name = ty.get(tree).0;
         let span = self.span(id);
@@ -707,20 +707,28 @@ where
     /// ```
     ///
     /// Type signature: `∀r α. {l : α | r} → α` (for field selection)
-    fn visit_path_expr(
+    fn visit_qualified_expr(
         &mut self,
-        id: Id<node::PathExpr>,
+        id: Id<node::QualifiedExpr>,
         tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
         let span = self.span(id);
 
-        let node::PathExpr {
+        let node::QualifiedExpr {
             path,
             source,
             fields,
         } = *id.get(tree);
 
-        let name = source.get(tree).0;
+        let name = match source.get(tree) {
+            node::SelectExpr::Record(name) => name.get(tree).0,
+            node::SelectExpr::Variant(name) => {
+                return ControlFlow::Break(Diagnostic::error(
+                    span,
+                    "Variant data constructors not implemented yet",
+                ));
+            }
+        };
 
         let base_t = if let Some(path) = path {
             // Case 1: Other module (real PolyType)
@@ -754,6 +762,12 @@ where
             return ControlFlow::Break(Diagnostic::error(span, "Value not found in scope"));
         };
 
+        let Some(fields) = fields else {
+            // Case 4: Variable lookup
+            self.insert_type(id, base_t.clone());
+            return ControlFlow::Continue(());
+        };
+
         let result_t = fields.get(tree).iter().fold(base_t, |record_t, field| {
             self.cons
                 .constrain_kind(Kind::Record, record_t.clone(), span);
@@ -775,7 +789,6 @@ where
             value_t
         });
 
-        self.insert_type(fields, result_t.clone());
         self.insert_type(id, result_t);
         ControlFlow::Continue(())
     }
@@ -923,8 +936,6 @@ where
             source_t = value_t;
         }
 
-        self.insert_type(select, source_t.clone());
-
         self.cons
             .constrain_kind(Kind::Record, source_t.clone(), span);
 
@@ -1023,8 +1034,6 @@ where
 
             source_t = value_t;
         }
-
-        self.insert_type(select, source_t.clone());
 
         // Restrict the final field
         self.cons
@@ -1167,8 +1176,6 @@ where
 
             source_t = value_t;
         }
-
-        self.insert_type(select, source_t.clone());
 
         // Restrict the final field
         self.cons
@@ -1554,7 +1561,7 @@ where
         let expr_t = match *id.get(tree) {
             node::Expr::Error(_) => todo!(),
             node::Expr::Literal(id) => self.types.meta(id),
-            node::Expr::Path(id) => self.types.meta(id),
+            node::Expr::Qualified(id) => self.types.meta(id),
             node::Expr::List(id) => self.types.meta(id),
             node::Expr::Record(id) => self.types.meta(id),
             node::Expr::RecordExtend(id) => self.types.meta(id),
@@ -1711,7 +1718,8 @@ mod tests {
         let mut builder = TreeBuilder::new();
 
         let value = builder.insert(node::LiteralExpr::Num(10.0));
-        let inside = node::PathExpr::new_in(None, interner.intern("x"), Vec::new(), &mut builder);
+        let symbol = node::SelectExpr::record(interner.intern("x"), &mut builder);
+        let inside = node::QualifiedExpr::new_in(None, symbol, None, &mut builder);
         let let_ = node::LetExpr::new_in(interner.intern("x"), None, value, inside, &mut builder);
 
         let types = solve(builder, let_).unwrap();

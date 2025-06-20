@@ -218,7 +218,8 @@ define!(
     RecordUpdateOp,
     RecordUpdateExpr,
     FieldPath,
-    PathExpr,
+    QualifiedExpr,
+    SelectExpr,
     UnaryOp,
     UnaryExpr,
     BinaryOp,
@@ -232,7 +233,7 @@ define!(
     ExprError,
     Expr,
     // Types
-    TypePath,
+    QualifiedType,
     TypeVar,
     RecordFieldType,
     RecordType,

@@ -64,6 +64,118 @@ impl<'a> Notate<'a> for NodePrinter<'a, Module> {
     }
 }
 
+// pub struct ModulePathIter<'a, T: TreeView> {
+//     tree: &'a T,
+//     current: Option<ModulePath>,
+// }
+
+// impl<'a, T: TreeView> ModulePathIter<'a, T> {
+//     pub fn new(tree: &'a T, path: ModulePath) -> Self {
+//         Self {
+//             tree,
+//             current: Some(path),
+//         }
+//     }
+// }
+
+// impl<T: TreeView> Iterator for ModulePathIter<'_, T> {
+//     type Item = Id<ModuleName>;
+
+//     fn next(&mut self) -> Option<Self::Item> {
+//         match self.current {
+//             Some(ModulePath::Next(first, next)) => {
+//                 self.current = Some(*first.get(self.tree));
+//                 Some(next)
+//             }
+//             Some(ModulePath::First(name)) => {
+//                 self.current = None;
+//                 Some(name)
+//             }
+//             None => None,
+//         }
+//     }
+// }
+
+// #[derive(
+//     Debug, From, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+// )]
+// pub enum ModulePath {
+//     Next(Id<Self>, Id<ModuleName>),
+//     First(Id<ModuleName>),
+// }
+
+// impl ModulePath {
+//     pub fn new_in(name: impl Into<ModuleName>, tree: &mut impl TreeView) -> Id<Self> {
+//         let name = tree.insert(name.into());
+//         tree.insert(ModulePath::First(name))
+//     }
+
+//     pub fn from_iter<T>(iter: impl IntoIterator<Item = ModuleName>, tree: &mut T) -> Id<Self>
+//     where
+//         T: TreeView,
+//     {
+//         let mut iter = iter.into_iter();
+//         let first = iter
+//             .next()
+//             .map(|name| tree.insert(name))
+//             .expect("ModulePath must have at least one name");
+
+//         let path = iter.fold(ModulePath::First(first), |path, name| {
+//             let next = tree.insert(name);
+//             ModulePath::Next(tree.insert(path), next)
+//         });
+
+//         tree.insert(path)
+//     }
+
+//     pub fn iter_rev<T>(self, tree: &T) -> ModulePathIter<'_, T>
+//     where
+//         T: TreeView,
+//     {
+//         ModulePathIter::new(tree, self)
+//     }
+
+//     pub fn get_from_back(self, index: usize, tree: &impl TreeView) -> Option<Id<ModuleName>> {
+//         self.iter_rev(tree).nth(index)
+//     }
+
+//     pub fn last(self, tree: &impl TreeView) -> Option<Id<ModuleName>> {
+//         self.iter_rev(tree).next()
+//     }
+
+//     pub fn len(self, tree: &impl TreeView) -> usize {
+//         self.iter_rev(tree).count()
+//     }
+// }
+
+// impl<'a> Notate<'a> for NodePrinter<'a, ModulePath> {
+//     fn notate(&self, arena: &'a Bump) -> Notation<'a> {
+//         match *self.value {
+//             ModulePath::Next(first, next) => {
+//                 let first = self.to(first).notate(arena);
+//                 let next = self.to(next).notate(arena);
+
+//                 let single = [first.clone(), arena.just(' '), next.clone()]
+//                     .concat_in(arena)
+//                     .flatten(arena);
+//                 let multi = [first, arena.newline(), next]
+//                     .concat_in(arena)
+//                     .indent(arena);
+
+//                 single.or(multi, arena)
+//             }
+//             ModulePath::First(name) => {
+//                 let head = "ModulePath".cyan().display_in(arena);
+//                 let name = self.to(name).notate(arena);
+
+//                 [head, arena.just(' '), name]
+//                     .concat_in(arena)
+//                     .flatten(arena)
+//             }
+//         }
+//     }
+// }
+
 #[derive(
     Debug, From, IntoIterator, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
 )]
@@ -809,7 +921,6 @@ mod inspector {
             NodeInspector::new(bind_id, self.tree, self.interner)
         }
     }
-
     impl<'t, S: BuildHasher> NodeInspector<'t, Id<ModulePath>, S> {
         pub fn has_segments(self, count: usize) -> Self {
             let segments_len = self.node.get(self.tree).0.len();

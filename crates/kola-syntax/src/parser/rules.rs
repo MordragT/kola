@@ -384,8 +384,15 @@ pub fn expr_parser<'t>() -> impl KolaParser<'t, Id<node::Expr>> + Clone {
     recursive(|expr| {
         let name = value_name_parser();
 
-        // Path expression (module::record.field) for variable and module access
-        let path = group((
+        // let primitive = lower_symbol()
+        //     .map_to_node(node::ValueName::new)
+        //     .map_to_node(node::PrimitiveExpr::Symbol)
+        //     .or(upper_symbol()
+        //         .map_to_node(node::ValueName::new)
+        //         .map_to_node(node::PrimitiveExpr::Constructor));
+
+        // Qualified expression (module::record.field) for variable and module access
+        let qualified = group((
             symbol().spanned(),
             ctrl(CtrlT::DOUBLE_COLON)
                 .ignore_then(symbol().spanned())
@@ -394,8 +401,10 @@ pub fn expr_parser<'t>() -> impl KolaParser<'t, Id<node::Expr>> + Clone {
             ctrl(CtrlT::DOT)
                 .ignore_then(value_name_parser())
                 .repeated()
+                .at_least(1)
                 .collect()
-                .map_to_node(node::FieldPath),
+                .map_to_node(node::FieldPath)
+                .or_not(),
         ))
         .map_with(|(mut source, mut path, fields), e| {
             let tree: &mut State = e.state();
@@ -422,9 +431,16 @@ pub fn expr_parser<'t>() -> impl KolaParser<'t, Id<node::Expr>> + Clone {
                 Some(path)
             };
 
-            let source = tree.insert(node::ValueName::new(source.0), source.1);
+            let primitive = if tree.interner[source.0].starts_with(char::is_lowercase) {
+                let name = tree.insert(node::ValueName::new(source.0), source.1);
+                node::SelectExpr::Record(name)
+            } else {
+                let name = tree.insert(node::TypeName::new(source.0), source.1);
+                node::SelectExpr::Variant(name)
+            };
+            let source = tree.insert(primitive, source.1);
 
-            node::PathExpr {
+            node::QualifiedExpr {
                 path,
                 source,
                 fields,
@@ -432,9 +448,44 @@ pub fn expr_parser<'t>() -> impl KolaParser<'t, Id<node::Expr>> + Clone {
         })
         .to_node()
         .to_expr()
-        .labelled("PathExpr")
+        .labelled("QualifiedExpr")
         .as_context()
         .boxed();
+
+        // let partial_qualified = group((
+        //     symbol().spanned(),
+        //     ctrl(CtrlT::DOUBLE_COLON)
+        //         .ignore_then(symbol().spanned())
+        //         .repeated()
+        //         .collect::<Vec<_>>(),
+        // ))
+        // .map_with(|(mut source, mut path), e| {
+        //     let tree: &mut State = e.state();
+
+        //     let path = if path.is_empty() {
+        //         None
+        //     } else {
+        //         // For a::b::c.field1.field2:
+        //         // - Original: source=a, path=[b, c]
+        //         // - After transform: source=c, path=[a, b]
+        //         // - Result: ModulePath=[a, b], SelectExpr={source: c, fields: [field1, field2]}
+        //         let new_source = path.pop().unwrap();
+        //         path.insert(0, source);
+        //         source = new_source;
+
+        //         let path_loc = Loc::covering_located(&path).unwrap(); // Safety: Path is not empty
+
+        //         let path = path
+        //             .into_iter()
+        //             .map(|(key, span)| tree.insert(node::ModuleName::new(key), span))
+        //             .collect();
+        //         let path = tree.insert(node::ModulePath(path), path_loc);
+
+        //         Some(path)
+        //     };
+
+        //     (path, source)
+        // });
 
         let literal = literal_parser()
             .to_node()
@@ -534,7 +585,7 @@ pub fn expr_parser<'t>() -> impl KolaParser<'t, Id<node::Expr>> + Clone {
             .repeated()
             .at_least(1);
 
-        let record_op = path
+        let record_op = qualified
             .clone()
             .then(ctrl(CtrlT::COLON).ignore_then(type_parser()).or_not())
             .foldl_with(inner_op, |(source, source_type), op, e| {
@@ -575,7 +626,7 @@ pub fn expr_parser<'t>() -> impl KolaParser<'t, Id<node::Expr>> + Clone {
                         ),
                 };
 
-                (expr, source_type)
+                (expr, None) // Set this to None so that subsequent record operations do not get a type missmatch due to the changed type
             })
             .map(|(expr, _)| expr)
             .boxed();
@@ -631,7 +682,7 @@ pub fn expr_parser<'t>() -> impl KolaParser<'t, Id<node::Expr>> + Clone {
             .at_least(1)
             .collect();
         let case = kw(KwT::CASE)
-            .ignore_then(path.clone())
+            .ignore_then(qualified.clone())
             .then_ignore(kw(KwT::OF))
             .then(branches)
             .map_to_node(|(source, branches)| node::CaseExpr { source, branches })
@@ -658,7 +709,7 @@ pub fn expr_parser<'t>() -> impl KolaParser<'t, Id<node::Expr>> + Clone {
 
         // TODO allow "recursive" (a (b c)) and maybe also syntactic sugar (a b c)
         let call = recursive(|call| {
-            let callable = choice((path.clone(), func.clone(), call));
+            let callable = choice((qualified.clone(), func.clone(), call));
 
             nested_parser(
                 callable
@@ -683,7 +734,7 @@ pub fn expr_parser<'t>() -> impl KolaParser<'t, Id<node::Expr>> + Clone {
             case,
             func,
             call,
-            path,
+            qualified,
         ))
         .boxed();
 
@@ -826,7 +877,7 @@ pub fn type_parser<'t>() -> impl KolaParser<'t, Id<node::Type>> + Clone {
                     None
                 };
 
-                node::TypePath { path, ty }
+                node::QualifiedType { path, ty }
             })
             .to_node()
             .to_type()
@@ -1093,7 +1144,13 @@ mod tests {
 
         let case = inspector.as_case().unwrap();
 
-        case.source().as_path().unwrap().source().has_name("x");
+        case.source()
+            .as_qualified()
+            .unwrap()
+            .source()
+            .as_record()
+            .unwrap()
+            .has_name("x");
 
         case.has_branches(2);
 
@@ -1183,26 +1240,70 @@ mod tests {
 
         if_expr
             .predicate()
-            .as_path()
+            .as_qualified()
             .unwrap()
             .source()
+            .as_record()
+            .unwrap()
             .has_name("y");
-        if_expr.then().as_path().unwrap().source().has_name("x");
+        if_expr
+            .then()
+            .as_qualified()
+            .unwrap()
+            .source()
+            .as_record()
+            .unwrap()
+            .has_name("x");
         if_expr.or().as_literal().unwrap().is_num(0.0);
     }
 
     #[test]
-    fn path_expr() {
+    fn qualified_expr() {
         let mut interner = StrInterner::new();
 
+        // Test simple field access
         let ParseResult { node, builder, .. } =
             try_parse_str_with("x.y.z", expr_parser(), &mut interner);
 
         let inspector = NodeInspector::new(node, &builder, &interner);
 
-        let path_expr = inspector.as_path().unwrap();
-        path_expr.source().has_name("x");
-        path_expr.select().field_at_is(0, "y").field_at_is(1, "z");
+        let path_expr = inspector.as_qualified().unwrap();
+        path_expr.source().as_record().unwrap().has_name("x");
+        path_expr
+            .fields()
+            .unwrap()
+            .field_at_is(0, "y")
+            .field_at_is(1, "z");
+
+        // Test module path with field access
+        let ParseResult { node, builder, .. } = try_parse_str_with(
+            "mod1::mod2::value.field1.field2",
+            expr_parser(),
+            &mut interner,
+        );
+
+        let inspector = NodeInspector::new(node, &builder, &interner);
+
+        let qualified_expr = inspector.as_qualified().unwrap();
+
+        // Check that we have a module path
+        let module_path = qualified_expr.module_path().unwrap();
+        module_path.segment_at_is(0, "mod1");
+        module_path.segment_at_is(1, "mod2");
+
+        // Check the source symbol
+        qualified_expr
+            .source()
+            .as_record()
+            .unwrap()
+            .has_name("value");
+
+        // Check the field path
+        qualified_expr
+            .fields()
+            .unwrap()
+            .field_at_is(0, "field1")
+            .field_at_is(1, "field2");
     }
 
     #[test]
@@ -1216,7 +1317,14 @@ mod tests {
 
         let extend = inspector.as_record_extend().unwrap();
 
-        extend.source().as_path().unwrap().source().has_name("y");
+        extend
+            .source()
+            .as_qualified()
+            .unwrap()
+            .source()
+            .as_record()
+            .unwrap()
+            .has_name("y");
         extend.select().field_at_is(0, "x");
         extend.value().as_literal().unwrap().is_num(10.0);
     }

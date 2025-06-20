@@ -23,5 +23,10 @@
 
 
     type Option = forall a . < Some : a, None >,
-    main = (Some 10),
+    main = (Option.Some 10),
+
+    #main = (Some 10), # make this a not panicing error
+
+    #a = { a = 1, b = 2 },
+    #main = { a : { a : Num, b : Num } | +c = 3 | a = 4 },
 }

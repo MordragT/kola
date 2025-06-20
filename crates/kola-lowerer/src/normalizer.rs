@@ -147,12 +147,12 @@ where
         ControlFlow::Continue(())
     }
 
-    fn visit_path_expr(
+    fn visit_qualified_expr(
         &mut self,
-        id: TreeId<node::PathExpr>,
+        id: TreeId<node::QualifiedExpr>,
         tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
-        let node::PathExpr {
+        let node::QualifiedExpr {
             path,
             source,
             fields,
@@ -162,7 +162,7 @@ where
             let module_sym = self.symbol_of(path);
             let module_atom = self.builder.add(ir::Atom::Symbol(module_sym));
 
-            let name = source.get(tree).0;
+            let name = source.get(tree).str_key(tree);
 
             let access_expr = self
                 .builder
@@ -181,7 +181,7 @@ where
         let source_atom = self.symbols.atom_of(id); // This is only defined if path is None so be careful about moving this
         let mut source_atom = self.builder.add(source_atom);
 
-        if let Some((last_field_id, fields)) = fields.get(tree).0.split_last() {
+        if let Some((last_field_id, fields)) = fields.and_then(|f| f.get(tree).0.split_last()) {
             for field_id in fields {
                 let field_label = field_id.get(tree).0;
 
@@ -622,7 +622,7 @@ mod tests {
         phase::{ResolvedNodes, ResolvedValue},
         symbol::ValueSym,
     };
-    use kola_tree::prelude::*;
+    use kola_tree::{node::SelectExpr, prelude::*};
     use kola_utils::interner::StrInterner;
     use kola_vm::{machine::CekMachine, value::Value};
 
@@ -633,7 +633,7 @@ mod tests {
     fn mock_resolved(tree: &impl TreeView) -> ResolvedNodes {
         let mut resolved = ResolvedNodes::default();
 
-        for query in tree.query3::<node::PathExpr, node::LetExpr, node::LambdaExpr>() {
+        for query in tree.query3::<node::QualifiedExpr, node::LetExpr, node::LambdaExpr>() {
             match query {
                 Query3::V0(id, _path) => {
                     resolved.insert_meta(id, ResolvedValue::Defined(ValueSym::new()))
@@ -681,10 +681,10 @@ mod tests {
         let mut interner = StrInterner::new();
         let mut builder = TreeBuilder::new();
 
-        let x = interner.intern("x");
+        let x = SelectExpr::record(interner.intern("x"), &mut builder);
 
         // Build a simple path expression: x (no module path, just binding)
-        let path_expr = node::PathExpr::new_in(None, x, Vec::new(), &mut builder);
+        let path_expr = node::QualifiedExpr::new_in(None, x, None, &mut builder);
 
         let resolved = mock_resolved(&builder);
         let ir = normalize(builder, path_expr, &resolved);
@@ -700,14 +700,15 @@ mod tests {
         let mut builder = TreeBuilder::new();
         let mut resolved = ResolvedNodes::default();
 
-        let x = interner.intern("x");
+        let x_name = interner.intern("x");
+        let x = SelectExpr::record(x_name, &mut builder);
         let x_sym = ValueSym::new();
 
         // Build: let x = 42 in x
 
-        let inside = node::PathExpr::new_in(None, x, Vec::new(), &mut builder);
+        let inside = node::QualifiedExpr::new_in(None, x, None, &mut builder);
         let value = builder.insert(node::LiteralExpr::Num(42.0));
-        let let_expr = node::LetExpr::new_in(x, None, value, inside, &mut builder);
+        let let_expr = node::LetExpr::new_in(x_name, None, value, inside, &mut builder);
         resolved.insert_meta(let_expr, x_sym);
 
         let ir = normalize(builder, let_expr, &resolved);
@@ -724,16 +725,17 @@ mod tests {
         let mut builder = TreeBuilder::new();
         let mut resolved = ResolvedNodes::default();
 
-        let x = interner.intern("x");
+        let x_name = interner.intern("x");
+        let x = SelectExpr::record(x_name, &mut builder);
         let x_sym = ValueSym::new();
 
         // Build: (\x => x) 42  (identity function applied to 42)
 
         // Create the lambda parameter reference in body: x
-        let lambda_body = node::PathExpr::new_in(None, x, Vec::new(), &mut builder);
+        let lambda_body = node::QualifiedExpr::new_in(None, x, None, &mut builder);
 
         // Create the lambda: \x => x
-        let lambda_expr = node::LambdaExpr::new_in(x, None, lambda_body, &mut builder);
+        let lambda_expr = node::LambdaExpr::new_in(x_name, None, lambda_body, &mut builder);
         resolved.insert_meta(lambda_expr, x_sym); // Lambda gets parameter symbol
         let lambda = builder.insert(node::Expr::Lambda(lambda_expr));
 

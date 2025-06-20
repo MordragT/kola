@@ -78,3 +78,23 @@ pub fn symbol<'t>() -> impl KolaParser<'t, StrKey> + Clone {
         state.intern(s)
     })
 }
+
+pub fn lower_symbol<'t>() -> impl KolaParser<'t, StrKey> + Clone {
+    select! { Token::Symbol(s) if s.starts_with(char::is_lowercase) => s }.map_with(|s, e| {
+        let span = e.span();
+        let state: &mut State = e.state();
+
+        state.insert_token(SemanticToken::Symbol, span);
+        state.intern(s)
+    })
+}
+
+pub fn upper_symbol<'t>() -> impl KolaParser<'t, StrKey> + Clone {
+    select! { Token::Symbol(s) if s.starts_with(char::is_uppercase) => s }.map_with(|s, e| {
+        let span = e.span();
+        let state: &mut State = e.state();
+
+        state.insert_token(SemanticToken::Symbol, span);
+        state.intern(s)
+    })
+}
