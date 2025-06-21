@@ -60,12 +60,18 @@ pub enum Atom {
 
 pub type AtomSet = EnumSet<Atom>;
 
+/// Represents pattern matching sets for list types based on length constraints
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum ListSet {
+    /// Matches no lists
     Empty,
+    /// Matches all possible lists
     Universal,
+    /// Matches lists with specific exact lengths
     Exact(OrdSet<u32>),
+    /// Matches lists with length >= n
     AtLeast(u32),
+    /// Matches both exact lengths and lengths >= n
     Combined { exact: OrdSet<u32>, at_least: u32 },
 }
 
@@ -214,10 +220,14 @@ pub struct LabelledSet {
     pub set: Box<CoverSet>,
 }
 
+/// Represents pattern matching sets for row types (records/variants)
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum RowSet {
+    /// Matches empty rows only
     Empty,
+    /// Matches all possible rows
     Universal,
+    /// Matches rows with specific labeled fields
     Extension {
         head: LabelledSet,
         tail: Box<RowSet>,
@@ -227,11 +237,9 @@ pub enum RowSet {
 impl RowSet {
     pub fn union(self, other: Self) -> Self {
         match (self, other) {
-            // Universal absorbs everything
-            (RowSet::Universal, _) | (_, RowSet::Universal) => RowSet::Universal,
-            // Empty is identity
-            (RowSet::Empty, other) | (other, RowSet::Empty) => other,
-            // Extension ∪ Extension
+            (Self::Universal, _) | (_, Self::Universal) => Self::Universal,
+            (Self::Empty, other) | (other, Self::Empty) => other,
+
             (
                 RowSet::Extension {
                     head: head1,
@@ -243,7 +251,7 @@ impl RowSet {
                 },
             ) => {
                 if head1.label == head2.label {
-                    // Same label: union the coverages
+                    // Same label: union the sets
                     RowSet::Extension {
                         head: LabelledSet {
                             label: head1.label,
@@ -252,8 +260,7 @@ impl RowSet {
                         tail: Box::new((*tail1).union(*tail2)),
                     }
                 } else {
-                    // Different labels: need to reorder and merge
-                    // Add head1, then try to union tail1 with the full other row
+                    // Different labels: reorder by keeping head1 and merging the rest
                     RowSet::Extension {
                         head: head1,
                         tail: Box::new((*tail1).union(RowSet::Extension {
@@ -266,8 +273,8 @@ impl RowSet {
         }
     }
 
-    /// Check if this row coverage can cover all requirements of another row coverage.
-    /// This implements row reordering by searching for required labels recursively.
+    /// Check if this row set covers all requirements of another row set.
+    /// Implements row reordering by recursively searching for required labels.
     pub fn is_superset(&self, other: &Self) -> bool {
         match other {
             RowSet::Empty => true, // Empty row is always covered
@@ -280,48 +287,57 @@ impl RowSet {
         other.is_superset(self)
     }
 
-    /// Check if this row can cover a specific labeled requirement.
-    /// Searches through the row structure using reordering semantics.
+    /// Check if this row can match a specific labeled field.
+    /// Uses row reordering to search through the structure.
     fn covers_head(&self, other: &LabelledSet) -> bool {
         match self {
-            RowSet::Empty => false,    // Empty row cannot cover anything
-            RowSet::Universal => true, // Universal covers everything
+            RowSet::Empty => false,
+            RowSet::Universal => true,
             RowSet::Extension { head, .. } if head.label == other.label => {
+                // Found matching label - check if sets are compatible
                 head.set.is_superset(&other.set)
             }
-            RowSet::Extension { tail, .. } => tail.covers_head(other),
+            RowSet::Extension { tail, .. } => {
+                // Label not found in head - search in tail
+                tail.covers_head(other)
+            }
         }
     }
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
+/// Represents the set of values that patterns can match against
 pub enum CoverSet {
-    /// Covers all possible values, e.g., wildcard patterns
+    /// Matches nothing at all (universal empty)
+    Empty,
+    /// Matches all possible values (wildcard patterns)
     Universal,
-    /// Covers a finite set of values, e.g., specific literals or patterns
+    /// Matches a finite set of atomic values (literals)
     Atom(AtomSet),
-    /// Covers a row type with specific labels and their coverage
+    /// Matches row types with labeled fields
     Row(RowSet),
-    /// Covers list types with length-based coverage
+    /// Matches list types with length constraints
     List(ListSet),
-    /// Unknown coverage
+    /// Unknown or complex matching behavior
     Opaque,
 }
 
 impl CoverSet {
-    pub const EMPTY: Self = Self::Atom(AtomSet::new());
-
     pub fn as_atom_set(&self) -> Option<&AtomSet> {
         as_variant!(self, Self::Atom)
+    }
+
+    pub fn as_list_set(&self) -> Option<&ListSet> {
+        as_variant!(self, Self::List)
     }
 
     pub fn as_row_set(&self) -> Option<&RowSet> {
         as_variant!(self, Self::Row)
     }
 
-    /// Returns a set containing any elements present in either set.
     pub fn union(self, other: Self) -> Self {
         match (self, other) {
+            (Self::Empty, other) | (other, Self::Empty) => other,
             (Self::Universal, _) | (_, Self::Universal) => Self::Universal,
             (Self::Atom(a), Self::Atom(b)) => Self::Atom(a.union(b)),
             (Self::Row(a), Self::Row(b)) => Self::Row(a.union(b)),
@@ -330,29 +346,30 @@ impl CoverSet {
         }
     }
 
-    /// Returns true if the set is a superset of another, i.e., self contains at least all the values in other.
     pub fn is_superset(&self, other: &Self) -> bool {
         match (self, other) {
-            (Self::Universal, _) => true, // Universal covers everything
-            (Self::Atom(a), Self::Atom(b)) => a.is_superset(*b), // All required atoms present
-            (Self::Row(a), Self::Row(b)) => a.is_superset(&b), // Row coverage must be checked
-            (Self::List(a), Self::List(b)) => a.is_superset(b), // List coverage must be checked
-            (_, _) => false,              // Conservative
+            (_, Self::Empty) => true,
+            (Self::Empty, _) => false,
+            (Self::Universal, _) => true,
+            (Self::Atom(a), Self::Atom(b)) => a.is_superset(*b),
+            (Self::Row(a), Self::Row(b)) => a.is_superset(&b),
+            (Self::List(a), Self::List(b)) => a.is_superset(b),
+            (_, _) => false,
         }
     }
 
-    /// Returns true if the set is a subset of another, i.e., other contains at least all the values in self.
     pub fn is_subset(&self, other: &Self) -> bool {
         other.is_superset(self)
     }
 }
 
-pub trait RequiredCoverage {
-    fn required_coverage(&self) -> CoverSet;
+/// Types that can determine what pattern coverage they require for exhaustiveness
+pub trait RequiredSet {
+    fn required_set(&self) -> CoverSet;
 }
 
-impl RequiredCoverage for PrimitiveType {
-    fn required_coverage(&self) -> CoverSet {
+impl RequiredSet for PrimitiveType {
+    fn required_set(&self) -> CoverSet {
         match self {
             PrimitiveType::Unit => CoverSet::Atom(EnumSet::only(Atom::Unit)),
             PrimitiveType::Bool => CoverSet::Atom(Atom::True | Atom::False),
@@ -363,8 +380,8 @@ impl RequiredCoverage for PrimitiveType {
     }
 }
 
-impl RequiredCoverage for ListType {
-    fn required_coverage(&self) -> CoverSet {
+impl RequiredSet for ListType {
+    fn required_set(&self) -> CoverSet {
         CoverSet::List(ListSet::Universal)
     }
 }
@@ -387,55 +404,56 @@ impl RequiredCoverage for ListType {
 /// ## Exhaustiveness Strategy
 ///
 /// For exhaustiveness checking, the presence or absence of a row variable determines
-/// the required coverage:
+/// the required set:
 ///
-/// 1. **Polymorphic rows** (with row variable): Require `Coverage::Universal`
+/// 1. **Polymorphic rows** (with row variable): Require `Universal` set
 ///    because unknown cases/fields may exist
-/// 2. **Exact rows** (no row variable): Require coverage of all known cases/fields
+/// 2. **Exact rows** (no row variable): Require set covering all known cases/fields
 ///    because the set is finite and known
-impl RequiredCoverage for RowType {
-    fn required_coverage(&self) -> CoverSet {
-        let row_coverage = match self {
+impl RequiredSet for RowType {
+    fn required_set(&self) -> CoverSet {
+        let row_set = match self {
             RowType::Empty => RowSet::Empty,
             RowType::Extension { head, tail } => {
-                let head_coverage = LabelledSet {
+                let head_set = LabelledSet {
                     label: head.label,
-                    set: Box::new(head.ty.required_coverage()),
+                    set: Box::new(head.ty.required_set()),
                 };
-                let tail_coverage = match tail.required_coverage() {
+                let tail_set = match tail.required_set() {
                     CoverSet::Row(row) => row,
-                    _ => panic!("Expected row coverage for tail"),
+                    _ => panic!("Expected row set for tail"),
                 };
 
                 RowSet::Extension {
-                    head: head_coverage,
-                    tail: Box::new(tail_coverage),
+                    head: head_set,
+                    tail: Box::new(tail_set),
                 }
             }
         };
 
-        CoverSet::Row(row_coverage)
+        CoverSet::Row(row_set)
     }
 }
 
-impl RequiredCoverage for MonoType {
-    fn required_coverage(&self) -> CoverSet {
+impl RequiredSet for MonoType {
+    fn required_set(&self) -> CoverSet {
         match self {
-            MonoType::Primitive(primitive) => primitive.required_coverage(),
-            MonoType::List(list) => list.required_coverage(),
-            MonoType::Row(row) => row.required_coverage(),
+            MonoType::Primitive(primitive) => primitive.required_set(),
+            MonoType::List(list) => list.required_set(),
+            MonoType::Row(row) => row.required_set(),
             MonoType::Var(_) => CoverSet::Universal, // Type variables are universal
             MonoType::Func(_) => CoverSet::Opaque,
         }
     }
 }
 
-pub trait ActualCoverage {
-    fn actual_coverage(&self, tree: &impl TreeView) -> CoverSet;
+/// Patterns that can determine what values they actually cover
+pub trait ActualSet {
+    fn actual_set(&self, tree: &impl TreeView) -> CoverSet;
 }
 
-impl ActualCoverage for Id<node::LiteralPat> {
-    fn actual_coverage(&self, tree: &impl TreeView) -> CoverSet {
+impl ActualSet for Id<node::LiteralPat> {
+    fn actual_set(&self, tree: &impl TreeView) -> CoverSet {
         match *self.get(tree) {
             node::LiteralPat::Bool(true) => CoverSet::Atom(Atom::True.into()),
             node::LiteralPat::Bool(false) => CoverSet::Atom(Atom::False.into()),
@@ -445,8 +463,8 @@ impl ActualCoverage for Id<node::LiteralPat> {
     }
 }
 
-impl ActualCoverage for Id<node::ListPat> {
-    fn actual_coverage(&self, tree: &impl TreeView) -> CoverSet {
+impl ActualSet for Id<node::ListPat> {
+    fn actual_set(&self, tree: &impl TreeView) -> CoverSet {
         let elements = &self.get(tree).0;
 
         if elements.is_empty() {
@@ -481,73 +499,70 @@ impl ActualCoverage for Id<node::ListPat> {
     }
 }
 
-impl ActualCoverage for Id<node::RecordPat> {
-    fn actual_coverage(&self, tree: &impl TreeView) -> CoverSet {
+impl ActualSet for Id<node::RecordPat> {
+    fn actual_set(&self, tree: &impl TreeView) -> CoverSet {
         let node::RecordPat { fields, polymorph } = self.get(tree);
 
-        // If the record pattern is polymorphic, the tail is universal coverage
         let tail = if *polymorph {
             RowSet::Universal
         } else {
             RowSet::Empty
         };
 
-        // Process fields in reverse order to build the row coverage correctly
-        let row_coverage = fields.iter().rev().fold(tail, |accu, field| {
+        // Process fields in reverse order to build the row set correctly
+        let row_set = fields.iter().rev().fold(tail, |accu, field| {
             let node::RecordFieldPat { field, pat } = field.get(tree);
             let label = field.get(tree).0;
-            // Lack of a pattern means binding and therefore universal coverage
-            let coverage = pat
-                .map(|pat| pat.actual_coverage(tree))
+            let set = pat
+                .map(|pat| pat.actual_set(tree))
                 .unwrap_or(CoverSet::Universal);
 
             RowSet::Extension {
                 head: LabelledSet {
                     label,
-                    set: Box::new(coverage),
+                    set: Box::new(set),
                 },
                 tail: Box::new(accu),
             }
         });
 
-        CoverSet::Row(row_coverage)
+        CoverSet::Row(row_set)
     }
 }
 
-impl ActualCoverage for Id<node::VariantPat> {
-    fn actual_coverage(&self, tree: &impl TreeView) -> CoverSet {
+impl ActualSet for Id<node::VariantPat> {
+    fn actual_set(&self, tree: &impl TreeView) -> CoverSet {
         let tags = &self.get(tree).0;
 
-        let row_coverage = tags.iter().rev().fold(RowSet::Empty, |accu, tag| {
+        let row_set = tags.iter().rev().fold(RowSet::Empty, |accu, tag| {
             let node::VariantTagPat { tag, pat } = tag.get(tree);
             let label = tag.get(tree).0;
-            // Lack of pattern means tag has no value and therefore only Unit coverage
-            let coverage = pat
-                .map(|pat| pat.actual_coverage(tree))
+            let set = pat
+                .map(|pat| pat.actual_set(tree))
                 .unwrap_or(CoverSet::Atom(Atom::Unit.into()));
 
             RowSet::Extension {
                 head: LabelledSet {
                     label,
-                    set: Box::new(coverage),
+                    set: Box::new(set),
                 },
                 tail: Box::new(accu),
             }
         });
 
-        CoverSet::Row(row_coverage)
+        CoverSet::Row(row_set)
     }
 }
 
-impl ActualCoverage for Id<node::Pat> {
-    fn actual_coverage(&self, tree: &impl TreeView) -> CoverSet {
+impl ActualSet for Id<node::Pat> {
+    fn actual_set(&self, tree: &impl TreeView) -> CoverSet {
         match *self.get(tree) {
             node::Pat::Error(_) => todo!(),
             node::Pat::Any(_) | node::Pat::Bind(_) => CoverSet::Universal,
-            node::Pat::Literal(lit) => lit.actual_coverage(tree),
-            node::Pat::List(list) => list.actual_coverage(tree),
-            node::Pat::Record(record) => record.actual_coverage(tree),
-            node::Pat::Variant(variant) => variant.actual_coverage(tree),
+            node::Pat::Literal(lit) => lit.actual_set(tree),
+            node::Pat::List(list) => list.actual_set(tree),
+            node::Pat::Record(record) => record.actual_set(tree),
+            node::Pat::Variant(variant) => variant.actual_set(tree),
         }
     }
 }
@@ -575,20 +590,20 @@ impl<'a, T: TreeView> ExhaustChecker<'a, T> {
         let node::CaseExpr { source, branches } = self.case_id.get(self.tree);
         let source_type = self.types.meta(*source);
 
-        let actual_coverage = branches
+        let actual_set = branches
             .iter()
             .map(|&branch_id| {
                 let branch = branch_id.get(self.tree);
-                dbg!(branch.pat.actual_coverage(self.tree))
+                dbg!(branch.pat.actual_set(self.tree))
             })
-            .fold(CoverSet::EMPTY, |acc, cov| acc.union(cov));
-        dbg!(&actual_coverage);
+            .fold(CoverSet::Empty, |acc, set| acc.union(set));
+        dbg!(&actual_set);
 
-        let required_coverage = source_type.required_coverage();
-        dbg!(&required_coverage);
+        let required_set = source_type.required_set();
+        dbg!(&required_set);
 
-        if dbg!(actual_coverage.is_superset(&required_coverage)) {
-            Ok(()) // Exhaustive - actual covers all required
+        if dbg!(actual_set.is_superset(&required_set)) {
+            Ok(())
         } else {
             Err(self.error(source_type.clone()))
         }
