@@ -48,7 +48,7 @@ where
         &resolved,
     );
 
-    let mut types = typer.run(&tree, &mut Report::new()).unwrap();
+    let (mut types, _) = typer.run(&tree, &mut Report::new()).unwrap();
 
     let mut subs = Substitution::empty();
     let mut kind_env = KindEnv::new();

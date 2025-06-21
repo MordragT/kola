@@ -230,9 +230,9 @@ pub trait Visitor<T: TreeView> {
         id: Id<node::VariantTagPat>,
         tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
-        let node::VariantTagPat { case, pat } = id.get(tree);
+        let node::VariantTagPat { tag, pat } = id.get(tree);
 
-        self.visit_value_name(*case, tree)?;
+        self.visit_value_name(*tag, tree)?;
         if let Some(pat) = pat {
             self.visit_pat(*pat, tree)?;
         }

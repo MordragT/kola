@@ -402,7 +402,7 @@ pub fn pat_parser<'t>() -> impl KolaParser<'t, Id<node::Pat>> + Clone {
         // Variant case pattern
         let case = upper_value_name_parser()
             .then(ctrl(CtrlT::COLON).ignore_then(pat.clone()).or_not())
-            .map_to_node(|(case, pat)| node::VariantTagPat { case, pat });
+            .map_to_node(|(case, pat)| node::VariantTagPat { tag: case, pat });
 
         let variant = nested_parser(
             case.separated_by(ctrl(CtrlT::COMMA))

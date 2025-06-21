@@ -28,6 +28,7 @@ pub struct Typer<'a, N> {
     root_id: Id<N>,
     spans: Rc<Locations>,
     types: TypedNodes,
+    cases: Vec<Id<node::CaseExpr>>, // TODO maybe proper wrapper
     local_env: LocalTypeEnv,
     module_env: &'a ModuleTypeEnv,
     global_env: &'a GlobalTypeEnv,
@@ -51,6 +52,7 @@ impl<'a, N> Typer<'a, N> {
             local_env: LocalTypeEnv::new(),
             module_env: module_scope,
             types: TypedNodes::new(),
+            cases: Vec::new(),
             spans,
             global_env: env,
             interner,
@@ -59,7 +61,11 @@ impl<'a, N> Typer<'a, N> {
         }
     }
 
-    pub fn run<Tree>(mut self, tree: &Tree, report: &mut Report) -> Option<TypedNodes>
+    pub fn run<Tree>(
+        mut self,
+        tree: &Tree,
+        report: &mut Report,
+    ) -> Option<(TypedNodes, Vec<Id<node::CaseExpr>>)>
     where
         Tree: TreeView,
         Id<N>: Visitable<Tree>,
@@ -74,7 +80,7 @@ impl<'a, N> Typer<'a, N> {
             ControlFlow::Continue(()) => (),
         }
 
-        Some(self.types)
+        Some((self.types, self.cases))
     }
 
     #[inline]
@@ -1447,6 +1453,10 @@ where
     ) -> ControlFlow<Self::BreakValue> {
         let node::CaseExpr { source, branches } = id.get(tree);
         let span = self.span(id);
+
+        // Store the id of case expressions
+        // for exhaustive checks after substutition and before generalization
+        self.cases.push(id);
 
         // Step 1: Type the source expression to get discriminant type
         self.visit_expr(*source, tree)?;

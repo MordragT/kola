@@ -354,13 +354,13 @@ impl<'a> Notate<'a> for NodePrinter<'a, RecordPat> {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct VariantTagPat {
-    pub case: Id<ValueName>,
+    pub tag: Id<ValueName>,
     pub pat: Option<Id<Pat>>,
 }
 
 impl VariantTagPat {
     pub fn case(self, tree: &impl TreeView) -> ValueName {
-        *self.case.get(tree)
+        *self.tag.get(tree)
     }
 
     pub fn pat(self, tree: &impl TreeView) -> Option<Pat> {
@@ -370,11 +370,11 @@ impl VariantTagPat {
 
 impl<'a> Notate<'a> for NodePrinter<'a, VariantTagPat> {
     fn notate(&self, arena: &'a Bump) -> Notation<'a> {
-        let VariantTagPat { case, pat } = *self.value;
+        let VariantTagPat { tag, pat } = *self.value;
 
         let head = "VariantCasePat".blue().display_in(arena);
 
-        let case = self.to_id(case).notate(arena);
+        let case = self.to_id(tag).notate(arena);
         let pat = pat.map(|v| self.to_id(v).notate(arena));
 
         let single = [

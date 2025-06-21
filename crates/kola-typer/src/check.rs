@@ -53,6 +53,7 @@ use kola_utils::{fmt::StrInternerExt, interner::StrInterner};
 use log::debug;
 
 use crate::{
+    analysis::exhaust_check_all,
     constraints::Constraints,
     env::{GlobalTypeEnv, KindEnv, ModuleTypeEnv},
     phase::{TypeAnnotations, TypedNodes},
@@ -138,7 +139,7 @@ pub fn type_check(
                 &module_scope.resolved,
             );
 
-            let Some(typed_nodes) = typer.run(tree, report) else {
+            let Some((typed_nodes, _)) = typer.run(tree, report) else {
                 // If there are errors in type checking types, break out early
                 break;
             };
@@ -177,7 +178,7 @@ pub fn type_check(
                 &module_scope.resolved,
             );
 
-            let Some(mut typed_nodes) = typer.run(tree, report) else {
+            let Some((mut typed_nodes, cases)) = typer.run(tree, report) else {
                 // If there are errors in type checking types, break out early
                 break;
             };
@@ -188,10 +189,18 @@ pub fn type_check(
                 break;
             }
 
-            let actual_t = typed_nodes.meta(id).to_mono().unwrap();
+            // Apply the substitution to the typed nodes
+            typed_nodes.apply_mut(&mut subs);
+
+            // Check for exhaustiveness in case expressions
+            if let Err(errs) = exhaust_check_all(&cases, tree, &typed_nodes, &*spans) {
+                report.extend_diagnostics(errs.into_iter().map(Into::into));
+                break;
+            }
 
             // Generalize immediately (making it available for subsequent binds)
-            let poly_type = actual_t.apply(&mut subs).generalize(&[]); // TODO should bound be something ? &type_env.bound_vars()
+            let actual_t = typed_nodes.meta(id).to_mono().unwrap();
+            let poly_type = actual_t.generalize(&[]); // TODO should bound be something ? &type_env.bound_vars()
             module_env.insert(value_sym, poly_type.clone()); // replace
 
             // Update annotations with the final type

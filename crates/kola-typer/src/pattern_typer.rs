@@ -255,21 +255,21 @@ where
 
         // Process cases in reverse to build the row type correctly (inside-out)
         for &case_id in cases.iter().rev() {
-            let node::VariantTagPat { case, pat } = *case_id.get(tree);
-            let case_name = case.get(tree).0;
+            let node::VariantTagPat { tag, pat } = *case_id.get(tree);
+            let tag_name = tag.get(tree).0;
 
             // Create a fresh type variable for this case
-            let case_type = MonoType::variable();
+            let tag_type = MonoType::variable();
 
             // Create the labeled type for this case
-            let labeled_case = LabeledType::new(case_name, case_type.clone());
+            let labeled_case = LabeledType::new(tag_name, tag_type.clone());
 
             // Extend the variant type with this case
             expected_variant_type = MonoType::row(labeled_case, expected_variant_type);
 
             // If there's a pattern for this case, type it against the case type
             if let Some(pat_id) = pat {
-                let case_typer = PatternTyper::new(self.env, self.cons, case_type, self.span);
+                let case_typer = PatternTyper::new(self.env, self.cons, tag_type, self.span);
                 case_typer.run::<T, node::Pat>(pat_id, tree);
             }
             // If no pattern, the case has Unit type (no additional constraint needed)
@@ -307,7 +307,6 @@ mod tests {
 
     #[test]
     fn case_literal_pattern() {
-        let mut interner = StrInterner::new();
         let mut builder = TreeBuilder::new();
 
         // case 42 of 42 => true, _ => false
