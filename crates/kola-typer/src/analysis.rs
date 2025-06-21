@@ -1,22 +1,28 @@
 use enumset::{EnumSet, EnumSetType};
-use kola_span::{IntoDiagnostic, Loc, Located};
+use kola_span::{Diagnostic, Loc};
 use kola_syntax::loc::Locations;
 use kola_tree::prelude::*;
 use kola_utils::errors::Errors;
+use thiserror::Error;
 
 use crate::{
     phase::TypedNodes,
     types::{ListType, MonoType, PrimitiveType, RowType},
 };
 
-// TODO impl Error Display and common traits
+#[derive(Debug, Error, Clone, PartialEq, Eq, Hash)]
+#[error("Exhaustiveness error in case expression for {mono_t}")]
 pub struct ExhaustError {
     pub case: Id<node::CaseExpr>,
-    pub message: String, // replace with Kind
+    pub mono_t: MonoType,
     pub loc: Loc,
 }
 
-// impl IntoDiagnostic for ExhaustivenessError
+impl From<ExhaustError> for Diagnostic {
+    fn from(error: ExhaustError) -> Self {
+        Diagnostic::error(error.loc, error.to_string())
+    }
+}
 
 pub type ExhaustResult<T> = Result<T, ExhaustError>;
 
@@ -49,6 +55,8 @@ pub enum Atom {
     True,
     False,
     Unit,
+    EmptyList,
+    NonEmptyList,
 }
 
 pub type FiniteSet = EnumSet<Atom>;
@@ -95,25 +103,68 @@ impl RequiredCoverage for PrimitiveType {
         match self {
             PrimitiveType::Unit => Coverage::Finite(EnumSet::only(Atom::Unit)),
             PrimitiveType::Bool => Coverage::Finite(Atom::True | Atom::False),
-            PrimitiveType::Num => Coverage::Opaque,
-            PrimitiveType::Char => Coverage::Opaque,
-            PrimitiveType::Str => Coverage::Opaque,
+            PrimitiveType::Num => Coverage::Universal,
+            PrimitiveType::Char => Coverage::Universal,
+            PrimitiveType::Str => Coverage::Universal,
         }
     }
 }
 
-pub fn pattern_coverage(pat: Id<node::Pat>, tree: &impl TreeView) -> Coverage {
-    let literal_coverage = |lit: Id<node::LiteralPat>| match lit.get(tree) {
-        node::LiteralPat::Bool(true) => Coverage::Finite(Atom::True.into()),
-        node::LiteralPat::Bool(false) => Coverage::Finite(Atom::False.into()),
-        node::LiteralPat::Unit => Coverage::Finite(Atom::Unit.into()),
-        _ => Coverage::Opaque, // Other literals for now
-    };
+impl RequiredCoverage for ListType {
+    fn required_coverage(&self) -> Coverage {
+        Coverage::Finite(Atom::EmptyList | Atom::NonEmptyList)
+    }
+}
 
-    match *pat.get(tree) {
-        node::Pat::Any(_) | node::Pat::Bind(_) => Coverage::Universal,
-        node::Pat::Literal(lit) => literal_coverage(lit),
-        _ => Coverage::Opaque, // Complex patterns for now
+impl RequiredCoverage for MonoType {
+    fn required_coverage(&self) -> Coverage {
+        match self {
+            MonoType::Primitive(p) => p.required_coverage(),
+            MonoType::Func(_) => todo!(),
+            MonoType::List(_) => todo!(),
+            MonoType::Row(_) => todo!(),
+            MonoType::Var(_) => todo!(),
+        }
+    }
+}
+
+pub trait ActualCoverage {
+    fn actual_coverage(&self, tree: &impl TreeView) -> Coverage;
+}
+
+impl ActualCoverage for Id<node::LiteralPat> {
+    fn actual_coverage(&self, tree: &impl TreeView) -> Coverage {
+        match *self.get(tree) {
+            node::LiteralPat::Bool(true) => Coverage::Finite(Atom::True.into()),
+            node::LiteralPat::Bool(false) => Coverage::Finite(Atom::False.into()),
+            node::LiteralPat::Unit => Coverage::Finite(Atom::Unit.into()),
+            _ => Coverage::Opaque, // Other literals for now
+        }
+    }
+}
+
+impl ActualCoverage for Id<node::ListPat> {
+    fn actual_coverage(&self, tree: &impl TreeView) -> Coverage {
+        let elements = &self.get(tree).0;
+
+        if elements.is_empty() {
+            // Empty list pattern: []
+            Coverage::Finite(Atom::EmptyList.into())
+        } else {
+            // Non-empty list pattern: [x, y, ...] or [x, ...rest]
+            Coverage::Finite(Atom::NonEmptyList.into())
+        }
+    }
+}
+
+impl ActualCoverage for Id<node::Pat> {
+    fn actual_coverage(&self, tree: &impl TreeView) -> Coverage {
+        match *self.get(tree) {
+            node::Pat::Any(_) | node::Pat::Bind(_) => Coverage::Universal,
+            node::Pat::Literal(lit) => lit.actual_coverage(tree),
+            node::Pat::List(list) => list.actual_coverage(tree),
+            _ => Coverage::Opaque, // Complex patterns for now
+        }
     }
 }
 
@@ -143,47 +194,25 @@ impl<'a, T: TreeView> ExhaustChecker<'a, T> {
             .iter()
             .map(|&branch_id| {
                 let branch = branch_id.get(self.tree);
-                pattern_coverage(branch.pat, self.tree)
+                branch.pat.actual_coverage(self.tree)
             })
             .fold(Coverage::Finite(FiniteSet::new()), |acc, cov| {
                 acc.union(cov)
             });
 
-        match source_type {
-            MonoType::Primitive(p) => self.check_primitive(p, actual_coverage),
-            MonoType::Func(f) => todo!(),
-            MonoType::List(l) => self.check_list(l, actual_coverage),
-            MonoType::Row(r) => self.check_row(r, actual_coverage),
-            MonoType::Var(v) => todo!(),
-        }
-    }
-
-    pub fn check_primitive(
-        &self,
-        primitive: &PrimitiveType,
-        actual_coverage: Coverage,
-    ) -> ExhaustResult<()> {
-        let required_coverage = primitive.required_coverage();
+        let required_coverage = source_type.required_coverage();
 
         if actual_coverage.is_superset(required_coverage) {
             Ok(()) // Exhaustive - actual covers all required
         } else {
-            Err(self.error(format!("Non-exhaustive patterns for {:?}", primitive)))
+            Err(self.error(source_type.clone()))
         }
     }
 
-    pub fn check_list(&self, list: &ListType, actual_coverage: Coverage) -> ExhaustResult<()> {
-        todo!()
-    }
-
-    pub fn check_row(&self, row: &RowType, actual_coverage: Coverage) -> ExhaustResult<()> {
-        todo!()
-    }
-
-    fn error(&self, message: impl Into<String>) -> ExhaustError {
+    fn error(&self, mono_t: MonoType) -> ExhaustError {
         ExhaustError {
             case: self.case_id,
-            message: message.into(),
+            mono_t,
             loc: self.loc,
         }
     }
