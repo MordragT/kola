@@ -32,9 +32,17 @@
     #a = { a = 1, b = 2 },
     #main = { a : { a : Num, b : Num } | +c = 3 | a = 4 },
 
-    main = let data = [1, 2, 3] in
-        case data of
-            [] => "empty",
-            [x] => "single",
-            [a, b, ...rest] => "multiple",
+    #main = let data = [1, 2, 3] in
+    #    case data of
+    #        [] => "empty",
+    #        [x] => "single",
+            #[a, b, ...rest] => "multiple",
+
+
+    type Person = forall a . { name : Str | a },
+
+    alice : forall a . Person a = { name = "Alice", age = 30 },
+
+    main = case alice of
+        { name, age } => "hallo", #name,
 }

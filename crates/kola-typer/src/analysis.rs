@@ -1,3 +1,44 @@
+//! # Pattern Matching Exhaustiveness Analysis
+//!
+//! This module implements exhaustiveness checking for pattern matching in case expressions.
+//! The algorithm determines whether a set of patterns covers all possible values of a given type.
+//!
+//! ## Algorithm Overview
+//!
+//! The exhaustiveness checker works by:
+//!
+//! 1. **Computing Required Sets**: For each type, determine what pattern coverage is needed
+//!    for exhaustiveness (via `RequiredSet` trait)
+//!
+//! 2. **Computing Actual Sets**: For each pattern, determine what values it actually covers
+//!    (via `ActualSet` trait)
+//!
+//! 3. **Union Operation**: Combine all pattern sets using set union to get total coverage
+//!
+//! 4. **Superset Check**: Verify that actual coverage is a superset of required coverage
+//!
+//! ## Set Types
+//!
+//! - **`CoverSet`**: Top-level abstraction representing what values patterns can match
+//! - **`AtomSet`**: Finite sets of atomic values (booleans, unit, etc.)
+//! - **`ListSet`**: Length-based coverage for lists (exact lengths, at-least constraints)
+//! - **`RowSet`**: Label-based coverage for records and variants (with row reordering)
+//!
+//! ## Key Algorithms
+//!
+//! ### List Exhaustiveness
+//! Lists are analyzed by length constraints:
+//! - `[]` covers exactly length 0
+//! - `[a, b]` covers exactly length 2
+//! - `[a, ...rest]` covers lengths ≥ 1
+//! - Union: `{0, 1} ∪ {2+} = Universal`
+//!
+//! ### Row Exhaustiveness
+//! Records/variants use row reordering for label matching:
+//! - `{x: Bool, y: Int}` requires coverage of both fields
+//! - Row polymorphism (`{x: Bool, ...}`) requires universal tail coverage
+//! - Labels can appear in any order due to reordering semantics
+
 use enumset::{EnumSet, EnumSetType};
 use kola_collections::OrdSet;
 use kola_span::{Diagnostic, Loc};
@@ -421,6 +462,7 @@ impl RequiredSet for RowType {
                 };
                 let tail_set = match tail.required_set() {
                     CoverSet::Row(row) => row,
+                    CoverSet::Universal => RowSet::Universal,
                     _ => panic!("Expected row set for tail"),
                 };
 
@@ -441,7 +483,7 @@ impl RequiredSet for MonoType {
             MonoType::Primitive(primitive) => primitive.required_set(),
             MonoType::List(list) => list.required_set(),
             MonoType::Row(row) => row.required_set(),
-            MonoType::Var(_) => CoverSet::Universal, // Type variables are universal
+            MonoType::Var(_) => CoverSet::Universal, // Conservative but correct
             MonoType::Func(_) => CoverSet::Opaque,
         }
     }
