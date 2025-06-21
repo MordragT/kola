@@ -177,6 +177,18 @@ pub enum ListElPat {
     Spread(Option<Id<ValueName>>),
 }
 
+impl ListElPat {
+    pub fn pat(pat: impl Into<Pat>, builder: &mut TreeBuilder) -> Id<Self> {
+        let pat_id = builder.insert(pat.into());
+        builder.insert(Self::Pat(pat_id))
+    }
+
+    pub fn spread(name: Option<ValueName>, builder: &mut TreeBuilder) -> Id<Self> {
+        let name = name.map(|n| builder.insert(n));
+        builder.insert(Self::Spread(name))
+    }
+}
+
 impl<'a> Notate<'a> for NodePrinter<'a, ListElPat> {
     fn notate(&self, arena: &'a Bump) -> Notation<'a> {
         match *self.value {
@@ -284,16 +296,27 @@ pub struct RecordPat {
     pub polymorph: bool,
 }
 
-// impl RecordPat {
-//     pub fn get(&self, name: impl AsRef<str>, tree: &impl TreeView) -> Option<RecordFieldPat> {
-//         self.0.iter().find_map(|id| {
-//             let field = id.get(tree);
-//             (field.field(tree) == name.as_ref())
-//                 .then_some(field)
-//                 .copied()
-//         })
-//     }
-// }
+impl RecordPat {
+    pub fn new_in<I>(fields: I, polymorph: bool, builder: &mut TreeBuilder) -> Id<Self>
+    where
+        I: IntoIterator<Item = RecordFieldPat>,
+    {
+        let fields = fields
+            .into_iter()
+            .map(|field| builder.insert(field))
+            .collect();
+        builder.insert(Self { fields, polymorph })
+    }
+
+    // pub fn get(&self, name: impl AsRef<str>, tree: &impl TreeView) -> Option<RecordFieldPat> {
+    //     self.fields.iter().find_map(|id| {
+    //         let field = id.get(tree);
+    //         (field.field(tree) == name.as_ref())
+    //             .then_some(field)
+    //             .copied()
+    //     })
+    // }
+}
 
 impl<'a> Notate<'a> for NodePrinter<'a, RecordPat> {
     fn notate(&self, arena: &'a Bump) -> Notation<'a> {

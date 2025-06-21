@@ -119,7 +119,7 @@ pub fn type_check(
         let value_order = &value_orders[&module_sym];
         let type_order = &type_orders[&module_sym];
 
-        let mut subs = Substitution::empty();
+        let mut subs = Substitution::empty(); // TODO better if this is bind local ?
         let mut module_annotations = TypedNodes::new();
         let mut module_env = ModuleTypeEnv::new();
 

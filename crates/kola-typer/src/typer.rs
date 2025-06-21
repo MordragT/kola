@@ -682,7 +682,7 @@ where
                 self.cons.constrain(first_t.clone(), elem_t, span);
             }
         } else {
-            todo!() // Handle empty lists by checking if it has annotations
+            todo!("Handle empty lists by checking if it has annotations")
         }
 
         ControlFlow::Continue(())
@@ -1670,81 +1670,18 @@ where
 
 #[cfg(test)]
 mod tests {
-    use std::{ops::ControlFlow, rc::Rc};
 
-    use camino::Utf8PathBuf;
-    use kola_resolver::phase::ResolvedNodes;
-    use kola_span::{Loc, Located, SourceId, Span};
-    use kola_syntax::loc::Locations;
     use kola_tree::prelude::*;
-    use kola_utils::interner::{PathInterner, StrInterner};
+    use kola_utils::interner::StrInterner;
 
-    use super::{TypedNodes, Typer};
-    use crate::{
-        env::{GlobalTypeEnv, KindEnv, ModuleTypeEnv},
-        error::{TypeError, TypeErrors},
-        prelude::{Substitutable, Substitution},
-        typer::Constraints,
-        types::*,
-    };
-
-    fn mocked_source() -> SourceId {
-        let mut interner = PathInterner::new();
-        interner.intern(Utf8PathBuf::from("test"))
-    }
-
-    fn mocked_spans(source_id: SourceId, tree: &impl TreeView) -> Locations {
-        let span = Loc::new(source_id, Span::new(0, 0));
-        tree.metadata_with(|node| Meta::default_with(span, node.kind()))
-    }
-
-    fn solve<T>(tree: TreeBuilder, root_id: Id<T>) -> Result<TypedNodes, Located<TypeErrors>>
-    where
-        Id<T>: Visitable<TreeBuilder>,
-    {
-        let source_id = mocked_source();
-        let spans = Rc::new(mocked_spans(source_id, &tree));
-
-        let type_env = GlobalTypeEnv::new();
-        let module_scope = ModuleTypeEnv::new();
-        let interner = StrInterner::new(); // TODO for tests with builtin types the interner should be passed
-        let resolved = ResolvedNodes::new();
-
-        let mut cons = Constraints::new();
-        let mut typer = Typer::new(
-            root_id,
-            spans,
-            &mut cons,
-            &module_scope,
-            &type_env,
-            &interner,
-            &resolved,
-        );
-
-        match root_id.visit_by(&mut typer, &tree) {
-            ControlFlow::Break(e) => {
-                panic!("Error during type checking: {}", e);
-            }
-            ControlFlow::Continue(()) => (),
-        }
-
-        let Typer { mut types, .. } = typer;
-
-        let mut subs = Substitution::empty();
-        let mut kind_env = KindEnv::new();
-
-        cons.solve(&mut subs, &mut kind_env)?;
-        types.apply_mut(&mut subs);
-
-        Ok(types)
-    }
+    use crate::{error::TypeError, test::run_typer, types::*};
 
     #[test]
     fn literal() {
         let mut builder = TreeBuilder::new();
         let lit = builder.insert(node::LiteralExpr::Num(10.0));
 
-        let types = solve(builder, lit).unwrap();
+        let types = run_typer(builder, lit).unwrap();
 
         assert_eq!(types.meta(lit), &MonoType::NUM);
     }
@@ -1756,7 +1693,7 @@ mod tests {
         let target = builder.insert(node::LiteralExpr::Num(10.0));
         let unary = node::UnaryExpr::new_in(node::UnaryOp::Neg, target, &mut builder);
 
-        let types = solve(builder, unary).unwrap();
+        let types = run_typer(builder, unary).unwrap();
 
         assert_eq!(types.meta(unary), &MonoType::NUM);
     }
@@ -1768,7 +1705,7 @@ mod tests {
         let target = builder.insert(node::LiteralExpr::Num(10.0));
         let unary = node::UnaryExpr::new_in(node::UnaryOp::Not, target, &mut builder);
 
-        let (errors, _) = solve(builder, unary).unwrap_err();
+        let (errors, _) = run_typer(builder, unary).unwrap_err();
 
         assert_eq!(
             errors[0],
@@ -1787,7 +1724,7 @@ mod tests {
         let right = builder.insert(node::LiteralExpr::Num(10.0));
         let binary = node::BinaryExpr::new_in(node::BinaryOp::Eq, left, right, &mut builder);
 
-        let (errors, _) = solve(builder, binary).unwrap_err();
+        let (errors, _) = run_typer(builder, binary).unwrap_err();
 
         assert_eq!(
             errors[0],
@@ -1808,7 +1745,7 @@ mod tests {
         let inside = node::QualifiedExpr::new_in(None, x, None, &mut builder);
         let let_ = node::LetExpr::new_in(x, None, value, inside, &mut builder);
 
-        let types = solve(builder, let_).unwrap();
+        let types = run_typer(builder, let_).unwrap();
 
         assert_eq!(types.meta(let_), &MonoType::NUM);
     }
@@ -1822,7 +1759,7 @@ mod tests {
         let or = builder.insert(node::LiteralExpr::Num(10.0));
         let if_ = node::IfExpr::new_in(predicate, then, or, &mut builder);
 
-        let types = solve(builder, if_).unwrap();
+        let types = run_typer(builder, if_).unwrap();
 
         assert_eq!(types.meta(if_), &MonoType::NUM);
     }
@@ -1836,7 +1773,7 @@ mod tests {
         let or = builder.insert(node::LiteralExpr::Char('x'));
         let if_ = node::IfExpr::new_in(predicate, then, or, &mut builder);
 
-        let (errors, _) = solve(builder, if_).unwrap_err();
+        let (errors, _) = run_typer(builder, if_).unwrap_err();
 
         assert_eq!(
             errors[0],

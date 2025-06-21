@@ -111,7 +111,7 @@ where
     /// Bind pattern matches any type and binds the variable to that type.
     fn visit_bind_pat(&mut self, id: Id<node::BindPat>, tree: &T) -> ControlFlow<Self::BreakValue> {
         // Get the variable name from the bind pattern
-        let var_name = id.get(tree).0.clone();
+        let var_name = id.get(tree).0;
 
         // Bind the variable to the source type in the environment
         // This implements the rule: ∆;Γ ⊢ x ⇒ α ⊣ Γ[x : α]
@@ -273,6 +273,7 @@ where
                 case_typer.run::<T, node::Pat>(pat_id, tree);
             }
             // If no pattern, the case has Unit type (no additional constraint needed)
+            // TODO but I then must restrict the case type to be Unit ?
         }
 
         // Constrain the source type to match our expected variant type
@@ -293,5 +294,302 @@ where
             node::Pat::Record(record_id) => self.visit_record_pat(record_id, tree),
             node::Pat::Variant(variant_id) => self.visit_variant_pat(variant_id, tree),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+
+    use kola_tree::prelude::*;
+    use kola_utils::interner::StrInterner;
+
+    use crate::{error::TypeError, test::run_typer, types::*};
+
+    #[test]
+    fn case_literal_pattern() {
+        let mut interner = StrInterner::new();
+        let mut builder = TreeBuilder::new();
+
+        // case 42 of 42 => true, _ => false
+        let source = builder.insert(node::LiteralExpr::Num(42.0));
+
+        let pat1 = builder.insert(node::LiteralPat::Num(42.0));
+        let expr1 = builder.insert(node::LiteralExpr::Bool(true));
+        let branch1 = node::CaseBranch::new_in(pat1, expr1, &mut builder);
+
+        let pat2 = builder.insert(node::AnyPat);
+        let expr2 = builder.insert(node::LiteralExpr::Bool(false));
+        let branch2 = node::CaseBranch::new_in(pat2, expr2, &mut builder);
+
+        let case_expr = node::CaseExpr::new_in(source, vec![branch1, branch2], &mut builder);
+
+        let types = run_typer(builder, case_expr).unwrap();
+
+        assert_eq!(types.meta(case_expr), &MonoType::BOOL);
+    }
+
+    #[test]
+    fn case_literal_pattern_mismatch() {
+        let mut interner = StrInterner::new();
+        let mut builder = TreeBuilder::new();
+
+        // case "hello" of 42 => true, _ => false (should fail: string vs number)
+        let source = builder.insert(node::LiteralExpr::Str(interner.intern("hello")));
+
+        let pat1 = builder.insert(node::LiteralPat::Num(42.0));
+        let expr1 = builder.insert(node::LiteralExpr::Bool(true));
+        let branch1 = node::CaseBranch::new_in(pat1, expr1, &mut builder);
+
+        let case_expr = node::CaseExpr::new_in(source, vec![branch1], &mut builder);
+
+        let (errors, _) = run_typer(builder, case_expr).unwrap_err();
+
+        assert_eq!(
+            errors[0],
+            TypeError::CannotUnify {
+                expected: MonoType::STR,
+                actual: MonoType::NUM
+            }
+        );
+    }
+
+    #[test]
+    fn case_wildcard_pattern() {
+        let mut interner = StrInterner::new();
+        let mut builder = TreeBuilder::new();
+
+        // case 42 of _ => "anything"
+        let source = builder.insert(node::LiteralExpr::Num(42.0));
+        let pat = builder.insert(node::AnyPat);
+        let expr = builder.insert(node::LiteralExpr::Str(interner.intern("anything")));
+        let branch = node::CaseBranch::new_in(pat, expr, &mut builder);
+
+        let case_expr = node::CaseExpr::new_in(source, vec![branch], &mut builder);
+
+        let types = run_typer(builder, case_expr).unwrap();
+
+        assert_eq!(types.meta(case_expr), &MonoType::STR);
+    }
+
+    #[test]
+    fn case_bind_pattern() {
+        let mut interner = StrInterner::new();
+        let mut builder = TreeBuilder::new();
+
+        // case 42 of x => x
+        let source = builder.insert(node::LiteralExpr::Num(42.0));
+
+        let x = interner.intern("x");
+        let pat = builder.insert(node::BindPat(x));
+        let expr = node::QualifiedExpr::new_in(None, x, None, &mut builder);
+        let branch = node::CaseBranch::new_in(pat, expr, &mut builder);
+
+        let case_expr = node::CaseExpr::new_in(source, vec![branch], &mut builder);
+
+        let types = run_typer(builder, case_expr).unwrap();
+
+        assert_eq!(types.meta(case_expr), &MonoType::NUM);
+    }
+
+    #[test]
+    fn case_list_pattern_empty() {
+        let mut interner = StrInterner::new();
+        let mut builder = TreeBuilder::new();
+
+        // case [] of [] => "empty", _ => "not empty"
+        let source = node::ListExpr::empty_in(&mut builder);
+
+        let pat1 = builder.insert(node::ListPat(vec![]));
+        let expr1 = builder.insert(node::LiteralExpr::Str(interner.intern("empty")));
+        let branch1 = node::CaseBranch::new_in(pat1, expr1, &mut builder);
+
+        let pat2 = builder.insert(node::AnyPat);
+        let expr2 = builder.insert(node::LiteralExpr::Str(interner.intern("not empty")));
+        let branch2 = node::CaseBranch::new_in(pat2, expr2, &mut builder);
+
+        let case_expr = node::CaseExpr::new_in(source, vec![branch1, branch2], &mut builder);
+
+        let types = run_typer(builder, case_expr).unwrap();
+
+        assert_eq!(types.meta(case_expr), &MonoType::STR);
+    }
+
+    #[test]
+    fn case_list_pattern_with_elements() {
+        let mut interner = StrInterner::new();
+        let mut builder = TreeBuilder::new();
+
+        // case [1, 2, 3] of [x, y, z] => x
+        let elem1 = builder.insert(node::LiteralExpr::Num(1.0));
+        let elem2 = builder.insert(node::LiteralExpr::Num(2.0));
+        let elem3 = builder.insert(node::LiteralExpr::Num(3.0));
+        let source = node::ListExpr::new_in(vec![elem1, elem2, elem3], &mut builder);
+
+        let x = interner.intern("x");
+        let y = interner.intern("y");
+        let z = interner.intern("z");
+
+        let pat_x = builder.insert(node::BindPat(x));
+        let pat_y = builder.insert(node::BindPat(y));
+        let pat_z = builder.insert(node::BindPat(z));
+
+        let el_x = node::ListElPat::pat(pat_x, &mut builder);
+        let el_y = node::ListElPat::pat(pat_y, &mut builder);
+        let el_z = node::ListElPat::pat(pat_z, &mut builder);
+
+        let list_pat = builder.insert(node::ListPat(vec![el_x, el_y, el_z]));
+        let expr = node::QualifiedExpr::new_in(None, x, None, &mut builder);
+        let branch = node::CaseBranch::new_in(list_pat, expr, &mut builder);
+
+        let case_expr = node::CaseExpr::new_in(source, vec![branch], &mut builder);
+
+        let types = run_typer(builder, case_expr).unwrap();
+
+        assert_eq!(types.meta(case_expr), &MonoType::NUM);
+    }
+
+    #[test]
+    fn case_list_pattern_with_spread() {
+        let mut interner = StrInterner::new();
+        let mut builder = TreeBuilder::new();
+
+        // case [1, 2, 3] of [head, ...tail] => head
+        let elem1 = builder.insert(node::LiteralExpr::Num(1.0));
+        let elem2 = builder.insert(node::LiteralExpr::Num(2.0));
+        let elem3 = builder.insert(node::LiteralExpr::Num(3.0));
+        let source = node::ListExpr::new_in(vec![elem1, elem2, elem3], &mut builder);
+
+        let head = interner.intern("head");
+        let tail = interner.intern("tail");
+
+        let pat_head = builder.insert(node::BindPat(head));
+        let el_head = node::ListElPat::pat(pat_head, &mut builder);
+
+        let el_spread = node::ListElPat::spread(Some(tail.into()), &mut builder);
+
+        let list_pat = builder.insert(node::ListPat(vec![el_head, el_spread]));
+        let expr = node::QualifiedExpr::new_in(None, head, None, &mut builder);
+        let branch = node::CaseBranch::new_in(list_pat, expr, &mut builder);
+
+        let case_expr = node::CaseExpr::new_in(source, vec![branch], &mut builder);
+
+        let types = run_typer(builder, case_expr).unwrap();
+
+        assert_eq!(types.meta(case_expr), &MonoType::NUM);
+    }
+
+    #[test]
+    fn case_record_pattern_exact() {
+        let mut interner = StrInterner::new();
+        let mut builder = TreeBuilder::new();
+
+        // case {x = 10, y = 20} of {x, y} => x
+        let x_field = interner.intern("x");
+        let y_field = interner.intern("y");
+
+        let val_x = builder.insert(node::LiteralExpr::Num(10.0));
+        let val_y = builder.insert(node::LiteralExpr::Num(20.0));
+
+        let field_x = node::RecordField::new_in(x_field, None, val_x, &mut builder);
+        let field_y = node::RecordField::new_in(y_field, None, val_y, &mut builder);
+        let source = node::RecordExpr::new_in(vec![field_x, field_y], &mut builder);
+
+        // Pattern: {x, y} (shorthand for {x: x, y: y})
+        let pat_field_x = node::RecordFieldPat {
+            field: builder.insert(x_field.into()),
+            pat: None,
+        };
+        let pat_field_y = node::RecordFieldPat {
+            field: builder.insert(y_field.into()),
+            pat: None,
+        };
+
+        let record_pat = node::RecordPat::new_in([pat_field_x, pat_field_y], false, &mut builder);
+
+        let expr = node::QualifiedExpr::new_in(None, x_field, None, &mut builder);
+        let branch = node::CaseBranch::new_in(record_pat, expr, &mut builder);
+
+        let case_expr = node::CaseExpr::new_in(source, vec![branch], &mut builder);
+
+        let types = run_typer(builder, case_expr).unwrap();
+
+        assert_eq!(types.meta(case_expr), &MonoType::NUM);
+    }
+
+    #[test]
+    fn case_record_pattern_polymorphic() {
+        let mut interner = StrInterner::new();
+        let mut builder = TreeBuilder::new();
+
+        // case {x = 10, y = 20, z = "hello"} of {x, y, ...} => x
+        let x_field = interner.intern("x");
+        let y_field = interner.intern("y");
+        let z_field = interner.intern("z");
+
+        let val_x = builder.insert(node::LiteralExpr::Num(10.0));
+        let val_y = builder.insert(node::LiteralExpr::Num(20.0));
+        let val_z = builder.insert(node::LiteralExpr::Str(interner.intern("hello")));
+
+        let field_x = node::RecordField::new_in(x_field, None, val_x, &mut builder);
+        let field_y = node::RecordField::new_in(y_field, None, val_y, &mut builder);
+        let field_z = node::RecordField::new_in(z_field, None, val_z, &mut builder);
+        let source = node::RecordExpr::new_in(vec![field_x, field_y, field_z], &mut builder);
+
+        // Pattern: {x, y, ...} (polymorphic - allows extra fields)
+        let pat_field_x = node::RecordFieldPat {
+            field: builder.insert(x_field.into()),
+            pat: None,
+        };
+        let pat_field_y = node::RecordFieldPat {
+            field: builder.insert(y_field.into()),
+            pat: None,
+        };
+
+        let record_pat = node::RecordPat::new_in(
+            [pat_field_x, pat_field_y],
+            true, // polymorphic
+            &mut builder,
+        );
+
+        let expr = node::QualifiedExpr::new_in(None, x_field, None, &mut builder);
+        let branch = node::CaseBranch::new_in(record_pat, expr, &mut builder);
+
+        let case_expr = node::CaseExpr::new_in(source, vec![branch], &mut builder);
+
+        let types = run_typer(builder, case_expr).unwrap();
+
+        assert_eq!(types.meta(case_expr), &MonoType::NUM);
+    }
+
+    #[test]
+    fn case_branch_type_mismatch() {
+        let mut interner = StrInterner::new();
+        let mut builder = TreeBuilder::new();
+
+        // case 42 of
+        //   x => 10,     // returns Num
+        //   _ => "hello" // returns Str - should fail!
+        let source = builder.insert(node::LiteralExpr::Num(42.0));
+
+        let x = interner.intern("x");
+        let pat1 = builder.insert(node::BindPat(x));
+        let expr1 = builder.insert(node::LiteralExpr::Num(10.0));
+        let branch1 = node::CaseBranch::new_in(pat1, expr1, &mut builder);
+
+        let pat2 = builder.insert(node::AnyPat);
+        let expr2 = builder.insert(node::LiteralExpr::Str(interner.intern("hello")));
+        let branch2 = node::CaseBranch::new_in(pat2, expr2, &mut builder);
+
+        let case_expr = node::CaseExpr::new_in(source, vec![branch1, branch2], &mut builder);
+
+        let (errors, _) = run_typer(builder, case_expr).unwrap_err();
+
+        assert_eq!(
+            errors[0],
+            TypeError::CannotUnify {
+                expected: MonoType::NUM,
+                actual: MonoType::STR
+            }
+        );
     }
 }

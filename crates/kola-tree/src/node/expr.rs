@@ -109,6 +109,10 @@ impl<'a> Notate<'a> for NodePrinter<'a, LiteralExpr> {
 pub struct ListExpr(pub Vec<Id<Expr>>);
 
 impl ListExpr {
+    pub fn empty_in(builder: &mut TreeBuilder) -> Id<Self> {
+        builder.insert(Self(Vec::new()))
+    }
+
     pub fn new_in<I>(elements: I, builder: &mut TreeBuilder) -> Id<Self>
     where
         I: IntoIterator,

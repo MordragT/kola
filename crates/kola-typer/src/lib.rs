@@ -22,6 +22,7 @@
 //! https://github.com/miguel-nascimento/algorithm-j-rs/
 //! https://github.com/nwoeanhinnogaehr/algorithmw-rust/
 
+pub mod analysis;
 pub mod check;
 pub mod constraints;
 pub mod env;
@@ -30,6 +31,8 @@ pub mod pattern_typer;
 pub mod phase;
 pub mod print;
 pub mod substitute;
+#[cfg(test)]
+mod test;
 pub mod typer;
 pub mod types;
 pub mod unify;
