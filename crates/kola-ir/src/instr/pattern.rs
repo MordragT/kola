@@ -1339,7 +1339,6 @@ impl<'a> Notate<'a> for IrPrinter<'a, Id<PatternMatcher>> {
         }
     }
 }
-
 impl PatternMatcher {
     // Test constructors
     pub fn is_unit(
@@ -1347,9 +1346,9 @@ impl PatternMatcher {
         on_success: impl Into<PatternMatcher>,
         on_failure: impl Into<PatternMatcher>,
         builder: &mut IrBuilder,
-    ) -> Id<Self> {
+    ) -> Self {
         let matcher = IsUnit::new(source, on_success, on_failure, builder);
-        builder.add(Self::IsUnit(matcher))
+        Self::IsUnit(matcher)
     }
 
     pub fn is_bool(
@@ -1358,9 +1357,9 @@ impl PatternMatcher {
         on_success: impl Into<PatternMatcher>,
         on_failure: impl Into<PatternMatcher>,
         builder: &mut IrBuilder,
-    ) -> Id<Self> {
+    ) -> Self {
         let matcher = IsBool::new(source, payload, on_success, on_failure, builder);
-        builder.add(Self::IsBool(matcher))
+        Self::IsBool(matcher)
     }
 
     pub fn is_num(
@@ -1369,9 +1368,9 @@ impl PatternMatcher {
         on_success: impl Into<PatternMatcher>,
         on_failure: impl Into<PatternMatcher>,
         builder: &mut IrBuilder,
-    ) -> Id<Self> {
+    ) -> Self {
         let matcher = IsNum::new(source, payload, on_success, on_failure, builder);
-        builder.add(Self::IsNum(matcher))
+        Self::IsNum(matcher)
     }
 
     pub fn is_char(
@@ -1380,9 +1379,9 @@ impl PatternMatcher {
         on_success: impl Into<PatternMatcher>,
         on_failure: impl Into<PatternMatcher>,
         builder: &mut IrBuilder,
-    ) -> Id<Self> {
+    ) -> Self {
         let matcher = IsChar::new(source, payload, on_success, on_failure, builder);
-        builder.add(Self::IsChar(matcher))
+        Self::IsChar(matcher)
     }
 
     pub fn is_str(
@@ -1391,9 +1390,9 @@ impl PatternMatcher {
         on_success: impl Into<PatternMatcher>,
         on_failure: impl Into<PatternMatcher>,
         builder: &mut IrBuilder,
-    ) -> Id<Self> {
+    ) -> Self {
         let matcher = IsStr::new(source, payload, on_success, on_failure, builder);
-        builder.add(Self::IsStr(matcher))
+        Self::IsStr(matcher)
     }
 
     pub fn is_tag(
@@ -1402,9 +1401,9 @@ impl PatternMatcher {
         on_success: impl Into<PatternMatcher>,
         on_failure: impl Into<PatternMatcher>,
         builder: &mut IrBuilder,
-    ) -> Id<Self> {
+    ) -> Self {
         let matcher = IsTag::new(source, payload, on_success, on_failure, builder);
-        builder.add(Self::IsTag(matcher))
+        Self::IsTag(matcher)
     }
 
     pub fn is_variant(
@@ -1413,9 +1412,9 @@ impl PatternMatcher {
         on_success: impl Into<PatternMatcher>,
         on_failure: impl Into<PatternMatcher>,
         builder: &mut IrBuilder,
-    ) -> Id<Self> {
+    ) -> Self {
         let matcher = IsVariant::new(source, tag, on_success, on_failure, builder);
-        builder.add(Self::IsVariant(matcher))
+        Self::IsVariant(matcher)
     }
 
     pub fn is_list(
@@ -1423,9 +1422,9 @@ impl PatternMatcher {
         on_success: impl Into<PatternMatcher>,
         on_failure: impl Into<PatternMatcher>,
         builder: &mut IrBuilder,
-    ) -> Id<Self> {
+    ) -> Self {
         let matcher = IsList::new(source, on_success, on_failure, builder);
-        builder.add(Self::IsList(matcher))
+        Self::IsList(matcher)
     }
 
     pub fn list_is_exact(
@@ -1434,9 +1433,9 @@ impl PatternMatcher {
         on_success: impl Into<PatternMatcher>,
         on_failure: impl Into<PatternMatcher>,
         builder: &mut IrBuilder,
-    ) -> Id<Self> {
+    ) -> Self {
         let matcher = ListIsExact::new(source, length, on_success, on_failure, builder);
-        builder.add(Self::ListIsExact(matcher))
+        Self::ListIsExact(matcher)
     }
 
     pub fn list_is_at_least(
@@ -1445,9 +1444,9 @@ impl PatternMatcher {
         on_success: impl Into<PatternMatcher>,
         on_failure: impl Into<PatternMatcher>,
         builder: &mut IrBuilder,
-    ) -> Id<Self> {
+    ) -> Self {
         let matcher = ListIsAtLeast::new(source, min_length, on_success, on_failure, builder);
-        builder.add(Self::ListIsAtLeast(matcher))
+        Self::ListIsAtLeast(matcher)
     }
 
     pub fn is_record(
@@ -1455,9 +1454,9 @@ impl PatternMatcher {
         on_success: impl Into<PatternMatcher>,
         on_failure: impl Into<PatternMatcher>,
         builder: &mut IrBuilder,
-    ) -> Id<Self> {
+    ) -> Self {
         let matcher = IsRecord::new(source, on_success, on_failure, builder);
-        builder.add(Self::IsRecord(matcher))
+        Self::IsRecord(matcher)
     }
 
     pub fn record_has_field(
@@ -1466,9 +1465,9 @@ impl PatternMatcher {
         on_success: impl Into<PatternMatcher>,
         on_failure: impl Into<PatternMatcher>,
         builder: &mut IrBuilder,
-    ) -> Id<Self> {
+    ) -> Self {
         let matcher = RecordHasField::new(source, field, on_success, on_failure, builder);
-        builder.add(Self::RecordHasField(matcher))
+        Self::RecordHasField(matcher)
     }
 
     // Extractor constructors
@@ -1477,9 +1476,9 @@ impl PatternMatcher {
         source: Symbol,
         next: impl Into<PatternMatcher>,
         builder: &mut IrBuilder,
-    ) -> Id<Self> {
+    ) -> Self {
         let extractor = ExtractIdentity::new(bind, source, next, builder);
-        builder.add(Self::ExtractIdentity(extractor))
+        Self::ExtractIdentity(extractor)
     }
 
     pub fn extract_list_head(
@@ -1487,9 +1486,9 @@ impl PatternMatcher {
         source: Symbol,
         next: impl Into<PatternMatcher>,
         builder: &mut IrBuilder,
-    ) -> Id<Self> {
+    ) -> Self {
         let extractor = ExtractListHead::new(bind, source, next, builder);
-        builder.add(Self::ExtractListHead(extractor))
+        Self::ExtractListHead(extractor)
     }
 
     pub fn extract_list_tail(
@@ -1497,9 +1496,9 @@ impl PatternMatcher {
         source: Symbol,
         next: impl Into<PatternMatcher>,
         builder: &mut IrBuilder,
-    ) -> Id<Self> {
+    ) -> Self {
         let extractor = ExtractListTail::new(bind, source, next, builder);
-        builder.add(Self::ExtractListTail(extractor))
+        Self::ExtractListTail(extractor)
     }
 
     pub fn extract_list_at(
@@ -1508,9 +1507,9 @@ impl PatternMatcher {
         index: u32,
         next: impl Into<PatternMatcher>,
         builder: &mut IrBuilder,
-    ) -> Id<Self> {
+    ) -> Self {
         let extractor = ExtractListAt::new(bind, source, index, next, builder);
-        builder.add(Self::ExtractListAt(extractor))
+        Self::ExtractListAt(extractor)
     }
 
     pub fn extract_list_slice_from(
@@ -1519,9 +1518,9 @@ impl PatternMatcher {
         start_index: u32,
         next: impl Into<PatternMatcher>,
         builder: &mut IrBuilder,
-    ) -> Id<Self> {
+    ) -> Self {
         let extractor = ExtractListSliceFrom::new(bind, source, start_index, next, builder);
-        builder.add(Self::ExtractListSliceFrom(extractor))
+        Self::ExtractListSliceFrom(extractor)
     }
 
     pub fn extract_record_field(
@@ -1530,9 +1529,9 @@ impl PatternMatcher {
         field: StrKey,
         next: impl Into<PatternMatcher>,
         builder: &mut IrBuilder,
-    ) -> Id<Self> {
+    ) -> Self {
         let extractor = ExtractRecordField::new(bind, source, field, next, builder);
-        builder.add(Self::ExtractRecordField(extractor))
+        Self::ExtractRecordField(extractor)
     }
 
     pub fn extract_record_without_field(
@@ -1541,9 +1540,9 @@ impl PatternMatcher {
         field: StrKey,
         next: impl Into<PatternMatcher>,
         builder: &mut IrBuilder,
-    ) -> Id<Self> {
+    ) -> Self {
         let extractor = ExtractRecordWithoutField::new(bind, source, field, next, builder);
-        builder.add(Self::ExtractRecordWithoutField(extractor))
+        Self::ExtractRecordWithoutField(extractor)
     }
 
     pub fn extract_variant_tag(
@@ -1551,9 +1550,9 @@ impl PatternMatcher {
         source: Symbol,
         next: impl Into<PatternMatcher>,
         builder: &mut IrBuilder,
-    ) -> Id<Self> {
+    ) -> Self {
         let extractor = ExtractVariantTag::new(bind, source, next, builder);
-        builder.add(Self::ExtractVariantTag(extractor))
+        Self::ExtractVariantTag(extractor)
     }
 
     pub fn extract_variant_value(
@@ -1561,18 +1560,8 @@ impl PatternMatcher {
         source: Symbol,
         next: impl Into<PatternMatcher>,
         builder: &mut IrBuilder,
-    ) -> Id<Self> {
+    ) -> Self {
         let extractor = ExtractVariantValue::new(bind, source, next, builder);
-        builder.add(Self::ExtractVariantValue(extractor))
-    }
-
-    // Control flow constructors
-    pub fn success(next: Id<Expr>, builder: &mut IrBuilder) -> Id<Self> {
-        let success = PatternSuccess::new(next);
-        builder.add(Self::Success(success))
-    }
-
-    pub fn failure(builder: &mut IrBuilder) -> Id<Self> {
-        builder.add(Self::Failure(PatternFailure))
+        Self::ExtractVariantValue(extractor)
     }
 }

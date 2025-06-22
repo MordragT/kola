@@ -1,7 +1,7 @@
 use std::rc::Rc;
 
 use crate::{
-    config::{MachineState, OperationConfig, StandardConfig},
+    config::{MachineState, OperationConfig, PatternConfig, StandardConfig},
     cont::{Cont, ContFrame},
     env::Env,
     eval::Eval,
@@ -47,6 +47,7 @@ impl CekMachine {
         self.state = match state {
             MachineState::Standard(config) => Self::step_standard(config, &self.ir),
             MachineState::Operation(config) => Self::step_operation(config, &self.ir),
+            MachineState::Pattern(config) => Self::step_pattern(config, &self.ir),
             MachineState::Value(_) | MachineState::Error(_) => {
                 // If the machine is in a terminal state, we don't need to do anything
                 state
@@ -75,6 +76,11 @@ impl CekMachine {
     fn step_standard(config: StandardConfig, ir: &Ir) -> MachineState {
         let StandardConfig { control, env, cont } = config;
         control.eval(env, cont, ir)
+    }
+
+    /// Execute a pattern matching configuration step
+    fn step_pattern(config: PatternConfig, ir: &Ir) -> MachineState {
+        config.eval(config.env.clone(), config.cont.clone(), ir)
     }
 
     /// Execute an operation configuration step
@@ -133,9 +139,9 @@ impl CekMachine {
 mod tests {
     use kola_ir::{
         instr::{
-            Atom, BinaryExpr, BinaryOp, CallExpr, Expr, Func, LetExpr, RecordAccessExpr,
-            RecordExpr, RecordExtendExpr, RecordField, RecordUpdateExpr, RecordUpdateOp, RetExpr,
-            Symbol,
+            Atom, BinaryExpr, BinaryOp, CallExpr, Expr, Func, LetExpr, PatternFailure,
+            PatternSuccess, RecordAccessExpr, RecordExpr, RecordExtendExpr, RecordField,
+            RecordUpdateExpr, RecordUpdateOp, RetExpr, Symbol,
         },
         ir::IrBuilder,
     };
@@ -373,6 +379,64 @@ mod tests {
         match result {
             Value::Num(n) => assert_eq!(n, 20.0),
             other => panic!("Expected Num(20), got {:?}", other),
+        }
+    }
+
+    #[test]
+    fn test_simple_pattern_matching() {
+        use kola_ir::instr::{PatternMatchExpr, PatternMatcher};
+
+        let interner = StrInterner::new();
+
+        // Create symbols
+        let source_sym = Symbol(0);
+        let result_sym = Symbol(1);
+
+        let mut ir = IrBuilder::new();
+
+        // This test creates a simple pattern match:
+        // let source = unit in
+        //   match source with
+        //   | unit -> return 42
+        //   (basically: if source is unit, return 42)
+
+        // Return 42
+        let ret_42 = RetExpr::new(Atom::Num(42.0), &mut ir);
+        let ret_42_expr = ir.add(ret_42.into());
+
+        // Success pattern: bind result and continue to return 42
+        let success = PatternMatcher::Success(PatternSuccess::new(ret_42_expr));
+
+        // Extract identity (for wildcard/unit binding)
+        let extract = PatternMatcher::extract_identity(result_sym, source_sym, success, &mut ir);
+
+        // Test if source is unit
+        let failure = PatternMatcher::Failure(PatternFailure);
+        let is_unit = PatternMatcher::is_unit(source_sym, extract, failure, &mut ir);
+
+        // Pattern match expression
+        let pattern_match = PatternMatchExpr::new(
+            result_sym,
+            Atom::Symbol(source_sym),
+            is_unit,
+            ret_42,
+            &mut ir,
+        );
+
+        // Let binding: source = unit
+        let let_source = LetExpr::new(source_sym, Atom::Noop, pattern_match, &mut ir);
+
+        let root = ir.add(let_source.into());
+        let ir = ir.finish(root);
+
+        // Run the machine
+        let mut machine = CekMachine::new(ir, interner);
+        let result = machine.run().unwrap();
+
+        // Check the result - should be 42
+        match result {
+            Value::Num(n) => assert_eq!(n, 42.0),
+            other => panic!("Expected Num(42), got {:?}", other),
         }
     }
 }

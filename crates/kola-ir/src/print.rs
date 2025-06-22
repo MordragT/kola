@@ -1,4 +1,6 @@
-use kola_print::{Notate, PrintOptions, prelude::Bump};
+use std::collections::HashSet;
+
+use kola_print::prelude::*;
 use kola_utils::{convert::TryAsRef, interner::StrInterner};
 
 use crate::{
@@ -15,8 +17,22 @@ pub fn render_ir(ir: &Ir, arena: &Bump, interner: &StrInterner, options: PrintOp
     let Ok(()) = labeller.visit_expr(root, ir);
 
     let printer = IrPrinter::new(root, ir, &labeller.labels, &labeller.shared, interner);
+    let mut result = printer.render(options, arena);
 
-    printer.render(options, arena)
+    if !labeller.defered.is_empty() {
+        result.push_str(&format!("\n\n{}\n\n", "With:".bold().bright_white()));
+        for expr in labeller.defered {
+            result.push_str(&format!("@{}\n", labeller.labels[expr.as_usize()]));
+
+            let expr_printer = printer.to(expr);
+            result.push_str(&expr_printer.render(options, arena));
+
+            result.push('\n');
+            result.push('\n');
+        }
+    }
+
+    result
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -85,6 +101,7 @@ pub struct IrLabeller {
     pub reference_counts: Vec<u32>, // counts how many times each instruction is referenced
     pub shared: Vec<bool>, // whether the instruction is shared or not
     pub label_counter: u32,
+    pub defered: HashSet<Id<instr::Expr>>, // defered expressions to be printed later
 }
 
 impl IrLabeller {
@@ -94,6 +111,7 @@ impl IrLabeller {
             reference_counts: vec![0; count],
             shared: vec![false; count],
             label_counter: 0,
+            defered: HashSet::new(),
         }
     }
 }
@@ -203,6 +221,18 @@ where
             self.label_counter += 1;
             self.walk_pattern_matcher(matcher, ir)?;
         }
+
+        Ok(())
+    }
+
+    fn visit_pattern_success(
+        &mut self,
+        pattern_success: instr::PatternSuccess,
+        ir: &Ir,
+    ) -> Result<(), Self::Error> {
+        self.defered.insert(pattern_success.next);
+
+        self.walk_pattern_success(pattern_success, ir)?;
 
         Ok(())
     }

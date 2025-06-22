@@ -1,5 +1,5 @@
 use crate::{
-    config::{MachineState, StandardConfig},
+    config::{MachineState, PatternConfig, StandardConfig},
     cont::{Cont, ContFrame, HandlerClosure, PureContFrame, ReturnClause},
     env::Env,
     value::{List, Record, Value},
@@ -7,10 +7,39 @@ use crate::{
 use kola_builtins::BuiltinId;
 use kola_collections::ImShadowMap;
 use kola_ir::{
+    id::Id,
     instr::{
-        Atom, BinaryExpr, BinaryOp, CallExpr, Expr, Func, IfExpr, LetExpr, ListExpr, ListItem,
-        RecordAccessExpr, RecordExpr, RecordExtendExpr, RecordField, RecordRestrictExpr,
-        RecordUpdateExpr, RecordUpdateOp, RetExpr, Symbol, UnaryExpr, UnaryOp,
+        Atom,
+        BinaryExpr,
+        BinaryOp,
+        CallExpr,
+        Expr,
+        ExtractIdentity,
+        Func,
+        IfExpr,
+        IsBool,
+        IsChar,
+        IsNum,
+        IsStr,
+        IsUnit,
+        LetExpr,
+        ListExpr,
+        ListItem,
+        PatternMatchExpr,
+        // Pattern matching imports
+        PatternMatcher,
+        PatternSuccess,
+        RecordAccessExpr,
+        RecordExpr,
+        RecordExtendExpr,
+        RecordField,
+        RecordRestrictExpr,
+        RecordUpdateExpr,
+        RecordUpdateOp,
+        RetExpr,
+        Symbol,
+        UnaryExpr,
+        UnaryOp,
     },
     ir::{Ir, IrView},
 };
@@ -58,7 +87,7 @@ impl Eval for Expr {
             Expr::RecordRestrict(record_restrict_expr) => record_restrict_expr.eval(env, cont, ir),
             Expr::RecordUpdate(record_update_expr) => record_update_expr.eval(env, cont, ir),
             Expr::RecordAccess(record_access_expr) => record_access_expr.eval(env, cont, ir),
-            Expr::PatternMatch(pattern_match_expr) => todo!(),
+            Expr::PatternMatch(pattern_match_expr) => pattern_match_expr.eval(env, cont, ir),
         }
     }
 }
@@ -793,4 +822,346 @@ impl Eval for RecordAccessExpr {
             cont,
         })
     }
+}
+
+impl Eval for PatternMatchExpr {
+    fn eval(&self, env: Env, cont: Cont, ir: &Ir) -> MachineState {
+        let Self {
+            bind,
+            source,
+            matcher,
+            next,
+        } = *self;
+
+        // Evaluate the source expression to get the value we're matching against
+        let source_value = match eval_atom(source.get(ir), &env) {
+            Ok(value) => value,
+            Err(err) => return MachineState::Error(err),
+        };
+
+        // Transition to pattern matching state
+        MachineState::Pattern(PatternConfig {
+            matcher,
+            source_value,
+            bind,
+            next,
+            env,
+            cont,
+        })
+    }
+}
+
+/// Evaluates a pattern matching configuration
+impl Eval for PatternConfig {
+    fn eval(&self, _env: Env, _cont: Cont, ir: &Ir) -> MachineState {
+        let PatternConfig {
+            matcher,
+            source_value,
+            bind,
+            next,
+            env,
+            cont,
+        } = self;
+
+        eval_pattern_matcher(
+            &matcher.get(ir),
+            source_value.clone(),
+            *bind,
+            *next,
+            env.clone(),
+            cont.clone(),
+            ir,
+        )
+    }
+}
+
+/// Evaluates a pattern matcher instruction, returning the next machine state
+fn eval_pattern_matcher(
+    matcher: &PatternMatcher,
+    source_value: Value,
+    bind: Symbol,
+    next: Id<Expr>,
+    env: Env,
+    cont: Cont,
+    ir: &Ir,
+) -> MachineState {
+    match matcher {
+        PatternMatcher::IsUnit(is_unit) => {
+            eval_is_unit(is_unit, source_value, bind, next, env, cont, ir)
+        }
+        PatternMatcher::IsBool(is_bool) => {
+            eval_is_bool(is_bool, source_value, bind, next, env, cont, ir)
+        }
+        PatternMatcher::IsNum(is_num) => {
+            eval_is_num(is_num, source_value, bind, next, env, cont, ir)
+        }
+        PatternMatcher::IsChar(is_char) => {
+            eval_is_char(is_char, source_value, bind, next, env, cont, ir)
+        }
+        PatternMatcher::IsStr(is_str) => {
+            eval_is_str(is_str, source_value, bind, next, env, cont, ir)
+        }
+        PatternMatcher::ExtractIdentity(extract) => {
+            eval_extract_identity(extract, source_value, bind, next, env, cont, ir)
+        }
+        PatternMatcher::Success(success) => {
+            eval_pattern_success(success, source_value, bind, env, cont, ir)
+        }
+        PatternMatcher::Failure(_) => {
+            MachineState::Error("Pattern match failure - no matching case found".to_string())
+        }
+        _ => MachineState::Error("Pattern matcher not yet implemented".to_string()),
+    }
+}
+
+/// Evaluates IsUnit pattern matcher - tests if the source value is Unit
+fn eval_is_unit(
+    is_unit: &IsUnit,
+    source_value: Value,
+    bind: Symbol,
+    next: Id<Expr>,
+    env: Env,
+    cont: Cont,
+    _ir: &Ir,
+) -> MachineState {
+    let IsUnit {
+        source,
+        on_success,
+        on_failure,
+    } = *is_unit;
+
+    // Get the actual source value from the environment
+    let source_val = match env.get(&source) {
+        Some(val) => val.clone(),
+        None => return MachineState::Error(format!("Unbound variable: {}", source)),
+    };
+
+    let next_matcher = match source_val {
+        Value::None => on_success, // Unit matches, go to success path
+        _ => on_failure,           // Not unit, go to failure path
+    };
+
+    // Continue with the next pattern matcher
+    MachineState::Pattern(PatternConfig {
+        matcher: next_matcher,
+        source_value,
+        bind,
+        next,
+        env,
+        cont,
+    })
+}
+
+/// Evaluates IsBool pattern matcher
+fn eval_is_bool(
+    is_bool: &IsBool,
+    source_value: Value,
+    bind: Symbol,
+    next: Id<Expr>,
+    env: Env,
+    cont: Cont,
+    _ir: &Ir,
+) -> MachineState {
+    let IsBool {
+        source,
+        payload,
+        on_success,
+        on_failure,
+    } = *is_bool;
+
+    let source_val = match env.get(&source) {
+        Some(val) => val.clone(),
+        None => return MachineState::Error(format!("Unbound variable: {}", source)),
+    };
+
+    let next_matcher = match source_val {
+        Value::Bool(b) if b == payload => on_success,
+        _ => on_failure,
+    };
+
+    MachineState::Pattern(PatternConfig {
+        matcher: next_matcher,
+        source_value,
+        bind,
+        next,
+        env,
+        cont,
+    })
+}
+
+/// Evaluates IsNum pattern matcher
+fn eval_is_num(
+    is_num: &IsNum,
+    source_value: Value,
+    bind: Symbol,
+    next: Id<Expr>,
+    env: Env,
+    cont: Cont,
+    _ir: &Ir,
+) -> MachineState {
+    let IsNum {
+        source,
+        payload,
+        on_success,
+        on_failure,
+    } = *is_num;
+
+    let source_val = match env.get(&source) {
+        Some(val) => val.clone(),
+        None => return MachineState::Error(format!("Unbound variable: {}", source)),
+    };
+
+    let next_matcher = match source_val {
+        Value::Num(n) if (n - payload).abs() < f64::EPSILON => on_success,
+        _ => on_failure,
+    };
+
+    MachineState::Pattern(PatternConfig {
+        matcher: next_matcher,
+        source_value,
+        bind,
+        next,
+        env,
+        cont,
+    })
+}
+
+/// Evaluates IsChar pattern matcher
+fn eval_is_char(
+    is_char: &IsChar,
+    source_value: Value,
+    bind: Symbol,
+    next: Id<Expr>,
+    env: Env,
+    cont: Cont,
+    _ir: &Ir,
+) -> MachineState {
+    let IsChar {
+        source,
+        payload,
+        on_success,
+        on_failure,
+    } = *is_char;
+
+    let source_val = match env.get(&source) {
+        Some(val) => val.clone(),
+        None => return MachineState::Error(format!("Unbound variable: {}", source)),
+    };
+
+    let next_matcher = match source_val {
+        Value::Char(c) if c == payload => on_success,
+        _ => on_failure,
+    };
+
+    MachineState::Pattern(PatternConfig {
+        matcher: next_matcher,
+        source_value,
+        bind,
+        next,
+        env,
+        cont,
+    })
+}
+
+/// Evaluates IsStr pattern matcher
+fn eval_is_str(
+    is_str: &IsStr,
+    source_value: Value,
+    bind: Symbol,
+    next: Id<Expr>,
+    env: Env,
+    cont: Cont,
+    _ir: &Ir,
+) -> MachineState {
+    let IsStr {
+        source,
+        payload,
+        on_success,
+        on_failure,
+    } = *is_str;
+
+    let source_val = match env.get(&source) {
+        Some(val) => val.clone(),
+        None => return MachineState::Error(format!("Unbound variable: {}", source)),
+    };
+
+    let next_matcher = match source_val {
+        Value::Str(ref s) => {
+            // Get the string from the interner to compare
+            let expected_str = &env[payload];
+            if s == expected_str {
+                on_success
+            } else {
+                on_failure
+            }
+        }
+        _ => on_failure,
+    };
+
+    MachineState::Pattern(PatternConfig {
+        matcher: next_matcher,
+        source_value,
+        bind,
+        next,
+        env,
+        cont,
+    })
+}
+
+/// Evaluates ExtractIdentity - binds the source value to a variable (for bind patterns and wildcards)
+fn eval_extract_identity(
+    extract: &ExtractIdentity,
+    source_value: Value,
+    bind: Symbol,
+    next: Id<Expr>,
+    mut env: Env,
+    cont: Cont,
+    _ir: &Ir,
+) -> MachineState {
+    let ExtractIdentity {
+        bind: extract_bind,
+        source,
+        next: pattern_next,
+    } = *extract;
+
+    // Get the source value from the environment
+    let source_val = match env.get(&source) {
+        Some(val) => val.clone(),
+        None => return MachineState::Error(format!("Unbound variable: {}", source)),
+    };
+
+    // Bind the source value to the target variable
+    env.insert(extract_bind, source_val);
+
+    // Continue with the next pattern matcher
+    MachineState::Pattern(PatternConfig {
+        matcher: pattern_next,
+        source_value,
+        bind,
+        next,
+        env,
+        cont,
+    })
+}
+
+/// Evaluates PatternSuccess - pattern matching succeeded, continue to the matched expression
+fn eval_pattern_success(
+    success: &PatternSuccess,
+    source_value: Value,
+    bind: Symbol,
+    mut env: Env,
+    cont: Cont,
+    ir: &Ir,
+) -> MachineState {
+    let PatternSuccess { next } = *success;
+
+    // Bind the original source value to the result binding
+    env.insert(bind, source_value);
+
+    // Continue with the matched branch expression
+    MachineState::Standard(StandardConfig {
+        control: next.get(ir).clone(),
+        env,
+        cont,
+    })
 }

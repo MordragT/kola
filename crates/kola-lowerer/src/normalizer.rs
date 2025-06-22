@@ -643,11 +643,19 @@ where
         for branch_id in branches.iter().rev() {
             let node::CaseBranch { pat, matches } = *branch_id.get(tree);
 
+            // Save the current continuation
+            let saved_next = self.next;
+
             self.visit_expr(matches, tree)?;
+            let branch_next = self.next; // Capture the branch expression
+
+            // Restore the continuation for the next iteration
+            self.next = saved_next;
+
             let on_success = self
                 .builder
                 .add(ir::PatternMatcher::Success(ir::PatternSuccess {
-                    next: self.next,
+                    next: branch_next, // Use the captured branch expression
                 }));
 
             let mut pat_normalizer = PatternNormalizer::new(
@@ -746,6 +754,7 @@ where
     ) -> ControlFlow<Self::BreakValue> {
         let bind = self.symbol_of(id);
 
+        // Here is the correct place to extract, probably not elsewhere
         self.on_success =
             self.builder
                 .add(ir::PatternMatcher::ExtractIdentity(ir::ExtractIdentity {
@@ -761,13 +770,15 @@ where
         id: TreeId<node::LiteralPat>,
         tree: &Tree,
     ) -> ControlFlow<Self::BreakValue> {
-        self.on_success =
-            self.builder
-                .add(ir::PatternMatcher::ExtractIdentity(ir::ExtractIdentity {
-                    bind: self.hole,
-                    source: self.source,
-                    next: self.on_success,
-                }));
+        // I think I should actually only create ExtractIdentity in the bind pat
+        // LiteralPat are only tests anyway and will never be doing any binding
+        // self.on_success =
+        //     self.builder
+        //         .add(ir::PatternMatcher::ExtractIdentity(ir::ExtractIdentity {
+        //             bind: self.hole,
+        //             source: self.source,
+        //             next: self.on_success,
+        //         }));
 
         self.on_success = match *id.get(tree) {
             node::LiteralPat::Unit => self.builder.add(ir::PatternMatcher::IsUnit(ir::IsUnit {

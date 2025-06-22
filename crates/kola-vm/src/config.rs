@@ -2,7 +2,7 @@ use crate::{cont::Cont, env::Env, value::Value};
 use derive_more::From;
 use kola_ir::{
     id::Id,
-    instr::{Atom, Expr, Instr, Symbol},
+    instr::{Atom, Expr, Instr, PatternMatcher, Symbol},
 };
 
 /// The standard configuration in the CEK machine
@@ -40,6 +40,28 @@ pub struct OperationConfig {
     pub forward: Cont,
 }
 
+/// Pattern matching configuration in the CEK machine
+/// C = hP | v | γ | κi, where:
+/// - P is the pattern matcher instruction currently being evaluated
+/// - v is the value being matched against
+/// - γ is the environment (binds free variables)
+/// - κ is the continuation (what to do next)
+#[derive(Debug, Clone, PartialEq)]
+pub struct PatternConfig {
+    /// The pattern matcher instruction currently being evaluated
+    pub matcher: Id<PatternMatcher>,
+    /// The value being matched against
+    pub source_value: Value,
+    /// Where to bind the result if matching succeeds
+    pub bind: Symbol,
+    /// The expression to evaluate after successful matching
+    pub next: Id<Expr>,
+    /// Environment for pattern matching
+    pub env: Env,
+    /// Continuation to use after pattern matching completes
+    pub cont: Cont,
+}
+
 /// Machine states represent the different configurations of the CEK machine
 #[derive(Debug, From, Clone, PartialEq)]
 pub enum MachineState {
@@ -47,6 +69,8 @@ pub enum MachineState {
     Standard(StandardConfig),
     /// Operation handling state hM | γ | κ | κ0iop
     Operation(OperationConfig),
+    /// Pattern matching state hP | v | γ | κi
+    Pattern(PatternConfig),
     /// The machine has produced a final value
     Value(Value),
     /// The machine has encountered an error
