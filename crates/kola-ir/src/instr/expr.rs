@@ -1215,6 +1215,93 @@ impl PatternMatchExpr {
     }
 }
 
+// when <source> <matcher>
+impl<'a> Notate<'a> for IrPrinter<'a, PatternMatchExpr> {
+    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
+        let PatternMatchExpr {
+            bind,
+            source,
+            matcher,
+            next,
+        } = self.node;
+
+        let bind = bind.display_in(arena);
+        let source = self.to(source).notate(arena);
+        let matcher = self.to(matcher).notate(arena);
+        let next = arena.newline().then(self.to(next).notate(arena), arena);
+
+        [arena.notate("when "), source, arena.just(' '), matcher]
+            .concat_in(arena)
+            .then(next, arena)
+
+        // let single = [
+        //     bind.clone(),
+        //     arena.notate(" = "),
+        //     source.clone().flatten(arena),
+        //     arena.notate(" ? "),
+        //     matcher.clone().flatten(arena),
+        // ]
+        // .concat_in(arena);
+
+        // let multi = [
+        //     bind,
+        //     arena.newline(),
+        //     arena.notate("= "),
+        //     source,
+        //     arena.newline(),
+        //     arena.notate("? "),
+        //     matcher,
+        // ]
+        // .concat_in(arena)
+        // .indent(arena);
+
+        // single.or(multi, arena).then(next, arena)
+    }
+}
+
+// <bind> = <source> => matcher
+// <bind> =
+//     <source>
+//     => matcher
+// impl<'a> Notate<'a> for IrPrinter<'a, PatternMatchExpr> {
+//     fn notate(&self, arena: &'a Bump) -> Notation<'a> {
+//         let PatternMatchExpr {
+//             bind,
+//             source,
+//             matcher,
+//             next,
+//         } = self.node;
+
+//         let bind = bind.display_in(arena);
+//         let source = self.to(source).notate(arena);
+//         let matcher = self.to(matcher).notate(arena);
+//         let next = arena.newline().then(self.to(next).notate(arena), arena);
+
+//         let single = [
+//             bind.clone(),
+//             arena.notate(" = "),
+//             source.clone().flatten(arena),
+//             arena.notate(" ? "),
+//             matcher.clone().flatten(arena),
+//         ]
+//         .concat_in(arena);
+
+//         let multi = [
+//             bind,
+//             arena.newline(),
+//             arena.notate("= "),
+//             source,
+//             arena.newline(),
+//             arena.notate("? "),
+//             matcher,
+//         ]
+//         .concat_in(arena)
+//         .indent(arena);
+
+//         single.or(multi, arena).then(next, arena)
+//     }
+// }
+
 // essentially a linked list
 /// An expression is complex if it is not atomic
 /// Complex expressions must be in tail position
@@ -1280,7 +1367,7 @@ impl<'a> Notate<'a> for IrPrinter<'a, Id<Expr>> {
             Expr::RecordRestrict(expr) => self.to(expr).notate(arena),
             Expr::RecordUpdate(expr) => self.to(expr).notate(arena),
             Expr::RecordAccess(expr) => self.to(expr).notate(arena),
-            Expr::PatternMatch(expr) => todo!(),
+            Expr::PatternMatch(expr) => self.to(expr).notate(arena),
         }
         .then(';'.display_in(arena), arena)
     }

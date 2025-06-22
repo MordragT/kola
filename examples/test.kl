@@ -39,10 +39,19 @@
             #[a, b, ...rest] => "multiple",
 
 
-    type Person = forall a . { name : Str | a },
+    #type Person = forall a . { name : Str | a },
 
-    alice : forall a . Person a = { name = "Alice", age = 30 },
 
-    main = case alice of
-        { name, age } => name,
+    #alice : forall a . Person a = { name = "Alice", age = 30 },
+
+    #main = case alice of
+    #    { name, age } => name,
+
+    number = 10,
+
+    main = case number of
+        0 => "zero",
+        1 => "one",
+        2 => "two",
+        _ => "many",
 }

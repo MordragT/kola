@@ -1,7 +1,8 @@
+use kola_print::prelude::*;
 use kola_utils::interner::StrKey;
 
 use super::{Expr, Symbol};
-use crate::{id::Id, ir::IrBuilder};
+use crate::{id::Id, ir::IrBuilder, print::IrPrinter};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct IsUnit {
@@ -24,6 +25,39 @@ impl IsUnit {
             on_success,
             on_failure,
         }
+    }
+}
+
+// Unit -> <on_success>
+impl<'a> Notate<'a> for IrPrinter<'a, IsUnit> {
+    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
+        let IsUnit {
+            source,
+            on_success,
+            on_failure: _,
+        } = self.node;
+
+        let source = source.display_in(arena);
+        let success = self.to(on_success).notate(arena);
+
+        let head = [
+            "is ".purple().display_in(arena),
+            source,
+            arena.notate(" = Unit"),
+        ]
+        .concat_in(arena);
+
+        let body = [
+            arena.newline(),
+            "? ".display_in(arena),
+            success,
+            arena.newline(),
+            ": failure".display_in(arena),
+        ]
+        .concat_in(arena)
+        .indent(arena);
+
+        head.then(body, arena)
     }
 }
 
@@ -54,6 +88,42 @@ impl IsBool {
     }
 }
 
+// <payload> -> <on_success>
+impl<'a> Notate<'a> for IrPrinter<'a, IsBool> {
+    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
+        let IsBool {
+            source,
+            payload,
+            on_success,
+            on_failure: _,
+        } = self.node;
+
+        let source = source.display_in(arena);
+        let payload = payload.display_in(arena);
+        let success = self.to(on_success).notate(arena);
+
+        let head = [
+            "is ".purple().display_in(arena),
+            source,
+            arena.notate(" = Bool "),
+            payload,
+        ]
+        .concat_in(arena);
+
+        let body = [
+            arena.newline(),
+            "? ".display_in(arena),
+            success,
+            arena.newline(),
+            ": failure".display_in(arena),
+        ]
+        .concat_in(arena)
+        .indent(arena);
+
+        head.then(body, arena)
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, PartialOrd)]
 pub struct IsNum {
     pub source: Symbol,
@@ -78,6 +148,46 @@ impl IsNum {
             on_success,
             on_failure,
         }
+    }
+}
+
+// is <source> ≈ Num <payload>
+//     ? <on_success>
+//     : failure
+impl<'a> Notate<'a> for IrPrinter<'a, IsNum> {
+    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
+        let IsNum {
+            source,
+            payload,
+            on_success,
+            on_failure,
+        } = self.node;
+
+        let source = source.display_in(arena);
+        let payload = payload.display_in(arena);
+        let success = self.to(on_success).notate(arena);
+        let failure = self.to(on_failure).notate(arena);
+
+        let head = [
+            "is ".purple().display_in(arena),
+            source,
+            arena.notate(" = Num "),
+            payload,
+        ]
+        .concat_in(arena);
+
+        let body = [
+            arena.newline(),
+            "? ".display_in(arena),
+            success,
+            arena.newline(),
+            ": ".display_in(arena),
+            failure,
+        ]
+        .concat_in(arena)
+        .indent(arena);
+
+        head.then(body, arena)
     }
 }
 
@@ -108,6 +218,44 @@ impl IsChar {
     }
 }
 
+// is <source> ≈ Char <payload>
+//     ? <on_success>
+//     : failure
+impl<'a> Notate<'a> for IrPrinter<'a, IsChar> {
+    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
+        let IsChar {
+            source,
+            payload,
+            on_success,
+            on_failure: _,
+        } = self.node;
+
+        let source = source.display_in(arena);
+        let payload = payload.display_in(arena);
+        let success = self.to(on_success).notate(arena);
+
+        let head = [
+            "is ".purple().display_in(arena),
+            source,
+            arena.notate(" = Char "),
+            payload,
+        ]
+        .concat_in(arena);
+
+        let body = [
+            arena.newline(),
+            "? ".display_in(arena),
+            success,
+            arena.newline(),
+            ": failure".display_in(arena),
+        ]
+        .concat_in(arena)
+        .indent(arena);
+
+        head.then(body, arena)
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct IsStr {
     pub source: Symbol,
@@ -132,6 +280,44 @@ impl IsStr {
             on_success,
             on_failure,
         }
+    }
+}
+
+// is <source> ≈ Str <payload>
+//     ? <on_success>
+//     : failure
+impl<'a> Notate<'a> for IrPrinter<'a, IsStr> {
+    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
+        let IsStr {
+            source,
+            payload,
+            on_success,
+            on_failure: _,
+        } = self.node;
+
+        let source = source.display_in(arena);
+        let payload = payload.display_in(arena);
+        let success = self.to(on_success).notate(arena);
+
+        let head = [
+            "is ".purple().display_in(arena),
+            source,
+            arena.notate(" = Str "),
+            payload,
+        ]
+        .concat_in(arena);
+
+        let body = [
+            arena.newline(),
+            "? ".display_in(arena),
+            success,
+            arena.newline(),
+            ": failure".display_in(arena),
+        ]
+        .concat_in(arena)
+        .indent(arena);
+
+        head.then(body, arena)
     }
 }
 
@@ -162,6 +348,44 @@ impl IsVariant {
     }
 }
 
+// is <source> ≈ Variant <tag>
+//     ? <on_success>
+//     : failure
+impl<'a> Notate<'a> for IrPrinter<'a, IsVariant> {
+    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
+        let IsVariant {
+            source,
+            tag,
+            on_success,
+            on_failure: _,
+        } = self.node;
+
+        let source = source.display_in(arena);
+        let tag = tag.display_in(arena);
+        let success = self.to(on_success).notate(arena);
+
+        let head = [
+            "is ".purple().display_in(arena),
+            source,
+            arena.notate(" = Variant "),
+            tag,
+        ]
+        .concat_in(arena);
+
+        let body = [
+            arena.newline(),
+            "? ".display_in(arena),
+            success,
+            arena.newline(),
+            ": failure".display_in(arena),
+        ]
+        .concat_in(arena)
+        .indent(arena);
+
+        head.then(body, arena)
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct IsTag {
     pub source: Symbol,
@@ -189,6 +413,44 @@ impl IsTag {
     }
 }
 
+// is <source> ≈ Tag <payload>
+//     ? <on_success>
+//     : failure
+impl<'a> Notate<'a> for IrPrinter<'a, IsTag> {
+    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
+        let IsTag {
+            source,
+            payload,
+            on_success,
+            on_failure: _,
+        } = self.node;
+
+        let source = source.display_in(arena);
+        let payload = payload.display_in(arena);
+        let success = self.to(on_success).notate(arena);
+
+        let head = [
+            "is ".purple().display_in(arena),
+            source,
+            arena.notate(" = Tag "),
+            payload,
+        ]
+        .concat_in(arena);
+
+        let body = [
+            arena.newline(),
+            "? ".display_in(arena),
+            success,
+            arena.newline(),
+            ": failure".display_in(arena),
+        ]
+        .concat_in(arena)
+        .indent(arena);
+
+        head.then(body, arena)
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct IsList {
     pub source: Symbol,
@@ -210,6 +472,41 @@ impl IsList {
             on_success,
             on_failure,
         }
+    }
+}
+
+// is <source> ≈ List
+//     ? <on_success>
+//     : failure
+impl<'a> Notate<'a> for IrPrinter<'a, IsList> {
+    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
+        let IsList {
+            source,
+            on_success,
+            on_failure: _,
+        } = self.node;
+
+        let source = source.display_in(arena);
+        let success = self.to(on_success).notate(arena);
+
+        let head = [
+            "is ".purple().display_in(arena),
+            source,
+            arena.notate(" = List"),
+        ]
+        .concat_in(arena);
+
+        let body = [
+            arena.newline(),
+            "? ".display_in(arena),
+            success,
+            arena.newline(),
+            ": failure".display_in(arena),
+        ]
+        .concat_in(arena)
+        .indent(arena);
+
+        head.then(body, arena)
     }
 }
 
@@ -240,6 +537,44 @@ impl ListIsExact {
     }
 }
 
+// is <source> ≈ ListExact <length>
+//     ? <on_success>
+//     : failure
+impl<'a> Notate<'a> for IrPrinter<'a, ListIsExact> {
+    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
+        let ListIsExact {
+            source,
+            length,
+            on_success,
+            on_failure: _,
+        } = self.node;
+
+        let source = source.display_in(arena);
+        let length = length.display_in(arena);
+        let success = self.to(on_success).notate(arena);
+
+        let head = [
+            "is ".purple().display_in(arena),
+            source,
+            arena.notate(" = ListExact "),
+            length,
+        ]
+        .concat_in(arena);
+
+        let body = [
+            arena.newline(),
+            "? ".display_in(arena),
+            success,
+            arena.newline(),
+            ": failure".display_in(arena),
+        ]
+        .concat_in(arena)
+        .indent(arena);
+
+        head.then(body, arena)
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ListIsAtLeast {
     pub source: Symbol,
@@ -267,6 +602,44 @@ impl ListIsAtLeast {
     }
 }
 
+// is <source> ≈ ListAtLeast <min_length>
+//     ? <on_success>
+//     : failure
+impl<'a> Notate<'a> for IrPrinter<'a, ListIsAtLeast> {
+    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
+        let ListIsAtLeast {
+            source,
+            min_length,
+            on_success,
+            on_failure: _,
+        } = self.node;
+
+        let source = source.display_in(arena);
+        let min_length = min_length.display_in(arena);
+        let success = self.to(on_success).notate(arena);
+
+        let head = [
+            "is ".purple().display_in(arena),
+            source,
+            arena.notate(" = ListAtLeast "),
+            min_length,
+        ]
+        .concat_in(arena);
+
+        let body = [
+            arena.newline(),
+            "? ".display_in(arena),
+            success,
+            arena.newline(),
+            ": failure".display_in(arena),
+        ]
+        .concat_in(arena)
+        .indent(arena);
+
+        head.then(body, arena)
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct IsRecord {
     pub source: Symbol,
@@ -288,6 +661,41 @@ impl IsRecord {
             on_success,
             on_failure,
         }
+    }
+}
+
+// is <source> ≈ Record
+//     ? <on_success>
+//     : failure
+impl<'a> Notate<'a> for IrPrinter<'a, IsRecord> {
+    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
+        let IsRecord {
+            source,
+            on_success,
+            on_failure: _,
+        } = self.node;
+
+        let source = source.display_in(arena);
+        let success = self.to(on_success).notate(arena);
+
+        let head = [
+            "is ".purple().display_in(arena),
+            source,
+            arena.notate(" = Record"),
+        ]
+        .concat_in(arena);
+
+        let body = [
+            arena.newline(),
+            "? ".display_in(arena),
+            success,
+            arena.newline(),
+            ": failure".display_in(arena),
+        ]
+        .concat_in(arena)
+        .indent(arena);
+
+        head.then(body, arena)
     }
 }
 
@@ -318,6 +726,44 @@ impl RecordHasField {
     }
 }
 
+// has <source> RecordField <field>
+//     ? <on_success>
+//     : failure
+impl<'a> Notate<'a> for IrPrinter<'a, RecordHasField> {
+    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
+        let RecordHasField {
+            source,
+            field,
+            on_success,
+            on_failure: _,
+        } = self.node;
+
+        let source = source.display_in(arena);
+        let field = field.display_in(arena);
+        let success = self.to(on_success).notate(arena);
+
+        let head = [
+            "has ".purple().display_in(arena),
+            source,
+            arena.notate(" = RecordField "),
+            field,
+        ]
+        .concat_in(arena);
+
+        let body = [
+            arena.newline(),
+            "? ".display_in(arena),
+            success,
+            arena.newline(),
+            ": failure".display_in(arena),
+        ]
+        .concat_in(arena)
+        .indent(arena);
+
+        head.then(body, arena)
+    }
+}
+
 // === EXTRACTOR STRUCTS ===
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -325,6 +771,44 @@ pub struct ExtractIdentity {
     pub bind: Symbol,
     pub source: Symbol,
     pub next: Id<PatternMatcher>,
+}
+
+// <bind> = extract_identity <source> => <next>
+// <bind> =
+//    extract_identity <source>
+//    => <next>
+impl<'a> Notate<'a> for IrPrinter<'a, ExtractIdentity> {
+    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
+        let ExtractIdentity { bind, source, next } = self.node;
+
+        let bind = bind.display_in(arena);
+        let source = source.display_in(arena);
+        let next = self.to(next).notate(arena);
+
+        let head = bind.then(arena.notate(" ="), arena);
+
+        let single = [
+            arena.notate(" extract_identity "),
+            source.clone(),
+            arena.notate(" => "),
+            next.clone(),
+        ]
+        .concat_in(arena)
+        .flatten(arena);
+
+        let multi = [
+            arena.newline(),
+            arena.notate("extract_identity "),
+            source,
+            arena.newline(),
+            "=> ".display_in(arena),
+            next,
+        ]
+        .concat_in(arena)
+        .indent(arena);
+
+        head.then(single.or(multi, arena), arena)
+    }
 }
 
 impl ExtractIdentity {
@@ -346,6 +830,44 @@ pub struct ExtractListHead {
     pub next: Id<PatternMatcher>,
 }
 
+// <bind> = extract_list_head <source> => <next>
+// <bind> =
+//    extract_list_head <source>
+//    => <next>
+impl<'a> Notate<'a> for IrPrinter<'a, ExtractListHead> {
+    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
+        let ExtractListHead { bind, source, next } = self.node;
+
+        let bind = bind.display_in(arena);
+        let source = source.display_in(arena);
+        let next = self.to(next).notate(arena);
+
+        let head = bind.then(arena.notate(" ="), arena);
+
+        let single = [
+            arena.notate(" extract_list_head "),
+            source.clone(),
+            arena.notate(" => "),
+            next.clone(),
+        ]
+        .concat_in(arena)
+        .flatten(arena);
+
+        let multi = [
+            arena.newline(),
+            arena.notate("extract_list_head "),
+            source,
+            arena.newline(),
+            "=> ".display_in(arena),
+            next,
+        ]
+        .concat_in(arena)
+        .indent(arena);
+
+        head.then(single.or(multi, arena), arena)
+    }
+}
+
 impl ExtractListHead {
     pub fn new(
         bind: Symbol,
@@ -363,6 +885,44 @@ pub struct ExtractListTail {
     pub bind: Symbol,
     pub source: Symbol,
     pub next: Id<PatternMatcher>,
+}
+
+// <bind> = extract_list_tail <source> => <next>
+// <bind> =
+//    extract_list_tail <source>
+//    => <next>
+impl<'a> Notate<'a> for IrPrinter<'a, ExtractListTail> {
+    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
+        let ExtractListTail { bind, source, next } = self.node;
+
+        let bind = bind.display_in(arena);
+        let source = source.display_in(arena);
+        let next = self.to(next).notate(arena);
+
+        let head = bind.then(arena.notate(" ="), arena);
+
+        let single = [
+            arena.notate(" extract_list_tail "),
+            source.clone(),
+            arena.notate(" => "),
+            next.clone(),
+        ]
+        .concat_in(arena)
+        .flatten(arena);
+
+        let multi = [
+            arena.newline(),
+            arena.notate("extract_list_tail "),
+            source,
+            arena.newline(),
+            "=> ".display_in(arena),
+            next,
+        ]
+        .concat_in(arena)
+        .indent(arena);
+
+        head.then(single.or(multi, arena), arena)
+    }
 }
 
 impl ExtractListTail {
@@ -383,6 +943,54 @@ pub struct ExtractListAt {
     pub source: Symbol,
     pub index: u32,
     pub next: Id<PatternMatcher>,
+}
+
+// <bind> = extract_list_at <source> <index> => <next>
+// <bind> =
+//    extract_list_at <source> <index>
+//    => <next>
+impl<'a> Notate<'a> for IrPrinter<'a, ExtractListAt> {
+    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
+        let ExtractListAt {
+            bind,
+            source,
+            index,
+            next,
+        } = self.node;
+
+        let bind = bind.display_in(arena);
+        let source = source.display_in(arena);
+        let index = index.display_in(arena);
+        let next = self.to(next).notate(arena);
+
+        let head = bind.then(arena.notate(" ="), arena);
+
+        let single = [
+            arena.notate(" extract_list_at "),
+            source.clone(),
+            arena.notate(" "),
+            index.clone(),
+            arena.notate(" => "),
+            next.clone(),
+        ]
+        .concat_in(arena)
+        .flatten(arena);
+
+        let multi = [
+            arena.newline(),
+            arena.notate("extract_list_at "),
+            source,
+            arena.notate(" "),
+            index,
+            arena.newline(),
+            "=> ".display_in(arena),
+            next,
+        ]
+        .concat_in(arena)
+        .indent(arena);
+
+        head.then(single.or(multi, arena), arena)
+    }
 }
 
 impl ExtractListAt {
@@ -411,6 +1019,54 @@ pub struct ExtractListSliceFrom {
     pub next: Id<PatternMatcher>,
 }
 
+// <bind> = extract_list_slice_from <source> <start_index> => <next>
+// <bind> =
+//    extract_list_slice_from <source> <start_index>
+//    => <next>
+impl<'a> Notate<'a> for IrPrinter<'a, ExtractListSliceFrom> {
+    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
+        let ExtractListSliceFrom {
+            bind,
+            source,
+            start_index,
+            next,
+        } = self.node;
+
+        let bind = bind.display_in(arena);
+        let source = source.display_in(arena);
+        let start_index = start_index.display_in(arena);
+        let next = self.to(next).notate(arena);
+
+        let head = bind.then(arena.notate(" ="), arena);
+
+        let single = [
+            arena.notate(" extract_list_slice_from "),
+            source.clone(),
+            arena.notate(" "),
+            start_index.clone(),
+            arena.notate(" => "),
+            next.clone(),
+        ]
+        .concat_in(arena)
+        .flatten(arena);
+
+        let multi = [
+            arena.newline(),
+            arena.notate("extract_list_slice_from "),
+            source,
+            arena.notate(" "),
+            start_index,
+            arena.newline(),
+            "=> ".display_in(arena),
+            next,
+        ]
+        .concat_in(arena)
+        .indent(arena);
+
+        head.then(single.or(multi, arena), arena)
+    }
+}
+
 impl ExtractListSliceFrom {
     pub fn new(
         bind: Symbol,
@@ -435,6 +1091,54 @@ pub struct ExtractRecordField {
     pub source: Symbol,
     pub field: StrKey,
     pub next: Id<PatternMatcher>,
+}
+
+// <bind> = extract_record_field <source> <field> => <next>
+// <bind> =
+//    extract_record_field <source> <field>
+//    => <next>
+impl<'a> Notate<'a> for IrPrinter<'a, ExtractRecordField> {
+    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
+        let ExtractRecordField {
+            bind,
+            source,
+            field,
+            next,
+        } = self.node;
+
+        let bind = bind.display_in(arena);
+        let source = source.display_in(arena);
+        let field = field.display_in(arena);
+        let next = self.to(next).notate(arena);
+
+        let head = bind.then(arena.notate(" ="), arena);
+
+        let single = [
+            arena.notate(" extract_record_field "),
+            source.clone(),
+            arena.notate(" "),
+            field.clone(),
+            arena.notate(" => "),
+            next.clone(),
+        ]
+        .concat_in(arena)
+        .flatten(arena);
+
+        let multi = [
+            arena.newline(),
+            arena.notate("extract_record_field "),
+            source,
+            arena.notate(" "),
+            field,
+            arena.newline(),
+            "=> ".display_in(arena),
+            next,
+        ]
+        .concat_in(arena)
+        .indent(arena);
+
+        head.then(single.or(multi, arena), arena)
+    }
 }
 
 impl ExtractRecordField {
@@ -463,6 +1167,54 @@ pub struct ExtractRecordWithoutField {
     pub next: Id<PatternMatcher>,
 }
 
+// <bind> = extract_record_without_field <source> <field> => <next>
+// <bind> =
+//    extract_record_without_field <source> <field>
+//    => <next>
+impl<'a> Notate<'a> for IrPrinter<'a, ExtractRecordWithoutField> {
+    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
+        let ExtractRecordWithoutField {
+            bind,
+            source,
+            field,
+            next,
+        } = self.node;
+
+        let bind = bind.display_in(arena);
+        let source = source.display_in(arena);
+        let field = field.display_in(arena);
+        let next = self.to(next).notate(arena);
+
+        let head = bind.then(arena.notate(" ="), arena);
+
+        let single = [
+            arena.notate(" extract_record_without_field "),
+            source.clone(),
+            arena.notate(" "),
+            field.clone(),
+            arena.notate(" => "),
+            next.clone(),
+        ]
+        .concat_in(arena)
+        .flatten(arena);
+
+        let multi = [
+            arena.newline(),
+            arena.notate("extract_record_without_field "),
+            source,
+            arena.notate(" "),
+            field,
+            arena.newline(),
+            "=> ".display_in(arena),
+            next,
+        ]
+        .concat_in(arena)
+        .indent(arena);
+
+        head.then(single.or(multi, arena), arena)
+    }
+}
+
 impl ExtractRecordWithoutField {
     pub fn new(
         bind: Symbol,
@@ -488,6 +1240,44 @@ pub struct ExtractVariantTag {
     pub next: Id<PatternMatcher>,
 }
 
+// <bind> = extract_variant_tag <source> => <next>
+// <bind> =
+//    extract_variant_tag <source>
+//    => <next>
+impl<'a> Notate<'a> for IrPrinter<'a, ExtractVariantTag> {
+    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
+        let ExtractVariantTag { bind, source, next } = self.node;
+
+        let bind = bind.display_in(arena);
+        let source = source.display_in(arena);
+        let next = self.to(next).notate(arena);
+
+        let head = bind.then(arena.notate(" ="), arena);
+
+        let single = [
+            arena.notate(" extract_variant_tag "),
+            source.clone(),
+            arena.notate(" => "),
+            next.clone(),
+        ]
+        .concat_in(arena)
+        .flatten(arena);
+
+        let multi = [
+            arena.newline(),
+            arena.notate("extract_variant_tag "),
+            source,
+            arena.newline(),
+            "=> ".display_in(arena),
+            next,
+        ]
+        .concat_in(arena)
+        .indent(arena);
+
+        head.then(single.or(multi, arena), arena)
+    }
+}
+
 impl ExtractVariantTag {
     pub fn new(
         bind: Symbol,
@@ -505,6 +1295,44 @@ pub struct ExtractVariantValue {
     pub bind: Symbol,
     pub source: Symbol,
     pub next: Id<PatternMatcher>,
+}
+
+// <bind> = extract_variant_value <source> => <next>
+// <bind> =
+//    extract_variant_value <source>
+//    => <next>
+impl<'a> Notate<'a> for IrPrinter<'a, ExtractVariantValue> {
+    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
+        let ExtractVariantValue { bind, source, next } = self.node;
+
+        let bind = bind.display_in(arena);
+        let source = source.display_in(arena);
+        let next = self.to(next).notate(arena);
+
+        let head = bind.then(arena.notate(" ="), arena);
+
+        let single = [
+            arena.notate(" extract_variant_value "),
+            source.clone(),
+            arena.notate(" => "),
+            next.clone(),
+        ]
+        .concat_in(arena)
+        .flatten(arena);
+
+        let multi = [
+            arena.newline(),
+            arena.notate("extract_variant_value "),
+            source,
+            arena.newline(),
+            "=> ".display_in(arena),
+            next,
+        ]
+        .concat_in(arena)
+        .indent(arena);
+
+        head.then(single.or(multi, arena), arena)
+    }
 }
 
 impl ExtractVariantValue {
@@ -526,6 +1354,15 @@ pub struct PatternSuccess {
     pub next: Id<Expr>,
 }
 
+impl<'a> Notate<'a> for IrPrinter<'a, PatternSuccess> {
+    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
+        let PatternSuccess { next } = self.node;
+        arena
+            .notate("success => ")
+            .then(self.to(next).notate(arena), arena)
+    }
+}
+
 impl PatternSuccess {
     pub fn new(next: Id<Expr>) -> Self {
         Self { next }
@@ -534,6 +1371,12 @@ impl PatternSuccess {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct PatternFailure;
+
+impl<'a> Notate<'a> for IrPrinter<'a, PatternFailure> {
+    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
+        arena.notate("failure")
+    }
+}
 
 // === MAIN PATTERN MATCHER ENUM ===
 
@@ -567,6 +1410,38 @@ pub enum PatternMatcher {
     // Control flow
     Success(PatternSuccess),
     Failure(PatternFailure),
+}
+
+impl<'a> Notate<'a> for IrPrinter<'a, Id<PatternMatcher>> {
+    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
+        match self.node.get(self.ir) {
+            PatternMatcher::IsUnit(tester) => self.to(tester).notate(arena),
+            PatternMatcher::IsBool(tester) => self.to(tester).notate(arena),
+            PatternMatcher::IsNum(tester) => self.to(tester).notate(arena),
+            PatternMatcher::IsChar(tester) => self.to(tester).notate(arena),
+            PatternMatcher::IsStr(tester) => self.to(tester).notate(arena),
+            PatternMatcher::IsTag(tester) => self.to(tester).notate(arena),
+            PatternMatcher::IsVariant(tester) => self.to(tester).notate(arena),
+            PatternMatcher::IsList(tester) => self.to(tester).notate(arena),
+            PatternMatcher::ListIsExact(tester) => self.to(tester).notate(arena),
+            PatternMatcher::ListIsAtLeast(tester) => self.to(tester).notate(arena),
+            PatternMatcher::IsRecord(tester) => self.to(tester).notate(arena),
+            PatternMatcher::RecordHasField(tester) => self.to(tester).notate(arena),
+            PatternMatcher::ExtractIdentity(extractor) => self.to(extractor).notate(arena),
+            PatternMatcher::ExtractListHead(extractor) => self.to(extractor).notate(arena),
+            PatternMatcher::ExtractListTail(extractor) => self.to(extractor).notate(arena),
+            PatternMatcher::ExtractListAt(extractor) => self.to(extractor).notate(arena),
+            PatternMatcher::ExtractListSliceFrom(extractor) => self.to(extractor).notate(arena),
+            PatternMatcher::ExtractRecordField(extractor) => self.to(extractor).notate(arena),
+            PatternMatcher::ExtractRecordWithoutField(extractor) => {
+                self.to(extractor).notate(arena)
+            }
+            PatternMatcher::ExtractVariantTag(extractor) => self.to(extractor).notate(arena),
+            PatternMatcher::ExtractVariantValue(extractor) => self.to(extractor).notate(arena),
+            PatternMatcher::Success(success) => self.to(success).notate(arena),
+            PatternMatcher::Failure(failure) => self.to(failure).notate(arena),
+        }
+    }
 }
 
 impl PatternMatcher {
