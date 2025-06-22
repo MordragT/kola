@@ -118,6 +118,12 @@ impl<K, V> StackMap<K, V> {
         self.0.clear();
     }
 
+    /// Resizes the map to contain exactly `len` elements.
+    #[inline]
+    pub fn truncate(&mut self, len: usize) {
+        self.0.truncate(len);
+    }
+
     /// Reserves capacity for at least `additional` more elements.
     #[inline]
     pub fn reserve(&mut self, additional: usize) {

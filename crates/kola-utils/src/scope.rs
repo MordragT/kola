@@ -62,9 +62,9 @@ impl<K, V> LinearScope<K, V> {
         self.0.len()
     }
 
-    // pub fn restore_depth(&mut self, depth: usize) {
-    //     self.0.truncate(depth)
-    // }
+    pub fn restore_depth(&mut self, depth: usize) {
+        self.0.truncate(depth)
+    }
 
     /// Returns true if the scope stack contains no bindings
     #[inline]

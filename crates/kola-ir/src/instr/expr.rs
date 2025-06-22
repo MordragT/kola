@@ -1,175 +1,15 @@
-use std::{fmt, mem};
-
 use derive_more::{Display, From};
-use kola_builtins::BuiltinId;
-use kola_print::prelude::*;
-use kola_utils::{
-    fmt::{DisplayWithInterner, StrInternerExt},
-    impl_try_as,
-    interner::{StrInterner, StrKey},
-};
+use std::fmt;
 
+use kola_print::prelude::*;
+use kola_utils::{impl_try_as, interner::StrKey};
+
+use super::{Atom, PatternMatcher, Symbol};
 use crate::{
     id::Id,
     ir::{IrBuilder, IrView},
     print::IrPrinter,
 };
-
-// TODO Symbol scoping
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct Symbol(pub u32);
-
-impl fmt::Display for Symbol {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        // let mut display = self.0.to_string();
-        // display.truncate(3);
-        // write!(f, "s{display}")
-        write!(f, "s{}", self.0)
-    }
-}
-
-#[derive(Debug, From, Clone, PartialEq)]
-pub enum Instr {
-    Symbol(Symbol),
-    Atom(Atom),
-    Expr(Expr),
-    Field(RecordField),
-    Item(ListItem),
-    Path(FieldPath),
-}
-
-impl<T> From<&T> for Instr
-where
-    T: Into<Instr> + Copy,
-{
-    fn from(value: &T) -> Self {
-        (*value).into()
-    }
-}
-
-impl_try_as!(
-    Instr,
-    Symbol(Symbol),
-    Atom(Atom),
-    Expr(Expr),
-    Field(RecordField),
-    Item(ListItem),
-    Path(FieldPath)
-);
-
-const _: () = {
-    // Ensure that the size of Instr is not too large
-    assert!(mem::size_of::<Instr>() <= 24 * mem::size_of::<u8>());
-};
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct Func {
-    pub param: Symbol,
-    pub body: Id<Expr>,
-}
-
-impl Func {
-    pub fn new(param: Symbol, body: impl Into<Expr>, builder: &mut IrBuilder) -> Self {
-        let body = builder.add(body.into());
-        Self { param, body }
-    }
-}
-
-// fn <param> => <body>
-// fn <param>
-//      => <body>;
-impl<'a> Notate<'a> for IrPrinter<'a, Func> {
-    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
-        let Func { param, body } = self.node;
-
-        let param = param.display_in(arena);
-        let body = self.to(body).notate(arena);
-
-        let single = arena
-            .just(' ')
-            .then("=> ".blue().display_in(arena), arena)
-            .then(body.clone().flatten(arena), arena);
-        let multi = arena
-            .newline()
-            .then("=> ".blue().display_in(arena), arena)
-            .then(body, arena)
-            .indent(arena);
-
-        "fn "
-            .red()
-            .display_in(arena)
-            .then(param, arena)
-            .then(single.or(multi, arena), arena)
-    }
-}
-
-#[derive(Debug, From, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct Tag(pub StrKey);
-
-impl DisplayWithInterner for Tag {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>, interner: &StrInterner) -> fmt::Result {
-        write!(f, "#{}", interner[self.0].blue())
-    }
-}
-
-/// An expression is atomic if:
-/// - it is guaranteed to terminate
-/// - it causes no side effects
-/// - it causes no control effects
-/// - it never produces an error
-#[derive(Debug, From, Clone, Copy, PartialEq)]
-pub enum Atom {
-    Noop,
-    Bool(bool),
-    Char(char),
-    Num(f64),
-    Str(StrKey),
-    Func(Func),
-    Symbol(Symbol),
-    Builtin(BuiltinId),
-    Tag(Tag),
-}
-
-impl<T> From<&T> for Atom
-where
-    T: Into<Atom> + Copy,
-{
-    fn from(value: &T) -> Self {
-        (*value).into()
-    }
-}
-
-impl_try_as!(
-    Atom,
-    Bool(bool),
-    Char(char),
-    Num(f64),
-    Str(StrKey),
-    Func(Func),
-    Symbol(Symbol),
-    Builtin(BuiltinId)
-);
-
-impl<'a> Notate<'a> for IrPrinter<'a, Id<Atom>> {
-    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
-        let notation = match self.ir.instr(self.node) {
-            Atom::Noop => "noop".red().display_in(arena),
-            Atom::Bool(b) => b.green().display_in(arena),
-            Atom::Char(c) => format!("'{}'", c.green()).display_in(arena),
-            Atom::Num(n) => n.green().display_in(arena),
-            Atom::Str(s) => format_args!("\"{}\"", self.interner[s].green()).display_in(arena),
-            Atom::Func(f) => self.to(f).notate(arena),
-            Atom::Symbol(s) => s.display_in(arena),
-            Atom::Builtin(b) => b.display_in(arena),
-            Atom::Tag(t) => self.interner.display(&t).display_in(arena),
-        };
-
-        notation
-            .clone()
-            .flatten(arena)
-            .or(notation.indent(arena), arena)
-    }
-}
 
 #[derive(Debug, Display, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum UnaryOp {
@@ -1346,6 +1186,35 @@ impl<'a> Notate<'a> for IrPrinter<'a, RecordAccessExpr> {
     }
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct PatternMatchExpr {
+    pub bind: Symbol,
+    pub source: Id<Atom>,
+    pub matcher: Id<PatternMatcher>,
+    pub next: Id<Expr>,
+}
+
+impl PatternMatchExpr {
+    pub fn new(
+        bind: Symbol,
+        source: impl Into<Atom>,
+        matcher: impl Into<PatternMatcher>,
+        next: impl Into<Expr>,
+        builder: &mut IrBuilder,
+    ) -> Self {
+        let source = builder.add(source.into());
+        let matcher = builder.add(matcher.into());
+        let next = builder.add(next.into());
+
+        Self {
+            bind,
+            source,
+            matcher,
+            next,
+        }
+    }
+}
+
 // essentially a linked list
 /// An expression is complex if it is not atomic
 /// Complex expressions must be in tail position
@@ -1363,6 +1232,7 @@ pub enum Expr {
     RecordRestrict(RecordRestrictExpr),
     RecordUpdate(RecordUpdateExpr),
     RecordAccess(RecordAccessExpr),
+    PatternMatch(PatternMatchExpr),
     // // Capture a continuation
     // Callcc {
     //     bind: Symbol,
@@ -1410,6 +1280,7 @@ impl<'a> Notate<'a> for IrPrinter<'a, Id<Expr>> {
             Expr::RecordRestrict(expr) => self.to(expr).notate(arena),
             Expr::RecordUpdate(expr) => self.to(expr).notate(arena),
             Expr::RecordAccess(expr) => self.to(expr).notate(arena),
+            Expr::PatternMatch(expr) => todo!(),
         }
         .then(';'.display_in(arena), arena)
     }

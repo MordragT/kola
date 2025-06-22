@@ -354,7 +354,9 @@ data scheme Machine : { ip : Str, cmd : Str }
 /// ```
 pub fn pat_parser<'t>() -> impl KolaParser<'t, Id<node::Pat>> + Clone {
     recursive(|pat| {
-        let bind = symbol().map_to_node(node::BindPat).to_pat();
+        let bind = lower_value_name_parser()
+            .map_to_node(node::BindPat)
+            .to_pat();
         let wildcard = ctrl(CtrlT::UNDERSCORE).to(node::AnyPat).to_node().to_pat();
         let literal = literal_parser()
             .map_to_node(node::LiteralPat::from)

@@ -102,13 +102,12 @@ impl Phase for ResolvePhase {
 
     // ===== PATTERNS =====
     // TODO: Pattern matching will need symbols for bindings like `let {x, y} = record`
-    // For now, patterns don't introduce symbols in our resolver
     type AnyPat = !;
     type LiteralPat = !;
-    type BindPat = !; // Future: ValueSym for pattern bindings
-    type ListElPat = !;
+    type BindPat = ValueSym;
+    type ListElPat = ValueSym;
     type ListPat = !;
-    type RecordFieldPat = !; // Future: ValueSym for destructured fields
+    type RecordFieldPat = ValueSym; // Future: ValueSym for destructured fields
     type RecordPat = !;
     type VariantTagPat = !;
     type VariantPat = !;

@@ -44,5 +44,5 @@
     alice : forall a . Person a = { name = "Alice", age = 30 },
 
     main = case alice of
-        { name, age } => "hallo", #name,
+        { name, age } => name,
 }

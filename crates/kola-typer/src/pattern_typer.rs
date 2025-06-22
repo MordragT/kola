@@ -111,7 +111,7 @@ where
     /// Bind pattern matches any type and binds the variable to that type.
     fn visit_bind_pat(&mut self, id: Id<node::BindPat>, tree: &T) -> ControlFlow<Self::BreakValue> {
         // Get the variable name from the bind pattern
-        let var_name = id.get(tree).0;
+        let var_name = id.get(tree).0.get(tree).0;
 
         // Bind the variable to the source type in the environment
         // This implements the rule: ∆;Γ ⊢ x ⇒ α ⊣ Γ[x : α]
@@ -379,7 +379,7 @@ mod tests {
         let source = builder.insert(node::LiteralExpr::Num(42.0));
 
         let x = interner.intern("x");
-        let pat = builder.insert(node::BindPat(x));
+        let pat = node::BindPat::new_in(x, &mut builder);
         let expr = node::QualifiedExpr::new_in(None, x, None, &mut builder);
         let branch = node::CaseBranch::new_in(pat, expr, &mut builder);
 
@@ -428,9 +428,9 @@ mod tests {
         let y = interner.intern("y");
         let z = interner.intern("z");
 
-        let pat_x = builder.insert(node::BindPat(x));
-        let pat_y = builder.insert(node::BindPat(y));
-        let pat_z = builder.insert(node::BindPat(z));
+        let pat_x = node::BindPat::new_in(x, &mut builder);
+        let pat_y = node::BindPat::new_in(y, &mut builder);
+        let pat_z = node::BindPat::new_in(z, &mut builder);
 
         let el_x = node::ListElPat::pat(pat_x, &mut builder);
         let el_y = node::ListElPat::pat(pat_y, &mut builder);
@@ -461,7 +461,7 @@ mod tests {
         let head = interner.intern("head");
         let tail = interner.intern("tail");
 
-        let pat_head = builder.insert(node::BindPat(head));
+        let pat_head = node::BindPat::new_in(head, &mut builder);
         let el_head = node::ListElPat::pat(pat_head, &mut builder);
 
         let el_spread = node::ListElPat::spread(Some(tail.into()), &mut builder);
@@ -571,7 +571,7 @@ mod tests {
         let source = builder.insert(node::LiteralExpr::Num(42.0));
 
         let x = interner.intern("x");
-        let pat1 = builder.insert(node::BindPat(x));
+        let pat1 = node::BindPat::new_in(x, &mut builder);
         let expr1 = builder.insert(node::LiteralExpr::Num(10.0));
         let branch1 = node::CaseBranch::new_in(pat1, expr1, &mut builder);
 

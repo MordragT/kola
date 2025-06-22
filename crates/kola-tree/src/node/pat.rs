@@ -1,6 +1,5 @@
 use derive_more::{From, IntoIterator};
 use serde::{Deserialize, Serialize};
-use std::{borrow::Borrow, ops::Deref};
 
 use kola_print::prelude::*;
 use kola_utils::{as_variant, interner::StrKey};
@@ -114,41 +113,12 @@ impl<'a> Notate<'a> for NodePrinter<'a, LiteralPat> {
     Debug, From, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
 )]
 #[from(forward)]
-pub struct BindPat(pub StrKey);
+pub struct BindPat(pub Id<ValueName>);
 
 impl BindPat {
-    #[inline]
-    pub fn as_str_key(&self) -> &StrKey {
-        &self.0
-    }
-}
-
-impl Deref for BindPat {
-    type Target = StrKey;
-
-    fn deref(&self) -> &Self::Target {
-        &self.0
-    }
-}
-
-impl AsRef<StrKey> for BindPat {
-    #[inline]
-    fn as_ref(&self) -> &StrKey {
-        &self.0
-    }
-}
-
-impl Borrow<StrKey> for BindPat {
-    #[inline]
-    fn borrow(&self) -> &StrKey {
-        &self.0
-    }
-}
-
-impl PartialEq<StrKey> for BindPat {
-    #[inline]
-    fn eq(&self, other: &StrKey) -> bool {
-        self == other
+    pub fn new_in(name: impl Into<ValueName>, builder: &mut TreeBuilder) -> Id<Self> {
+        let name_id = builder.insert(name.into());
+        builder.insert(Self(name_id))
     }
 }
 
@@ -157,11 +127,8 @@ impl<'a> Notate<'a> for NodePrinter<'a, BindPat> {
         let head = "BindPat".cyan().display_in(arena);
 
         let bind = self
-            .interner
-            .get(self.value.0)
-            .expect("Symbol not found")
-            .yellow()
-            .display_in(arena)
+            .to(self.value.0)
+            .notate(arena)
             .enclose_by(arena.just('"'), arena);
 
         let single = [arena.just(' '), bind.clone()].concat_in(arena);
@@ -659,8 +626,8 @@ mod inspector {
 
     impl<'t, S: BuildHasher> NodeInspector<'t, Id<BindPat>, S> {
         pub fn has_name(self, expected: &str) -> Self {
-            let bind = self.node.get(self.tree);
-            let s = self.interner.get(bind.0).expect("Symbol not found");
+            let bind = self.node.get(self.tree).0.get(self.tree).0;
+            let s = self.interner.get(bind).expect("Symbol not found");
 
             assert_eq!(
                 s, expected,

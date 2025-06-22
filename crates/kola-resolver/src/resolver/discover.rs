@@ -532,6 +532,110 @@ where
         ControlFlow::Continue(())
     }
 
+    fn visit_case_branch(
+        &mut self,
+        id: Id<node::CaseBranch>,
+        tree: &T,
+    ) -> ControlFlow<Self::BreakValue> {
+        let depth = self.stack.value_scope_mut().depth();
+        self.walk_case_branch(id, tree)?;
+        self.stack.value_scope_mut().restore_depth(depth); // Restore former scope if patterns created binds
+
+        ControlFlow::Continue(())
+    }
+
+    // TODOs insert symbols
+
+    fn visit_bind_pat(&mut self, id: Id<node::BindPat>, tree: &T) -> ControlFlow<Self::BreakValue> {
+        let name = *id.get(tree).0.get(tree);
+        let sym = ValueSym::new();
+        self.insert_symbol(id, sym);
+
+        self.stack.value_scope_mut().enter(name, sym);
+        ControlFlow::Continue(())
+    }
+
+    fn visit_list_pat(&mut self, id: Id<node::ListPat>, tree: &T) -> ControlFlow<Self::BreakValue> {
+        let elements = &id.get(tree).0;
+
+        for &el in elements {
+            match *el.get(tree) {
+                node::ListElPat::Pat(pat) => self.visit_pat(pat, tree)?,
+                node::ListElPat::Spread(Some(name_id)) => {
+                    let name = *name_id.get(tree);
+                    let sym = ValueSym::new();
+                    self.insert_symbol(el, sym);
+
+                    self.stack.value_scope_mut().enter(name, sym);
+                }
+                _ => {
+                    // Spread without name or empty list element - no action needed
+                }
+            }
+        }
+
+        ControlFlow::Continue(())
+    }
+
+    fn visit_record_pat(
+        &mut self,
+        id: Id<node::RecordPat>,
+        tree: &T,
+    ) -> ControlFlow<Self::BreakValue> {
+        let node::RecordPat { fields, .. } = tree.node(id);
+
+        for &field_id in fields {
+            let node::RecordFieldPat { field, pat } = *field_id.get(tree);
+
+            if let Some(pat) = pat {
+                self.visit_pat(pat, tree)?;
+            } else {
+                // No pattern means a binding: { a } => ...
+
+                let name = *field.get(tree);
+                let sym = ValueSym::new();
+                self.insert_symbol(field_id, sym);
+
+                self.stack.value_scope_mut().enter(name, sym);
+            }
+        }
+
+        ControlFlow::Continue(())
+    }
+
+    fn visit_variant_pat(
+        &mut self,
+        id: Id<node::VariantPat>,
+        tree: &T,
+    ) -> ControlFlow<Self::BreakValue> {
+        // let tags = &id.get(tree).0;
+
+        // for id in tags {
+        //     let node::VariantTagPat { tag, pat } = *id.get(tree);
+
+        //     if let Some(pat) = pat {
+        //         self.visit_pat(pat, tree)?;
+        //     } else {
+        //         // No pattern means a binding: Variant { a } => ...
+
+        //         let name = *name.get(tree);
+        //         let sym = ValueSym::new();
+
+        //         self.stack.value_scope_mut().enter(name, sym);
+        //     }
+        // }
+        //
+
+        // Actually I think nothing needs to be done here, for example:
+        // < Some : { a } > => ...
+        // This will create a binding but the binding part is handled by the Pat visitor,
+        // nothing inside the VariantPat does any kind of binding.
+        // However I suspect that I will need to revisit this for some kind of variant name analysis,
+        // so I am keeping this here for now.
+
+        self.walk_variant_pat(id, tree)
+    }
+
     fn visit_qualified_expr(
         &mut self,
         id: Id<node::QualifiedExpr>,

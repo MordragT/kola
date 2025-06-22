@@ -58,6 +58,7 @@ impl Eval for Expr {
             Expr::RecordRestrict(record_restrict_expr) => record_restrict_expr.eval(env, cont, ir),
             Expr::RecordUpdate(record_update_expr) => record_update_expr.eval(env, cont, ir),
             Expr::RecordAccess(record_access_expr) => record_access_expr.eval(env, cont, ir),
+            Expr::PatternMatch(pattern_match_expr) => todo!(),
         }
     }
 }

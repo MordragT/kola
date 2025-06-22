@@ -9,6 +9,8 @@ use kola_tree::{
 
 use crate::symbol::SymbolEnv;
 
+// https://matt.might.net/articles/cps-conversion/
+
 #[derive(Debug)]
 pub struct Normalizer<'a, Node> {
     root_id: TreeId<Node>,
@@ -621,6 +623,238 @@ where
         self.visit_expr(source, tree)?;
 
         ControlFlow::Continue(())
+    }
+
+    fn visit_case_expr(
+        &mut self,
+        id: TreeId<node::CaseExpr>,
+        tree: &T,
+    ) -> ControlFlow<Self::BreakValue> {
+        let node::CaseExpr { source, branches } = id.get(tree);
+
+        // Create symbol for the value being matched
+        let source_sym = self.next_symbol();
+        let source_atom = self.builder.add(ir::Atom::Symbol(source_sym));
+
+        let mut on_failure = self
+            .builder
+            .add(ir::PatternMatcher::Failure(ir::PatternFailure));
+
+        for branch_id in branches.iter().rev() {
+            let node::CaseBranch { pat, matches } = *branch_id.get(tree);
+
+            self.visit_expr(matches, tree)?;
+            let on_success = self
+                .builder
+                .add(ir::PatternMatcher::Success(ir::PatternSuccess {
+                    next: self.next,
+                }));
+
+            let mut pat_normalizer = PatternNormalizer::new(
+                self.hole,  // result binding
+                source_sym, // value being matched
+                on_success,
+                on_failure,
+                self.builder,
+                self.symbols,
+            );
+            pat.visit_by(&mut pat_normalizer, tree)?;
+
+            on_failure = pat_normalizer.on_success; // This is now the root pattern matcher
+        }
+
+        // Create the case expression with the final pattern matcher
+        let case_expr = ir::PatternMatchExpr {
+            bind: self.hole,
+            source: source_atom,
+            matcher: on_failure,
+            next: self.next,
+        };
+        self.next = self.builder.add(ir::Expr::PatternMatch(case_expr));
+
+        // Normalize the source (CPS style)
+        self.hole = source_sym;
+        self.visit_expr(*source, tree)?;
+
+        ControlFlow::Continue(())
+    }
+}
+
+#[derive(Debug)]
+pub struct PatternNormalizer<'a> {
+    hole: ir::Symbol,   // Where case result goes
+    source: ir::Symbol, // What we're matching against
+    on_success: InstrId<ir::PatternMatcher>,
+    on_failure: InstrId<ir::PatternMatcher>,
+    builder: &'a mut IrBuilder,
+    symbols: SymbolEnv<'a>,
+}
+
+impl<'a> PatternNormalizer<'a> {
+    pub fn new(
+        hole: ir::Symbol,
+        source: ir::Symbol,
+        on_success: InstrId<ir::PatternMatcher>,
+        on_failure: InstrId<ir::PatternMatcher>,
+        builder: &'a mut IrBuilder,
+        symbols: SymbolEnv<'a>,
+    ) -> Self {
+        Self {
+            hole,
+            source,
+            on_success,
+            on_failure,
+            builder,
+            symbols,
+        }
+    }
+
+    pub fn next_symbol(&mut self) -> ir::Symbol {
+        self.symbols.next()
+    }
+
+    pub fn symbol_of<Node, Space>(&self, id: TreeId<Node>) -> ir::Symbol
+    where
+        Space: Namespace,
+        Node: MetaCast<ResolvePhase, Meta = Sym<Space>>,
+    {
+        self.symbols.symbol_of(id)
+    }
+}
+
+impl<'a, Tree> Visitor<Tree> for PatternNormalizer<'a>
+where
+    Tree: TreeView,
+{
+    type BreakValue = ();
+
+    fn visit_any_pat(
+        &mut self,
+        _id: TreeId<node::AnyPat>,
+        _tree: &Tree,
+    ) -> ControlFlow<Self::BreakValue> {
+        // No testing nor extraction needed
+        // Not even a symbol needed so maybe just do nothing here ?
+
+        ControlFlow::Continue(())
+    }
+
+    fn visit_bind_pat(
+        &mut self,
+        id: TreeId<node::BindPat>,
+        tree: &Tree,
+    ) -> ControlFlow<Self::BreakValue> {
+        let bind = self.symbol_of(id);
+
+        self.on_success =
+            self.builder
+                .add(ir::PatternMatcher::ExtractIdentity(ir::ExtractIdentity {
+                    bind,
+                    source: self.source,
+                    next: self.on_success,
+                }));
+
+        ControlFlow::Continue(())
+    }
+    fn visit_literal_pat(
+        &mut self,
+        id: TreeId<node::LiteralPat>,
+        tree: &Tree,
+    ) -> ControlFlow<Self::BreakValue> {
+        self.on_success =
+            self.builder
+                .add(ir::PatternMatcher::ExtractIdentity(ir::ExtractIdentity {
+                    bind: self.hole,
+                    source: self.source,
+                    next: self.on_success,
+                }));
+
+        self.on_success = match *id.get(tree) {
+            node::LiteralPat::Unit => self.builder.add(ir::PatternMatcher::IsUnit(ir::IsUnit {
+                source: self.source,
+                on_success: self.on_success,
+                on_failure: self.on_failure,
+            })),
+            node::LiteralPat::Bool(payload) => {
+                self.builder.add(ir::PatternMatcher::IsBool(ir::IsBool {
+                    source: self.source,
+                    payload,
+                    on_success: self.on_success,
+                    on_failure: self.on_failure,
+                }))
+            }
+            node::LiteralPat::Num(payload) => {
+                self.builder.add(ir::PatternMatcher::IsNum(ir::IsNum {
+                    source: self.source,
+                    payload,
+                    on_success: self.on_success,
+                    on_failure: self.on_failure,
+                }))
+            }
+            node::LiteralPat::Char(payload) => {
+                self.builder.add(ir::PatternMatcher::IsChar(ir::IsChar {
+                    source: self.source,
+                    payload,
+                    on_success: self.on_success,
+                    on_failure: self.on_failure,
+                }))
+            }
+            node::LiteralPat::Str(payload) => {
+                self.builder.add(ir::PatternMatcher::IsStr(ir::IsStr {
+                    source: self.source,
+                    payload,
+                    on_success: self.on_success,
+                    on_failure: self.on_failure,
+                }))
+            }
+        };
+
+        ControlFlow::Continue(())
+    }
+
+    fn visit_list_pat(
+        &mut self,
+        id: TreeId<node::ListPat>,
+        tree: &Tree,
+    ) -> ControlFlow<Self::BreakValue> {
+        let elements = &id.get(tree).0;
+
+        for el in elements.iter().rev() {
+            // elements are either patterns or spread operator with an optional name (... and ...rest)
+            // So the tester and extractors will depend on the pattern's so just visit them if it is a pttern
+            // if it is a spread operator we will need to create the tester and extractor manually here,
+            // but actually only if it has a name, otherwise it is just a no-op
+        }
+
+        // Now after the elmenets have been visited depth first search in reverse order,
+        // we can create the list pattern tester and extractor
+        // I am not so sure how this could look like at the moment.
+        // Maybe something along the lines of:
+        // self.next = todo
+        // self.next = IsListWithAtLeast { to_test: self.hole, payload: elements.len(), on_success: self.next, on_failure: self.next_branch? }
+        // self.next = IdentityExtractor
+        // self.next = IsList { to_test: self.hole, on_success: self.next, on_failure: self.next_branch? }
+        //
+        //
+        // I am thinking that this could really benefit from the ListSet we computed for the exhaustiveness checking,
+        // because with it I believe we could branch statically here depending on if the list pattern is universal or what it's requirements are
+        todo!()
+    }
+
+    fn visit_record_pat(
+        &mut self,
+        id: TreeId<node::RecordPat>,
+        tree: &Tree,
+    ) -> ControlFlow<Self::BreakValue> {
+        todo!()
+    }
+
+    fn visit_variant_pat(
+        &mut self,
+        id: TreeId<node::VariantPat>,
+        tree: &Tree,
+    ) -> ControlFlow<Self::BreakValue> {
+        todo!()
     }
 }
 

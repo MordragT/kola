@@ -13,9 +13,13 @@ impl<'a> Decorator<'a> for ResolutionDecorator<'a> {
 
         let sym = match meta {
             Meta::QualifiedExpr(resolved) => resolved.red().display_in(arena),
-            Meta::LetExpr(value_sym) | Meta::LambdaExpr(value_sym) | Meta::ValueBind(value_sym) => {
-                value_sym.red().display_in(arena)
-            }
+            Meta::LetExpr(value_sym)
+            | Meta::LambdaExpr(value_sym)
+            | Meta::BindPat(value_sym)
+            | Meta::ListElPat(value_sym)
+            | Meta::RecordFieldPat(value_sym)
+            | Meta::ValueBind(value_sym) => value_sym.red().display_in(arena),
+
             Meta::QualifiedType(resolved) => resolved.red().display_in(arena),
             Meta::TypeVar(type_sym) | Meta::TypeBind(type_sym) | Meta::OpaqueTypeBind(type_sym) => {
                 type_sym.red().display_in(arena)
