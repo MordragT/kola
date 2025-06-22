@@ -21,7 +21,7 @@
         else if score >= 70 then 'C'
         else 'F',
 
-    export module Formula = {
+    export module formula = {
 
         # Complex arithmetic
         export formula = fn x => fn y =>
@@ -37,6 +37,6 @@
         let result1 = (compute test_num) in                     # 93
         let result2 = ((max result1) 100) in                    # 100
         let grade = (categorize 85) in                          # 'B'
-        let final_calc = ((Formula::formula result2) 50) in     # 3750
+        let final_calc = ((formula::formula result2) 50) in     # 3750
         final_calc + 1000,                                      # 4750
 }

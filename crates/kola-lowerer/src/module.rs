@@ -104,7 +104,7 @@ use kola_ir::{
     id::Id as InstrId,
     instr as ir,
     ir::{Ir, IrBuilder},
-    print::IrPrinter,
+    print::render_ir,
 };
 use kola_print::prelude::*;
 use kola_resolver::{
@@ -263,12 +263,11 @@ pub fn lower(
     }
 
     let ir = builder.finish(next);
-    let ir_printer = IrPrinter::new(&ir, interner, next);
 
     debug!(
         "{}\n{}",
         "Intermediate Representation".bold().bright_white(),
-        ir_printer.render(print_options, arena)
+        render_ir(&ir, arena, interner, print_options)
     );
 
     Program { ir, modules }

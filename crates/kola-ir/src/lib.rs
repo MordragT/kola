@@ -1,3 +1,5 @@
+#![feature(never_type)]
+
 // cps : continuation passing style
 // ssa
 // https://www.reddit.com/r/ProgrammingLanguages/comments/1ejyr0u/why_dont_we_use_continuation_passing_style_as/
@@ -24,6 +26,7 @@ pub mod id;
 pub mod instr;
 pub mod ir;
 pub mod print;
+pub mod visit;
 
 pub mod prelude {
     pub use crate::id::Id;

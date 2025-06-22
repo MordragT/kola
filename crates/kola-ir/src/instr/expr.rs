@@ -1230,32 +1230,18 @@ impl<'a> Notate<'a> for IrPrinter<'a, PatternMatchExpr> {
         let matcher = self.to(matcher).notate(arena);
         let next = arena.newline().then(self.to(next).notate(arena), arena);
 
-        [arena.notate("when "), source, arena.just(' '), matcher]
-            .concat_in(arena)
-            .then(next, arena)
+        let head = [bind, arena.notate(" = match "), source].concat_in(arena);
 
-        // let single = [
-        //     bind.clone(),
-        //     arena.notate(" = "),
-        //     source.clone().flatten(arena),
-        //     arena.notate(" ? "),
-        //     matcher.clone().flatten(arena),
-        // ]
-        // .concat_in(arena);
+        let body = [
+            arena.newline(),
+            arena.notate("[ "),
+            matcher,
+            arena.notate(" ]"),
+        ]
+        .concat_in(arena)
+        .indent(arena);
 
-        // let multi = [
-        //     bind,
-        //     arena.newline(),
-        //     arena.notate("= "),
-        //     source,
-        //     arena.newline(),
-        //     arena.notate("? "),
-        //     matcher,
-        // ]
-        // .concat_in(arena)
-        // .indent(arena);
-
-        // single.or(multi, arena).then(next, arena)
+        [head, body, next].concat_in(arena)
     }
 }
 
@@ -1354,7 +1340,7 @@ impl_try_as!(
 
 impl<'a> Notate<'a> for IrPrinter<'a, Id<Expr>> {
     fn notate(&self, arena: &'a Bump) -> Notation<'a> {
-        match self.ir.instr(self.node) {
+        let expr = match self.ir.instr(self.node) {
             Expr::Ret(expr) => self.to(expr).notate(arena),
             Expr::Call(expr) => self.to(expr).notate(arena),
             Expr::If(expr) => self.to(expr).notate(arena),
@@ -1368,7 +1354,13 @@ impl<'a> Notate<'a> for IrPrinter<'a, Id<Expr>> {
             Expr::RecordUpdate(expr) => self.to(expr).notate(arena),
             Expr::RecordAccess(expr) => self.to(expr).notate(arena),
             Expr::PatternMatch(expr) => self.to(expr).notate(arena),
-        }
-        .then(';'.display_in(arena), arena)
+        };
+
+        [
+            format_args!("{}:\t", self.node_label()).display_in(arena),
+            expr,
+            ';'.display_in(arena),
+        ]
+        .concat_in(arena)
     }
 }

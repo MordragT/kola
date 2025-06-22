@@ -258,6 +258,10 @@ impl Ir {
     pub fn root(&self) -> Id<Expr> {
         self.root
     }
+
+    pub fn count(&self) -> usize {
+        self.instructions.len()
+    }
 }
 
 impl IrView for Ir {

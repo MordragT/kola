@@ -25,7 +25,6 @@ impl fmt::Display for Symbol {
 
 #[derive(Debug, From, Clone, Copy, PartialEq)]
 pub enum Instr {
-    Symbol(Symbol),
     Atom(Atom),
     Expr(Expr),
     Field(RecordField),
@@ -39,7 +38,7 @@ impl Instr {
 }
 
 // Ensure that the size of Instr is not too large
-const _: () = assert!(Instr::BITS <= 32);
+const _: () = assert!(mem::size_of::<Instr>() <= 32);
 
 impl<T> From<&T> for Instr
 where
@@ -52,7 +51,6 @@ where
 
 impl_try_as!(
     Instr,
-    Symbol(Symbol),
     Atom(Atom),
     Expr(Expr),
     Field(RecordField),

@@ -1,5 +1,5 @@
 use kola_utils::convert::TryAsRef;
-use std::{hash::Hash, marker::PhantomData, mem, num::NonZeroU32};
+use std::{fmt, hash::Hash, marker::PhantomData, mem, num::NonZeroU32};
 
 use crate::{
     instr::Instr,
@@ -12,11 +12,15 @@ pub struct Id<T> {
     t: PhantomData<T>,
 }
 
+impl<T> Id<T> {
+    pub const BITS: usize = mem::size_of::<Self>();
+}
+
 const _: () = {
     // Ensure that Id<T> is always 4 bytes in size
     // and using nieche optimization for Option<Id<T>>.
-    assert!(mem::size_of::<Id<()>>() == 4 * mem::size_of::<u8>());
-    assert!(mem::size_of::<Option<Id<()>>>() == 4 * mem::size_of::<u8>());
+    assert!(mem::size_of::<Id<()>>() == 4);
+    assert!(mem::size_of::<Option<Id<()>>>() == 4);
 };
 
 impl<T> Id<T> {
@@ -77,5 +81,11 @@ impl<T> Ord for Id<T> {
 impl<T> Hash for Id<T> {
     fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
         self.id.hash(state);
+    }
+}
+
+impl<T> fmt::Display for Id<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "{}", self.id)
     }
 }
