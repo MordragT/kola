@@ -60,7 +60,7 @@ where
 
     /// Maps from static references to indices
     /// Uses the borrowed form for lookups
-    map: HashMap<&'static B, usize, S>,
+    map: HashMap<&'static B, Key<B>, S>,
 }
 
 impl<B, S> fmt::Debug for Interner<B, S>
@@ -179,14 +179,14 @@ where
         let borrowed: &B = value.borrow();
 
         if let Some(&key) = self.map.get(borrowed) {
-            return Key::from_usize(key);
+            return key;
         }
 
         // Convert to owned if it's not already
         let owned = value.into_owned();
 
         // Value not found, add it to our values
-        let key = self.values.len();
+        let key = Key::from_usize(self.values.len());
         self.values.push(owned);
 
         // Get a reference to the value we just added and convert it to a static reference
@@ -200,7 +200,7 @@ where
         // Store the reference -> index mapping
         self.map.insert(static_ref, key);
 
-        Key::from_usize(key)
+        key
     }
 
     /// Gets a reference to a value by its index.
@@ -220,7 +220,7 @@ where
     /// If the value is interned, returns its index.
     /// Otherwise, returns None.
     pub fn lookup(&self, value: &B) -> Option<Key<B>> {
-        self.map.get(value).copied().map(Key::from_usize)
+        self.map.get(value).copied()
     }
 
     /// Returns the number of unique values in the interner.
@@ -268,6 +268,19 @@ where
 
     fn index(&self, key: Key<B>) -> &Self::Output {
         &self.values[key.as_usize()]
+    }
+}
+
+impl<B, S> Index<&B> for Interner<B, S>
+where
+    S: BuildHasher,
+    B: ?Sized + ToOwned + Eq + Hash + 'static,
+    <B as ToOwned>::Owned: Borrow<B> + 'static,
+{
+    type Output = Key<B>;
+
+    fn index(&self, value: &B) -> &Self::Output {
+        &self.map[value]
     }
 }
 

@@ -1,8 +1,7 @@
-use std::hash::BuildHasher;
+use kola_utils::{convert::TryAsRef, interner::StrInterner};
+use std::{fmt::Debug, hash::BuildHasher};
 
-use kola_utils::interner::StrInterner;
-
-use crate::tree::TreeBuilder;
+use crate::{id::Id, node::Node, tree::TreeBuilder};
 
 /// A fluent API for inspecting and making assertions about nodes in a syntax tree.
 /// Acts as a state machine that tracks the current node being inspected.
@@ -76,6 +75,61 @@ impl<'t, T, S: BuildHasher> NodeInspector<'t, T, S> {
         F: FnOnce(&T, &'t TreeBuilder) -> bool,
     {
         assert!(f(&self.node, self.tree), "{}", message);
+        self
+    }
+}
+
+impl<'t, T, S> NodeInspector<'t, Id<T>, S>
+where
+    Node: TryAsRef<T>,
+    S: BuildHasher,
+{
+    /// Assert that the current node is equal to another node
+    pub fn assert_eq<U: PartialEq>(self, other: &U) -> Self
+    where
+        U: Debug,
+        T: Debug + PartialEq<U>,
+    {
+        let node = self.node.get(self.tree);
+
+        assert_eq!(node, other, "Expected {:?} but found {:?}", other, node);
+        self
+    }
+}
+
+impl<'t, T, S> NodeInspector<'t, Option<T>, S>
+where
+    S: BuildHasher,
+{
+    /// Assert that the current node is `None`
+    pub fn assert_none(self) -> Self {
+        assert!(self.node.is_none(), "Expected None but found Some");
+        self
+    }
+
+    /// Assert that the current node is `Some`
+    pub fn assert_some(self) -> Self {
+        assert!(self.node.is_some(), "Expected Some but found None");
+        self
+    }
+}
+
+impl<'t, T, S> NodeInspector<'t, Option<Id<T>>, S>
+where
+    Node: TryAsRef<T>,
+    S: BuildHasher,
+{
+    /// Assert that the current node is `Some` and equal to another node
+    pub fn assert_some_eq<U: PartialEq>(self, other: &U) -> Self
+    where
+        U: Debug,
+        T: Debug + PartialEq<U>,
+    {
+        if let Some(node) = self.node.map(|id| id.get(self.tree)) {
+            assert_eq!(node, other, "Expected {:?} but found {:?}", other, node);
+        } else {
+            panic!("Expected Some but found None");
+        }
         self
     }
 }

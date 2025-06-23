@@ -1,4 +1,5 @@
 use derive_more::{From, IntoIterator};
+use kola_macros::Inspector;
 use serde::{Deserialize, Serialize};
 
 use kola_print::prelude::*;
@@ -110,7 +111,18 @@ impl<'a> Notate<'a> for NodePrinter<'a, LiteralPat> {
 }
 
 #[derive(
-    Debug, From, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+    Debug,
+    Inspector,
+    From,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
 )]
 #[from(forward)]
 pub struct BindPat(pub Id<ValueName>);
@@ -138,7 +150,9 @@ impl<'a> Notate<'a> for NodePrinter<'a, BindPat> {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[derive(
+    Debug, Inspector, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+)]
 pub enum ListElPat {
     Pat(Id<Pat>),
     Spread(Option<Id<ValueName>>),
@@ -190,7 +204,9 @@ impl<'a> Notate<'a> for NodePrinter<'a, ListElPat> {
     }
 }
 
-#[derive(Debug, From, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[derive(
+    Debug, Inspector, From, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+)]
 pub struct ListPat(pub Vec<Id<ListElPat>>);
 
 impl<'a> Notate<'a> for NodePrinter<'a, ListPat> {
@@ -209,7 +225,9 @@ impl<'a> Notate<'a> for NodePrinter<'a, ListPat> {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[derive(
+    Debug, Inspector, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+)]
 pub struct RecordFieldPat {
     pub field: Id<ValueName>,
     pub pat: Option<Id<Pat>>,
@@ -257,7 +275,9 @@ impl<'a> Notate<'a> for NodePrinter<'a, RecordFieldPat> {
     }
 }
 
-#[derive(Debug, From, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[derive(
+    Debug, Inspector, From, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+)]
 pub struct RecordPat {
     pub fields: Vec<Id<RecordFieldPat>>,
     pub polymorph: bool,
@@ -319,7 +339,9 @@ impl<'a> Notate<'a> for NodePrinter<'a, RecordPat> {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[derive(
+    Debug, Inspector, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+)]
 pub struct VariantTagPat {
     pub tag: Id<ValueName>,
     pub pat: Option<Id<Pat>>,
@@ -368,7 +390,18 @@ impl<'a> Notate<'a> for NodePrinter<'a, VariantTagPat> {
 }
 
 #[derive(
-    Debug, From, IntoIterator, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+    Debug,
+    Inspector,
+    From,
+    IntoIterator,
+    Clone,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
 )]
 #[into_iterator(owned, ref)]
 pub struct VariantPat(pub Vec<Id<VariantTagPat>>);
@@ -398,7 +431,7 @@ impl<'a> Notate<'a> for NodePrinter<'a, VariantPat> {
     }
 }
 
-#[derive(Debug, From, Clone, Copy, PartialEq, PartialOrd, Serialize, Deserialize)]
+#[derive(Debug, Inspector, From, Clone, Copy, PartialEq, PartialOrd, Serialize, Deserialize)]
 pub enum Pat {
     Error(Id<PatError>),
     Any(Id<AnyPat>),
@@ -492,318 +525,5 @@ impl Pat {
     #[inline]
     pub fn is_variant(self) -> bool {
         matches!(self, Self::Variant(_))
-    }
-}
-
-mod inspector {
-    use std::hash::BuildHasher;
-
-    use super::*;
-    use crate::inspector::*;
-    impl<'t, S: BuildHasher> NodeInspector<'t, Id<Pat>, S> {
-        pub fn as_error(self) -> Option<NodeInspector<'t, Id<PatError>, S>> {
-            let pat = self.node.get(self.tree);
-            pat.to_error()
-                .map(|err_id| NodeInspector::new(err_id, self.tree, self.interner))
-        }
-
-        pub fn as_any(self) -> Option<NodeInspector<'t, Id<AnyPat>, S>> {
-            let pat = self.node.get(self.tree);
-            pat.to_wildcard()
-                .map(|wild_id| NodeInspector::new(wild_id, self.tree, self.interner))
-        }
-
-        pub fn as_literal(self) -> Option<NodeInspector<'t, Id<LiteralPat>, S>> {
-            let pat = self.node.get(self.tree);
-            pat.to_literal()
-                .map(|lit_id| NodeInspector::new(lit_id, self.tree, self.interner))
-        }
-
-        pub fn as_bind(self) -> Option<NodeInspector<'t, Id<BindPat>, S>> {
-            let pat = self.node.get(self.tree);
-            pat.to_bind()
-                .map(|id_id| NodeInspector::new(id_id, self.tree, self.interner))
-        }
-
-        pub fn as_record(self) -> Option<NodeInspector<'t, Id<RecordPat>, S>> {
-            let pat = self.node.get(self.tree);
-            pat.to_record()
-                .map(|rec_id| NodeInspector::new(rec_id, self.tree, self.interner))
-        }
-
-        pub fn as_list(self) -> Option<NodeInspector<'t, Id<ListPat>, S>> {
-            let pat = self.node.get(self.tree);
-            pat.to_list()
-                .map(|list_id| NodeInspector::new(list_id, self.tree, self.interner))
-        }
-
-        pub fn as_variant(self) -> Option<NodeInspector<'t, Id<VariantPat>, S>> {
-            let pat = self.node.get(self.tree);
-            pat.to_variant()
-                .map(|var_id| NodeInspector::new(var_id, self.tree, self.interner))
-        }
-    }
-
-    impl<'t, S: BuildHasher> NodeInspector<'t, Id<AnyPat>, S> {
-        pub fn is_any(self) -> Self {
-            let _ = self.node.get(self.tree);
-            self
-        }
-    }
-
-    impl<'t, S: BuildHasher> NodeInspector<'t, Id<LiteralPat>, S> {
-        pub fn is_unit(self) -> Self {
-            let lit_pat = self.node.get(self.tree);
-            match lit_pat {
-                LiteralPat::Unit => {}
-                _ => panic!("Expected unit literal pattern but found {:?}", lit_pat),
-            }
-            self
-        }
-
-        pub fn is_bool(self, expected: bool) -> Self {
-            let lit_pat = self.node.get(self.tree);
-            match lit_pat {
-                LiteralPat::Bool(value) => {
-                    assert_eq!(
-                        *value, expected,
-                        "Expected bool {} but found {}",
-                        expected, value
-                    );
-                }
-                _ => panic!("Expected bool literal pattern but found {:?}", lit_pat),
-            }
-            self
-        }
-
-        pub fn is_num(self, expected: f64) -> Self {
-            let lit_pat = self.node.get(self.tree);
-            match lit_pat {
-                LiteralPat::Num(value) => {
-                    assert_eq!(
-                        *value, expected,
-                        "Expected num {} but found {}",
-                        expected, value
-                    );
-                }
-                _ => panic!("Expected num literal pattern but found {:?}", lit_pat),
-            }
-            self
-        }
-
-        pub fn is_char(self, expected: char) -> Self {
-            let lit_pat = self.node.get(self.tree);
-            match lit_pat {
-                LiteralPat::Char(value) => {
-                    assert_eq!(
-                        *value, expected,
-                        "Expected char {} but found {}",
-                        expected, value
-                    );
-                }
-                _ => panic!("Expected char literal pattern but found {:?}", lit_pat),
-            }
-            self
-        }
-
-        pub fn is_string(self, expected: &str) -> Self {
-            let lit_pat = self.node.get(self.tree);
-            match lit_pat {
-                LiteralPat::Str(value) => {
-                    let value = self.interner.get(*value).expect("Symbol not found");
-
-                    assert_eq!(
-                        value, expected,
-                        "Expected string \"{}\" but found \"{}\"",
-                        expected, value
-                    );
-                }
-                _ => panic!("Expected string literal pattern but found {:?}", lit_pat),
-            }
-            self
-        }
-    }
-
-    impl<'t, S: BuildHasher> NodeInspector<'t, Id<BindPat>, S> {
-        pub fn has_name(self, expected: &str) -> Self {
-            let bind = self.node.get(self.tree).0.get(self.tree).0;
-            let s = self.interner.get(bind).expect("Symbol not found");
-
-            assert_eq!(
-                s, expected,
-                "Expected bind pattern '{}' but found '{}'",
-                expected, s
-            );
-            self
-        }
-    }
-
-    impl<'t, S: BuildHasher> NodeInspector<'t, Id<ListPat>, S> {
-        pub fn has_elements(self, count: usize) -> Self {
-            let elements_len = self.node.get(self.tree).0.len();
-            assert_eq!(
-                elements_len, count,
-                "Expected {} elements but found {}",
-                count, elements_len
-            );
-            self
-        }
-
-        pub fn element_at(self, index: usize) -> NodeInspector<'t, Id<ListElPat>, S> {
-            let list_pat = self.node.get(self.tree);
-            assert!(
-                index < list_pat.0.len(),
-                "Element index {} out of bounds (max {})",
-                index,
-                list_pat.0.len() - 1
-            );
-            let element_id = list_pat.0[index];
-            NodeInspector::new(element_id, self.tree, self.interner)
-        }
-    }
-
-    impl<'t, S: BuildHasher> NodeInspector<'t, Id<ListElPat>, S> {
-        pub fn as_pattern(self) -> Option<NodeInspector<'t, Id<Pat>, S>> {
-            let element = self.node.get(self.tree);
-            match element {
-                ListElPat::Pat(pat_id) => {
-                    Some(NodeInspector::new(*pat_id, self.tree, self.interner))
-                }
-                _ => None,
-            }
-        }
-
-        pub fn as_spread(self) -> Option<Option<NodeInspector<'t, Id<ValueName>, S>>> {
-            let element = self.node.get(self.tree);
-            match element {
-                ListElPat::Spread(name_opt) => Some(
-                    name_opt.map(|name_id| NodeInspector::new(name_id, self.tree, self.interner)),
-                ),
-                _ => None,
-            }
-        }
-    }
-
-    impl<'t, S: BuildHasher> NodeInspector<'t, Id<RecordPat>, S> {
-        pub fn has_fields(self, count: usize) -> Self {
-            let fields_len = self.node.get(self.tree).fields.len();
-            assert_eq!(
-                fields_len, count,
-                "Expected {} fields but found {}",
-                count, fields_len
-            );
-            self
-        }
-
-        pub fn field_at(self, index: usize) -> NodeInspector<'t, Id<RecordFieldPat>, S> {
-            let record_pat = self.node.get(self.tree);
-            assert!(
-                index < record_pat.fields.len(),
-                "Field index {} out of bounds (max {})",
-                index,
-                record_pat.fields.len() - 1
-            );
-            let field_id = record_pat.fields[index];
-            NodeInspector::new(field_id, self.tree, self.interner)
-        }
-
-        pub fn field_named(self, name: &str) -> Option<NodeInspector<'t, Id<RecordFieldPat>, S>> {
-            let record_pat = self.node.get(self.tree);
-            record_pat
-                .fields
-                .iter()
-                .find(|id| {
-                    let field = id.get(self.tree).field(self.tree);
-                    self.interner.get(field.0).expect("Symbol not found") == name
-                })
-                .map(|field_id| NodeInspector::new(*field_id, self.tree, self.interner))
-        }
-
-        pub fn is_polymorphic(self) -> Self {
-            let record_pat = self.node.get(self.tree);
-            assert!(
-                record_pat.polymorph,
-                "Expected polymorphic record pattern but found non-polymorphic"
-            );
-            self
-        }
-    }
-
-    impl<'t, S: BuildHasher> NodeInspector<'t, Id<RecordFieldPat>, S> {
-        pub fn has_field_name(self, expected: &str) -> Self {
-            let name = self.node.get(self.tree).field(self.tree);
-            let value = self.interner.get(name.0).expect("Symbol not found");
-
-            assert_eq!(
-                value, expected,
-                "Expected field pattern name '{}' but found '{}'",
-                expected, value
-            );
-            self
-        }
-
-        pub fn pattern(self) -> Option<NodeInspector<'t, Id<Pat>, S>> {
-            let field_pat = self.node.get(self.tree);
-            field_pat
-                .pat
-                .map(|pat_id| NodeInspector::new(pat_id, self.tree, self.interner))
-        }
-    }
-
-    impl<'t, S: BuildHasher> NodeInspector<'t, Id<VariantPat>, S> {
-        pub fn has_cases(self, count: usize) -> Self {
-            let cases_len = self.node.get(self.tree).0.len();
-            assert_eq!(
-                cases_len, count,
-                "Expected {} cases but found {}",
-                count, cases_len
-            );
-            self
-        }
-
-        pub fn case_at(self, index: usize) -> NodeInspector<'t, Id<VariantTagPat>, S> {
-            let variant_pat = self.node.get(self.tree);
-            assert!(
-                index < variant_pat.0.len(),
-                "Case index {} out of bounds (max {})",
-                index,
-                variant_pat.0.len() - 1
-            );
-            let case_id = variant_pat.0[index];
-            NodeInspector::new(case_id, self.tree, self.interner)
-        }
-
-        pub fn case_named(self, name: &str) -> Option<NodeInspector<'t, Id<VariantTagPat>, S>> {
-            let variant_pat = self.node.get(self.tree);
-            variant_pat
-                .0
-                .iter()
-                .find(|id| {
-                    let variant = id.get(self.tree).case(self.tree);
-                    self.interner.get(variant.0).expect("Symbol not found") == name
-                })
-                .map(|case_id| NodeInspector::new(*case_id, self.tree, self.interner))
-        }
-    }
-
-    impl<'t, S: BuildHasher> NodeInspector<'t, Id<VariantTagPat>, S> {
-        pub fn has_case_name(self, expected: &str) -> Self {
-            let name = self.node.get(self.tree).case(self.tree);
-            let value = self.interner.get(name.0).expect("Symbol not found");
-
-            assert_eq!(
-                value, expected,
-                "Expected variant case name '{}' but found '{}'",
-                expected, value
-            );
-            self
-        }
-
-        pub fn pattern(self) -> Option<NodeInspector<'t, Id<Pat>, S>> {
-            let case_pat = self.node.get(self.tree);
-            case_pat
-                .pat
-                .map(|pat_id| NodeInspector::new(pat_id, self.tree, self.interner))
-        }
     }
 }

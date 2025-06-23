@@ -1,8 +1,9 @@
 use proc_macro::TokenStream;
+use proc_macro2::Span;
 use quote::quote;
 use syn::{
-    Attribute, Data, DataEnum, DataStruct, DeriveInput, Fields, FieldsNamed, Ident, Meta, MetaList,
-    Type,
+    Attribute, Data, DataEnum, DataStruct, DeriveInput, Fields, FieldsNamed, FieldsUnnamed, Ident,
+    Meta, MetaList, Type,
 };
 
 pub fn generate_inspector_impl(input: &DeriveInput) -> syn::Result<TokenStream> {
@@ -20,7 +21,7 @@ pub fn generate_inspector_impl(input: &DeriveInput) -> syn::Result<TokenStream> 
     };
 
     Ok(quote! {
-        impl<'t, S: std::hash::BuildHasher> crate::inspector::NodeInspector<'t, crate::tree::Id<#name>, S> {
+        impl<'t, S: std::hash::BuildHasher> crate::inspector::NodeInspector<'t, crate::id::Id<#name>, S> {
             #(#methods)*
         }
     }.into())
@@ -32,10 +33,7 @@ fn generate_struct_methods(
 ) -> syn::Result<Vec<proc_macro2::TokenStream>> {
     match &data_struct.fields {
         Fields::Named(fields_named) => generate_named_field_methods(fields_named),
-        Fields::Unnamed(_) => Err(syn::Error::new_spanned(
-            struct_name,
-            "Inspector only supports named fields",
-        )),
+        Fields::Unnamed(fields_unnamed) => generate_unnamed_field_methods(fields_unnamed),
         Fields::Unit => {
             Ok(vec![]) // Unit structs get no generated methods
         }
@@ -52,7 +50,9 @@ fn generate_named_field_methods(
         let field_type = &field.ty;
         let field_attrs = parse_field_attributes(&field.attrs)?;
 
-        let method = generate_field_method(field_name, field_type, &field_attrs)?;
+        let method =
+            generate_field_method(FieldAccess::Named(field_name), field_type, &field_attrs)?;
+
         if !method.is_empty() {
             methods.push(method);
         }
@@ -61,8 +61,33 @@ fn generate_named_field_methods(
     Ok(methods)
 }
 
+fn generate_unnamed_field_methods(
+    fields: &FieldsUnnamed,
+) -> syn::Result<Vec<proc_macro2::TokenStream>> {
+    // Only support tuple structs with exactly one field
+    if fields.unnamed.len() != 1 {
+        return Err(syn::Error::new_spanned(
+            fields,
+            "Inspector only supports tuple structs with exactly one field",
+        ));
+    }
+
+    let field = &fields.unnamed[0];
+    let field_attrs = parse_field_attributes(&field.attrs)?;
+
+    // Use the generic field method generator with unnamed field parameters
+    let method = generate_field_method(FieldAccess::Unnamed, &field.ty, &field_attrs)?;
+
+    Ok(vec![method])
+}
+
+enum FieldAccess<'a> {
+    Named(&'a Ident),
+    Unnamed,
+}
+
 fn generate_field_method(
-    field_name: &Ident,
+    field_access: FieldAccess,
     field_type: &Type,
     field_attrs: &FieldAttributes,
 ) -> syn::Result<proc_macro2::TokenStream> {
@@ -70,16 +95,27 @@ fn generate_field_method(
     if field_attrs.skip {
         return Ok(quote! {});
     }
+
+    let method_name = match field_access {
+        FieldAccess::Named(ident) => ident,
+        FieldAccess::Unnamed => &Ident::new("inner", Span::call_site()),
+    };
+
+    let field_name = match field_access {
+        FieldAccess::Named(ident) => quote!(#ident),
+        FieldAccess::Unnamed => quote!(0),
+    };
+
     match classify_field_type(field_type) {
         FieldTypeClass::SingleId(inner_type) => Ok(quote! {
-            pub fn #field_name(self) -> crate::inspector::NodeInspector<'t, crate::tree::Id<#inner_type>, S> {
+            pub fn #method_name(self) -> crate::inspector::NodeInspector<'t, crate::id::Id<#inner_type>, S> {
                 let node = self.node.get(self.tree);
                 crate::inspector::NodeInspector::new(node.#field_name, self.tree, self.interner)
             }
         }),
         FieldTypeClass::VecId(inner_type) => {
-            let has_count_method = quote::format_ident!("has_{}_count", field_name);
-            let at_method = quote::format_ident!("{}_at", field_name);
+            let has_count_method = quote::format_ident!("has_{}_count", method_name);
+            let at_method = quote::format_ident!("{}_at", method_name);
 
             Ok(quote! {
                 pub fn #has_count_method(self, expected: usize) -> Self {
@@ -93,7 +129,7 @@ fn generate_field_method(
                     self
                 }
 
-                pub fn #at_method(self, index: usize) -> crate::inspector::NodeInspector<'t, crate::tree::Id<#inner_type>, S> {
+                pub fn #at_method(self, index: usize) -> crate::inspector::NodeInspector<'t, crate::id::Id<#inner_type>, S> {
                     let node = self.node.get(self.tree);
                     assert!(
                         index < node.#field_name.len(),
@@ -106,17 +142,27 @@ fn generate_field_method(
                 }
             })
         }
-        FieldTypeClass::OptionId(inner_type) => Ok(quote! {
-            pub fn #field_name(self) -> Option<crate::inspector::NodeInspector<'t, crate::tree::Id<#inner_type>, S>> {
-                let node = self.node.get(self.tree);
-                node.#field_name.map(|id| crate::inspector::NodeInspector::new(id, self.tree, self.interner))
-            }
-        }),
+        FieldTypeClass::OptionId(inner_type) => {
+            let try_method_name = quote::format_ident!("try_{}", method_name);
+
+            Ok(quote! {
+                pub fn #method_name(self) -> crate::inspector::NodeInspector<'t, crate::id::Id<#inner_type>, S> {
+                    let node = self.node.get(self.tree);
+                    let id = node.#field_name.expect(&format!("Expected {} to be Some", stringify!(#field_name)));
+                    crate::inspector::NodeInspector::new(id, self.tree, self.interner)
+                }
+
+                pub fn #try_method_name(self) -> Option<crate::inspector::NodeInspector<'t, crate::id::Id<#inner_type>, S>> {
+                    let node = self.node.get(self.tree);
+                    node.#field_name.map(|id| crate::inspector::NodeInspector::new(id, self.tree, self.interner))
+                }
+            })
+        }
         FieldTypeClass::Other => {
             if field_attrs.getter {
                 // Generate simple getter if explicitly requested
                 Ok(quote! {
-                    pub fn #field_name(self) -> &#field_type {
+                    pub fn #method_name(self) -> &#field_type {
                         let node = self.node.get(self.tree);
                         &node.#field_name
                     }
@@ -157,15 +203,43 @@ fn generate_enum_variant_method(
     };
 
     let variant_name = &variant.ident;
-    let method_name = quote::format_ident!("as_{}", to_snake_case(&variant_name.to_string()));
+    let snake_case_name = to_snake_case(&variant_name.to_string());
+
+    let as_name = quote::format_ident!("as_{}", snake_case_name);
+    let to_name = quote::format_ident!("to_{}", snake_case_name);
+    let is_some_name = quote::format_ident!("is_some_{}", snake_case_name);
+    let is_none_name = quote::format_ident!("is_none_{}", snake_case_name);
 
     Some(quote! {
-        pub fn #method_name(self) -> Option<crate::inspector::NodeInspector<'t, crate::tree::Id<#inner_type>, S>> {
+        #[inline]
+        pub fn #as_name(self) -> Option<crate::inspector::NodeInspector<'t, crate::id::Id<#inner_type>, S>> {
             let node = self.node.get(self.tree);
             match node {
                 #enum_name::#variant_name(id) => Some(crate::inspector::NodeInspector::new(*id, self.tree, self.interner)),
                 _ => None,
             }
+        }
+
+        #[inline]
+        pub fn #to_name(self) -> crate::inspector::NodeInspector<'t, crate::id::Id<#inner_type>, S> {
+            self.#as_name()
+                .expect(&format!("Expected enum to be {}", stringify!(#variant_name)))
+        }
+
+        #[inline]
+        pub fn #is_some_name(self) -> Self {
+            if self.#as_name().is_none() {
+                panic!("Expected enum to be {}", stringify!(#variant_name));
+            }
+            self
+        }
+
+        #[inline]
+        pub fn #is_none_name(self) -> Self {
+            if self.#as_name().is_some() {
+                panic!("Expected enum to not be {}", stringify!(#variant_name));
+            }
+            self
         }
     })
 }
@@ -302,4 +376,14 @@ fn to_snake_case(s: &str) -> String {
     }
 
     result
+}
+
+fn to_singular(s: &str) -> String {
+    // Simple pluralization rules - could be enhanced
+    match s {
+        s if s.ends_with("ies") => s[..s.len() - 3].to_string() + "y",
+        s if s.ends_with("es") => s[..s.len() - 2].to_string(),
+        s if s.ends_with("s") => s[..s.len() - 1].to_string(),
+        s => s.to_string(),
+    }
 }

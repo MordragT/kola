@@ -1,4 +1,5 @@
 use derive_more::From;
+use kola_macros::Inspector;
 use serde::{Deserialize, Serialize};
 use std::{borrow::Borrow, ops::Deref};
 
@@ -45,7 +46,9 @@ impl<'a> Notate<'a> for NodePrinter<'a, TypeError> {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[derive(
+    Debug, Inspector, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+)]
 pub struct QualifiedType {
     pub path: Option<Id<ModulePath>>,
     pub ty: Id<TypeName>,
@@ -138,7 +141,9 @@ impl<'a> Notate<'a> for NodePrinter<'a, TypeVar> {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[derive(
+    Debug, Inspector, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+)]
 pub struct RecordFieldType {
     pub name: Id<ValueName>,
     pub ty: Id<Type>,
@@ -176,7 +181,9 @@ impl<'a> Notate<'a> for NodePrinter<'a, RecordFieldType> {
     }
 }
 
-#[derive(Debug, From, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[derive(
+    Debug, Inspector, From, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+)]
 pub struct RecordType {
     pub fields: Vec<Id<RecordFieldType>>,
     pub extension: Option<Id<TypeName>>,
@@ -226,7 +233,9 @@ impl<'a> Notate<'a> for NodePrinter<'a, RecordType> {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[derive(
+    Debug, Inspector, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+)]
 pub struct VariantTagType {
     pub name: Id<ValueName>, // These are data constructors, therefore ValueName is used
     pub ty: Option<Id<Type>>,
@@ -265,7 +274,9 @@ impl<'a> Notate<'a> for NodePrinter<'a, VariantTagType> {
     }
 }
 
-#[derive(Debug, From, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[derive(
+    Debug, Inspector, From, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+)]
 pub struct VariantType {
     pub cases: Vec<Id<VariantTagType>>,
     pub extension: Option<Id<TypeName>>,
@@ -316,7 +327,9 @@ impl<'a> Notate<'a> for NodePrinter<'a, VariantType> {
 }
 
 // TODO this needs to be disambiguated with parentheses if a function should be one argument
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[derive(
+    Debug, Inspector, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+)]
 pub struct FuncType {
     pub input: Id<Type>,
     pub output: Id<Type>,
@@ -354,7 +367,9 @@ impl<'a> Notate<'a> for NodePrinter<'a, FuncType> {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[derive(
+    Debug, Inspector, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+)]
 pub struct TypeApplication {
     pub constructor: Id<Type>,
     pub arg: Id<Type>,
@@ -393,7 +408,18 @@ impl<'a> Notate<'a> for NodePrinter<'a, TypeApplication> {
 }
 
 #[derive(
-    Debug, From, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+    Debug,
+    Inspector,
+    From,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
 )]
 pub enum Type {
     Error(Id<TypeError>),
@@ -479,7 +505,7 @@ impl Type {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[derive(Debug, Inspector, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct TypeScheme {
     pub vars: Vec<Id<TypeVar>>,
     pub ty: Id<Type>,
@@ -529,283 +555,5 @@ impl<'a> Notate<'a> for NodePrinter<'a, TypeScheme> {
         };
 
         head.then(single.or(multi, arena), arena)
-    }
-}
-mod inspector {
-    use std::hash::BuildHasher;
-
-    use super::*;
-    use crate::inspector::*;
-    impl<'t, S: BuildHasher> NodeInspector<'t, Id<TypeScheme>, S> {
-        pub fn as_type_path(self) -> Option<NodeInspector<'t, Id<QualifiedType>, S>> {
-            let ty = self.node.get(self.tree);
-            ty.ty
-                .get(self.tree)
-                .to_qualified_type()
-                .map(|path_id| NodeInspector::new(path_id, self.tree, self.interner))
-        }
-
-        pub fn as_function(self) -> Option<NodeInspector<'t, Id<FuncType>, S>> {
-            let ty = self.node.get(self.tree);
-            ty.ty
-                .get(self.tree)
-                .to_func_type()
-                .map(|fn_id| NodeInspector::new(fn_id, self.tree, self.interner))
-        }
-
-        pub fn as_record(self) -> Option<NodeInspector<'t, Id<RecordType>, S>> {
-            let ty = self.node.get(self.tree);
-            ty.ty
-                .get(self.tree)
-                .to_record_type()
-                .map(|record_id| NodeInspector::new(record_id, self.tree, self.interner))
-        }
-
-        pub fn as_variant(self) -> Option<NodeInspector<'t, Id<VariantType>, S>> {
-            let ty = self.node.get(self.tree);
-            ty.ty
-                .get(self.tree)
-                .to_variant_type()
-                .map(|variant_id| NodeInspector::new(variant_id, self.tree, self.interner))
-        }
-
-        pub fn as_type_application(self) -> Option<NodeInspector<'t, Id<TypeApplication>, S>> {
-            let ty = self.node.get(self.tree);
-            ty.ty
-                .get(self.tree)
-                .to_type_application()
-                .map(|app_id| NodeInspector::new(app_id, self.tree, self.interner))
-        }
-
-        pub fn has_type_vars(self, count: usize) -> Self {
-            let vars_len = self.node.get(self.tree).vars.len();
-            assert_eq!(
-                vars_len, count,
-                "Expected {} type variables but found {}",
-                count, vars_len
-            );
-            self
-        }
-
-        pub fn type_var_at(self, index: usize) -> NodeInspector<'t, Id<TypeVar>, S> {
-            let ty = self.node.get(self.tree);
-            assert!(
-                index < ty.vars.len(),
-                "Type variable index {} out of bounds (max {})",
-                index,
-                ty.vars.len() - 1
-            );
-            let var_id = ty.vars[index];
-            NodeInspector::new(var_id, self.tree, self.interner)
-        }
-
-        pub fn type_(self) -> NodeInspector<'t, Id<Type>, S> {
-            let ty = self.node.get(self.tree);
-            NodeInspector::new(ty.ty, self.tree, self.interner)
-        }
-    }
-
-    impl<'t, S: BuildHasher> NodeInspector<'t, Id<QualifiedType>, S> {
-        pub fn module_path(self) -> Option<NodeInspector<'t, Id<ModulePath>, S>> {
-            let type_path = self.node.get(self.tree);
-            type_path
-                .path
-                .map(|path_id| NodeInspector::new(path_id, self.tree, self.interner))
-        }
-
-        pub fn has_type_name(self, expected: &str) -> NodeInspector<'t, Id<QualifiedType>, S> {
-            let type_name = self.node.get(self.tree).ty.get(self.tree).0;
-            let name = self.interner.get(type_name).expect("Symbol not found");
-
-            assert_eq!(
-                name, expected,
-                "Expected type variable name '{}' but found '{}'",
-                expected, name
-            );
-            self
-        }
-    }
-
-    impl<'t, S: BuildHasher> NodeInspector<'t, Id<TypeVar>, S> {
-        pub fn has_name(self, expected: &str) -> Self {
-            let type_var = self.node.get(self.tree);
-            let name = self.interner.get(type_var.0).expect("Symbol not found");
-
-            assert_eq!(
-                name, expected,
-                "Expected type variable name '{}' but found '{}'",
-                expected, name
-            );
-            self
-        }
-    }
-
-    impl<'t, S: BuildHasher> NodeInspector<'t, Id<FuncType>, S> {
-        pub fn input(self) -> NodeInspector<'t, Id<Type>, S> {
-            let function_type = self.node.get(self.tree);
-            NodeInspector::new(function_type.input, self.tree, self.interner)
-        }
-
-        pub fn output(self) -> NodeInspector<'t, Id<Type>, S> {
-            let function_type = self.node.get(self.tree);
-            NodeInspector::new(function_type.output, self.tree, self.interner)
-        }
-    }
-
-    impl<'t, S: BuildHasher> NodeInspector<'t, Id<RecordType>, S> {
-        pub fn has_fields(self, count: usize) -> Self {
-            let fields_len = self.node.get(self.tree).fields.len();
-            assert_eq!(
-                fields_len, count,
-                "Expected {} fields but found {}",
-                count, fields_len
-            );
-            self
-        }
-
-        pub fn field_at(self, index: usize) -> NodeInspector<'t, Id<RecordFieldType>, S> {
-            let record_type = self.node.get(self.tree);
-            assert!(
-                index < record_type.fields.len(),
-                "Field index {} out of bounds (max {})",
-                index,
-                record_type.fields.len() - 1
-            );
-            let field_id = record_type.fields[index];
-            NodeInspector::new(field_id, self.tree, self.interner)
-        }
-
-        pub fn extension(self) -> Option<NodeInspector<'t, Id<TypeName>, S>> {
-            let record_type = self.node.get(self.tree);
-            record_type
-                .extension
-                .map(|ext_id| NodeInspector::new(ext_id, self.tree, self.interner))
-        }
-    }
-
-    impl<'t, S: BuildHasher> NodeInspector<'t, Id<RecordFieldType>, S> {
-        pub fn has_field_name(self, expected: &str) -> Self {
-            let name = self.node.get(self.tree).name.get(self.tree);
-            let name = self.interner.get(name.0).expect("Symbol not found");
-
-            assert_eq!(
-                name, expected,
-                "Expected field name '{}' but found '{}'",
-                expected, name
-            );
-            self
-        }
-
-        pub fn type_(self) -> NodeInspector<'t, Id<Type>, S> {
-            let field = self.node.get(self.tree);
-            NodeInspector::new(field.ty, self.tree, self.interner)
-        }
-    }
-
-    impl<'t, S: BuildHasher> NodeInspector<'t, Id<VariantType>, S> {
-        pub fn has_cases(self, count: usize) -> Self {
-            let cases_len = self.node.get(self.tree).cases.len();
-            assert_eq!(
-                cases_len, count,
-                "Expected {} cases but found {}",
-                count, cases_len
-            );
-            self
-        }
-
-        pub fn case_at(self, index: usize) -> NodeInspector<'t, Id<VariantTagType>, S> {
-            let variant_type = self.node.get(self.tree);
-            assert!(
-                index < variant_type.cases.len(),
-                "Case index {} out of bounds (max {})",
-                index,
-                variant_type.cases.len() - 1
-            );
-            let case_id = variant_type.cases[index];
-            NodeInspector::new(case_id, self.tree, self.interner)
-        }
-
-        pub fn extension(self) -> Option<NodeInspector<'t, Id<TypeName>, S>> {
-            let variant_type = self.node.get(self.tree);
-            variant_type
-                .extension
-                .map(|ext_id| NodeInspector::new(ext_id, self.tree, self.interner))
-        }
-    }
-
-    impl<'t, S: BuildHasher> NodeInspector<'t, Id<VariantTagType>, S> {
-        pub fn has_case_name(self, expected: &str) -> Self {
-            let name = self.node.get(self.tree).name.get(self.tree);
-            let name = self.interner.get(name.0).expect("Symbol not found");
-
-            assert_eq!(
-                name, expected,
-                "Expected case name '{}' but found '{}'",
-                expected, name
-            );
-            self
-        }
-
-        pub fn type_(self) -> Option<NodeInspector<'t, Id<Type>, S>> {
-            let case = self.node.get(self.tree);
-            case.ty
-                .map(|ty_id| NodeInspector::new(ty_id, self.tree, self.interner))
-        }
-    }
-
-    impl<'t, S: BuildHasher> NodeInspector<'t, Id<Type>, S> {
-        pub fn as_error(self) -> Option<NodeInspector<'t, Id<TypeError>, S>> {
-            let type_expr = self.node.get(self.tree);
-            type_expr
-                .to_error()
-                .map(|err_id| NodeInspector::new(err_id, self.tree, self.interner))
-        }
-
-        pub fn as_path(self) -> Option<NodeInspector<'t, Id<QualifiedType>, S>> {
-            let type_expr = self.node.get(self.tree);
-            type_expr
-                .to_qualified_type()
-                .map(|path_id| NodeInspector::new(path_id, self.tree, self.interner))
-        }
-
-        pub fn as_record(self) -> Option<NodeInspector<'t, Id<RecordType>, S>> {
-            let type_expr = self.node.get(self.tree);
-            type_expr
-                .to_record_type()
-                .map(|rec_id| NodeInspector::new(rec_id, self.tree, self.interner))
-        }
-
-        pub fn as_variant(self) -> Option<NodeInspector<'t, Id<VariantType>, S>> {
-            let type_expr = self.node.get(self.tree);
-            type_expr
-                .to_variant_type()
-                .map(|var_id| NodeInspector::new(var_id, self.tree, self.interner))
-        }
-
-        pub fn as_function(self) -> Option<NodeInspector<'t, Id<FuncType>, S>> {
-            let type_expr = self.node.get(self.tree);
-            type_expr
-                .to_func_type()
-                .map(|fn_id| NodeInspector::new(fn_id, self.tree, self.interner))
-        }
-
-        pub fn as_application(self) -> Option<NodeInspector<'t, Id<TypeApplication>, S>> {
-            let type_expr = self.node.get(self.tree);
-            type_expr
-                .to_type_application()
-                .map(|app_id| NodeInspector::new(app_id, self.tree, self.interner))
-        }
-    }
-
-    impl<'t, S: BuildHasher> NodeInspector<'t, Id<TypeApplication>, S> {
-        pub fn constructor(self) -> NodeInspector<'t, Id<Type>, S> {
-            let type_app = self.node.get(self.tree);
-            NodeInspector::new(type_app.constructor, self.tree, self.interner)
-        }
-
-        pub fn arg(self) -> NodeInspector<'t, Id<Type>, S> {
-            let type_app = self.node.get(self.tree);
-            NodeInspector::new(type_app.arg, self.tree, self.interner)
-        }
     }
 }
