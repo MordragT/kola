@@ -6,6 +6,7 @@ edition = "2024"
 [dependencies]
 kola-utils.workspace = true
 kola-print.workspace = true
+kola-macros.workspace = true
 serde.workspace = true
 derive_more.workspace = true
 paste.workspace = true

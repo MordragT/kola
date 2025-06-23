@@ -1,7 +1,6 @@
 use std::{io, rc::Rc};
 
 use camino::Utf8Path;
-use kola_ir::print::IrPrinter;
 use kola_lowerer::module::{Program, lower};
 use kola_print::{PrintOptions, prelude::*};
 use kola_resolver::prelude::*;

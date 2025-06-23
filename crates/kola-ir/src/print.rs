@@ -22,11 +22,8 @@ pub fn render_ir(ir: &Ir, arena: &Bump, interner: &StrInterner, options: PrintOp
     if !labeller.defered.is_empty() {
         result.push_str(&format!("\n\n{}\n\n", "With:".bold().bright_white()));
         for expr in labeller.defered {
-            result.push_str(&format!("@{}\n", labeller.labels[expr.as_usize()]));
-
             let expr_printer = printer.to(expr);
             result.push_str(&expr_printer.render(options, arena));
-
             result.push('\n');
             result.push('\n');
         }
@@ -126,7 +123,7 @@ where
 {
     type Error = !;
 
-    fn visit_atom(&mut self, atom: Id<instr::Atom>, _ir: &Ir) -> Result<(), Self::Error> {
+    fn visit_atom(&mut self, atom: Id<instr::Atom>, ir: &Ir) -> Result<(), Self::Error> {
         self.reference_counts[atom.as_usize()] += 1;
 
         if self.reference_counts[atom.as_usize()] > 1 {
@@ -134,6 +131,10 @@ where
         } else {
             self.labels[atom.as_usize()] = self.label_counter;
             self.label_counter += 1;
+
+            if let instr::Atom::Func(f) = ir.instr(atom) {
+                self.visit_expr(f.body, ir)?;
+            }
         }
 
         Ok(())

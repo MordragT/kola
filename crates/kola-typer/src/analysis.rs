@@ -412,7 +412,7 @@ pub trait RequiredSet {
 impl RequiredSet for PrimitiveType {
     fn required_set(&self) -> CoverSet {
         match self {
-            PrimitiveType::Unit => CoverSet::Atom(EnumSet::only(Atom::Unit)),
+            PrimitiveType::Unit => CoverSet::Atom(AtomSet::only(Atom::Unit)),
             PrimitiveType::Bool => CoverSet::Atom(Atom::True | Atom::False),
             PrimitiveType::Num => CoverSet::Universal,
             PrimitiveType::Char => CoverSet::Universal,

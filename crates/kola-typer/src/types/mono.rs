@@ -181,6 +181,8 @@ impl Substitutable for MonoType {
     }
 }
 
+// TODO thread display through KindEnv and StrInterner
+
 impl fmt::Display for MonoType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {

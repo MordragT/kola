@@ -501,6 +501,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "kola-macros"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
 name = "kola-print"
 version = "0.1.0"
 dependencies = [
@@ -561,6 +570,7 @@ name = "kola-tree"
 version = "0.1.0"
 dependencies = [
  "derive_more",
+ "kola-macros",
  "kola-print",
  "kola-utils",
  "paste",

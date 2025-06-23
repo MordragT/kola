@@ -39,21 +39,33 @@ impl<'a> Notate<'a> for IrPrinter<'a, Func> {
         let param = param.display_in(arena);
         let body = self.to(body).notate(arena);
 
-        let single = arena
-            .just(' ')
-            .then("=> ".blue().display_in(arena), arena)
-            .then(body.clone().flatten(arena), arena);
-        let multi = arena
-            .newline()
-            .then("=> ".blue().display_in(arena), arena)
-            .then(body, arena)
-            .indent(arena);
+        // let single = arena
+        //     .just(' ')
+        //     .then("=> ".blue().display_in(arena), arena)
+        //     .then(body.clone().flatten(arena), arena);
+        // let multi = arena
+        //     .newline()
+        //     .then("=> ".blue().display_in(arena), arena)
+        //     .then(body, arena)
+        //     .indent(arena);
 
-        "fn "
-            .red()
-            .display_in(arena)
-            .then(param, arena)
-            .then(single.or(multi, arena), arena)
+        // "fn "
+        //     .red()
+        //     .display_in(arena)
+        //     .then(param, arena)
+        //     .then(single.or(multi, arena), arena)
+
+        let head = [
+            "fn ".red().display_in(arena),
+            param,
+            " =>".blue().display_in(arena),
+        ]
+        .concat_in(arena)
+        .flatten(arena);
+
+        let body = arena.newline().then(body, arena).indent(arena);
+
+        head.then(body, arena)
     }
 }
 

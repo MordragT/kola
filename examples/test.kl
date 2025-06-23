@@ -22,7 +22,7 @@
     #    { a = a, b = b },
 
 
-    type Option = forall a . < Some : a, None >,
+    #type Option = forall a . < Some : a, None >,
     #main = (Some 10),
 
     #main : forall a . Option a = (None ()),
@@ -48,13 +48,18 @@
     #main = case alice of
     #    { name, age } => name,
 
-    number = 1,
+    #number = 1,
 
-    main = case number of
-        0 => "zero",
-        1 => "one",
-        2 => "two",
-        _ => "many",
+    #main = case number of
+    #    0 => "zero",
+    #    1 => "one",
+    #    2 => "two",
+    #    _ => "many",
 
 
+    f = fn x => x.a + x.b,
+
+    main = let
+        x = { a = 10, b = 20 } in
+        (f x),
 }
