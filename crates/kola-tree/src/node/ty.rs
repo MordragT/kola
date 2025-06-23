@@ -1,4 +1,5 @@
 use derive_more::From;
+use enum_as_inner::EnumAsInner;
 use kola_macros::Inspector;
 use serde::{Deserialize, Serialize};
 use std::{borrow::Borrow, ops::Deref};
@@ -409,6 +410,7 @@ impl<'a> Notate<'a> for NodePrinter<'a, TypeApplication> {
 
 #[derive(
     Debug,
+    EnumAsInner,
     Inspector,
     From,
     Clone,
@@ -440,68 +442,6 @@ impl<'a> Notate<'a> for NodePrinter<'a, Type> {
             Type::Func(f) => self.to(f).notate(arena),
             Type::Application(a) => self.to(a).notate(arena),
         }
-    }
-}
-
-impl Type {
-    #[inline]
-    pub fn to_error(self) -> Option<Id<TypeError>> {
-        as_variant!(self, Self::Error)
-    }
-
-    #[inline]
-    pub fn to_qualified_type(self) -> Option<Id<QualifiedType>> {
-        as_variant!(self, Self::Qualified)
-    }
-
-    #[inline]
-    pub fn to_record_type(self) -> Option<Id<RecordType>> {
-        as_variant!(self, Self::Record)
-    }
-
-    #[inline]
-    pub fn to_variant_type(self) -> Option<Id<VariantType>> {
-        as_variant!(self, Self::Variant)
-    }
-
-    #[inline]
-    pub fn to_func_type(self) -> Option<Id<FuncType>> {
-        as_variant!(self, Self::Func)
-    }
-
-    #[inline]
-    pub fn to_type_application(self) -> Option<Id<TypeApplication>> {
-        as_variant!(self, Self::Application)
-    }
-
-    #[inline]
-    pub fn is_error(self) -> bool {
-        matches!(self, Self::Error(_))
-    }
-
-    #[inline]
-    pub fn is_qualified_type(self) -> bool {
-        matches!(self, Self::Qualified(_))
-    }
-
-    #[inline]
-    pub fn is_record_type(self) -> bool {
-        matches!(self, Self::Record(_))
-    }
-
-    #[inline]
-    pub fn is_variant_type(self) -> bool {
-        matches!(self, Self::Variant(_))
-    }
-
-    #[inline]
-    pub fn is_func_type(self) -> bool {
-        matches!(self, Self::Func(_))
-    }
-
-    #[inline]
-    pub fn is_type_application(self) -> bool {
-        matches!(self, Self::Application(_))
     }
 }
 

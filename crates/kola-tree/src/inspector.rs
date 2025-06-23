@@ -1,7 +1,11 @@
 use kola_utils::{convert::TryAsRef, interner::StrInterner};
 use std::{fmt::Debug, hash::BuildHasher};
 
-use crate::{id::Id, node::Node, tree::TreeBuilder};
+use crate::{
+    id::Id,
+    node::{Name, Namespace, Node},
+    tree::TreeBuilder,
+};
 
 /// A fluent API for inspecting and making assertions about nodes in a syntax tree.
 /// Acts as a state machine that tracks the current node being inspected.
@@ -145,6 +149,26 @@ where
         } else {
             panic!("Expected Some but found None");
         }
+        self
+    }
+}
+
+impl<'t, S: BuildHasher, N: Namespace> NodeInspector<'t, Id<Name<N>>, S>
+where
+    Node: TryAsRef<Name<N>>,
+{
+    pub fn has_name(self, expected: &str) -> Self {
+        let name = self.node.get(self.tree);
+        let name = self.interner.get(name.0).expect("Symbol not found");
+
+        assert_eq!(
+            name,
+            expected,
+            "Expected {} name '{}' but found '{}'",
+            N::KIND,
+            expected,
+            name
+        );
         self
     }
 }

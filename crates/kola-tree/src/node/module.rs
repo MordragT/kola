@@ -1,4 +1,5 @@
 use derive_more::{From, IntoIterator};
+use enum_as_inner::EnumAsInner;
 use kola_macros::Inspector;
 use serde::{Deserialize, Serialize};
 
@@ -259,6 +260,7 @@ impl<'a> Notate<'a> for NodePrinter<'a, ModuleImport> {
 // TODO rename Module to ModuleImport and create wrapper ?
 #[derive(
     Debug,
+    EnumAsInner,
     Inspector,
     From,
     Clone,
@@ -289,6 +291,7 @@ impl<'a> Notate<'a> for NodePrinter<'a, ModuleExpr> {
 
 #[derive(
     Debug,
+    EnumAsInner,
     Inspector,
     From,
     Clone,
@@ -332,46 +335,6 @@ impl Bind {
         let bind = ValueBind::new_in(vis, name, ty, value, builder);
 
         builder.insert(Self::Value(bind))
-    }
-
-    pub fn to_value(self) -> Option<Id<ValueBind>> {
-        as_variant!(self, Self::Value)
-    }
-
-    pub fn to_type(self) -> Option<Id<TypeBind>> {
-        as_variant!(self, Self::Type)
-    }
-
-    pub fn to_opaque_type(self) -> Option<Id<OpaqueTypeBind>> {
-        as_variant!(self, Self::OpaqueType)
-    }
-
-    pub fn to_module(self) -> Option<Id<ModuleBind>> {
-        as_variant!(self, Self::Module)
-    }
-
-    pub fn to_module_type(self) -> Option<Id<ModuleTypeBind>> {
-        as_variant!(self, Self::ModuleType)
-    }
-
-    pub fn is_value(self) -> bool {
-        matches!(self, Self::Value(_))
-    }
-
-    pub fn is_type(self) -> bool {
-        matches!(self, Self::Type(_))
-    }
-
-    pub fn is_opaque_type(self) -> bool {
-        matches!(self, Self::OpaqueType(_))
-    }
-
-    pub fn is_module(self) -> bool {
-        matches!(self, Self::Module(_))
-    }
-
-    pub fn is_module_type(self) -> bool {
-        matches!(self, Self::ModuleType(_))
     }
 }
 
@@ -714,6 +677,7 @@ impl<'a> Notate<'a> for NodePrinter<'a, ModuleType> {
 
 #[derive(
     Debug,
+    EnumAsInner,
     Inspector,
     From,
     Clone,
@@ -741,40 +705,6 @@ impl<'a> Notate<'a> for NodePrinter<'a, Spec> {
             Spec::OpaqueType(o) => self.to(o).notate(arena),
             Spec::Module(m) => self.to(m).notate(arena),
         }
-    }
-}
-
-impl Spec {
-    pub fn to_value(self) -> Option<Id<ValueSpec>> {
-        as_variant!(self, Self::Value)
-    }
-
-    pub fn to_type_bind(self) -> Option<Id<TypeBind>> {
-        as_variant!(self, Self::TypeBind)
-    }
-
-    pub fn to_opaque_type(self) -> Option<Id<OpaqueTypeSpec>> {
-        as_variant!(self, Self::OpaqueType)
-    }
-
-    pub fn to_module(self) -> Option<Id<ModuleSpec>> {
-        as_variant!(self, Self::Module)
-    }
-
-    pub fn is_value(self) -> bool {
-        matches!(self, Self::Value(_))
-    }
-
-    pub fn is_type_bind(self) -> bool {
-        matches!(self, Self::TypeBind(_))
-    }
-
-    pub fn is_opaque_type(self) -> bool {
-        matches!(self, Self::OpaqueType(_))
-    }
-
-    pub fn is_module(self) -> bool {
-        matches!(self, Self::Module(_))
     }
 }
 

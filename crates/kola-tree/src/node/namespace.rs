@@ -1,4 +1,5 @@
 use derive_more::{Display, From};
+use enum_as_inner::EnumAsInner;
 use serde::{Deserialize, Serialize};
 use std::{borrow::Borrow, marker::PhantomData, ops::Deref};
 
@@ -192,7 +193,18 @@ impl<'a, N> Notate<'a> for NodePrinter<'a, Name<N>> {
 }
 
 #[derive(
-    Debug, From, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+    Debug,
+    EnumAsInner,
+    From,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
 )]
 pub enum AnyName {
     Module(ModuleName),
@@ -214,56 +226,6 @@ impl AnyName {
             AnyName::Module(name) => name.as_str_key(),
             AnyName::Type(name) => name.as_str_key(),
             AnyName::Value(name) => name.as_str_key(),
-        }
-    }
-
-    pub fn as_module(&self) -> Option<&ModuleName> {
-        match self {
-            AnyName::Module(name) => Some(name),
-            _ => None,
-        }
-    }
-
-    pub fn as_type(&self) -> Option<&TypeName> {
-        match self {
-            AnyName::Type(name) => Some(name),
-            _ => None,
-        }
-    }
-
-    pub fn as_value(&self) -> Option<&ValueName> {
-        match self {
-            AnyName::Value(name) => Some(name),
-            _ => None,
-        }
-    }
-}
-
-mod inspector {
-    use std::hash::BuildHasher;
-
-    use kola_utils::convert::TryAsRef;
-
-    use super::{Name, Namespace};
-    use crate::{id::Id, inspector::*, node::Node};
-
-    impl<'t, S: BuildHasher, N: Namespace> NodeInspector<'t, Id<Name<N>>, S>
-    where
-        Node: TryAsRef<Name<N>>,
-    {
-        pub fn has_name(self, expected: &str) -> Self {
-            let name = self.node.get(self.tree);
-            let name = self.interner.get(name.0).expect("Symbol not found");
-
-            assert_eq!(
-                name,
-                expected,
-                "Expected {} name '{}' but found '{}'",
-                N::KIND,
-                expected,
-                name
-            );
-            self
         }
     }
 }

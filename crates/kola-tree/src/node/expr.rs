@@ -1,4 +1,5 @@
 use derive_more::{Display, From, IntoIterator};
+use enum_as_inner::EnumAsInner;
 use kola_macros::Inspector;
 use kola_print::prelude::*;
 use kola_utils::{as_variant, interner::StrKey};
@@ -26,7 +27,7 @@ impl<'a> Notate<'a> for NodePrinter<'a, ExprError> {
     }
 }
 
-#[derive(Debug, From, Clone, Copy, PartialEq, PartialOrd, Serialize, Deserialize)]
+#[derive(Debug, EnumAsInner, From, Clone, Copy, PartialEq, PartialOrd, Serialize, Deserialize)]
 pub enum LiteralExpr {
     Unit,
     Bool(bool),
@@ -38,42 +39,6 @@ pub enum LiteralExpr {
 impl LiteralExpr {
     pub fn new_in(value: impl Into<Self>, builder: &mut TreeBuilder) -> Id<Self> {
         builder.insert(value.into())
-    }
-
-    pub fn to_bool(&self) -> Option<bool> {
-        as_variant!(self, Self::Bool).copied()
-    }
-
-    pub fn to_num(&self) -> Option<f64> {
-        as_variant!(self, Self::Num).copied()
-    }
-
-    pub fn to_char(&self) -> Option<char> {
-        as_variant!(self, Self::Char).copied()
-    }
-
-    pub fn to_str(&self) -> Option<&StrKey> {
-        as_variant!(self, Self::Str)
-    }
-
-    pub fn is_unit(&self) -> bool {
-        matches!(self, Self::Unit)
-    }
-
-    pub fn is_bool(&self) -> bool {
-        matches!(self, Self::Bool(_))
-    }
-
-    pub fn is_num(&self) -> bool {
-        matches!(self, Self::Num(_))
-    }
-
-    pub fn is_char(&self) -> bool {
-        matches!(self, Self::Char(_))
-    }
-
-    pub fn is_str(&self) -> bool {
-        matches!(self, Self::Str(_))
     }
 }
 
@@ -1560,6 +1525,7 @@ impl<'a> Notate<'a> for NodePrinter<'a, TagExpr> {
 
 #[derive(
     Debug,
+    EnumAsInner,
     Inspector,
     From,
     Clone,
@@ -1611,157 +1577,5 @@ impl<'a> Notate<'a> for NodePrinter<'a, Expr> {
             Expr::Lambda(f) => self.to_id(f).notate(arena),
             Expr::Tag(t) => self.to_id(t).notate(arena),
         }
-    }
-}
-
-impl Expr {
-    #[inline]
-    pub fn to_error(self) -> Option<Id<ExprError>> {
-        as_variant!(self, Self::Error)
-    }
-
-    #[inline]
-    pub fn to_literal(self) -> Option<Id<LiteralExpr>> {
-        as_variant!(self, Self::Literal)
-    }
-
-    #[inline]
-    pub fn to_qualified(self) -> Option<Id<QualifiedExpr>> {
-        as_variant!(self, Self::Qualified)
-    }
-
-    #[inline]
-    pub fn to_list(self) -> Option<Id<ListExpr>> {
-        as_variant!(self, Self::List)
-    }
-
-    #[inline]
-    pub fn to_record(self) -> Option<Id<RecordExpr>> {
-        as_variant!(self, Self::Record)
-    }
-
-    #[inline]
-    pub fn to_record_extend(self) -> Option<Id<RecordExtendExpr>> {
-        as_variant!(self, Self::RecordExtend)
-    }
-
-    #[inline]
-    pub fn to_record_restrict(self) -> Option<Id<RecordRestrictExpr>> {
-        as_variant!(self, Self::RecordRestrict)
-    }
-
-    #[inline]
-    pub fn to_record_update(self) -> Option<Id<RecordUpdateExpr>> {
-        as_variant!(self, Self::RecordUpdate)
-    }
-
-    #[inline]
-    pub fn to_unary(self) -> Option<Id<UnaryExpr>> {
-        as_variant!(self, Self::Unary)
-    }
-
-    #[inline]
-    pub fn to_binary(self) -> Option<Id<BinaryExpr>> {
-        as_variant!(self, Self::Binary)
-    }
-
-    #[inline]
-    pub fn to_let(self) -> Option<Id<LetExpr>> {
-        as_variant!(self, Self::Let)
-    }
-
-    #[inline]
-    pub fn to_if(self) -> Option<Id<IfExpr>> {
-        as_variant!(self, Self::If)
-    }
-
-    #[inline]
-    pub fn to_case(self) -> Option<Id<CaseExpr>> {
-        as_variant!(self, Self::Case)
-    }
-
-    #[inline]
-    pub fn to_call(self) -> Option<Id<CallExpr>> {
-        as_variant!(self, Self::Call)
-    }
-
-    #[inline]
-    pub fn to_lambda(self) -> Option<Id<LambdaExpr>> {
-        as_variant!(self, Self::Lambda)
-    }
-
-    #[inline]
-    pub fn is_error(self) -> bool {
-        matches!(self, Self::Error(_))
-    }
-
-    #[inline]
-    pub fn is_literal(self) -> bool {
-        matches!(self, Self::Literal(_))
-    }
-
-    #[inline]
-    pub fn is_qualified(self) -> bool {
-        matches!(self, Self::Qualified(_))
-    }
-
-    #[inline]
-    pub fn is_list(self) -> bool {
-        matches!(self, Self::List(_))
-    }
-
-    #[inline]
-    pub fn is_record(self) -> bool {
-        matches!(self, Self::Record(_))
-    }
-
-    #[inline]
-    pub fn is_record_extend(self) -> bool {
-        matches!(self, Self::RecordExtend(_))
-    }
-
-    #[inline]
-    pub fn is_record_restrict(self) -> bool {
-        matches!(self, Self::RecordRestrict(_))
-    }
-
-    #[inline]
-    pub fn is_record_update(self) -> bool {
-        matches!(self, Self::RecordUpdate(_))
-    }
-
-    #[inline]
-    pub fn is_unary(self) -> bool {
-        matches!(self, Self::Unary(_))
-    }
-
-    #[inline]
-    pub fn is_binary(self) -> bool {
-        matches!(self, Self::Binary(_))
-    }
-
-    #[inline]
-    pub fn is_let(self) -> bool {
-        matches!(self, Self::Let(_))
-    }
-
-    #[inline]
-    pub fn is_if(self) -> bool {
-        matches!(self, Self::If(_))
-    }
-
-    #[inline]
-    pub fn is_case(self) -> bool {
-        matches!(self, Self::Case(_))
-    }
-
-    #[inline]
-    pub fn is_call(self) -> bool {
-        matches!(self, Self::Call(_))
-    }
-
-    #[inline]
-    pub fn is_lambda(self) -> bool {
-        matches!(self, Self::Lambda(_))
     }
 }

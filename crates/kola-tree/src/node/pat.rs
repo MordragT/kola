@@ -1,4 +1,5 @@
 use derive_more::{From, IntoIterator};
+use enum_as_inner::EnumAsInner;
 use kola_macros::Inspector;
 use serde::{Deserialize, Serialize};
 
@@ -31,51 +32,13 @@ impl<'a> Notate<'a> for NodePrinter<'a, AnyPat> {
     }
 }
 
-#[derive(Debug, From, Clone, Copy, PartialEq, PartialOrd, Serialize, Deserialize)]
+#[derive(Debug, EnumAsInner, From, Clone, Copy, PartialEq, PartialOrd, Serialize, Deserialize)]
 pub enum LiteralPat {
     Unit,
     Bool(bool),
     Num(f64),
     Char(char),
     Str(StrKey),
-}
-
-impl LiteralPat {
-    pub fn to_bool(&self) -> Option<bool> {
-        as_variant!(self, Self::Bool).copied()
-    }
-
-    pub fn to_num(&self) -> Option<f64> {
-        as_variant!(self, Self::Num).copied()
-    }
-
-    pub fn to_char(&self) -> Option<char> {
-        as_variant!(self, Self::Char).copied()
-    }
-
-    pub fn to_str(&self) -> Option<&StrKey> {
-        as_variant!(self, Self::Str)
-    }
-
-    pub fn is_unit(&self) -> bool {
-        matches!(self, Self::Unit)
-    }
-
-    pub fn is_bool(&self) -> bool {
-        matches!(self, Self::Bool(_))
-    }
-
-    pub fn is_num(&self) -> bool {
-        matches!(self, Self::Num(_))
-    }
-
-    pub fn is_char(&self) -> bool {
-        matches!(self, Self::Char(_))
-    }
-
-    pub fn is_str(&self) -> bool {
-        matches!(self, Self::Str(_))
-    }
 }
 
 impl From<LiteralExpr> for LiteralPat {
@@ -151,7 +114,18 @@ impl<'a> Notate<'a> for NodePrinter<'a, BindPat> {
 }
 
 #[derive(
-    Debug, Inspector, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+    Debug,
+    EnumAsInner,
+    Inspector,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
 )]
 pub enum ListElPat {
     Pat(Id<Pat>),
@@ -431,7 +405,9 @@ impl<'a> Notate<'a> for NodePrinter<'a, VariantPat> {
     }
 }
 
-#[derive(Debug, Inspector, From, Clone, Copy, PartialEq, PartialOrd, Serialize, Deserialize)]
+#[derive(
+    Debug, EnumAsInner, Inspector, From, Clone, Copy, PartialEq, PartialOrd, Serialize, Deserialize,
+)]
 pub enum Pat {
     Error(Id<PatError>),
     Any(Id<AnyPat>),
@@ -453,77 +429,5 @@ impl<'a> Notate<'a> for NodePrinter<'a, Pat> {
             Pat::Record(r) => self.to_id(r).notate(arena),
             Pat::Variant(v) => self.to_id(v).notate(arena),
         }
-    }
-}
-
-impl Pat {
-    #[inline]
-    pub fn to_error(self) -> Option<Id<PatError>> {
-        as_variant!(self, Self::Error)
-    }
-
-    #[inline]
-    pub fn to_wildcard(self) -> Option<Id<AnyPat>> {
-        as_variant!(self, Self::Any)
-    }
-
-    #[inline]
-    pub fn to_literal(self) -> Option<Id<LiteralPat>> {
-        as_variant!(self, Self::Literal)
-    }
-
-    #[inline]
-    pub fn to_bind(self) -> Option<Id<BindPat>> {
-        as_variant!(self, Self::Bind)
-    }
-
-    #[inline]
-    pub fn to_list(self) -> Option<Id<ListPat>> {
-        as_variant!(self, Self::List)
-    }
-
-    #[inline]
-    pub fn to_record(self) -> Option<Id<RecordPat>> {
-        as_variant!(self, Self::Record)
-    }
-
-    #[inline]
-    pub fn to_variant(self) -> Option<Id<VariantPat>> {
-        as_variant!(self, Self::Variant)
-    }
-
-    #[inline]
-    pub fn is_error(self) -> bool {
-        matches!(self, Self::Error(_))
-    }
-
-    #[inline]
-    pub fn is_wildcard(self) -> bool {
-        matches!(self, Self::Any(_))
-    }
-
-    #[inline]
-    pub fn is_literal(self) -> bool {
-        matches!(self, Self::Literal(_))
-    }
-
-    #[inline]
-    pub fn is_bind(self) -> bool {
-        matches!(self, Self::Bind(_))
-    }
-
-    #[inline]
-    pub fn is_list(self) -> bool {
-        matches!(self, Self::List(_))
-    }
-
-    #[inline]
-    pub fn is_record(self) -> bool {
-        matches!(self, Self::Record(_))
-    }
-
-    #[inline]
-    pub fn is_variant(self) -> bool {
-        matches!(self, Self::Variant(_))
     }
 }
