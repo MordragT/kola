@@ -1,11 +1,11 @@
 use derive_more::From;
 use enum_as_inner::EnumAsInner;
-use kola_macros::Inspector;
+use kola_macros::{Inspector, Notate};
 use serde::{Deserialize, Serialize};
 use std::{borrow::Borrow, ops::Deref};
 
 use kola_print::prelude::*;
-use kola_utils::{as_variant, interner::StrKey};
+use kola_utils::interner::StrKey;
 
 use crate::{
     id::Id,
@@ -38,50 +38,30 @@ forall a b . < Some : a, None | b >
 forall a . { name : Str, age : Num | b }
 */
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[derive(
+    Debug, Notate, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+)]
+#[notate(color = "red")]
 pub struct TypeError;
 
-impl<'a> Notate<'a> for NodePrinter<'a, TypeError> {
-    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
-        "TypeError".red().display_in(arena)
-    }
-}
-
 #[derive(
-    Debug, Inspector, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+    Debug,
+    Notate,
+    Inspector,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
 )]
+#[notate(color = "cyan")]
 pub struct QualifiedType {
     pub path: Option<Id<ModulePath>>,
     pub ty: Id<TypeName>,
-}
-
-impl<'a> Notate<'a> for NodePrinter<'a, QualifiedType> {
-    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
-        let QualifiedType { path, ty } = *self.value;
-
-        let head = "QualifiedType".cyan().display_in(arena);
-
-        let path = path.map(|p| self.to(p).notate(arena));
-        let ty = self.to(ty).notate(arena);
-
-        // TODO fix newlines/spacings if path is None
-
-        let single = if let Some(path) = path.clone() {
-            [arena.just(' '), path, arena.just(' '), ty.clone()].concat_in(arena)
-        } else {
-            [arena.just(' '), ty.clone()].concat_in(arena)
-        }
-        .flatten(arena);
-
-        let multi = if let Some(path) = path {
-            [arena.newline(), path, arena.newline(), ty].concat_in(arena)
-        } else {
-            [arena.newline(), ty].concat_in(arena)
-        }
-        .indent(arena);
-
-        head.then(single.or(multi, arena), arena)
-    }
 }
 
 #[derive(
@@ -127,7 +107,7 @@ impl PartialEq<StrKey> for TypeVar {
 
 impl<'a> Notate<'a> for NodePrinter<'a, TypeVar> {
     fn notate(&self, arena: &'a Bump) -> Notation<'a> {
-        let head = "TypeVar".magenta().display_in(arena);
+        let head = "TypeVar".cyan().display_in(arena);
         let value = self
             .interner
             .get(self.value.0)
@@ -143,43 +123,23 @@ impl<'a> Notate<'a> for NodePrinter<'a, TypeVar> {
 }
 
 #[derive(
-    Debug, Inspector, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+    Debug,
+    Notate,
+    Inspector,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
 )]
+#[notate(color = "cyan")]
 pub struct RecordFieldType {
     pub name: Id<ValueName>,
     pub ty: Id<Type>,
-}
-
-impl<'a> Notate<'a> for NodePrinter<'a, RecordFieldType> {
-    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
-        let RecordFieldType { name, ty } = *self.value;
-
-        let head = "RecordFieldType".blue().display_in(arena);
-
-        let name = self.to_id(name).notate(arena);
-        let ty = self.to_id(ty).notate(arena);
-
-        let single = [
-            arena.notate(" name = "),
-            name.clone().flatten(arena),
-            arena.notate(", type = "),
-            ty.clone().flatten(arena),
-        ]
-        .concat_in(arena);
-
-        let multi = [
-            arena.newline(),
-            arena.notate("name = "),
-            name,
-            arena.newline(),
-            arena.notate("type = "),
-            ty,
-        ]
-        .concat_in(arena)
-        .indent(arena);
-
-        head.then(single.or(multi, arena), arena)
-    }
 }
 
 #[derive(
@@ -235,44 +195,23 @@ impl<'a> Notate<'a> for NodePrinter<'a, RecordType> {
 }
 
 #[derive(
-    Debug, Inspector, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+    Debug,
+    Notate,
+    Inspector,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
 )]
+#[notate(color = "cyan")]
 pub struct VariantTagType {
     pub name: Id<ValueName>, // These are data constructors, therefore ValueName is used
     pub ty: Option<Id<Type>>,
-}
-
-impl<'a> Notate<'a> for NodePrinter<'a, VariantTagType> {
-    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
-        let VariantTagType { name, ty } = *self.value;
-
-        let head = "VariantCaseType".blue().display_in(arena);
-
-        let name = self.to_id(name).notate(arena);
-        let ty = ty.map(|ty| self.to_id(ty).notate(arena));
-
-        let single = [
-            arena.notate(" name = "),
-            name.clone().flatten(arena),
-            ty.clone()
-                .map(|ty| arena.notate(", type = ").then(ty, arena))
-                .or_not(arena)
-                .flatten(arena),
-        ]
-        .concat_in(arena);
-
-        let multi = [
-            arena.newline(),
-            arena.notate("name = "),
-            name,
-            ty.map(|ty| [arena.newline(), arena.notate("type = "), ty].concat_in(arena))
-                .or_not(arena),
-        ]
-        .concat_in(arena)
-        .indent(arena);
-
-        head.then(single.or(multi, arena), arena)
-    }
 }
 
 #[derive(
@@ -329,83 +268,43 @@ impl<'a> Notate<'a> for NodePrinter<'a, VariantType> {
 
 // TODO this needs to be disambiguated with parentheses if a function should be one argument
 #[derive(
-    Debug, Inspector, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+    Debug,
+    Notate,
+    Inspector,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
 )]
+#[notate(color = "cyan")]
 pub struct FuncType {
     pub input: Id<Type>,
     pub output: Id<Type>,
 }
 
-impl<'a> Notate<'a> for NodePrinter<'a, FuncType> {
-    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
-        let FuncType { input, output } = *self.value;
-
-        let head = "FuncType".blue().display_in(arena);
-
-        let input = self.to_id(input).notate(arena);
-        let output = self.to_id(output).notate(arena);
-
-        let single = [
-            arena.notate(" input = "),
-            input.clone().flatten(arena),
-            arena.notate(", output = "),
-            output.clone().flatten(arena),
-        ]
-        .concat_in(arena);
-
-        let multi = [
-            arena.newline(),
-            arena.notate("input = "),
-            input,
-            arena.newline(),
-            arena.notate("output = "),
-            output,
-        ]
-        .concat_in(arena)
-        .indent(arena);
-
-        head.then(single.or(multi, arena), arena)
-    }
-}
-
 #[derive(
-    Debug, Inspector, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+    Debug,
+    Notate,
+    Inspector,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
 )]
+#[notate(color = "cyan")]
 pub struct TypeApplication {
     pub constructor: Id<Type>,
     pub arg: Id<Type>,
-}
-
-impl<'a> Notate<'a> for NodePrinter<'a, TypeApplication> {
-    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
-        let TypeApplication { constructor, arg } = *self.value;
-
-        let head = "TypeApplication".blue().display_in(arena);
-
-        let constructor = self.to_id(constructor).notate(arena);
-        let arg = self.to_id(arg).notate(arena);
-
-        let single = [
-            arena.notate(" constructor = "),
-            constructor.clone().flatten(arena),
-            arena.notate(", arg = "),
-            arg.clone().flatten(arena),
-        ]
-        .concat_in(arena);
-
-        let multi = [
-            arena.newline(),
-            arena.notate("constructor = "),
-            constructor,
-            arena.newline(),
-            arena.notate("arg = "),
-            arg,
-        ]
-        .concat_in(arena)
-        .indent(arena);
-
-        head.then(single.or(multi, arena), arena)
-    }
 }
 
 #[derive(

@@ -18,5 +18,4 @@ derive_more.workspace = true
 log.workspace = true
 camino.workspace = true
 indexmap.workspace = true
-# either.workspace = true
 enumset.workspace = true

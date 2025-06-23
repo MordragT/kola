@@ -1,10 +1,10 @@
 use derive_more::{From, IntoIterator};
 use enum_as_inner::EnumAsInner;
-use kola_macros::Inspector;
+use kola_macros::{Inspector, Notate};
 use serde::{Deserialize, Serialize};
 
 use kola_print::prelude::*;
-use kola_utils::{as_variant, interner::StrKey};
+use kola_utils::interner::StrKey;
 
 use super::LiteralExpr;
 use crate::{
@@ -14,23 +14,17 @@ use crate::{
     tree::{TreeBuilder, TreeView},
 };
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[derive(
+    Debug, Notate, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+)]
+#[notate(color = "magenta")]
 pub struct PatError;
 
-impl<'a> Notate<'a> for NodePrinter<'a, PatError> {
-    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
-        "PatError".red().display_in(arena)
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[derive(
+    Debug, Notate, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+)]
+#[notate(color = "magenta")]
 pub struct AnyPat;
-
-impl<'a> Notate<'a> for NodePrinter<'a, AnyPat> {
-    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
-        "AnyPat".blue().display_in(arena)
-    }
-}
 
 #[derive(Debug, EnumAsInner, From, Clone, Copy, PartialEq, PartialOrd, Serialize, Deserialize)]
 pub enum LiteralPat {
@@ -55,7 +49,7 @@ impl From<LiteralExpr> for LiteralPat {
 
 impl<'a> Notate<'a> for NodePrinter<'a, LiteralPat> {
     fn notate(&self, arena: &'a Bump) -> Notation<'a> {
-        let kind = "LiteralPat".purple().display_in(arena);
+        let kind = "LiteralPat".magenta().display_in(arena);
 
         let lit = match *self.value {
             LiteralPat::Unit => "Unit".yellow().display_in(arena),
@@ -75,6 +69,7 @@ impl<'a> Notate<'a> for NodePrinter<'a, LiteralPat> {
 
 #[derive(
     Debug,
+    Notate,
     Inspector,
     From,
     Clone,
@@ -87,6 +82,7 @@ impl<'a> Notate<'a> for NodePrinter<'a, LiteralPat> {
     Serialize,
     Deserialize,
 )]
+#[notate(color = "magenta")]
 #[from(forward)]
 pub struct BindPat(pub Id<ValueName>);
 
@@ -94,22 +90,6 @@ impl BindPat {
     pub fn new_in(name: impl Into<ValueName>, builder: &mut TreeBuilder) -> Id<Self> {
         let name_id = builder.insert(name.into());
         builder.insert(Self(name_id))
-    }
-}
-
-impl<'a> Notate<'a> for NodePrinter<'a, BindPat> {
-    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
-        let head = "BindPat".cyan().display_in(arena);
-
-        let bind = self
-            .to(self.value.0)
-            .notate(arena)
-            .enclose_by(arena.just('"'), arena);
-
-        let single = [arena.just(' '), bind.clone()].concat_in(arena);
-        let multi = [arena.newline(), bind].concat_in(arena).indent(arena);
-
-        head.then(single.or(multi, arena), arena)
     }
 }
 
@@ -148,7 +128,7 @@ impl<'a> Notate<'a> for NodePrinter<'a, ListElPat> {
     fn notate(&self, arena: &'a Bump) -> Notation<'a> {
         match *self.value {
             ListElPat::Pat(pat) => {
-                let head = "ListElPat".green().display_in(arena);
+                let head = "ListElPat".magenta().display_in(arena);
                 let pat = self.to_id(pat).notate(arena);
 
                 let single = arena.just(' ').then(pat.clone(), arena);
@@ -185,7 +165,7 @@ pub struct ListPat(pub Vec<Id<ListElPat>>);
 
 impl<'a> Notate<'a> for NodePrinter<'a, ListPat> {
     fn notate(&self, arena: &'a Bump) -> Notation<'a> {
-        let head = "ListPat".blue().display_in(arena);
+        let head = "ListPat".magenta().display_in(arena);
 
         let elements = self.to_slice(&self.value.0).gather(arena);
 
@@ -200,8 +180,20 @@ impl<'a> Notate<'a> for NodePrinter<'a, ListPat> {
 }
 
 #[derive(
-    Debug, Inspector, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+    Debug,
+    Notate,
+    Inspector,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
 )]
+#[notate(color = "magenta")]
 pub struct RecordFieldPat {
     pub field: Id<ValueName>,
     pub pat: Option<Id<Pat>>,
@@ -214,38 +206,6 @@ impl RecordFieldPat {
 
     pub fn pat(self, tree: &impl TreeView) -> Option<Pat> {
         self.pat.map(|id| id.get(tree)).copied()
-    }
-}
-
-impl<'a> Notate<'a> for NodePrinter<'a, RecordFieldPat> {
-    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
-        let RecordFieldPat { field, pat } = *self.value;
-
-        let head = "RecordFieldPat".blue().display_in(arena);
-
-        let field = self.to_id(field).notate(arena);
-        let pat = pat.map(|v| self.to_id(v).notate(arena));
-
-        let single = [
-            arena.notate(" field = "),
-            field.clone().flatten(arena),
-            pat.clone()
-                .map(|v| arena.notate(", pat = ").then(v, arena))
-                .or_not(arena),
-        ]
-        .concat_in(arena);
-
-        let multi = [
-            arena.newline(),
-            arena.notate("field = "),
-            field,
-            pat.map(|v| [arena.newline(), arena.notate("pat = "), v].concat_in(arena))
-                .or_not(arena),
-        ]
-        .concat_in(arena)
-        .indent(arena);
-
-        head.then(single.or(multi, arena), arena)
     }
 }
 
@@ -281,7 +241,7 @@ impl RecordPat {
 
 impl<'a> Notate<'a> for NodePrinter<'a, RecordPat> {
     fn notate(&self, arena: &'a Bump) -> Notation<'a> {
-        let head = "RecordPat".blue().display_in(arena);
+        let head = "RecordPat".magenta().display_in(arena);
 
         let fields = self.to_slice(&self.value.fields).gather(arena);
         let polymorph = self.value.polymorph;
@@ -314,7 +274,18 @@ impl<'a> Notate<'a> for NodePrinter<'a, RecordPat> {
 }
 
 #[derive(
-    Debug, Inspector, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+    Debug,
+    Notate,
+    Inspector,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
 )]
 pub struct VariantTagPat {
     pub tag: Id<ValueName>,
@@ -328,38 +299,6 @@ impl VariantTagPat {
 
     pub fn pat(self, tree: &impl TreeView) -> Option<Pat> {
         self.pat.map(|id| id.get(tree)).copied()
-    }
-}
-
-impl<'a> Notate<'a> for NodePrinter<'a, VariantTagPat> {
-    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
-        let VariantTagPat { tag, pat } = *self.value;
-
-        let head = "VariantCasePat".blue().display_in(arena);
-
-        let case = self.to_id(tag).notate(arena);
-        let pat = pat.map(|v| self.to_id(v).notate(arena));
-
-        let single = [
-            arena.notate(" case = "),
-            case.clone().flatten(arena),
-            pat.clone()
-                .map(|v| arena.notate(", pat = ").then(v, arena))
-                .or_not(arena),
-        ]
-        .concat_in(arena);
-
-        let multi = [
-            arena.newline(),
-            arena.notate("case = "),
-            case,
-            pat.map(|v| [arena.newline(), arena.notate("pat = "), v].concat_in(arena))
-                .or_not(arena),
-        ]
-        .concat_in(arena)
-        .indent(arena);
-
-        head.then(single.or(multi, arena), arena)
     }
 }
 

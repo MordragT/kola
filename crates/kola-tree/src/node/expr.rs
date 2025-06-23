@@ -1,8 +1,8 @@
 use derive_more::{Display, From, IntoIterator};
 use enum_as_inner::EnumAsInner;
-use kola_macros::Inspector;
+use kola_macros::{Inspector, Notate};
 use kola_print::prelude::*;
-use kola_utils::{as_variant, interner::StrKey};
+use kola_utils::interner::StrKey;
 use serde::{Deserialize, Serialize};
 
 use super::{ModulePath, Pat, Type, ValueName};
@@ -12,18 +12,15 @@ use crate::{
     tree::{TreeBuilder, TreeView},
 };
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[derive(
+    Debug, Notate, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+)]
+#[notate(color = "red")]
 pub struct ExprError;
 
 impl ExprError {
     pub fn new_in(builder: &mut TreeBuilder) -> Id<Self> {
         builder.insert(Self)
-    }
-}
-
-impl<'a> Notate<'a> for NodePrinter<'a, ExprError> {
-    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
-        "ExprError".red().display_in(arena)
     }
 }
 
@@ -121,8 +118,20 @@ impl<'a> Notate<'a> for NodePrinter<'a, ListExpr> {
 }
 
 #[derive(
-    Debug, Inspector, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+    Debug,
+    Notate,
+    Inspector,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
 )]
+#[notate(color = "blue")]
 pub struct RecordField {
     pub field: Id<ValueName>,
     pub type_: Option<Id<Type>>,
@@ -157,51 +166,6 @@ impl RecordField {
 
     pub fn value(self, tree: &impl TreeView) -> Expr {
         *self.value.get(tree)
-    }
-}
-
-impl<'a> Notate<'a> for NodePrinter<'a, RecordField> {
-    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
-        let RecordField {
-            field,
-            type_,
-            value,
-        } = *self.value;
-
-        let head = "RecordField".blue().display_in(arena);
-
-        let field = self.to_id(field).notate(arena);
-        let type_ = type_.map(|t| self.to_id(t).notate(arena));
-        let value = self.to_id(value).notate(arena);
-
-        let single = [
-            arena.notate(" label = "),
-            field.clone(),
-            type_
-                .clone()
-                .map(|t| arena.notate(", type = ").then(t, arena))
-                .or_not(arena),
-            arena.notate(", value = "),
-            value.clone(),
-        ]
-        .concat_in(arena)
-        .flatten(arena);
-
-        let multi = [
-            arena.newline(),
-            arena.notate("label = "),
-            field,
-            type_
-                .map(|t| [arena.newline(), arena.notate("type = "), t].concat_in(arena))
-                .or_not(arena),
-            arena.newline(),
-            arena.notate("value = "),
-            value,
-        ]
-        .concat_in(arena)
-        .indent(arena);
-
-        head.then(single.or(multi, arena), arena)
     }
 }
 
@@ -264,8 +228,20 @@ impl<'a> Notate<'a> for NodePrinter<'a, RecordExpr> {
 
 // { y [: type] | +x [: type] = 10 }
 #[derive(
-    Debug, Inspector, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+    Debug,
+    Notate,
+    Inspector,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
 )]
+#[notate(color = "blue")]
 pub struct RecordExtendExpr {
     pub source: Id<Expr>,
     pub source_type: Option<Id<Type>>,
@@ -319,71 +295,22 @@ impl RecordExtendExpr {
     }
 }
 
-impl<'a> Notate<'a> for NodePrinter<'a, RecordExtendExpr> {
-    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
-        let RecordExtendExpr {
-            source,
-            source_type,
-            select,
-            value,
-            value_type,
-        } = self.value;
-
-        let head = "RecordExtend".blue().display_in(arena);
-
-        let source = self.to_id(*source).notate(arena);
-        let source_type = source_type.map(|t| self.to(t).notate(arena));
-        let field = self.to_id(*select).notate(arena);
-        let value = self.to_id(*value).notate(arena);
-        let value_type = value_type.map(|t| self.to(t).notate(arena));
-
-        let single = [
-            arena.notate(" source = "),
-            source.clone(),
-            source_type
-                .clone()
-                .map(|t| arena.notate(", source_type = ").then(t, arena))
-                .or_not(arena),
-            arena.notate(", field = "),
-            field.clone(),
-            arena.notate(", value = "),
-            value.clone(),
-            value_type
-                .clone()
-                .map(|t| arena.notate(", value_type = ").then(t, arena))
-                .or_not(arena),
-        ]
-        .concat_in(arena)
-        .flatten(arena);
-
-        let multi = [
-            arena.newline(),
-            arena.notate("source = "),
-            source,
-            source_type
-                .map(|t| [arena.newline(), arena.notate("source_type = "), t].concat_in(arena))
-                .or_not(arena),
-            arena.newline(),
-            arena.notate("field = "),
-            field,
-            arena.newline(),
-            arena.notate("value = "),
-            value,
-            value_type
-                .map(|t| [arena.newline(), arena.notate("value_type = "), t].concat_in(arena))
-                .or_not(arena),
-        ]
-        .concat_in(arena)
-        .indent(arena);
-
-        head.then(single.or(multi, arena), arena)
-    }
-}
-
 // { y [: type] | -x [: type] }
 #[derive(
-    Debug, Inspector, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+    Debug,
+    Notate,
+    Inspector,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
 )]
+#[notate(color = "blue")]
 pub struct RecordRestrictExpr {
     pub source: Id<Expr>,
     pub source_type: Option<Id<Type>>,
@@ -429,59 +356,6 @@ impl RecordRestrictExpr {
     }
 }
 
-impl<'a> Notate<'a> for NodePrinter<'a, RecordRestrictExpr> {
-    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
-        let RecordRestrictExpr {
-            source,
-            source_type,
-            select,
-            value_type,
-        } = self.value;
-
-        let head = "RecordRestrict".blue().display_in(arena);
-
-        let source = self.to_id(*source).notate(arena);
-        let source_type = source_type.map(|t| self.to(t).notate(arena));
-        let field = self.to_id(*select).notate(arena);
-        let value_type = value_type.map(|t| self.to(t).notate(arena));
-
-        let single = [
-            arena.notate(" source = "),
-            source.clone().flatten(arena),
-            source_type
-                .clone()
-                .map(|t| arena.notate(", source_type = ").then(t, arena))
-                .or_not(arena),
-            arena.notate(", field = "),
-            field.clone().flatten(arena),
-            value_type
-                .clone()
-                .map(|t| arena.notate(", value_type = ").then(t, arena))
-                .or_not(arena),
-        ]
-        .concat_in(arena);
-
-        let multi = [
-            arena.newline(),
-            arena.notate("source = "),
-            source,
-            source_type
-                .map(|t| [arena.newline(), arena.notate("source_type = "), t].concat_in(arena))
-                .or_not(arena),
-            arena.newline(),
-            arena.notate("field = "),
-            field,
-            value_type
-                .map(|t| [arena.newline(), arena.notate("value_type = "), t].concat_in(arena))
-                .or_not(arena),
-        ]
-        .concat_in(arena)
-        .indent(arena);
-
-        head.then(single.or(multi, arena), arena)
-    }
-}
-
 #[derive(
     Debug, Display, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
 )]
@@ -502,8 +376,20 @@ impl<'a> Notate<'a> for NodePrinter<'a, RecordUpdateOp> {
 
 // { y | x = 10 }
 #[derive(
-    Debug, Inspector, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+    Debug,
+    Notate,
+    Inspector,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
 )]
+#[notate(color = "blue")]
 pub struct RecordUpdateExpr {
     pub source: Id<Expr>,
     pub source_type: Option<Id<Type>>,
@@ -562,74 +448,6 @@ impl RecordUpdateExpr {
 
     pub fn value_type(self, tree: &impl TreeView) -> Option<Type> {
         self.value_type.map(|t| *t.get(tree))
-    }
-}
-
-impl<'a> Notate<'a> for NodePrinter<'a, RecordUpdateExpr> {
-    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
-        let RecordUpdateExpr {
-            source,
-            source_type,
-            select,
-            op,
-            value,
-            value_type,
-        } = self.value;
-
-        let head = "RecordUpdate".blue().display_in(arena);
-
-        let source = self.to_id(*source).notate(arena);
-        let source_type = source_type.map(|t| self.to(t).notate(arena));
-        let field = self.to_id(*select).notate(arena);
-        let op = self.to_id(*op).notate(arena);
-        let value = self.to_id(*value).notate(arena);
-        let value_type = value_type.map(|t| self.to(t).notate(arena));
-
-        let single = [
-            arena.notate(" source = "),
-            source.clone(),
-            source_type
-                .clone()
-                .map(|t| arena.notate(", source_type = ").then(t, arena))
-                .or_not(arena),
-            arena.notate(", field = "),
-            field.clone(),
-            arena.notate(", op = "),
-            op.clone(),
-            arena.notate(", value = "),
-            value.clone(),
-            value_type
-                .clone()
-                .map(|t| arena.notate(", value_type = ").then(t, arena))
-                .or_not(arena),
-        ]
-        .concat_in(arena)
-        .flatten(arena);
-
-        let multi = [
-            arena.newline(),
-            arena.notate("source = "),
-            source,
-            source_type
-                .map(|t| [arena.newline(), arena.notate("source_type = "), t].concat_in(arena))
-                .or_not(arena),
-            arena.newline(),
-            arena.notate("field = "),
-            field,
-            arena.newline(),
-            arena.notate("op = "),
-            op,
-            arena.newline(),
-            arena.notate("value = "),
-            value,
-            value_type
-                .map(|t| [arena.newline(), arena.notate("value_type = "), t].concat_in(arena))
-                .or_not(arena),
-        ]
-        .concat_in(arena)
-        .indent(arena);
-
-        head.then(single.or(multi, arena), arena)
     }
 }
 
@@ -809,8 +627,20 @@ impl<'a> Notate<'a> for NodePrinter<'a, FieldPath> {
 }
 
 #[derive(
-    Debug, Inspector, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+    Debug,
+    Notate,
+    Inspector,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
 )]
+#[notate(color = "cyan")]
 pub struct QualifiedExpr {
     pub path: Option<Id<ModulePath>>,
     pub source: Id<ValueName>,
@@ -836,51 +666,6 @@ impl QualifiedExpr {
     }
 }
 
-impl<'a> Notate<'a> for NodePrinter<'a, QualifiedExpr> {
-    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
-        let QualifiedExpr {
-            path,
-            source,
-            fields,
-        } = *self.value;
-
-        let head = "QualifiedExpr".cyan().display_in(arena);
-
-        let path = path.map(|p| self.to(p).notate(arena));
-        let source = self.to(source).notate(arena);
-        let fields = fields.map(|f| self.to(f).notate(arena));
-
-        let single = [
-            path.clone()
-                .map(|p| [arena.notate(" path = "), p, arena.just(',')].concat_in(arena))
-                .or_not(arena),
-            arena.notate(" source = "),
-            source.clone(),
-            fields
-                .clone()
-                .map(|f| [arena.notate(", fields = "), f].concat_in(arena))
-                .or_not(arena),
-        ]
-        .concat_in(arena)
-        .flatten(arena);
-
-        let multi = [
-            path.map(|p| [arena.newline(), arena.notate("path = "), p].concat_in(arena))
-                .or_not(arena),
-            arena.newline(),
-            arena.notate("source = "),
-            source,
-            fields
-                .map(|f| [arena.newline(), arena.notate("fields = "), f].concat_in(arena))
-                .or_not(arena),
-        ]
-        .concat_in(arena)
-        .indent(arena);
-
-        head.then(single.or(multi, arena), arena)
-    }
-}
-
 #[derive(
     Debug, Display, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
 )]
@@ -896,8 +681,20 @@ impl<'a> Notate<'a> for NodePrinter<'a, UnaryOp> {
 }
 
 #[derive(
-    Debug, Inspector, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+    Debug,
+    Notate,
+    Inspector,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
 )]
+#[notate(color = "blue")]
 pub struct UnaryExpr {
     pub op: Id<UnaryOp>,
     pub operand: Id<Expr>,
@@ -917,31 +714,6 @@ impl UnaryExpr {
 
     pub fn operand(self, tree: &impl TreeView) -> Expr {
         *self.operand.get(tree)
-    }
-}
-
-impl<'a> Notate<'a> for NodePrinter<'a, UnaryExpr> {
-    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
-        let UnaryExpr { op, operand } = self.value;
-
-        let head = "Unary".blue().display_in(arena);
-
-        let op = self.to_id(*op).notate(arena);
-        let operand = self.to_id(*operand).notate(arena);
-
-        let single = [
-            arena.just(' '),
-            op.clone(),
-            arena.just(' '),
-            operand.clone().flatten(arena),
-        ]
-        .concat_in(arena);
-
-        let multi = [arena.newline(), op, arena.newline(), operand]
-            .concat_in(arena)
-            .indent(arena);
-
-        head.then(single.or(multi, arena), arena)
     }
 }
 
@@ -977,8 +749,20 @@ impl<'a> Notate<'a> for NodePrinter<'a, BinaryOp> {
 }
 
 #[derive(
-    Debug, Inspector, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+    Debug,
+    Notate,
+    Inspector,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
 )]
+#[notate(color = "blue")]
 pub struct BinaryExpr {
     pub op: Id<BinaryOp>,
     pub left: Id<Expr>,
@@ -1012,44 +796,21 @@ impl BinaryExpr {
     }
 }
 
-impl<'a> Notate<'a> for NodePrinter<'a, BinaryExpr> {
-    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
-        let BinaryExpr { op, left, right } = self.value;
-
-        let head = "Binary".blue().display_in(arena);
-
-        let left = self.to_id(*left).notate(arena);
-        let op = self.to_id(*op).notate(arena);
-        let right = self.to_id(*right).notate(arena);
-
-        let single = [
-            arena.just(' '),
-            left.clone().flatten(arena),
-            arena.just(' '),
-            op.clone().flatten(arena),
-            arena.just(' '),
-            right.clone().flatten(arena),
-        ]
-        .concat_in(arena);
-
-        let multi = [
-            arena.newline(),
-            left,
-            arena.newline(),
-            op,
-            arena.newline(),
-            right,
-        ]
-        .concat_in(arena)
-        .indent(arena);
-
-        head.then(single.or(multi, arena), arena)
-    }
-}
-
 #[derive(
-    Debug, Inspector, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+    Debug,
+    Notate,
+    Inspector,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
 )]
+#[notate(color = "blue")]
 pub struct LetExpr {
     pub name: Id<ValueName>,
     pub value_type: Option<Id<Type>>,
@@ -1095,60 +856,21 @@ impl LetExpr {
     }
 }
 
-impl<'a> Notate<'a> for NodePrinter<'a, LetExpr> {
-    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
-        let LetExpr {
-            name,
-            value_type,
-            value,
-            inside,
-        } = self.value;
-
-        let head = "Let".blue().display_in(arena);
-
-        let name = self.to_id(*name).notate(arena);
-        let value_type = value_type.map(|t| self.to(t).notate(arena));
-        let value = self.to_id(*value).notate(arena);
-        let inside = self.to_id(*inside).notate(arena);
-
-        let single = [
-            arena.notate(" name = "),
-            name.clone().flatten(arena),
-            value_type
-                .clone()
-                .map(|t| arena.notate(", value_type = ").then(t, arena))
-                .or_not(arena),
-            arena.notate(", value = "),
-            value.clone().flatten(arena),
-            arena.notate(", inside = "),
-            inside.clone().flatten(arena),
-        ]
-        .concat_in(arena);
-
-        let multi = [
-            arena.newline(),
-            arena.notate("name = "),
-            name,
-            value_type
-                .map(|t| [arena.newline(), arena.notate("value_type = "), t].concat_in(arena))
-                .or_not(arena),
-            arena.newline(),
-            arena.notate("value = "),
-            value,
-            arena.newline(),
-            arena.notate("inside = "),
-            inside,
-        ]
-        .concat_in(arena)
-        .indent(arena);
-
-        head.then(single.or(multi, arena), arena)
-    }
-}
-
 #[derive(
-    Debug, Inspector, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+    Debug,
+    Notate,
+    Inspector,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
 )]
+#[notate(color = "blue")]
 pub struct IfExpr {
     pub predicate: Id<Expr>,
     pub then: Id<Expr>,
@@ -1186,51 +908,21 @@ impl IfExpr {
     }
 }
 
-impl<'a> Notate<'a> for NodePrinter<'a, IfExpr> {
-    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
-        let IfExpr {
-            predicate,
-            then,
-            or,
-        } = self.value;
-
-        let head = "If".blue().display_in(arena);
-
-        let predicate = self.to_id(*predicate).notate(arena);
-        let then = self.to_id(*then).notate(arena);
-        let or = self.to_id(*or).notate(arena);
-
-        let single = [
-            arena.notate(" predicate = "),
-            predicate.clone().flatten(arena),
-            arena.notate(", then = "),
-            then.clone().flatten(arena),
-            arena.notate(", or = "),
-            or.clone().flatten(arena),
-        ]
-        .concat_in(arena);
-
-        let multi = [
-            arena.newline(),
-            arena.notate("predicate = "),
-            predicate,
-            arena.newline(),
-            arena.notate("then = "),
-            then,
-            arena.newline(),
-            arena.notate("or = "),
-            or,
-        ]
-        .concat_in(arena)
-        .indent(arena);
-
-        head.then(single.or(multi, arena), arena)
-    }
-}
-
 #[derive(
-    Debug, Inspector, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+    Debug,
+    Notate,
+    Inspector,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
 )]
+#[notate(color = "blue")]
 pub struct CaseBranch {
     pub pat: Id<Pat>,
     pub matches: Id<Expr>,
@@ -1254,38 +946,6 @@ impl CaseBranch {
 
     pub fn matches(self, tree: &impl TreeView) -> Expr {
         *self.matches.get(tree)
-    }
-}
-
-impl<'a> Notate<'a> for NodePrinter<'a, CaseBranch> {
-    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
-        let CaseBranch { pat, matches } = self.value;
-
-        let head = "Branch".blue().display_in(arena);
-
-        let pat = self.to_id(*pat).notate(arena);
-        let matches = self.to_id(*matches).notate(arena);
-
-        let single = [
-            arena.notate(" pat = "),
-            pat.clone().flatten(arena),
-            arena.notate(", matches = "),
-            matches.clone().flatten(arena),
-        ]
-        .concat_in(arena);
-
-        let multi = [
-            arena.newline(),
-            arena.notate("pat = "),
-            pat,
-            arena.newline(),
-            arena.notate("matches = "),
-            matches,
-        ]
-        .concat_in(arena)
-        .indent(arena);
-
-        head.then(single.or(multi, arena), arena)
     }
 }
 
@@ -1344,8 +1004,20 @@ impl<'a> Notate<'a> for NodePrinter<'a, CaseExpr> {
 }
 
 #[derive(
-    Debug, Inspector, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+    Debug,
+    Notate,
+    Inspector,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
 )]
+#[notate(color = "blue")]
 pub struct CallExpr {
     pub func: Id<Expr>,
     pub arg: Id<Expr>,
@@ -1372,41 +1044,21 @@ impl CallExpr {
     }
 }
 
-impl<'a> Notate<'a> for NodePrinter<'a, CallExpr> {
-    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
-        let CallExpr { func, arg } = self.value;
-
-        let head = "Call".blue().display_in(arena);
-
-        let func = self.to_id(*func).notate(arena);
-        let arg = self.to_id(*arg).notate(arena);
-
-        let single = [
-            arena.notate(" func = "),
-            func.clone().flatten(arena),
-            arena.notate(", arg = "),
-            arg.clone().flatten(arena),
-        ]
-        .concat_in(arena);
-
-        let multi = [
-            arena.newline(),
-            arena.notate("func = "),
-            func,
-            arena.newline(),
-            arena.notate("arg = "),
-            arg,
-        ]
-        .concat_in(arena)
-        .indent(arena);
-
-        head.then(single.or(multi, arena), arena)
-    }
-}
-
 #[derive(
-    Debug, Inspector, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+    Debug,
+    Notate,
+    Inspector,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
 )]
+#[notate(color = "blue")]
 pub struct LambdaExpr {
     pub param: Id<ValueName>, // TODO pattern
     pub param_type: Option<Id<Type>>,
@@ -1440,54 +1092,9 @@ impl LambdaExpr {
     }
 }
 
-impl<'a> Notate<'a> for NodePrinter<'a, LambdaExpr> {
-    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
-        let LambdaExpr {
-            param,
-            param_type,
-            body,
-        } = self.value;
-
-        let head = "Func".blue().display_in(arena);
-
-        let param = self.to_id(*param).notate(arena);
-        let param_type = param_type.map(|t| self.to_id(t).notate(arena));
-        let body = self.to_id(*body).notate(arena);
-
-        let single = [
-            arena.notate(" param = "),
-            param.clone(),
-            param_type
-                .clone()
-                .map(|t| arena.notate(", param_type = ").then(t, arena))
-                .or_not(arena),
-            arena.notate(", body = "),
-            body.clone(),
-        ]
-        .concat_in(arena)
-        .flatten(arena);
-
-        let multi = [
-            arena.newline(),
-            arena.notate("param = "),
-            param,
-            param_type
-                .clone()
-                .map(|t| [arena.newline(), arena.notate("param_type = "), t].concat_in(arena))
-                .or_not(arena),
-            arena.newline(),
-            arena.notate("body = "),
-            body,
-        ]
-        .concat_in(arena)
-        .indent(arena);
-
-        head.then(single.or(multi, arena), arena)
-    }
-}
-
 #[derive(
     Debug,
+    Notate,
     Inspector,
     From,
     Clone,
@@ -1500,6 +1107,7 @@ impl<'a> Notate<'a> for NodePrinter<'a, LambdaExpr> {
     Serialize,
     Deserialize,
 )]
+#[notate(color = "blue")]
 pub struct TagExpr(pub Id<ValueName>);
 
 impl TagExpr {
@@ -1507,19 +1115,6 @@ impl TagExpr {
         let tag = builder.insert(tag.into());
 
         builder.insert(Self(tag))
-    }
-}
-
-impl<'a> Notate<'a> for NodePrinter<'a, TagExpr> {
-    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
-        let head = "TagExpr".blue().display_in(arena);
-
-        let tag = self.to_id(self.value.0).notate(arena);
-
-        let single = arena.just(' ').then(tag.clone(), arena).flatten(arena);
-        let multi = arena.newline().then(tag, arena).indent(arena);
-
-        head.then(single.or(multi, arena), arena)
     }
 }
 

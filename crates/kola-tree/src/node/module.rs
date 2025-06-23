@@ -1,10 +1,9 @@
 use derive_more::{From, IntoIterator};
 use enum_as_inner::EnumAsInner;
-use kola_macros::Inspector;
+use kola_macros::{Inspector, Notate};
 use serde::{Deserialize, Serialize};
 
 use kola_print::prelude::*;
-use kola_utils::as_variant;
 
 use super::{Expr, ModuleName, TypeScheme};
 use crate::{
@@ -56,7 +55,7 @@ module safe-stack = functor (s : Stack) => {
     Deserialize,
 )]
 #[into_iterator(owned, ref)]
-pub struct Module(pub Vec<Id<Bind>>); // TODO maybe should know its parent ?
+pub struct Module(pub Vec<Id<Bind>>);
 
 impl<'a> Notate<'a> for NodePrinter<'a, Module> {
     fn notate(&self, arena: &'a Bump) -> Notation<'a> {
@@ -229,8 +228,9 @@ impl<'a> Notate<'a> for NodePrinter<'a, ModulePath> {
 }
 
 #[derive(
-    Debug,
+    Notate,
     Inspector,
+    Debug,
     From,
     Clone,
     Copy,
@@ -242,22 +242,9 @@ impl<'a> Notate<'a> for NodePrinter<'a, ModulePath> {
     Serialize,
     Deserialize,
 )]
+#[notate(color = "green")]
 pub struct ModuleImport(pub Id<ModuleName>);
 
-impl<'a> Notate<'a> for NodePrinter<'a, ModuleImport> {
-    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
-        let head = "ModuleImport".green().display_in(arena);
-
-        let path = self.to_id(self.value.0).notate(arena);
-
-        let single = arena.just(' ').then(path.clone().flatten(arena), arena);
-        let multi = arena.newline().then(path, arena).indent(arena);
-
-        head.then(single.or(multi, arena), arena)
-    }
-}
-
-// TODO rename Module to ModuleImport and create wrapper ?
 #[derive(
     Debug,
     EnumAsInner,
@@ -354,63 +341,25 @@ impl<'a> Notate<'a> for NodePrinter<'a, Vis> {
 }
 
 #[derive(
-    Debug, Inspector, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+    Debug,
+    Notate,
+    Inspector,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
 )]
+#[notate(color = "green")]
 pub struct ValueBind {
     pub vis: Id<Vis>,
     pub name: Id<ValueName>,
     pub ty: Option<Id<TypeScheme>>,
     pub value: Id<Expr>,
-}
-
-impl<'a> Notate<'a> for NodePrinter<'a, ValueBind> {
-    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
-        let ValueBind {
-            vis,
-            name,
-            ty,
-            value,
-        } = *self.value;
-
-        let head = "ValueBind".green().display_in(arena);
-
-        let vis = self.to_id(vis).notate(arena);
-        let name = self.to_id(name).notate(arena);
-        let ty = ty.map(|ty| self.to_id(ty).notate(arena));
-        let value = self.to_id(value).notate(arena);
-
-        let single = [
-            arena.just(' ').then("vis = ".display_in(arena), arena),
-            vis.clone(),
-            ", name = ".display_in(arena),
-            name.clone(),
-            ty.clone()
-                .map(|ty| ", ty = ".display_in(arena).then(ty, arena))
-                .or_not(arena),
-            ", value = ".display_in(arena),
-            value.clone(),
-        ]
-        .concat_in(arena)
-        .flatten(arena);
-
-        let multi = [
-            arena.newline(),
-            "vis = ".display_in(arena),
-            vis,
-            arena.newline(),
-            "name = ".display_in(arena),
-            name,
-            ty.map(|ty| [arena.newline(), "ty = ".display_in(arena), ty].concat_in(arena))
-                .or_not(arena),
-            arena.newline(),
-            "value = ".display_in(arena),
-            value,
-        ]
-        .concat_in(arena)
-        .indent(arena);
-
-        head.then(single.or(multi, arena), arena)
-    }
 }
 
 impl ValueBind {
@@ -436,88 +385,60 @@ impl ValueBind {
 }
 
 #[derive(
-    Debug, Inspector, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+    Debug,
+    Notate,
+    Inspector,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
 )]
+#[notate(color = "green")]
 pub struct TypeBind {
     pub name: Id<TypeName>,
     pub ty: Id<TypeScheme>,
 }
 
-impl<'a> Notate<'a> for NodePrinter<'a, TypeBind> {
-    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
-        let TypeBind { name, ty } = self.value;
-
-        let head = "TypeBind".green().display_in(arena);
-
-        let name = self.to_id(*name).notate(arena);
-        let ty = self.to_id(*ty).notate(arena);
-
-        let single = [
-            arena.just(' ').then("name = ".display_in(arena), arena),
-            name.clone().flatten(arena),
-            ", ty = ".display_in(arena),
-            ty.clone().flatten(arena),
-        ]
-        .concat_in(arena);
-
-        let multi = [
-            arena.newline(),
-            "name = ".display_in(arena),
-            name,
-            arena.newline(),
-            "ty = ".display_in(arena),
-            ty,
-        ]
-        .concat_in(arena)
-        .indent(arena);
-
-        head.then(single.or(multi, arena), arena)
-    }
-}
-
 #[derive(
-    Debug, Inspector, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+    Debug,
+    Notate,
+    Inspector,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
 )]
+#[notate(color = "green")]
 pub struct OpaqueTypeBind {
     pub name: Id<TypeName>,
     pub ty: Id<TypeScheme>,
 }
 
-impl<'a> Notate<'a> for NodePrinter<'a, OpaqueTypeBind> {
-    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
-        let OpaqueTypeBind { name, ty } = self.value;
-
-        let head = "OpaqueTypeBind".green().display_in(arena);
-
-        let name = self.to_id(*name).notate(arena);
-        let ty = self.to_id(*ty).notate(arena);
-
-        let single = [
-            arena.just(' ').then("name = ".display_in(arena), arena),
-            name.clone().flatten(arena),
-            ", ty = ".display_in(arena),
-            ty.clone().flatten(arena),
-        ]
-        .concat_in(arena);
-
-        let multi = [
-            arena.newline(),
-            "name = ".display_in(arena),
-            name,
-            arena.newline(),
-            "ty = ".display_in(arena),
-            ty,
-        ]
-        .concat_in(arena)
-        .indent(arena);
-
-        head.then(single.or(multi, arena), arena)
-    }
-}
-
 #[derive(
-    Debug, Inspector, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+    Debug,
+    Notate,
+    Inspector,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
 )]
+#[notate(color = "green")]
 pub struct ModuleBind {
     pub vis: Id<Vis>,
     pub name: Id<ModuleName>,
@@ -547,94 +468,24 @@ impl ModuleBind {
     }
 }
 
-impl<'a> Notate<'a> for NodePrinter<'a, ModuleBind> {
-    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
-        let ModuleBind {
-            vis,
-            name,
-            ty,
-            value,
-        } = self.value;
-
-        let head = "ModuleBind".green().display_in(arena);
-
-        let vis = self.to_id(*vis).notate(arena);
-        let name = self.to_id(*name).notate(arena);
-        let ty = ty.as_ref().map(|ty| self.to_id(*ty).notate(arena));
-        let value = self.to_id(*value).notate(arena);
-
-        let single = [
-            arena.just(' ').then("vis = ".display_in(arena), arena),
-            vis.clone(),
-            ", name = ".display_in(arena),
-            name.clone(),
-            ty.clone()
-                .map(|ty| ", ty = ".display_in(arena).then(ty, arena))
-                .or_not(arena),
-            ", value = ".display_in(arena),
-            value.clone(),
-        ]
-        .concat_in(arena)
-        .flatten(arena);
-
-        let multi = [
-            arena.newline(),
-            "vis = ".display_in(arena),
-            vis,
-            arena.newline(),
-            "name = ".display_in(arena),
-            name,
-            ty.map(|ty| [arena.newline(), "ty = ".display_in(arena), ty].concat_in(arena))
-                .or_not(arena),
-            arena.newline(),
-            "value = ".display_in(arena),
-            value,
-        ]
-        .concat_in(arena)
-        .indent(arena);
-
-        head.then(single.or(multi, arena), arena)
-    }
-}
-
 #[derive(
-    Debug, Inspector, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+    Debug,
+    Notate,
+    Inspector,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
 )]
+#[notate(color = "green")]
 pub struct ModuleTypeBind {
     pub name: Id<ModuleName>,
     pub ty: Id<ModuleType>,
-}
-
-impl<'a> Notate<'a> for NodePrinter<'a, ModuleTypeBind> {
-    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
-        let ModuleTypeBind { name, ty } = self.value;
-
-        let head = "ModuleTypeBind".green().display_in(arena);
-
-        let name = self.to_id(*name).notate(arena);
-        let ty = self.to_id(*ty).notate(arena);
-
-        let single = [
-            arena.just(' ').then("name = ".display_in(arena), arena),
-            name.clone().flatten(arena),
-            ", ty = ".display_in(arena),
-            ty.clone().flatten(arena),
-        ]
-        .concat_in(arena);
-
-        let multi = [
-            arena.newline(),
-            "name = ".display_in(arena),
-            name,
-            arena.newline(),
-            "ty = ".display_in(arena),
-            ty,
-        ]
-        .concat_in(arena)
-        .indent(arena);
-
-        head.then(single.or(multi, arena), arena)
-    }
 }
 
 // cannot infact contain another module type bind
@@ -710,125 +561,65 @@ impl<'a> Notate<'a> for NodePrinter<'a, Spec> {
 
 // f : Num -> Num
 #[derive(
-    Debug, Inspector, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+    Debug,
+    Notate,
+    Inspector,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
 )]
+#[notate(color = "green")]
 pub struct ValueSpec {
     pub name: Id<ValueName>,
     pub ty: Id<TypeScheme>,
 }
 
-impl<'a> Notate<'a> for NodePrinter<'a, ValueSpec> {
-    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
-        let ValueSpec { name, ty } = self.value;
-
-        let head = "ValueSpec".green().display_in(arena);
-
-        let name = self.to_id(*name).notate(arena);
-        let ty = self.to_id(*ty).notate(arena);
-
-        let single = [
-            arena.just(' ').then("name = ".display_in(arena), arena),
-            name.clone().flatten(arena),
-            ", ty = ".display_in(arena),
-            ty.clone().flatten(arena),
-        ]
-        .concat_in(arena);
-
-        let multi = [
-            arena.newline(),
-            "name = ".display_in(arena),
-            name,
-            arena.newline(),
-            "ty = ".display_in(arena),
-            ty,
-        ]
-        .concat_in(arena)
-        .indent(arena);
-
-        head.then(single.or(multi, arena), arena)
-    }
-}
-
 // module M : { ... }
 #[derive(
-    Debug, Inspector, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+    Debug,
+    Notate,
+    Inspector,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
 )]
+#[notate(color = "green")]
 pub struct ModuleSpec {
     pub name: Id<ModuleName>,
     pub ty: Id<ModuleType>,
 }
 
-impl<'a> Notate<'a> for NodePrinter<'a, ModuleSpec> {
-    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
-        let ModuleSpec { name, ty } = self.value;
-
-        let head = "ModuleSpec".green().display_in(arena);
-
-        let name = self.to_id(*name).notate(arena);
-        let ty = self.to_id(*ty).notate(arena);
-
-        let single = [
-            arena.just(' ').then("name = ".display_in(arena), arena),
-            name.clone().flatten(arena),
-            ", ty = ".display_in(arena),
-            ty.clone().flatten(arena),
-        ]
-        .concat_in(arena);
-
-        let multi = [
-            arena.newline(),
-            "name = ".display_in(arena),
-            name,
-            arena.newline(),
-            "ty = ".display_in(arena),
-            ty,
-        ]
-        .concat_in(arena)
-        .indent(arena);
-
-        head.then(single.or(multi, arena), arena)
-    }
-}
-
 // opaque type T : * -> *
 #[derive(
-    Debug, Inspector, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+    Debug,
+    Notate,
+    Inspector,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
 )]
+#[notate(color = "green")]
 pub struct OpaqueTypeSpec {
     pub name: Id<TypeName>,
     pub kind: Id<OpaqueTypeKind>,
-}
-
-impl<'a> Notate<'a> for NodePrinter<'a, OpaqueTypeSpec> {
-    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
-        let OpaqueTypeSpec { name, kind } = self.value;
-
-        let head = "OpaqueTypeSpec".green().display_in(arena);
-
-        let name = self.to_id(*name).notate(arena);
-        let kind = self.to_id(*kind).notate(arena);
-
-        let single = [
-            arena.just(' ').then("name = ".display_in(arena), arena),
-            name.clone().flatten(arena),
-            ", kind = ".display_in(arena),
-            kind.clone().flatten(arena),
-        ]
-        .concat_in(arena);
-
-        let multi = [
-            arena.newline(),
-            "name = ".display_in(arena),
-            name,
-            arena.newline(),
-            "kind = ".display_in(arena),
-            kind,
-        ]
-        .concat_in(arena)
-        .indent(arena);
-
-        head.then(single.or(multi, arena), arena)
-    }
 }
 
 // * -> * = arity of 2

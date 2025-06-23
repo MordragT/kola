@@ -6,6 +6,8 @@ use syn::{
     Meta, MetaList, Type,
 };
 
+use super::{FieldTypeClass, classify_field_type};
+
 pub fn generate_inspector_impl(input: &DeriveInput) -> syn::Result<TokenStream> {
     let name = &input.ident;
 
@@ -311,65 +313,6 @@ fn generate_enum_variant_method(
         }
         _ => None,
     }
-}
-
-#[derive(Debug, Clone)]
-enum FieldTypeClass {
-    SingleId(proc_macro2::TokenStream),
-    VecId(proc_macro2::TokenStream),
-    OptionId(proc_macro2::TokenStream),
-    Other,
-}
-
-fn classify_field_type(ty: &Type) -> FieldTypeClass {
-    let Type::Path(type_path) = ty else {
-        return FieldTypeClass::Other;
-    };
-
-    let Some(segment) = type_path.path.segments.first() else {
-        return FieldTypeClass::Other;
-    };
-
-    let syn::PathArguments::AngleBracketed(args) = &segment.arguments else {
-        return FieldTypeClass::Other;
-    };
-
-    let Some(syn::GenericArgument::Type(inner_ty)) = args.args.first() else {
-        return FieldTypeClass::Other;
-    };
-
-    match segment.ident.to_string().as_str() {
-        "Vec" => extract_id_inner_type(inner_ty)
-            .map(FieldTypeClass::VecId)
-            .unwrap_or(FieldTypeClass::Other),
-        "Option" => extract_id_inner_type(inner_ty)
-            .map(FieldTypeClass::OptionId)
-            .unwrap_or(FieldTypeClass::Other),
-        "Id" => FieldTypeClass::SingleId(quote!(#inner_ty)),
-        _ => FieldTypeClass::Other,
-    }
-}
-
-fn extract_id_inner_type(ty: &Type) -> Option<proc_macro2::TokenStream> {
-    let Type::Path(type_path) = ty else {
-        return None;
-    };
-
-    let segment = type_path.path.segments.first()?;
-
-    if segment.ident != "Id" {
-        return None;
-    }
-
-    let syn::PathArguments::AngleBracketed(args) = &segment.arguments else {
-        return None;
-    };
-
-    let Some(syn::GenericArgument::Type(inner_ty)) = args.args.first() else {
-        return None;
-    };
-
-    Some(quote!(#inner_ty))
 }
 
 #[derive(Debug, Default)]
