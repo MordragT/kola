@@ -70,7 +70,7 @@ impl<'t, T, S: BuildHasher> NodeInspector<'t, T, S> {
     }
 
     /// Assert a condition on the current node, with a custom message
-    pub fn assert<F>(self, f: F, message: &str) -> Self
+    pub fn assert_with<F>(self, f: F, message: &str) -> Self
     where
         F: FnOnce(&T, &'t TreeBuilder) -> bool,
     {
@@ -85,7 +85,7 @@ where
     S: BuildHasher,
 {
     /// Assert that the current node is equal to another node
-    pub fn assert_eq<U: PartialEq>(self, other: &U) -> Self
+    pub fn assert_eq<U>(self, other: &U) -> Self
     where
         U: Debug,
         T: Debug + PartialEq<U>,
@@ -94,6 +94,21 @@ where
 
         assert_eq!(node, other, "Expected {:?} but found {:?}", other, node);
         self
+    }
+
+    pub fn assert_ne<U>(self, other: &U) -> Self
+    where
+        U: Debug,
+        T: Debug + PartialEq<U>,
+    {
+        let node = self.node.get(self.tree);
+
+        assert_ne!(node, other, "Expected not {:?} but found {:?}", other, node);
+        self
+    }
+
+    pub fn get(self) -> &'t T {
+        self.node.get(self.tree)
     }
 }
 

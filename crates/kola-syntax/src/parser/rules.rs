@@ -1129,18 +1129,15 @@ mod tests {
 
         record.fields_at(0).pat().to_bind().inner().has_name("x");
 
-        assert!(
-            record
-                .fields_at(1)
-                .pat()
-                .to_record()
-                .fields_at(0)
-                .try_pat()
-                .is_none()
-        );
+        record
+            .fields_at(1)
+            .pat()
+            .to_record()
+            .fields_at(0)
+            .has_none_pat();
 
         record.fields_at(2).pat().to_any();
-        assert!(record.fields_at(3).try_pat().is_none());
+        record.fields_at(3).has_none_pat();
     }
 
     #[test]
@@ -1156,23 +1153,19 @@ mod tests {
         let inspector = NodeInspector::new(node, &builder, &interner);
 
         let case = inspector.to_case();
-
         case.source().to_qualified().source().has_name("x");
-
         case.has_branches_count(2);
 
         case.branches_at(0)
             .pat()
             .to_literal()
             .assert_eq(&node::LiteralPat::Num(1.0));
-
         case.branches_at(0)
             .matches()
             .to_literal()
             .assert_eq(&node::LiteralExpr::Bool(true));
 
         case.branches_at(1).pat().to_any();
-
         case.branches_at(1)
             .matches()
             .to_literal()
@@ -1282,19 +1275,17 @@ mod tests {
         list_pat1.has_inner_count(3);
         list_pat1
             .inner_at(0)
-            .as_pat()
-            .unwrap()
+            .to_pat()
             .to_bind()
             .inner()
             .has_name("a");
         list_pat1
             .inner_at(1)
-            .as_pat()
-            .unwrap()
+            .to_pat()
             .to_bind()
             .inner()
             .has_name("b");
-        let spread = list_pat1.inner_at(2).as_spread().unwrap().unwrap();
+        let spread = list_pat1.inner_at(2).to_some_spread();
         spread.has_name("rest");
         case.branches_at(7)
             .matches()
@@ -1311,7 +1302,7 @@ mod tests {
             .to_bind()
             .inner()
             .has_name("head");
-        assert!(list_pat2.inner_at(1).as_spread().unwrap().is_none()); // anonymous spread
+        list_pat2.inner_at(1).is_none_spread(); // anonymous spread
         case.branches_at(8)
             .matches()
             .to_literal()
@@ -1329,7 +1320,8 @@ mod tests {
         let record_pat1 = case.branches_at(10).pat().to_record();
         record_pat1.has_fields_count(2);
         record_pat1.fields_at(0).field().has_name("name");
-        assert!(record_pat1.fields_at(0).try_pat().is_none()); // shorthand field
+        record_pat1.fields_at(0).has_none_pat(); // shorthand field
+
         record_pat1.fields_at(1).field().has_name("age");
         record_pat1
             .fields_at(1)
@@ -1337,7 +1329,7 @@ mod tests {
             .to_bind()
             .inner()
             .has_name("years");
-        record_pat1.is_polymorphic();
+        assert!(record_pat1.get().polymorph);
         case.branches_at(10)
             .matches()
             .to_literal()
@@ -1380,7 +1372,7 @@ mod tests {
         let variant_pat2 = case.branches_at(14).pat().to_variant();
         variant_pat2.has_inner_count(1);
         variant_pat2.inner_at(0).tag().has_name("None");
-        assert!(variant_pat2.inner_at(0).try_pat().is_none()); // no payload
+        variant_pat2.inner_at(0).has_none_pat(); // no payload
         case.branches_at(14)
             .matches()
             .to_literal()
@@ -1478,7 +1470,6 @@ mod tests {
         let inspector = NodeInspector::new(node, &builder, &interner);
 
         let if_expr = inspector.to_if();
-
         if_expr.predicate().to_qualified().source().has_name("y");
         if_expr.then().to_qualified().source().has_name("x");
         if_expr
@@ -1586,7 +1577,6 @@ mod tests {
 
         // Num -> (...)
         let func = inspector.to_func();
-
         func.input().to_qualified().ty().has_name("Num");
 
         // { a: Num, ... } -> ...
@@ -1621,16 +1611,12 @@ mod tests {
 
         // Map @@ Num -> Str
         let inner_app = app.constructor().to_application();
-
         inner_app.constructor().to_qualified().ty().has_name("Map");
-
         inner_app.arg().to_func();
 
         // std.List @@ Str
         let list_app = app.arg().to_application();
-
         list_app.constructor().to_qualified();
-
         list_app.arg().to_qualified();
     }
 
@@ -1683,7 +1669,6 @@ mod tests {
         );
 
         let inspector = NodeInspector::new(node, &builder, &interner);
-
         inspector.name().has_name("Person");
 
         let type_node = inspector.ty();
@@ -1704,7 +1689,6 @@ mod tests {
         );
 
         let inspector = NodeInspector::new(node, &builder, &interner);
-
         inspector.name().has_name("Option");
 
         let type_node = inspector.ty();
@@ -1722,7 +1706,7 @@ mod tests {
         variant.cases_at(0).ty().to_qualified().ty().has_name("a");
 
         variant.cases_at(1).name().has_name("None");
-        assert!(variant.cases_at(1).try_ty().is_none());
+        variant.cases_at(1).has_none_ty();
 
         variant.extension().has_name("b");
     }
@@ -1735,7 +1719,6 @@ mod tests {
             try_parse_str_with("{ x = 10, type T = Num }", module_parser(), &mut interner);
 
         let inspector = NodeInspector::new(node, &builder, &interner);
-
         inspector.has_inner_count(2);
 
         let first = inspector.inner_at(0).to_value();
@@ -1761,7 +1744,6 @@ mod tests {
         );
 
         let inspector = NodeInspector::new(node, &builder, &interner);
-
         inspector.has_inner_count(2);
 
         let first = inspector.inner_at(0).to_value();
@@ -1781,14 +1763,11 @@ mod tests {
             try_parse_str_with("{ module m = { x = 10 } }", module_parser(), &mut interner);
 
         let inspector = NodeInspector::new(node, &builder, &interner);
-
         inspector.has_inner_count(1);
 
         let module_bind = inspector.inner_at(0).to_module();
-
         module_bind.name().has_name("m");
-
-        assert!(module_bind.try_ty().is_none());
+        module_bind.has_none_ty();
 
         let record = module_bind
             .value()
@@ -1814,11 +1793,9 @@ mod tests {
         );
 
         let inspector = NodeInspector::new(node, &builder, &interner);
-
         inspector.has_inner_count(1);
 
         let module_bind = inspector.inner_at(0).to_module();
-
         module_bind.name().has_name("m");
 
         // Check interface
@@ -1826,7 +1803,6 @@ mod tests {
         module_type.has_inner_count(1);
 
         let record_ty = module_type.inner_at(0).to_value();
-
         record_ty.name().has_name("x");
         record_ty.ty().ty().to_qualified().ty().has_name("Num");
 
