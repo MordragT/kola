@@ -662,8 +662,14 @@ where
         extract_list_head: ExtractListHead,
         ir: &Ir,
     ) -> Result<(), Self::Error> {
-        let ExtractListHead { bind, source, next } = extract_list_head;
-        self.visit_symbol(bind)?;
+        let ExtractListHead {
+            head,
+            tail_list,
+            source,
+            next,
+        } = extract_list_head;
+        self.visit_symbol(head)?;
+        self.visit_symbol(tail_list)?;
         self.visit_symbol(source)?;
         self.visit_pattern_matcher(next, ir)
     }
@@ -681,8 +687,14 @@ where
         extract_list_tail: ExtractListTail,
         ir: &Ir,
     ) -> Result<(), Self::Error> {
-        let ExtractListTail { bind, source, next } = extract_list_tail;
-        self.visit_symbol(bind)?;
+        let ExtractListTail {
+            head_list,
+            tail,
+            source,
+            next,
+        } = extract_list_tail;
+        self.visit_symbol(head_list)?;
+        self.visit_symbol(tail)?;
         self.visit_symbol(source)?;
         self.visit_pattern_matcher(next, ir)
     }

@@ -9,37 +9,11 @@ use kola_collections::ImShadowMap;
 use kola_ir::{
     id::Id,
     instr::{
-        Atom,
-        BinaryExpr,
-        BinaryOp,
-        CallExpr,
-        Expr,
-        ExtractIdentity,
-        Func,
-        IfExpr,
-        IsBool,
-        IsChar,
-        IsNum,
-        IsStr,
-        IsUnit,
-        LetExpr,
-        ListExpr,
-        ListItem,
-        PatternMatchExpr,
-        // Pattern matching imports
-        PatternMatcher,
-        PatternSuccess,
-        RecordAccessExpr,
-        RecordExpr,
-        RecordExtendExpr,
-        RecordField,
-        RecordRestrictExpr,
-        RecordUpdateExpr,
-        RecordUpdateOp,
-        RetExpr,
-        Symbol,
-        UnaryExpr,
-        UnaryOp,
+        Atom, BinaryExpr, BinaryOp, CallExpr, Expr, ExtractIdentity, ExtractListAt,
+        ExtractListSliceFrom, Func, IfExpr, IsBool, IsChar, IsList, IsNum, IsStr, IsUnit, LetExpr,
+        ListExpr, ListIsAtLeast, ListIsExact, ListItem, PatternMatchExpr, PatternMatcher,
+        PatternSuccess, RecordAccessExpr, RecordExpr, RecordExtendExpr, RecordField,
+        RecordRestrictExpr, RecordUpdateExpr, RecordUpdateOp, RetExpr, Symbol, UnaryExpr, UnaryOp,
     },
     ir::{Ir, IrView},
 };
@@ -901,8 +875,23 @@ fn eval_pattern_matcher(
         PatternMatcher::IsStr(is_str) => {
             eval_is_str(is_str, source_value, bind, next, env, cont, ir)
         }
+        PatternMatcher::IsList(is_list) => {
+            eval_is_list(is_list, source_value, bind, next, env, cont, ir)
+        }
+        PatternMatcher::ListIsExact(list_is_exact) => {
+            eval_list_is_exact(list_is_exact, source_value, bind, next, env, cont, ir)
+        }
+        PatternMatcher::ListIsAtLeast(list_is_at_least) => {
+            eval_list_is_at_least(list_is_at_least, source_value, bind, next, env, cont, ir)
+        }
         PatternMatcher::ExtractIdentity(extract) => {
             eval_extract_identity(extract, source_value, bind, next, env, cont, ir)
+        }
+        PatternMatcher::ExtractListAt(extract) => {
+            eval_extract_list_at(extract, source_value, bind, next, env, cont, ir)
+        }
+        PatternMatcher::ExtractListSliceFrom(extract) => {
+            eval_extract_list_slice_from(extract, source_value, bind, next, env, cont, ir)
         }
         PatternMatcher::Success(success) => {
             eval_pattern_success(success, source_value, bind, env, cont, ir)
@@ -910,7 +899,7 @@ fn eval_pattern_matcher(
         PatternMatcher::Failure(_) => {
             MachineState::Error("Pattern match failure - no matching case found".to_string())
         }
-        _ => MachineState::Error("Pattern matcher not yet implemented".to_string()),
+        _ => MachineState::Error(format!("Pattern matcher not yet implemented: {matcher:?}")),
     }
 }
 
@@ -1108,6 +1097,119 @@ fn eval_is_str(
     })
 }
 
+fn eval_is_list(
+    is_list: &IsList,
+    source_value: Value,
+    bind: Symbol,
+    next: Id<Expr>,
+    env: Env,
+    cont: Cont,
+    _ir: &Ir,
+) -> MachineState {
+    let IsList {
+        source,
+        on_success,
+        on_failure,
+    } = *is_list;
+
+    // Get the source value from the environment
+    let source_val = match env.get(&source) {
+        Some(val) => val.clone(),
+        None => return MachineState::Error(format!("Unbound variable: {}", source)),
+    };
+
+    let next_matcher = match source_val {
+        Value::List(_) => on_success,
+        _ => on_failure,
+    };
+
+    // Continue with the next pattern matcher
+    MachineState::Pattern(PatternConfig {
+        matcher: next_matcher,
+        source_value,
+        bind,
+        next,
+        env,
+        cont,
+    })
+}
+
+fn eval_list_is_exact(
+    list_is_exact: &ListIsExact,
+    source_value: Value,
+    bind: Symbol,
+    next: Id<Expr>,
+    env: Env,
+    cont: Cont,
+    _ir: &Ir,
+) -> MachineState {
+    let ListIsExact {
+        source,
+        length,
+        on_success,
+        on_failure,
+    } = *list_is_exact;
+
+    // Get the source value from the environment
+    let source_val = match env.get(&source) {
+        Some(val) => val.clone(),
+        None => return MachineState::Error(format!("Unbound variable: {}", source)),
+    };
+
+    let next_matcher = match source_val {
+        Value::List(ref list) if list.len() as u32 == length => on_success,
+        _ => on_failure,
+    };
+
+    // Continue with the next pattern matcher
+    MachineState::Pattern(PatternConfig {
+        matcher: next_matcher,
+        source_value,
+        bind,
+        next,
+        env,
+        cont,
+    })
+}
+
+fn eval_list_is_at_least(
+    list_is_atleast: &ListIsAtLeast,
+    source_value: Value,
+    bind: Symbol,
+    next: Id<Expr>,
+    env: Env,
+    cont: Cont,
+    _ir: &Ir,
+) -> MachineState {
+    let ListIsAtLeast {
+        source,
+        min_length,
+        on_success,
+        on_failure,
+    } = *list_is_atleast;
+
+    // Get the source value from the environment
+    let source_val = match env.get(&source) {
+        Some(val) => val.clone(),
+        None => return MachineState::Error(format!("Unbound variable: {}", source)),
+    };
+
+    let next_matcher = match source_val {
+        Value::List(ref list) if list.len() as u32 >= min_length => on_success,
+        _ => on_failure,
+    };
+
+    // Continue with the next pattern matcher
+    MachineState::Pattern(PatternConfig {
+        matcher: next_matcher,
+        source_value,
+        bind,
+        next,
+        env,
+        cont,
+    })
+}
+
 /// Evaluates ExtractIdentity - binds the source value to a variable (for bind patterns and wildcards)
 fn eval_extract_identity(
     extract: &ExtractIdentity,
@@ -1132,6 +1234,96 @@ fn eval_extract_identity(
 
     // Bind the source value to the target variable
     env.insert(extract_bind, source_val);
+
+    // Continue with the next pattern matcher
+    MachineState::Pattern(PatternConfig {
+        matcher: pattern_next,
+        source_value,
+        bind,
+        next,
+        env,
+        cont,
+    })
+}
+
+fn eval_extract_list_at(
+    extract: &ExtractListAt,
+    source_value: Value,
+    bind: Symbol,
+    next: Id<Expr>,
+    mut env: Env,
+    cont: Cont,
+    _ir: &Ir,
+) -> MachineState {
+    let ExtractListAt {
+        bind: extract_bind,
+        source,
+        index,
+        next: pattern_next,
+    } = *extract;
+
+    // Get the source value from the environment
+    let source_val = match env.get(&source) {
+        Some(val) => val.clone(),
+        None => return MachineState::Error(format!("Unbound variable: {}", source)),
+    };
+
+    // Ensure the source value is a list
+    let Value::List(list) = source_val else {
+        return MachineState::Error(format!("Expected a list, got: {:?}", source_val));
+    };
+
+    // Get the item at the specified index
+    if let Some(item) = list.get(index as usize) {
+        // Bind the item to the target variable
+        env.insert(extract_bind, item.clone());
+    } else {
+        return MachineState::Error(format!("Index out of bounds for list: {:?}", list));
+    }
+
+    // Continue with the next pattern matcher
+    MachineState::Pattern(PatternConfig {
+        matcher: pattern_next,
+        source_value,
+        bind,
+        next,
+        env,
+        cont,
+    })
+}
+
+fn eval_extract_list_slice_from(
+    extract: &ExtractListSliceFrom,
+    source_value: Value,
+    bind: Symbol,
+    next: Id<Expr>,
+    mut env: Env,
+    cont: Cont,
+    _ir: &Ir,
+) -> MachineState {
+    let ExtractListSliceFrom {
+        bind: extract_bind,
+        source,
+        start,
+        next: pattern_next,
+    } = *extract;
+
+    // Get the source value from the environment
+    let source_val = match env.get(&source) {
+        Some(val) => val.clone(),
+        None => return MachineState::Error(format!("Unbound variable: {}", source)),
+    };
+
+    // Ensure the source value is a list
+    let Value::List(list) = source_val else {
+        return MachineState::Error(format!("Expected a list, got: {:?}", source_val));
+    };
+
+    // Get the slice from the specified range
+    let slice = list.slice(start as usize..);
+
+    // Bind the slice to the target variable
+    env.insert(extract_bind, Value::List(slice));
 
     // Continue with the next pattern matcher
     MachineState::Pattern(PatternConfig {

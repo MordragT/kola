@@ -18,6 +18,7 @@ https://overreacted.io/algebraic-effects-for-the-rest-of-us/
 https://gist.github.com/yelouafi/57825fdd223e5337ba0cd2b6ed757f53
 https://en.m.wikipedia.org/wiki/Delimited_continuation
 
+Administrative normal form (ANF) ?
 https://en.wikipedia.org/wiki/A-normal_form
 https://matt.might.net/articles/a-normalization/
 */

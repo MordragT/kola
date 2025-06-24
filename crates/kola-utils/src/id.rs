@@ -116,7 +116,7 @@ macro_rules! define_unique_id {
 
         impl<T: ?Sized> std::fmt::Debug for $name<T> {
             fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-                write!(f, "{}({})", stringify!($name), self.id)
+                write!(f, "{}({})", std::any::type_name::<T>(), self.id)
             }
         }
 

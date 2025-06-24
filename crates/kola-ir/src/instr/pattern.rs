@@ -717,7 +717,8 @@ impl ExtractIdentity {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ExtractListHead {
-    pub bind: Symbol,
+    pub head: Symbol,
+    pub tail_list: Symbol,
     pub source: Symbol,
     pub next: Id<PatternMatcher>,
 }
@@ -728,13 +729,18 @@ pub struct ExtractListHead {
 //    => <next>
 impl<'a> Notate<'a> for IrPrinter<'a, ExtractListHead> {
     fn notate(&self, arena: &'a Bump) -> Notation<'a> {
-        let ExtractListHead { bind, source, next } = self.node;
+        let ExtractListHead {
+            head,
+            tail_list,
+            source,
+            next,
+        } = self.node;
 
-        let bind = bind.display_in(arena);
+        let head = head.display_in(arena);
         let source = source.display_in(arena);
         let next = self.to(next).notate(arena);
 
-        let head = bind.then(arena.notate(" ="), arena);
+        let head = head.then(arena.notate(" ="), arena);
 
         let single = [
             arena.notate(" extract_list_head "),
@@ -762,19 +768,26 @@ impl<'a> Notate<'a> for IrPrinter<'a, ExtractListHead> {
 
 impl ExtractListHead {
     pub fn new(
-        bind: Symbol,
+        head: Symbol,
+        tail: Symbol,
         source: Symbol,
         next: impl Into<PatternMatcher>,
         builder: &mut IrBuilder,
     ) -> Self {
         let next = builder.add(next.into());
-        Self { bind, source, next }
+        Self {
+            head,
+            tail_list: tail,
+            source,
+            next,
+        }
     }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ExtractListTail {
-    pub bind: Symbol,
+    pub head_list: Symbol,
+    pub tail: Symbol,
     pub source: Symbol,
     pub next: Id<PatternMatcher>,
 }
@@ -785,13 +798,18 @@ pub struct ExtractListTail {
 //    => <next>
 impl<'a> Notate<'a> for IrPrinter<'a, ExtractListTail> {
     fn notate(&self, arena: &'a Bump) -> Notation<'a> {
-        let ExtractListTail { bind, source, next } = self.node;
+        let ExtractListTail {
+            head_list,
+            tail,
+            source,
+            next,
+        } = self.node;
 
-        let bind = bind.display_in(arena);
+        let tail = tail.display_in(arena);
         let source = source.display_in(arena);
         let next = self.to(next).notate(arena);
 
-        let head = bind.then(arena.notate(" ="), arena);
+        let head = tail.then(arena.notate(" ="), arena);
 
         let single = [
             arena.notate(" extract_list_tail "),
@@ -819,13 +837,19 @@ impl<'a> Notate<'a> for IrPrinter<'a, ExtractListTail> {
 
 impl ExtractListTail {
     pub fn new(
-        bind: Symbol,
+        head_list: Symbol,
+        tail: Symbol,
         source: Symbol,
         next: impl Into<PatternMatcher>,
         builder: &mut IrBuilder,
     ) -> Self {
         let next = builder.add(next.into());
-        Self { bind, source, next }
+        Self {
+            head_list,
+            tail,
+            source,
+            next,
+        }
     }
 }
 
@@ -907,7 +931,7 @@ impl ExtractListAt {
 pub struct ExtractListSliceFrom {
     pub bind: Symbol,
     pub source: Symbol,
-    pub start_index: u32,
+    pub start: u32,
     pub next: Id<PatternMatcher>,
 }
 
@@ -920,13 +944,13 @@ impl<'a> Notate<'a> for IrPrinter<'a, ExtractListSliceFrom> {
         let ExtractListSliceFrom {
             bind,
             source,
-            start_index,
+            start,
             next,
         } = self.node;
 
         let bind = bind.display_in(arena);
         let source = source.display_in(arena);
-        let start_index = start_index.display_in(arena);
+        let start_index = start.display_in(arena);
         let next = self.to(next).notate(arena);
 
         let head = bind.then(arena.notate(" ="), arena);
@@ -963,7 +987,7 @@ impl ExtractListSliceFrom {
     pub fn new(
         bind: Symbol,
         source: Symbol,
-        start_index: u32,
+        start: u32,
         next: impl Into<PatternMatcher>,
         builder: &mut IrBuilder,
     ) -> Self {
@@ -971,7 +995,7 @@ impl ExtractListSliceFrom {
         Self {
             bind,
             source,
-            start_index,
+            start,
             next,
         }
     }
@@ -1248,7 +1272,7 @@ pub struct PatternSuccess {
 
 impl<'a> Notate<'a> for IrPrinter<'a, PatternSuccess> {
     fn notate(&self, arena: &'a Bump) -> Notation<'a> {
-        arena.just('@').then(
+        arena.just('!').then(
             self.labels[self.node.next.as_usize()].display_in(arena),
             arena,
         )
@@ -1307,7 +1331,9 @@ pub enum PatternMatcher {
 impl<'a> Notate<'a> for IrPrinter<'a, Id<PatternMatcher>> {
     fn notate(&self, arena: &'a Bump) -> Notation<'a> {
         if self.is_node_shared() {
-            return self.node_label().yellow().display_in(arena);
+            return arena
+                .just('@')
+                .then(self.node_label().display_in(arena), arena);
         }
 
         match self.node.get(self.ir) {
@@ -1482,22 +1508,24 @@ impl PatternMatcher {
     }
 
     pub fn extract_list_head(
-        bind: Symbol,
+        head: Symbol,
+        tail_list: Symbol,
         source: Symbol,
         next: impl Into<PatternMatcher>,
         builder: &mut IrBuilder,
     ) -> Self {
-        let extractor = ExtractListHead::new(bind, source, next, builder);
+        let extractor = ExtractListHead::new(head, tail_list, source, next, builder);
         Self::ExtractListHead(extractor)
     }
 
     pub fn extract_list_tail(
-        bind: Symbol,
+        head_list: Symbol,
+        tail: Symbol,
         source: Symbol,
         next: impl Into<PatternMatcher>,
         builder: &mut IrBuilder,
     ) -> Self {
-        let extractor = ExtractListTail::new(bind, source, next, builder);
+        let extractor = ExtractListTail::new(head_list, tail, source, next, builder);
         Self::ExtractListTail(extractor)
     }
 

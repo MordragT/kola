@@ -1,4 +1,4 @@
-use std::collections::HashSet;
+use std::{collections::HashSet, fmt::Write};
 
 use kola_print::prelude::*;
 use kola_utils::{convert::TryAsRef, interner::StrInterner};
@@ -19,14 +19,27 @@ pub fn render_ir(ir: &Ir, arena: &Bump, interner: &StrInterner, options: PrintOp
     let printer = IrPrinter::new(root, ir, &labeller.labels, &labeller.shared, interner);
     let mut result = printer.render(options, arena);
 
-    if !labeller.defered.is_empty() {
-        result.push_str(&format!("\n\n{}\n\n", "With:".bold().bright_white()));
-        for expr in labeller.defered {
-            let expr_printer = printer.to(expr);
-            result.push_str(&expr_printer.render(options, arena));
-            result.push('\n');
-            result.push('\n');
-        }
+    result.push_str(&format!("\n\n{}\n\n", "With:".bold().bright_white()));
+
+    let mut shared = vec![false; ir.count()];
+
+    for matcher in labeller.defered_patterns {
+        let matcher_printer = IrPrinter::new(matcher, ir, &labeller.labels, &shared, interner);
+        result
+            .write_fmt(format_args!("{}: ", matcher.as_usize().bold()))
+            .unwrap();
+        result.push_str(&matcher_printer.render(options, arena));
+        result.push('\n');
+        result.push('\n');
+
+        shared[matcher.as_usize()] = true;
+    }
+
+    for expr in labeller.defered_expr {
+        let expr_printer = printer.to(expr);
+        result.push_str(&expr_printer.render(options, arena));
+        result.push('\n');
+        result.push('\n');
     }
 
     result
@@ -98,7 +111,8 @@ pub struct IrLabeller {
     pub reference_counts: Vec<u32>, // counts how many times each instruction is referenced
     pub shared: Vec<bool>, // whether the instruction is shared or not
     pub label_counter: u32,
-    pub defered: HashSet<Id<instr::Expr>>, // defered expressions to be printed later
+    pub defered_expr: HashSet<Id<instr::Expr>>, // defered expressions to be printed later
+    pub defered_patterns: HashSet<Id<instr::PatternMatcher>>, // defered patterns to be printed later
 }
 
 impl IrLabeller {
@@ -108,7 +122,8 @@ impl IrLabeller {
             reference_counts: vec![0; count],
             shared: vec![false; count],
             label_counter: 0,
-            defered: HashSet::new(),
+            defered_expr: HashSet::new(),
+            defered_patterns: HashSet::new(),
         }
     }
 }
@@ -217,6 +232,7 @@ where
 
         if self.reference_counts[matcher.as_usize()] > 1 {
             self.shared[matcher.as_usize()] = true;
+            self.defered_patterns.insert(matcher);
         } else {
             self.labels[matcher.as_usize()] = self.label_counter;
             self.label_counter += 1;
@@ -231,7 +247,7 @@ where
         pattern_success: instr::PatternSuccess,
         ir: &Ir,
     ) -> Result<(), Self::Error> {
-        self.defered.insert(pattern_success.next);
+        self.defered_expr.insert(pattern_success.next);
 
         self.walk_pattern_success(pattern_success, ir)?;
 

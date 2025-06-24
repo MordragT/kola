@@ -32,11 +32,12 @@
     #a = { a = 1, b = 2 },
     #main = { a : { a : Num, b : Num } | +c = 3 | a = 4 },
 
-    main = let data = [1, 2, 3] in
+    main = let data = [1, 2, 3, 4] in
         case data of
-            [] => "empty",
-            [x] => "single",
-            [a, b, ...rest] => "multiple",
+            [] => [],
+            [x] => [],
+            [x, y] => [],
+            [a, b, ...rest, c] => rest,
 
 
 

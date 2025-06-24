@@ -830,49 +830,158 @@ where
     ) -> ControlFlow<Self::BreakValue> {
         let elements = &id.get(tree).0;
 
-        // TODO the spread position is already known due to the exhaustiveness analysis
-        // So maybe we can eliminate the double walk here
+        // // TODO the spread position is already known due to the exhaustiveness analysis
+        // // So maybe we can eliminate the double walk here
 
-        // Count regular patterns and find spread position
-        let mut regular_count = 0;
-        let mut spread_pos = None;
+        // // Count regular patterns and find spread position
+        // let mut regular_count = 0;
+        // let mut spread_pos = None;
+        // let mut spread_sym = None;
+
+        // for (i, el) in elements.iter().enumerate() {
+        //     match el.get(tree) {
+        //         node::ListElPat::Pat(_) => regular_count += 1,
+        //         node::ListElPat::Spread(name) => {
+        //             spread_pos = Some(i);
+
+        //             if name.is_some() {
+        //                 spread_sym = Some(self.symbol_of(*el));
+        //             }
+
+        //             break; // Only one spread allowed
+        //         }
+        //     }
+        // }
+
+        let mut iter = elements.iter();
+        let mut source = self.source;
+
+        let mut spread_pos = 0;
         let mut spread_sym = None;
 
-        for (i, el) in elements.iter().enumerate() {
+        while let Some(el) = iter.next() {
             match el.get(tree) {
-                node::ListElPat::Pat(_) => regular_count += 1,
-                node::ListElPat::Spread(name) => {
-                    spread_pos = Some(i);
+                node::ListElPat::Pat(pat) => {
+                    // Create a fresh symbol for this element
+                    let head = self.next_symbol();
 
+                    // Create nested pattern normalizer for this element
+                    let mut nested_normalizer = PatternNormalizer::new(
+                        self.hole,
+                        head,
+                        self.on_success,
+                        self.on_failure,
+                        self.builder,
+                        self.symbols,
+                    );
+
+                    // Visit the nested pattern
+                    pat.visit_by(&mut nested_normalizer, tree)?;
+                    let next = nested_normalizer.on_success;
+
+                    let tail_list = self.next_symbol();
+
+                    // Add extractor for this position
+                    self.on_success = self.builder.add(ir::PatternMatcher::ExtractListHead(
+                        ir::ExtractListHead {
+                            head,
+                            tail_list,
+                            source,
+                            // index: i as u32, // TODO this shouldn't be the reverse index I guess
+                            next,
+                        },
+                    ));
+
+                    source = tail_list;
+                }
+                node::ListElPat::Spread(name) => {
                     if name.is_some() {
                         spread_sym = Some(self.symbol_of(*el));
                     }
+                    break;
+                }
+            }
 
-                    break; // Only one spread allowed
+            spread_pos += 1;
+        }
+
+        while let Some(el) = iter.next_back() {
+            match el.get(tree) {
+                node::ListElPat::Pat(pat) => {
+                    // Create a fresh symbol for this element
+                    let tail = self.next_symbol();
+
+                    // Create nested pattern normalizer for this element
+                    let mut nested_normalizer = PatternNormalizer::new(
+                        self.hole,
+                        tail,
+                        self.on_success,
+                        self.on_failure,
+                        self.builder,
+                        self.symbols,
+                    );
+
+                    // Visit the nested pattern
+                    pat.visit_by(&mut nested_normalizer, tree)?;
+                    let next = nested_normalizer.on_success;
+
+                    let head_list = self.next_symbol();
+
+                    // Add extractor for this position
+                    self.on_success = self.builder.add(ir::PatternMatcher::ExtractListTail(
+                        ir::ExtractListTail {
+                            head_list,
+                            tail,
+                            source,
+                            // index: i as u32, // TODO this shouldn't be the reverse index I guess
+                            next,
+                        },
+                    ));
+
+                    source = head_list;
+                }
+                node::ListElPat::Spread(_) => {
+                    // There should only be one spread,
+                    // TODO handle gracefully somewhere else
+                    panic!("Only one spread allowed in list patterns");
                 }
             }
         }
 
-        // Determine what list tests we need
-        self.on_success = if spread_pos.is_some() {
+        let length = elements.len() as u32;
+
+        // Determine what list tests we need and spread extraction
+        if let Some(bind) = spread_sym {
+            // Named spread - extract the remaining elements as a slice
+            self.on_success = self.builder.add(ir::PatternMatcher::ExtractListSliceFrom(
+                ir::ExtractListSliceFrom {
+                    bind,
+                    source,
+                    start: spread_pos,
+                    next: self.on_success,
+                },
+            ));
+
             // Has spread - need at least `regular_count` elements
-            self.builder
-                .add(ir::PatternMatcher::ListIsAtLeast(ir::ListIsAtLeast {
-                    source: self.source,
-                    min_length: regular_count,
-                    on_success: self.on_success,
-                    on_failure: self.on_failure,
-                }))
+            self.on_success =
+                self.builder
+                    .add(ir::PatternMatcher::ListIsAtLeast(ir::ListIsAtLeast {
+                        source: self.source,
+                        min_length: length - 1,
+                        on_success: self.on_success,
+                        on_failure: self.on_failure,
+                    }));
         } else {
             // No spread - need exactly `regular_count` elements
-            self.builder
+            self.on_success = self
+                .builder
                 .add(ir::PatternMatcher::ListIsExact(ir::ListIsExact {
                     source: self.source,
-                    length: regular_count,
+                    length,
                     on_success: self.on_success,
                     on_failure: self.on_failure,
                 }))
-        };
+        }
 
         // Add IsList test
         self.on_success = self.builder.add(ir::PatternMatcher::IsList(ir::IsList {
@@ -880,53 +989,6 @@ where
             on_success: self.on_success,
             on_failure: self.on_failure,
         }));
-
-        // Handle the spread pattern if it exists
-        if let Some(spread_pos) = spread_pos {
-            if let Some(spread_sym) = spread_sym {
-                // Named spread - extract the remaining elements as a slice
-                self.on_success = self.builder.add(ir::PatternMatcher::ExtractListSliceFrom(
-                    ir::ExtractListSliceFrom {
-                        bind: spread_sym,
-                        source: self.source,
-                        start_index: spread_pos as u32,
-                        next: self.on_success,
-                    },
-                ));
-            }
-            // For unnamed spread (just `...`), no extraction needed
-        }
-
-        // Process elements in reverse order (building continuation chain)
-        for el in elements.iter().rev() {
-            if let node::ListElPat::Pat(pat) = el.get(tree) {
-                // Create a fresh symbol for this element
-                let element_sym = self.next_symbol();
-
-                // Create nested pattern normalizer for this element
-                let mut nested_normalizer = PatternNormalizer::new(
-                    self.hole,
-                    element_sym,
-                    self.on_success,
-                    self.on_failure,
-                    self.builder,
-                    self.symbols,
-                );
-
-                // Visit the nested pattern
-                pat.visit_by(&mut nested_normalizer, tree)?;
-
-                // Add extractor for this position
-                self.on_success =
-                    self.builder
-                        .add(ir::PatternMatcher::ExtractListAt(ir::ExtractListAt {
-                            bind: element_sym,
-                            source: self.source,
-                            index: todo!(), // TODO this shouldn't be the reverse index I guess
-                            next: nested_normalizer.on_success,
-                        }));
-            }
-        }
 
         ControlFlow::Continue(())
     }

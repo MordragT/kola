@@ -7,7 +7,7 @@ use kola_utils::{
     fmt::DisplayWithInterner,
     interner::{StrInterner, StrKey},
 };
-use std::fmt;
+use std::{fmt, ops::RangeBounds};
 
 use crate::{cont::Cont, env::Env};
 
@@ -391,6 +391,15 @@ impl List {
     #[inline]
     pub fn append(&mut self, value: Value) {
         self.0.push_back(value);
+    }
+
+    pub fn get(&self, index: usize) -> Option<&Value> {
+        self.0.get(index)
+    }
+
+    // TODO panics if range is out of bounds (might be okay ?)
+    pub fn slice(&self, range: impl RangeBounds<usize>) -> Self {
+        Self(self.0.focus().narrow(range).into_iter().cloned().collect())
     }
 
     // __builtin_first

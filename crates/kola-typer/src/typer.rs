@@ -688,7 +688,7 @@ where
                 self.cons.constrain(first_t.clone(), elem_t, span);
             }
         } else {
-            todo!("Handle empty lists by checking if it has annotations")
+            self.insert_type(id, MonoType::list(MonoType::variable()));
         }
 
         ControlFlow::Continue(())
