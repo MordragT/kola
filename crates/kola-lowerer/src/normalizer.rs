@@ -830,26 +830,105 @@ where
     ) -> ControlFlow<Self::BreakValue> {
         let elements = &id.get(tree).0;
 
-        for el in elements.iter().rev() {
-            // elements are either patterns or spread operator with an optional name (... and ...rest)
-            // So the tester and extractors will depend on the pattern's so just visit them if it is a pttern
-            // if it is a spread operator we will need to create the tester and extractor manually here,
-            // but actually only if it has a name, otherwise it is just a no-op
+        // TODO the spread position is already known due to the exhaustiveness analysis
+        // So maybe we can eliminate the double walk here
+
+        // Count regular patterns and find spread position
+        let mut regular_count = 0;
+        let mut spread_pos = None;
+        let mut spread_sym = None;
+
+        for (i, el) in elements.iter().enumerate() {
+            match el.get(tree) {
+                node::ListElPat::Pat(_) => regular_count += 1,
+                node::ListElPat::Spread(name) => {
+                    spread_pos = Some(i);
+
+                    if name.is_some() {
+                        spread_sym = Some(self.symbol_of(*el));
+                    }
+
+                    break; // Only one spread allowed
+                }
+            }
         }
 
-        // Now after the elmenets have been visited depth first search in reverse order,
-        // we can create the list pattern tester and extractor
-        // I am not so sure how this could look like at the moment.
-        // Maybe something along the lines of:
-        // self.next = todo
-        // self.next = IsListWithAtLeast { to_test: self.hole, payload: elements.len(), on_success: self.next, on_failure: self.next_branch? }
-        // self.next = IdentityExtractor
-        // self.next = IsList { to_test: self.hole, on_success: self.next, on_failure: self.next_branch? }
-        //
-        //
-        // I am thinking that this could really benefit from the ListSet we computed for the exhaustiveness checking,
-        // because with it I believe we could branch statically here depending on if the list pattern is universal or what it's requirements are
-        todo!()
+        // Determine what list tests we need
+        self.on_success = if spread_pos.is_some() {
+            // Has spread - need at least `regular_count` elements
+            self.builder
+                .add(ir::PatternMatcher::ListIsAtLeast(ir::ListIsAtLeast {
+                    source: self.source,
+                    min_length: regular_count,
+                    on_success: self.on_success,
+                    on_failure: self.on_failure,
+                }))
+        } else {
+            // No spread - need exactly `regular_count` elements
+            self.builder
+                .add(ir::PatternMatcher::ListIsExact(ir::ListIsExact {
+                    source: self.source,
+                    length: regular_count,
+                    on_success: self.on_success,
+                    on_failure: self.on_failure,
+                }))
+        };
+
+        // Add IsList test
+        self.on_success = self.builder.add(ir::PatternMatcher::IsList(ir::IsList {
+            source: self.source,
+            on_success: self.on_success,
+            on_failure: self.on_failure,
+        }));
+
+        // Handle the spread pattern if it exists
+        if let Some(spread_pos) = spread_pos {
+            if let Some(spread_sym) = spread_sym {
+                // Named spread - extract the remaining elements as a slice
+                self.on_success = self.builder.add(ir::PatternMatcher::ExtractListSliceFrom(
+                    ir::ExtractListSliceFrom {
+                        bind: spread_sym,
+                        source: self.source,
+                        start_index: spread_pos as u32,
+                        next: self.on_success,
+                    },
+                ));
+            }
+            // For unnamed spread (just `...`), no extraction needed
+        }
+
+        // Process elements in reverse order (building continuation chain)
+        for el in elements.iter().rev() {
+            if let node::ListElPat::Pat(pat) = el.get(tree) {
+                // Create a fresh symbol for this element
+                let element_sym = self.next_symbol();
+
+                // Create nested pattern normalizer for this element
+                let mut nested_normalizer = PatternNormalizer::new(
+                    self.hole,
+                    element_sym,
+                    self.on_success,
+                    self.on_failure,
+                    self.builder,
+                    self.symbols,
+                );
+
+                // Visit the nested pattern
+                pat.visit_by(&mut nested_normalizer, tree)?;
+
+                // Add extractor for this position
+                self.on_success =
+                    self.builder
+                        .add(ir::PatternMatcher::ExtractListAt(ir::ExtractListAt {
+                            bind: element_sym,
+                            source: self.source,
+                            index: todo!(), // TODO this shouldn't be the reverse index I guess
+                            next: nested_normalizer.on_success,
+                        }));
+            }
+        }
+
+        ControlFlow::Continue(())
     }
 
     fn visit_record_pat(

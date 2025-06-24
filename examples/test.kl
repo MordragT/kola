@@ -32,11 +32,11 @@
     #a = { a = 1, b = 2 },
     #main = { a : { a : Num, b : Num } | +c = 3 | a = 4 },
 
-    #main = let data = [1, 2, 3] in
-    #    case data of
-    #        [] => "empty",
-    #        [x] => "single",
-            #[a, b, ...rest] => "multiple",
+    main = let data = [1, 2, 3] in
+        case data of
+            [] => "empty",
+            [x] => "single",
+            [a, b, ...rest] => "multiple",
 
 
 
@@ -57,9 +57,9 @@
     #    _ => "many",
 
 
-    f = fn x => x.a + x.b,
+    #f = fn x => x.a + x.b,
 
-    main = let
-        x = { a = 10, b = 20 } in
-        (f x),
+    #main = let
+    #    x = { a = 10, b = 20 } in
+    #    (f x),
 }

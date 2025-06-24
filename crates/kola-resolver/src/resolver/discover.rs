@@ -17,7 +17,7 @@ use crate::{
     info::ModuleInfo,
     phase::{ResolvePhase, ResolvedType, ResolvedValue},
     prelude::Topography,
-    refs::{ConstructorRef, ModuleRef, TypeBindRef, TypeRef, ValueRef},
+    refs::{ModuleRef, TypeBindRef, TypeRef, ValueRef},
     scope::{ModuleScope, ModuleScopeStack},
     symbol::{ModuleSym, TypeSym, ValueSym},
 };
