@@ -368,7 +368,6 @@ where
             PatternMatcher::IsNum(is_num) => self.visit_is_num(is_num, ir),
             PatternMatcher::IsChar(is_char) => self.visit_is_char(is_char, ir),
             PatternMatcher::IsStr(is_str) => self.visit_is_str(is_str, ir),
-            PatternMatcher::IsTag(is_tag) => self.visit_is_tag(is_tag, ir),
             PatternMatcher::IsVariant(is_variant) => self.visit_is_variant(is_variant, ir),
             PatternMatcher::IsList(is_list) => self.visit_is_list(is_list, ir),
             PatternMatcher::ListIsExact(is_exact) => self.visit_list_is_exact(is_exact, ir),
@@ -383,15 +382,7 @@ where
             PatternMatcher::ListGetAt(get_at) => self.visit_list_get_at(get_at, ir),
             PatternMatcher::ListSplitAt(split_at) => self.visit_list_split_at(split_at, ir),
             PatternMatcher::RecordGetAt(get_at) => self.visit_record_get_at(get_at, ir),
-            // PatternMatcher::ExtractRecordWithoutField(extract_record_without_field) => {
-            //     self.visit_extract_record_without_field(extract_record_without_field, ir)
-            // }
-            // PatternMatcher::ExtractVariantTag(extract_variant_tag) => {
-            //     self.visit_extract_variant_tag(extract_variant_tag, ir)
-            // }
-            // PatternMatcher::ExtractVariantValue(extract_variant_value) => {
-            //     self.visit_extract_variant_value(extract_variant_value, ir)
-            // }
+            PatternMatcher::VariantGet(get) => self.visit_variant_get(get, ir),
             PatternMatcher::Success(success) => self.visit_pattern_success(success, ir),
             PatternMatcher::Failure(failure) => self.visit_pattern_failure(failure, ir),
         }
@@ -482,22 +473,6 @@ where
 
     fn visit_is_str(&mut self, is_str: IsStr, ir: &Ir) -> Result<(), Self::Error> {
         self.walk_is_str(is_str, ir)
-    }
-
-    fn walk_is_tag(&mut self, is_tag: IsTag, ir: &Ir) -> Result<(), Self::Error> {
-        let IsTag {
-            source,
-            on_success,
-            on_failure,
-            ..
-        } = is_tag;
-        self.visit_symbol(source)?;
-        self.visit_pattern_matcher(on_success, ir)?;
-        self.visit_pattern_matcher(on_failure, ir)
-    }
-
-    fn visit_is_tag(&mut self, is_tag: IsTag, ir: &Ir) -> Result<(), Self::Error> {
-        self.walk_is_tag(is_tag, ir)
     }
 
     fn walk_is_variant(&mut self, is_variant: IsVariant, ir: &Ir) -> Result<(), Self::Error> {
@@ -739,68 +714,18 @@ where
         self.walk_record_get_at(record_get_at, ir)
     }
 
-    // fn walk_extract_record_without_field(
-    //     &mut self,
-    //     extract_record_without_field: ExtractRecordWithoutField,
-    //     ir: &Ir,
-    // ) -> Result<(), Self::Error> {
-    //     let ExtractRecordWithoutField {
-    //         bind, source, next, ..
-    //     } = extract_record_without_field;
-    //     self.visit_symbol(bind)?;
-    //     self.visit_symbol(source)?;
-    //     self.visit_pattern_matcher(next, ir)
-    // }
+    fn walk_variant_get(&mut self, variant_get: VariantGet, ir: &Ir) -> Result<(), Self::Error> {
+        let VariantGet {
+            bind, source, next, ..
+        } = variant_get;
+        self.visit_symbol(bind)?;
+        self.visit_symbol(source)?;
+        self.visit_pattern_matcher(next, ir)
+    }
 
-    // fn visit_extract_record_without_field(
-    //     &mut self,
-    //     extract_record_without_field: ExtractRecordWithoutField,
-    //     ir: &Ir,
-    // ) -> Result<(), Self::Error> {
-    //     self.walk_extract_record_without_field(extract_record_without_field, ir)
-    // }
-
-    // fn walk_extract_variant_tag(
-    //     &mut self,
-    //     extract_variant_tag: ExtractVariantTag,
-    //     ir: &Ir,
-    // ) -> Result<(), Self::Error> {
-    //     let ExtractVariantTag {
-    //         bind, source, next, ..
-    //     } = extract_variant_tag;
-    //     self.visit_symbol(bind)?;
-    //     self.visit_symbol(source)?;
-    //     self.visit_pattern_matcher(next, ir)
-    // }
-
-    // fn visit_extract_variant_tag(
-    //     &mut self,
-    //     extract_variant_tag: ExtractVariantTag,
-    //     ir: &Ir,
-    // ) -> Result<(), Self::Error> {
-    //     self.walk_extract_variant_tag(extract_variant_tag, ir)
-    // }
-
-    // fn walk_extract_variant_value(
-    //     &mut self,
-    //     extract_variant_value: ExtractVariantValue,
-    //     ir: &Ir,
-    // ) -> Result<(), Self::Error> {
-    //     let ExtractVariantValue {
-    //         bind, source, next, ..
-    //     } = extract_variant_value;
-    //     self.visit_symbol(bind)?;
-    //     self.visit_symbol(source)?;
-    //     self.visit_pattern_matcher(next, ir)
-    // }
-
-    // fn visit_extract_variant_value(
-    //     &mut self,
-    //     extract_variant_value: ExtractVariantValue,
-    //     ir: &Ir,
-    // ) -> Result<(), Self::Error> {
-    //     self.walk_extract_variant_value(extract_variant_value, ir)
-    // }
+    fn visit_variant_get(&mut self, variant_get: VariantGet, ir: &Ir) -> Result<(), Self::Error> {
+        self.walk_variant_get(variant_get, ir)
+    }
 
     fn walk_pattern_success(
         &mut self,

@@ -22,7 +22,6 @@
     #    { a = a, b = b },
 
 
-    #type Option = forall a . < Some : a, None >,
     #main = (Some 10),
 
     #main : forall a . Option a = (None ()),
@@ -32,13 +31,40 @@
     #a = { a = 1, b = 2 },
     #main = { a : { a : Num, b : Num } | +c = 3 | a = 4 },
 
-    main = let data = [1, 2, 3, 4] in
-        case data of
-            [] => [],
-            [x] => [],
-            [x, y] => [],
-            [a, b, ...rest, c] => rest,
+    #main = let data = [1, 2, 3, 4] in
+    #    case data of
+    #        [] => [],
+    #        [x] => [],
+    #        [x, y] => [],
+    #        [a, b, ...rest, c] => rest,
 
+
+    #personify : forall a . { name : Str | a } -> { name : Str | a } = fn person => person,
+
+    #main = let person = (personify { name = "Alice", age = 30, car = "bmw" }) in
+    #    case person of
+    #        { name, age, car } => name,
+    #        { name, age, damn } => "age",
+    #        { name, age } => "combined",
+
+
+
+
+
+
+
+
+    type Option = forall a . < Some : a, None >,
+
+    some_num  = (Some 10),
+    none_num  = (None ()),
+
+    blub = (Blub ()),
+
+    main = case blub of
+        < Some : x > => x,
+        < None > => 0,
+        _ => 99,
 
 
     #type Person = forall a . { name : Str | a },

@@ -1010,12 +1010,85 @@ where
         ControlFlow::Continue(())
     }
 
+    // TODO this is a weird implementation maybe record patterns need a different design
     fn visit_record_pat(
         &mut self,
         id: TreeId<node::RecordPat>,
         tree: &Tree,
     ) -> ControlFlow<Self::BreakValue> {
-        todo!()
+        let node::RecordPat { fields, polymorph } = id.get(tree);
+
+        // Build the chain backwards, starting from the final success
+        let mut current_success = self.on_success;
+
+        // Process fields in reverse order to build the chain backwards
+        for &field_id in fields.iter().rev() {
+            let node::RecordFieldPat { pat, field } = *field_id.get(tree);
+
+            let field = field.get(tree).0;
+
+            if let Some(pat_id) = pat {
+                // Field has a pattern - need to extract and match
+                let field_sym = self.next_symbol();
+
+                // Create nested pattern normalizer for the field pattern
+                let mut nested_normalizer = PatternNormalizer::new(
+                    self.hole,
+                    field_sym,
+                    current_success,
+                    self.on_failure,
+                    self.builder,
+                    self.symbols,
+                );
+
+                // Visit the nested pattern
+                pat_id.visit_by(&mut nested_normalizer, tree)?;
+                let next = nested_normalizer.on_success;
+
+                // Create field extraction
+                current_success =
+                    self.builder
+                        .add(ir::PatternMatcher::RecordGetAt(ir::RecordGetAt {
+                            bind: field_sym,
+                            source: self.source,
+                            field,
+                            next,
+                        }));
+            } else {
+                // Field has no pattern - it's a binding like { a }
+                let field_sym = self.symbol_of(field_id);
+
+                // Create field extraction and binding
+                current_success =
+                    self.builder
+                        .add(ir::PatternMatcher::RecordGetAt(ir::RecordGetAt {
+                            bind: field_sym,
+                            source: self.source,
+                            field,
+                            next: current_success,
+                        }));
+            }
+
+            // TODO not needed ?
+            // // Add field existence check
+            // current_success =
+            //     self.builder
+            //         .add(ir::PatternMatcher::RecordHasField(ir::RecordHasField {
+            //             source: self.source,
+            //             field,
+            //             on_success: current_success,
+            //             on_failure: self.on_failure,
+            //         }));
+        }
+
+        // Add IsRecord test (happens first)
+        self.on_success = self.builder.add(ir::PatternMatcher::IsRecord(ir::IsRecord {
+            source: self.source,
+            on_success: current_success,
+            on_failure: self.on_failure,
+        }));
+
+        ControlFlow::Continue(())
     }
 
     fn visit_variant_pat(
@@ -1023,7 +1096,74 @@ where
         id: TreeId<node::VariantPat>,
         tree: &Tree,
     ) -> ControlFlow<Self::BreakValue> {
-        todo!()
+        let variant_pat = id.get(tree);
+        let tags = &variant_pat.0;
+
+        if tags.is_empty() {
+            // Empty variant pattern - shouldn't happen, but handle gracefully
+            self.on_success = self
+                .builder
+                .add(ir::PatternMatcher::Failure(ir::PatternFailure));
+            return ControlFlow::Continue(());
+        }
+
+        // For variant patterns, we need to try each tag in sequence
+        // Build the chain from right to left (last tag to first tag)
+        let mut current_failure = self.on_failure;
+
+        for &tag_id in tags.iter().rev() {
+            let tag_pat = tag_id.get(tree);
+            let tag_name = tag_pat.tag.get(tree).0;
+
+            let mut tag_success = self.on_success;
+
+            if let Some(pat_id) = tag_pat.pat {
+                let pat_sym = self.next_symbol();
+
+                // Tag has a pattern - need to match against variant value
+                // Note: The variant value extraction is handled implicitly by IsVariant
+                // The pattern should match against the same source symbol
+                let mut nested_normalizer = PatternNormalizer::new(
+                    self.hole,
+                    pat_sym, // Variant value is in here after VariantGet extraction
+                    tag_success,
+                    current_failure,
+                    self.builder,
+                    self.symbols,
+                );
+
+                // Visit the nested pattern
+                pat_id.visit_by(&mut nested_normalizer, tree)?;
+                tag_success = nested_normalizer.on_success;
+
+                // Create the variant extraction
+                tag_success = self
+                    .builder
+                    .add(ir::PatternMatcher::VariantGet(ir::VariantGet {
+                        bind: pat_sym,
+                        source: self.source,
+                        next: tag_success,
+                    }));
+            }
+
+            // Create variant tag test
+            let variant_test = self
+                .builder
+                .add(ir::PatternMatcher::IsVariant(ir::IsVariant {
+                    source: self.source,
+                    tag: tag_name,
+                    on_success: tag_success,
+                    on_failure: current_failure,
+                }));
+
+            // This test becomes the failure continuation for the next test
+            current_failure = variant_test;
+        }
+
+        // The first tag test becomes our success continuation
+        self.on_success = current_failure;
+
+        ControlFlow::Continue(())
     }
 }
 

@@ -10,10 +10,11 @@ use kola_ir::{
     id::Id,
     instr::{
         Atom, BinaryExpr, BinaryOp, CallExpr, Expr, Func, Identity, IfExpr, IsBool, IsChar, IsList,
-        IsNum, IsStr, IsUnit, LetExpr, ListExpr, ListGetAt, ListIsAtLeast, ListIsExact, ListItem,
-        ListSplitAt, ListSplitHead, ListSplitTail, PatternMatchExpr, PatternMatcher,
-        PatternSuccess, RecordAccessExpr, RecordExpr, RecordExtendExpr, RecordField,
-        RecordRestrictExpr, RecordUpdateExpr, RecordUpdateOp, RetExpr, Symbol, UnaryExpr, UnaryOp,
+        IsNum, IsRecord, IsStr, IsUnit, IsVariant, LetExpr, ListExpr, ListGetAt, ListIsAtLeast,
+        ListIsExact, ListItem, ListSplitAt, ListSplitHead, ListSplitTail, PatternMatchExpr,
+        PatternMatcher, PatternSuccess, RecordAccessExpr, RecordExpr, RecordExtendExpr,
+        RecordField, RecordGetAt, RecordHasField, RecordRestrictExpr, RecordUpdateExpr,
+        RecordUpdateOp, RetExpr, Symbol, UnaryExpr, UnaryOp, VariantGet,
     },
     ir::{Ir, IrView},
 };
@@ -875,6 +876,15 @@ fn eval_pattern_matcher(
         PatternMatcher::IsStr(is_str) => {
             eval_is_str(is_str, source_value, bind, next, env, cont, ir)
         }
+        PatternMatcher::IsVariant(is_variant) => {
+            eval_is_variant(is_variant, source_value, bind, next, env, cont, ir)
+        }
+        PatternMatcher::IsRecord(is_record) => {
+            eval_is_record(is_record, source_value, bind, next, env, cont, ir)
+        }
+        PatternMatcher::RecordHasField(record_has_field) => {
+            eval_record_has_field(record_has_field, source_value, bind, next, env, cont, ir)
+        }
         PatternMatcher::IsList(is_list) => {
             eval_is_list(is_list, source_value, bind, next, env, cont, ir)
         }
@@ -886,6 +896,12 @@ fn eval_pattern_matcher(
         }
         PatternMatcher::Identity(extract) => {
             eval_identity(extract, source_value, bind, next, env, cont, ir)
+        }
+        PatternMatcher::VariantGet(extract) => {
+            eval_variant_get(extract, source_value, bind, next, env, cont, ir)
+        }
+        PatternMatcher::RecordGetAt(extract) => {
+            eval_record_get_at(extract, source_value, bind, next, env, cont, ir)
         }
         PatternMatcher::ListSplitHead(extract) => {
             eval_list_split_head(extract, source_value, bind, next, env, cont, ir)
@@ -899,13 +915,13 @@ fn eval_pattern_matcher(
         PatternMatcher::ListSplitAt(extract) => {
             eval_list_split_at(extract, source_value, bind, next, env, cont, ir)
         }
+
         PatternMatcher::Success(success) => {
             eval_pattern_success(success, source_value, bind, env, cont, ir)
         }
         PatternMatcher::Failure(_) => {
             MachineState::Error("Pattern match failure - no matching case found".to_string())
         }
-        _ => MachineState::Error(format!("Pattern matcher not yet implemented: {matcher:?}")),
     }
 }
 
@@ -1103,6 +1119,119 @@ fn eval_is_str(
     })
 }
 
+fn eval_is_variant(
+    is_tag: &IsVariant,
+    source_value: Value,
+    bind: Symbol,
+    next: Id<Expr>,
+    env: Env,
+    cont: Cont,
+    _ir: &Ir,
+) -> MachineState {
+    let IsVariant {
+        source,
+        tag,
+        on_success,
+        on_failure,
+    } = *is_tag;
+
+    // Get the source value from the environment
+    let source_val = match env.get(&source) {
+        Some(val) => val.clone(),
+        None => return MachineState::Error(format!("Unbound variable: {}", source)),
+    };
+
+    let next_matcher = match source_val {
+        Value::Variant(t) if t.tag().0 == tag => on_success,
+        _ => on_failure,
+    };
+
+    // Continue with the next pattern matcher
+    MachineState::Pattern(PatternConfig {
+        matcher: next_matcher,
+        source_value,
+        bind,
+        next,
+        env,
+        cont,
+    })
+}
+
+fn eval_is_record(
+    is_record: &IsRecord,
+    source_value: Value,
+    bind: Symbol,
+    next: Id<Expr>,
+    env: Env,
+    cont: Cont,
+    _ir: &Ir,
+) -> MachineState {
+    let IsRecord {
+        source,
+        on_success,
+        on_failure,
+    } = *is_record;
+
+    // Get the source value from the environment
+    let source_val = match env.get(&source) {
+        Some(val) => val.clone(),
+        None => return MachineState::Error(format!("Unbound variable: {}", source)),
+    };
+
+    let next_matcher = match source_val {
+        Value::Record(_) => on_success,
+        _ => on_failure,
+    };
+
+    // Continue with the next pattern matcher
+    MachineState::Pattern(PatternConfig {
+        matcher: next_matcher,
+        source_value,
+        bind,
+        next,
+        env,
+        cont,
+    })
+}
+
+fn eval_record_has_field(
+    record_has_field: &RecordHasField,
+    source_value: Value,
+    bind: Symbol,
+    next: Id<Expr>,
+    env: Env,
+    cont: Cont,
+    _ir: &Ir,
+) -> MachineState {
+    let RecordHasField {
+        source,
+        field,
+        on_success,
+        on_failure,
+    } = *record_has_field;
+
+    // Get the source value from the environment
+    let source_val = match env.get(&source) {
+        Some(val) => val.clone(),
+        None => return MachineState::Error(format!("Unbound variable: {}", source)),
+    };
+
+    let next_matcher = match source_val {
+        Value::Record(record) if record.contains_key(field) => on_success,
+        _ => on_failure,
+    };
+
+    // Continue with the next pattern matcher
+    MachineState::Pattern(PatternConfig {
+        matcher: next_matcher,
+        source_value,
+        bind,
+        next,
+        env,
+        cont,
+    })
+}
+
 fn eval_is_list(
     is_list: &IsList,
     source_value: Value,
@@ -1240,6 +1369,92 @@ fn eval_identity(
 
     // Bind the source value to the target variable
     env.insert(extract_bind, source_val);
+
+    // Continue with the next pattern matcher
+    MachineState::Pattern(PatternConfig {
+        matcher: pattern_next,
+        source_value,
+        bind,
+        next,
+        env,
+        cont,
+    })
+}
+
+fn eval_variant_get(
+    extract: &VariantGet,
+    source_value: Value,
+    bind: Symbol,
+    next: Id<Expr>,
+    mut env: Env,
+    cont: Cont,
+    _ir: &Ir,
+) -> MachineState {
+    let VariantGet {
+        bind: extract_bind,
+        source,
+        next: pattern_next,
+    } = *extract;
+
+    // Get the source value from the environment
+    let source_val = match env.get(&source) {
+        Some(val) => val.clone(),
+        None => return MachineState::Error(format!("Unbound variable: {}", source)),
+    };
+
+    // Ensure the source value is a variant
+    let Value::Variant(variant) = source_val else {
+        return MachineState::Error(format!("Expected a variant, got: {:?}", source_val));
+    };
+
+    // Bind the payload to the target variable
+    env.insert(extract_bind, variant.value().clone());
+
+    // Continue with the next pattern matcher
+    MachineState::Pattern(PatternConfig {
+        matcher: pattern_next,
+        source_value,
+        bind,
+        next,
+        env,
+        cont,
+    })
+}
+
+fn eval_record_get_at(
+    extract: &RecordGetAt,
+    source_value: Value,
+    bind: Symbol,
+    next: Id<Expr>,
+    mut env: Env,
+    cont: Cont,
+    _ir: &Ir,
+) -> MachineState {
+    let RecordGetAt {
+        bind: extract_bind,
+        source,
+        field,
+        next: pattern_next,
+    } = *extract;
+
+    // Get the source value from the environment
+    let source_val = match env.get(&source) {
+        Some(val) => val.clone(),
+        None => return MachineState::Error(format!("Unbound variable: {}", source)),
+    };
+
+    // Ensure the source value is a record
+    let Value::Record(record) = source_val else {
+        return MachineState::Error(format!("Expected a record, got: {:?}", source_val));
+    };
+
+    // Get the field value from the record
+    if let Some(value) = record.get(field).cloned() {
+        // Bind the field value to the target variable
+        env.insert(extract_bind, value);
+    } else {
+        return MachineState::Error(format!("Field {:?} not found in record", field));
+    }
 
     // Continue with the next pattern matcher
     MachineState::Pattern(PatternConfig {

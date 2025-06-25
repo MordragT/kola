@@ -2,11 +2,7 @@ use kola_print::prelude::*;
 use kola_utils::interner::StrKey;
 
 use super::{Expr, Symbol};
-use crate::{
-    id::Id,
-    ir::{IrBuilder, IrView},
-    print::IrPrinter,
-};
+use crate::{id::Id, ir::IrBuilder, print::IrPrinter};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct IsUnit {
@@ -308,7 +304,7 @@ impl IsVariant {
     }
 }
 
-// Variant <tag> -> <on_success>
+// Tag <payload> -> <on_success>
 impl<'a> Notate<'a> for IrPrinter<'a, IsVariant> {
     fn notate(&self, arena: &'a Bump) -> Notation<'a> {
         let IsVariant {
@@ -318,64 +314,7 @@ impl<'a> Notate<'a> for IrPrinter<'a, IsVariant> {
             ..
         } = self.node;
 
-        let tag = tag.display_in(arena);
-        let success = self.to(on_success).notate(arena);
-        let failure = [
-            arena.newline(),
-            arena.notate("| "),
-            self.to(on_failure).notate(arena),
-        ]
-        .concat_in(arena);
-
-        [
-            arena.notate("Variant "),
-            tag,
-            arena.notate(" -> "),
-            success,
-            failure,
-        ]
-        .concat_in(arena)
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct IsTag {
-    pub source: Symbol,
-    pub payload: StrKey,
-    pub on_success: Id<PatternMatcher>,
-    pub on_failure: Id<PatternMatcher>,
-}
-
-impl IsTag {
-    pub fn new(
-        source: Symbol,
-        payload: StrKey,
-        on_success: impl Into<PatternMatcher>,
-        on_failure: impl Into<PatternMatcher>,
-        builder: &mut IrBuilder,
-    ) -> Self {
-        let on_success = builder.add(on_success.into());
-        let on_failure = builder.add(on_failure.into());
-        Self {
-            source,
-            payload,
-            on_success,
-            on_failure,
-        }
-    }
-}
-
-// Tag <payload> -> <on_success>
-impl<'a> Notate<'a> for IrPrinter<'a, IsTag> {
-    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
-        let IsTag {
-            payload,
-            on_success,
-            on_failure,
-            ..
-        } = self.node;
-
-        let payload = payload.display_in(arena);
+        let tag = self.interner[tag].display_in(arena);
         let success = self.to(on_success).notate(arena);
         let failure = [
             arena.newline(),
@@ -386,7 +325,7 @@ impl<'a> Notate<'a> for IrPrinter<'a, IsTag> {
 
         [
             arena.notate("Tag "),
-            payload,
+            tag,
             arena.notate(" -> "),
             success,
             failure,
@@ -1082,193 +1021,62 @@ impl RecordGetAt {
     }
 }
 
-// #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-// pub struct ExtractRecordWithoutField {
-//     pub bind: Symbol,
-//     pub source: Symbol,
-//     pub field: StrKey,
-//     pub next: Id<PatternMatcher>,
-// }
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct VariantGet {
+    pub bind: Symbol,
+    pub source: Symbol,
+    pub next: Id<PatternMatcher>,
+}
 
-// // <bind> = extract_record_without_field <source> <field> => <next>
-// // <bind> =
-// //    extract_record_without_field <source> <field>
-// //    => <next>
-// impl<'a> Notate<'a> for IrPrinter<'a, ExtractRecordWithoutField> {
-//     fn notate(&self, arena: &'a Bump) -> Notation<'a> {
-//         let ExtractRecordWithoutField {
-//             bind,
-//             source,
-//             field,
-//             next,
-//         } = self.node;
+// <bind> = get <source> => <next>
+// <bind> =
+//    get <source>
+//    => <next>
+impl<'a> Notate<'a> for IrPrinter<'a, VariantGet> {
+    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
+        let VariantGet { bind, source, next } = self.node;
 
-//         let bind = bind.display_in(arena);
-//         let source = source.display_in(arena);
-//         let field = field.display_in(arena);
-//         let next = self.to(next).notate(arena);
+        let bind = bind.display_in(arena);
+        let source = source.display_in(arena);
+        let next = self.to(next).notate(arena);
 
-//         let head = bind.then(arena.notate(" ="), arena);
+        let head = bind.then(arena.notate(" ="), arena);
 
-//         let single = [
-//             arena.notate(" extract_record_without_field "),
-//             source.clone(),
-//             arena.notate(" "),
-//             field.clone(),
-//             arena.notate(" => "),
-//             next.clone(),
-//         ]
-//         .concat_in(arena)
-//         .flatten(arena);
+        let single = [
+            arena.notate(" get "),
+            source.clone(),
+            arena.notate(" => "),
+            next.clone(),
+        ]
+        .concat_in(arena)
+        .flatten(arena);
 
-//         let multi = [
-//             arena.newline(),
-//             arena.notate("extract_record_without_field "),
-//             source,
-//             arena.notate(" "),
-//             field,
-//             arena.newline(),
-//             "=> ".display_in(arena),
-//             next,
-//         ]
-//         .concat_in(arena)
-//         .indent(arena);
+        let multi = [
+            arena.newline(),
+            arena.notate("get "),
+            source,
+            arena.newline(),
+            "=> ".display_in(arena),
+            next,
+        ]
+        .concat_in(arena)
+        .indent(arena);
 
-//         head.then(single.or(multi, arena), arena)
-//     }
-// }
+        head.then(single.or(multi, arena), arena)
+    }
+}
 
-// impl ExtractRecordWithoutField {
-//     pub fn new(
-//         bind: Symbol,
-//         source: Symbol,
-//         field: StrKey,
-//         next: impl Into<PatternMatcher>,
-//         builder: &mut IrBuilder,
-//     ) -> Self {
-//         let next = builder.add(next.into());
-//         Self {
-//             bind,
-//             source,
-//             field,
-//             next,
-//         }
-//     }
-// }
-
-// #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-// pub struct ExtractVariantTag {
-//     pub bind: Symbol,
-//     pub source: Symbol,
-//     pub next: Id<PatternMatcher>,
-// }
-
-// // <bind> = extract_variant_tag <source> => <next>
-// // <bind> =
-// //    extract_variant_tag <source>
-// //    => <next>
-// impl<'a> Notate<'a> for IrPrinter<'a, ExtractVariantTag> {
-//     fn notate(&self, arena: &'a Bump) -> Notation<'a> {
-//         let ExtractVariantTag { bind, source, next } = self.node;
-
-//         let bind = bind.display_in(arena);
-//         let source = source.display_in(arena);
-//         let next = self.to(next).notate(arena);
-
-//         let head = bind.then(arena.notate(" ="), arena);
-
-//         let single = [
-//             arena.notate(" extract_variant_tag "),
-//             source.clone(),
-//             arena.notate(" => "),
-//             next.clone(),
-//         ]
-//         .concat_in(arena)
-//         .flatten(arena);
-
-//         let multi = [
-//             arena.newline(),
-//             arena.notate("extract_variant_tag "),
-//             source,
-//             arena.newline(),
-//             "=> ".display_in(arena),
-//             next,
-//         ]
-//         .concat_in(arena)
-//         .indent(arena);
-
-//         head.then(single.or(multi, arena), arena)
-//     }
-// }
-
-// impl ExtractVariantTag {
-//     pub fn new(
-//         bind: Symbol,
-//         source: Symbol,
-//         next: impl Into<PatternMatcher>,
-//         builder: &mut IrBuilder,
-//     ) -> Self {
-//         let next = builder.add(next.into());
-//         Self { bind, source, next }
-//     }
-// }
-
-// #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-// pub struct ExtractVariantValue {
-//     pub bind: Symbol,
-//     pub source: Symbol,
-//     pub next: Id<PatternMatcher>,
-// }
-
-// // <bind> = extract_variant_value <source> => <next>
-// // <bind> =
-// //    extract_variant_value <source>
-// //    => <next>
-// impl<'a> Notate<'a> for IrPrinter<'a, ExtractVariantValue> {
-//     fn notate(&self, arena: &'a Bump) -> Notation<'a> {
-//         let ExtractVariantValue { bind, source, next } = self.node;
-
-//         let bind = bind.display_in(arena);
-//         let source = source.display_in(arena);
-//         let next = self.to(next).notate(arena);
-
-//         let head = bind.then(arena.notate(" ="), arena);
-
-//         let single = [
-//             arena.notate(" extract_variant_value "),
-//             source.clone(),
-//             arena.notate(" => "),
-//             next.clone(),
-//         ]
-//         .concat_in(arena)
-//         .flatten(arena);
-
-//         let multi = [
-//             arena.newline(),
-//             arena.notate("extract_variant_value "),
-//             source,
-//             arena.newline(),
-//             "=> ".display_in(arena),
-//             next,
-//         ]
-//         .concat_in(arena)
-//         .indent(arena);
-
-//         head.then(single.or(multi, arena), arena)
-//     }
-// }
-
-// impl ExtractVariantValue {
-//     pub fn new(
-//         bind: Symbol,
-//         source: Symbol,
-//         next: impl Into<PatternMatcher>,
-//         builder: &mut IrBuilder,
-//     ) -> Self {
-//         let next = builder.add(next.into());
-//         Self { bind, source, next }
-//     }
-// }
+impl VariantGet {
+    pub fn new(
+        bind: Symbol,
+        source: Symbol,
+        next: impl Into<PatternMatcher>,
+        builder: &mut IrBuilder,
+    ) -> Self {
+        let next = builder.add(next.into());
+        Self { bind, source, next }
+    }
+}
 
 // === CONTROL FLOW STRUCTS ===
 
@@ -1311,7 +1119,6 @@ pub enum PatternMatcher {
     IsNum(IsNum),
     IsChar(IsChar),
     IsStr(IsStr),
-    IsTag(IsTag),
     IsVariant(IsVariant),
     IsList(IsList),
     ListIsExact(ListIsExact),
@@ -1326,9 +1133,7 @@ pub enum PatternMatcher {
     ListGetAt(ListGetAt),
     ListSplitAt(ListSplitAt),
     RecordGetAt(RecordGetAt),
-    // ExtractRecordWithoutField(ExtractRecordWithoutField),
-    // ExtractVariantTag(ExtractVariantTag),
-    // ExtractVariantValue(ExtractVariantValue),
+    VariantGet(VariantGet),
 
     // Control flow
     Success(PatternSuccess),
@@ -1349,7 +1154,6 @@ impl<'a> Notate<'a> for IrPrinter<'a, Id<PatternMatcher>> {
             PatternMatcher::IsNum(tester) => self.to(tester).notate(arena),
             PatternMatcher::IsChar(tester) => self.to(tester).notate(arena),
             PatternMatcher::IsStr(tester) => self.to(tester).notate(arena),
-            PatternMatcher::IsTag(tester) => self.to(tester).notate(arena),
             PatternMatcher::IsVariant(tester) => self.to(tester).notate(arena),
             PatternMatcher::IsList(tester) => self.to(tester).notate(arena),
             PatternMatcher::ListIsExact(tester) => self.to(tester).notate(arena),
@@ -1362,11 +1166,7 @@ impl<'a> Notate<'a> for IrPrinter<'a, Id<PatternMatcher>> {
             PatternMatcher::ListGetAt(extractor) => self.to(extractor).notate(arena),
             PatternMatcher::ListSplitAt(extractor) => self.to(extractor).notate(arena),
             PatternMatcher::RecordGetAt(extractor) => self.to(extractor).notate(arena),
-            // PatternMatcher::ExtractRecordWithoutField(extractor) => {
-            //     self.to(extractor).notate(arena)
-            // }
-            // PatternMatcher::ExtractVariantTag(extractor) => self.to(extractor).notate(arena),
-            // PatternMatcher::ExtractVariantValue(extractor) => self.to(extractor).notate(arena),
+            PatternMatcher::VariantGet(extractor) => self.to(extractor).notate(arena),
             PatternMatcher::Success(success) => self.to(success).notate(arena),
             PatternMatcher::Failure(failure) => self.to(failure).notate(arena),
         }
@@ -1426,17 +1226,6 @@ impl PatternMatcher {
     ) -> Self {
         let matcher = IsStr::new(source, payload, on_success, on_failure, builder);
         Self::IsStr(matcher)
-    }
-
-    pub fn is_tag(
-        source: Symbol,
-        payload: StrKey,
-        on_success: impl Into<PatternMatcher>,
-        on_failure: impl Into<PatternMatcher>,
-        builder: &mut IrBuilder,
-    ) -> Self {
-        let matcher = IsTag::new(source, payload, on_success, on_failure, builder);
-        Self::IsTag(matcher)
     }
 
     pub fn is_variant(
@@ -1570,34 +1359,13 @@ impl PatternMatcher {
         Self::RecordGetAt(extractor)
     }
 
-    // pub fn extract_record_without_field(
-    //     bind: Symbol,
-    //     source: Symbol,
-    //     field: StrKey,
-    //     next: impl Into<PatternMatcher>,
-    //     builder: &mut IrBuilder,
-    // ) -> Self {
-    //     let extractor = ExtractRecordWithoutField::new(bind, source, field, next, builder);
-    //     Self::ExtractRecordWithoutField(extractor)
-    // }
-
-    // pub fn extract_variant_tag(
-    //     bind: Symbol,
-    //     source: Symbol,
-    //     next: impl Into<PatternMatcher>,
-    //     builder: &mut IrBuilder,
-    // ) -> Self {
-    //     let extractor = ExtractVariantTag::new(bind, source, next, builder);
-    //     Self::ExtractVariantTag(extractor)
-    // }
-
-    // pub fn extract_variant_value(
-    //     bind: Symbol,
-    //     source: Symbol,
-    //     next: impl Into<PatternMatcher>,
-    //     builder: &mut IrBuilder,
-    // ) -> Self {
-    //     let extractor = ExtractVariantValue::new(bind, source, next, builder);
-    //     Self::ExtractVariantValue(extractor)
-    // }
+    pub fn variant_get(
+        bind: Symbol,
+        source: Symbol,
+        next: impl Into<PatternMatcher>,
+        builder: &mut IrBuilder,
+    ) -> Self {
+        let extractor = VariantGet::new(bind, source, next, builder);
+        Self::VariantGet(extractor)
+    }
 }
