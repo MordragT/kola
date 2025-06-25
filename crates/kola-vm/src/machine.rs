@@ -408,7 +408,7 @@ mod tests {
         let success = PatternMatcher::Success(PatternSuccess::new(ret_42_expr));
 
         // Extract identity (for wildcard/unit binding)
-        let extract = PatternMatcher::extract_identity(result_sym, source_sym, success, &mut ir);
+        let extract = PatternMatcher::identity(result_sym, source_sym, success, &mut ir);
 
         // Test if source is unit
         let failure = PatternMatcher::Failure(PatternFailure);

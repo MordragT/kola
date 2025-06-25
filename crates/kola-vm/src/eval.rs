@@ -9,9 +9,9 @@ use kola_collections::ImShadowMap;
 use kola_ir::{
     id::Id,
     instr::{
-        Atom, BinaryExpr, BinaryOp, CallExpr, Expr, ExtractIdentity, ExtractListAt,
-        ExtractListSliceFrom, Func, IfExpr, IsBool, IsChar, IsList, IsNum, IsStr, IsUnit, LetExpr,
-        ListExpr, ListIsAtLeast, ListIsExact, ListItem, PatternMatchExpr, PatternMatcher,
+        Atom, BinaryExpr, BinaryOp, CallExpr, Expr, Func, Identity, IfExpr, IsBool, IsChar, IsList,
+        IsNum, IsStr, IsUnit, LetExpr, ListExpr, ListGetAt, ListIsAtLeast, ListIsExact, ListItem,
+        ListSplitAt, ListSplitHead, ListSplitTail, PatternMatchExpr, PatternMatcher,
         PatternSuccess, RecordAccessExpr, RecordExpr, RecordExtendExpr, RecordField,
         RecordRestrictExpr, RecordUpdateExpr, RecordUpdateOp, RetExpr, Symbol, UnaryExpr, UnaryOp,
     },
@@ -884,14 +884,20 @@ fn eval_pattern_matcher(
         PatternMatcher::ListIsAtLeast(list_is_at_least) => {
             eval_list_is_at_least(list_is_at_least, source_value, bind, next, env, cont, ir)
         }
-        PatternMatcher::ExtractIdentity(extract) => {
-            eval_extract_identity(extract, source_value, bind, next, env, cont, ir)
+        PatternMatcher::Identity(extract) => {
+            eval_identity(extract, source_value, bind, next, env, cont, ir)
         }
-        PatternMatcher::ExtractListAt(extract) => {
-            eval_extract_list_at(extract, source_value, bind, next, env, cont, ir)
+        PatternMatcher::ListSplitHead(extract) => {
+            eval_list_split_head(extract, source_value, bind, next, env, cont, ir)
         }
-        PatternMatcher::ExtractListSliceFrom(extract) => {
-            eval_extract_list_slice_from(extract, source_value, bind, next, env, cont, ir)
+        PatternMatcher::ListSplitTail(extract) => {
+            eval_list_split_tail(extract, source_value, bind, next, env, cont, ir)
+        }
+        PatternMatcher::ListGetAt(extract) => {
+            eval_list_get_at(extract, source_value, bind, next, env, cont, ir)
+        }
+        PatternMatcher::ListSplitAt(extract) => {
+            eval_list_split_at(extract, source_value, bind, next, env, cont, ir)
         }
         PatternMatcher::Success(success) => {
             eval_pattern_success(success, source_value, bind, env, cont, ir)
@@ -1210,9 +1216,9 @@ fn eval_list_is_at_least(
     })
 }
 
-/// Evaluates ExtractIdentity - binds the source value to a variable (for bind patterns and wildcards)
-fn eval_extract_identity(
-    extract: &ExtractIdentity,
+/// Evaluates Identity - binds the source value to a variable (for bind patterns and wildcards)
+fn eval_identity(
+    extract: &Identity,
     source_value: Value,
     bind: Symbol,
     next: Id<Expr>,
@@ -1220,7 +1226,7 @@ fn eval_extract_identity(
     cont: Cont,
     _ir: &Ir,
 ) -> MachineState {
-    let ExtractIdentity {
+    let Identity {
         bind: extract_bind,
         source,
         next: pattern_next,
@@ -1246,8 +1252,8 @@ fn eval_extract_identity(
     })
 }
 
-fn eval_extract_list_at(
-    extract: &ExtractListAt,
+fn eval_list_split_head(
+    extract: &ListSplitHead,
     source_value: Value,
     bind: Symbol,
     next: Id<Expr>,
@@ -1255,7 +1261,101 @@ fn eval_extract_list_at(
     cont: Cont,
     _ir: &Ir,
 ) -> MachineState {
-    let ExtractListAt {
+    let ListSplitHead {
+        head,
+        tail_list,
+        source,
+        next: pattern_next,
+    } = *extract;
+
+    // Get the source value from the environment
+    let source_val = match env.get(&source) {
+        Some(val) => val.clone(),
+        None => return MachineState::Error(format!("Unbound variable: {}", source)),
+    };
+
+    // Ensure the source value is a list
+    let Value::List(list) = source_val else {
+        return MachineState::Error(format!("Expected a list, got: {:?}", source_val));
+    };
+
+    // Get the head of the list
+    if let Some((h, t)) = list.split_first() {
+        // Bind the head to the target variable
+        env.insert(head, h);
+        env.insert(tail_list, t);
+    } else {
+        return MachineState::Error(format!("List is empty, cannot extract head"));
+    }
+
+    // Continue with the next pattern matcher
+    MachineState::Pattern(PatternConfig {
+        matcher: pattern_next,
+        source_value,
+        bind,
+        next,
+        env,
+        cont,
+    })
+}
+
+fn eval_list_split_tail(
+    extract: &ListSplitTail,
+    source_value: Value,
+    bind: Symbol,
+    next: Id<Expr>,
+    mut env: Env,
+    cont: Cont,
+    _ir: &Ir,
+) -> MachineState {
+    let ListSplitTail {
+        tail,
+        head_list,
+        source,
+        next: pattern_next,
+    } = *extract;
+
+    // Get the source value from the environment
+    let source_val = match env.get(&source) {
+        Some(val) => val.clone(),
+        None => return MachineState::Error(format!("Unbound variable: {}", source)),
+    };
+
+    // Ensure the source value is a list
+    let Value::List(list) = source_val else {
+        return MachineState::Error(format!("Expected a list, got: {:?}", source_val));
+    };
+
+    // Get the tail of the list
+    if let Some((h, t)) = list.split_last() {
+        // Bind the tail to the target variable
+        env.insert(tail, t);
+        env.insert(head_list, h);
+    } else {
+        return MachineState::Error(format!("List is empty, cannot extract tail"));
+    }
+
+    // Continue with the next pattern matcher
+    MachineState::Pattern(PatternConfig {
+        matcher: pattern_next,
+        source_value,
+        bind,
+        next,
+        env,
+        cont,
+    })
+}
+
+fn eval_list_get_at(
+    extract: &ListGetAt,
+    source_value: Value,
+    bind: Symbol,
+    next: Id<Expr>,
+    mut env: Env,
+    cont: Cont,
+    _ir: &Ir,
+) -> MachineState {
+    let ListGetAt {
         bind: extract_bind,
         source,
         index,
@@ -1292,8 +1392,8 @@ fn eval_extract_list_at(
     })
 }
 
-fn eval_extract_list_slice_from(
-    extract: &ExtractListSliceFrom,
+fn eval_list_split_at(
+    extract: &ListSplitAt,
     source_value: Value,
     bind: Symbol,
     next: Id<Expr>,
@@ -1301,10 +1401,11 @@ fn eval_extract_list_slice_from(
     cont: Cont,
     _ir: &Ir,
 ) -> MachineState {
-    let ExtractListSliceFrom {
-        bind: extract_bind,
+    let ListSplitAt {
+        head,
+        tail,
         source,
-        start,
+        index,
         next: pattern_next,
     } = *extract;
 
@@ -1319,11 +1420,10 @@ fn eval_extract_list_slice_from(
         return MachineState::Error(format!("Expected a list, got: {:?}", source_val));
     };
 
-    // Get the slice from the specified range
-    let slice = list.slice(start as usize..);
-
-    // Bind the slice to the target variable
-    env.insert(extract_bind, Value::List(slice));
+    // Get the slices from the specified range
+    let (h, t) = list.split_at(index as usize);
+    env.insert(head, h);
+    env.insert(tail, t);
 
     // Continue with the next pattern matcher
     MachineState::Pattern(PatternConfig {

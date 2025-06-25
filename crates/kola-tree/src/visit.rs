@@ -320,10 +320,10 @@ pub trait Visitor<T: TreeView> {
 
     fn visit_list_expr(
         &mut self,
-        _id: Id<node::ListExpr>,
-        _tree: &T,
+        id: Id<node::ListExpr>,
+        tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
-        ControlFlow::Continue(())
+        self.walk_list_expr(id, tree)
     }
 
     fn walk_record_field(

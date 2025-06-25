@@ -659,19 +659,19 @@ impl<'a> Notate<'a> for IrPrinter<'a, RecordHasField> {
 // === EXTRACTOR STRUCTS ===
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct ExtractIdentity {
+pub struct Identity {
     pub bind: Symbol,
     pub source: Symbol,
     pub next: Id<PatternMatcher>,
 }
 
-// <bind> = extract_identity <source> => <next>
+// <bind> = id <source> => <next>
 // <bind> =
-//    extract_identity <source>
+//    id <source>
 //    => <next>
-impl<'a> Notate<'a> for IrPrinter<'a, ExtractIdentity> {
+impl<'a> Notate<'a> for IrPrinter<'a, Identity> {
     fn notate(&self, arena: &'a Bump) -> Notation<'a> {
-        let ExtractIdentity { bind, source, next } = self.node;
+        let Identity { bind, source, next } = self.node;
 
         let bind = bind.display_in(arena);
         let source = source.display_in(arena);
@@ -680,7 +680,7 @@ impl<'a> Notate<'a> for IrPrinter<'a, ExtractIdentity> {
         let head = bind.then(arena.notate(" ="), arena);
 
         let single = [
-            arena.notate(" extract_identity "),
+            arena.notate(" id "),
             source.clone(),
             arena.notate(" => "),
             next.clone(),
@@ -690,7 +690,7 @@ impl<'a> Notate<'a> for IrPrinter<'a, ExtractIdentity> {
 
         let multi = [
             arena.newline(),
-            arena.notate("extract_identity "),
+            arena.notate("id "),
             source,
             arena.newline(),
             "=> ".display_in(arena),
@@ -703,7 +703,7 @@ impl<'a> Notate<'a> for IrPrinter<'a, ExtractIdentity> {
     }
 }
 
-impl ExtractIdentity {
+impl Identity {
     pub fn new(
         bind: Symbol,
         source: Symbol,
@@ -716,7 +716,7 @@ impl ExtractIdentity {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct ExtractListHead {
+pub struct ListSplitHead {
     pub head: Symbol,
     pub tail_list: Symbol,
     pub source: Symbol,
@@ -727,9 +727,9 @@ pub struct ExtractListHead {
 // <bind> =
 //    extract_list_head <source>
 //    => <next>
-impl<'a> Notate<'a> for IrPrinter<'a, ExtractListHead> {
+impl<'a> Notate<'a> for IrPrinter<'a, ListSplitHead> {
     fn notate(&self, arena: &'a Bump) -> Notation<'a> {
-        let ExtractListHead {
+        let ListSplitHead {
             head,
             tail_list,
             source,
@@ -737,13 +737,14 @@ impl<'a> Notate<'a> for IrPrinter<'a, ExtractListHead> {
         } = self.node;
 
         let head = head.display_in(arena);
+        let tail_list = tail_list.display_in(arena);
         let source = source.display_in(arena);
         let next = self.to(next).notate(arena);
 
-        let head = head.then(arena.notate(" ="), arena);
+        let head = [head, arena.notate(", "), tail_list, arena.notate(" =")].concat_in(arena);
 
         let single = [
-            arena.notate(" extract_list_head "),
+            arena.notate(" split_head "),
             source.clone(),
             arena.notate(" => "),
             next.clone(),
@@ -753,7 +754,7 @@ impl<'a> Notate<'a> for IrPrinter<'a, ExtractListHead> {
 
         let multi = [
             arena.newline(),
-            arena.notate("extract_list_head "),
+            arena.notate("split_head "),
             source,
             arena.newline(),
             "=> ".display_in(arena),
@@ -766,10 +767,10 @@ impl<'a> Notate<'a> for IrPrinter<'a, ExtractListHead> {
     }
 }
 
-impl ExtractListHead {
+impl ListSplitHead {
     pub fn new(
         head: Symbol,
-        tail: Symbol,
+        tail_list: Symbol,
         source: Symbol,
         next: impl Into<PatternMatcher>,
         builder: &mut IrBuilder,
@@ -777,7 +778,7 @@ impl ExtractListHead {
         let next = builder.add(next.into());
         Self {
             head,
-            tail_list: tail,
+            tail_list,
             source,
             next,
         }
@@ -785,7 +786,7 @@ impl ExtractListHead {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct ExtractListTail {
+pub struct ListSplitTail {
     pub head_list: Symbol,
     pub tail: Symbol,
     pub source: Symbol,
@@ -796,23 +797,24 @@ pub struct ExtractListTail {
 // <bind> =
 //    extract_list_tail <source>
 //    => <next>
-impl<'a> Notate<'a> for IrPrinter<'a, ExtractListTail> {
+impl<'a> Notate<'a> for IrPrinter<'a, ListSplitTail> {
     fn notate(&self, arena: &'a Bump) -> Notation<'a> {
-        let ExtractListTail {
+        let ListSplitTail {
             head_list,
             tail,
             source,
             next,
         } = self.node;
 
+        let head_list = head_list.display_in(arena);
         let tail = tail.display_in(arena);
         let source = source.display_in(arena);
         let next = self.to(next).notate(arena);
 
-        let head = tail.then(arena.notate(" ="), arena);
+        let head = [head_list, arena.notate(", "), tail, arena.notate(" =")].concat_in(arena);
 
         let single = [
-            arena.notate(" extract_list_tail "),
+            arena.notate(" split_tail "),
             source.clone(),
             arena.notate(" => "),
             next.clone(),
@@ -822,7 +824,7 @@ impl<'a> Notate<'a> for IrPrinter<'a, ExtractListTail> {
 
         let multi = [
             arena.newline(),
-            arena.notate("extract_list_tail "),
+            arena.notate("split_tail "),
             source,
             arena.newline(),
             "=> ".display_in(arena),
@@ -835,7 +837,7 @@ impl<'a> Notate<'a> for IrPrinter<'a, ExtractListTail> {
     }
 }
 
-impl ExtractListTail {
+impl ListSplitTail {
     pub fn new(
         head_list: Symbol,
         tail: Symbol,
@@ -854,7 +856,7 @@ impl ExtractListTail {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct ExtractListAt {
+pub struct ListGetAt {
     pub bind: Symbol,
     pub source: Symbol,
     pub index: u32,
@@ -865,9 +867,9 @@ pub struct ExtractListAt {
 // <bind> =
 //    extract_list_at <source> <index>
 //    => <next>
-impl<'a> Notate<'a> for IrPrinter<'a, ExtractListAt> {
+impl<'a> Notate<'a> for IrPrinter<'a, ListGetAt> {
     fn notate(&self, arena: &'a Bump) -> Notation<'a> {
-        let ExtractListAt {
+        let ListGetAt {
             bind,
             source,
             index,
@@ -882,7 +884,7 @@ impl<'a> Notate<'a> for IrPrinter<'a, ExtractListAt> {
         let head = bind.then(arena.notate(" ="), arena);
 
         let single = [
-            arena.notate(" extract_list_at "),
+            arena.notate(" get_at "),
             source.clone(),
             arena.notate(" "),
             index.clone(),
@@ -894,7 +896,7 @@ impl<'a> Notate<'a> for IrPrinter<'a, ExtractListAt> {
 
         let multi = [
             arena.newline(),
-            arena.notate("extract_list_at "),
+            arena.notate("get_at "),
             source,
             arena.notate(" "),
             index,
@@ -909,7 +911,7 @@ impl<'a> Notate<'a> for IrPrinter<'a, ExtractListAt> {
     }
 }
 
-impl ExtractListAt {
+impl ListGetAt {
     pub fn new(
         bind: Symbol,
         source: Symbol,
@@ -928,10 +930,11 @@ impl ExtractListAt {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct ExtractListSliceFrom {
-    pub bind: Symbol,
+pub struct ListSplitAt {
+    pub head: Symbol,
+    pub tail: Symbol,
     pub source: Symbol,
-    pub start: u32,
+    pub index: u32,
     pub next: Id<PatternMatcher>,
 }
 
@@ -939,24 +942,26 @@ pub struct ExtractListSliceFrom {
 // <bind> =
 //    extract_list_slice_from <source> <start_index>
 //    => <next>
-impl<'a> Notate<'a> for IrPrinter<'a, ExtractListSliceFrom> {
+impl<'a> Notate<'a> for IrPrinter<'a, ListSplitAt> {
     fn notate(&self, arena: &'a Bump) -> Notation<'a> {
-        let ExtractListSliceFrom {
-            bind,
+        let ListSplitAt {
+            head,
+            tail,
             source,
-            start,
+            index,
             next,
         } = self.node;
 
-        let bind = bind.display_in(arena);
+        let head = head.display_in(arena);
+        let tail = tail.display_in(arena);
         let source = source.display_in(arena);
-        let start_index = start.display_in(arena);
+        let start_index = index.display_in(arena);
         let next = self.to(next).notate(arena);
 
-        let head = bind.then(arena.notate(" ="), arena);
+        let head = [head, arena.notate(", "), tail, arena.notate(" =")].concat_in(arena);
 
         let single = [
-            arena.notate(" extract_list_slice_from "),
+            arena.notate(" split_at "),
             source.clone(),
             arena.notate(" "),
             start_index.clone(),
@@ -968,7 +973,7 @@ impl<'a> Notate<'a> for IrPrinter<'a, ExtractListSliceFrom> {
 
         let multi = [
             arena.newline(),
-            arena.notate("extract_list_slice_from "),
+            arena.notate("split_at "),
             source,
             arena.notate(" "),
             start_index,
@@ -983,26 +988,28 @@ impl<'a> Notate<'a> for IrPrinter<'a, ExtractListSliceFrom> {
     }
 }
 
-impl ExtractListSliceFrom {
+impl ListSplitAt {
     pub fn new(
-        bind: Symbol,
+        head: Symbol,
+        tail: Symbol,
         source: Symbol,
-        start: u32,
+        index: u32,
         next: impl Into<PatternMatcher>,
         builder: &mut IrBuilder,
     ) -> Self {
         let next = builder.add(next.into());
         Self {
-            bind,
+            head,
+            tail,
             source,
-            start,
+            index,
             next,
         }
     }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct ExtractRecordField {
+pub struct RecordGetAt {
     pub bind: Symbol,
     pub source: Symbol,
     pub field: StrKey,
@@ -1013,9 +1020,9 @@ pub struct ExtractRecordField {
 // <bind> =
 //    extract_record_field <source> <field>
 //    => <next>
-impl<'a> Notate<'a> for IrPrinter<'a, ExtractRecordField> {
+impl<'a> Notate<'a> for IrPrinter<'a, RecordGetAt> {
     fn notate(&self, arena: &'a Bump) -> Notation<'a> {
-        let ExtractRecordField {
+        let RecordGetAt {
             bind,
             source,
             field,
@@ -1030,7 +1037,7 @@ impl<'a> Notate<'a> for IrPrinter<'a, ExtractRecordField> {
         let head = bind.then(arena.notate(" ="), arena);
 
         let single = [
-            arena.notate(" extract_record_field "),
+            arena.notate(" get_at "),
             source.clone(),
             arena.notate(" "),
             field.clone(),
@@ -1042,7 +1049,7 @@ impl<'a> Notate<'a> for IrPrinter<'a, ExtractRecordField> {
 
         let multi = [
             arena.newline(),
-            arena.notate("extract_record_field "),
+            arena.notate("get_at "),
             source,
             arena.notate(" "),
             field,
@@ -1057,7 +1064,7 @@ impl<'a> Notate<'a> for IrPrinter<'a, ExtractRecordField> {
     }
 }
 
-impl ExtractRecordField {
+impl RecordGetAt {
     pub fn new(
         bind: Symbol,
         source: Symbol,
@@ -1075,193 +1082,193 @@ impl ExtractRecordField {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct ExtractRecordWithoutField {
-    pub bind: Symbol,
-    pub source: Symbol,
-    pub field: StrKey,
-    pub next: Id<PatternMatcher>,
-}
+// #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+// pub struct ExtractRecordWithoutField {
+//     pub bind: Symbol,
+//     pub source: Symbol,
+//     pub field: StrKey,
+//     pub next: Id<PatternMatcher>,
+// }
 
-// <bind> = extract_record_without_field <source> <field> => <next>
-// <bind> =
-//    extract_record_without_field <source> <field>
-//    => <next>
-impl<'a> Notate<'a> for IrPrinter<'a, ExtractRecordWithoutField> {
-    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
-        let ExtractRecordWithoutField {
-            bind,
-            source,
-            field,
-            next,
-        } = self.node;
+// // <bind> = extract_record_without_field <source> <field> => <next>
+// // <bind> =
+// //    extract_record_without_field <source> <field>
+// //    => <next>
+// impl<'a> Notate<'a> for IrPrinter<'a, ExtractRecordWithoutField> {
+//     fn notate(&self, arena: &'a Bump) -> Notation<'a> {
+//         let ExtractRecordWithoutField {
+//             bind,
+//             source,
+//             field,
+//             next,
+//         } = self.node;
 
-        let bind = bind.display_in(arena);
-        let source = source.display_in(arena);
-        let field = field.display_in(arena);
-        let next = self.to(next).notate(arena);
+//         let bind = bind.display_in(arena);
+//         let source = source.display_in(arena);
+//         let field = field.display_in(arena);
+//         let next = self.to(next).notate(arena);
 
-        let head = bind.then(arena.notate(" ="), arena);
+//         let head = bind.then(arena.notate(" ="), arena);
 
-        let single = [
-            arena.notate(" extract_record_without_field "),
-            source.clone(),
-            arena.notate(" "),
-            field.clone(),
-            arena.notate(" => "),
-            next.clone(),
-        ]
-        .concat_in(arena)
-        .flatten(arena);
+//         let single = [
+//             arena.notate(" extract_record_without_field "),
+//             source.clone(),
+//             arena.notate(" "),
+//             field.clone(),
+//             arena.notate(" => "),
+//             next.clone(),
+//         ]
+//         .concat_in(arena)
+//         .flatten(arena);
 
-        let multi = [
-            arena.newline(),
-            arena.notate("extract_record_without_field "),
-            source,
-            arena.notate(" "),
-            field,
-            arena.newline(),
-            "=> ".display_in(arena),
-            next,
-        ]
-        .concat_in(arena)
-        .indent(arena);
+//         let multi = [
+//             arena.newline(),
+//             arena.notate("extract_record_without_field "),
+//             source,
+//             arena.notate(" "),
+//             field,
+//             arena.newline(),
+//             "=> ".display_in(arena),
+//             next,
+//         ]
+//         .concat_in(arena)
+//         .indent(arena);
 
-        head.then(single.or(multi, arena), arena)
-    }
-}
+//         head.then(single.or(multi, arena), arena)
+//     }
+// }
 
-impl ExtractRecordWithoutField {
-    pub fn new(
-        bind: Symbol,
-        source: Symbol,
-        field: StrKey,
-        next: impl Into<PatternMatcher>,
-        builder: &mut IrBuilder,
-    ) -> Self {
-        let next = builder.add(next.into());
-        Self {
-            bind,
-            source,
-            field,
-            next,
-        }
-    }
-}
+// impl ExtractRecordWithoutField {
+//     pub fn new(
+//         bind: Symbol,
+//         source: Symbol,
+//         field: StrKey,
+//         next: impl Into<PatternMatcher>,
+//         builder: &mut IrBuilder,
+//     ) -> Self {
+//         let next = builder.add(next.into());
+//         Self {
+//             bind,
+//             source,
+//             field,
+//             next,
+//         }
+//     }
+// }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct ExtractVariantTag {
-    pub bind: Symbol,
-    pub source: Symbol,
-    pub next: Id<PatternMatcher>,
-}
+// #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+// pub struct ExtractVariantTag {
+//     pub bind: Symbol,
+//     pub source: Symbol,
+//     pub next: Id<PatternMatcher>,
+// }
 
-// <bind> = extract_variant_tag <source> => <next>
-// <bind> =
-//    extract_variant_tag <source>
-//    => <next>
-impl<'a> Notate<'a> for IrPrinter<'a, ExtractVariantTag> {
-    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
-        let ExtractVariantTag { bind, source, next } = self.node;
+// // <bind> = extract_variant_tag <source> => <next>
+// // <bind> =
+// //    extract_variant_tag <source>
+// //    => <next>
+// impl<'a> Notate<'a> for IrPrinter<'a, ExtractVariantTag> {
+//     fn notate(&self, arena: &'a Bump) -> Notation<'a> {
+//         let ExtractVariantTag { bind, source, next } = self.node;
 
-        let bind = bind.display_in(arena);
-        let source = source.display_in(arena);
-        let next = self.to(next).notate(arena);
+//         let bind = bind.display_in(arena);
+//         let source = source.display_in(arena);
+//         let next = self.to(next).notate(arena);
 
-        let head = bind.then(arena.notate(" ="), arena);
+//         let head = bind.then(arena.notate(" ="), arena);
 
-        let single = [
-            arena.notate(" extract_variant_tag "),
-            source.clone(),
-            arena.notate(" => "),
-            next.clone(),
-        ]
-        .concat_in(arena)
-        .flatten(arena);
+//         let single = [
+//             arena.notate(" extract_variant_tag "),
+//             source.clone(),
+//             arena.notate(" => "),
+//             next.clone(),
+//         ]
+//         .concat_in(arena)
+//         .flatten(arena);
 
-        let multi = [
-            arena.newline(),
-            arena.notate("extract_variant_tag "),
-            source,
-            arena.newline(),
-            "=> ".display_in(arena),
-            next,
-        ]
-        .concat_in(arena)
-        .indent(arena);
+//         let multi = [
+//             arena.newline(),
+//             arena.notate("extract_variant_tag "),
+//             source,
+//             arena.newline(),
+//             "=> ".display_in(arena),
+//             next,
+//         ]
+//         .concat_in(arena)
+//         .indent(arena);
 
-        head.then(single.or(multi, arena), arena)
-    }
-}
+//         head.then(single.or(multi, arena), arena)
+//     }
+// }
 
-impl ExtractVariantTag {
-    pub fn new(
-        bind: Symbol,
-        source: Symbol,
-        next: impl Into<PatternMatcher>,
-        builder: &mut IrBuilder,
-    ) -> Self {
-        let next = builder.add(next.into());
-        Self { bind, source, next }
-    }
-}
+// impl ExtractVariantTag {
+//     pub fn new(
+//         bind: Symbol,
+//         source: Symbol,
+//         next: impl Into<PatternMatcher>,
+//         builder: &mut IrBuilder,
+//     ) -> Self {
+//         let next = builder.add(next.into());
+//         Self { bind, source, next }
+//     }
+// }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct ExtractVariantValue {
-    pub bind: Symbol,
-    pub source: Symbol,
-    pub next: Id<PatternMatcher>,
-}
+// #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+// pub struct ExtractVariantValue {
+//     pub bind: Symbol,
+//     pub source: Symbol,
+//     pub next: Id<PatternMatcher>,
+// }
 
-// <bind> = extract_variant_value <source> => <next>
-// <bind> =
-//    extract_variant_value <source>
-//    => <next>
-impl<'a> Notate<'a> for IrPrinter<'a, ExtractVariantValue> {
-    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
-        let ExtractVariantValue { bind, source, next } = self.node;
+// // <bind> = extract_variant_value <source> => <next>
+// // <bind> =
+// //    extract_variant_value <source>
+// //    => <next>
+// impl<'a> Notate<'a> for IrPrinter<'a, ExtractVariantValue> {
+//     fn notate(&self, arena: &'a Bump) -> Notation<'a> {
+//         let ExtractVariantValue { bind, source, next } = self.node;
 
-        let bind = bind.display_in(arena);
-        let source = source.display_in(arena);
-        let next = self.to(next).notate(arena);
+//         let bind = bind.display_in(arena);
+//         let source = source.display_in(arena);
+//         let next = self.to(next).notate(arena);
 
-        let head = bind.then(arena.notate(" ="), arena);
+//         let head = bind.then(arena.notate(" ="), arena);
 
-        let single = [
-            arena.notate(" extract_variant_value "),
-            source.clone(),
-            arena.notate(" => "),
-            next.clone(),
-        ]
-        .concat_in(arena)
-        .flatten(arena);
+//         let single = [
+//             arena.notate(" extract_variant_value "),
+//             source.clone(),
+//             arena.notate(" => "),
+//             next.clone(),
+//         ]
+//         .concat_in(arena)
+//         .flatten(arena);
 
-        let multi = [
-            arena.newline(),
-            arena.notate("extract_variant_value "),
-            source,
-            arena.newline(),
-            "=> ".display_in(arena),
-            next,
-        ]
-        .concat_in(arena)
-        .indent(arena);
+//         let multi = [
+//             arena.newline(),
+//             arena.notate("extract_variant_value "),
+//             source,
+//             arena.newline(),
+//             "=> ".display_in(arena),
+//             next,
+//         ]
+//         .concat_in(arena)
+//         .indent(arena);
 
-        head.then(single.or(multi, arena), arena)
-    }
-}
+//         head.then(single.or(multi, arena), arena)
+//     }
+// }
 
-impl ExtractVariantValue {
-    pub fn new(
-        bind: Symbol,
-        source: Symbol,
-        next: impl Into<PatternMatcher>,
-        builder: &mut IrBuilder,
-    ) -> Self {
-        let next = builder.add(next.into());
-        Self { bind, source, next }
-    }
-}
+// impl ExtractVariantValue {
+//     pub fn new(
+//         bind: Symbol,
+//         source: Symbol,
+//         next: impl Into<PatternMatcher>,
+//         builder: &mut IrBuilder,
+//     ) -> Self {
+//         let next = builder.add(next.into());
+//         Self { bind, source, next }
+//     }
+// }
 
 // === CONTROL FLOW STRUCTS ===
 
@@ -1313,15 +1320,15 @@ pub enum PatternMatcher {
     RecordHasField(RecordHasField),
 
     // Extractors
-    ExtractIdentity(ExtractIdentity),
-    ExtractListHead(ExtractListHead),
-    ExtractListTail(ExtractListTail),
-    ExtractListAt(ExtractListAt),
-    ExtractListSliceFrom(ExtractListSliceFrom),
-    ExtractRecordField(ExtractRecordField),
-    ExtractRecordWithoutField(ExtractRecordWithoutField),
-    ExtractVariantTag(ExtractVariantTag),
-    ExtractVariantValue(ExtractVariantValue),
+    Identity(Identity),
+    ListSplitHead(ListSplitHead),
+    ListSplitTail(ListSplitTail),
+    ListGetAt(ListGetAt),
+    ListSplitAt(ListSplitAt),
+    RecordGetAt(RecordGetAt),
+    // ExtractRecordWithoutField(ExtractRecordWithoutField),
+    // ExtractVariantTag(ExtractVariantTag),
+    // ExtractVariantValue(ExtractVariantValue),
 
     // Control flow
     Success(PatternSuccess),
@@ -1349,17 +1356,17 @@ impl<'a> Notate<'a> for IrPrinter<'a, Id<PatternMatcher>> {
             PatternMatcher::ListIsAtLeast(tester) => self.to(tester).notate(arena),
             PatternMatcher::IsRecord(tester) => self.to(tester).notate(arena),
             PatternMatcher::RecordHasField(tester) => self.to(tester).notate(arena),
-            PatternMatcher::ExtractIdentity(extractor) => self.to(extractor).notate(arena),
-            PatternMatcher::ExtractListHead(extractor) => self.to(extractor).notate(arena),
-            PatternMatcher::ExtractListTail(extractor) => self.to(extractor).notate(arena),
-            PatternMatcher::ExtractListAt(extractor) => self.to(extractor).notate(arena),
-            PatternMatcher::ExtractListSliceFrom(extractor) => self.to(extractor).notate(arena),
-            PatternMatcher::ExtractRecordField(extractor) => self.to(extractor).notate(arena),
-            PatternMatcher::ExtractRecordWithoutField(extractor) => {
-                self.to(extractor).notate(arena)
-            }
-            PatternMatcher::ExtractVariantTag(extractor) => self.to(extractor).notate(arena),
-            PatternMatcher::ExtractVariantValue(extractor) => self.to(extractor).notate(arena),
+            PatternMatcher::Identity(extractor) => self.to(extractor).notate(arena),
+            PatternMatcher::ListSplitHead(extractor) => self.to(extractor).notate(arena),
+            PatternMatcher::ListSplitTail(extractor) => self.to(extractor).notate(arena),
+            PatternMatcher::ListGetAt(extractor) => self.to(extractor).notate(arena),
+            PatternMatcher::ListSplitAt(extractor) => self.to(extractor).notate(arena),
+            PatternMatcher::RecordGetAt(extractor) => self.to(extractor).notate(arena),
+            // PatternMatcher::ExtractRecordWithoutField(extractor) => {
+            //     self.to(extractor).notate(arena)
+            // }
+            // PatternMatcher::ExtractVariantTag(extractor) => self.to(extractor).notate(arena),
+            // PatternMatcher::ExtractVariantValue(extractor) => self.to(extractor).notate(arena),
             PatternMatcher::Success(success) => self.to(success).notate(arena),
             PatternMatcher::Failure(failure) => self.to(failure).notate(arena),
         }
@@ -1497,99 +1504,100 @@ impl PatternMatcher {
     }
 
     // Extractor constructors
-    pub fn extract_identity(
+    pub fn identity(
         bind: Symbol,
         source: Symbol,
         next: impl Into<PatternMatcher>,
         builder: &mut IrBuilder,
     ) -> Self {
-        let extractor = ExtractIdentity::new(bind, source, next, builder);
-        Self::ExtractIdentity(extractor)
+        let extractor = Identity::new(bind, source, next, builder);
+        Self::Identity(extractor)
     }
 
-    pub fn extract_list_head(
+    pub fn list_split_head(
         head: Symbol,
         tail_list: Symbol,
         source: Symbol,
         next: impl Into<PatternMatcher>,
         builder: &mut IrBuilder,
     ) -> Self {
-        let extractor = ExtractListHead::new(head, tail_list, source, next, builder);
-        Self::ExtractListHead(extractor)
+        let extractor = ListSplitHead::new(head, tail_list, source, next, builder);
+        Self::ListSplitHead(extractor)
     }
 
-    pub fn extract_list_tail(
+    pub fn list_split_tail(
         head_list: Symbol,
         tail: Symbol,
         source: Symbol,
         next: impl Into<PatternMatcher>,
         builder: &mut IrBuilder,
     ) -> Self {
-        let extractor = ExtractListTail::new(head_list, tail, source, next, builder);
-        Self::ExtractListTail(extractor)
+        let extractor = ListSplitTail::new(head_list, tail, source, next, builder);
+        Self::ListSplitTail(extractor)
     }
 
-    pub fn extract_list_at(
+    pub fn list_get_at(
         bind: Symbol,
         source: Symbol,
         index: u32,
         next: impl Into<PatternMatcher>,
         builder: &mut IrBuilder,
     ) -> Self {
-        let extractor = ExtractListAt::new(bind, source, index, next, builder);
-        Self::ExtractListAt(extractor)
+        let extractor = ListGetAt::new(bind, source, index, next, builder);
+        Self::ListGetAt(extractor)
     }
 
-    pub fn extract_list_slice_from(
-        bind: Symbol,
+    pub fn list_split_at(
+        head: Symbol,
+        tail: Symbol,
         source: Symbol,
-        start_index: u32,
+        index: u32,
         next: impl Into<PatternMatcher>,
         builder: &mut IrBuilder,
     ) -> Self {
-        let extractor = ExtractListSliceFrom::new(bind, source, start_index, next, builder);
-        Self::ExtractListSliceFrom(extractor)
+        let extractor = ListSplitAt::new(head, tail, source, index, next, builder);
+        Self::ListSplitAt(extractor)
     }
 
-    pub fn extract_record_field(
-        bind: Symbol,
-        source: Symbol,
-        field: StrKey,
-        next: impl Into<PatternMatcher>,
-        builder: &mut IrBuilder,
-    ) -> Self {
-        let extractor = ExtractRecordField::new(bind, source, field, next, builder);
-        Self::ExtractRecordField(extractor)
-    }
-
-    pub fn extract_record_without_field(
+    pub fn record_get_at(
         bind: Symbol,
         source: Symbol,
         field: StrKey,
         next: impl Into<PatternMatcher>,
         builder: &mut IrBuilder,
     ) -> Self {
-        let extractor = ExtractRecordWithoutField::new(bind, source, field, next, builder);
-        Self::ExtractRecordWithoutField(extractor)
+        let extractor = RecordGetAt::new(bind, source, field, next, builder);
+        Self::RecordGetAt(extractor)
     }
 
-    pub fn extract_variant_tag(
-        bind: Symbol,
-        source: Symbol,
-        next: impl Into<PatternMatcher>,
-        builder: &mut IrBuilder,
-    ) -> Self {
-        let extractor = ExtractVariantTag::new(bind, source, next, builder);
-        Self::ExtractVariantTag(extractor)
-    }
+    // pub fn extract_record_without_field(
+    //     bind: Symbol,
+    //     source: Symbol,
+    //     field: StrKey,
+    //     next: impl Into<PatternMatcher>,
+    //     builder: &mut IrBuilder,
+    // ) -> Self {
+    //     let extractor = ExtractRecordWithoutField::new(bind, source, field, next, builder);
+    //     Self::ExtractRecordWithoutField(extractor)
+    // }
 
-    pub fn extract_variant_value(
-        bind: Symbol,
-        source: Symbol,
-        next: impl Into<PatternMatcher>,
-        builder: &mut IrBuilder,
-    ) -> Self {
-        let extractor = ExtractVariantValue::new(bind, source, next, builder);
-        Self::ExtractVariantValue(extractor)
-    }
+    // pub fn extract_variant_tag(
+    //     bind: Symbol,
+    //     source: Symbol,
+    //     next: impl Into<PatternMatcher>,
+    //     builder: &mut IrBuilder,
+    // ) -> Self {
+    //     let extractor = ExtractVariantTag::new(bind, source, next, builder);
+    //     Self::ExtractVariantTag(extractor)
+    // }
+
+    // pub fn extract_variant_value(
+    //     bind: Symbol,
+    //     source: Symbol,
+    //     next: impl Into<PatternMatcher>,
+    //     builder: &mut IrBuilder,
+    // ) -> Self {
+    //     let extractor = ExtractVariantValue::new(bind, source, next, builder);
+    //     Self::ExtractVariantValue(extractor)
+    // }
 }

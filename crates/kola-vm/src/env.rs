@@ -20,8 +20,8 @@ impl Env {
         }
     }
 
-    pub fn insert(&mut self, name: Symbol, value: Value) {
-        self.bindings.insert(name, value);
+    pub fn insert(&mut self, name: Symbol, value: impl Into<Value>) {
+        self.bindings.insert(name, value.into());
     }
 
     pub fn get(&self, name: &Symbol) -> Option<&Value> {

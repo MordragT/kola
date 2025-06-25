@@ -397,9 +397,24 @@ impl List {
         self.0.get(index)
     }
 
-    // TODO panics if range is out of bounds (might be okay ?)
-    pub fn slice(&self, range: impl RangeBounds<usize>) -> Self {
-        Self(self.0.focus().narrow(range).into_iter().cloned().collect())
+    // TODO does this panic and if yes is that okay ?
+    pub fn split_at(&self, index: usize) -> (Self, Self) {
+        let (head, tail) = self.0.clone().split_at(index);
+        (Self(head), Self(tail))
+    }
+
+    pub fn split_first(&self) -> Option<(Value, Self)> {
+        let mut tail = self.0.clone();
+        let head = tail.pop_front()?;
+
+        Some((head, Self(tail)))
+    }
+
+    pub fn split_last(&self) -> Option<(Self, Value)> {
+        let mut tail = self.0.clone();
+        let head = tail.pop_back()?;
+
+        Some((Self(tail), head))
     }
 
     // __builtin_first

@@ -371,49 +371,29 @@ where
             PatternMatcher::IsTag(is_tag) => self.visit_is_tag(is_tag, ir),
             PatternMatcher::IsVariant(is_variant) => self.visit_is_variant(is_variant, ir),
             PatternMatcher::IsList(is_list) => self.visit_is_list(is_list, ir),
-            PatternMatcher::ListIsExact(list_is_exact) => {
-                self.visit_list_is_exact(list_is_exact, ir)
-            }
-            PatternMatcher::ListIsAtLeast(list_is_at_least) => {
-                self.visit_list_is_at_least(list_is_at_least, ir)
+            PatternMatcher::ListIsExact(is_exact) => self.visit_list_is_exact(is_exact, ir),
+            PatternMatcher::ListIsAtLeast(is_at_least) => {
+                self.visit_list_is_at_least(is_at_least, ir)
             }
             PatternMatcher::IsRecord(is_record) => self.visit_is_record(is_record, ir),
-            PatternMatcher::RecordHasField(record_has_field) => {
-                self.visit_record_has_field(record_has_field, ir)
-            }
-            PatternMatcher::ExtractIdentity(extract_identity) => {
-                self.visit_extract_identity(extract_identity, ir)
-            }
-            PatternMatcher::ExtractListHead(extract_list_head) => {
-                self.visit_extract_list_head(extract_list_head, ir)
-            }
-            PatternMatcher::ExtractListTail(extract_list_tail) => {
-                self.visit_extract_list_tail(extract_list_tail, ir)
-            }
-            PatternMatcher::ExtractListAt(extract_list_at) => {
-                self.visit_extract_list_at(extract_list_at, ir)
-            }
-            PatternMatcher::ExtractListSliceFrom(extract_list_slice_from) => {
-                self.visit_extract_list_slice_from(extract_list_slice_from, ir)
-            }
-            PatternMatcher::ExtractRecordField(extract_record_field) => {
-                self.visit_extract_record_field(extract_record_field, ir)
-            }
-            PatternMatcher::ExtractRecordWithoutField(extract_record_without_field) => {
-                self.visit_extract_record_without_field(extract_record_without_field, ir)
-            }
-            PatternMatcher::ExtractVariantTag(extract_variant_tag) => {
-                self.visit_extract_variant_tag(extract_variant_tag, ir)
-            }
-            PatternMatcher::ExtractVariantValue(extract_variant_value) => {
-                self.visit_extract_variant_value(extract_variant_value, ir)
-            }
-            PatternMatcher::Success(pattern_success) => {
-                self.visit_pattern_success(pattern_success, ir)
-            }
-            PatternMatcher::Failure(pattern_failure) => {
-                self.visit_pattern_failure(pattern_failure, ir)
-            }
+            PatternMatcher::RecordHasField(has_field) => self.visit_record_has_field(has_field, ir),
+            PatternMatcher::Identity(identity) => self.visit_identity(identity, ir),
+            PatternMatcher::ListSplitHead(split_head) => self.visit_list_split_head(split_head, ir),
+            PatternMatcher::ListSplitTail(split_tail) => self.visit_list_split_tail(split_tail, ir),
+            PatternMatcher::ListGetAt(get_at) => self.visit_list_get_at(get_at, ir),
+            PatternMatcher::ListSplitAt(split_at) => self.visit_list_split_at(split_at, ir),
+            PatternMatcher::RecordGetAt(get_at) => self.visit_record_get_at(get_at, ir),
+            // PatternMatcher::ExtractRecordWithoutField(extract_record_without_field) => {
+            //     self.visit_extract_record_without_field(extract_record_without_field, ir)
+            // }
+            // PatternMatcher::ExtractVariantTag(extract_variant_tag) => {
+            //     self.visit_extract_variant_tag(extract_variant_tag, ir)
+            // }
+            // PatternMatcher::ExtractVariantValue(extract_variant_value) => {
+            //     self.visit_extract_variant_value(extract_variant_value, ir)
+            // }
+            PatternMatcher::Success(success) => self.visit_pattern_success(success, ir),
+            PatternMatcher::Failure(failure) => self.visit_pattern_failure(failure, ir),
         }
     }
 
@@ -638,200 +618,189 @@ where
         self.walk_record_has_field(record_has_field, ir)
     }
 
-    fn walk_extract_identity(
-        &mut self,
-        extract_identity: ExtractIdentity,
-        ir: &Ir,
-    ) -> Result<(), Self::Error> {
-        let ExtractIdentity { bind, source, next } = extract_identity;
+    fn walk_identity(&mut self, identity: Identity, ir: &Ir) -> Result<(), Self::Error> {
+        let Identity { bind, source, next } = identity;
         self.visit_symbol(bind)?;
         self.visit_symbol(source)?;
         self.visit_pattern_matcher(next, ir)
     }
 
-    fn visit_extract_identity(
-        &mut self,
-        extract_identity: ExtractIdentity,
-        ir: &Ir,
-    ) -> Result<(), Self::Error> {
-        self.walk_extract_identity(extract_identity, ir)
+    fn visit_identity(&mut self, identity: Identity, ir: &Ir) -> Result<(), Self::Error> {
+        self.walk_identity(identity, ir)
     }
 
-    fn walk_extract_list_head(
+    fn walk_list_split_head(
         &mut self,
-        extract_list_head: ExtractListHead,
+        list_split_head: ListSplitHead,
         ir: &Ir,
     ) -> Result<(), Self::Error> {
-        let ExtractListHead {
+        let ListSplitHead {
             head,
             tail_list,
             source,
             next,
-        } = extract_list_head;
+        } = list_split_head;
         self.visit_symbol(head)?;
         self.visit_symbol(tail_list)?;
         self.visit_symbol(source)?;
         self.visit_pattern_matcher(next, ir)
     }
 
-    fn visit_extract_list_head(
+    fn visit_list_split_head(
         &mut self,
-        extract_list_head: ExtractListHead,
+        list_split_head: ListSplitHead,
         ir: &Ir,
     ) -> Result<(), Self::Error> {
-        self.walk_extract_list_head(extract_list_head, ir)
+        self.walk_list_split_head(list_split_head, ir)
     }
 
-    fn walk_extract_list_tail(
+    fn walk_list_split_tail(
         &mut self,
-        extract_list_tail: ExtractListTail,
+        list_split_tail: ListSplitTail,
         ir: &Ir,
     ) -> Result<(), Self::Error> {
-        let ExtractListTail {
+        let ListSplitTail {
             head_list,
             tail,
             source,
             next,
-        } = extract_list_tail;
+        } = list_split_tail;
         self.visit_symbol(head_list)?;
         self.visit_symbol(tail)?;
         self.visit_symbol(source)?;
         self.visit_pattern_matcher(next, ir)
     }
 
-    fn visit_extract_list_tail(
+    fn visit_list_split_tail(
         &mut self,
-        extract_list_tail: ExtractListTail,
+        list_split_tail: ListSplitTail,
         ir: &Ir,
     ) -> Result<(), Self::Error> {
-        self.walk_extract_list_tail(extract_list_tail, ir)
+        self.walk_list_split_tail(list_split_tail, ir)
     }
 
-    fn walk_extract_list_at(
-        &mut self,
-        extract_list_at: ExtractListAt,
-        ir: &Ir,
-    ) -> Result<(), Self::Error> {
-        let ExtractListAt {
+    fn walk_list_get_at(&mut self, list_get_at: ListGetAt, ir: &Ir) -> Result<(), Self::Error> {
+        let ListGetAt {
             bind, source, next, ..
-        } = extract_list_at;
+        } = list_get_at;
         self.visit_symbol(bind)?;
         self.visit_symbol(source)?;
         self.visit_pattern_matcher(next, ir)
     }
 
-    fn visit_extract_list_at(
-        &mut self,
-        extract_list_at: ExtractListAt,
-        ir: &Ir,
-    ) -> Result<(), Self::Error> {
-        self.walk_extract_list_at(extract_list_at, ir)
+    fn visit_list_get_at(&mut self, list_get_at: ListGetAt, ir: &Ir) -> Result<(), Self::Error> {
+        self.walk_list_get_at(list_get_at, ir)
     }
 
-    fn walk_extract_list_slice_from(
+    fn walk_list_split_at(
         &mut self,
-        extract_list_slice_from: ExtractListSliceFrom,
+        list_split_at: ListSplitAt,
         ir: &Ir,
     ) -> Result<(), Self::Error> {
-        let ExtractListSliceFrom {
+        let ListSplitAt {
+            head,
+            tail,
+            source,
+            next,
+            ..
+        } = list_split_at;
+        self.visit_symbol(head)?;
+        self.visit_symbol(tail)?;
+        self.visit_symbol(source)?;
+        self.visit_pattern_matcher(next, ir)
+    }
+
+    fn visit_list_split_at(
+        &mut self,
+        list_split_at: ListSplitAt,
+        ir: &Ir,
+    ) -> Result<(), Self::Error> {
+        self.walk_list_split_at(list_split_at, ir)
+    }
+
+    fn walk_record_get_at(
+        &mut self,
+        record_get_at: RecordGetAt,
+        ir: &Ir,
+    ) -> Result<(), Self::Error> {
+        let RecordGetAt {
             bind, source, next, ..
-        } = extract_list_slice_from;
+        } = record_get_at;
         self.visit_symbol(bind)?;
         self.visit_symbol(source)?;
         self.visit_pattern_matcher(next, ir)
     }
 
-    fn visit_extract_list_slice_from(
+    fn visit_record_get_at(
         &mut self,
-        extract_list_slice_from: ExtractListSliceFrom,
+        record_get_at: RecordGetAt,
         ir: &Ir,
     ) -> Result<(), Self::Error> {
-        self.walk_extract_list_slice_from(extract_list_slice_from, ir)
+        self.walk_record_get_at(record_get_at, ir)
     }
 
-    fn walk_extract_record_field(
-        &mut self,
-        extract_record_field: ExtractRecordField,
-        ir: &Ir,
-    ) -> Result<(), Self::Error> {
-        let ExtractRecordField {
-            bind, source, next, ..
-        } = extract_record_field;
-        self.visit_symbol(bind)?;
-        self.visit_symbol(source)?;
-        self.visit_pattern_matcher(next, ir)
-    }
+    // fn walk_extract_record_without_field(
+    //     &mut self,
+    //     extract_record_without_field: ExtractRecordWithoutField,
+    //     ir: &Ir,
+    // ) -> Result<(), Self::Error> {
+    //     let ExtractRecordWithoutField {
+    //         bind, source, next, ..
+    //     } = extract_record_without_field;
+    //     self.visit_symbol(bind)?;
+    //     self.visit_symbol(source)?;
+    //     self.visit_pattern_matcher(next, ir)
+    // }
 
-    fn visit_extract_record_field(
-        &mut self,
-        extract_record_field: ExtractRecordField,
-        ir: &Ir,
-    ) -> Result<(), Self::Error> {
-        self.walk_extract_record_field(extract_record_field, ir)
-    }
+    // fn visit_extract_record_without_field(
+    //     &mut self,
+    //     extract_record_without_field: ExtractRecordWithoutField,
+    //     ir: &Ir,
+    // ) -> Result<(), Self::Error> {
+    //     self.walk_extract_record_without_field(extract_record_without_field, ir)
+    // }
 
-    fn walk_extract_record_without_field(
-        &mut self,
-        extract_record_without_field: ExtractRecordWithoutField,
-        ir: &Ir,
-    ) -> Result<(), Self::Error> {
-        let ExtractRecordWithoutField {
-            bind, source, next, ..
-        } = extract_record_without_field;
-        self.visit_symbol(bind)?;
-        self.visit_symbol(source)?;
-        self.visit_pattern_matcher(next, ir)
-    }
+    // fn walk_extract_variant_tag(
+    //     &mut self,
+    //     extract_variant_tag: ExtractVariantTag,
+    //     ir: &Ir,
+    // ) -> Result<(), Self::Error> {
+    //     let ExtractVariantTag {
+    //         bind, source, next, ..
+    //     } = extract_variant_tag;
+    //     self.visit_symbol(bind)?;
+    //     self.visit_symbol(source)?;
+    //     self.visit_pattern_matcher(next, ir)
+    // }
 
-    fn visit_extract_record_without_field(
-        &mut self,
-        extract_record_without_field: ExtractRecordWithoutField,
-        ir: &Ir,
-    ) -> Result<(), Self::Error> {
-        self.walk_extract_record_without_field(extract_record_without_field, ir)
-    }
+    // fn visit_extract_variant_tag(
+    //     &mut self,
+    //     extract_variant_tag: ExtractVariantTag,
+    //     ir: &Ir,
+    // ) -> Result<(), Self::Error> {
+    //     self.walk_extract_variant_tag(extract_variant_tag, ir)
+    // }
 
-    fn walk_extract_variant_tag(
-        &mut self,
-        extract_variant_tag: ExtractVariantTag,
-        ir: &Ir,
-    ) -> Result<(), Self::Error> {
-        let ExtractVariantTag {
-            bind, source, next, ..
-        } = extract_variant_tag;
-        self.visit_symbol(bind)?;
-        self.visit_symbol(source)?;
-        self.visit_pattern_matcher(next, ir)
-    }
+    // fn walk_extract_variant_value(
+    //     &mut self,
+    //     extract_variant_value: ExtractVariantValue,
+    //     ir: &Ir,
+    // ) -> Result<(), Self::Error> {
+    //     let ExtractVariantValue {
+    //         bind, source, next, ..
+    //     } = extract_variant_value;
+    //     self.visit_symbol(bind)?;
+    //     self.visit_symbol(source)?;
+    //     self.visit_pattern_matcher(next, ir)
+    // }
 
-    fn visit_extract_variant_tag(
-        &mut self,
-        extract_variant_tag: ExtractVariantTag,
-        ir: &Ir,
-    ) -> Result<(), Self::Error> {
-        self.walk_extract_variant_tag(extract_variant_tag, ir)
-    }
-
-    fn walk_extract_variant_value(
-        &mut self,
-        extract_variant_value: ExtractVariantValue,
-        ir: &Ir,
-    ) -> Result<(), Self::Error> {
-        let ExtractVariantValue {
-            bind, source, next, ..
-        } = extract_variant_value;
-        self.visit_symbol(bind)?;
-        self.visit_symbol(source)?;
-        self.visit_pattern_matcher(next, ir)
-    }
-
-    fn visit_extract_variant_value(
-        &mut self,
-        extract_variant_value: ExtractVariantValue,
-        ir: &Ir,
-    ) -> Result<(), Self::Error> {
-        self.walk_extract_variant_value(extract_variant_value, ir)
-    }
+    // fn visit_extract_variant_value(
+    //     &mut self,
+    //     extract_variant_value: ExtractVariantValue,
+    //     ir: &Ir,
+    // ) -> Result<(), Self::Error> {
+    //     self.walk_extract_variant_value(extract_variant_value, ir)
+    // }
 
     fn walk_pattern_success(
         &mut self,
