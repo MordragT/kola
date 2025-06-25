@@ -798,127 +798,68 @@ impl Eval for RecordAccessExpr {
         })
     }
 }
-
 impl Eval for PatternMatchExpr {
-    fn eval(&self, env: Env, cont: Cont, ir: &Ir) -> MachineState {
+    fn eval(&self, env: Env, mut cont: Cont, _ir: &Ir) -> MachineState {
         let Self {
             bind,
-            source,
             matcher,
             next,
         } = *self;
 
-        // Evaluate the source expression to get the value we're matching against
-        let source_value = match eval_atom(source.get(ir), &env) {
-            Ok(value) => value,
-            Err(err) => return MachineState::Error(err),
+        // Create a pure continuation frame for the next expression
+        let pure_frame = PureContFrame {
+            var: bind,
+            body: next,
+            env: env.clone(),
         };
 
+        // Add the frame to the continuation
+        let mut frame = cont.pop_or_identity(env.interner());
+        frame.pure.push(pure_frame);
+        cont.push(frame);
+
         // Transition to pattern matching state
-        MachineState::Pattern(PatternConfig {
-            matcher,
-            source_value,
-            bind,
-            next,
-            env,
-            cont,
-        })
+        MachineState::Pattern(PatternConfig { matcher, env, cont })
     }
 }
 
 /// Evaluates a pattern matching configuration
 impl Eval for PatternConfig {
     fn eval(&self, _env: Env, _cont: Cont, ir: &Ir) -> MachineState {
-        let PatternConfig {
-            matcher,
-            source_value,
-            bind,
-            next,
-            env,
-            cont,
-        } = self;
+        let PatternConfig { matcher, env, cont } = self;
 
-        eval_pattern_matcher(
-            &matcher.get(ir),
-            source_value.clone(),
-            *bind,
-            *next,
-            env.clone(),
-            cont.clone(),
-            ir,
-        )
+        eval_pattern_matcher(&matcher.get(ir), env.clone(), cont.clone(), ir)
     }
 }
-
 /// Evaluates a pattern matcher instruction, returning the next machine state
-fn eval_pattern_matcher(
-    matcher: &PatternMatcher,
-    source_value: Value,
-    bind: Symbol,
-    next: Id<Expr>,
-    env: Env,
-    cont: Cont,
-    ir: &Ir,
-) -> MachineState {
+fn eval_pattern_matcher(matcher: &PatternMatcher, env: Env, cont: Cont, ir: &Ir) -> MachineState {
     match matcher {
-        PatternMatcher::IsUnit(is_unit) => {
-            eval_is_unit(is_unit, source_value, bind, next, env, cont, ir)
-        }
-        PatternMatcher::IsBool(is_bool) => {
-            eval_is_bool(is_bool, source_value, bind, next, env, cont, ir)
-        }
-        PatternMatcher::IsNum(is_num) => {
-            eval_is_num(is_num, source_value, bind, next, env, cont, ir)
-        }
-        PatternMatcher::IsChar(is_char) => {
-            eval_is_char(is_char, source_value, bind, next, env, cont, ir)
-        }
-        PatternMatcher::IsStr(is_str) => {
-            eval_is_str(is_str, source_value, bind, next, env, cont, ir)
-        }
-        PatternMatcher::IsVariant(is_variant) => {
-            eval_is_variant(is_variant, source_value, bind, next, env, cont, ir)
-        }
-        PatternMatcher::IsRecord(is_record) => {
-            eval_is_record(is_record, source_value, bind, next, env, cont, ir)
-        }
+        PatternMatcher::IsUnit(is_unit) => eval_is_unit(is_unit, env, cont, ir),
+        PatternMatcher::IsBool(is_bool) => eval_is_bool(is_bool, env, cont, ir),
+        PatternMatcher::IsNum(is_num) => eval_is_num(is_num, env, cont, ir),
+        PatternMatcher::IsChar(is_char) => eval_is_char(is_char, env, cont, ir),
+        PatternMatcher::IsStr(is_str) => eval_is_str(is_str, env, cont, ir),
+        PatternMatcher::IsVariant(is_variant) => eval_is_variant(is_variant, env, cont, ir),
+        PatternMatcher::IsRecord(is_record) => eval_is_record(is_record, env, cont, ir),
         PatternMatcher::RecordHasField(record_has_field) => {
-            eval_record_has_field(record_has_field, source_value, bind, next, env, cont, ir)
+            eval_record_has_field(record_has_field, env, cont, ir)
         }
-        PatternMatcher::IsList(is_list) => {
-            eval_is_list(is_list, source_value, bind, next, env, cont, ir)
-        }
+        PatternMatcher::IsList(is_list) => eval_is_list(is_list, env, cont, ir),
         PatternMatcher::ListIsExact(list_is_exact) => {
-            eval_list_is_exact(list_is_exact, source_value, bind, next, env, cont, ir)
+            eval_list_is_exact(list_is_exact, env, cont, ir)
         }
         PatternMatcher::ListIsAtLeast(list_is_at_least) => {
-            eval_list_is_at_least(list_is_at_least, source_value, bind, next, env, cont, ir)
+            eval_list_is_at_least(list_is_at_least, env, cont, ir)
         }
-        PatternMatcher::Identity(extract) => {
-            eval_identity(extract, source_value, bind, next, env, cont, ir)
-        }
-        PatternMatcher::VariantGet(extract) => {
-            eval_variant_get(extract, source_value, bind, next, env, cont, ir)
-        }
-        PatternMatcher::RecordGetAt(extract) => {
-            eval_record_get_at(extract, source_value, bind, next, env, cont, ir)
-        }
-        PatternMatcher::ListSplitHead(extract) => {
-            eval_list_split_head(extract, source_value, bind, next, env, cont, ir)
-        }
-        PatternMatcher::ListSplitTail(extract) => {
-            eval_list_split_tail(extract, source_value, bind, next, env, cont, ir)
-        }
-        PatternMatcher::ListGetAt(extract) => {
-            eval_list_get_at(extract, source_value, bind, next, env, cont, ir)
-        }
-        PatternMatcher::ListSplitAt(extract) => {
-            eval_list_split_at(extract, source_value, bind, next, env, cont, ir)
-        }
+        PatternMatcher::Identity(extract) => eval_identity(extract, env, cont, ir),
+        PatternMatcher::VariantGet(extract) => eval_variant_get(extract, env, cont, ir),
+        PatternMatcher::RecordGetAt(extract) => eval_record_get_at(extract, env, cont, ir),
+        PatternMatcher::ListSplitHead(extract) => eval_list_split_head(extract, env, cont, ir),
+        PatternMatcher::ListSplitTail(extract) => eval_list_split_tail(extract, env, cont, ir),
+        PatternMatcher::ListGetAt(extract) => eval_list_get_at(extract, env, cont, ir),
+        PatternMatcher::ListSplitAt(extract) => eval_list_split_at(extract, env, cont, ir),
 
-        PatternMatcher::Success(success) => {
-            eval_pattern_success(success, source_value, bind, env, cont, ir)
-        }
+        PatternMatcher::Success(success) => eval_pattern_success(success, env, cont, ir),
         PatternMatcher::Failure(_) => {
             MachineState::Error("Pattern match failure - no matching case found".to_string())
         }
@@ -926,15 +867,7 @@ fn eval_pattern_matcher(
 }
 
 /// Evaluates IsUnit pattern matcher - tests if the source value is Unit
-fn eval_is_unit(
-    is_unit: &IsUnit,
-    source_value: Value,
-    bind: Symbol,
-    next: Id<Expr>,
-    env: Env,
-    cont: Cont,
-    _ir: &Ir,
-) -> MachineState {
+fn eval_is_unit(is_unit: &IsUnit, env: Env, cont: Cont, _ir: &Ir) -> MachineState {
     let IsUnit {
         source,
         on_success,
@@ -955,24 +888,13 @@ fn eval_is_unit(
     // Continue with the next pattern matcher
     MachineState::Pattern(PatternConfig {
         matcher: next_matcher,
-        source_value,
-        bind,
-        next,
         env,
         cont,
     })
 }
 
 /// Evaluates IsBool pattern matcher
-fn eval_is_bool(
-    is_bool: &IsBool,
-    source_value: Value,
-    bind: Symbol,
-    next: Id<Expr>,
-    env: Env,
-    cont: Cont,
-    _ir: &Ir,
-) -> MachineState {
+fn eval_is_bool(is_bool: &IsBool, env: Env, cont: Cont, _ir: &Ir) -> MachineState {
     let IsBool {
         source,
         payload,
@@ -992,24 +914,13 @@ fn eval_is_bool(
 
     MachineState::Pattern(PatternConfig {
         matcher: next_matcher,
-        source_value,
-        bind,
-        next,
         env,
         cont,
     })
 }
 
 /// Evaluates IsNum pattern matcher
-fn eval_is_num(
-    is_num: &IsNum,
-    source_value: Value,
-    bind: Symbol,
-    next: Id<Expr>,
-    env: Env,
-    cont: Cont,
-    _ir: &Ir,
-) -> MachineState {
+fn eval_is_num(is_num: &IsNum, env: Env, cont: Cont, _ir: &Ir) -> MachineState {
     let IsNum {
         source,
         payload,
@@ -1029,24 +940,13 @@ fn eval_is_num(
 
     MachineState::Pattern(PatternConfig {
         matcher: next_matcher,
-        source_value,
-        bind,
-        next,
         env,
         cont,
     })
 }
 
 /// Evaluates IsChar pattern matcher
-fn eval_is_char(
-    is_char: &IsChar,
-    source_value: Value,
-    bind: Symbol,
-    next: Id<Expr>,
-    env: Env,
-    cont: Cont,
-    _ir: &Ir,
-) -> MachineState {
+fn eval_is_char(is_char: &IsChar, env: Env, cont: Cont, _ir: &Ir) -> MachineState {
     let IsChar {
         source,
         payload,
@@ -1066,24 +966,13 @@ fn eval_is_char(
 
     MachineState::Pattern(PatternConfig {
         matcher: next_matcher,
-        source_value,
-        bind,
-        next,
         env,
         cont,
     })
 }
 
 /// Evaluates IsStr pattern matcher
-fn eval_is_str(
-    is_str: &IsStr,
-    source_value: Value,
-    bind: Symbol,
-    next: Id<Expr>,
-    env: Env,
-    cont: Cont,
-    _ir: &Ir,
-) -> MachineState {
+fn eval_is_str(is_str: &IsStr, env: Env, cont: Cont, _ir: &Ir) -> MachineState {
     let IsStr {
         source,
         payload,
@@ -1111,23 +1000,12 @@ fn eval_is_str(
 
     MachineState::Pattern(PatternConfig {
         matcher: next_matcher,
-        source_value,
-        bind,
-        next,
         env,
         cont,
     })
 }
 
-fn eval_is_variant(
-    is_tag: &IsVariant,
-    source_value: Value,
-    bind: Symbol,
-    next: Id<Expr>,
-    env: Env,
-    cont: Cont,
-    _ir: &Ir,
-) -> MachineState {
+fn eval_is_variant(is_tag: &IsVariant, env: Env, cont: Cont, _ir: &Ir) -> MachineState {
     let IsVariant {
         source,
         tag,
@@ -1149,23 +1027,11 @@ fn eval_is_variant(
     // Continue with the next pattern matcher
     MachineState::Pattern(PatternConfig {
         matcher: next_matcher,
-        source_value,
-        bind,
-        next,
         env,
         cont,
     })
 }
-
-fn eval_is_record(
-    is_record: &IsRecord,
-    source_value: Value,
-    bind: Symbol,
-    next: Id<Expr>,
-    env: Env,
-    cont: Cont,
-    _ir: &Ir,
-) -> MachineState {
+fn eval_is_record(is_record: &IsRecord, env: Env, cont: Cont, _ir: &Ir) -> MachineState {
     let IsRecord {
         source,
         on_success,
@@ -1186,9 +1052,6 @@ fn eval_is_record(
     // Continue with the next pattern matcher
     MachineState::Pattern(PatternConfig {
         matcher: next_matcher,
-        source_value,
-        bind,
-        next,
         env,
         cont,
     })
@@ -1196,9 +1059,6 @@ fn eval_is_record(
 
 fn eval_record_has_field(
     record_has_field: &RecordHasField,
-    source_value: Value,
-    bind: Symbol,
-    next: Id<Expr>,
     env: Env,
     cont: Cont,
     _ir: &Ir,
@@ -1224,23 +1084,12 @@ fn eval_record_has_field(
     // Continue with the next pattern matcher
     MachineState::Pattern(PatternConfig {
         matcher: next_matcher,
-        source_value,
-        bind,
-        next,
         env,
         cont,
     })
 }
 
-fn eval_is_list(
-    is_list: &IsList,
-    source_value: Value,
-    bind: Symbol,
-    next: Id<Expr>,
-    env: Env,
-    cont: Cont,
-    _ir: &Ir,
-) -> MachineState {
+fn eval_is_list(is_list: &IsList, env: Env, cont: Cont, _ir: &Ir) -> MachineState {
     let IsList {
         source,
         on_success,
@@ -1261,23 +1110,12 @@ fn eval_is_list(
     // Continue with the next pattern matcher
     MachineState::Pattern(PatternConfig {
         matcher: next_matcher,
-        source_value,
-        bind,
-        next,
         env,
         cont,
     })
 }
 
-fn eval_list_is_exact(
-    list_is_exact: &ListIsExact,
-    source_value: Value,
-    bind: Symbol,
-    next: Id<Expr>,
-    env: Env,
-    cont: Cont,
-    _ir: &Ir,
-) -> MachineState {
+fn eval_list_is_exact(list_is_exact: &ListIsExact, env: Env, cont: Cont, _ir: &Ir) -> MachineState {
     let ListIsExact {
         source,
         length,
@@ -1299,9 +1137,6 @@ fn eval_list_is_exact(
     // Continue with the next pattern matcher
     MachineState::Pattern(PatternConfig {
         matcher: next_matcher,
-        source_value,
-        bind,
-        next,
         env,
         cont,
     })
@@ -1309,9 +1144,6 @@ fn eval_list_is_exact(
 
 fn eval_list_is_at_least(
     list_is_atleast: &ListIsAtLeast,
-    source_value: Value,
-    bind: Symbol,
-    next: Id<Expr>,
     env: Env,
     cont: Cont,
     _ir: &Ir,
@@ -1337,24 +1169,13 @@ fn eval_list_is_at_least(
     // Continue with the next pattern matcher
     MachineState::Pattern(PatternConfig {
         matcher: next_matcher,
-        source_value,
-        bind,
-        next,
         env,
         cont,
     })
 }
 
 /// Evaluates Identity - binds the source value to a variable (for bind patterns and wildcards)
-fn eval_identity(
-    extract: &Identity,
-    source_value: Value,
-    bind: Symbol,
-    next: Id<Expr>,
-    mut env: Env,
-    cont: Cont,
-    _ir: &Ir,
-) -> MachineState {
+fn eval_identity(extract: &Identity, mut env: Env, cont: Cont, _ir: &Ir) -> MachineState {
     let Identity {
         bind: extract_bind,
         source,
@@ -1373,23 +1194,11 @@ fn eval_identity(
     // Continue with the next pattern matcher
     MachineState::Pattern(PatternConfig {
         matcher: pattern_next,
-        source_value,
-        bind,
-        next,
         env,
         cont,
     })
 }
-
-fn eval_variant_get(
-    extract: &VariantGet,
-    source_value: Value,
-    bind: Symbol,
-    next: Id<Expr>,
-    mut env: Env,
-    cont: Cont,
-    _ir: &Ir,
-) -> MachineState {
+fn eval_variant_get(extract: &VariantGet, mut env: Env, cont: Cont, _ir: &Ir) -> MachineState {
     let VariantGet {
         bind: extract_bind,
         source,
@@ -1413,23 +1222,12 @@ fn eval_variant_get(
     // Continue with the next pattern matcher
     MachineState::Pattern(PatternConfig {
         matcher: pattern_next,
-        source_value,
-        bind,
-        next,
         env,
         cont,
     })
 }
 
-fn eval_record_get_at(
-    extract: &RecordGetAt,
-    source_value: Value,
-    bind: Symbol,
-    next: Id<Expr>,
-    mut env: Env,
-    cont: Cont,
-    _ir: &Ir,
-) -> MachineState {
+fn eval_record_get_at(extract: &RecordGetAt, mut env: Env, cont: Cont, _ir: &Ir) -> MachineState {
     let RecordGetAt {
         bind: extract_bind,
         source,
@@ -1459,9 +1257,6 @@ fn eval_record_get_at(
     // Continue with the next pattern matcher
     MachineState::Pattern(PatternConfig {
         matcher: pattern_next,
-        source_value,
-        bind,
-        next,
         env,
         cont,
     })
@@ -1469,9 +1264,6 @@ fn eval_record_get_at(
 
 fn eval_list_split_head(
     extract: &ListSplitHead,
-    source_value: Value,
-    bind: Symbol,
-    next: Id<Expr>,
     mut env: Env,
     cont: Cont,
     _ir: &Ir,
@@ -1506,9 +1298,6 @@ fn eval_list_split_head(
     // Continue with the next pattern matcher
     MachineState::Pattern(PatternConfig {
         matcher: pattern_next,
-        source_value,
-        bind,
-        next,
         env,
         cont,
     })
@@ -1516,9 +1305,6 @@ fn eval_list_split_head(
 
 fn eval_list_split_tail(
     extract: &ListSplitTail,
-    source_value: Value,
-    bind: Symbol,
-    next: Id<Expr>,
     mut env: Env,
     cont: Cont,
     _ir: &Ir,
@@ -1553,23 +1339,12 @@ fn eval_list_split_tail(
     // Continue with the next pattern matcher
     MachineState::Pattern(PatternConfig {
         matcher: pattern_next,
-        source_value,
-        bind,
-        next,
         env,
         cont,
     })
 }
 
-fn eval_list_get_at(
-    extract: &ListGetAt,
-    source_value: Value,
-    bind: Symbol,
-    next: Id<Expr>,
-    mut env: Env,
-    cont: Cont,
-    _ir: &Ir,
-) -> MachineState {
+fn eval_list_get_at(extract: &ListGetAt, mut env: Env, cont: Cont, _ir: &Ir) -> MachineState {
     let ListGetAt {
         bind: extract_bind,
         source,
@@ -1599,23 +1374,12 @@ fn eval_list_get_at(
     // Continue with the next pattern matcher
     MachineState::Pattern(PatternConfig {
         matcher: pattern_next,
-        source_value,
-        bind,
-        next,
         env,
         cont,
     })
 }
 
-fn eval_list_split_at(
-    extract: &ListSplitAt,
-    source_value: Value,
-    bind: Symbol,
-    next: Id<Expr>,
-    mut env: Env,
-    cont: Cont,
-    _ir: &Ir,
-) -> MachineState {
+fn eval_list_split_at(extract: &ListSplitAt, mut env: Env, cont: Cont, _ir: &Ir) -> MachineState {
     let ListSplitAt {
         head,
         tail,
@@ -1643,9 +1407,6 @@ fn eval_list_split_at(
     // Continue with the next pattern matcher
     MachineState::Pattern(PatternConfig {
         matcher: pattern_next,
-        source_value,
-        bind,
-        next,
         env,
         cont,
     })
@@ -1654,16 +1415,18 @@ fn eval_list_split_at(
 /// Evaluates PatternSuccess - pattern matching succeeded, continue to the matched expression
 fn eval_pattern_success(
     success: &PatternSuccess,
-    source_value: Value,
-    bind: Symbol,
+    // source_value: Value,
+    // bind: Symbol,
     mut env: Env,
     cont: Cont,
     ir: &Ir,
 ) -> MachineState {
+    // TODO either use PatternMatcherExpr to setup continuation and use it here,
+    // or use the next id of PatternSuccess directly but do not do both
     let PatternSuccess { next } = *success;
 
     // Bind the original source value to the result binding
-    env.insert(bind, source_value);
+    // env.insert(bind, source_value); // TODO this would only be necessary if I would actually mutate variables I guess
 
     // Continue with the matched branch expression
     MachineState::Standard(StandardConfig {

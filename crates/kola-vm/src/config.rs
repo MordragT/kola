@@ -50,12 +50,6 @@ pub struct OperationConfig {
 pub struct PatternConfig {
     /// The pattern matcher instruction currently being evaluated
     pub matcher: Id<PatternMatcher>,
-    /// The value being matched against
-    pub source_value: Value,
-    /// Where to bind the result if matching succeeds
-    pub bind: Symbol,
-    /// The expression to evaluate after successful matching
-    pub next: Id<Expr>,
     /// Environment for pattern matching
     pub env: Env,
     /// Continuation to use after pattern matching completes

@@ -415,13 +415,7 @@ mod tests {
         let is_unit = PatternMatcher::is_unit(source_sym, extract, failure, &mut ir);
 
         // Pattern match expression
-        let pattern_match = PatternMatchExpr::new(
-            result_sym,
-            Atom::Symbol(source_sym),
-            is_unit,
-            ret_42,
-            &mut ir,
-        );
+        let pattern_match = PatternMatchExpr::new(result_sym, is_unit, ret_42, &mut ir);
 
         // Let binding: source = unit
         let let_source = LetExpr::new(source_sym, Atom::Noop, pattern_match, &mut ir);

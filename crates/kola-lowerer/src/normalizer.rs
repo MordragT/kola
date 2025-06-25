@@ -634,7 +634,6 @@ where
 
         // Create symbol for the value being matched
         let source_sym = self.next_symbol();
-        let source_atom = self.builder.add(ir::Atom::Symbol(source_sym));
 
         let mut on_failure = self
             .builder
@@ -674,7 +673,6 @@ where
         // Create the case expression with the final pattern matcher
         let case_expr = ir::PatternMatchExpr {
             bind: self.hole,
-            source: source_atom,
             matcher: on_failure,
             next: self.next,
         };

@@ -339,12 +339,10 @@ where
     ) -> Result<(), Self::Error> {
         let PatternMatchExpr {
             bind,
-            source,
             matcher,
             next,
         } = pattern_match_expr;
         self.visit_symbol(bind)?;
-        self.visit_atom(source, ir)?;
         self.visit_pattern_matcher(matcher, ir)?;
         self.visit_expr(next, ir)
     }

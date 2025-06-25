@@ -1189,7 +1189,6 @@ impl<'a> Notate<'a> for IrPrinter<'a, RecordAccessExpr> {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct PatternMatchExpr {
     pub bind: Symbol,
-    pub source: Id<Atom>,
     pub matcher: Id<PatternMatcher>,
     pub next: Id<Expr>,
 }
@@ -1197,18 +1196,15 @@ pub struct PatternMatchExpr {
 impl PatternMatchExpr {
     pub fn new(
         bind: Symbol,
-        source: impl Into<Atom>,
         matcher: impl Into<PatternMatcher>,
         next: impl Into<Expr>,
         builder: &mut IrBuilder,
     ) -> Self {
-        let source = builder.add(source.into());
         let matcher = builder.add(matcher.into());
         let next = builder.add(next.into());
 
         Self {
             bind,
-            source,
             matcher,
             next,
         }
@@ -1221,17 +1217,15 @@ impl<'a> Notate<'a> for IrPrinter<'a, PatternMatchExpr> {
     fn notate(&self, arena: &'a Bump) -> Notation<'a> {
         let PatternMatchExpr {
             bind,
-            source,
             matcher,
             next,
         } = self.node;
 
         let bind = bind.display_in(arena);
-        let source = self.to(source).notate(arena);
         let matcher = self.to(matcher).notate(arena);
         let next = arena.newline().then(self.to(next).notate(arena), arena);
 
-        let head = [bind, arena.notate(" = match "), source].concat_in(arena);
+        let head = [bind, arena.notate(" = match ")].concat_in(arena);
 
         let body = [
             arena.newline(),
