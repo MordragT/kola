@@ -143,8 +143,20 @@ pub struct RecordFieldType {
 }
 
 #[derive(
-    Debug, Inspector, From, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+    Debug,
+    Notate,
+    Inspector,
+    From,
+    Clone,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
 )]
+#[notate(color = "blue")]
 pub struct RecordType {
     pub fields: Vec<Id<RecordFieldType>>,
     pub extension: Option<Id<TypeName>>,
@@ -153,44 +165,6 @@ pub struct RecordType {
 impl RecordType {
     pub fn get(&self, index: usize, tree: &impl TreeView) -> RecordFieldType {
         *self.fields[index].get(tree)
-    }
-}
-
-impl<'a> Notate<'a> for NodePrinter<'a, RecordType> {
-    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
-        let RecordType { fields, extension } = self.value;
-
-        let head = "RecordType".blue().display_in(arena);
-
-        let fields = self.to_slice(fields).gather(arena);
-        let extension = extension.map(|ext| self.to_id(ext).notate(arena));
-
-        let single = [
-            arena.notate(" fields = "),
-            fields.clone().concat_map(
-                |field| arena.just(' ').then(field, arena).flatten(arena),
-                arena,
-            ),
-            extension
-                .clone()
-                .map(|ext| arena.notate(" extension = ").then(ext, arena))
-                .or_not(arena)
-                .flatten(arena),
-        ]
-        .concat_in(arena);
-
-        let multi = [
-            arena.newline(),
-            arena.notate("fields = "),
-            fields.concat_by(arena.newline(), arena),
-            extension
-                .map(|ext| [arena.newline(), arena.notate("extension = "), ext].concat_in(arena))
-                .or_not(arena),
-        ]
-        .concat_in(arena)
-        .indent(arena);
-
-        head.then(single.or(multi, arena), arena)
     }
 }
 
@@ -215,8 +189,20 @@ pub struct VariantTagType {
 }
 
 #[derive(
-    Debug, Inspector, From, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+    Debug,
+    Notate,
+    Inspector,
+    From,
+    Clone,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
 )]
+#[notate(color = "blue")]
 pub struct VariantType {
     pub cases: Vec<Id<VariantTagType>>,
     pub extension: Option<Id<TypeName>>,
@@ -225,44 +211,6 @@ pub struct VariantType {
 impl VariantType {
     pub fn get(&self, index: usize, tree: &impl TreeView) -> VariantTagType {
         *self.cases[index].get(tree)
-    }
-}
-
-impl<'a> Notate<'a> for NodePrinter<'a, VariantType> {
-    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
-        let VariantType { cases, extension } = self.value;
-
-        let head = "VariantType".blue().display_in(arena);
-
-        let cases = self.to_slice(cases).gather(arena);
-        let extension = extension.map(|ext| self.to_id(ext).notate(arena));
-
-        let single = [
-            arena.notate(" cases = "),
-            cases.clone().concat_map(
-                |field| arena.just(' ').then(field, arena).flatten(arena),
-                arena,
-            ),
-            extension
-                .clone()
-                .map(|ext| arena.notate(" extension = ").then(ext, arena))
-                .or_not(arena)
-                .flatten(arena),
-        ]
-        .concat_in(arena);
-
-        let multi = [
-            arena.newline(),
-            arena.notate("cases = "),
-            cases.concat_by(arena.newline(), arena),
-            extension
-                .map(|ext| [arena.newline(), arena.notate("extension = "), ext].concat_in(arena))
-                .or_not(arena),
-        ]
-        .concat_in(arena)
-        .indent(arena);
-
-        head.then(single.or(multi, arena), arena)
     }
 }
 
@@ -344,55 +292,11 @@ impl<'a> Notate<'a> for NodePrinter<'a, Type> {
     }
 }
 
-#[derive(Debug, Inspector, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[derive(
+    Debug, Notate, Inspector, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+)]
+#[notate(color = "green")]
 pub struct TypeScheme {
     pub vars: Vec<Id<TypeVar>>,
     pub ty: Id<Type>,
-}
-
-impl<'a> Notate<'a> for NodePrinter<'a, TypeScheme> {
-    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
-        let TypeScheme { vars, ty } = self.value;
-
-        let head = "TypeScheme".green().display_in(arena);
-
-        let vars = self.to_slice(vars).gather(arena);
-        let ty = self.to_id(*ty).notate(arena);
-
-        let single = if vars.is_empty() {
-            arena
-                .notate(" type = ")
-                .then(ty.clone(), arena)
-                .flatten(arena)
-        } else {
-            [
-                arena.notate(" vars = "),
-                vars.clone()
-                    .concat_by(arena.just(' '), arena)
-                    .flatten(arena),
-                arena.notate(", type = "),
-                ty.clone().flatten(arena),
-            ]
-            .concat_in(arena)
-        };
-
-        let multi = if vars.is_empty() {
-            [arena.newline(), arena.notate("type = "), ty]
-                .concat_in(arena)
-                .indent(arena)
-        } else {
-            [
-                arena.newline(),
-                arena.notate("vars = "),
-                vars.concat_by(arena.newline(), arena),
-                arena.newline(),
-                arena.notate("type = "),
-                ty,
-            ]
-            .concat_in(arena)
-            .indent(arena)
-        };
-
-        head.then(single.or(multi, arena), arena)
-    }
 }

@@ -69,8 +69,33 @@ fn generate_struct_notate(
             }
 
             let field = &fields_unnamed.unnamed[0];
+            let field_class = classify_field_type(&field.ty);
             let field_attrs = parse_field_attributes(&field.attrs)?;
             let field_binding = generate_single_field_binding(&field.ty, &field_attrs)?;
+
+            let single_repr = match field_class {
+                FieldTypeClass::SingleId(_) | FieldTypeClass::Other => {
+                    quote! { arena.just(' ').then(#field_binding.clone().flatten(arena), arena) }
+                }
+                FieldTypeClass::VecId(_) => {
+                    quote! { arena.just(' ').then(#field_binding.clone().concat_by(arena.just(' '), arena).flatten(arena), arena) }
+                }
+                FieldTypeClass::OptionId(_) => {
+                    quote! { #field_binding.as_ref().map(|notation| arena.just(' ').then(notation.clone(), arena)).or_not(arena) }
+                }
+            };
+
+            let multi_repr = match field_class {
+                FieldTypeClass::SingleId(_) | FieldTypeClass::Other => {
+                    quote! { arena.newline().then(#field_binding, arena).indent(arena) }
+                }
+                FieldTypeClass::VecId(_) => {
+                    quote! { arena.newline().then(#field_binding.concat_by(arena.newline(), arena), arena).indent(arena) }
+                }
+                FieldTypeClass::OptionId(_) => {
+                    quote! { #field_binding.map(|notation| arena.newline().then(notation, arena)).or_not(arena).indent(arena) }
+                }
+            };
 
             Ok(quote! {
                 let head = #display_name.#head_color().display_in(arena);
@@ -78,8 +103,8 @@ fn generate_struct_notate(
                 let field_value = &self.value.0;
                 let inner_notation = #field_binding;
 
-                let single = arena.just(' ').then(inner_notation.clone().flatten(arena), arena);
-                let multi = arena.newline().then(inner_notation.indent(arena), arena);
+                let single = #single_repr;
+                let multi = #multi_repr;
 
                 head.then(single.or(multi, arena), arena)
 
@@ -174,10 +199,20 @@ fn generate_single_representation(fields: &FieldsNamed) -> syn::Result<proc_macr
         let field_name_str = field_name.to_string();
         let binding_name = quote::format_ident!("{}_notation", field_name);
 
-        let is_option = matches!(classify_field_type(&field.ty), FieldTypeClass::OptionId(_));
-
-        if is_option {
-            parts.push(quote! {
+        match classify_field_type(&field.ty) {
+            FieldTypeClass::SingleId(_) | FieldTypeClass::Other => {
+                parts.push(quote! { arena.just(' ') });
+                parts.push(quote! { format_args!("{} = ", #field_name_str).display_in(arena) });
+                parts.push(quote! { #binding_name.clone() });
+            }
+            FieldTypeClass::VecId(_) => parts.push(quote! {
+                [
+                    arena.just(' '),
+                    format_args!("{} = ", #field_name_str).display_in(arena),
+                    #binding_name.clone().concat_by(arena.just(' '), arena),
+                ].concat_in(arena).flatten(arena)
+            }),
+            FieldTypeClass::OptionId(_) => parts.push(quote! {
                 #binding_name.as_ref().map(|notation| {
                     [
                         arena.just(' '),
@@ -185,11 +220,7 @@ fn generate_single_representation(fields: &FieldsNamed) -> syn::Result<proc_macr
                         notation.clone(),
                     ].concat_in(arena)
                 }).or_not(arena)
-            });
-        } else {
-            parts.push(quote! { arena.just(' ') });
-            parts.push(quote! { format_args!("{} = ", #field_name_str).display_in(arena) });
-            parts.push(quote! { #binding_name.clone() });
+            }),
         }
     }
 
@@ -210,23 +241,29 @@ fn generate_multi_representation(fields: &FieldsNamed) -> syn::Result<proc_macro
         let field_name_str = field_name.to_string();
         let binding_name = quote::format_ident!("{}_notation", field_name);
 
-        let is_option = matches!(classify_field_type(&field.ty), FieldTypeClass::OptionId(_));
-
-        if is_option {
-            parts.push(quote! {
-               #binding_name.map(|notation| {
-                    [
-                        arena.newline(),
-                        format_args!("{} = ", #field_name_str).display_in(arena),
-                        notation,
-                    ].concat_in(arena)
-               }).or_not(arena)
-            });
-        } else {
-            parts.push(quote! { arena.newline() });
-            parts.push(quote! { format_args!("{} = ", #field_name_str).display_in(arena) });
-            parts.push(quote! { #binding_name });
-        }
+        match classify_field_type(&field.ty) {
+            FieldTypeClass::SingleId(_) | FieldTypeClass::Other => {
+                parts.push(quote! { arena.newline() });
+                parts.push(quote! { format_args!("{} = ", #field_name_str).display_in(arena) });
+                parts.push(quote! { #binding_name });
+            }
+            FieldTypeClass::VecId(_) => parts.push(quote! {
+                [
+                    arena.newline(),
+                    format_args!("{} = ", #field_name_str).display_in(arena),
+                    #binding_name.concat_by(arena.newline(), arena),
+                ].concat_in(arena).indent(arena)
+            }),
+            FieldTypeClass::OptionId(_) => parts.push(quote! {
+                #binding_name.map(|notation| {
+                     [
+                         arena.newline(),
+                         format_args!("{} = ", #field_name_str).display_in(arena),
+                         notation,
+                     ].concat_in(arena)
+                }).or_not(arena)
+            }),
+        };
     }
 
     Ok(quote! { #(#parts),* })

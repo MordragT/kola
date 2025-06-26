@@ -159,25 +159,21 @@ impl<'a> Notate<'a> for NodePrinter<'a, ListElPat> {
 }
 
 #[derive(
-    Debug, Inspector, From, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+    Debug,
+    Notate,
+    Inspector,
+    From,
+    Clone,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
 )]
+#[notate(color = "magenta")]
 pub struct ListPat(pub Vec<Id<ListElPat>>);
-
-impl<'a> Notate<'a> for NodePrinter<'a, ListPat> {
-    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
-        let head = "ListPat".magenta().display_in(arena);
-
-        let elements = self.to_slice(&self.value.0).gather(arena);
-
-        let single = elements.clone().concat_map(
-            |element| arena.notate(" ").then(element.flatten(arena), arena),
-            arena,
-        );
-        let multi = elements.concat_map(|element| arena.newline().then(element, arena), arena);
-
-        head.then(single.or(multi, arena), arena)
-    }
-}
 
 #[derive(
     Debug,
@@ -228,15 +224,6 @@ impl RecordPat {
             .collect();
         builder.insert(Self { fields, polymorph })
     }
-
-    // pub fn get(&self, name: impl AsRef<str>, tree: &impl TreeView) -> Option<RecordFieldPat> {
-    //     self.fields.iter().find_map(|id| {
-    //         let field = id.get(tree);
-    //         (field.field(tree) == name.as_ref())
-    //             .then_some(field)
-    //             .copied()
-    //     })
-    // }
 }
 
 impl<'a> Notate<'a> for NodePrinter<'a, RecordPat> {
@@ -304,6 +291,7 @@ impl VariantTagPat {
 
 #[derive(
     Debug,
+    Notate,
     Inspector,
     From,
     IntoIterator,
@@ -316,33 +304,9 @@ impl VariantTagPat {
     Serialize,
     Deserialize,
 )]
+#[notate(color = "blue")]
 #[into_iterator(owned, ref)]
 pub struct VariantPat(pub Vec<Id<VariantTagPat>>);
-
-// impl VariantPat {
-//     pub fn get(&self, name: impl AsRef<str>, tree: &impl TreeView) -> Option<VariantCasePat> {
-//         self.0.iter().find_map(|id| {
-//             let case = id.get(tree);
-//             (case.case(tree) == name.as_ref()).then_some(case).copied()
-//         })
-//     }
-// }
-
-impl<'a> Notate<'a> for NodePrinter<'a, VariantPat> {
-    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
-        let head = "VariantPat".blue().display_in(arena);
-
-        let cases = self.to_slice(&self.value.0).gather(arena);
-
-        let single = cases.clone().concat_map(
-            |case| arena.notate(" ").then(case.flatten(arena), arena),
-            arena,
-        );
-        let multi = cases.concat_map(|case| arena.newline().then(case, arena), arena);
-
-        head.then(single.or(multi, arena), arena)
-    }
-}
 
 #[derive(
     Debug, EnumAsInner, Inspector, From, Clone, Copy, PartialEq, PartialOrd, Serialize, Deserialize,

@@ -66,6 +66,7 @@ impl<'a> Notate<'a> for NodePrinter<'a, LiteralExpr> {
 
 #[derive(
     Debug,
+    Notate,
     Inspector,
     From,
     IntoIterator,
@@ -78,6 +79,7 @@ impl<'a> Notate<'a> for NodePrinter<'a, LiteralExpr> {
     Serialize,
     Deserialize,
 )]
+#[notate(color = "blue")]
 #[into_iterator(owned, ref)]
 pub struct ListExpr(pub Vec<Id<Expr>>);
 
@@ -96,24 +98,6 @@ impl ListExpr {
             .map(|e| builder.insert(e.into()))
             .collect();
         builder.insert(Self(elements))
-    }
-}
-
-impl<'a> Notate<'a> for NodePrinter<'a, ListExpr> {
-    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
-        let head = "List".blue().display_in(arena);
-
-        let values = self.to_slice(&self.value.0).gather(arena);
-
-        let single = values.clone().concat_map(
-            |expr| arena.just(' ').then(expr.flatten(arena), arena),
-            arena,
-        );
-        let multi = values
-            .concat_map(|expr| arena.newline().then(expr, arena), arena)
-            .indent(arena);
-
-        head.then(single.or(multi, arena), arena)
     }
 }
 
@@ -172,6 +156,7 @@ impl RecordField {
 // { x = 10, y = 20 }
 #[derive(
     Debug,
+    Notate,
     Inspector,
     From,
     IntoIterator,
@@ -184,6 +169,7 @@ impl RecordField {
     Serialize,
     Deserialize,
 )]
+#[notate(color = "blue")]
 #[into_iterator(owned, ref)]
 pub struct RecordExpr(pub Vec<Id<RecordField>>);
 
@@ -194,35 +180,6 @@ impl RecordExpr {
     {
         let fields = fields.into_iter().collect();
         builder.insert(Self(fields))
-    }
-}
-
-// impl RecordExpr {
-//     pub fn get(&self, name: impl AsRef<str>, tree: &impl TreeView) -> Option<RecordField> {
-//         self.0.iter().find_map(|id| {
-//             let field = id.get(tree);
-//             (field.field(tree) == name.as_ref())
-//                 .then_some(field)
-//                 .copied()
-//         })
-//     }
-// }
-
-impl<'a> Notate<'a> for NodePrinter<'a, RecordExpr> {
-    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
-        let head = "Record".blue().display_in(arena);
-
-        let fields = self.to_slice(&self.value.0).gather(arena);
-
-        let single = fields.clone().concat_map(
-            |field| arena.just(' ').then(field.flatten(arena), arena),
-            arena,
-        );
-        let multi = fields
-            .concat_map(|field| arena.newline().then(field, arena), arena)
-            .indent(arena);
-
-        head.then(single.or(multi, arena), arena)
     }
 }
 
@@ -451,120 +408,9 @@ impl RecordUpdateExpr {
     }
 }
 
-// pub struct FieldPathIter<'a, T: TreeView> {
-//     tree: &'a T,
-//     current: Option<FieldPath>,
-// }
-
-// impl<'a, T: TreeView> FieldPathIter<'a, T> {
-//     pub fn new(tree: &'a T, path: FieldPath) -> Self {
-//         Self {
-//             tree,
-//             current: Some(path),
-//         }
-//     }
-// }
-
-// impl<T: TreeView> Iterator for FieldPathIter<'_, T> {
-//     type Item = Id<ValueName>;
-
-//     fn next(&mut self) -> Option<Self::Item> {
-//         match self.current {
-//             Some(FieldPath::Next(first, next)) => {
-//                 self.current = Some(*first.get(self.tree));
-//                 Some(next)
-//             }
-//             Some(FieldPath::First(name)) => {
-//                 self.current = None;
-//                 Some(name)
-//             }
-//             None => None,
-//         }
-//     }
-// }
-
-// #[derive(
-//     Debug, From, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
-// )]
-// pub enum FieldPath {
-//     Next(Id<Self>, Id<ValueName>),
-//     First(Id<ValueName>),
-// }
-
-// impl FieldPath {
-//     pub fn new_in(name: impl Into<ValueName>, tree: &mut impl TreeView) -> Id<Self> {
-//         let name = tree.insert(name.into());
-//         tree.insert(FieldPath::First(name))
-//     }
-
-//     pub fn from_iter<T>(iter: impl IntoIterator<Item = ValueName>, tree: &mut T) -> Id<Self>
-//     where
-//         T: TreeView,
-//     {
-//         let mut iter = iter.into_iter();
-//         let first = iter
-//             .next()
-//             .map(|name| tree.insert(name))
-//             .expect("ModulePath must have at least one name");
-
-//         let path = iter.fold(FieldPath::First(first), |path, name| {
-//             let next = tree.insert(name);
-//             FieldPath::Next(tree.insert(path), next)
-//         });
-
-//         tree.insert(path)
-//     }
-
-//     pub fn iter_rev<T>(self, tree: &T) -> FieldPathIter<'_, T>
-//     where
-//         T: TreeView,
-//     {
-//         FieldPathIter::new(tree, self)
-//     }
-
-//     pub fn get_from_back(self, index: usize, tree: &impl TreeView) -> Option<Id<ValueName>> {
-//         self.iter_rev(tree).nth(index)
-//     }
-
-//     pub fn last(self, tree: &impl TreeView) -> Option<Id<ValueName>> {
-//         self.iter_rev(tree).next()
-//     }
-
-//     pub fn len(self, tree: &impl TreeView) -> usize {
-//         self.iter_rev(tree).count()
-//     }
-// }
-
-// impl<'a> Notate<'a> for NodePrinter<'a, FieldPath> {
-//     fn notate(&self, arena: &'a Bump) -> Notation<'a> {
-//         match *self.value {
-//             FieldPath::Next(first, next) => {
-//                 let first = self.to(first).notate(arena);
-//                 let next = self.to(next).notate(arena);
-
-//                 let single = [first.clone(), arena.just(' '), next.clone()]
-//                     .concat_in(arena)
-//                     .flatten(arena);
-//                 let multi = [first, arena.newline(), next]
-//                     .concat_in(arena)
-//                     .indent(arena);
-
-//                 single.or(multi, arena)
-//             }
-//             FieldPath::First(name) => {
-//                 let head = "FieldPath".cyan().display_in(arena);
-//                 let name = self.to(name).notate(arena);
-
-//                 [head, arena.just(' '), name]
-//                     .concat_in(arena)
-//                     .flatten(arena)
-//             }
-//         }
-//     }
-// }
-
 #[derive(
     Debug,
+    Notate,
     Inspector,
     From,
     IntoIterator,
@@ -578,6 +424,7 @@ impl RecordUpdateExpr {
     Serialize,
     Deserialize,
 )]
+#[notate(color = "blue")]
 #[from(forward)]
 #[into_iterator(owned, ref)]
 pub struct FieldPath(pub Vec<Id<ValueName>>);
@@ -601,28 +448,6 @@ impl FieldPath {
 
     pub fn iter(&self) -> std::slice::Iter<'_, Id<ValueName>> {
         (&self).into_iter()
-    }
-}
-
-impl<'a> Notate<'a> for NodePrinter<'a, FieldPath> {
-    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
-        let fields = &self.value.0;
-
-        let head = "FieldPath".cyan().display_in(arena);
-
-        let fields = self.to_slice(fields).gather(arena);
-
-        let single = arena
-            .just(' ')
-            .then(fields.clone().concat_by(arena.just(' '), arena), arena)
-            .flatten(arena);
-
-        let multi = arena
-            .newline()
-            .then(fields.concat_by(arena.newline(), arena), arena)
-            .indent(arena);
-
-        head.then(single.or(multi, arena), arena)
     }
 }
 
@@ -949,7 +774,10 @@ impl CaseBranch {
     }
 }
 
-#[derive(Debug, Inspector, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[derive(
+    Debug, Notate, Inspector, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+)]
+#[notate(color = "blue")]
 pub struct CaseExpr {
     pub source: Id<Expr>,
     pub branches: Vec<Id<CaseBranch>>,
@@ -968,38 +796,6 @@ impl CaseExpr {
 
     pub fn source(&self, tree: &impl TreeView) -> Expr {
         *self.source.get(tree)
-    }
-}
-
-impl<'a> Notate<'a> for NodePrinter<'a, CaseExpr> {
-    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
-        let CaseExpr { source, branches } = self.value;
-
-        let head = "Case".blue().display_in(arena);
-
-        let source = self.to_id(*source).notate(arena);
-        let branches = self.to_slice(branches).gather(arena).concat_in(arena);
-
-        let single = [
-            arena.notate(" source = "),
-            source.clone().flatten(arena),
-            arena.notate(", branches = "),
-            branches.clone().flatten(arena),
-        ]
-        .concat_in(arena);
-
-        let multi = [
-            arena.newline(),
-            arena.notate("source = "),
-            source.clone(),
-            arena.newline(),
-            arena.notate("branches = "),
-            branches,
-        ]
-        .concat_in(arena)
-        .indent(arena);
-
-        head.then(single.or(multi, arena), arena)
     }
 }
 

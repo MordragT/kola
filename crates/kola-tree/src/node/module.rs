@@ -42,6 +42,7 @@ module safe-stack = functor (s : Stack) => {
 
 #[derive(
     Debug,
+    Notate,
     Inspector,
     From,
     IntoIterator,
@@ -54,142 +55,13 @@ module safe-stack = functor (s : Stack) => {
     Serialize,
     Deserialize,
 )]
+#[notate(color = "green")]
 #[into_iterator(owned, ref)]
 pub struct Module(pub Vec<Id<Bind>>);
 
-impl<'a> Notate<'a> for NodePrinter<'a, Module> {
-    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
-        let head = "Module".green().display_in(arena);
-
-        let binds = self.to_slice(&self.value.0).gather(arena);
-
-        let single = binds.clone().concat_map(
-            |bind| arena.just(' ').then(bind.flatten(arena), arena),
-            arena,
-        );
-
-        let multi = binds
-            .concat_map(|bind| arena.newline().then(bind, arena), arena)
-            .indent(arena);
-
-        head.then(single.or(multi, arena), arena)
-    }
-}
-
-// pub struct ModulePathIter<'a, T: TreeView> {
-//     tree: &'a T,
-//     current: Option<ModulePath>,
-// }
-
-// impl<'a, T: TreeView> ModulePathIter<'a, T> {
-//     pub fn new(tree: &'a T, path: ModulePath) -> Self {
-//         Self {
-//             tree,
-//             current: Some(path),
-//         }
-//     }
-// }
-
-// impl<T: TreeView> Iterator for ModulePathIter<'_, T> {
-//     type Item = Id<ModuleName>;
-
-//     fn next(&mut self) -> Option<Self::Item> {
-//         match self.current {
-//             Some(ModulePath::Next(first, next)) => {
-//                 self.current = Some(*first.get(self.tree));
-//                 Some(next)
-//             }
-//             Some(ModulePath::First(name)) => {
-//                 self.current = None;
-//                 Some(name)
-//             }
-//             None => None,
-//         }
-//     }
-// }
-
-// #[derive(
-//     Debug, From, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
-// )]
-// pub enum ModulePath {
-//     Next(Id<Self>, Id<ModuleName>),
-//     First(Id<ModuleName>),
-// }
-
-// impl ModulePath {
-//     pub fn new_in(name: impl Into<ModuleName>, tree: &mut impl TreeView) -> Id<Self> {
-//         let name = tree.insert(name.into());
-//         tree.insert(ModulePath::First(name))
-//     }
-
-//     pub fn from_iter<T>(iter: impl IntoIterator<Item = ModuleName>, tree: &mut T) -> Id<Self>
-//     where
-//         T: TreeView,
-//     {
-//         let mut iter = iter.into_iter();
-//         let first = iter
-//             .next()
-//             .map(|name| tree.insert(name))
-//             .expect("ModulePath must have at least one name");
-
-//         let path = iter.fold(ModulePath::First(first), |path, name| {
-//             let next = tree.insert(name);
-//             ModulePath::Next(tree.insert(path), next)
-//         });
-
-//         tree.insert(path)
-//     }
-
-//     pub fn iter_rev<T>(self, tree: &T) -> ModulePathIter<'_, T>
-//     where
-//         T: TreeView,
-//     {
-//         ModulePathIter::new(tree, self)
-//     }
-
-//     pub fn get_from_back(self, index: usize, tree: &impl TreeView) -> Option<Id<ModuleName>> {
-//         self.iter_rev(tree).nth(index)
-//     }
-
-//     pub fn last(self, tree: &impl TreeView) -> Option<Id<ModuleName>> {
-//         self.iter_rev(tree).next()
-//     }
-
-//     pub fn len(self, tree: &impl TreeView) -> usize {
-//         self.iter_rev(tree).count()
-//     }
-// }
-
-// impl<'a> Notate<'a> for NodePrinter<'a, ModulePath> {
-//     fn notate(&self, arena: &'a Bump) -> Notation<'a> {
-//         match *self.value {
-//             ModulePath::Next(first, next) => {
-//                 let first = self.to(first).notate(arena);
-//                 let next = self.to(next).notate(arena);
-
-//                 let single = [first.clone(), arena.just(' '), next.clone()]
-//                     .concat_in(arena)
-//                     .flatten(arena);
-//                 let multi = [first, arena.newline(), next]
-//                     .concat_in(arena)
-//                     .indent(arena);
-
-//                 single.or(multi, arena)
-//             }
-//             ModulePath::First(name) => {
-//                 let head = "ModulePath".cyan().display_in(arena);
-//                 let name = self.to(name).notate(arena);
-
-//                 [head, arena.just(' '), name]
-//                     .concat_in(arena)
-//                     .flatten(arena)
-//             }
-//         }
-//     }
-// }
-
 #[derive(
     Debug,
+    Notate,
     Inspector,
     From,
     IntoIterator,
@@ -202,28 +74,13 @@ impl<'a> Notate<'a> for NodePrinter<'a, Module> {
     Serialize,
     Deserialize,
 )]
+#[notate(color = "cyan")]
 #[into_iterator(owned, ref)]
 pub struct ModulePath(pub Vec<Id<ModuleName>>);
 
 impl ModulePath {
     pub fn get(&self, index: usize, tree: &impl TreeView) -> ModuleName {
         *self.0[index].get(tree)
-    }
-}
-
-impl<'a> Notate<'a> for NodePrinter<'a, ModulePath> {
-    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
-        let head = "ModulePath".cyan().display_in(arena);
-
-        let path = self.to_slice(&self.value.0).gather(arena);
-
-        let single = path
-            .clone()
-            .concat_by(arena.just(' '), arena)
-            .flatten(arena);
-        let multi = path.concat_by(arena.newline(), arena).indent(arena);
-
-        head.then(single.or(multi, arena), arena)
     }
 }
 
@@ -488,10 +345,9 @@ pub struct ModuleTypeBind {
     pub ty: Id<ModuleType>,
 }
 
-// cannot infact contain another module type bind
-// only submodules can be defined
 #[derive(
     Debug,
+    Notate,
     Inspector,
     From,
     IntoIterator,
@@ -504,27 +360,9 @@ pub struct ModuleTypeBind {
     Serialize,
     Deserialize,
 )]
+#[notate(color = "green")]
 #[into_iterator(owned, ref)]
-pub struct ModuleType(pub Vec<Id<Spec>>); // TODO functor ?
-
-impl<'a> Notate<'a> for NodePrinter<'a, ModuleType> {
-    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
-        let head = "ModuleType".green().display_in(arena);
-
-        let specs = self.to_slice(&self.value.0).gather(arena);
-
-        let single = specs.clone().concat_map(
-            |spec| arena.just(' ').then(spec.flatten(arena), arena),
-            arena,
-        );
-
-        let multi = specs
-            .concat_map(|spec| arena.newline().then(spec, arena), arena)
-            .indent(arena);
-
-        head.then(single.or(multi, arena), arena)
-    }
-}
+pub struct ModuleType(pub Vec<Id<Spec>>);
 
 #[derive(
     Debug,

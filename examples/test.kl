@@ -67,6 +67,8 @@
         _ => 99,
 
 
+    #main = { a = 10 },
+
     #type Person = forall a . { name : Str | a },
 
 
