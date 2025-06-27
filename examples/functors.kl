@@ -1,0 +1,21 @@
+{
+    module type Randomize = {
+        rand : Num -> Num,
+    },
+
+    module rand_a = {
+        rand = fn x => x + 1,
+    },
+
+    module rand_b = {
+        rand = fn x => x * 2,
+    },
+
+    module combined_rand = functor a : Randomize => functor b : Randomize => {
+        rand = fn x => (a::rand (b::rand x)),
+    },
+
+    module rand_ab = ((combined_rand rand_a) rand_b),
+
+    main = let x = 10 in (rand_ab::rand x),
+}

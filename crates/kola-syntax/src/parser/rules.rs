@@ -72,6 +72,13 @@ CallExpr := '(' Callable Expr ')'
 
 // TODO case related errors
 
+pub fn module_type_name_parser<'t>() -> impl KolaParser<'t, Id<node::ModuleTypeName>> + Clone {
+    upper_symbol()
+        .map(node::ModuleTypeName::new)
+        .to_node()
+        .boxed()
+}
+
 pub fn module_name_parser<'t>() -> impl KolaParser<'t, Id<node::ModuleName>> + Clone {
     lower_symbol().map(node::ModuleName::new).to_node().boxed()
 }
@@ -91,19 +98,85 @@ pub fn upper_value_name_parser<'t>() -> impl KolaParser<'t, Id<node::ValueName>>
 pub fn module_parser<'t>() -> impl KolaParser<'t, Id<node::Module>> + Clone {
     let module_type = module_type_parser();
 
+    let module_sig = module_type
+        .clone()
+        .to_module_sig()
+        .foldl_with(
+            ctrl(CtrlT::ARROW)
+                .ignore_then(module_type.clone())
+                .repeated(),
+            |output, input, e| {
+                let span = e.span();
+                let tree: &mut State = e.state();
+
+                let functor = node::FunctorType { input, output };
+                tree.insert_as::<node::ModuleSig, _>(functor, span)
+            },
+        )
+        .boxed();
+
     recursive(|module| {
-        let module_import = kw(KwT::IMPORT)
-            .ignore_then(module_name_parser())
-            .map_to_node(node::ModuleImport)
-            .to_module_expr();
+        let module_expr = recursive(|module_expr| {
+            let module_import = kw(KwT::IMPORT)
+                .ignore_then(module_name_parser())
+                .map_to_node(node::ModuleImport)
+                .to_module_expr()
+                .labelled("ModuleImport")
+                .as_context()
+                .boxed();
 
-        let module_path = module_name_parser()
-            .separated_by(ctrl(CtrlT::DOUBLE_COLON))
-            .collect()
-            .map_to_node(node::ModulePath)
-            .to_module_expr();
+            let module_path = module_name_parser()
+                .separated_by(ctrl(CtrlT::DOUBLE_COLON))
+                .collect()
+                .map_to_node(node::ModulePath)
+                .to_module_expr()
+                .labelled("ModulePath")
+                .as_context()
+                .boxed();
 
-        let module_expr = choice((module.clone().to_module_expr(), module_import, module_path));
+            let functor = group((
+                kw(KwT::FUNCTOR).ignore_then(module_name_parser()),
+                ctrl(CtrlT::COLON).ignore_then(module_type.clone()),
+                ctrl(CtrlT::DOUBLE_ARROW).ignore_then(module_expr.clone()),
+            ))
+            .map_to_node(|(param, param_ty, body)| node::Functor {
+                param,
+                param_ty,
+                body,
+            })
+            .to_module_expr()
+            .labelled("Functor")
+            .as_context()
+            .boxed();
+
+            let functor_app = recursive(|functor_app| {
+                let callable = choice((functor_app.clone(), functor.clone(), module_path.clone()));
+                let arg = choice((
+                    functor_app.clone(),
+                    module_path.clone(),
+                    module_import.clone(),
+                )); // Disallow functor's itsself as argument
+
+                nested_parser(
+                    callable
+                        .then(arg)
+                        .map_to_node(|(func, arg)| node::FunctorApp { func, arg })
+                        .to_module_expr(),
+                    Delim::Paren,
+                    |_span| node::ModuleError,
+                )
+                .boxed()
+            });
+
+            choice((
+                functor,
+                functor_app,
+                module.clone().to_module_expr(),
+                module_import,
+                module_path,
+            ))
+            .boxed()
+        });
 
         let vis = kw(KwT::EXPORT)
             .to(node::Vis::Export)
@@ -121,10 +194,10 @@ pub fn module_parser<'t>() -> impl KolaParser<'t, Id<node::Module>> + Clone {
             )
             .then_ignore(op(OpT::ASSIGN))
             .then(expr_parser())
-            .map_to_node(|(((vis, name), ty), value)| node::ValueBind {
+            .map_to_node(|(((vis, name), ty_scheme), value)| node::ValueBind {
                 vis,
                 name,
-                ty,
+                ty_scheme,
                 value,
             })
             .to_bind();
@@ -136,20 +209,20 @@ pub fn module_parser<'t>() -> impl KolaParser<'t, Id<node::Module>> + Clone {
         let module_bind = vis
             .then_ignore(kw(KwT::MODULE))
             .then(module_name_parser())
-            .then(ctrl(CtrlT::COLON).ignore_then(module_type.clone()).or_not())
+            .then(ctrl(CtrlT::COLON).ignore_then(module_sig.clone()).or_not())
             .then_ignore(op(OpT::ASSIGN))
             .then(module_expr)
-            .map_to_node(|(((vis, name), ty), value)| node::ModuleBind {
+            .map_to_node(|(((vis, name), sig), value)| node::ModuleBind {
                 vis,
                 name,
-                ty,
+                sig,
                 value,
             })
             .to_bind();
 
         let module_type_bind = kw(KwT::MODULE)
             .ignore_then(kw(KwT::TYPE))
-            .ignore_then(module_name_parser())
+            .ignore_then(module_type_name_parser())
             .then_ignore(op(OpT::ASSIGN))
             .then(module_type)
             .map_to_node(|(name, ty)| node::ModuleTypeBind { name, ty })
@@ -187,12 +260,53 @@ pub fn module_type_parser<'t>() -> impl KolaParser<'t, Id<node::ModuleType>> + C
 
         let spec = choice((value_spec, type_bind, module_spec)).boxed();
 
-        spec.separated_by(ctrl(CtrlT::COMMA))
+        let concrete = spec
+            .separated_by(ctrl(CtrlT::COMMA))
             .allow_trailing()
             .collect()
-            .map_to_node(node::ModuleType)
+            .map_to_node(node::ConcreteModuleType)
             .delimited_by(open_delim(OpenT::BRACE), close_delim(CloseT::BRACE))
-            .boxed()
+            .to_module_type();
+
+        let qualified = module_name_parser()
+            .then_ignore(ctrl(CtrlT::DOUBLE_COLON))
+            .repeated()
+            .at_least(1)
+            .collect()
+            .map_to_node(node::ModulePath)
+            .or_not()
+            .then(module_type_name_parser())
+            .map_to_node(|(path, ty)| node::QualifiedModuleType { path, ty })
+            .to_module_type();
+
+        // let qualified = module_name_parser()
+        //     .spanned()
+        //     .separated_by(ctrl(CtrlT::DOUBLE_COLON))
+        //     .at_least(1)
+        //     .collect::<Vec<_>>()
+        //     .map_with(|mut path, e| {
+        //         let tree: &mut State = e.state();
+
+        //         let (ty, _) = path.pop().unwrap();
+
+        //         let path = if !path.is_empty() {
+        //             let module_loc = Loc::covering_located(&path).unwrap(); // Safety: Path is not empty
+        //             let module_path = path
+        //                 .into_iter()
+        //                 .map(|(name, _span)| name)
+        //                 .collect::<Vec<_>>();
+
+        //             Some(tree.insert(node::ModulePath(module_path), module_loc))
+        //         } else {
+        //             None
+        //         };
+
+        //         node::QualifiedModuleType { path, ty }
+        //     })
+        //     .to_node()
+        //     .to_module_type();
+
+        concrete.or(qualified).boxed()
     })
 }
 
@@ -445,10 +559,10 @@ pub fn expr_parser<'t>() -> impl KolaParser<'t, Id<node::Expr>> + Clone {
                 .map_to_node(node::FieldPath)
                 .or_not(),
         ))
-        .map_with(|(mut source, mut path, fields), e| {
+        .map_with(|(mut source, mut path, field_path), e| {
             let tree: &mut State = e.state();
 
-            let path = if path.is_empty() {
+            let module_path = if path.is_empty() {
                 None
             } else {
                 // For a::b::c.field1.field2:
@@ -473,9 +587,9 @@ pub fn expr_parser<'t>() -> impl KolaParser<'t, Id<node::Expr>> + Clone {
             let source = tree.insert(node::ValueName::new(source.0), source.1);
 
             node::QualifiedExpr {
-                path,
+                module_path,
                 source,
-                fields,
+                field_path,
             }
         })
         .to_node()
@@ -546,11 +660,7 @@ pub fn expr_parser<'t>() -> impl KolaParser<'t, Id<node::Expr>> + Clone {
             ctrl(CtrlT::COLON).ignore_then(type_parser()).or_not(),
             op(OpT::ASSIGN).ignore_then(expr.clone()),
         ))
-        .map(|(field, type_, value)| node::RecordField {
-            field,
-            type_,
-            value,
-        })
+        .map(|(label, ty, value)| node::RecordField { label, ty, value })
         .to_node();
 
         let instantiate = field
@@ -624,31 +734,32 @@ pub fn expr_parser<'t>() -> impl KolaParser<'t, Id<node::Expr>> + Clone {
                 let tree: &mut State = e.state();
 
                 let expr = match op {
-                    RecordOp::Extend(select, value_type, value) => tree.insert_as::<node::Expr, _>(
-                        node::RecordExtendExpr {
-                            source,
-                            source_type,
-                            select,
-                            value,
-                            value_type,
-                        },
-                        span,
-                    ),
-                    RecordOp::Restrict(select, value_type) => tree.insert_as::<node::Expr, _>(
+                    RecordOp::Extend(field_path, value_type, value) => tree
+                        .insert_as::<node::Expr, _>(
+                            node::RecordExtendExpr {
+                                source,
+                                source_type,
+                                field_path,
+                                value,
+                                value_type,
+                            },
+                            span,
+                        ),
+                    RecordOp::Restrict(field_path, value_type) => tree.insert_as::<node::Expr, _>(
                         node::RecordRestrictExpr {
                             source,
                             source_type,
-                            select,
+                            field_path,
                             value_type,
                         },
                         span,
                     ),
-                    RecordOp::Update(select, value_type, op, value) => tree
+                    RecordOp::Update(field_path, value_type, op, value) => tree
                         .insert_as::<node::Expr, _>(
                             node::RecordUpdateExpr {
                                 source,
                                 source_type,
-                                select,
+                                field_path,
                                 op,
                                 value,
                                 value_type,
@@ -675,11 +786,11 @@ pub fn expr_parser<'t>() -> impl KolaParser<'t, Id<node::Expr>> + Clone {
             op(OpT::ASSIGN).ignore_then(expr.clone()),
             kw(KwT::IN).ignore_then(expr.clone()),
         ))
-        .map_to_node(|(name, value_type, value, inside)| node::LetExpr {
+        .map_to_node(|(name, value_type, value, body)| node::LetExpr {
             name,
             value_type,
             value,
-            inside,
+            body,
         })
         .to_expr()
         .labelled("LetExpr")
@@ -692,11 +803,7 @@ pub fn expr_parser<'t>() -> impl KolaParser<'t, Id<node::Expr>> + Clone {
             .then(expr.clone())
             .then_ignore(kw(KwT::ELSE))
             .then(expr.clone())
-            .map_to_node(|((predicate, then), or)| node::IfExpr {
-                predicate,
-                then,
-                or,
-            })
+            .map_to_node(|((pred, then), else_)| node::IfExpr { pred, then, else_ })
             .to_expr()
             .labelled("IfExpr")
             .as_context()
@@ -705,7 +812,7 @@ pub fn expr_parser<'t>() -> impl KolaParser<'t, Id<node::Expr>> + Clone {
         let branch = pat_parser()
             .then_ignore(ctrl(CtrlT::DOUBLE_ARROW))
             .then(expr.clone())
-            .map(|(pat, matches)| node::CaseBranch { pat, matches })
+            .map(|(pat, body)| node::CaseBranch { pat, body })
             .to_node();
         let branches = branch
             .separated_by(ctrl(CtrlT::COMMA))
@@ -797,10 +904,10 @@ pub fn expr_parser<'t>() -> impl KolaParser<'t, Id<node::Expr>> + Clone {
         .to_node();
         let product = unary
             .clone()
-            .foldl_with(product_op.then(unary).repeated(), |left, (op, right), e| {
+            .foldl_with(product_op.then(unary).repeated(), |lhs, (op, rhs), e| {
                 let span = e.span();
                 let tree: &mut State = e.state();
-                tree.insert_as::<node::Expr, _>(node::BinaryExpr { op, left, right }, span)
+                tree.insert_as::<node::Expr, _>(node::BinaryExpr { op, lhs, rhs }, span)
             })
             .boxed();
 
@@ -810,10 +917,10 @@ pub fn expr_parser<'t>() -> impl KolaParser<'t, Id<node::Expr>> + Clone {
             .to_node();
         let sum = product
             .clone()
-            .foldl_with(sum_op.then(product).repeated(), |left, (op, right), e| {
+            .foldl_with(sum_op.then(product).repeated(), |lhs, (op, rhs), e| {
                 let span = e.span();
                 let tree: &mut State = e.state();
-                tree.insert_as::<node::Expr, _>(node::BinaryExpr { op, left, right }, span)
+                tree.insert_as::<node::Expr, _>(node::BinaryExpr { op, lhs, rhs }, span)
             })
             .boxed();
 
@@ -828,14 +935,11 @@ pub fn expr_parser<'t>() -> impl KolaParser<'t, Id<node::Expr>> + Clone {
         .to_node();
         let comparison = sum
             .clone()
-            .foldl_with(
-                comparison_op.then(sum).repeated(),
-                |left, (op, right), e| {
-                    let span = e.span();
-                    let tree: &mut State = e.state();
-                    tree.insert_as::<node::Expr, _>(node::BinaryExpr { op, left, right }, span)
-                },
-            )
+            .foldl_with(comparison_op.then(sum).repeated(), |lhs, (op, rhs), e| {
+                let span = e.span();
+                let tree: &mut State = e.state();
+                tree.insert_as::<node::Expr, _>(node::BinaryExpr { op, lhs, rhs }, span)
+            })
             .boxed();
 
         let logical_op = choice((
@@ -848,10 +952,10 @@ pub fn expr_parser<'t>() -> impl KolaParser<'t, Id<node::Expr>> + Clone {
             .clone()
             .foldl_with(
                 logical_op.then(comparison).repeated(),
-                |left, (op, right), e| {
+                |lhs, (op, rhs), e| {
                     let span = e.span();
                     let tree: &mut State = e.state();
-                    tree.insert_as::<node::Expr, _>(node::BinaryExpr { op, left, right }, span)
+                    tree.insert_as::<node::Expr, _>(node::BinaryExpr { op, lhs, rhs }, span)
                 },
             )
             .boxed();
@@ -886,7 +990,7 @@ pub fn expr_parser<'t>() -> impl KolaParser<'t, Id<node::Expr>> + Clone {
 /// ```
 pub fn type_parser<'t>() -> impl KolaParser<'t, Id<node::Type>> + Clone {
     recursive(|ty| {
-        let path = symbol()
+        let qualified = symbol()
             .spanned()
             .separated_by(ctrl(CtrlT::DOUBLE_COLON))
             .at_least(1)
@@ -955,7 +1059,7 @@ pub fn type_parser<'t>() -> impl KolaParser<'t, Id<node::Type>> + Clone {
         );
 
         let atom = choice((
-            path,
+            qualified,
             record,
             variant,
             nested_parser(ty.clone(), Delim::Paren, |_| node::TypeError),
@@ -1027,7 +1131,7 @@ pub fn type_bind_parser<'t>() -> impl KolaParser<'t, Id<node::TypeBind>> + Clone
         .ignore_then(type_name_parser())
         .then_ignore(op(OpT::ASSIGN))
         .then(type_scheme_parser())
-        .map_to_node(|(name, ty)| node::TypeBind { name, ty })
+        .map_to_node(|(name, ty_scheme)| node::TypeBind { name, ty_scheme })
         .boxed()
 }
 
@@ -1128,7 +1232,12 @@ mod tests {
 
         let record = inspector.to_record();
         record.fields_at(0).pat().to_bind().inner().has_name("x");
-        record.fields_at(1).pat().to_record().fields_at(0).has_none_pat();
+        record
+            .fields_at(1)
+            .pat()
+            .to_record()
+            .fields_at(0)
+            .has_none_pat();
         record.fields_at(2).pat().to_any();
         record.fields_at(3).has_none_pat();
     }
@@ -1148,10 +1257,19 @@ mod tests {
         let case = inspector.to_case();
         case.source().to_qualified().source().has_name("x");
         case.has_branches_count(2)
-            .branches_at(0).pat().to_literal().assert_eq(&node::LiteralPat::Num(1.0));
-        case.branches_at(0).matches().to_literal().assert_eq(&node::LiteralExpr::Bool(true));
+            .branches_at(0)
+            .pat()
+            .to_literal()
+            .assert_eq(&node::LiteralPat::Num(1.0));
+        case.branches_at(0)
+            .body()
+            .to_literal()
+            .assert_eq(&node::LiteralExpr::Bool(true));
         case.branches_at(1).pat().to_any();
-        case.branches_at(1).matches().to_literal().assert_eq(&node::LiteralExpr::Bool(false));
+        case.branches_at(1)
+            .body()
+            .to_literal()
+            .assert_eq(&node::LiteralExpr::Bool(false));
     }
 
     #[test]
@@ -1188,81 +1306,241 @@ mod tests {
         case.has_branches_count(16);
 
         // Test literal patterns
-        case.branches_at(0).pat().to_literal().assert_eq(&node::LiteralPat::Unit);
-        case.branches_at(0).matches().to_literal().assert_eq(&node::LiteralExpr::Str(interner["unit"]));
-        case.branches_at(1).pat().to_literal().assert_eq(&node::LiteralPat::Bool(true));
-        case.branches_at(1).matches().to_literal().assert_eq(&node::LiteralExpr::Str(interner["bool true"]));
-        case.branches_at(2).pat().to_literal().assert_eq(&node::LiteralPat::Num(42.0));
-        case.branches_at(2).matches().to_literal().assert_eq(&node::LiteralExpr::Str(interner["number"]));
-        case.branches_at(3).pat().to_literal().assert_eq(&node::LiteralPat::Char('x'));
-        case.branches_at(3).matches().to_literal().assert_eq(&node::LiteralExpr::Str(interner["char"]));
-        case.branches_at(4).pat().to_literal().assert_eq(&node::LiteralPat::Str(interner["hello"]));
-        case.branches_at(4).matches().to_literal().assert_eq(&node::LiteralExpr::Str(interner["string"]));
+        case.branches_at(0)
+            .pat()
+            .to_literal()
+            .assert_eq(&node::LiteralPat::Unit);
+        case.branches_at(0)
+            .body()
+            .to_literal()
+            .assert_eq(&node::LiteralExpr::Str(interner["unit"]));
+        case.branches_at(1)
+            .pat()
+            .to_literal()
+            .assert_eq(&node::LiteralPat::Bool(true));
+        case.branches_at(1)
+            .body()
+            .to_literal()
+            .assert_eq(&node::LiteralExpr::Str(interner["bool true"]));
+        case.branches_at(2)
+            .pat()
+            .to_literal()
+            .assert_eq(&node::LiteralPat::Num(42.0));
+        case.branches_at(2)
+            .body()
+            .to_literal()
+            .assert_eq(&node::LiteralExpr::Str(interner["number"]));
+        case.branches_at(3)
+            .pat()
+            .to_literal()
+            .assert_eq(&node::LiteralPat::Char('x'));
+        case.branches_at(3)
+            .body()
+            .to_literal()
+            .assert_eq(&node::LiteralExpr::Str(interner["char"]));
+        case.branches_at(4)
+            .pat()
+            .to_literal()
+            .assert_eq(&node::LiteralPat::Str(interner["hello"]));
+        case.branches_at(4)
+            .body()
+            .to_literal()
+            .assert_eq(&node::LiteralExpr::Str(interner["string"]));
 
         // Test bind and wildcard patterns
         case.branches_at(5).pat().to_bind().inner().has_name("x");
-        case.branches_at(5).matches().to_literal().assert_eq(&node::LiteralExpr::Str(interner["bind pattern"]));
+        case.branches_at(5)
+            .body()
+            .to_literal()
+            .assert_eq(&node::LiteralExpr::Str(interner["bind pattern"]));
         case.branches_at(6).pat().to_any();
-        case.branches_at(6).matches().to_literal().assert_eq(&node::LiteralExpr::Str(interner["wildcard"]));
+        case.branches_at(6)
+            .body()
+            .to_literal()
+            .assert_eq(&node::LiteralExpr::Str(interner["wildcard"]));
 
         // Test list patterns
-        case.branches_at(7).pat().to_list()
+        case.branches_at(7)
+            .pat()
+            .to_list()
             .has_inner_count(3)
-            .inner_at(0).to_pat().to_bind().inner().has_name("a");
-        case.branches_at(7).pat().to_list()
-            .inner_at(1).to_pat().to_bind().inner().has_name("b");
-        case.branches_at(7).pat().to_list()
-            .inner_at(2).to_some_spread().has_name("rest");
-        case.branches_at(7).matches().to_literal().assert_eq(&node::LiteralExpr::Str(interner["list with spread"]));
+            .inner_at(0)
+            .to_pat()
+            .to_bind()
+            .inner()
+            .has_name("a");
+        case.branches_at(7)
+            .pat()
+            .to_list()
+            .inner_at(1)
+            .to_pat()
+            .to_bind()
+            .inner()
+            .has_name("b");
+        case.branches_at(7)
+            .pat()
+            .to_list()
+            .inner_at(2)
+            .to_some_spread()
+            .has_name("rest");
+        case.branches_at(7)
+            .body()
+            .to_literal()
+            .assert_eq(&node::LiteralExpr::Str(interner["list with spread"]));
 
-        case.branches_at(8).pat().to_list()
+        case.branches_at(8)
+            .pat()
+            .to_list()
             .has_inner_count(2)
-            .inner_at(0).to_pat().to_bind().inner().has_name("head");
-        case.branches_at(8).pat().to_list().inner_at(1).is_none_spread();
-        case.branches_at(8).matches().to_literal().assert_eq(&node::LiteralExpr::Str(interner["list anonymous spread"]));
+            .inner_at(0)
+            .to_pat()
+            .to_bind()
+            .inner()
+            .has_name("head");
+        case.branches_at(8)
+            .pat()
+            .to_list()
+            .inner_at(1)
+            .is_none_spread();
+        case.branches_at(8)
+            .body()
+            .to_literal()
+            .assert_eq(&node::LiteralExpr::Str(interner["list anonymous spread"]));
 
         case.branches_at(9).pat().to_list().has_inner_count(0);
-        case.branches_at(9).matches().to_literal().assert_eq(&node::LiteralExpr::Str(interner["empty list"]));
+        case.branches_at(9)
+            .body()
+            .to_literal()
+            .assert_eq(&node::LiteralExpr::Str(interner["empty list"]));
 
         // Test record patterns
-        case.branches_at(10).pat().to_record()
+        case.branches_at(10)
+            .pat()
+            .to_record()
             .has_fields_count(2)
-            .fields_at(0).field().has_name("name");
-        case.branches_at(10).pat().to_record().fields_at(0).has_none_pat();
-        case.branches_at(10).pat().to_record().fields_at(1).field().has_name("age");
-        case.branches_at(10).pat().to_record().fields_at(1).pat().to_bind().inner().has_name("years");
+            .fields_at(0)
+            .field()
+            .has_name("name");
+        case.branches_at(10)
+            .pat()
+            .to_record()
+            .fields_at(0)
+            .has_none_pat();
+        case.branches_at(10)
+            .pat()
+            .to_record()
+            .fields_at(1)
+            .field()
+            .has_name("age");
+        case.branches_at(10)
+            .pat()
+            .to_record()
+            .fields_at(1)
+            .pat()
+            .to_bind()
+            .inner()
+            .has_name("years");
         assert!(case.branches_at(10).pat().to_record().get().polymorph);
-        case.branches_at(10).matches().to_literal().assert_eq(&node::LiteralExpr::Str(interner["record with spread"]));
+        case.branches_at(10)
+            .body()
+            .to_literal()
+            .assert_eq(&node::LiteralExpr::Str(interner["record with spread"]));
 
-        case.branches_at(11).pat().to_record()
+        case.branches_at(11)
+            .pat()
+            .to_record()
             .has_fields_count(2)
-            .fields_at(0).field().has_name("x");
-        case.branches_at(11).pat().to_record().fields_at(1).field().has_name("y");
-        case.branches_at(11).matches().to_literal().assert_eq(&node::LiteralExpr::Str(interner["simple record"]));
+            .fields_at(0)
+            .field()
+            .has_name("x");
+        case.branches_at(11)
+            .pat()
+            .to_record()
+            .fields_at(1)
+            .field()
+            .has_name("y");
+        case.branches_at(11)
+            .body()
+            .to_literal()
+            .assert_eq(&node::LiteralExpr::Str(interner["simple record"]));
 
         case.branches_at(12).pat().to_record().has_fields_count(0);
-        case.branches_at(12).matches().to_literal().assert_eq(&node::LiteralExpr::Str(interner["empty record"]));
+        case.branches_at(12)
+            .body()
+            .to_literal()
+            .assert_eq(&node::LiteralExpr::Str(interner["empty record"]));
 
         // Test variant patterns
-        case.branches_at(13).pat().to_variant()
+        case.branches_at(13)
+            .pat()
+            .to_variant()
             .has_inner_count(1)
-            .inner_at(0).tag().has_name("Some");
-        case.branches_at(13).pat().to_variant().inner_at(0).pat().to_bind().inner().has_name("value");
-        case.branches_at(13).matches().to_literal().assert_eq(&node::LiteralExpr::Str(interner["variant some"]));
+            .inner_at(0)
+            .tag()
+            .has_name("Some");
+        case.branches_at(13)
+            .pat()
+            .to_variant()
+            .inner_at(0)
+            .pat()
+            .to_bind()
+            .inner()
+            .has_name("value");
+        case.branches_at(13)
+            .body()
+            .to_literal()
+            .assert_eq(&node::LiteralExpr::Str(interner["variant some"]));
 
-        case.branches_at(14).pat().to_variant()
+        case.branches_at(14)
+            .pat()
+            .to_variant()
             .has_inner_count(1)
-            .inner_at(0).tag().has_name("None");
-        case.branches_at(14).pat().to_variant().inner_at(0).has_none_pat();
-        case.branches_at(14).matches().to_literal().assert_eq(&node::LiteralExpr::Str(interner["variant none"]));
+            .inner_at(0)
+            .tag()
+            .has_name("None");
+        case.branches_at(14)
+            .pat()
+            .to_variant()
+            .inner_at(0)
+            .has_none_pat();
+        case.branches_at(14)
+            .body()
+            .to_literal()
+            .assert_eq(&node::LiteralExpr::Str(interner["variant none"]));
 
-        case.branches_at(15).pat().to_variant()
+        case.branches_at(15)
+            .pat()
+            .to_variant()
             .has_inner_count(2)
-            .inner_at(0).tag().has_name("Ok");
-        case.branches_at(15).pat().to_variant().inner_at(0).pat().to_bind().inner().has_name("result");
-        case.branches_at(15).pat().to_variant().inner_at(1).tag().has_name("Err");
-        case.branches_at(15).pat().to_variant().inner_at(1).pat().to_bind().inner().has_name("error");
-        case.branches_at(15).matches().to_literal().assert_eq(&node::LiteralExpr::Str(interner["multiple variants"]));
+            .inner_at(0)
+            .tag()
+            .has_name("Ok");
+        case.branches_at(15)
+            .pat()
+            .to_variant()
+            .inner_at(0)
+            .pat()
+            .to_bind()
+            .inner()
+            .has_name("result");
+        case.branches_at(15)
+            .pat()
+            .to_variant()
+            .inner_at(1)
+            .tag()
+            .has_name("Err");
+        case.branches_at(15)
+            .pat()
+            .to_variant()
+            .inner_at(1)
+            .pat()
+            .to_bind()
+            .inner()
+            .has_name("error");
+        case.branches_at(15)
+            .body()
+            .to_literal()
+            .assert_eq(&node::LiteralExpr::Str(interner["multiple variants"]));
     }
 
     #[test]
@@ -1276,7 +1554,11 @@ mod tests {
 
         let lambda = inspector.to_lambda();
         lambda.param().has_name("name");
-        lambda.body().to_binary().op().assert_eq(&node::BinaryOp::Add);
+        lambda
+            .body()
+            .to_binary()
+            .op()
+            .assert_eq(&node::BinaryOp::Add);
     }
 
     #[test]
@@ -1291,16 +1573,20 @@ mod tests {
 
         let eq = inspector.to_binary();
         eq.op().assert_eq(&node::BinaryOp::Eq);
-        eq.right().to_literal().assert_eq(&node::LiteralExpr::Num(0.0));
+        eq.rhs()
+            .to_literal()
+            .assert_eq(&node::LiteralExpr::Num(0.0));
 
-        let sum = eq.left().to_binary();
+        let sum = eq.lhs().to_binary();
         sum.op().assert_eq(&node::BinaryOp::Add);
-        sum.right().to_literal().assert_eq(&node::LiteralExpr::Num(30.0));
+        sum.rhs()
+            .to_literal()
+            .assert_eq(&node::LiteralExpr::Num(30.0));
 
-        let sum2 = sum.left().to_binary();
+        let sum2 = sum.lhs().to_binary();
         sum2.op().assert_eq(&node::BinaryOp::Add);
-        sum2.left().to_binary().op().assert_eq(&node::BinaryOp::Mul);
-        sum2.right().to_binary().op().assert_eq(&node::BinaryOp::Div);
+        sum2.lhs().to_binary().op().assert_eq(&node::BinaryOp::Mul);
+        sum2.rhs().to_binary().op().assert_eq(&node::BinaryOp::Div);
     }
 
     #[test]
@@ -1313,9 +1599,12 @@ mod tests {
         let inspector = NodeInspector::new(node, &builder, &interner);
 
         let if_expr = inspector.to_if();
-        if_expr.predicate().to_qualified().source().has_name("y");
+        if_expr.pred().to_qualified().source().has_name("y");
         if_expr.then().to_qualified().source().has_name("x");
-        if_expr.or().to_literal().assert_eq(&node::LiteralExpr::Num(0.0));
+        if_expr
+            .else_()
+            .to_literal()
+            .assert_eq(&node::LiteralExpr::Num(0.0));
     }
 
     #[test]
@@ -1328,10 +1617,10 @@ mod tests {
 
         let inspector = NodeInspector::new(node, &builder, &interner);
 
-        let path_expr = inspector.to_qualified();
-        path_expr.source().has_name("x");
-        path_expr.fields().inner_at(0).has_name("y");
-        path_expr.fields().inner_at(1).has_name("z");
+        let qualified_expr = inspector.to_qualified();
+        qualified_expr.source().has_name("x");
+        qualified_expr.field_path().inner_at(0).has_name("y");
+        qualified_expr.field_path().inner_at(1).has_name("z");
 
         // Test module path with field access
         let ParseResult { node, builder, .. } = try_parse_str_with(
@@ -1341,11 +1630,11 @@ mod tests {
         );
 
         let qualified_expr = NodeInspector::new(node, &builder, &interner).to_qualified();
-        qualified_expr.path().inner_at(0).has_name("mod1");
-        qualified_expr.path().inner_at(1).has_name("mod2");
+        qualified_expr.module_path().inner_at(0).has_name("mod1");
+        qualified_expr.module_path().inner_at(1).has_name("mod2");
         qualified_expr.source().has_name("value");
-        qualified_expr.fields().inner_at(0).has_name("field1");
-        qualified_expr.fields().inner_at(1).has_name("field2");
+        qualified_expr.field_path().inner_at(0).has_name("field1");
+        qualified_expr.field_path().inner_at(1).has_name("field2");
     }
 
     #[test]
@@ -1359,8 +1648,11 @@ mod tests {
 
         let extend = inspector.to_record_extend();
         extend.source().to_qualified().source().has_name("y");
-        extend.select().inner_at(0).has_name("x");
-        extend.value().to_literal().assert_eq(&node::LiteralExpr::Num(10.0));
+        extend.field_path().inner_at(0).has_name("x");
+        extend
+            .value()
+            .to_literal()
+            .assert_eq(&node::LiteralExpr::Num(10.0));
     }
 
     #[test]
@@ -1374,10 +1666,18 @@ mod tests {
 
         let record = inspector.to_record();
         record.has_inner_count(2);
-        record.inner_at(0).field().has_name("x");
-        record.inner_at(0).value().to_literal().assert_eq(&node::LiteralExpr::Num(10.0));
-        record.inner_at(1).field().has_name("y");
-        record.inner_at(1).value().to_literal().assert_eq(&node::LiteralExpr::Num(20.0));
+        record.inner_at(0).label().has_name("x");
+        record
+            .inner_at(0)
+            .value()
+            .to_literal()
+            .assert_eq(&node::LiteralExpr::Num(10.0));
+        record.inner_at(1).label().has_name("y");
+        record
+            .inner_at(1)
+            .value()
+            .to_literal()
+            .assert_eq(&node::LiteralExpr::Num(20.0));
     }
 
     #[test]
@@ -1439,8 +1739,10 @@ mod tests {
 
         let inspector = NodeInspector::new(node, &builder, &interner);
 
-        inspector.has_vars_count(2)
-            .vars_at(0).inspect(|name, tree| {
+        inspector
+            .has_vars_count(2)
+            .vars_at(0)
+            .inspect(|name, tree| {
                 assert_eq!(interner.get(name.get(tree).0).unwrap(), "a");
             });
         inspector.vars_at(1).inspect(|name, tree| {
@@ -1452,8 +1754,22 @@ mod tests {
         record.fields_at(0).name().has_name("left");
         record.fields_at(0).ty().to_qualified().ty().has_name("a");
         record.fields_at(1).name().has_name("right");
-        record.fields_at(1).ty().to_func().input().to_qualified().ty().has_name("Num");
-        record.fields_at(1).ty().to_func().output().to_qualified().ty().has_name("b");
+        record
+            .fields_at(1)
+            .ty()
+            .to_func()
+            .input()
+            .to_qualified()
+            .ty()
+            .has_name("Num");
+        record
+            .fields_at(1)
+            .ty()
+            .to_func()
+            .output()
+            .to_qualified()
+            .ty()
+            .has_name("b");
     }
 
     #[test]
@@ -1468,7 +1784,12 @@ mod tests {
 
         let inspector = NodeInspector::new(node, &builder, &interner);
         inspector.name().has_name("Person");
-        inspector.ty().has_vars_count(1).ty().to_record().has_fields_count(3);
+        inspector
+            .ty_scheme()
+            .has_vars_count(1)
+            .ty()
+            .to_record()
+            .has_fields_count(3);
     }
 
     #[test]
@@ -1483,12 +1804,15 @@ mod tests {
 
         let inspector = NodeInspector::new(node, &builder, &interner);
         inspector.name().has_name("Option");
-        inspector.ty().has_vars_count(2)
-            .vars_at(0).inspect(|name, tree| {
+        inspector
+            .ty_scheme()
+            .has_vars_count(2)
+            .vars_at(0)
+            .inspect(|name, tree| {
                 assert_eq!(interner.get(name.get(tree).0).unwrap(), "a");
             });
 
-        let variant = inspector.ty().ty().to_variant();
+        let variant = inspector.ty_scheme().ty().to_variant();
         variant.has_cases_count(2);
         variant.cases_at(0).name().has_name("Some");
         variant.cases_at(0).ty().to_qualified().ty().has_name("a");
@@ -1505,11 +1829,27 @@ mod tests {
             try_parse_str_with("{ x = 10, type T = Num }", module_parser(), &mut interner);
 
         let inspector = NodeInspector::new(node, &builder, &interner);
-        inspector.has_inner_count(2)
-            .inner_at(0).to_value().name().has_name("x");
-        inspector.inner_at(0).to_value().value().to_literal().assert_eq(&node::LiteralExpr::Num(10.0));
+        inspector
+            .has_inner_count(2)
+            .inner_at(0)
+            .to_value()
+            .name()
+            .has_name("x");
+        inspector
+            .inner_at(0)
+            .to_value()
+            .value()
+            .to_literal()
+            .assert_eq(&node::LiteralExpr::Num(10.0));
         inspector.inner_at(1).to_type().name().has_name("T");
-        inspector.inner_at(1).to_type().ty().ty().to_qualified().ty().has_name("Num");
+        inspector
+            .inner_at(1)
+            .to_type()
+            .ty_scheme()
+            .ty()
+            .to_qualified()
+            .ty()
+            .has_name("Num");
     }
 
     #[test]
@@ -1523,11 +1863,37 @@ mod tests {
         );
 
         let inspector = NodeInspector::new(node, &builder, &interner);
-        inspector.has_inner_count(2)
-            .inner_at(0).to_value().name().has_name("x");
-        inspector.inner_at(0).to_value().ty().ty().to_qualified().ty().has_name("Num");
-        inspector.inner_at(1).to_type_bind().name().has_name("T");
-        inspector.inner_at(1).to_type_bind().ty().ty().to_qualified().ty().has_name("Str");
+        inspector
+            .to_concrete()
+            .has_inner_count(2)
+            .inner_at(0)
+            .to_value()
+            .name()
+            .has_name("x");
+        inspector
+            .to_concrete()
+            .inner_at(0)
+            .to_value()
+            .ty()
+            .ty()
+            .to_qualified()
+            .ty()
+            .has_name("Num");
+        inspector
+            .to_concrete()
+            .inner_at(1)
+            .to_type_bind()
+            .name()
+            .has_name("T");
+        inspector
+            .to_concrete()
+            .inner_at(1)
+            .to_type_bind()
+            .ty_scheme()
+            .ty()
+            .to_qualified()
+            .ty()
+            .has_name("Str");
     }
 
     #[test]
@@ -1538,15 +1904,33 @@ mod tests {
             try_parse_str_with("{ module m = { x = 10 } }", module_parser(), &mut interner);
 
         let inspector = NodeInspector::new(node, &builder, &interner);
-        inspector.has_inner_count(1)
-            .inner_at(0).to_module().name().has_name("m");
-        inspector.inner_at(0).to_module().has_none_ty();
-        inspector.inner_at(0).to_module()
-            .value().to_module().has_inner_count(1)
-            .inner_at(0).to_value().name().has_name("x");
-        inspector.inner_at(0).to_module()
-            .value().to_module().inner_at(0).to_value()
-            .value().to_literal().assert_eq(&node::LiteralExpr::Num(10.0));
+        inspector
+            .has_inner_count(1)
+            .inner_at(0)
+            .to_module()
+            .name()
+            .has_name("m");
+        inspector.inner_at(0).to_module().has_none_sig();
+        inspector
+            .inner_at(0)
+            .to_module()
+            .value()
+            .to_module()
+            .has_inner_count(1)
+            .inner_at(0)
+            .to_value()
+            .name()
+            .has_name("x");
+        inspector
+            .inner_at(0)
+            .to_module()
+            .value()
+            .to_module()
+            .inner_at(0)
+            .to_value()
+            .value()
+            .to_literal()
+            .assert_eq(&node::LiteralExpr::Num(10.0));
     }
 
     #[test]
@@ -1560,22 +1944,59 @@ mod tests {
         );
 
         let inspector = NodeInspector::new(node, &builder, &interner);
-        inspector.has_inner_count(1)
-            .inner_at(0).to_module().name().has_name("m");
+        inspector
+            .has_inner_count(1)
+            .inner_at(0)
+            .to_module()
+            .name()
+            .has_name("m");
 
         // Check interface
-        inspector.inner_at(0).to_module().ty()
+        inspector
+            .inner_at(0)
+            .to_module()
+            .sig()
+            .to_module()
+            .to_concrete()
             .has_inner_count(1)
-            .inner_at(0).to_value().name().has_name("x");
-        inspector.inner_at(0).to_module().ty()
-            .inner_at(0).to_value().ty().ty().to_qualified().ty().has_name("Num");
+            .inner_at(0)
+            .to_value()
+            .name()
+            .has_name("x");
+        inspector
+            .inner_at(0)
+            .to_module()
+            .sig()
+            .to_module()
+            .to_concrete()
+            .inner_at(0)
+            .to_value()
+            .ty()
+            .ty()
+            .to_qualified()
+            .ty()
+            .has_name("Num");
 
         // Check implementation
-        inspector.inner_at(0).to_module()
-            .value().to_module().has_inner_count(1)
-            .inner_at(0).to_value().name().has_name("x");
-        inspector.inner_at(0).to_module()
-            .value().to_module().inner_at(0).to_value()
-            .value().to_literal().assert_eq(&node::LiteralExpr::Num(10.0));
+        inspector
+            .inner_at(0)
+            .to_module()
+            .value()
+            .to_module()
+            .has_inner_count(1)
+            .inner_at(0)
+            .to_value()
+            .name()
+            .has_name("x");
+        inspector
+            .inner_at(0)
+            .to_module()
+            .value()
+            .to_module()
+            .inner_at(0)
+            .to_value()
+            .value()
+            .to_literal()
+            .assert_eq(&node::LiteralExpr::Num(10.0));
     }
 }

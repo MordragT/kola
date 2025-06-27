@@ -11,6 +11,7 @@ use kola_utils::{
 use crate::{
     defs::ModuleDef,
     info::{ModuleGraph, ModuleInfos},
+    phase::ResolvedModule,
     refs::{ModuleBindRef, ModuleRef},
     scope::{ModuleScope, ModuleScopes},
     symbol::ModuleSym,
@@ -263,5 +264,7 @@ pub fn resolve_module_ref(
     let target = scope.info.sym;
 
     module_graph.add_dependency(source_sym, target);
-    scopes[&source_sym].resolved.insert_meta(*id, target);
+    scopes[&source_sym]
+        .resolved
+        .insert_meta(*id, ResolvedModule(target));
 }

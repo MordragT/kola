@@ -85,6 +85,22 @@ pub trait KolaParser<'t, T>: Parser<'t, ParseInput<'t>, T, Extra<'t>> + Sized {
     {
         self.map(node::Spec::from).to_node()
     }
+
+    #[inline]
+    fn to_module_type(self) -> impl Parser<'t, ParseInput<'t>, Id<node::ModuleType>, Extra<'t>>
+    where
+        node::ModuleType: From<T>,
+    {
+        self.map(node::ModuleType::from).to_node()
+    }
+
+    #[inline]
+    fn to_module_sig(self) -> impl Parser<'t, ParseInput<'t>, Id<node::ModuleSig>, Extra<'t>>
+    where
+        node::ModuleSig: From<T>,
+    {
+        self.map(node::ModuleSig::from).to_node()
+    }
 }
 
 impl<'t, T, P> KolaParser<'t, T> for P where P: Parser<'t, ParseInput<'t>, T, Extra<'t>> + Sized {}

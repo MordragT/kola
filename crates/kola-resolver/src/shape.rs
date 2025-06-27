@@ -1,11 +1,12 @@
 use std::ops::Index;
 
-use crate::symbol::{AnySym, ModuleSym, TypeSym, ValueSym};
+use crate::symbol::{AnySym, ModuleSym, ModuleTypeSym, TypeSym, ValueSym};
 use kola_collections::HashMap;
-use kola_tree::node::{AnyName, ModuleName, TypeName, ValueName};
+use kola_tree::node::{AnyName, ModuleName, ModuleTypeName, TypeName, ValueName};
 
 #[derive(Debug, Clone, Default)]
 pub struct Shape {
+    module_types: HashMap<ModuleTypeName, ModuleTypeSym>,
     modules: HashMap<ModuleName, ModuleSym>,
     types: HashMap<TypeName, TypeSym>,
     values: HashMap<ValueName, ValueSym>,
@@ -14,6 +15,14 @@ pub struct Shape {
 impl Shape {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    pub fn insert_module_type(
+        &mut self,
+        name: ModuleTypeName,
+        sym: ModuleTypeSym,
+    ) -> Option<ModuleTypeSym> {
+        self.module_types.insert(name, sym)
     }
 
     pub fn insert_module(&mut self, name: ModuleName, sym: ModuleSym) -> Option<ModuleSym> {
@@ -31,10 +40,16 @@ impl Shape {
     #[inline]
     pub fn contains_name(&self, name: AnyName) -> bool {
         match name {
+            AnyName::ModuleType(name) => self.module_types.contains_key(&name),
             AnyName::Module(name) => self.modules.contains_key(&name),
             AnyName::Value(name) => self.values.contains_key(&name),
             AnyName::Type(name) => self.types.contains_key(&name),
         }
+    }
+
+    #[inline]
+    pub fn get_module_type(&self, name: ModuleTypeName) -> Option<ModuleTypeSym> {
+        self.module_types.get(&name).copied()
     }
 
     #[inline]
@@ -55,10 +70,16 @@ impl Shape {
     #[inline]
     pub fn get(&self, name: impl Into<AnyName>) -> Option<AnySym> {
         match name.into() {
+            AnyName::ModuleType(name) => self.get_module_type(name).map(AnySym::ModuleType),
             AnyName::Module(name) => self.get_module(name).map(AnySym::Module),
             AnyName::Value(name) => self.get_value(name).map(AnySym::Value),
             AnyName::Type(name) => self.get_type(name).map(AnySym::Type),
         }
+    }
+
+    #[inline]
+    pub fn iter_module_types(&self) -> impl Iterator<Item = (ModuleTypeName, ModuleTypeSym)> {
+        self.module_types.iter().map(|(&name, &sym)| (name, sym))
     }
 
     #[inline]
@@ -84,6 +105,14 @@ impl Shape {
         HashMap<ValueName, ValueSym>,
     ) {
         (self.modules, self.types, self.values)
+    }
+}
+
+impl Index<ModuleTypeName> for Shape {
+    type Output = ModuleTypeSym;
+
+    fn index(&self, index: ModuleTypeName) -> &Self::Output {
+        &self.module_types[&index]
     }
 }
 

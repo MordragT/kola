@@ -5,10 +5,13 @@ use kola_collections::{HashMap, hash_map};
 use kola_span::Loc;
 use kola_tree::{
     id::Id,
-    node::{self, ModuleNamespace, Namespace, NamespaceKind, TypeNamespace, ValueNamespace, Vis},
+    node::{
+        self, ModuleNamespace, ModuleTypeNamespace, Namespace, NamespaceKind, TypeNamespace,
+        ValueNamespace, Vis,
+    },
 };
 
-use crate::symbol::{AnySym, ModuleSym, Sym, TypeSym, ValueSym};
+use crate::symbol::{AnySym, ModuleSym, ModuleTypeSym, Sym, TypeSym, ValueSym};
 
 pub struct Def<T> {
     pub loc: Loc,
@@ -90,12 +93,14 @@ impl<T> Hash for Def<T> {
     }
 }
 
+pub type ModuleTypeDef = Def<node::ModuleTypeBind>;
 pub type ModuleDef = Def<node::ModuleBind>;
 pub type TypeDef = Def<node::TypeBind>;
 pub type ValueDef = Def<node::ValueBind>;
 
 #[derive(Debug, From, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum AnyDef {
+    ModuleType(ModuleTypeDef),
     Module(ModuleDef),
     Type(TypeDef),
     Value(ValueDef),
@@ -104,6 +109,7 @@ pub enum AnyDef {
 impl AnyDef {
     pub const fn kind(&self) -> NamespaceKind {
         match self {
+            AnyDef::ModuleType(_) => NamespaceKind::ModuleType,
             AnyDef::Module(_) => NamespaceKind::Module,
             AnyDef::Type(_) => NamespaceKind::Type,
             AnyDef::Value(_) => NamespaceKind::Value,
@@ -112,6 +118,7 @@ impl AnyDef {
 
     pub const fn location(&self) -> Loc {
         match self {
+            AnyDef::ModuleType(info) => info.loc,
             AnyDef::Module(info) => info.loc,
             AnyDef::Type(info) => info.loc,
             AnyDef::Value(info) => info.loc,
@@ -120,6 +127,7 @@ impl AnyDef {
 
     pub const fn visibility(&self) -> Vis {
         match self {
+            AnyDef::ModuleType(info) => info.vis,
             AnyDef::Module(info) => info.vis,
             AnyDef::Type(info) => info.vis,
             AnyDef::Value(info) => info.vis,
@@ -199,26 +207,41 @@ impl<N: Namespace, T> Index<Sym<N>> for Defs<N, T> {
 
 #[derive(Debug, Clone, Default)]
 pub struct Definitions {
+    module_types: Defs<ModuleTypeNamespace, node::ModuleTypeBind>,
     modules: Defs<ModuleNamespace, node::ModuleBind>,
     types: Defs<TypeNamespace, node::TypeBind>,
     values: Defs<ValueNamespace, node::ValueBind>,
 }
 
 impl Definitions {
+    #[inline]
     pub fn new() -> Self {
         Self::default()
     }
 
+    #[inline]
+    pub fn insert_module_type(&mut self, sym: ModuleTypeSym, def: ModuleTypeDef) {
+        self.module_types.insert(sym, def);
+    }
+
+    #[inline]
     pub fn insert_module(&mut self, sym: ModuleSym, def: ModuleDef) {
         self.modules.insert(sym, def);
     }
 
+    #[inline]
     pub fn insert_type(&mut self, sym: TypeSym, def: TypeDef) {
         self.types.insert(sym, def);
     }
 
+    #[inline]
     pub fn insert_value(&mut self, sym: ValueSym, def: ValueDef) {
         self.values.insert(sym, def);
+    }
+
+    #[inline]
+    pub fn get_module_type(&self, sym: ModuleTypeSym) -> Option<ModuleTypeDef> {
+        self.module_types.get(sym)
     }
 
     #[inline]
@@ -239,10 +262,16 @@ impl Definitions {
     #[inline]
     pub fn get(&self, sym: impl Into<AnySym>) -> Option<AnyDef> {
         match sym.into() {
+            AnySym::ModuleType(sym) => self.get_module_type(sym).map(AnyDef::ModuleType),
             AnySym::Module(sym) => self.get_module(sym).map(AnyDef::Module),
             AnySym::Value(sym) => self.get_value(sym).map(AnyDef::Value),
             AnySym::Type(sym) => self.get_type(sym).map(AnyDef::Type),
         }
+    }
+
+    #[inline]
+    pub fn iter_module_types(&self) -> impl Iterator<Item = (ModuleTypeSym, ModuleTypeDef)> {
+        self.module_types.iter().map(|(&sym, &def)| (sym, def))
     }
 
     #[inline]
@@ -258,6 +287,14 @@ impl Definitions {
     #[inline]
     pub fn iter_values(&self) -> impl Iterator<Item = (ValueSym, ValueDef)> {
         self.values.iter().map(|(&sym, &def)| (sym, def))
+    }
+}
+
+impl Index<ModuleTypeSym> for Definitions {
+    type Output = ModuleTypeDef;
+
+    fn index(&self, index: ModuleTypeSym) -> &Self::Output {
+        &self.module_types[index]
     }
 }
 

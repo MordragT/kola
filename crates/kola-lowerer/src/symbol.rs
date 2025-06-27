@@ -2,7 +2,7 @@ use std::u32;
 
 use kola_ir::instr as ir;
 use kola_resolver::{
-    phase::{ResolvePhase, ResolvedNodes, ResolvedValue},
+    phase::{ResolvePhase, ResolvedModule, ResolvedNodes, ResolvedValue},
     symbol::{Sym, ValueSym},
 };
 use kola_tree::{
@@ -36,11 +36,16 @@ impl<'a> SymbolEnv<'a> {
         ir::Symbol(sym.id())
     }
 
-    pub fn atom_of(&self, id: TreeId<node::QualifiedExpr>) -> ir::Atom {
+    pub fn atom_of_expr(&self, id: TreeId<node::QualifiedExpr>) -> ir::Atom {
         match *self.resolved.meta(id) {
-            ResolvedValue::Defined(sym) => ir::Atom::Symbol(ir::Symbol(sym.id())),
+            ResolvedValue::Reference(sym) => ir::Atom::Symbol(ir::Symbol(sym.id())),
             ResolvedValue::Builtin(b) => ir::Atom::Builtin(b),
         }
+    }
+
+    pub fn atom_of_module(&self, id: TreeId<node::ModulePath>) -> ir::Atom {
+        let ResolvedModule(sym) = *self.resolved.meta(id);
+        ir::Atom::Symbol(ir::Symbol(sym.id()))
     }
 }
 

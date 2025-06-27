@@ -29,6 +29,7 @@ macro_rules! define_folder_trait {
 }
 
 define_folder_trait!(
+    ModuleTypeName,
     ModuleName,
     TypeName,
     ValueName,
@@ -88,14 +89,21 @@ define_folder_trait!(
     ModuleBind,
     ModuleTypeBind,
     Bind,
+    ModuleError,
     Module,
     ModulePath,
     ModuleImport,
+    Functor,
+    FunctorApp,
     ModuleExpr,
     ValueSpec,
     OpaqueTypeKind,
     OpaqueTypeSpec,
     ModuleSpec,
     Spec,
-    ModuleType
+    ConcreteModuleType,
+    QualifiedModuleType,
+    ModuleType,
+    FunctorType,
+    ModuleSig
 );

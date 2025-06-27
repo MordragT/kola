@@ -4,12 +4,12 @@ use kola_span::{Diagnostic, Loc};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum NameCollision {
-    ValueBind {
+    LocalBind {
         span: Loc,
         other: Loc,
         help: &'static str,
     },
-    ModuleBind {
+    ValueBind {
         span: Loc,
         other: Loc,
         help: &'static str,
@@ -19,7 +19,12 @@ pub enum NameCollision {
         other: Loc,
         help: &'static str,
     },
-    LocalBind {
+    ModuleBind {
+        span: Loc,
+        other: Loc,
+        help: &'static str,
+    },
+    ModuleTypeBind {
         span: Loc,
         other: Loc,
         help: &'static str,
@@ -27,32 +32,43 @@ pub enum NameCollision {
 }
 
 impl NameCollision {
+    #[inline]
+    pub const fn local_bind(span: Loc, other: Loc, help: &'static str) -> Self {
+        NameCollision::LocalBind { span, other, help }
+    }
+
+    #[inline]
     pub const fn value_bind(span: Loc, other: Loc, help: &'static str) -> Self {
         NameCollision::ValueBind { span, other, help }
     }
-    pub const fn module_bind(span: Loc, other: Loc, help: &'static str) -> Self {
-        NameCollision::ModuleBind { span, other, help }
-    }
+
+    #[inline]
     pub const fn type_bind(span: Loc, other: Loc, help: &'static str) -> Self {
         NameCollision::TypeBind { span, other, help }
     }
 
-    pub const fn local_bind(span: Loc, other: Loc, help: &'static str) -> Self {
-        NameCollision::LocalBind { span, other, help }
+    #[inline]
+    pub const fn module_bind(span: Loc, other: Loc, help: &'static str) -> Self {
+        NameCollision::ModuleBind { span, other, help }
+    }
+
+    #[inline]
+    pub const fn module_type_bind(span: Loc, other: Loc, help: &'static str) -> Self {
+        NameCollision::ModuleTypeBind { span, other, help }
     }
 }
 
 impl From<NameCollision> for Diagnostic {
     fn from(value: NameCollision) -> Self {
         match value {
+            NameCollision::LocalBind { span, other, help } => {
+                Diagnostic::error(span, "A local bind with the same name was defined before")
+                    .with_trace([("This local bind here".to_owned(), other)])
+                    .with_help(help)
+            }
             NameCollision::ValueBind { span, other, help } => {
                 Diagnostic::error(span, "A value bind with the same name was defined before")
                     .with_trace([("This value bind here".to_owned(), other)])
-                    .with_help(help)
-            }
-            NameCollision::ModuleBind { span, other, help } => {
-                Diagnostic::error(span, "A module bind with the same name was defined before")
-                    .with_trace([("This module bind here".to_owned(), other)])
                     .with_help(help)
             }
             NameCollision::TypeBind { span, other, help } => {
@@ -60,11 +76,17 @@ impl From<NameCollision> for Diagnostic {
                     .with_trace([("This type bind here".to_owned(), other)])
                     .with_help(help)
             }
-            NameCollision::LocalBind { span, other, help } => {
-                Diagnostic::error(span, "A local bind with the same name was defined before")
-                    .with_trace([("This local bind here".to_owned(), other)])
+            NameCollision::ModuleBind { span, other, help } => {
+                Diagnostic::error(span, "A module bind with the same name was defined before")
+                    .with_trace([("This module bind here".to_owned(), other)])
                     .with_help(help)
             }
+            NameCollision::ModuleTypeBind { span, other, help } => Diagnostic::error(
+                span,
+                "A module type bind with the same name was defined before",
+            )
+            .with_trace([("This module type bind here".to_owned(), other)])
+            .with_help(help),
         }
     }
 }

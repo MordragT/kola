@@ -1,7 +1,7 @@
 use std::{ops::ControlFlow, rc::Rc};
 
 use kola_builtins::{Builtin, BuiltinType};
-use kola_resolver::phase::ResolvedNodes;
+use kola_resolver::phase::{ResolvedModule, ResolvedNodes};
 use kola_span::{Diagnostic, IntoDiagnostic, Loc, Report};
 use kola_syntax::prelude::*;
 use kola_tree::prelude::*;
@@ -125,10 +125,10 @@ where
         id: Id<node::TypeBind>,
         tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
-        let node::TypeBind { ty, .. } = *id.get(tree);
+        let node::TypeBind { ty_scheme, .. } = *id.get(tree);
 
-        self.visit_type_scheme(ty, tree)?;
-        let poly_t = self.types.meta(ty).clone();
+        self.visit_type_scheme(ty_scheme, tree)?;
+        let poly_t = self.types.meta(ty_scheme).clone();
 
         self.insert_type(id, poly_t);
         ControlFlow::Continue(())
@@ -245,7 +245,7 @@ where
 
         let poly_t = if let Some(path) = path {
             // Module-qualified path
-            let module_sym = *self.resolved.meta(path);
+            let ResolvedModule(module_sym) = *self.resolved.meta(path);
 
             let type_sym = self.global_env[module_sym]
                 .get_type(type_name)
@@ -259,7 +259,7 @@ where
         } else if let Some(global_poly_t) = self
             .resolved
             .meta(id)
-            .into_defined()
+            .into_reference()
             .and_then(|sym| self.global_env.get_type(sym))
         {
             // Module-level type definition (like 'Person')
@@ -596,7 +596,9 @@ where
         id: Id<node::ValueBind>,
         tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
-        let node::ValueBind { ty, value, .. } = *id.get(tree);
+        let node::ValueBind {
+            ty_scheme, value, ..
+        } = *id.get(tree);
 
         let span = self.span(id);
 
@@ -606,7 +608,7 @@ where
 
         let value_t = self.types.meta(value).clone();
 
-        if let Some(annotation_ty) = ty {
+        if let Some(annotation_ty) = ty_scheme {
             self.visit_type_scheme(annotation_ty, tree)?;
             let expected_t = self.types.meta(annotation_ty).instantiate();
 
@@ -723,16 +725,16 @@ where
         let span = self.span(id);
 
         let node::QualifiedExpr {
-            path,
+            module_path,
             source,
-            fields,
+            field_path,
         } = *id.get(tree);
 
         let name = source.get(tree).0;
 
-        let base_t = if let Some(path) = path {
+        let base_t = if let Some(path) = module_path {
             // Case 1: Other module (real PolyType)
-            let module_sym = *self.resolved.meta(path);
+            let ResolvedModule(module_sym) = *self.resolved.meta(path);
 
             let value_sym = self.global_env[module_sym]
                 .get_value(name)
@@ -747,7 +749,7 @@ where
         } else if let Some(pt) = self
             .resolved
             .meta(id)
-            .into_defined()
+            .into_reference()
             .and_then(|sym| self.module_env.get(&sym))
         {
             // Case 3: Module local value-bind
@@ -762,13 +764,13 @@ where
             return ControlFlow::Break(Diagnostic::error(span, "Value not found in scope"));
         };
 
-        let Some(fields) = fields else {
+        let Some(field_path) = field_path else {
             // Case 4: Variable lookup
             self.insert_type(id, base_t.clone());
             return ControlFlow::Continue(());
         };
 
-        let result_t = fields.get(tree).iter().fold(base_t, |record_t, field| {
+        let result_t = field_path.get(tree).iter().fold(base_t, |record_t, field| {
             self.cons
                 .constrain_kind(Kind::Record, record_t.clone(), span);
 
@@ -814,19 +816,15 @@ where
     ) -> ControlFlow<Self::BreakValue> {
         self.walk_record_field(id, tree)?;
 
-        let node::RecordField {
-            field,
-            type_,
-            value,
-        } = *id.get(tree);
+        let node::RecordField { label, ty, value } = *id.get(tree);
 
-        let label = field.get(tree).0.clone();
+        let label = label.get(tree).0.clone();
         let value_t = self.types.meta(value).clone();
 
-        if let Some(type_) = type_ {
-            self.visit_type(type_, tree)?;
+        if let Some(ty) = ty {
+            self.visit_type(ty, tree)?;
 
-            let expected_t = match self.types.meta(type_).to_mono() {
+            let expected_t = match self.types.meta(ty).to_mono() {
                 Ok(t) => t,
                 Err(e) => return ControlFlow::Break(e.into_diagnostic(self.span(id))),
             };
@@ -893,7 +891,7 @@ where
         let node::RecordExtendExpr {
             source,
             source_type,
-            select,
+            field_path,
             value,
             value_type,
         } = *id.get(tree);
@@ -913,7 +911,7 @@ where
 
         // Split path into navigation fields and final extension field
         // Safety: `select` is always non-empty
-        let (field, fields) = select.get(tree).0.as_slice().split_last().unwrap();
+        let (field, fields) = field_path.get(tree).0.as_slice().split_last().unwrap();
 
         for field_id in fields {
             self.cons
@@ -991,7 +989,7 @@ where
         let node::RecordRestrictExpr {
             source,
             source_type,
-            select,
+            field_path,
             value_type,
         } = *id.get(tree);
 
@@ -1011,7 +1009,7 @@ where
 
         // Split path into navigation fields and final restriction field
         // Safety: `select` is always non-empty
-        let (field, fields) = select.get(tree).0.as_slice().split_last().unwrap();
+        let (field, fields) = field_path.get(tree).0.as_slice().split_last().unwrap();
 
         // Navigate through all fields except the last
         for field_id in fields {
@@ -1132,7 +1130,7 @@ where
         let node::RecordUpdateExpr {
             source,
             source_type,
-            select,
+            field_path,
             op,
             value,
             value_type,
@@ -1153,7 +1151,7 @@ where
 
         // Split path into navigation fields and final update field
         // Safety: `select` is always non-empty
-        let (field, fields) = select.get(tree).0.as_slice().split_last().unwrap();
+        let (field, fields) = field_path.get(tree).0.as_slice().split_last().unwrap();
 
         // Navigate through all fields except the last
         for field_id in fields {
@@ -1359,11 +1357,11 @@ where
 
         let span = self.span(id);
 
-        let node::BinaryExpr { left, op, right } = *id.get(tree);
+        let node::BinaryExpr { lhs, op, rhs } = *id.get(tree);
 
         let op_t = self.types.meta(op).clone();
-        let left_t = self.types.meta(left).clone();
-        let right_t = self.types.meta(right).clone();
+        let left_t = self.types.meta(lhs).clone();
+        let right_t = self.types.meta(rhs).clone();
 
         let result_t = MonoType::variable();
 
@@ -1393,7 +1391,7 @@ where
             name,
             value_type,
             value,
-            inside,
+            body,
         } = id.get(tree);
 
         let name = name.get(tree).0.clone();
@@ -1418,10 +1416,10 @@ where
         }
         self.local_env.enter(name, value_t);
 
-        self.visit_expr(inside, tree)?;
+        self.visit_expr(body, tree)?;
         self.local_env.exit(&name);
 
-        let result_t = self.types.meta(inside).clone();
+        let result_t = self.types.meta(body).clone();
         self.insert_type(id, result_t);
 
         ControlFlow::Continue(())
@@ -1466,7 +1464,7 @@ where
         let mut result_types = Vec::new();
 
         for &branch_id in branches {
-            let node::CaseBranch { pat, matches } = *branch_id.get(tree);
+            let node::CaseBranch { pat, body } = *branch_id.get(tree);
 
             // TODO: Implement proper pattern typing that:
             // - Type-checks pattern against source type
@@ -1487,12 +1485,12 @@ where
             pattern_typer.run::<T, node::Pat>(pat, tree);
 
             // Type branch expression with extended environment
-            self.visit_expr(matches, tree)?;
+            self.visit_expr(body, tree)?;
 
             // TODO use better mechanism to restore the env
             self.local_env = env;
 
-            let branch_t = self.types.meta(matches).clone();
+            let branch_t = self.types.meta(body).clone();
             result_types.push(branch_t);
         }
 
@@ -1533,20 +1531,16 @@ where
 
         let span = self.span(id);
 
-        let node::IfExpr {
-            predicate,
-            then,
-            or,
-        } = *id.get(tree);
+        let node::IfExpr { pred, then, else_ } = *id.get(tree);
 
-        let predicate_t = self.types.meta(predicate).clone();
+        let pred_t = self.types.meta(pred).clone();
 
-        self.cons.constrain(MonoType::BOOL, predicate_t, span);
+        self.cons.constrain(MonoType::BOOL, pred_t, span);
 
         let then_t = self.types.meta(then).clone();
-        let or_t = self.types.meta(or).clone();
+        let else_t = self.types.meta(else_).clone();
 
-        self.cons.constrain(then_t.clone(), or_t, span);
+        self.cons.constrain(then_t.clone(), else_t, span);
 
         self.insert_type(id, then_t);
         ControlFlow::Continue(())

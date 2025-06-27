@@ -1,15 +1,15 @@
 use indexmap::IndexMap;
-use kola_tree::node::{ModuleName, TypeName, ValueName};
+use kola_tree::node::{ModuleName, ModuleTypeName, TypeName, ValueName};
 use kola_utils::scope::LinearScope;
 
 use crate::{
-    defs::{AnyDef, Definitions, ModuleDef, TypeDef, ValueDef},
+    defs::{AnyDef, Definitions, ModuleDef, ModuleTypeDef, TypeDef, ValueDef},
     error::NameCollision,
-    info::{ModuleInfo, TypeGraph, ValueGraph},
+    info::{ModuleInfo, ModuleTypeGraph, TypeGraph, ValueGraph},
     phase::ResolvedNodes,
     refs::References,
     shape::Shape,
-    symbol::{ModuleSym, TypeSym, ValueSym},
+    symbol::{ModuleSym, ModuleTypeSym, TypeSym, ValueSym},
 };
 
 pub type ModuleScopes = IndexMap<ModuleSym, ModuleScope>;
@@ -28,6 +28,7 @@ pub struct ModuleScope {
     pub value_graph: ValueGraph,
     pub type_scope: TypeScope,
     pub type_graph: TypeGraph,
+    pub module_type_graph: ModuleTypeGraph,
 }
 
 impl ModuleScope {
@@ -42,7 +43,23 @@ impl ModuleScope {
             value_graph: ValueGraph::new(),
             type_scope: TypeScope::new(),
             type_graph: TypeGraph::new(),
+            module_type_graph: ModuleTypeGraph::new(),
         }
+    }
+
+    pub fn insert_module_type(
+        &mut self,
+        name: ModuleTypeName,
+        sym: ModuleTypeSym,
+        def: ModuleTypeDef,
+    ) -> Result<(), NameCollision> {
+        if let Some(bind) = self.shape.get(name).and_then(|sym| self.defs.get(sym)) {
+            return Err(name_collision(def.into(), bind));
+        }
+
+        self.shape.insert_module_type(name, sym);
+        self.defs.insert_module_type(sym, def);
+        Ok(())
     }
 
     pub fn insert_module(
@@ -95,6 +112,9 @@ const fn name_collision(this: AnyDef, other: AnyDef) -> NameCollision {
     use kola_tree::node::NamespaceKind::*;
 
     let help = match (this.kind(), other.kind()) {
+        (ModuleType, ModuleType) => {
+            "Module type bindings must have distinct names from Module type bindings."
+        }
         (Module, Module) => "Module bindings must have distinct names from Module bindings.",
         (Module, Value) => "Module bindings must have distinct names from Value bindings.",
         (Module, Type) => "Module bindings must have distinct names from Type bindings.",
@@ -104,9 +124,13 @@ const fn name_collision(this: AnyDef, other: AnyDef) -> NameCollision {
         (Type, Module) => "Type bindings must have distinct names from Module bindings.",
         (Type, Value) => "Type bindings must have distinct names from Value bindings.",
         (Type, Type) => "Type bindings must have distinct names from Type bindings.",
+        (_, _) => "TODO Bindings must have distinct names.",
     };
 
     match this {
+        AnyDef::ModuleType(this) => {
+            NameCollision::module_type_bind(this.loc, other.location(), help)
+        }
         AnyDef::Module(this) => NameCollision::module_bind(this.loc, other.location(), help),
         AnyDef::Value(this) => NameCollision::value_bind(this.loc, other.location(), help),
         AnyDef::Type(this) => NameCollision::type_bind(this.loc, other.location(), help),
@@ -138,6 +162,18 @@ impl ModuleScopeStack {
         if let Some(current) = self.todo.pop() {
             self.done.push(current);
         }
+    }
+
+    pub fn insert_module_type(
+        &mut self,
+        name: ModuleTypeName,
+        sym: ModuleTypeSym,
+        def: ModuleTypeDef,
+    ) -> Result<(), NameCollision> {
+        self.todo
+            .last_mut()
+            .unwrap()
+            .insert_module_type(name, sym, def)
     }
 
     pub fn insert_module(
@@ -334,6 +370,28 @@ impl ModuleScopeStack {
     #[inline]
     pub fn type_graph_mut(&mut self) -> &mut TypeGraph {
         self.try_type_graph_mut().unwrap()
+    }
+
+    #[inline]
+    pub fn try_module_type_graph(&self) -> Option<&ModuleTypeGraph> {
+        self.todo.last().map(|scope| &scope.module_type_graph)
+    }
+
+    #[inline]
+    pub fn module_type_graph(&self) -> &ModuleTypeGraph {
+        self.try_module_type_graph().unwrap()
+    }
+
+    #[inline]
+    pub fn try_module_type_graph_mut(&mut self) -> Option<&mut ModuleTypeGraph> {
+        self.todo
+            .last_mut()
+            .map(|scope| &mut scope.module_type_graph)
+    }
+
+    #[inline]
+    pub fn module_type_graph_mut(&mut self) -> &mut ModuleTypeGraph {
+        self.try_module_type_graph_mut().unwrap()
     }
 
     #[inline]

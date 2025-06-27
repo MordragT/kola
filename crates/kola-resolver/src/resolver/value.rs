@@ -72,7 +72,7 @@ fn resolve_values_in_module(scope: &mut ModuleScope, report: &mut Report) {
             scope.value_graph.add_dependency(source, target);
             scope
                 .resolved
-                .insert_meta(id, ResolvedValue::Defined(target));
+                .insert_meta(id, ResolvedValue::Reference(target));
         } else {
             // Value not found in current module
             report.add_diagnostic(

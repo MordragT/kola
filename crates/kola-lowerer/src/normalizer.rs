@@ -156,14 +156,13 @@ where
         tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
         let node::QualifiedExpr {
-            path,
+            module_path,
             source,
-            fields,
+            field_path,
         } = *id.get(tree);
 
-        if let Some(path) = path {
-            let module_sym = self.symbol_of(path);
-            let module_atom = self.builder.add(ir::Atom::Symbol(module_sym));
+        if let Some(path) = module_path {
+            let module_atom = self.builder.add(self.symbols.atom_of_module(path));
 
             let name = source.get(tree).0;
 
@@ -181,10 +180,10 @@ where
         }
 
         // Create symbol and corresponding atom
-        let source_atom = self.symbols.atom_of(id); // This is only defined if path is None so be careful about moving this
+        let source_atom = self.symbols.atom_of_expr(id); // This is only defined if path is None so be careful about moving this
         let mut source_atom = self.builder.add(source_atom);
 
-        if let Some((last_field_id, fields)) = fields.and_then(|f| f.get(tree).0.split_last()) {
+        if let Some((last_field_id, fields)) = field_path.and_then(|f| f.get(tree).0.split_last()) {
             for field_id in fields {
                 let field_label = field_id.get(tree).0;
 
@@ -247,9 +246,9 @@ where
         id: TreeId<node::LetExpr>,
         tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
-        let node::LetExpr { value, inside, .. } = *id.get(tree);
+        let node::LetExpr { value, body, .. } = *id.get(tree);
 
-        self.visit_expr(inside, tree)?;
+        self.visit_expr(body, tree)?;
         self.hole = self.symbol_of(id);
         self.visit_expr(value, tree)
     }
@@ -311,18 +310,14 @@ where
         id: TreeId<node::IfExpr>,
         tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
-        let node::IfExpr {
-            predicate,
-            then,
-            or,
-        } = *id.get(tree);
+        let node::IfExpr { pred, then, else_ } = *id.get(tree);
 
         // Create fresh symbol and corresponding atom
         let pred_sym = self.next_symbol();
         let pred_atom = self.builder.add(ir::Atom::Symbol(pred_sym));
 
         let then_expr = self.with_fresh_context(tree, |this, tree| this.visit_expr(then, tree));
-        let or_expr = self.with_fresh_context(tree, |this, tree| this.visit_expr(or, tree));
+        let or_expr = self.with_fresh_context(tree, |this, tree| this.visit_expr(else_, tree));
 
         // Create the if expression context and set continuation
         let if_expr = self.builder.add(ir::Expr::If(ir::IfExpr {
@@ -336,7 +331,7 @@ where
 
         // Normalize predicate
         self.hole = pred_sym;
-        self.visit_expr(predicate, tree)
+        self.visit_expr(pred, tree)
     }
 
     fn visit_unary_expr(
@@ -374,14 +369,14 @@ where
         id: TreeId<node::BinaryExpr>,
         tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
-        let node::BinaryExpr { left, op, right } = *id.get(tree);
+        let node::BinaryExpr { lhs, op, rhs } = *id.get(tree);
 
         // Create fresh symbols and correpsonding atoms
-        let left_sym = self.next_symbol();
-        let right_sym = self.next_symbol();
+        let lhs_sym = self.next_symbol();
+        let rhs_sym = self.next_symbol();
 
-        let left_atom = self.builder.add(ir::Atom::Symbol(left_sym));
-        let right_atom = self.builder.add(ir::Atom::Symbol(right_sym));
+        let lhs_atom = self.builder.add(ir::Atom::Symbol(lhs_sym));
+        let rhs_atom = self.builder.add(ir::Atom::Symbol(rhs_sym));
 
         let binary_op = match *op.get(tree) {
             node::BinaryOp::Add => ir::BinaryOp::Add,
@@ -405,18 +400,18 @@ where
         let binary_expr = self.builder.add(ir::Expr::Binary(ir::BinaryExpr {
             bind: self.hole,
             op: binary_op,
-            lhs: left_atom,
-            rhs: right_atom,
+            lhs: lhs_atom,
+            rhs: rhs_atom,
             next: self.next,
         }));
         self.next = binary_expr;
 
         // Normalize in reverse order (CPS style):
-        self.hole = right_sym;
-        self.visit_expr(right, tree)?;
+        self.hole = rhs_sym;
+        self.visit_expr(rhs, tree)?;
 
-        self.hole = left_sym;
-        self.visit_expr(left, tree)?;
+        self.hole = lhs_sym;
+        self.visit_expr(lhs, tree)?;
 
         ControlFlow::Continue(())
     }
@@ -467,7 +462,7 @@ where
             .zip(&field_value_syms)
             .map(|(field_id, &value_sym)| {
                 let field = field_id.get(tree);
-                let label = field.field.get(tree).0;
+                let label = field.label.get(tree).0;
                 (label, ir::Atom::Symbol(value_sym))
             })
             .collect();
@@ -498,7 +493,7 @@ where
     ) -> ControlFlow<Self::BreakValue> {
         let node::RecordExtendExpr {
             source,
-            select,
+            field_path,
             value,
             ..
         } = *id.get(tree);
@@ -511,7 +506,7 @@ where
         let source_atom = self.builder.add(ir::Atom::Symbol(source_sym));
 
         // Build FieldPath from AST field path
-        let field_path = select.get(tree).0.as_slice();
+        let field_path = field_path.get(tree).0.as_slice();
         let path = self.build_field_path(field_path, tree);
 
         // Create the record extend expression context and set continuation
@@ -541,14 +536,16 @@ where
         id: TreeId<node::RecordRestrictExpr>,
         tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
-        let node::RecordRestrictExpr { source, select, .. } = *id.get(tree);
+        let node::RecordRestrictExpr {
+            source, field_path, ..
+        } = *id.get(tree);
 
         // Create fresh symbol and corresponding atom
         let source_sym = self.next_symbol();
         let source_atom = self.builder.add(ir::Atom::Symbol(source_sym));
 
         // Build FieldPath from AST field path
-        let field_path = select.get(tree).0.as_slice();
+        let field_path = field_path.get(tree).0.as_slice();
         let path = self.build_field_path(field_path, tree);
 
         // Create the record restrict expression context and set continuation
@@ -576,7 +573,7 @@ where
     ) -> ControlFlow<Self::BreakValue> {
         let node::RecordUpdateExpr {
             source,
-            select,
+            field_path,
             op,
             value,
             ..
@@ -590,7 +587,7 @@ where
         let source_atom = self.builder.add(ir::Atom::Symbol(source_sym));
 
         // Build FieldPath from AST field path
-        let field_path = select.get(tree).0.as_slice();
+        let field_path = field_path.get(tree).0.as_slice();
         let path = self.build_field_path(field_path, tree);
 
         let op = match *op.get(tree) {
@@ -640,12 +637,12 @@ where
             .add(ir::PatternMatcher::Failure(ir::PatternFailure));
 
         for branch_id in branches.iter().rev() {
-            let node::CaseBranch { pat, matches } = *branch_id.get(tree);
+            let node::CaseBranch { pat, body } = *branch_id.get(tree);
 
             // Save the current continuation
             let saved_next = self.next;
 
-            self.visit_expr(matches, tree)?;
+            self.visit_expr(body, tree)?;
             let branch_next = self.next; // Capture the branch expression
 
             // Restore the continuation for the next iteration
@@ -1190,7 +1187,7 @@ mod tests {
         for query in tree.query3::<node::QualifiedExpr, node::LetExpr, node::LambdaExpr>() {
             match query {
                 Query3::V0(id, _path) => {
-                    resolved.insert_meta(id, ResolvedValue::Defined(ValueSym::new()))
+                    resolved.insert_meta(id, ResolvedValue::Reference(ValueSym::new()))
                 }
                 Query3::V1(id, _let) => resolved.insert_meta(id, ValueSym::new()),
                 Query3::V2(id, _lambda) => resolved.insert_meta(id, ValueSym::new()),

@@ -1,3 +1,27 @@
+//! # Module and Functor Abstract Syntax Tree (AST) Nodes
+//!
+//! This module defines the Abstract Syntax Tree (AST) nodes that compose Kola's module system,
+//! including explicit support for SML-style functors. The design within this layer is structured
+//! to enable first-class module expressions and integrate functor constructs into the existing
+//! module binding mechanisms.
+//!
+//! A `Functor` definition is implemented as a direct variant of `ModuleExpr`. This design treats
+//! functors as first-class entities within the module system, allowing them to be bound to names
+//! via `ModuleBind` or used directly as expressions. The `body` of a `Functor` is also a
+//! `ModuleExpr`, which inherently supports curried, multi-argument functors through nested
+//! `Functor` expressions.
+//!
+//! `FunctorCall` is similarly defined as a `ModuleExpr`. This represents the application of a
+//! functor as an expression, where its evaluation during a later compilation phase yields a
+//! concrete module.
+//!
+//! The `Functor` struct includes a `param_ty` field of type `Id<ModuleType>`. This structural
+//! constraint requires all functor definitions to explicitly declare the concrete `ModuleType`
+//! (signature) expected for their input module parameter. This mandates a clear interface
+//! specification for functor arguments at the AST level. This means that there is no module-level
+//! polymorphism. Functor types are implicitly modeled as transformations from one concrete
+//! `ModuleType` to another, with their precise semantic representation and inference handled
+//! in subsequent type checking stages.
 use derive_more::{From, IntoIterator};
 use enum_as_inner::EnumAsInner;
 use kola_macros::{Inspector, Notate};
@@ -8,37 +32,16 @@ use kola_print::prelude::*;
 use super::{Expr, ModuleName, TypeScheme};
 use crate::{
     id::Id,
-    node::{TypeName, ValueName},
+    node::{ModuleTypeName, TypeName, ValueName},
     print::NodePrinter,
     tree::{TreeBuilder, TreeView},
 };
 
-/*
-Nice to haves:
-- be able to pull submodules without evaluating parent modules
-- module's can define test's which are automatically run
-
-module type Stack = {
-    opaque type Stack : Type -> Type
-
-    push : forall a . a -> Stack a -> Stack a
-    pop : forall a . Stack a -> a ~ Undefined
-}
-
-module list : Stack = {
-    opaque type Stack = List
-
-    push = ...
-    pop = ...
-}
-
-module safe-stack = functor (s : Stack) => {
-    type SafeStack = s.Stack
-
-    pop_or_default : forall a . SafeStack a -> a -> a
-        = fn stack => fn default => handle (s.pop stack) with ...
-}
-*/
+#[derive(
+    Debug, Notate, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+)]
+#[notate(color = "red")]
+pub struct ModuleError;
 
 #[derive(
     Debug,
@@ -103,6 +106,47 @@ impl ModulePath {
 pub struct ModuleImport(pub Id<ModuleName>);
 
 #[derive(
+    Notate,
+    Inspector,
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
+)]
+#[notate(color = "green")]
+pub struct Functor {
+    pub param: Id<ModuleName>,
+    pub param_ty: Id<ModuleType>, // should I necessitate type annotations here ? and restriction to ModuleType good ?
+    pub body: Id<ModuleExpr>,
+}
+
+#[derive(
+    Debug,
+    Notate,
+    Inspector,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
+)]
+#[notate(color = "green")]
+pub struct FunctorApp {
+    pub func: Id<ModuleExpr>,
+    pub arg: Id<ModuleExpr>,
+}
+
+#[derive(
     Debug,
     EnumAsInner,
     Inspector,
@@ -118,17 +162,23 @@ pub struct ModuleImport(pub Id<ModuleName>);
     Deserialize,
 )]
 pub enum ModuleExpr {
+    Error(Id<ModuleError>),
     Module(Id<Module>),
     Import(Id<ModuleImport>),
     Path(Id<ModulePath>),
+    Functor(Id<Functor>),
+    FunctorApp(Id<FunctorApp>),
 }
 
 impl<'a> Notate<'a> for NodePrinter<'a, ModuleExpr> {
     fn notate(&self, arena: &'a Bump) -> Notation<'a> {
         match *self.value {
+            ModuleExpr::Error(id) => self.to(id).notate(arena),
             ModuleExpr::Module(id) => self.to(id).notate(arena),
             ModuleExpr::Import(id) => self.to(id).notate(arena),
             ModuleExpr::Path(id) => self.to(id).notate(arena),
+            ModuleExpr::Functor(id) => self.to(id).notate(arena),
+            ModuleExpr::FunctorApp(id) => self.to(id).notate(arena),
         }
     }
 }
@@ -172,11 +222,11 @@ impl Bind {
     pub fn value_in(
         vis: Vis,
         name: ValueName,
-        ty: Option<TypeScheme>,
+        ty_scheme: Option<TypeScheme>,
         value: Expr,
         builder: &mut TreeBuilder,
     ) -> Id<Self> {
-        let bind = ValueBind::new_in(vis, name, ty, value, builder);
+        let bind = ValueBind::new_in(vis, name, ty_scheme, value, builder);
 
         builder.insert(Self::Value(bind))
     }
@@ -215,7 +265,7 @@ impl<'a> Notate<'a> for NodePrinter<'a, Vis> {
 pub struct ValueBind {
     pub vis: Id<Vis>,
     pub name: Id<ValueName>,
-    pub ty: Option<Id<TypeScheme>>,
+    pub ty_scheme: Option<Id<TypeScheme>>,
     pub value: Id<Expr>,
 }
 
@@ -223,19 +273,19 @@ impl ValueBind {
     pub fn new_in(
         vis: Vis,
         name: ValueName,
-        ty: Option<TypeScheme>,
+        ty_scheme: Option<TypeScheme>,
         value: Expr,
         builder: &mut TreeBuilder,
     ) -> Id<Self> {
         let vis = builder.insert(vis);
         let name = builder.insert(name);
-        let ty = ty.map(|ty| builder.insert(ty));
+        let ty_scheme = ty_scheme.map(|ty| builder.insert(ty));
         let value = builder.insert(value);
 
         builder.insert(Self {
             vis,
             name,
-            ty,
+            ty_scheme,
             value,
         })
     }
@@ -258,7 +308,7 @@ impl ValueBind {
 #[notate(color = "green")]
 pub struct TypeBind {
     pub name: Id<TypeName>,
-    pub ty: Id<TypeScheme>,
+    pub ty_scheme: Id<TypeScheme>,
 }
 
 #[derive(
@@ -278,7 +328,7 @@ pub struct TypeBind {
 #[notate(color = "green")]
 pub struct OpaqueTypeBind {
     pub name: Id<TypeName>,
-    pub ty: Id<TypeScheme>,
+    pub ty_scheme: Id<TypeScheme>,
 }
 
 #[derive(
@@ -299,7 +349,7 @@ pub struct OpaqueTypeBind {
 pub struct ModuleBind {
     pub vis: Id<Vis>,
     pub name: Id<ModuleName>,
-    pub ty: Option<Id<ModuleType>>,
+    pub sig: Option<Id<ModuleSig>>,
     pub value: Id<ModuleExpr>,
 }
 
@@ -307,21 +357,50 @@ impl ModuleBind {
     pub fn new_in(
         vis: Vis,
         name: ModuleName,
-        ty: Option<ModuleType>,
+        sig: Option<ModuleSig>,
         value: ModuleExpr,
         builder: &mut TreeBuilder,
     ) -> Id<Self> {
         let vis = builder.insert(vis);
         let name = builder.insert(name);
-        let ty = ty.map(|ty| builder.insert(ty));
+        let sig = sig.map(|sig| builder.insert(sig));
         let value = builder.insert(value);
 
         builder.insert(Self {
             vis,
             name,
-            ty,
+            sig,
             value,
         })
+    }
+}
+
+// TODO what about module types that were bound via ModuleTypeBind ?
+#[derive(
+    Debug,
+    Inspector,
+    From,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
+)]
+pub enum ModuleSig {
+    Functor(Id<FunctorType>),
+    Module(Id<ModuleType>),
+}
+
+impl<'a> Notate<'a> for NodePrinter<'a, ModuleSig> {
+    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
+        match *self.value {
+            ModuleSig::Functor(ft) => self.to(ft).notate(arena),
+            ModuleSig::Module(mt) => self.to(mt).notate(arena),
+        }
     }
 }
 
@@ -340,9 +419,78 @@ impl ModuleBind {
     Deserialize,
 )]
 #[notate(color = "green")]
+pub struct FunctorType {
+    pub input: Id<ModuleType>,
+    pub output: Id<ModuleSig>,
+}
+
+// TODO should I only allow ModuleTypes to be bound or should I change this to a ModuleSigBind ?
+#[derive(
+    Debug,
+    Notate,
+    Inspector,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
+)]
+#[notate(color = "green")]
 pub struct ModuleTypeBind {
-    pub name: Id<ModuleName>,
+    pub name: Id<ModuleTypeName>,
     pub ty: Id<ModuleType>,
+}
+
+#[derive(
+    Debug,
+    Inspector,
+    From,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
+)]
+pub enum ModuleType {
+    Qualified(Id<QualifiedModuleType>),
+    Concrete(Id<ConcreteModuleType>),
+}
+
+impl<'a> Notate<'a> for NodePrinter<'a, ModuleType> {
+    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
+        match *self.value {
+            ModuleType::Qualified(q) => self.to(q).notate(arena),
+            ModuleType::Concrete(c) => self.to(c).notate(arena),
+        }
+    }
+}
+
+#[derive(
+    Debug,
+    Notate,
+    Inspector,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
+)]
+#[notate(color = "green")]
+pub struct QualifiedModuleType {
+    pub path: Option<Id<ModulePath>>,
+    pub ty: Id<ModuleTypeName>,
 }
 
 #[derive(
@@ -362,7 +510,7 @@ pub struct ModuleTypeBind {
 )]
 #[notate(color = "green")]
 #[into_iterator(owned, ref)]
-pub struct ModuleType(pub Vec<Id<Spec>>);
+pub struct ConcreteModuleType(pub Vec<Id<Spec>>);
 
 #[derive(
     Debug,
@@ -418,27 +566,6 @@ pub struct ValueSpec {
     pub ty: Id<TypeScheme>,
 }
 
-// module M : { ... }
-#[derive(
-    Debug,
-    Notate,
-    Inspector,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    Hash,
-    Serialize,
-    Deserialize,
-)]
-#[notate(color = "green")]
-pub struct ModuleSpec {
-    pub name: Id<ModuleName>,
-    pub ty: Id<ModuleType>,
-}
-
 // opaque type T : * -> *
 #[derive(
     Debug,
@@ -476,72 +603,23 @@ impl<'a> Notate<'a> for NodePrinter<'a, OpaqueTypeKind> {
     }
 }
 
-/*
-------------------------------------------------------
-New idea for a more structural module system
-
-# module signature explicit for reuse
-module stack : [
-    forall t . exists Stack .
-    push : Stack -> t -> Stack,
-    pop : Stack -> t ~ Undefined,
-]
-
-# module type explicitly set to check if compatible
-module list : stack[Stack = List] # explicit setting existential types ??
-
-# module structure
-module list = forall t . exists List . (
-  # module array : ... inferred
-  module array = import std.array
-
-  List := {...}
-
-  push : List -> t -> List
-  push = ...
-
-  pop : List -> t ~ Undefined
-  pop = ...
-)
-
-# module functor signature can be inferred
-module safe-stack : stack -> [ # is the same as: ... [forall t . exists Stack . push...] -> [...
-  forall t . exists SafeStack .
-  pop_or_default : SafeStack -> t -> t
-]
-
-# module functor
-module safe-stack =
-    functor (S : stack) => forall t exists SafeStack .
-(
-  SafeStack := S.Stack
-
-  pop_or_default = \stack => ... => ...
-)
------------------------------------
-Subset to implement first:
-
-module list : [ forall t . List : { ... }, push : List -> t -> List, ... ]
-
-module list = (
-
-  module array = import std.array
-
-  List : forall t . { ... }
-
-  push : forall t . List t -> t -> List t
-  push = ...
-)
-------------------------------------
-Then implement functors
-
-module safe-stack = functor (S : stack) => (...)
-
-------------------------------------
-Some probably bad ideas:
-
-parent modules could define what is exported from a module through
-ascription ?
-
-module num : [pi] = import "num.kl" # only exports num ?
-*/
+// module M : { ... }
+#[derive(
+    Debug,
+    Notate,
+    Inspector,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
+)]
+#[notate(color = "green")]
+pub struct ModuleSpec {
+    pub name: Id<ModuleName>,
+    pub ty: Id<ModuleType>,
+}

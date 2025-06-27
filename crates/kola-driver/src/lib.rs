@@ -40,6 +40,7 @@ impl Driver {
             entry_points,
             value_orders,
             type_orders,
+            module_type_orders,
         } = resolve(
             path,
             &self.io,

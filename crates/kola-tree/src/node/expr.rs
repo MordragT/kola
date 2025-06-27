@@ -117,35 +117,31 @@ impl ListExpr {
 )]
 #[notate(color = "blue")]
 pub struct RecordField {
-    pub field: Id<ValueName>,
-    pub type_: Option<Id<Type>>,
+    pub label: Id<ValueName>,
+    pub ty: Option<Id<Type>>,
     pub value: Id<Expr>,
 }
 
 impl RecordField {
     pub fn new_in(
-        field: impl Into<ValueName>,
-        type_: Option<Type>,
+        label: impl Into<ValueName>,
+        ty: Option<Type>,
         value: impl Into<Expr>,
         builder: &mut TreeBuilder,
     ) -> Id<Self> {
-        let field = builder.insert(field.into());
-        let type_ = type_.map(|t| builder.insert(t));
+        let label = builder.insert(label.into());
+        let ty = ty.map(|t| builder.insert(t));
         let value = builder.insert(value.into());
 
-        builder.insert(Self {
-            field,
-            type_,
-            value,
-        })
+        builder.insert(Self { label, ty, value })
     }
 
-    pub fn field(self, tree: &impl TreeView) -> ValueName {
-        *self.field.get(tree)
+    pub fn label(self, tree: &impl TreeView) -> ValueName {
+        *self.label.get(tree)
     }
 
     pub fn type_(self, tree: &impl TreeView) -> Option<Type> {
-        self.type_.map(|t| *t.get(tree))
+        self.ty.map(|t| *t.get(tree))
     }
 
     pub fn value(self, tree: &impl TreeView) -> Expr {
@@ -202,7 +198,7 @@ impl RecordExpr {
 pub struct RecordExtendExpr {
     pub source: Id<Expr>,
     pub source_type: Option<Id<Type>>,
-    pub select: Id<FieldPath>,
+    pub field_path: Id<FieldPath>,
     pub value: Id<Expr>,
     pub value_type: Option<Id<Type>>,
 }
@@ -211,21 +207,21 @@ impl RecordExtendExpr {
     pub fn new_in(
         source: impl Into<Expr>,
         source_type: Option<Type>,
-        select: impl Into<FieldPath>,
+        field_path: impl Into<FieldPath>,
         value: impl Into<Expr>,
         value_type: Option<Type>,
         builder: &mut TreeBuilder,
     ) -> Id<Self> {
         let source = builder.insert(source.into());
         let source_type = source_type.map(|t| builder.insert(t));
-        let select = builder.insert(select.into());
+        let field_path = builder.insert(field_path.into());
         let value = builder.insert(value.into());
         let value_type = value_type.map(|t| builder.insert(t));
 
         builder.insert(Self {
             source,
             source_type,
-            select,
+            field_path,
             value,
             value_type,
         })
@@ -239,8 +235,8 @@ impl RecordExtendExpr {
         self.source_type.map(|t| *t.get(tree))
     }
 
-    pub fn select(self, tree: &impl TreeView) -> &FieldPath {
-        self.select.get(tree)
+    pub fn field_path(self, tree: &impl TreeView) -> &FieldPath {
+        self.field_path.get(tree)
     }
 
     pub fn value(self, tree: &impl TreeView) -> Expr {
@@ -271,7 +267,7 @@ impl RecordExtendExpr {
 pub struct RecordRestrictExpr {
     pub source: Id<Expr>,
     pub source_type: Option<Id<Type>>,
-    pub select: Id<FieldPath>,
+    pub field_path: Id<FieldPath>,
     pub value_type: Option<Id<Type>>,
 }
 
@@ -279,19 +275,19 @@ impl RecordRestrictExpr {
     pub fn new_in(
         source: impl Into<Expr>,
         source_type: Option<Type>,
-        select: impl Into<FieldPath>,
+        field_path: impl Into<FieldPath>,
         value_type: Option<Type>,
         builder: &mut TreeBuilder,
     ) -> Id<Self> {
         let source = builder.insert(source.into());
         let source_type = source_type.map(|t| builder.insert(t));
-        let select = builder.insert(select.into());
+        let field_path = builder.insert(field_path.into());
         let value_type = value_type.map(|t| builder.insert(t));
 
         builder.insert(Self {
             source,
             source_type,
-            select,
+            field_path,
             value_type,
         })
     }
@@ -304,8 +300,8 @@ impl RecordRestrictExpr {
         self.source_type.map(|t| *t.get(tree))
     }
 
-    pub fn select(self, tree: &impl TreeView) -> &FieldPath {
-        self.select.get(tree)
+    pub fn field_path(self, tree: &impl TreeView) -> &FieldPath {
+        self.field_path.get(tree)
     }
 
     pub fn value_type(self, tree: &impl TreeView) -> Option<Type> {
@@ -350,7 +346,7 @@ impl<'a> Notate<'a> for NodePrinter<'a, RecordUpdateOp> {
 pub struct RecordUpdateExpr {
     pub source: Id<Expr>,
     pub source_type: Option<Id<Type>>,
-    pub select: Id<FieldPath>,
+    pub field_path: Id<FieldPath>,
     pub op: Id<RecordUpdateOp>,
     pub value: Id<Expr>,
     pub value_type: Option<Id<Type>>,
@@ -360,7 +356,7 @@ impl RecordUpdateExpr {
     pub fn new_in(
         source: impl Into<Expr>,
         source_type: Option<Type>,
-        select: impl Into<FieldPath>,
+        field_path: impl Into<FieldPath>,
         op: RecordUpdateOp,
         value: impl Into<Expr>,
         value_type: Option<Type>,
@@ -368,7 +364,7 @@ impl RecordUpdateExpr {
     ) -> Id<Self> {
         let source = builder.insert(source.into());
         let source_type = source_type.map(|t| builder.insert(t));
-        let select = builder.insert(select.into());
+        let field_path = builder.insert(field_path.into());
         let op = builder.insert(op);
         let value = builder.insert(value.into());
         let value_type = value_type.map(|t| builder.insert(t));
@@ -376,7 +372,7 @@ impl RecordUpdateExpr {
         builder.insert(Self {
             source,
             source_type,
-            select,
+            field_path,
             op,
             value,
             value_type,
@@ -391,8 +387,8 @@ impl RecordUpdateExpr {
         self.source_type.map(|t| *t.get(tree))
     }
 
-    pub fn select(self, tree: &impl TreeView) -> &FieldPath {
-        self.select.get(tree)
+    pub fn field_path(self, tree: &impl TreeView) -> &FieldPath {
+        self.field_path.get(tree)
     }
 
     pub fn op(self, tree: &impl TreeView) -> RecordUpdateOp {
@@ -467,26 +463,26 @@ impl FieldPath {
 )]
 #[notate(color = "cyan")]
 pub struct QualifiedExpr {
-    pub path: Option<Id<ModulePath>>,
+    pub module_path: Option<Id<ModulePath>>,
     pub source: Id<ValueName>,
-    pub fields: Option<Id<FieldPath>>,
+    pub field_path: Option<Id<FieldPath>>,
 }
 
 impl QualifiedExpr {
     pub fn new_in(
-        path: Option<ModulePath>,
+        module_path: Option<ModulePath>,
         source: impl Into<ValueName>,
-        fields: Option<FieldPath>,
+        field_path: Option<FieldPath>,
         builder: &mut TreeBuilder,
     ) -> Id<Self> {
-        let path = path.map(|p| builder.insert(p));
+        let module_path = module_path.map(|p| builder.insert(p));
         let source = builder.insert(source.into());
-        let fields = fields.map(|f| builder.insert(f));
+        let field_path = field_path.map(|f| builder.insert(f));
 
         builder.insert(Self {
-            path,
+            module_path,
             source,
-            fields,
+            field_path,
         })
     }
 }
@@ -590,34 +586,34 @@ impl<'a> Notate<'a> for NodePrinter<'a, BinaryOp> {
 #[notate(color = "blue")]
 pub struct BinaryExpr {
     pub op: Id<BinaryOp>,
-    pub left: Id<Expr>,
-    pub right: Id<Expr>,
+    pub lhs: Id<Expr>,
+    pub rhs: Id<Expr>,
 }
 
 impl BinaryExpr {
     pub fn new_in(
         op: BinaryOp,
-        left: impl Into<Expr>,
-        right: impl Into<Expr>,
+        lhs: impl Into<Expr>,
+        rhs: impl Into<Expr>,
         builder: &mut TreeBuilder,
     ) -> Id<Self> {
         let op = builder.insert(op);
-        let left = builder.insert(left.into());
-        let right = builder.insert(right.into());
+        let lhs = builder.insert(lhs.into());
+        let rhs = builder.insert(rhs.into());
 
-        builder.insert(Self { op, left, right })
+        builder.insert(Self { op, lhs, rhs })
     }
 
     pub fn op(self, tree: &impl TreeView) -> BinaryOp {
         *self.op.get(tree)
     }
 
-    pub fn left(self, tree: &impl TreeView) -> Expr {
-        *self.left.get(tree)
+    pub fn lhs(self, tree: &impl TreeView) -> Expr {
+        *self.lhs.get(tree)
     }
 
-    pub fn right(self, tree: &impl TreeView) -> Expr {
-        *self.right.get(tree)
+    pub fn rhs(self, tree: &impl TreeView) -> Expr {
+        *self.rhs.get(tree)
     }
 }
 
@@ -640,7 +636,7 @@ pub struct LetExpr {
     pub name: Id<ValueName>,
     pub value_type: Option<Id<Type>>,
     pub value: Id<Expr>,
-    pub inside: Id<Expr>,
+    pub body: Id<Expr>,
 }
 
 impl LetExpr {
@@ -648,19 +644,19 @@ impl LetExpr {
         name: impl Into<ValueName>,
         value_type: Option<Type>,
         value: impl Into<Expr>,
-        inside: impl Into<Expr>,
+        body: impl Into<Expr>,
         builder: &mut TreeBuilder,
     ) -> Id<Self> {
         let name = builder.insert(name.into());
         let value_type = value_type.map(|t| builder.insert(t));
         let value = builder.insert(value.into());
-        let inside = builder.insert(inside.into());
+        let body = builder.insert(body.into());
 
         builder.insert(Self {
             name,
             value_type,
             value,
-            inside,
+            body,
         })
     }
 
@@ -676,8 +672,8 @@ impl LetExpr {
         *self.value.get(tree)
     }
 
-    pub fn inside(self, tree: &impl TreeView) -> Expr {
-        *self.inside.get(tree)
+    pub fn body(self, tree: &impl TreeView) -> Expr {
+        *self.body.get(tree)
     }
 }
 
@@ -697,39 +693,35 @@ impl LetExpr {
 )]
 #[notate(color = "blue")]
 pub struct IfExpr {
-    pub predicate: Id<Expr>,
+    pub pred: Id<Expr>,
     pub then: Id<Expr>,
-    pub or: Id<Expr>,
+    pub else_: Id<Expr>,
 }
 
 impl IfExpr {
     pub fn new_in(
-        predicate: impl Into<Expr>,
+        pred: impl Into<Expr>,
         then: impl Into<Expr>,
         or: impl Into<Expr>,
         builder: &mut TreeBuilder,
     ) -> Id<Self> {
-        let predicate = builder.insert(predicate.into());
+        let pred = builder.insert(pred.into());
         let then = builder.insert(then.into());
-        let or = builder.insert(or.into());
+        let else_ = builder.insert(or.into());
 
-        builder.insert(Self {
-            predicate,
-            then,
-            or,
-        })
+        builder.insert(Self { pred, then, else_ })
     }
 
-    pub fn predicate(self, tree: &impl TreeView) -> Expr {
-        *self.predicate.get(tree)
+    pub fn pred(self, tree: &impl TreeView) -> Expr {
+        *self.pred.get(tree)
     }
 
     pub fn then(self, tree: &impl TreeView) -> Expr {
         *self.then.get(tree)
     }
 
-    pub fn or(self, tree: &impl TreeView) -> Expr {
-        *self.or.get(tree)
+    pub fn else_(self, tree: &impl TreeView) -> Expr {
+        *self.else_.get(tree)
     }
 }
 
@@ -750,27 +742,27 @@ impl IfExpr {
 #[notate(color = "blue")]
 pub struct CaseBranch {
     pub pat: Id<Pat>,
-    pub matches: Id<Expr>,
+    pub body: Id<Expr>,
 }
 
 impl CaseBranch {
     pub fn new_in(
         pat: impl Into<Pat>,
-        matches: impl Into<Expr>,
+        body: impl Into<Expr>,
         builder: &mut TreeBuilder,
     ) -> Id<Self> {
         let pat = builder.insert(pat.into());
-        let matches = builder.insert(matches.into());
+        let body = builder.insert(body.into());
 
-        builder.insert(Self { pat, matches })
+        builder.insert(Self { pat, body })
     }
 
     pub fn pat(self, tree: &impl TreeView) -> Pat {
         *self.pat.get(tree)
     }
 
-    pub fn matches(self, tree: &impl TreeView) -> Expr {
-        *self.matches.get(tree)
+    pub fn body(self, tree: &impl TreeView) -> Expr {
+        *self.body.get(tree)
     }
 }
 

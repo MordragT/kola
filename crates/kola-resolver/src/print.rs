@@ -1,7 +1,7 @@
 use kola_print::prelude::*;
 use kola_tree::{meta::Meta, print::Decorator};
 
-use crate::phase::ResolvedNodes;
+use crate::phase::{ResolvedModule, ResolvedNodes};
 
 pub struct ResolutionDecorator<'a>(pub &'a ResolvedNodes);
 
@@ -25,7 +25,7 @@ impl<'a> Decorator<'a> for ResolutionDecorator<'a> {
                 type_sym.red().display_in(arena)
             }
             Meta::Module(module_sym)
-            | Meta::ModulePath(module_sym)
+            | Meta::ModulePath(ResolvedModule(module_sym))
             | Meta::ModuleImport(module_sym)
             | Meta::ModuleBind(module_sym) => module_sym.red().display_in(arena),
             _ => return notation,

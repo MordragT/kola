@@ -3,45 +3,14 @@
 use std::fmt;
 
 use kola_builtins::{BuiltinId, BuiltinType};
-// use kola_collections::HashMap;
-use kola_tree::{
-    meta::{MetaMap, Phase},
-    node,
-};
+use kola_tree::meta::{MetaMap, Phase};
 use kola_utils::as_variant;
 
-use crate::symbol::{ModuleSym, TypeSym, ValueSym};
-
-// #[derive(Debug, Clone, Default)]
-// pub struct Resolutions(HashMap<ModuleSym, ResolvedNodes>);
-
-// impl Resolutions {
-//     pub fn new() -> Self {
-//         Self(HashMap::new())
-//     }
-
-//     pub fn insert(&mut self, module: ModuleSym, nodes: ResolvedNodes) {
-//         self.0.insert(module, nodes);
-//     }
-
-//     pub fn get(&self, module: &ModuleSym) -> Option<&ResolvedNodes> {
-//         self.0.get(module)
-//     }
-// }
-
-// impl Index<ModuleSym> for Resolutions {
-//     type Output = ResolvedNodes;
-
-//     fn index(&self, module: ModuleSym) -> &Self::Output {
-//         self.0
-//             .get(&module)
-//             .expect("Module not found in resolutions")
-//     }
-// }
+use crate::symbol::{ModuleSym, ModuleTypeSym, TypeSym, ValueSym};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum ResolvedValue {
-    Defined(ValueSym),
+    Reference(ValueSym),
     Builtin(BuiltinId),
 }
 
@@ -50,15 +19,15 @@ impl ResolvedValue {
         as_variant!(self, Self::Builtin)
     }
 
-    pub fn into_defined(self) -> Option<ValueSym> {
-        as_variant!(self, Self::Defined)
+    pub fn into_reference(self) -> Option<ValueSym> {
+        as_variant!(self, Self::Reference)
     }
 }
 
 impl fmt::Display for ResolvedValue {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            ResolvedValue::Defined(sym) => sym.fmt(f),
+            ResolvedValue::Reference(sym) => sym.fmt(f),
             ResolvedValue::Builtin(id) => id.fmt(f),
         }
     }
@@ -66,7 +35,7 @@ impl fmt::Display for ResolvedValue {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum ResolvedType {
-    Defined(TypeSym),
+    Reference(TypeSym),
     Builtin(BuiltinType),
 }
 
@@ -75,19 +44,25 @@ impl ResolvedType {
         as_variant!(self, Self::Builtin)
     }
 
-    pub fn into_defined(self) -> Option<TypeSym> {
-        as_variant!(self, Self::Defined)
+    pub fn into_reference(self) -> Option<TypeSym> {
+        as_variant!(self, Self::Reference)
     }
 }
 
 impl fmt::Display for ResolvedType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            ResolvedType::Defined(sym) => sym.fmt(f),
+            ResolvedType::Reference(sym) => sym.fmt(f),
             ResolvedType::Builtin(ty) => ty.fmt(f),
         }
     }
 }
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct ResolvedModule(pub ModuleSym);
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct ResolvedModuleType(pub ModuleTypeSym);
 
 pub type ResolvedNodes = MetaMap<ResolvePhase>;
 
@@ -96,6 +71,7 @@ pub struct ResolvePhase;
 impl Phase for ResolvePhase {
     // ===== NAMES =====
     // Names are the source of symbols, not targets of resolution
+    type ModuleTypeName = !;
     type ModuleName = !;
     type TypeName = !;
     type ValueName = !;
@@ -169,16 +145,20 @@ impl Phase for ResolvePhase {
     type TypeBind = TypeSym; // Creates symbol for the bound type
     type OpaqueTypeBind = TypeSym; // Creates symbol for the opaque type
     type ModuleBind = ModuleSym; // Creates symbol for the module alias
-    type ModuleTypeBind = !; // Module type bindings - future feature
+    type ModuleTypeBind = ModuleTypeSym; // Module type bindings - future feature
     type Bind = !; // Generic bind wrapper - symbols handled by specific binds
 
     // ===== MODULES =====
     // Module constructs - create or reference module symbols
+    type ModuleError = !;
     type Module = ModuleSym; // Creates symbol for the module definition
-    type ModulePath = ModuleSym; // Resolves to the referenced module symbol
+    type ModulePath = ResolvedModule; // Resolves to the referenced module symbol
     type ModuleImport = ModuleSym; // Creates symbol for the imported module binding
+    type Functor = ModuleSym; // TODO is this right ?
+    type FunctorApp = ModuleSym;
     type ModuleExpr = !; // Future: First-class modules could get ModuleSym
 
+    // TODO maybe these should have a own ModuleTypeSym
     // ===== SPECIFICATIONS =====
     // Module signatures and specs - future feature for module system
     // These define names in their respective namespaces but don't need resolver symbols yet
@@ -187,5 +167,9 @@ impl Phase for ResolvePhase {
     type OpaqueTypeSpec = !; // Future: Opaque type specifications
     type ModuleSpec = !; // Future: Module signature specifications
     type Spec = !; // Future: Generic specification wrapper
+    type ConcreteModuleType = !;
+    type QualifiedModuleType = ResolvedModuleType;
     type ModuleType = !; // Future: Module type expressions
+    type FunctorType = !;
+    type ModuleSig = !;
 }

@@ -98,6 +98,14 @@ impl_visitable!(
 pub trait Visitor<T: TreeView> {
     type BreakValue;
 
+    fn visit_module_type_name(
+        &mut self,
+        _id: Id<node::ModuleTypeName>,
+        _tree: &T,
+    ) -> ControlFlow<Self::BreakValue> {
+        ControlFlow::Continue(())
+    }
+
     fn visit_module_name(
         &mut self,
         _id: Id<node::ModuleName>,
@@ -331,16 +339,12 @@ pub trait Visitor<T: TreeView> {
         id: Id<node::RecordField>,
         tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
-        let node::RecordField {
-            field,
-            type_,
-            value,
-        } = id.get(tree);
+        let node::RecordField { label, ty, value } = id.get(tree);
 
-        self.visit_value_name(*field, tree)?;
+        self.visit_value_name(*label, tree)?;
 
-        if let Some(type_) = type_ {
-            self.visit_type(*type_, tree)?;
+        if let Some(ty) = ty {
+            self.visit_type(*ty, tree)?;
         }
 
         self.visit_expr(*value, tree)?;
@@ -394,7 +398,7 @@ pub trait Visitor<T: TreeView> {
         let node::RecordExtendExpr {
             source,
             source_type,
-            select,
+            field_path,
             value,
             value_type,
         } = *id.get(tree);
@@ -405,7 +409,7 @@ pub trait Visitor<T: TreeView> {
             self.visit_type(type_, tree)?;
         }
 
-        self.visit_field_path(select, tree)?;
+        self.visit_field_path(field_path, tree)?;
         self.visit_expr(value, tree)?;
 
         if let Some(type_) = value_type {
@@ -431,7 +435,7 @@ pub trait Visitor<T: TreeView> {
         let node::RecordRestrictExpr {
             source,
             source_type,
-            select,
+            field_path,
             value_type,
         } = *id.get(tree);
 
@@ -441,7 +445,7 @@ pub trait Visitor<T: TreeView> {
             self.visit_type(type_, tree)?;
         }
 
-        self.visit_field_path(select, tree)?;
+        self.visit_field_path(field_path, tree)?;
 
         if let Some(type_) = value_type {
             self.visit_type(type_, tree)?;
@@ -466,7 +470,7 @@ pub trait Visitor<T: TreeView> {
         let node::RecordUpdateExpr {
             source,
             source_type,
-            select,
+            field_path,
             op,
             value,
             value_type,
@@ -478,7 +482,7 @@ pub trait Visitor<T: TreeView> {
             self.visit_type(type_, tree)?;
         }
 
-        self.visit_field_path(select, tree)?;
+        self.visit_field_path(field_path, tree)?;
         self.visit_record_update_op(op, tree)?;
         self.visit_expr(value, tree)?;
 
@@ -523,19 +527,19 @@ pub trait Visitor<T: TreeView> {
         tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
         let node::QualifiedExpr {
-            path,
+            module_path,
             source,
-            fields,
+            field_path,
         } = *id.get(tree);
 
-        if let Some(path) = path {
+        if let Some(path) = module_path {
             self.visit_module_path(path, tree)?;
         }
 
         self.visit_value_name(source, tree)?;
 
-        if let Some(fields) = fields {
-            self.visit_field_path(fields, tree)?;
+        if let Some(path) = field_path {
+            self.visit_field_path(path, tree)?;
         }
 
         ControlFlow::Continue(())
@@ -562,10 +566,10 @@ pub trait Visitor<T: TreeView> {
         id: Id<node::UnaryExpr>,
         tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
-        let node::UnaryExpr { op, operand } = id.get(tree);
+        let node::UnaryExpr { op, operand } = *id.get(tree);
 
-        self.visit_unary_op(*op, tree)?;
-        self.visit_expr(*operand, tree)?;
+        self.visit_unary_op(op, tree)?;
+        self.visit_expr(operand, tree)?;
 
         ControlFlow::Continue(())
     }
@@ -591,11 +595,11 @@ pub trait Visitor<T: TreeView> {
         id: Id<node::BinaryExpr>,
         tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
-        let node::BinaryExpr { op, left, right } = id.get(tree);
+        let node::BinaryExpr { op, lhs, rhs } = *id.get(tree);
 
-        self.visit_binary_op(*op, tree)?;
-        self.visit_expr(*left, tree)?;
-        self.visit_expr(*right, tree)?;
+        self.visit_binary_op(op, tree)?;
+        self.visit_expr(lhs, tree)?;
+        self.visit_expr(rhs, tree)?;
 
         ControlFlow::Continue(())
     }
@@ -613,7 +617,7 @@ pub trait Visitor<T: TreeView> {
             name,
             value_type,
             value,
-            inside,
+            body,
         } = *id.get(tree);
 
         self.visit_value_name(name, tree)?;
@@ -623,7 +627,7 @@ pub trait Visitor<T: TreeView> {
         }
 
         self.visit_expr(value, tree)?;
-        self.visit_expr(inside, tree)?;
+        self.visit_expr(body, tree)?;
 
         ControlFlow::Continue(())
     }
@@ -637,10 +641,10 @@ pub trait Visitor<T: TreeView> {
         id: Id<node::CaseBranch>,
         tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
-        let node::CaseBranch { pat, matches } = id.get(tree);
+        let node::CaseBranch { pat, body } = *id.get(tree);
 
-        self.visit_pat(*pat, tree)?;
-        self.visit_expr(*matches, tree)?;
+        self.visit_pat(pat, tree)?;
+        self.visit_expr(body, tree)?;
 
         ControlFlow::Continue(())
     }
@@ -677,15 +681,11 @@ pub trait Visitor<T: TreeView> {
     }
 
     fn walk_if_expr(&mut self, id: Id<node::IfExpr>, tree: &T) -> ControlFlow<Self::BreakValue> {
-        let node::IfExpr {
-            predicate,
-            then,
-            or,
-        } = id.get(tree);
+        let node::IfExpr { pred, then, else_ } = *id.get(tree);
 
-        self.visit_expr(*predicate, tree)?;
-        self.visit_expr(*then, tree)?;
-        self.visit_expr(*or, tree)?;
+        self.visit_expr(pred, tree)?;
+        self.visit_expr(then, tree)?;
+        self.visit_expr(else_, tree)?;
 
         ControlFlow::Continue(())
     }
@@ -1010,6 +1010,14 @@ pub trait Visitor<T: TreeView> {
         self.walk_type_scheme(id, tree)
     }
 
+    fn visit_module_error(
+        &mut self,
+        _id: Id<node::ModuleError>,
+        _tree: &T,
+    ) -> ControlFlow<Self::BreakValue> {
+        ControlFlow::Continue(())
+    }
+
     fn walk_module(&mut self, id: Id<node::Module>, tree: &T) -> ControlFlow<Self::BreakValue> {
         let module = id.get(tree);
 
@@ -1063,15 +1071,59 @@ pub trait Visitor<T: TreeView> {
         self.walk_module_import(id, tree)
     }
 
+    fn walk_functor(&mut self, id: Id<node::Functor>, tree: &T) -> ControlFlow<Self::BreakValue> {
+        let node::Functor {
+            param,
+            param_ty,
+            body,
+        } = *id.get(tree);
+
+        self.visit_module_name(param, tree)?;
+        self.visit_module_type(param_ty, tree)?;
+        self.visit_module_expr(body, tree)?;
+
+        ControlFlow::Continue(())
+    }
+
+    fn visit_functor(&mut self, id: Id<node::Functor>, tree: &T) -> ControlFlow<Self::BreakValue> {
+        self.walk_functor(id, tree)
+    }
+
+    fn walk_functor_app(
+        &mut self,
+        id: Id<node::FunctorApp>,
+        tree: &T,
+    ) -> ControlFlow<Self::BreakValue> {
+        let node::FunctorApp { func, arg } = *id.get(tree);
+
+        self.visit_module_expr(func, tree)?;
+        self.visit_module_expr(arg, tree)?;
+
+        ControlFlow::Continue(())
+    }
+
+    fn visit_functor_app(
+        &mut self,
+        id: Id<node::FunctorApp>,
+        tree: &T,
+    ) -> ControlFlow<Self::BreakValue> {
+        self.walk_functor_app(id, tree)
+    }
+
     fn walk_module_expr(
         &mut self,
         id: Id<node::ModuleExpr>,
         tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
+        use node::ModuleExpr::*;
+
         match *id.get(tree) {
-            node::ModuleExpr::Import(id) => self.visit_module_import(id, tree),
-            node::ModuleExpr::Module(id) => self.visit_module(id, tree),
-            node::ModuleExpr::Path(id) => self.visit_module_path(id, tree),
+            Error(id) => self.visit_module_error(id, tree),
+            Import(id) => self.visit_module_import(id, tree),
+            Module(id) => self.visit_module(id, tree),
+            Path(id) => self.visit_module_path(id, tree),
+            Functor(id) => self.visit_functor(id, tree),
+            FunctorApp(id) => self.visit_functor_app(id, tree),
         }
     }
 
@@ -1095,14 +1147,14 @@ pub trait Visitor<T: TreeView> {
         let node::ValueBind {
             vis,
             name,
-            ty,
+            ty_scheme,
             value,
         } = *id.get(tree);
 
         self.visit_vis(vis, tree)?;
         self.visit_value_name(name, tree)?;
-        if let Some(ty) = ty {
-            self.visit_type_scheme(ty, tree)?;
+        if let Some(ty_scheme) = ty_scheme {
+            self.visit_type_scheme(ty_scheme, tree)?;
         }
         self.visit_expr(value, tree)?;
 
@@ -1122,10 +1174,10 @@ pub trait Visitor<T: TreeView> {
         id: Id<node::TypeBind>,
         tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
-        let node::TypeBind { name, ty } = *id.get(tree);
+        let node::TypeBind { name, ty_scheme } = *id.get(tree);
 
         self.visit_type_name(name, tree)?;
-        self.visit_type_scheme(ty, tree)?;
+        self.visit_type_scheme(ty_scheme, tree)?;
 
         ControlFlow::Continue(())
     }
@@ -1143,10 +1195,10 @@ pub trait Visitor<T: TreeView> {
         id: Id<node::OpaqueTypeBind>,
         tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
-        let node::OpaqueTypeBind { name, ty } = *id.get(tree);
+        let node::OpaqueTypeBind { name, ty_scheme } = *id.get(tree);
 
         self.visit_type_name(name, tree)?;
-        self.visit_type_scheme(ty, tree)?;
+        self.visit_type_scheme(ty_scheme, tree)?;
 
         ControlFlow::Continue(())
     }
@@ -1167,14 +1219,14 @@ pub trait Visitor<T: TreeView> {
         let node::ModuleBind {
             vis,
             name,
-            ty,
+            sig,
             value,
         } = *id.get(tree);
 
         self.visit_vis(vis, tree)?;
         self.visit_module_name(name, tree)?;
-        if let Some(ty) = ty {
-            self.visit_module_type(ty, tree)?;
+        if let Some(sig) = sig {
+            self.visit_module_sig(sig, tree)?;
         }
         self.visit_module_expr(value, tree)?;
 
@@ -1196,7 +1248,7 @@ pub trait Visitor<T: TreeView> {
     ) -> ControlFlow<Self::BreakValue> {
         let node::ModuleTypeBind { name, ty } = *id.get(tree);
 
-        self.visit_module_name(name, tree)?;
+        self.visit_module_type_name(name, tree)?;
         self.visit_module_type(ty, tree)?;
 
         ControlFlow::Continue(())
@@ -1312,9 +1364,9 @@ pub trait Visitor<T: TreeView> {
         self.walk_spec(id, tree)
     }
 
-    fn walk_module_type(
+    fn walk_concrete_module_type(
         &mut self,
-        id: Id<node::ModuleType>,
+        id: Id<node::ConcreteModuleType>,
         tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
         let module_type = id.get(tree);
@@ -1326,11 +1378,98 @@ pub trait Visitor<T: TreeView> {
         ControlFlow::Continue(())
     }
 
+    fn visit_concrete_module_type(
+        &mut self,
+        id: Id<node::ConcreteModuleType>,
+        tree: &T,
+    ) -> ControlFlow<Self::BreakValue> {
+        self.walk_concrete_module_type(id, tree)
+    }
+
+    fn walk_qualified_module_type(
+        &mut self,
+        id: Id<node::QualifiedModuleType>,
+        tree: &T,
+    ) -> ControlFlow<Self::BreakValue> {
+        let node::QualifiedModuleType { path, ty } = *id.get(tree);
+
+        if let Some(path) = path {
+            self.visit_module_path(path, tree)?;
+        }
+
+        self.visit_module_type_name(ty, tree)?;
+
+        ControlFlow::Continue(())
+    }
+
+    fn visit_qualified_module_type(
+        &mut self,
+        id: Id<node::QualifiedModuleType>,
+        tree: &T,
+    ) -> ControlFlow<Self::BreakValue> {
+        self.walk_qualified_module_type(id, tree)
+    }
+
+    fn walk_module_type(
+        &mut self,
+        id: Id<node::ModuleType>,
+        tree: &T,
+    ) -> ControlFlow<Self::BreakValue> {
+        use node::ModuleType::*;
+
+        match *id.get(tree) {
+            Concrete(id) => self.visit_concrete_module_type(id, tree),
+            Qualified(id) => self.visit_qualified_module_type(id, tree),
+        }
+    }
+
     fn visit_module_type(
         &mut self,
         id: Id<node::ModuleType>,
         tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
         self.walk_module_type(id, tree)
+    }
+
+    fn walk_functor_type(
+        &mut self,
+        id: Id<node::FunctorType>,
+        tree: &T,
+    ) -> ControlFlow<Self::BreakValue> {
+        let node::FunctorType { input, output } = *id.get(tree);
+
+        self.visit_module_type(input, tree)?;
+        self.visit_module_sig(output, tree)?;
+
+        ControlFlow::Continue(())
+    }
+
+    fn visit_functor_type(
+        &mut self,
+        id: Id<node::FunctorType>,
+        tree: &T,
+    ) -> ControlFlow<Self::BreakValue> {
+        self.walk_functor_type(id, tree)
+    }
+
+    fn walk_module_sig(
+        &mut self,
+        id: Id<node::ModuleSig>,
+        tree: &T,
+    ) -> ControlFlow<Self::BreakValue> {
+        use node::ModuleSig::*;
+
+        match *id.get(tree) {
+            Functor(id) => self.visit_functor_type(id, tree),
+            Module(id) => self.visit_module_type(id, tree),
+        }
+    }
+
+    fn visit_module_sig(
+        &mut self,
+        id: Id<node::ModuleSig>,
+        tree: &T,
+    ) -> ControlFlow<Self::BreakValue> {
+        self.walk_module_sig(id, tree)
     }
 }

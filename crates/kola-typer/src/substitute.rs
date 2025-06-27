@@ -280,6 +280,7 @@ macro_rules! impl_meta_substitutable {
 }
 
 impl_meta_substitutable!(
+    ModuleTypeName,
     ModuleName,
     TypeName,
     ValueName,
@@ -339,16 +340,23 @@ impl_meta_substitutable!(
     ModuleBind,
     ModuleTypeBind,
     Bind,
+    ModuleError,
     Module,
     ModulePath,
     ModuleImport,
+    Functor,
+    FunctorApp,
     ModuleExpr,
     ValueSpec,
     OpaqueTypeKind,
     OpaqueTypeSpec,
     ModuleSpec,
     Spec,
-    ModuleType
+    ConcreteModuleType,
+    QualifiedModuleType,
+    ModuleType,
+    FunctorType,
+    ModuleSig,
 );
 
 pub fn merge<A, B, DA, DB>(

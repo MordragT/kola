@@ -12,6 +12,7 @@ use crate::print::NodePrinter;
     Debug, Display, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
 )]
 pub enum NamespaceKind {
+    ModuleType,
     Module,
     Type,
     Value,
@@ -20,6 +21,7 @@ pub enum NamespaceKind {
 mod sealed {
     pub trait Sealed {}
 
+    impl Sealed for super::ModuleTypeNamespace {}
     impl Sealed for super::ModuleNamespace {}
     impl Sealed for super::TypeNamespace {}
     impl Sealed for super::ValueNamespace {}
@@ -27,6 +29,15 @@ mod sealed {
 
 pub trait Namespace: sealed::Sealed {
     const KIND: NamespaceKind;
+}
+
+#[derive(
+    Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+)]
+pub struct ModuleTypeNamespace;
+
+impl Namespace for ModuleTypeNamespace {
+    const KIND: NamespaceKind = NamespaceKind::ModuleType;
 }
 
 #[derive(
@@ -56,6 +67,7 @@ impl Namespace for ValueNamespace {
     const KIND: NamespaceKind = NamespaceKind::Value;
 }
 
+pub type ModuleTypeName = Name<ModuleTypeNamespace>;
 pub type ModuleName = Name<ModuleNamespace>;
 pub type TypeName = Name<TypeNamespace>;
 pub type ValueName = Name<ValueNamespace>;
@@ -207,6 +219,7 @@ impl<'a, N> Notate<'a> for NodePrinter<'a, Name<N>> {
     Deserialize,
 )]
 pub enum AnyName {
+    ModuleType(ModuleTypeName),
     Module(ModuleName),
     Type(TypeName),
     Value(ValueName),
@@ -215,6 +228,7 @@ pub enum AnyName {
 impl AnyName {
     pub fn kind(&self) -> NamespaceKind {
         match self {
+            AnyName::ModuleType(_) => NamespaceKind::ModuleType,
             AnyName::Module(_) => NamespaceKind::Module,
             AnyName::Type(_) => NamespaceKind::Type,
             AnyName::Value(_) => NamespaceKind::Value,
@@ -223,6 +237,7 @@ impl AnyName {
 
     pub fn as_str_key(&self) -> &StrKey {
         match self {
+            AnyName::ModuleType(name) => name.as_str_key(),
             AnyName::Module(name) => name.as_str_key(),
             AnyName::Type(name) => name.as_str_key(),
             AnyName::Value(name) => name.as_str_key(),

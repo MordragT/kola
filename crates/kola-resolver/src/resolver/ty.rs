@@ -48,7 +48,7 @@ fn resolve_types_in_module(scope: &mut ModuleScope, report: &mut Report) {
             scope.type_graph.add_dependency(source, target);
             scope
                 .resolved
-                .insert_meta(id, ResolvedType::Defined(target));
+                .insert_meta(id, ResolvedType::Reference(target));
         } else {
             report.add_diagnostic(
                 Diagnostic::error(loc, "Type not found")
@@ -61,7 +61,7 @@ fn resolve_types_in_module(scope: &mut ModuleScope, report: &mut Report) {
         if let Some(type_sym) = scope.shape.get_type(name) {
             scope
                 .resolved
-                .insert_meta(id, ResolvedType::Defined(type_sym));
+                .insert_meta(id, ResolvedType::Reference(type_sym));
         } else {
             report.add_diagnostic(
                 Diagnostic::error(loc, "Type not found in annotation")

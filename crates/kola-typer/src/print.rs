@@ -14,7 +14,10 @@ impl<'a> Decorator<'a> for TypeDecorator<'a> {
         };
 
         let ty = match meta {
-            Meta::ModuleName(_) | Meta::TypeName(_) | Meta::ValueName(_) => return notation,
+            Meta::ModuleName(_)
+            | Meta::ModuleTypeName(_)
+            | Meta::TypeName(_)
+            | Meta::ValueName(_) => return notation,
             // Patterns
             Meta::AnyPat(t)
             | Meta::LiteralPat(t)
@@ -71,16 +74,23 @@ impl<'a> Decorator<'a> for TypeDecorator<'a> {
             | Meta::ModuleBind(_)
             | Meta::ModuleTypeBind(_)
             | Meta::Bind(_)
+            | Meta::ModuleError(_)
             | Meta::Module(_)
             | Meta::ModulePath(_)
             | Meta::ModuleImport(_)
+            | Meta::Functor(_)
+            | Meta::FunctorApp(_)
             | Meta::ModuleExpr(_)
             | Meta::ValueSpec(_)
             | Meta::OpaqueTypeKind(_)
             | Meta::OpaqueTypeSpec(_)
             | Meta::ModuleSpec(_)
             | Meta::Spec(_)
-            | Meta::ModuleType(_) => return notation,
+            | Meta::ConcreteModuleType(_)
+            | Meta::QualifiedModuleType(_)
+            | Meta::ModuleType(_)
+            | Meta::FunctorType(_)
+            | Meta::ModuleSig(_) => return notation,
         };
 
         let single = [notation.clone(), arena.notate(" : "), ty.clone()]

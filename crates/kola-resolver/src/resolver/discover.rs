@@ -15,11 +15,11 @@ use crate::{
     defs::Def,
     forest::Forest,
     info::ModuleInfo,
-    phase::{ResolvePhase, ResolvedType, ResolvedValue},
+    phase::{ResolvePhase, ResolvedModule, ResolvedModuleType, ResolvedType, ResolvedValue},
     prelude::Topography,
-    refs::{ModuleRef, TypeBindRef, TypeRef, ValueRef},
+    refs::{ModuleRef, ModuleTypeBindRef, ModuleTypeRef, TypeBindRef, TypeRef, ValueRef},
     scope::{ModuleScope, ModuleScopeStack},
-    symbol::{ModuleSym, TypeSym, ValueSym},
+    symbol::{ModuleSym, ModuleTypeSym, TypeSym, ValueSym},
 };
 
 use super::ModuleGraph;
@@ -172,6 +172,7 @@ fn _discover(
 
 struct Discoverer<'a> {
     source_id: SourceId,
+    current_module_type_bind_sym: Option<ModuleTypeSym>,
     current_module_bind_sym: Option<ModuleSym>,
     current_type_bind_sym: Option<TypeSym>,
     current_value_bind_sym: Option<ValueSym>,
@@ -207,6 +208,7 @@ impl<'a> Discoverer<'a> {
     ) -> Self {
         Self {
             source_id,
+            current_module_type_bind_sym: None,
             current_module_bind_sym: Some(module_sym),
             current_type_bind_sym: None,
             current_value_bind_sym: None,
@@ -249,6 +251,71 @@ where
 {
     type BreakValue = !;
 
+    fn visit_module_type_bind(
+        &mut self,
+        id: Id<node::ModuleTypeBind>,
+        tree: &T,
+    ) -> ControlFlow<Self::BreakValue> {
+        let node::ModuleTypeBind { name, .. } = *tree.node(id);
+
+        let name = *tree.node(name);
+
+        let span = self.span(id);
+
+        let module_type_sym = ModuleTypeSym::new();
+        self.insert_symbol(id, module_type_sym);
+        self.current_module_type_bind_sym = Some(module_type_sym);
+
+        // Register the module type binding in the current scope
+        if let Err(e) =
+            self.stack
+                .insert_module_type(name, module_type_sym, Def::bound(id, Vis::Export, span))
+        {
+            self.report.add_diagnostic(e.into());
+        }
+
+        self.walk_module_type_bind(id, tree)
+    }
+
+    fn visit_qualified_module_type(
+        &mut self,
+        id: Id<node::QualifiedModuleType>,
+        tree: &T,
+    ) -> ControlFlow<Self::BreakValue> {
+        let node::QualifiedModuleType { path, ty } = *tree.node(id);
+
+        let name = *ty.get(tree);
+        let loc = self.span(id);
+
+        if let Some(path) = path {
+            // Module Type defined in another module - Just visit the module path if it exists
+            self.visit_module_path(path, tree)?;
+        } else if let Some(sym) = self.stack.shape().get_module_type(name) {
+            // Found a module type binding in the current module scope
+            // which was defined before this reference to it (no forward reference)
+
+            self.insert_symbol(id, ResolvedModuleType(sym));
+
+            // Qualified Module Types can occur in both module type binds and module type annotations.
+            // Only in the former case we need to add a dependency.
+            if let Some(current_sym) = self.current_module_type_bind_sym {
+                // Add dependency from the current type bind to this type
+                self.stack
+                    .module_type_graph_mut()
+                    .add_dependency(current_sym, sym);
+            }
+        }
+        // Either a forward reference or not found in the current module scope
+        else if let Some(current_sym) = self.current_module_type_bind_sym {
+            let ref_ = ModuleTypeBindRef::new(name, id, current_sym, loc);
+            self.stack.refs_mut().insert_module_type_bind(ref_);
+        } else {
+            let ref_ = ModuleTypeRef::new(name, id, loc);
+            self.stack.refs_mut().insert_module_type(ref_);
+        }
+        ControlFlow::Continue(())
+    }
+
     fn visit_module_bind(
         &mut self,
         id: Id<node::ModuleBind>,
@@ -274,6 +341,62 @@ where
         }
 
         self.walk_module_bind(id, tree)
+    }
+
+    fn visit_functor(&mut self, id: Id<node::Functor>, tree: &T) -> ControlFlow<Self::BreakValue> {
+        let node::Functor {
+            param,
+            param_ty,
+            body,
+        } = *tree.node(id);
+
+        let loc = self.span(id);
+        let mut top_level = false;
+
+        if let Some(module_sym) = self.current_module_bind_sym.take() {
+            // If functors are nested then this might be None
+            // If it is some that means that we are in the top-most functor
+            self.insert_symbol(id, module_sym);
+            top_level = true;
+
+            // the stack doesnt create a new scope for every type of module expr, but just for "normal" modules
+            // Now this won't work at the moment because the id is not a module, but a functor.
+            // But I think the solution will look something like this
+            self.stack
+                .start(ModuleInfo::new(id, module_sym, self.source_id, loc));
+        }
+
+        // Create a new unique ModuleSym for the functor's parameter (e.g., 'x' in 'functor x : S => ...').
+        // This is the 'virtual' module that exists inside the functor's scope.
+        let param_sym = ModuleSym::new();
+        let param_loc = self.span(param);
+        let param_name = *param.get(tree);
+
+        // Insert the parameter module into the scope of the functor
+        self.stack
+            .insert_module(param_name, param_sym, Def::unbound(param_loc, Vis::None));
+
+        // TODO record relationship of parameter symbol to functor in maybe a FunctorRef or similar
+
+        // First, visit the parameter type annotation. This will add a ModuleTypeRef to refs (if not present yet),
+        // which will be resolved in the module_ty resolution phase.
+        self.visit_module_type(param_ty, tree)?;
+
+        // Now we need to visit the body of the functor.
+        // The `current_module_bind_sym` would need to be set if the body is a module expression.
+        // If the body is another functor, the current_module_bind_sym should be None however.
+        // Not sure what would be required if the body is a FunctorApp or a module-path
+        // So currently this doesn't work and needs redesign
+        self.visit_module_expr(body, tree)?;
+
+        if top_level {
+            // If this is the top-level functor, we need to finish the scope
+            // But we would also need to remove the parameter module from the scope I guess ?
+            // Unsure if this should be done here though.
+            self.stack.finish();
+        }
+
+        todo!()
     }
 
     fn visit_module(&mut self, id: Id<node::Module>, tree: &T) -> ControlFlow<Self::BreakValue> {
@@ -415,7 +538,7 @@ where
             // If this is called from a module bind, we can insert the module path
             // module a = b::c
 
-            self.insert_symbol(id, module_sym);
+            self.insert_symbol(id, ResolvedModule(module_sym));
             self.stack.refs_mut().insert_module_bind(module_sym, path);
         } else {
             // If we don't have a current module bind, we need to create a reference
@@ -438,7 +561,7 @@ where
         let node::ValueBind {
             vis,
             name,
-            ty,
+            ty_scheme,
             value,
         } = *tree.node(id);
 
@@ -465,9 +588,9 @@ where
             self.report.add_diagnostic(e.into());
         }
 
-        if let Some(ty) = ty {
+        if let Some(ty_scheme) = ty_scheme {
             // If there is a type annotation, we need to visit it
-            self.visit_type_scheme(ty, tree)?;
+            self.visit_type_scheme(ty_scheme, tree)?;
         }
 
         self.visit_expr(value, tree)?;
@@ -482,7 +605,7 @@ where
             name,
             value_type,
             value,
-            inside,
+            body,
         } = *tree.node(id);
 
         let name = *tree.node(name);
@@ -499,7 +622,7 @@ where
         self.insert_symbol(id, sym);
 
         self.stack.value_scope_mut().enter(name, sym);
-        self.visit_expr(inside, tree)?;
+        self.visit_expr(body, tree)?;
         self.stack.value_scope_mut().exit(&name);
 
         ControlFlow::Continue(())
@@ -641,22 +764,26 @@ where
         id: Id<node::QualifiedExpr>,
         tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
-        let node::QualifiedExpr { path, source, .. } = *tree.node(id);
+        let node::QualifiedExpr {
+            module_path,
+            source,
+            ..
+        } = *tree.node(id);
 
         let name = *source.get(tree);
 
-        if let Some(path) = path {
+        if let Some(path) = module_path {
             // Just visit the module path if it exists
             self.visit_module_path(path, tree)
         } else if let Some(value_sym) = self.stack.value_scope().get(&name) {
             // Local binding will not create value bind cycle either
-            self.insert_symbol(id, ResolvedValue::Defined(*value_sym));
+            self.insert_symbol(id, ResolvedValue::Reference(*value_sym));
             ControlFlow::Continue(())
         } else if let Some(value_sym) = self.stack.shape().get_value(name) {
             // Found a value binding in the current module scope
             // which was defined before this path expression (no forward reference)
 
-            self.insert_symbol(id, ResolvedValue::Defined(value_sym));
+            self.insert_symbol(id, ResolvedValue::Reference(value_sym));
 
             let current_sym = self.current_value_bind_sym.unwrap();
             self.stack
@@ -685,7 +812,7 @@ where
         id: Id<node::TypeBind>,
         tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
-        let node::TypeBind { name, ty } = *tree.node(id);
+        let node::TypeBind { name, ty_scheme } = *tree.node(id);
 
         let name = *tree.node(name);
 
@@ -704,7 +831,7 @@ where
             self.report.add_diagnostic(e.into());
         }
 
-        self.visit_type_scheme(ty, tree)?; // walk to discover module paths in type expressions
+        self.visit_type_scheme(ty_scheme, tree)?; // walk to discover module paths in type expressions
 
         self.current_type_bind_sym = None;
 
@@ -756,7 +883,7 @@ where
             // Found a type binding in the current module scope
             // which was defined before this type path (no forward reference)
 
-            self.insert_symbol(id, ResolvedType::Defined(type_sym));
+            self.insert_symbol(id, ResolvedType::Reference(type_sym));
 
             // Type Path's can occur in both type binds and type annotations.
             // Only in the former case we need to add a dependency.
@@ -770,7 +897,7 @@ where
             ControlFlow::Continue(())
         } else if let Some(type_sym) = self.stack.type_scope().get(&name) {
             // Local quantifier will not create type bind cycle either
-            self.insert_symbol(id, ResolvedType::Defined(*type_sym));
+            self.insert_symbol(id, ResolvedType::Reference(*type_sym));
             ControlFlow::Continue(())
         } else if let Some(builtin) = self.interner.get(name.0).and_then(BuiltinType::from_name) {
             // This is a builtin type - resolve immediately, no dependencies needed

@@ -16,20 +16,23 @@ use crate::{
     print::ResolutionDecorator,
     resolver::ty::TypeResolution,
     scope::ModuleScopes,
-    symbol::{ModuleSym, TypeSym, ValueSym},
+    symbol::{ModuleSym, ModuleTypeSym, TypeSym, ValueSym},
 };
 
 mod discover;
 mod module;
+mod module_ty;
 mod ty;
 mod value;
 
 use discover::DiscoverOutput;
 use module::ModuleResolution;
+use module_ty::ModuleTypeResolution;
 use value::ValueResolution;
 
 pub type TypeOrders = IndexMap<ModuleSym, Vec<TypeSym>>;
 pub type ValueOrders = IndexMap<ModuleSym, Vec<ValueSym>>;
+pub type ModuleTypeOrders = IndexMap<ModuleSym, Vec<ModuleTypeSym>>;
 
 #[derive(Debug, Clone, Default)]
 pub struct ResolveOutput {
@@ -40,6 +43,7 @@ pub struct ResolveOutput {
     pub module_scopes: ModuleScopes,
     pub value_orders: ValueOrders,
     pub type_orders: TypeOrders,
+    pub module_type_orders: ModuleTypeOrders,
     pub entry_points: Vec<ValueSym>,
 }
 
@@ -86,6 +90,9 @@ pub fn resolve(
         });
     }
 
+    let ModuleTypeResolution { module_type_orders } =
+        module_ty::resolve_module_types(&mut module_scopes, report);
+
     let TypeResolution { type_orders } = ty::resolve_types(&mut module_scopes, report);
 
     let ValueResolution { value_orders } = value::resolve_values(&mut module_scopes, report);
@@ -121,6 +128,7 @@ pub fn resolve(
         module_scopes,
         value_orders,
         type_orders,
+        module_type_orders,
         entry_points,
     })
 }

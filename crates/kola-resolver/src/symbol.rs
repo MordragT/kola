@@ -1,5 +1,7 @@
 use derive_more::From;
-use kola_tree::node::{ModuleNamespace, NamespaceKind, TypeNamespace, ValueNamespace};
+use kola_tree::node::{
+    ModuleNamespace, ModuleTypeNamespace, NamespaceKind, TypeNamespace, ValueNamespace,
+};
 use kola_utils::define_unique_leveled_id;
 use std::{
     fmt,
@@ -50,6 +52,7 @@ impl<T: ?Sized> Default for Sym<T> {
     }
 }
 
+pub type ModuleTypeSym = Sym<ModuleTypeNamespace>;
 pub type ModuleSym = Sym<ModuleNamespace>;
 pub type TypeSym = Sym<TypeNamespace>;
 pub type ValueSym = Sym<ValueNamespace>;
@@ -74,6 +77,7 @@ impl fmt::Display for ValueSym {
 
 #[derive(Debug, From, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum AnySym {
+    ModuleType(ModuleTypeSym),
     Module(ModuleSym),
     Type(TypeSym),
     Value(ValueSym),
@@ -82,6 +86,7 @@ pub enum AnySym {
 impl AnySym {
     pub fn id(&self) -> u32 {
         match self {
+            Self::ModuleType(symbol) => symbol.id(),
             Self::Module(symbol) => symbol.id(),
             Self::Type(symbol) => symbol.id(),
             Self::Value(symbol) => symbol.id(),
@@ -94,6 +99,7 @@ impl AnySym {
 
     pub fn level(&self) -> u32 {
         match self {
+            Self::ModuleType(symbol) => symbol.level(),
             Self::Module(symbol) => symbol.level(),
             Self::Type(symbol) => symbol.level(),
             Self::Value(symbol) => symbol.level(),
@@ -102,6 +108,7 @@ impl AnySym {
 
     pub fn kind(&self) -> NamespaceKind {
         match self {
+            Self::ModuleType(_) => NamespaceKind::ModuleType,
             Self::Module(_) => NamespaceKind::Module,
             Self::Type(_) => NamespaceKind::Type,
             Self::Value(_) => NamespaceKind::Value,

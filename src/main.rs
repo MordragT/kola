@@ -27,7 +27,6 @@ fn main() -> io::Result<()> {
         .init();
 
     let cli: Cli = clap::Parser::parse();
-
     let options = PrintOptions::default().with_width(120);
 
     match cli.command {
