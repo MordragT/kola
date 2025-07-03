@@ -195,6 +195,7 @@ macro_rules! define {
 }
 
 define!(
+    FunctorName,
     ModuleTypeName,
     ModuleName,
     TypeName,
@@ -254,12 +255,12 @@ define!(
     OpaqueTypeBind,
     ModuleBind,
     ModuleTypeBind,
+    FunctorBind,
     Bind,
     ModuleError,
     Module,
     ModulePath,
     ModuleImport,
-    Functor,
     FunctorApp,
     ModuleExpr,
     ValueSpec,
@@ -269,7 +270,5 @@ define!(
     Spec,
     ConcreteModuleType,
     QualifiedModuleType,
-    ModuleType,
-    FunctorType,
-    ModuleSig
+    ModuleType
 );

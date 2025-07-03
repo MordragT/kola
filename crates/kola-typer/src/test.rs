@@ -1,4 +1,4 @@
-use std::{ops::ControlFlow, rc::Rc};
+use std::rc::Rc;
 
 use camino::Utf8PathBuf;
 use kola_resolver::phase::ResolvedNodes;

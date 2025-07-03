@@ -3,19 +3,34 @@
         rand : Num -> Num,
     },
 
-    module rand_a = {
+    export module rand_a = {
         rand = fn x => x + 1,
     },
 
-    module rand_b = {
+    export module rand_b = {
         rand = fn x => x * 2,
     },
 
-    module combined_rand = functor a : Randomize => functor b : Randomize => {
-        rand = fn x => (a::rand (b::rand x)),
+    module functor combined_rand ab : { module a : Randomize, module b : Randomize } => {
+        rand = fn x => (ab::a::rand (ab::b::rand x)),
     },
 
-    module rand_ab = ((combined_rand rand_a) rand_b),
+    #module input = {
+    #    module a = super::rand_a,
+    #    module b = super::rand_b,
+    #},
+    module input = {
+        export module a = {
+            rand = fn x => x + 1,
+        }, #m14
+        export module b = {
+            rand = fn x => x * 2,
+        }, #m17
+    }, # m13
+    module rand_ab = (combined_rand input), # m20
+
+    # Due to current limitations inline modules cannot be used as functor arguments
+    #module rand_ab = (combined_rand { module a = rand_a, module b = rand_b }),
 
     main = let x = 10 in (rand_ab::rand x),
 }

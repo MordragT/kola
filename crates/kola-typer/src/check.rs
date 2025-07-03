@@ -102,16 +102,18 @@ pub fn type_check(
 
     let module_order = match module_graph.topological_sort() {
         Ok(order) => order,
-        Err(_cycle) => {
+        Err(cycle) => {
             // TODO error reporting isn't great here,
             // but it is hard to know where the exact error is,
             // still should report the cycle.
-            report.add_issue(Issue::error("Module cycle detected", 0));
+            report.add_issue(Issue::error(cycle.to_string(), 0));
             return TypeCheckOutput::default();
         }
     };
 
     for module_sym in module_order {
+        dbg!(module_sym);
+
         let module_scope = module_scopes[&module_sym].clone();
         let info = module_scope.info;
 

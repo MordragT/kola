@@ -76,14 +76,17 @@
 //!
 
 #![feature(never_type)]
+#![feature(exhaustive_patterns)]
+#![feature(iter_intersperse)]
 
+pub mod constraints;
 pub mod defs;
 pub mod error;
 pub mod forest;
+pub mod functor;
 pub mod info;
 pub mod phase;
 pub mod print;
-pub mod refs;
 pub mod resolver;
 pub mod scope;
 pub mod shape;

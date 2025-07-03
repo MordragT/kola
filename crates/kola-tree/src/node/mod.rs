@@ -67,6 +67,7 @@ macro_rules! define_nodes {
 }
 
 define_nodes!(
+    FunctorName,
     ModuleTypeName,
     ModuleName,
     TypeName,
@@ -126,12 +127,12 @@ define_nodes!(
     OpaqueTypeBind,
     ModuleBind,
     ModuleTypeBind,
+    FunctorBind,
     Bind,
     ModuleError,
     Module,
     ModulePath,
     ModuleImport,
-    Functor,
     FunctorApp,
     ModuleExpr,
     ValueSpec,
@@ -142,8 +143,6 @@ define_nodes!(
     ConcreteModuleType,
     QualifiedModuleType,
     ModuleType,
-    FunctorType,
-    ModuleSig,
 );
 
 const _: () = {

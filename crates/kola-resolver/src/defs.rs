@@ -6,12 +6,14 @@ use kola_span::Loc;
 use kola_tree::{
     id::Id,
     node::{
-        self, ModuleNamespace, ModuleTypeNamespace, Namespace, NamespaceKind, TypeNamespace,
-        ValueNamespace, Vis,
+        self, FunctorNamespace, ModuleNamespace, ModuleTypeNamespace, Namespace, NamespaceKind,
+        TypeNamespace, ValueNamespace, Vis,
     },
 };
 
-use crate::symbol::{AnySym, ModuleSym, ModuleTypeSym, Sym, TypeSym, ValueSym};
+use crate::symbol::{
+    AnySym, FunctorSym, ModuleSym, ModuleTypeSym, Substitute, Sym, TypeSym, ValueSym,
+};
 
 pub struct Def<T> {
     pub loc: Loc,
@@ -93,6 +95,7 @@ impl<T> Hash for Def<T> {
     }
 }
 
+pub type FunctorDef = Def<node::FunctorBind>;
 pub type ModuleTypeDef = Def<node::ModuleTypeBind>;
 pub type ModuleDef = Def<node::ModuleBind>;
 pub type TypeDef = Def<node::TypeBind>;
@@ -100,6 +103,7 @@ pub type ValueDef = Def<node::ValueBind>;
 
 #[derive(Debug, From, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum AnyDef {
+    Functor(FunctorDef),
     ModuleType(ModuleTypeDef),
     Module(ModuleDef),
     Type(TypeDef),
@@ -109,6 +113,7 @@ pub enum AnyDef {
 impl AnyDef {
     pub const fn kind(&self) -> NamespaceKind {
         match self {
+            AnyDef::Functor(_) => NamespaceKind::Functor,
             AnyDef::ModuleType(_) => NamespaceKind::ModuleType,
             AnyDef::Module(_) => NamespaceKind::Module,
             AnyDef::Type(_) => NamespaceKind::Type,
@@ -118,6 +123,7 @@ impl AnyDef {
 
     pub const fn location(&self) -> Loc {
         match self {
+            AnyDef::Functor(info) => info.loc,
             AnyDef::ModuleType(info) => info.loc,
             AnyDef::Module(info) => info.loc,
             AnyDef::Type(info) => info.loc,
@@ -127,6 +133,7 @@ impl AnyDef {
 
     pub const fn visibility(&self) -> Vis {
         match self {
+            AnyDef::Functor(info) => info.vis,
             AnyDef::ModuleType(info) => info.vis,
             AnyDef::Module(info) => info.vis,
             AnyDef::Type(info) => info.vis,
@@ -135,7 +142,7 @@ impl AnyDef {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct Defs<N: Namespace, T>(HashMap<Sym<N>, Def<T>>);
 
 impl<N: Namespace, T> Defs<N, T> {
@@ -160,6 +167,12 @@ impl<N: Namespace, T> Defs<N, T> {
     #[inline]
     pub fn iter(&self) -> hash_map::Iter<Sym<N>, Def<T>> {
         self.0.iter()
+    }
+}
+
+impl<N: Namespace, T> Clone for Defs<N, T> {
+    fn clone(&self) -> Self {
+        Self(self.0.clone())
     }
 }
 
@@ -205,8 +218,34 @@ impl<N: Namespace, T> Index<Sym<N>> for Defs<N, T> {
     }
 }
 
+impl<N: Namespace, T> Substitute<N> for Defs<N, T> {
+    fn try_substitute(&self, from: Sym<N>, to: Sym<N>) -> Option<Self>
+    where
+        Self: Sized,
+    {
+        if let Some(def) = self.0.get(&from) {
+            let mut new_defs = self.clone();
+            new_defs.0.remove(&from);
+            new_defs.0.insert(to, *def);
+            Some(new_defs)
+        } else {
+            None
+        }
+    }
+
+    fn substitute_mut(&mut self, from: Sym<N>, to: Sym<N>)
+    where
+        Self: Sized,
+    {
+        if let Some(def) = self.0.remove(&from) {
+            self.0.insert(to, def);
+        }
+    }
+}
+
 #[derive(Debug, Clone, Default)]
 pub struct Definitions {
+    functors: Defs<FunctorNamespace, node::FunctorBind>,
     module_types: Defs<ModuleTypeNamespace, node::ModuleTypeBind>,
     modules: Defs<ModuleNamespace, node::ModuleBind>,
     types: Defs<TypeNamespace, node::TypeBind>,
@@ -217,6 +256,11 @@ impl Definitions {
     #[inline]
     pub fn new() -> Self {
         Self::default()
+    }
+
+    #[inline]
+    pub fn insert_functor(&mut self, sym: FunctorSym, def: FunctorDef) {
+        self.functors.insert(sym, def);
     }
 
     #[inline]
@@ -237,6 +281,11 @@ impl Definitions {
     #[inline]
     pub fn insert_value(&mut self, sym: ValueSym, def: ValueDef) {
         self.values.insert(sym, def);
+    }
+
+    #[inline]
+    pub fn get_functor(&self, sym: FunctorSym) -> Option<FunctorDef> {
+        self.functors.get(sym)
     }
 
     #[inline]
@@ -262,11 +311,17 @@ impl Definitions {
     #[inline]
     pub fn get(&self, sym: impl Into<AnySym>) -> Option<AnyDef> {
         match sym.into() {
+            AnySym::Functor(sym) => self.get_functor(sym).map(AnyDef::Functor),
             AnySym::ModuleType(sym) => self.get_module_type(sym).map(AnyDef::ModuleType),
             AnySym::Module(sym) => self.get_module(sym).map(AnyDef::Module),
             AnySym::Value(sym) => self.get_value(sym).map(AnyDef::Value),
             AnySym::Type(sym) => self.get_type(sym).map(AnyDef::Type),
         }
+    }
+
+    #[inline]
+    pub fn iter_functors(&self) -> impl Iterator<Item = (FunctorSym, FunctorDef)> {
+        self.functors.iter().map(|(&sym, &def)| (sym, def))
     }
 
     #[inline]
@@ -287,6 +342,14 @@ impl Definitions {
     #[inline]
     pub fn iter_values(&self) -> impl Iterator<Item = (ValueSym, ValueDef)> {
         self.values.iter().map(|(&sym, &def)| (sym, def))
+    }
+}
+
+impl Index<FunctorSym> for Definitions {
+    type Output = FunctorDef;
+
+    fn index(&self, index: FunctorSym) -> &Self::Output {
+        &self.functors[index]
     }
 }
 
@@ -319,5 +382,120 @@ impl Index<TypeSym> for Definitions {
 
     fn index(&self, index: TypeSym) -> &Self::Output {
         &self.types[index]
+    }
+}
+
+impl Substitute<FunctorNamespace> for Definitions {
+    fn try_substitute(&self, from: FunctorSym, to: FunctorSym) -> Option<Self>
+    where
+        Self: Sized,
+    {
+        if let Some(functors) = self.functors.try_substitute(from, to) {
+            Some(Self {
+                functors,
+                ..self.clone()
+            })
+        } else {
+            None
+        }
+    }
+
+    fn substitute_mut(&mut self, from: FunctorSym, to: FunctorSym)
+    where
+        Self: Sized,
+    {
+        self.functors.substitute_mut(from, to);
+    }
+}
+
+impl Substitute<ModuleTypeNamespace> for Definitions {
+    fn try_substitute(&self, from: ModuleTypeSym, to: ModuleTypeSym) -> Option<Self>
+    where
+        Self: Sized,
+    {
+        if let Some(module_types) = self.module_types.try_substitute(from, to) {
+            Some(Self {
+                module_types,
+                ..self.clone()
+            })
+        } else {
+            None
+        }
+    }
+
+    fn substitute_mut(&mut self, from: ModuleTypeSym, to: ModuleTypeSym)
+    where
+        Self: Sized,
+    {
+        self.module_types.substitute_mut(from, to);
+    }
+}
+
+impl Substitute<ModuleNamespace> for Definitions {
+    fn try_substitute(&self, from: ModuleSym, to: ModuleSym) -> Option<Self>
+    where
+        Self: Sized,
+    {
+        if let Some(modules) = self.modules.try_substitute(from, to) {
+            Some(Self {
+                modules,
+                ..self.clone()
+            })
+        } else {
+            None
+        }
+    }
+
+    fn substitute_mut(&mut self, from: ModuleSym, to: ModuleSym)
+    where
+        Self: Sized,
+    {
+        self.modules.substitute_mut(from, to);
+    }
+}
+
+impl Substitute<TypeNamespace> for Definitions {
+    fn try_substitute(&self, from: TypeSym, to: TypeSym) -> Option<Self>
+    where
+        Self: Sized,
+    {
+        if let Some(types) = self.types.try_substitute(from, to) {
+            Some(Self {
+                types,
+                ..self.clone()
+            })
+        } else {
+            None
+        }
+    }
+
+    fn substitute_mut(&mut self, from: TypeSym, to: TypeSym)
+    where
+        Self: Sized,
+    {
+        self.types.substitute_mut(from, to);
+    }
+}
+
+impl Substitute<ValueNamespace> for Definitions {
+    fn try_substitute(&self, from: ValueSym, to: ValueSym) -> Option<Self>
+    where
+        Self: Sized,
+    {
+        if let Some(values) = self.values.try_substitute(from, to) {
+            Some(Self {
+                values,
+                ..self.clone()
+            })
+        } else {
+            None
+        }
+    }
+
+    fn substitute_mut(&mut self, from: ValueSym, to: ValueSym)
+    where
+        Self: Sized,
+    {
+        self.values.substitute_mut(from, to);
     }
 }

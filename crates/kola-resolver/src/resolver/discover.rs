@@ -1,25 +1,29 @@
 use camino::Utf8Path;
 use log::debug;
 use owo_colors::OwoColorize;
-use std::{io, ops::ControlFlow};
+use std::{collections::HashMap, io, ops::ControlFlow};
 
 use kola_builtins::{BuiltinType, find_builtin_id};
 use kola_print::prelude::*;
-use kola_span::{IntoDiagnostic, Loc, Report, SourceId, SourceManager};
+use kola_span::{Diagnostic, IntoDiagnostic, Loc, Report, SourceId, SourceManager};
 use kola_syntax::prelude::*;
 use kola_tree::{node::Vis, prelude::*};
 use kola_utils::{interner::StrInterner, io::FileSystem};
 
 use crate::{
     GlobalId,
+    constraints::{
+        ModuleBindConstraint, ModuleRef, ModuleTypeBindRef, ModuleTypeRef, TypeBindRef, TypeRef,
+        ValueRef,
+    },
     defs::Def,
     forest::Forest,
+    functor::Functor,
     info::ModuleInfo,
     phase::{ResolvePhase, ResolvedModule, ResolvedModuleType, ResolvedType, ResolvedValue},
     prelude::Topography,
-    refs::{ModuleRef, ModuleTypeBindRef, ModuleTypeRef, TypeBindRef, TypeRef, ValueRef},
     scope::{ModuleScope, ModuleScopeStack},
-    symbol::{ModuleSym, ModuleTypeSym, TypeSym, ValueSym},
+    symbol::{FunctorSym, ModuleSym, ModuleTypeSym, TypeSym, ValueSym},
 };
 
 use super::ModuleGraph;
@@ -31,6 +35,7 @@ pub struct DiscoverOutput {
     pub topography: Topography,
     pub module_graph: ModuleGraph,
     pub module_scopes: Vec<ModuleScope>,
+    pub functors: HashMap<FunctorSym, Functor>,
     pub entry_points: Vec<ValueSym>,
 }
 
@@ -97,8 +102,19 @@ pub fn discover(
     forest.insert(source_id, tree);
     topography.insert(source_id, spans);
 
+    if !report.is_empty() {
+        // If there are errors in parsing the imported module, we skip discovery
+        return Ok(DiscoverOutput {
+            source_manager,
+            forest,
+            topography,
+            ..Default::default()
+        });
+    }
+
     let mut module_graph = ModuleGraph::new();
     let mut module_scopes = Vec::new();
+    let mut functors = HashMap::new();
     let mut entry_points = Vec::new();
 
     _discover(
@@ -113,6 +129,7 @@ pub fn discover(
         &mut topography,
         &mut module_graph,
         &mut module_scopes,
+        &mut functors,
         &mut entry_points,
         print_options,
     );
@@ -123,6 +140,7 @@ pub fn discover(
         topography,
         module_graph,
         module_scopes,
+        functors,
         entry_points,
     })
 }
@@ -139,6 +157,7 @@ fn _discover(
     topography: &mut Topography,
     module_graph: &mut ModuleGraph,
     module_scopes: &mut Vec<ModuleScope>,
+    functors: &mut HashMap<FunctorSym, Functor>,
     entry_points: &mut Vec<ValueSym>,
     print_options: PrintOptions,
 ) {
@@ -157,17 +176,12 @@ fn _discover(
         topography,
         module_graph,
         module_scopes,
+        functors,
         entry_points,
         print_options,
     );
 
-    match tree.root_id().visit_by(&mut discoverer, &*tree) {
-        ControlFlow::Continue(()) => (),
-        ControlFlow::Break(_) => unreachable!(),
-    }
-
-    let tracker = discoverer.stack;
-    module_scopes.append(&mut tracker.into_completed());
+    ControlFlow::Continue(()) = tree.root_id().visit_by(&mut discoverer, &*tree);
 }
 
 struct Discoverer<'a> {
@@ -186,6 +200,7 @@ struct Discoverer<'a> {
     topography: &'a mut Topography,
     module_graph: &'a mut ModuleGraph,
     module_scopes: &'a mut Vec<ModuleScope>,
+    functors: &'a mut HashMap<FunctorSym, Functor>,
     entry_points: &'a mut Vec<ValueSym>,
     print_options: PrintOptions,
 }
@@ -203,6 +218,7 @@ impl<'a> Discoverer<'a> {
         topography: &'a mut Topography,
         module_graph: &'a mut ModuleGraph,
         module_scopes: &'a mut Vec<ModuleScope>,
+        functors: &'a mut HashMap<FunctorSym, Functor>,
         entry_points: &'a mut Vec<ValueSym>,
         print_options: PrintOptions,
     ) -> Self {
@@ -222,6 +238,7 @@ impl<'a> Discoverer<'a> {
             topography,
             module_graph,
             module_scopes,
+            functors,
             entry_points,
             print_options,
         }
@@ -251,6 +268,151 @@ where
 {
     type BreakValue = !;
 
+    fn visit_functor_bind(
+        &mut self,
+        id: Id<node::FunctorBind>,
+        tree: &T,
+    ) -> ControlFlow<Self::BreakValue> {
+        let node::FunctorBind {
+            vis,
+            name,
+            param,
+            param_ty,
+            body,
+        } = *tree.node(id);
+
+        let name = *tree.node(name);
+        let vis = *tree.node(vis);
+
+        let loc = self.span(id);
+
+        let sym = FunctorSym::new();
+        self.insert_symbol(id, sym);
+
+        if let Err(e) = self
+            .stack
+            .insert_functor(name, sym, Def::bound(id, vis, loc))
+        {
+            self.report.add_diagnostic(e.into());
+        }
+
+        // First, visit the parameter type annotation. This will add a ModuleTypeRef to refs (if not present yet),
+        // which will be resolved in the module_ty resolution phase.
+        // It has to be visited before the body, because types are defined in the parent scope not in the body scope.
+        self.visit_module_type(param_ty, tree)?;
+
+        // Create a new scope for the functor body with a new ModuleSym.
+        let body_sym = ModuleSym::new();
+        self.stack
+            .start(ModuleInfo::new(body, body_sym, self.source_id, loc));
+
+        dbg!(body_sym);
+
+        // Create a new unique ModuleSym for the functor's parameter (e.g., 'x' in 'functor f x : S => ...').
+        // This is the 'virtual' module that exists inside the functor's scope.
+        let param_sym = ModuleSym::new();
+        let param_loc = self.span(param);
+        let param_name = *param.get(tree);
+
+        dbg!(param_sym);
+
+        // Insert the parameter module into the scope of the functor
+        if let Err(e) =
+            self.stack
+                .insert_module(param_name, param_sym, Def::unbound(param_loc, Vis::Export))
+        // TODO here we set Vis to export but ideally the functor should not "bleed" the parameter scope
+        {
+            self.report.add_diagnostic(e.into());
+        }
+
+        // No need to add dependency information here, because due to the walk_module call later,
+        // nested bindings will automatically also insert into the dependency graphs.
+        // The only problem is that the parameter creates a new ModuleSym,
+        // which means that the dependency graphs do not contain the real parameter symbol but the mocked one.
+        // So when applying the functor, there is a need for substitution of the parameter symbol
+        // The functor symbol itsself does as far as I understand not need a edge from the parent module.
+
+        // Now we can visit the functor body.
+        // Note that this uses walk, because the stack is already set up for the functor body.
+        self.walk_module(body, tree)?;
+
+        // Pop the ModuleScope from the stack and create a new Definition for the functor bind
+        let body = self.stack.finish();
+        let functor = Functor::new(param_sym, body);
+
+        self.functors.insert(sym, functor);
+
+        ControlFlow::Continue(())
+    }
+
+    fn visit_functor_app(
+        &mut self,
+        id: Id<node::FunctorApp>,
+        tree: &T,
+    ) -> ControlFlow<Self::BreakValue> {
+        let node::FunctorApp { func, arg } = *tree.node(id);
+
+        let name = *func.get(tree);
+        let loc = self.span(id);
+
+        // TODO I need to somehow visit the argument here
+        // Now because the arg is a ModuleExpr it can be an import, path, inline module or another functor app.
+        // Due to the way functor refs are inserted (depth first), there is no need for dependency tracking between functor apps.
+        // I believe before visiting I should create a ModuleSym here and insert it into the "current_module_bind_sym" field,
+        // so that the visitor can associated this symbol with the argument.
+        // Maybe I should also do something with the current_module_bind_sym in this visitor.
+        // After visiting the argument, I can then create a FunctorRef and insert it into the stack's refs.
+        // I believe I should have all the required information at this point:
+        // 1. The namne of the functor
+        // 2. The symbol of the resolved (or soon to be resolved) argument
+        // 3. The current module bind symbol, which responds to the "source" field of the FunctorRef
+        // 4. The span and id of the FunctorApp node.
+
+        // TODO: the upper is not longer correct
+        //
+        // Now I restrict arguments to be just module paths,
+        // which mean they no longer need the module symbol, because they are not own real modules (only binds can be).
+        // I have both alternatives here one with module symbol and one without.
+        // I think the one with symbols is easier to implement but lets see.
+
+        let arg_sym = ModuleSym::new();
+        dbg!(arg_sym);
+        let bind = self.current_module_bind_sym.replace(arg_sym).unwrap();
+        self.stack.resolved_mut().insert_meta(id, bind);
+
+        // let bind = self.current_module_bind_sym.take().unwrap();
+
+        let node::ModuleExpr::Path(arg_id) = *tree.node(arg) else {
+            // TODO for functor arguments other than module paths, the current module resolution implementation is insufficient
+            // Most importantly scoping is not implemented correctly e.g.:
+            //
+            // module a = ...,
+            // module b = ...,
+            // module functor f x : ... => ...
+            // module c = (f { module a = a, module b = b }) // This will not work, because the anonymous module has its own module scope
+            //                                                  and doesn't inherit from its parent module
+            //
+            // Maybe for inline modules in general, scoping should be less strict and allow transparent use of parent bindings.
+            self.report.add_diagnostic(
+                Diagnostic::error(
+                    loc,
+                    "Functor application argument must currently be a module path",
+                )
+                .with_help("Use a module path to apply a functor."),
+            );
+            return ControlFlow::Continue(());
+        };
+
+        self.visit_module_path(arg_id, tree)?;
+
+        let constraint = ModuleBindConstraint::functor(id, bind, loc, name, arg_sym);
+        self.stack
+            .cons_mut()
+            .constrain_module_bind(bind, constraint);
+
+        ControlFlow::Continue(())
+    }
+
     fn visit_module_type_bind(
         &mut self,
         id: Id<node::ModuleTypeBind>,
@@ -274,7 +436,11 @@ where
             self.report.add_diagnostic(e.into());
         }
 
-        self.walk_module_type_bind(id, tree)
+        self.walk_module_type_bind(id, tree)?;
+
+        self.current_module_type_bind_sym = None;
+
+        ControlFlow::Continue(())
     }
 
     fn visit_qualified_module_type(
@@ -308,10 +474,10 @@ where
         // Either a forward reference or not found in the current module scope
         else if let Some(current_sym) = self.current_module_type_bind_sym {
             let ref_ = ModuleTypeBindRef::new(name, id, current_sym, loc);
-            self.stack.refs_mut().insert_module_type_bind(ref_);
+            self.stack.cons_mut().insert_module_type_bind(ref_);
         } else {
             let ref_ = ModuleTypeRef::new(name, id, loc);
-            self.stack.refs_mut().insert_module_type(ref_);
+            self.stack.cons_mut().insert_module_type(ref_);
         }
         ControlFlow::Continue(())
     }
@@ -343,62 +509,6 @@ where
         self.walk_module_bind(id, tree)
     }
 
-    fn visit_functor(&mut self, id: Id<node::Functor>, tree: &T) -> ControlFlow<Self::BreakValue> {
-        let node::Functor {
-            param,
-            param_ty,
-            body,
-        } = *tree.node(id);
-
-        let loc = self.span(id);
-        let mut top_level = false;
-
-        if let Some(module_sym) = self.current_module_bind_sym.take() {
-            // If functors are nested then this might be None
-            // If it is some that means that we are in the top-most functor
-            self.insert_symbol(id, module_sym);
-            top_level = true;
-
-            // the stack doesnt create a new scope for every type of module expr, but just for "normal" modules
-            // Now this won't work at the moment because the id is not a module, but a functor.
-            // But I think the solution will look something like this
-            self.stack
-                .start(ModuleInfo::new(id, module_sym, self.source_id, loc));
-        }
-
-        // Create a new unique ModuleSym for the functor's parameter (e.g., 'x' in 'functor x : S => ...').
-        // This is the 'virtual' module that exists inside the functor's scope.
-        let param_sym = ModuleSym::new();
-        let param_loc = self.span(param);
-        let param_name = *param.get(tree);
-
-        // Insert the parameter module into the scope of the functor
-        self.stack
-            .insert_module(param_name, param_sym, Def::unbound(param_loc, Vis::None));
-
-        // TODO record relationship of parameter symbol to functor in maybe a FunctorRef or similar
-
-        // First, visit the parameter type annotation. This will add a ModuleTypeRef to refs (if not present yet),
-        // which will be resolved in the module_ty resolution phase.
-        self.visit_module_type(param_ty, tree)?;
-
-        // Now we need to visit the body of the functor.
-        // The `current_module_bind_sym` would need to be set if the body is a module expression.
-        // If the body is another functor, the current_module_bind_sym should be None however.
-        // Not sure what would be required if the body is a FunctorApp or a module-path
-        // So currently this doesn't work and needs redesign
-        self.visit_module_expr(body, tree)?;
-
-        if top_level {
-            // If this is the top-level functor, we need to finish the scope
-            // But we would also need to remove the parameter module from the scope I guess ?
-            // Unsure if this should be done here though.
-            self.stack.finish();
-        }
-
-        todo!()
-    }
-
     fn visit_module(&mut self, id: Id<node::Module>, tree: &T) -> ControlFlow<Self::BreakValue> {
         let sym = self.current_module_bind_sym.take().unwrap();
 
@@ -421,7 +531,7 @@ where
         self.walk_module(id, tree)?;
 
         // Pop the scope now that we're done with this module
-        self.stack.finish();
+        self.module_scopes.push(self.stack.finish());
 
         ControlFlow::Continue(())
     }
@@ -502,6 +612,11 @@ where
         self.forest.insert(source_id, tree);
         self.topography.insert(source_id, spans);
 
+        if !self.report.is_empty() {
+            // If there are errors in parsing the imported module, we skip discovery
+            return ControlFlow::Continue(());
+        }
+
         _discover(
             source_id,
             module_sym,
@@ -514,6 +629,7 @@ where
             self.topography,
             self.module_graph,
             self.module_scopes,
+            self.functors,
             self.entry_points,
             self.print_options,
         );
@@ -534,12 +650,18 @@ where
             .map(|id| *tree.node(id))
             .collect::<Vec<_>>();
 
-        if let Some(module_sym) = self.current_module_bind_sym.take() {
+        let loc = self.span(id);
+
+        if let Some(bind) = self.current_module_bind_sym.take() {
             // If this is called from a module bind, we can insert the module path
             // module a = b::c
 
-            self.insert_symbol(id, ResolvedModule(module_sym));
-            self.stack.refs_mut().insert_module_bind(module_sym, path);
+            self.insert_symbol(id, ResolvedModule(bind));
+
+            let constraint = ModuleBindConstraint::path(id, bind, loc, path);
+            self.stack
+                .cons_mut()
+                .constrain_module_bind(bind, constraint);
         } else {
             // If we don't have a current module bind, we need to create a reference
             // module::record.field
@@ -547,7 +669,7 @@ where
             let current_sym = self.stack.info().sym;
             let ref_ = ModuleRef::new(path, id, current_sym, self.span(id));
 
-            self.stack.refs_mut().insert_module(ref_);
+            self.stack.cons_mut().insert_module(ref_);
         }
 
         ControlFlow::Continue(())
@@ -801,7 +923,7 @@ where
             let current_sym = self.current_value_bind_sym.unwrap();
             let ref_ = ValueRef::new(name, id, current_sym, self.span(id));
 
-            self.stack.refs_mut().insert_value(ref_);
+            self.stack.cons_mut().insert_value(ref_);
 
             ControlFlow::Continue(())
         }
@@ -907,12 +1029,12 @@ where
         // Either a forward reference or not found in the current module scope
         if let Some(current_sym) = self.current_type_bind_sym {
             let ref_ = TypeBindRef::new(name, id, current_sym, loc);
-            self.stack.refs_mut().insert_type_bind(ref_);
+            self.stack.cons_mut().insert_type_bind(ref_);
 
             ControlFlow::Continue(())
         } else {
             let ref_ = TypeRef::new(name, id, loc);
-            self.stack.refs_mut().insert_type(ref_);
+            self.stack.cons_mut().insert_type(ref_);
 
             ControlFlow::Continue(())
         }

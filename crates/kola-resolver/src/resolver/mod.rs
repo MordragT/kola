@@ -61,6 +61,7 @@ pub fn resolve(
         topography,
         mut module_graph,
         module_scopes,
+        functors,
         entry_points,
     } = discover::discover(path, io, arena, interner, report, print_options)?;
 
@@ -75,8 +76,13 @@ pub fn resolve(
         });
     }
 
-    let ModuleResolution { mut module_scopes } =
-        module::resolve_modules(module_scopes, interner, report, &mut module_graph);
+    let ModuleResolution { mut module_scopes } = module::resolve_modules(
+        module_scopes,
+        &functors,
+        interner,
+        report,
+        &mut module_graph,
+    );
 
     if !report.is_empty() {
         return Ok(ResolveOutput {
@@ -91,7 +97,7 @@ pub fn resolve(
     }
 
     let ModuleTypeResolution { module_type_orders } =
-        module_ty::resolve_module_types(&mut module_scopes, report);
+        module_ty::resolve_module_types(&mut module_scopes, report, interner);
 
     let TypeResolution { type_orders } = ty::resolve_types(&mut module_scopes, report);
 
@@ -119,6 +125,12 @@ pub fn resolve(
             tree_printer.render(print_options, arena)
         );
     }
+
+    debug!(
+        "{} Module Graph:\n{}",
+        "Module Graph".bold().bright_white(),
+        module_graph.to_dot()
+    );
 
     Ok(ResolveOutput {
         source_manager,

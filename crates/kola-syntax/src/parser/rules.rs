@@ -72,6 +72,11 @@ CallExpr := '(' Callable Expr ')'
 
 // TODO case related errors
 
+pub fn functor_name_parser<'t>() -> impl KolaParser<'t, Id<node::FunctorName>> + Clone {
+    // TODO SCREAMING_CASE ?
+    lower_symbol().map(node::FunctorName::new).to_node().boxed()
+}
+
 pub fn module_type_name_parser<'t>() -> impl KolaParser<'t, Id<node::ModuleTypeName>> + Clone {
     upper_symbol()
         .map(node::ModuleTypeName::new)
@@ -98,23 +103,6 @@ pub fn upper_value_name_parser<'t>() -> impl KolaParser<'t, Id<node::ValueName>>
 pub fn module_parser<'t>() -> impl KolaParser<'t, Id<node::Module>> + Clone {
     let module_type = module_type_parser();
 
-    let module_sig = module_type
-        .clone()
-        .to_module_sig()
-        .foldl_with(
-            ctrl(CtrlT::ARROW)
-                .ignore_then(module_type.clone())
-                .repeated(),
-            |output, input, e| {
-                let span = e.span();
-                let tree: &mut State = e.state();
-
-                let functor = node::FunctorType { input, output };
-                tree.insert_as::<node::ModuleSig, _>(functor, span)
-            },
-        )
-        .boxed();
-
     recursive(|module| {
         let module_expr = recursive(|module_expr| {
             let module_import = kw(KwT::IMPORT)
@@ -134,42 +122,17 @@ pub fn module_parser<'t>() -> impl KolaParser<'t, Id<node::Module>> + Clone {
                 .as_context()
                 .boxed();
 
-            let functor = group((
-                kw(KwT::FUNCTOR).ignore_then(module_name_parser()),
-                ctrl(CtrlT::COLON).ignore_then(module_type.clone()),
-                ctrl(CtrlT::DOUBLE_ARROW).ignore_then(module_expr.clone()),
-            ))
-            .map_to_node(|(param, param_ty, body)| node::Functor {
-                param,
-                param_ty,
-                body,
-            })
-            .to_module_expr()
-            .labelled("Functor")
-            .as_context()
+            let functor_app = nested_parser(
+                functor_name_parser()
+                    .then(module_expr.clone())
+                    .map_to_node(|(func, arg)| node::FunctorApp { func, arg })
+                    .to_module_expr(),
+                Delim::Paren,
+                |_span| node::ModuleError,
+            )
             .boxed();
 
-            let functor_app = recursive(|functor_app| {
-                let callable = choice((functor_app.clone(), functor.clone(), module_path.clone()));
-                let arg = choice((
-                    functor_app.clone(),
-                    module_path.clone(),
-                    module_import.clone(),
-                )); // Disallow functor's itsself as argument
-
-                nested_parser(
-                    callable
-                        .then(arg)
-                        .map_to_node(|(func, arg)| node::FunctorApp { func, arg })
-                        .to_module_expr(),
-                    Delim::Paren,
-                    |_span| node::ModuleError,
-                )
-                .boxed()
-            });
-
             choice((
-                functor,
                 functor_app,
                 module.clone().to_module_expr(),
                 module_import,
@@ -207,15 +170,16 @@ pub fn module_parser<'t>() -> impl KolaParser<'t, Id<node::Module>> + Clone {
         // TODO opaque type bind
 
         let module_bind = vis
+            .clone()
             .then_ignore(kw(KwT::MODULE))
             .then(module_name_parser())
-            .then(ctrl(CtrlT::COLON).ignore_then(module_sig.clone()).or_not())
+            .then(ctrl(CtrlT::COLON).ignore_then(module_type.clone()).or_not())
             .then_ignore(op(OpT::ASSIGN))
             .then(module_expr)
-            .map_to_node(|(((vis, name), sig), value)| node::ModuleBind {
+            .map_to_node(|(((vis, name), ty), value)| node::ModuleBind {
                 vis,
                 name,
-                sig,
+                ty,
                 value,
             })
             .to_bind();
@@ -224,11 +188,39 @@ pub fn module_parser<'t>() -> impl KolaParser<'t, Id<node::Module>> + Clone {
             .ignore_then(kw(KwT::TYPE))
             .ignore_then(module_type_name_parser())
             .then_ignore(op(OpT::ASSIGN))
-            .then(module_type)
+            .then(module_type.clone())
             .map_to_node(|(name, ty)| node::ModuleTypeBind { name, ty })
             .to_bind();
 
-        let bind = choice((module_type_bind, module_bind, type_bind, value_bind)).boxed();
+        let functor_bind = group((
+            vis,
+            kw(KwT::MODULE)
+                .ignore_then(kw(KwT::FUNCTOR))
+                .ignore_then(functor_name_parser()),
+            module_name_parser(),
+            ctrl(CtrlT::COLON).ignore_then(module_type),
+            ctrl(CtrlT::DOUBLE_ARROW).ignore_then(module.clone()),
+        ))
+        .map_to_node(|(vis, name, param, param_ty, body)| node::FunctorBind {
+            vis,
+            name,
+            param,
+            param_ty,
+            body,
+        })
+        .to_bind()
+        .labelled("Functor")
+        .as_context()
+        .boxed();
+
+        let bind = choice((
+            functor_bind,
+            module_type_bind,
+            module_bind,
+            type_bind,
+            value_bind,
+        ))
+        .boxed();
 
         bind.separated_by(ctrl(CtrlT::COMMA))
             .allow_trailing()
@@ -1910,7 +1902,7 @@ mod tests {
             .to_module()
             .name()
             .has_name("m");
-        inspector.inner_at(0).to_module().has_none_sig();
+        inspector.inner_at(0).to_module().has_none_ty();
         inspector
             .inner_at(0)
             .to_module()
@@ -1955,8 +1947,7 @@ mod tests {
         inspector
             .inner_at(0)
             .to_module()
-            .sig()
-            .to_module()
+            .ty()
             .to_concrete()
             .has_inner_count(1)
             .inner_at(0)
@@ -1966,8 +1957,7 @@ mod tests {
         inspector
             .inner_at(0)
             .to_module()
-            .sig()
-            .to_module()
+            .ty()
             .to_concrete()
             .inner_at(0)
             .to_value()

@@ -1,15 +1,15 @@
 use indexmap::IndexMap;
-use kola_tree::node::{ModuleName, ModuleTypeName, TypeName, ValueName};
+use kola_tree::node::{FunctorName, ModuleName, ModuleTypeName, TypeName, ValueName};
 use kola_utils::scope::LinearScope;
 
 use crate::{
-    defs::{AnyDef, Definitions, ModuleDef, ModuleTypeDef, TypeDef, ValueDef},
+    constraints::Constraints,
+    defs::{AnyDef, Definitions, FunctorDef, ModuleDef, ModuleTypeDef, TypeDef, ValueDef},
     error::NameCollision,
     info::{ModuleInfo, ModuleTypeGraph, TypeGraph, ValueGraph},
     phase::ResolvedNodes,
-    refs::References,
     shape::Shape,
-    symbol::{ModuleSym, ModuleTypeSym, TypeSym, ValueSym},
+    symbol::{FunctorSym, ModuleSym, ModuleTypeSym, TypeSym, ValueSym},
 };
 
 pub type ModuleScopes = IndexMap<ModuleSym, ModuleScope>;
@@ -22,7 +22,7 @@ pub struct ModuleScope {
     pub info: ModuleInfo,
     pub shape: Shape,
     pub defs: Definitions,
-    pub refs: References,
+    pub cons: Constraints,
     pub resolved: ResolvedNodes,
     pub value_scope: ValueScope,
     pub value_graph: ValueGraph,
@@ -37,7 +37,7 @@ impl ModuleScope {
             info,
             shape: Shape::new(),
             defs: Definitions::new(),
-            refs: References::new(),
+            cons: Constraints::new(),
             resolved: ResolvedNodes::new(),
             value_scope: ValueScope::new(),
             value_graph: ValueGraph::new(),
@@ -45,6 +45,21 @@ impl ModuleScope {
             type_graph: TypeGraph::new(),
             module_type_graph: ModuleTypeGraph::new(),
         }
+    }
+
+    pub fn insert_functor(
+        &mut self,
+        name: FunctorName,
+        sym: FunctorSym,
+        def: FunctorDef,
+    ) -> Result<(), NameCollision> {
+        if let Some(bind) = self.shape.get(name).and_then(|sym| self.defs.get(sym)) {
+            return Err(name_collision(def.into(), bind));
+        }
+
+        self.shape.insert_functor(name, sym);
+        self.defs.insert_functor(sym, def);
+        Ok(())
     }
 
     pub fn insert_module_type(
@@ -128,6 +143,7 @@ const fn name_collision(this: AnyDef, other: AnyDef) -> NameCollision {
     };
 
     match this {
+        AnyDef::Functor(this) => NameCollision::functor_bind(this.loc, other.location(), help),
         AnyDef::ModuleType(this) => {
             NameCollision::module_type_bind(this.loc, other.location(), help)
         }
@@ -140,16 +156,12 @@ const fn name_collision(this: AnyDef, other: AnyDef) -> NameCollision {
 #[derive(Debug, Clone)]
 pub struct ModuleScopeStack {
     todo: Vec<ModuleScope>,
-    done: Vec<ModuleScope>,
 }
 
 impl ModuleScopeStack {
     #[inline]
     pub fn new() -> Self {
-        Self {
-            todo: Vec::new(),
-            done: Vec::new(),
-        }
+        Self { todo: Vec::new() }
     }
 
     #[inline]
@@ -158,10 +170,17 @@ impl ModuleScopeStack {
     }
 
     #[inline]
-    pub fn finish(&mut self) {
-        if let Some(current) = self.todo.pop() {
-            self.done.push(current);
-        }
+    pub fn finish(&mut self) -> ModuleScope {
+        self.todo.pop().expect("Cannot finish an empty scope stack")
+    }
+
+    pub fn insert_functor(
+        &mut self,
+        name: FunctorName,
+        sym: FunctorSym,
+        def: FunctorDef,
+    ) -> Result<(), NameCollision> {
+        self.todo.last_mut().unwrap().insert_functor(name, sym, def)
     }
 
     pub fn insert_module_type(
@@ -254,23 +273,23 @@ impl ModuleScopeStack {
     }
 
     #[inline]
-    pub fn try_refs(&self) -> Option<&References> {
-        self.todo.last().map(|scope| &scope.refs)
+    pub fn try_cons(&self) -> Option<&Constraints> {
+        self.todo.last().map(|scope| &scope.cons)
     }
 
     #[inline]
-    pub fn refs(&self) -> &References {
-        self.try_refs().unwrap()
+    pub fn cons(&self) -> &Constraints {
+        self.try_cons().unwrap()
     }
 
     #[inline]
-    pub fn try_refs_mut(&mut self) -> Option<&mut References> {
-        self.todo.last_mut().map(|scope| &mut scope.refs)
+    pub fn try_cons_mut(&mut self) -> Option<&mut Constraints> {
+        self.todo.last_mut().map(|scope| &mut scope.cons)
     }
 
     #[inline]
-    pub fn refs_mut(&mut self) -> &mut References {
-        self.try_refs_mut().unwrap()
+    pub fn cons_mut(&mut self) -> &mut Constraints {
+        self.try_cons_mut().unwrap()
     }
 
     #[inline]
@@ -392,11 +411,6 @@ impl ModuleScopeStack {
     #[inline]
     pub fn module_type_graph_mut(&mut self) -> &mut ModuleTypeGraph {
         self.try_module_type_graph_mut().unwrap()
-    }
-
-    #[inline]
-    pub fn into_completed(self) -> Vec<ModuleScope> {
-        self.done
     }
 }
 

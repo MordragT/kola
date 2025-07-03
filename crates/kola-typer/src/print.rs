@@ -14,10 +14,6 @@ impl<'a> Decorator<'a> for TypeDecorator<'a> {
         };
 
         let ty = match meta {
-            Meta::ModuleName(_)
-            | Meta::ModuleTypeName(_)
-            | Meta::TypeName(_)
-            | Meta::ValueName(_) => return notation,
             // Patterns
             Meta::AnyPat(t)
             | Meta::LiteralPat(t)
@@ -27,8 +23,7 @@ impl<'a> Decorator<'a> for TypeDecorator<'a> {
             | Meta::RecordPat(t)
             | Meta::VariantPat(t)
             | Meta::Pat(t) => t.green().display_in(arena),
-            Meta::RecordFieldPat(p) | Meta::VariantTagPat(p) => return notation,
-            Meta::PatError(_) => return notation,
+            Meta::RecordFieldPat(lt) | Meta::VariantTagPat(lt) => lt.green().display_in(arena),
 
             // Expressions
             Meta::LiteralExpr(t)
@@ -51,46 +46,22 @@ impl<'a> Decorator<'a> for TypeDecorator<'a> {
             | Meta::CallExpr(t)
             | Meta::TagExpr(t)
             | Meta::Expr(t) => t.green().display_in(arena),
-            Meta::RecordField(lt) => return notation,
-            Meta::ExprError(_) => return notation,
-            Meta::FieldPath(_) => return notation,
+            Meta::RecordField(lt) => lt.green().display_in(arena),
 
             // Types
-            Meta::RecordFieldType(lt) | Meta::VariantTagType(lt) => return notation,
+            Meta::RecordFieldType(lt) | Meta::VariantTagType(lt) => lt.green().display_in(arena),
             Meta::RecordType(t) | Meta::VariantType(t) | Meta::FuncType(t) => {
                 t.green().display_in(arena)
             }
             Meta::QualifiedType(pt)
             | Meta::TypeApplication(pt)
             | Meta::Type(pt)
-            | Meta::TypeScheme(pt) => pt.green().display_in(arena),
-            Meta::TypeVar(_) | Meta::TypeError(_) => return notation,
+            | Meta::TypeScheme(pt)
+            | Meta::TypeVar(pt) => pt.green().display_in(arena),
 
             // Modules
             Meta::TypeBind(pt) => pt.green().display_in(arena),
             Meta::ValueBind(t) => t.green().display_in(arena),
-            Meta::Vis(_)
-            | Meta::OpaqueTypeBind(_)
-            | Meta::ModuleBind(_)
-            | Meta::ModuleTypeBind(_)
-            | Meta::Bind(_)
-            | Meta::ModuleError(_)
-            | Meta::Module(_)
-            | Meta::ModulePath(_)
-            | Meta::ModuleImport(_)
-            | Meta::Functor(_)
-            | Meta::FunctorApp(_)
-            | Meta::ModuleExpr(_)
-            | Meta::ValueSpec(_)
-            | Meta::OpaqueTypeKind(_)
-            | Meta::OpaqueTypeSpec(_)
-            | Meta::ModuleSpec(_)
-            | Meta::Spec(_)
-            | Meta::ConcreteModuleType(_)
-            | Meta::QualifiedModuleType(_)
-            | Meta::ModuleType(_)
-            | Meta::FunctorType(_)
-            | Meta::ModuleSig(_) => return notation,
         };
 
         let single = [notation.clone(), arena.notate(" : "), ty.clone()]

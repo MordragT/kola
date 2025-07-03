@@ -3,10 +3,13 @@
 use std::fmt;
 
 use kola_builtins::{BuiltinId, BuiltinType};
-use kola_tree::meta::{MetaMap, Phase};
+use kola_tree::{
+    meta::{MetaMap, Phase},
+    node::{ModuleNamespace, ModuleTypeNamespace, TypeNamespace, ValueNamespace},
+};
 use kola_utils::as_variant;
 
-use crate::symbol::{ModuleSym, ModuleTypeSym, TypeSym, ValueSym};
+use crate::symbol::{FunctorSym, ModuleSym, ModuleTypeSym, Substitute, TypeSym, ValueSym};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum ResolvedValue {
@@ -30,6 +33,30 @@ impl fmt::Display for ResolvedValue {
             ResolvedValue::Reference(sym) => sym.fmt(f),
             ResolvedValue::Builtin(id) => id.fmt(f),
         }
+    }
+}
+
+impl Substitute<ValueNamespace> for ResolvedValue {
+    fn try_substitute(&self, from: ValueSym, to: ValueSym) -> Option<Self>
+    where
+        Self: Sized,
+    {
+        if let Self::Reference(sym) = self
+            && *sym == from
+        {
+            Some(Self::Reference(to))
+        } else {
+            None
+        }
+    }
+}
+
+impl Substitute<ModuleNamespace> for ResolvedValue {
+    fn try_substitute(&self, _from: ModuleSym, _to: ModuleSym) -> Option<Self>
+    where
+        Self: Sized,
+    {
+        None
     }
 }
 
@@ -58,11 +85,62 @@ impl fmt::Display for ResolvedType {
     }
 }
 
+impl Substitute<TypeNamespace> for ResolvedType {
+    fn try_substitute(&self, from: TypeSym, to: TypeSym) -> Option<Self>
+    where
+        Self: Sized,
+    {
+        if let Self::Reference(sym) = self
+            && *sym == from
+        {
+            Some(Self::Reference(to))
+        } else {
+            None
+        }
+    }
+}
+
+impl Substitute<ModuleNamespace> for ResolvedType {
+    fn try_substitute(&self, _from: ModuleSym, _to: ModuleSym) -> Option<Self>
+    where
+        Self: Sized,
+    {
+        None
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ResolvedModule(pub ModuleSym);
 
+impl Substitute<ModuleNamespace> for ResolvedModule {
+    fn try_substitute(&self, from: ModuleSym, to: ModuleSym) -> Option<Self>
+    where
+        Self: Sized,
+    {
+        if self.0 == from { Some(Self(to)) } else { None }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ResolvedModuleType(pub ModuleTypeSym);
+
+impl Substitute<ModuleTypeNamespace> for ResolvedModuleType {
+    fn try_substitute(&self, from: ModuleTypeSym, to: ModuleTypeSym) -> Option<Self>
+    where
+        Self: Sized,
+    {
+        if self.0 == from { Some(Self(to)) } else { None }
+    }
+}
+
+impl Substitute<ModuleNamespace> for ResolvedModuleType {
+    fn try_substitute(&self, _from: ModuleSym, _to: ModuleSym) -> Option<Self>
+    where
+        Self: Sized,
+    {
+        None
+    }
+}
 
 pub type ResolvedNodes = MetaMap<ResolvePhase>;
 
@@ -71,6 +149,7 @@ pub struct ResolvePhase;
 impl Phase for ResolvePhase {
     // ===== NAMES =====
     // Names are the source of symbols, not targets of resolution
+    type FunctorName = !;
     type ModuleTypeName = !;
     type ModuleName = !;
     type TypeName = !;
@@ -146,6 +225,7 @@ impl Phase for ResolvePhase {
     type OpaqueTypeBind = TypeSym; // Creates symbol for the opaque type
     type ModuleBind = ModuleSym; // Creates symbol for the module alias
     type ModuleTypeBind = ModuleTypeSym; // Module type bindings - future feature
+    type FunctorBind = FunctorSym; // Creates symbol for the functor binding
     type Bind = !; // Generic bind wrapper - symbols handled by specific binds
 
     // ===== MODULES =====
@@ -154,7 +234,6 @@ impl Phase for ResolvePhase {
     type Module = ModuleSym; // Creates symbol for the module definition
     type ModulePath = ResolvedModule; // Resolves to the referenced module symbol
     type ModuleImport = ModuleSym; // Creates symbol for the imported module binding
-    type Functor = ModuleSym; // TODO is this right ?
     type FunctorApp = ModuleSym;
     type ModuleExpr = !; // Future: First-class modules could get ModuleSym
 
@@ -170,6 +249,4 @@ impl Phase for ResolvePhase {
     type ConcreteModuleType = !;
     type QualifiedModuleType = ResolvedModuleType;
     type ModuleType = !; // Future: Module type expressions
-    type FunctorType = !;
-    type ModuleSig = !;
 }

@@ -11,3 +11,4 @@ thiserror.workspace = true
 derive_more.workspace = true
 pathdiff = { version = "0.2.3", features = ["camino"] }
 typenum = "1.18.0"
+graphwiz = "0.5.1"

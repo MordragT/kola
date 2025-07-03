@@ -27,6 +27,8 @@ macro_rules! impl_visitable {
 }
 
 impl_visitable!(
+    FunctorName,
+    ModuleTypeName,
     ModuleName,
     TypeName,
     ValueName,
@@ -97,6 +99,14 @@ impl_visitable!(
 
 pub trait Visitor<T: TreeView> {
     type BreakValue;
+
+    fn visit_functor_name(
+        &mut self,
+        _id: Id<node::FunctorName>,
+        _tree: &T,
+    ) -> ControlFlow<Self::BreakValue> {
+        ControlFlow::Continue(())
+    }
 
     fn visit_module_type_name(
         &mut self,
@@ -1071,24 +1081,6 @@ pub trait Visitor<T: TreeView> {
         self.walk_module_import(id, tree)
     }
 
-    fn walk_functor(&mut self, id: Id<node::Functor>, tree: &T) -> ControlFlow<Self::BreakValue> {
-        let node::Functor {
-            param,
-            param_ty,
-            body,
-        } = *id.get(tree);
-
-        self.visit_module_name(param, tree)?;
-        self.visit_module_type(param_ty, tree)?;
-        self.visit_module_expr(body, tree)?;
-
-        ControlFlow::Continue(())
-    }
-
-    fn visit_functor(&mut self, id: Id<node::Functor>, tree: &T) -> ControlFlow<Self::BreakValue> {
-        self.walk_functor(id, tree)
-    }
-
     fn walk_functor_app(
         &mut self,
         id: Id<node::FunctorApp>,
@@ -1096,7 +1088,7 @@ pub trait Visitor<T: TreeView> {
     ) -> ControlFlow<Self::BreakValue> {
         let node::FunctorApp { func, arg } = *id.get(tree);
 
-        self.visit_module_expr(func, tree)?;
+        self.visit_functor_name(func, tree)?;
         self.visit_module_expr(arg, tree)?;
 
         ControlFlow::Continue(())
@@ -1122,7 +1114,6 @@ pub trait Visitor<T: TreeView> {
             Import(id) => self.visit_module_import(id, tree),
             Module(id) => self.visit_module(id, tree),
             Path(id) => self.visit_module_path(id, tree),
-            Functor(id) => self.visit_functor(id, tree),
             FunctorApp(id) => self.visit_functor_app(id, tree),
         }
     }
@@ -1219,14 +1210,14 @@ pub trait Visitor<T: TreeView> {
         let node::ModuleBind {
             vis,
             name,
-            sig,
+            ty,
             value,
         } = *id.get(tree);
 
         self.visit_vis(vis, tree)?;
         self.visit_module_name(name, tree)?;
-        if let Some(sig) = sig {
-            self.visit_module_sig(sig, tree)?;
+        if let Some(ty) = ty {
+            self.visit_module_type(ty, tree)?;
         }
         self.visit_module_expr(value, tree)?;
 
@@ -1262,6 +1253,36 @@ pub trait Visitor<T: TreeView> {
         self.walk_module_type_bind(id, tree)
     }
 
+    fn walk_functor_bind(
+        &mut self,
+        id: Id<node::FunctorBind>,
+        tree: &T,
+    ) -> ControlFlow<Self::BreakValue> {
+        let node::FunctorBind {
+            vis,
+            name,
+            param,
+            param_ty,
+            body,
+        } = *id.get(tree);
+
+        self.visit_vis(vis, tree)?;
+        self.visit_functor_name(name, tree)?;
+        self.visit_module_name(param, tree)?;
+        self.visit_module_type(param_ty, tree)?;
+        self.visit_module(body, tree)?;
+
+        ControlFlow::Continue(())
+    }
+
+    fn visit_functor_bind(
+        &mut self,
+        id: Id<node::FunctorBind>,
+        tree: &T,
+    ) -> ControlFlow<Self::BreakValue> {
+        self.walk_functor_bind(id, tree)
+    }
+
     fn walk_bind(&mut self, id: Id<node::Bind>, tree: &T) -> ControlFlow<Self::BreakValue> {
         use node::Bind::*;
 
@@ -1271,6 +1292,7 @@ pub trait Visitor<T: TreeView> {
             OpaqueType(id) => self.visit_opaque_type_bind(id, tree),
             Module(id) => self.visit_module_bind(id, tree),
             ModuleType(id) => self.visit_module_type_bind(id, tree),
+            Functor(id) => self.visit_functor_bind(id, tree),
         }
     }
 
@@ -1429,47 +1451,5 @@ pub trait Visitor<T: TreeView> {
         tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
         self.walk_module_type(id, tree)
-    }
-
-    fn walk_functor_type(
-        &mut self,
-        id: Id<node::FunctorType>,
-        tree: &T,
-    ) -> ControlFlow<Self::BreakValue> {
-        let node::FunctorType { input, output } = *id.get(tree);
-
-        self.visit_module_type(input, tree)?;
-        self.visit_module_sig(output, tree)?;
-
-        ControlFlow::Continue(())
-    }
-
-    fn visit_functor_type(
-        &mut self,
-        id: Id<node::FunctorType>,
-        tree: &T,
-    ) -> ControlFlow<Self::BreakValue> {
-        self.walk_functor_type(id, tree)
-    }
-
-    fn walk_module_sig(
-        &mut self,
-        id: Id<node::ModuleSig>,
-        tree: &T,
-    ) -> ControlFlow<Self::BreakValue> {
-        use node::ModuleSig::*;
-
-        match *id.get(tree) {
-            Functor(id) => self.visit_functor_type(id, tree),
-            Module(id) => self.visit_module_type(id, tree),
-        }
-    }
-
-    fn visit_module_sig(
-        &mut self,
-        id: Id<node::ModuleSig>,
-        tree: &T,
-    ) -> ControlFlow<Self::BreakValue> {
-        self.walk_module_sig(id, tree)
     }
 }

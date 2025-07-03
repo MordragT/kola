@@ -1,10 +1,11 @@
 use kola_span::{Diagnostic, Report};
 use kola_tree::meta::MetaMapExt;
+use log::debug;
 
 use super::ValueOrders;
 use crate::{
+    constraints::ValueRef,
     phase::ResolvedValue,
-    refs::ValueRef,
     scope::{ModuleScope, ModuleScopes},
 };
 
@@ -47,11 +48,13 @@ pub fn resolve_values(scopes: &mut ModuleScopes, report: &mut Report) -> ValueRe
             Ok(order) => {
                 value_orders.insert(*sym, order);
             }
-            Err(_) => {
+            Err(cycle) => {
                 report.add_diagnostic(
-                    Diagnostic::error(scope.info.loc, "Cycle detected in value graph")
+                    Diagnostic::error(scope.info.loc, cycle.to_string())
                         .with_help("Check for circular dependencies in value definitions."),
                 );
+
+                debug!("Cycle detected inside:\n{}", scope.value_graph.to_dot());
             }
         }
     }
@@ -66,7 +69,7 @@ fn resolve_values_in_module(scope: &mut ModuleScope, report: &mut Report) {
         id,
         source,
         loc,
-    } in scope.refs.values()
+    } in scope.cons.values()
     {
         if let Some(target) = scope.shape.get_value(name) {
             scope.value_graph.add_dependency(source, target);

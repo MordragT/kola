@@ -35,10 +35,7 @@ impl<'a> PatternTyper<'a> {
         T: TreeView,
         Id<N>: Visitable<T>,
     {
-        match id.visit_by(&mut self, tree) {
-            ControlFlow::Break(_) => (),
-            ControlFlow::Continue(_) => (),
-        }
+        ControlFlow::Continue(()) = id.visit_by(&mut self, tree)
     }
 }
 

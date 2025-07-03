@@ -32,156 +32,10 @@ use kola_print::prelude::*;
 use super::{Expr, ModuleName, TypeScheme};
 use crate::{
     id::Id,
-    node::{ModuleTypeName, TypeName, ValueName},
+    node::{FunctorName, ModuleTypeName, TypeName, ValueName},
     print::NodePrinter,
     tree::{TreeBuilder, TreeView},
 };
-
-#[derive(
-    Debug, Notate, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
-)]
-#[notate(color = "red")]
-pub struct ModuleError;
-
-#[derive(
-    Debug,
-    Notate,
-    Inspector,
-    From,
-    IntoIterator,
-    Clone,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    Hash,
-    Serialize,
-    Deserialize,
-)]
-#[notate(color = "green")]
-#[into_iterator(owned, ref)]
-pub struct Module(pub Vec<Id<Bind>>);
-
-#[derive(
-    Debug,
-    Notate,
-    Inspector,
-    From,
-    IntoIterator,
-    Clone,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    Hash,
-    Serialize,
-    Deserialize,
-)]
-#[notate(color = "cyan")]
-#[into_iterator(owned, ref)]
-pub struct ModulePath(pub Vec<Id<ModuleName>>);
-
-impl ModulePath {
-    pub fn get(&self, index: usize, tree: &impl TreeView) -> ModuleName {
-        *self.0[index].get(tree)
-    }
-}
-
-#[derive(
-    Notate,
-    Inspector,
-    Debug,
-    From,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    Hash,
-    Serialize,
-    Deserialize,
-)]
-#[notate(color = "green")]
-pub struct ModuleImport(pub Id<ModuleName>);
-
-#[derive(
-    Notate,
-    Inspector,
-    Debug,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    Hash,
-    Serialize,
-    Deserialize,
-)]
-#[notate(color = "green")]
-pub struct Functor {
-    pub param: Id<ModuleName>,
-    pub param_ty: Id<ModuleType>, // should I necessitate type annotations here ? and restriction to ModuleType good ?
-    pub body: Id<ModuleExpr>,
-}
-
-#[derive(
-    Debug,
-    Notate,
-    Inspector,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    Hash,
-    Serialize,
-    Deserialize,
-)]
-#[notate(color = "green")]
-pub struct FunctorApp {
-    pub func: Id<ModuleExpr>,
-    pub arg: Id<ModuleExpr>,
-}
-
-#[derive(
-    Debug,
-    EnumAsInner,
-    Inspector,
-    From,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    Hash,
-    Serialize,
-    Deserialize,
-)]
-pub enum ModuleExpr {
-    Error(Id<ModuleError>),
-    Module(Id<Module>),
-    Import(Id<ModuleImport>),
-    Path(Id<ModulePath>),
-    Functor(Id<Functor>),
-    FunctorApp(Id<FunctorApp>),
-}
-
-impl<'a> Notate<'a> for NodePrinter<'a, ModuleExpr> {
-    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
-        match *self.value {
-            ModuleExpr::Error(id) => self.to(id).notate(arena),
-            ModuleExpr::Module(id) => self.to(id).notate(arena),
-            ModuleExpr::Import(id) => self.to(id).notate(arena),
-            ModuleExpr::Path(id) => self.to(id).notate(arena),
-            ModuleExpr::Functor(id) => self.to(id).notate(arena),
-            ModuleExpr::FunctorApp(id) => self.to(id).notate(arena),
-        }
-    }
-}
 
 #[derive(
     Debug,
@@ -204,6 +58,7 @@ pub enum Bind {
     OpaqueType(Id<OpaqueTypeBind>),
     Module(Id<ModuleBind>),
     ModuleType(Id<ModuleTypeBind>),
+    Functor(Id<FunctorBind>),
 }
 
 impl<'a> Notate<'a> for NodePrinter<'a, Bind> {
@@ -214,6 +69,7 @@ impl<'a> Notate<'a> for NodePrinter<'a, Bind> {
             Bind::OpaqueType(o) => self.to(o).notate(arena),
             Bind::Module(m) => self.to(m).notate(arena),
             Bind::ModuleType(mt) => self.to(mt).notate(arena),
+            Bind::Functor(f) => self.to(f).notate(arena),
         }
     }
 }
@@ -349,7 +205,7 @@ pub struct OpaqueTypeBind {
 pub struct ModuleBind {
     pub vis: Id<Vis>,
     pub name: Id<ModuleName>,
-    pub sig: Option<Id<ModuleSig>>,
+    pub ty: Option<Id<ModuleType>>,
     pub value: Id<ModuleExpr>,
 }
 
@@ -357,50 +213,21 @@ impl ModuleBind {
     pub fn new_in(
         vis: Vis,
         name: ModuleName,
-        sig: Option<ModuleSig>,
+        ty: Option<ModuleType>,
         value: ModuleExpr,
         builder: &mut TreeBuilder,
     ) -> Id<Self> {
         let vis = builder.insert(vis);
         let name = builder.insert(name);
-        let sig = sig.map(|sig| builder.insert(sig));
+        let ty = ty.map(|sig| builder.insert(sig));
         let value = builder.insert(value);
 
         builder.insert(Self {
             vis,
             name,
-            sig,
+            ty,
             value,
         })
-    }
-}
-
-// TODO what about module types that were bound via ModuleTypeBind ?
-#[derive(
-    Debug,
-    Inspector,
-    From,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    Hash,
-    Serialize,
-    Deserialize,
-)]
-pub enum ModuleSig {
-    Functor(Id<FunctorType>),
-    Module(Id<ModuleType>),
-}
-
-impl<'a> Notate<'a> for NodePrinter<'a, ModuleSig> {
-    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
-        match *self.value {
-            ModuleSig::Functor(ft) => self.to(ft).notate(arena),
-            ModuleSig::Module(mt) => self.to(mt).notate(arena),
-        }
     }
 }
 
@@ -419,9 +246,161 @@ impl<'a> Notate<'a> for NodePrinter<'a, ModuleSig> {
     Deserialize,
 )]
 #[notate(color = "green")]
-pub struct FunctorType {
-    pub input: Id<ModuleType>,
-    pub output: Id<ModuleSig>,
+pub struct FunctorBind {
+    pub vis: Id<Vis>,
+    pub name: Id<FunctorName>,
+    pub param: Id<ModuleName>,
+    pub param_ty: Id<ModuleType>, // should I necessitate type annotations here ? and restriction to ModuleType good ?
+    pub body: Id<Module>,
+}
+
+impl FunctorBind {
+    pub fn new_in(
+        vis: Vis,
+        name: FunctorName,
+        param: ModuleName,
+        param_ty: ModuleType,
+        body: Module,
+        builder: &mut TreeBuilder,
+    ) -> Id<Self> {
+        let vis = builder.insert(vis);
+        let name = builder.insert(name);
+        let param = builder.insert(param);
+        let param_ty = builder.insert(param_ty);
+        let body = builder.insert(body);
+
+        builder.insert(Self {
+            vis,
+            name,
+            param,
+            param_ty,
+            body,
+        })
+    }
+}
+
+#[derive(
+    Debug,
+    EnumAsInner,
+    Inspector,
+    From,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
+)]
+pub enum ModuleExpr {
+    Error(Id<ModuleError>),
+    Module(Id<Module>),
+    Import(Id<ModuleImport>),
+    Path(Id<ModulePath>),
+    FunctorApp(Id<FunctorApp>),
+}
+
+impl<'a> Notate<'a> for NodePrinter<'a, ModuleExpr> {
+    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
+        match *self.value {
+            ModuleExpr::Error(id) => self.to(id).notate(arena),
+            ModuleExpr::Module(id) => self.to(id).notate(arena),
+            ModuleExpr::Import(id) => self.to(id).notate(arena),
+            ModuleExpr::Path(id) => self.to(id).notate(arena),
+            ModuleExpr::FunctorApp(id) => self.to(id).notate(arena),
+        }
+    }
+}
+
+#[derive(
+    Debug, Notate, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+)]
+#[notate(color = "red")]
+pub struct ModuleError;
+
+// TODO rename to ModuleBody ?
+#[derive(
+    Debug,
+    Notate,
+    Inspector,
+    From,
+    IntoIterator,
+    Clone,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
+)]
+#[notate(color = "green")]
+#[into_iterator(owned, ref)]
+pub struct Module(pub Vec<Id<Bind>>);
+
+#[derive(
+    Debug,
+    Notate,
+    Inspector,
+    From,
+    IntoIterator,
+    Clone,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
+)]
+#[notate(color = "cyan")]
+#[into_iterator(owned, ref)]
+pub struct ModulePath(pub Vec<Id<ModuleName>>);
+
+impl ModulePath {
+    pub fn get(&self, index: usize, tree: &impl TreeView) -> ModuleName {
+        *self.0[index].get(tree)
+    }
+}
+
+#[derive(
+    Notate,
+    Inspector,
+    Debug,
+    From,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
+)]
+#[notate(color = "green")]
+pub struct ModuleImport(pub Id<ModuleName>);
+
+#[derive(
+    Debug,
+    Notate,
+    Inspector,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
+)]
+#[notate(color = "green")]
+pub struct FunctorApp {
+    pub func: Id<FunctorName>,
+    pub arg: Id<ModuleExpr>,
 }
 
 // TODO should I only allow ModuleTypes to be bound or should I change this to a ModuleSigBind ?

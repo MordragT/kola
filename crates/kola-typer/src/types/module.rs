@@ -153,7 +153,7 @@ impl ModuleType {
 // but are included in the shape.
 impl From<Shape> for ModuleType {
     fn from(shape: Shape) -> Self {
-        let (modules, types, values) = shape.into_raw();
+        let (_functors, _module_types, modules, types, values) = shape.into_raw();
 
         Self {
             modules,

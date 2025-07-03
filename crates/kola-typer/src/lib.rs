@@ -14,6 +14,7 @@
 //! 4. **Cross-module consistency**: Polymorphic types available both within and across modules
 
 #![feature(never_type)]
+#![feature(exhaustive_patterns)]
 #![feature(path_add_extension)]
 #![feature(box_into_inner)]
 #![feature(let_chains)]

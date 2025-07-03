@@ -11,6 +11,7 @@ pub type TypedNodes = MetaMap<TypePhase>;
 pub struct TypePhase;
 
 impl Phase for TypePhase {
+    type FunctorName = !;
     type ModuleTypeName = !;
     type ModuleName = !;
     type TypeName = !;
@@ -70,13 +71,13 @@ impl Phase for TypePhase {
     type OpaqueTypeBind = !;
     type ModuleBind = !;
     type ModuleTypeBind = !;
+    type FunctorBind = !;
     type Bind = !;
 
     type ModuleError = !;
     type Module = !;
     type ModulePath = !;
     type ModuleImport = !;
-    type Functor = !;
     type FunctorApp = !;
     type ModuleExpr = !;
 
@@ -88,6 +89,4 @@ impl Phase for TypePhase {
     type ConcreteModuleType = !;
     type QualifiedModuleType = !;
     type ModuleType = !;
-    type FunctorType = !;
-    type ModuleSig = !;
 }

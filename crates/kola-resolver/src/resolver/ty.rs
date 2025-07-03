@@ -1,9 +1,10 @@
 use kola_span::{Diagnostic, Report};
 use kola_tree::meta::MetaMapExt;
+use log::debug;
 
 use crate::{
+    constraints::{TypeBindRef, TypeRef},
     phase::ResolvedType,
-    refs::{TypeBindRef, TypeRef},
     scope::{ModuleScope, ModuleScopes},
 };
 
@@ -23,11 +24,13 @@ pub fn resolve_types(scopes: &mut ModuleScopes, report: &mut Report) -> TypeReso
             Ok(order) => {
                 type_orders.insert(*sym, order);
             }
-            Err(_) => {
+            Err(cycle) => {
                 report.add_diagnostic(
-                    Diagnostic::error(scope.info.loc, "Cycle detected in type graph")
+                    Diagnostic::error(scope.info.loc, cycle.to_string())
                         .with_help("Check for circular dependencies in type definitions."),
                 );
+
+                debug!("Cycle detected inside:\n{}", scope.type_graph.to_dot());
             }
         }
     }
@@ -42,7 +45,7 @@ fn resolve_types_in_module(scope: &mut ModuleScope, report: &mut Report) {
         id,
         source,
         loc,
-    } in scope.refs.type_binds()
+    } in scope.cons.type_binds()
     {
         if let Some(target) = scope.shape.get_type(name) {
             scope.type_graph.add_dependency(source, target);
@@ -57,7 +60,7 @@ fn resolve_types_in_module(scope: &mut ModuleScope, report: &mut Report) {
         }
     }
 
-    for &TypeRef { name, id, loc } in scope.refs.types() {
+    for &TypeRef { name, id, loc } in scope.cons.types() {
         if let Some(type_sym) = scope.shape.get_type(name) {
             scope
                 .resolved

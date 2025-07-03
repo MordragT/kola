@@ -29,6 +29,11 @@ pub enum NameCollision {
         other: Loc,
         help: &'static str,
     },
+    FunctorBind {
+        span: Loc,
+        other: Loc,
+        help: &'static str,
+    },
 }
 
 impl NameCollision {
@@ -55,6 +60,11 @@ impl NameCollision {
     #[inline]
     pub const fn module_type_bind(span: Loc, other: Loc, help: &'static str) -> Self {
         NameCollision::ModuleTypeBind { span, other, help }
+    }
+
+    #[inline]
+    pub const fn functor_bind(span: Loc, other: Loc, help: &'static str) -> Self {
+        NameCollision::FunctorBind { span, other, help }
     }
 }
 
@@ -87,6 +97,11 @@ impl From<NameCollision> for Diagnostic {
             )
             .with_trace([("This module type bind here".to_owned(), other)])
             .with_help(help),
+            NameCollision::FunctorBind { span, other, help } => {
+                Diagnostic::error(span, "A functor bind with the same name was defined before")
+                    .with_trace([("This functor bind here".to_owned(), other)])
+                    .with_help(help)
+            }
         }
     }
 }
