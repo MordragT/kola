@@ -470,14 +470,12 @@ pub struct QualifiedExpr {
 
 impl QualifiedExpr {
     pub fn new_in(
-        module_path: Option<ModulePath>,
+        module_path: Option<Id<ModulePath>>,
         source: impl Into<ValueName>,
-        field_path: Option<FieldPath>,
+        field_path: Option<Id<FieldPath>>,
         builder: &mut TreeBuilder,
     ) -> Id<Self> {
-        let module_path = module_path.map(|p| builder.insert(p));
         let source = builder.insert(source.into());
-        let field_path = field_path.map(|f| builder.insert(f));
 
         builder.insert(Self {
             module_path,

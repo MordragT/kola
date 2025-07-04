@@ -1,8 +1,9 @@
 {
     add_one = fn x => x + 1,
 
-    main = 15 |> add_one |> add_one |> add_one,
+    #main = 15 |> add_one |> add_one |> add_one,
     #main = add_one <| add_one <| add_one <| 15,
     #main = (add_one (add_one (add_one 15))),
 
+    main = let r = { a = { b = { c = "hello" } } } in r.a.b.c,
 }

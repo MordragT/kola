@@ -99,10 +99,7 @@ impl<'a, Node> Normalizer<'a, Node> {
     {
         let root = self.root_id;
 
-        match root.visit_by(&mut self, tree) {
-            ControlFlow::Continue(_) => (),
-            ControlFlow::Break(_) => (),
-        }
+        ControlFlow::Continue(()) = root.visit_by(&mut self, tree);
 
         self.next
     }
@@ -179,46 +176,51 @@ where
             return ControlFlow::Continue(());
         }
 
-        // Create symbol and corresponding atom
-        let source_atom = self.symbols.atom_of_expr(id); // This is only defined if path is None so be careful about moving this
-        let mut source_atom = self.builder.add(source_atom);
+        // Create atom
+        let source_atom = self.builder.add(self.symbols.atom_of_expr(id)); // This is only defined if path is None so be careful about moving this
 
-        if let Some((last_field_id, fields)) = field_path.and_then(|f| f.get(tree).0.split_last()) {
-            for field_id in fields {
+        if let Some(field_path) = field_path {
+            let field_path = &field_path.get(tree).0;
+
+            // Pre-allocate symbols for each field access
+            let mut field_symbols = (0..field_path.len())
+                .map(|_| self.next_symbol())
+                .collect::<Vec<_>>();
+
+            // The last field access should bind to self.hole
+            if let Some(last) = field_symbols.last_mut() {
+                *last = self.hole;
+            }
+
+            // Build the access chain from right to left (last field to first field)
+            // This ensures proper execution order
+            let mut continuation = self.next;
+
+            for (i, field_id) in field_path.iter().enumerate().rev() {
                 let field_label = field_id.get(tree).0;
+                let bind_sym = field_symbols[i];
 
-                // Create a fresh symbol for this intermediate result
-                let next_sym = self.next_symbol();
-                let next_atom = self.builder.add(ir::Atom::Symbol(next_sym));
+                // Determine the base atom for this access
+                let base_atom = if i == 0 {
+                    source_atom // First field accesses the original source
+                } else {
+                    self.builder.add(ir::Atom::Symbol(field_symbols[i - 1]))
+                };
 
                 // Create the record access expression
                 let access_expr = self
                     .builder
                     .add(ir::Expr::RecordAccess(ir::RecordAccessExpr {
-                        bind: next_sym,
-                        base: source_atom,
+                        bind: bind_sym,
+                        base: base_atom,
                         label: field_label,
-                        next: self.next,
+                        next: continuation,
                     }));
 
-                // Update for next iteration
-                self.next = access_expr;
-                source_atom = next_atom;
+                continuation = access_expr;
             }
 
-            // Handle the final field access - this binds to self.hole
-            let field_label = last_field_id.get(tree).0;
-
-            let final_access = self
-                .builder
-                .add(ir::Expr::RecordAccess(ir::RecordAccessExpr {
-                    bind: self.hole,
-                    base: source_atom,
-                    label: field_label,
-                    next: self.next,
-                }));
-
-            self.next = final_access;
+            self.next = continuation;
         } else {
             // If there are no fields, we just return the source atom
             self.emit(source_atom);
@@ -1228,7 +1230,7 @@ mod tests {
     }
 
     #[test]
-    fn path_expr_unbound() {
+    fn qualified_expr_unbound() {
         let mut interner = StrInterner::new();
         let mut builder = TreeBuilder::new();
 
@@ -1257,6 +1259,8 @@ mod tests {
         // Build: let x = 42 in x
 
         let inside = node::QualifiedExpr::new_in(None, x, None, &mut builder);
+        resolved.insert_meta(inside, ResolvedValue::Reference(x_sym));
+
         let value = builder.insert(node::LiteralExpr::Num(42.0));
         let let_expr = node::LetExpr::new_in(x, None, value, inside, &mut builder);
         resolved.insert_meta(let_expr, x_sym);
@@ -1282,6 +1286,7 @@ mod tests {
 
         // Create the lambda parameter reference in body: x
         let lambda_body = node::QualifiedExpr::new_in(None, x, None, &mut builder);
+        resolved.insert_meta(lambda_body, ResolvedValue::Reference(x_sym));
 
         // Create the lambda: \x => x
         let lambda_expr = node::LambdaExpr::new_in(x, None, lambda_body, &mut builder);
@@ -1301,5 +1306,88 @@ mod tests {
 
         // Should evaluate to 42 (identity function returns its argument)
         assert_eq!(value, Value::Num(42.0));
+    }
+
+    #[test]
+    fn record_expr() {
+        let mut interner = StrInterner::new();
+        let mut builder = TreeBuilder::new();
+        let resolved = ResolvedNodes::default();
+
+        // Build: { a = 42, b = "hello" }
+
+        let a = interner.intern("a");
+        let b = interner.intern("b");
+
+        // Create the field values
+        let a_value = builder.insert(node::LiteralExpr::Num(42.0));
+        let b_value = builder.insert(node::LiteralExpr::Str(interner.intern("hello")));
+
+        // Create the record fields
+        let a_field = node::RecordField::new_in(a, None, a_value, &mut builder);
+        let b_field = node::RecordField::new_in(b, None, b_value, &mut builder);
+
+        // Create the record expression
+        let record_expr = node::RecordExpr::new_in([a_field, b_field], &mut builder);
+        let record_id = builder.insert(node::Expr::Record(record_expr));
+
+        let ir = normalize(builder, record_id, &resolved);
+        let mut machine = CekMachine::new(ir, interner);
+        let value = machine.run().unwrap();
+
+        // Should evaluate to a record with two fields
+        assert!(value.is_record());
+    }
+
+    #[test]
+    fn record_access_expr() {
+        let mut interner = StrInterner::new();
+        let mut builder = TreeBuilder::new();
+        let mut resolved = ResolvedNodes::default();
+
+        // Build: let r = { a = { b = { c = "hello" } } } in r.a.b.c
+
+        let r = interner.intern("r");
+        let a = interner.intern("a");
+        let b = interner.intern("b");
+        let c = interner.intern("c");
+
+        let r_sym = ValueSym::new();
+
+        // Create the innermost record: { c = "hello" }
+        let c_value = builder.insert(node::LiteralExpr::Str(interner.intern("hello")));
+        let c_field = node::RecordField::new_in(c, None, c_value, &mut builder);
+        let c_record = node::RecordExpr::new_in([c_field], &mut builder);
+
+        // Create the middle record: { b = { c = "hello" } }
+        let b_field = node::RecordField::new_in(b, None, c_record, &mut builder);
+        let b_record = node::RecordExpr::new_in([b_field], &mut builder);
+
+        // Create the outer record: { a = { b = { c = "hello" } } }
+        let a_field = node::RecordField::new_in(a, None, b_record, &mut builder);
+        let record_expr = node::RecordExpr::new_in([a_field], &mut builder);
+
+        // Create the let expression: let r = { a = { b = { c = "hello" } } } in r.a.b.c
+        let field_path = node::FieldPath::new_in(
+            [
+                node::ValueName::new(a),
+                node::ValueName::new(b),
+                node::ValueName::new(c),
+            ],
+            &mut builder,
+        );
+
+        let qualified_expr = node::QualifiedExpr::new_in(None, r, Some(field_path), &mut builder);
+        resolved.insert_meta(qualified_expr, ResolvedValue::Reference(r_sym));
+
+        let let_expr = node::LetExpr::new_in(r, None, record_expr, qualified_expr, &mut builder);
+        resolved.insert_meta(let_expr, r_sym);
+
+        let ir = normalize(builder, let_expr, &resolved);
+        let mut machine = CekMachine::new(ir, interner);
+        let value = machine.run().unwrap();
+
+        // Should evaluate to "hello" (the value of r.a.b.c)
+        assert_eq!(value, Value::Str("hello".to_owned()));
     }
 }
