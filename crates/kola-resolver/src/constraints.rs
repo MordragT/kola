@@ -10,7 +10,7 @@ use kola_tree::{
 use crate::symbol::{ModuleSym, ModuleTypeSym, Substitute, TypeSym, ValueSym};
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum ModuleBindConstraint {
+pub enum ModuleBindConst {
     Functor {
         id: Id<node::FunctorApp>,
         bind: ModuleSym,
@@ -26,7 +26,7 @@ pub enum ModuleBindConstraint {
     },
 }
 
-impl ModuleBindConstraint {
+impl ModuleBindConst {
     pub fn functor(
         id: Id<node::FunctorApp>,
         bind: ModuleSym,
@@ -72,7 +72,7 @@ impl ModuleBindConstraint {
     }
 }
 
-impl Substitute<ModuleNamespace> for ModuleBindConstraint {
+impl Substitute<ModuleNamespace> for ModuleBindConst {
     fn try_substitute(&self, from: ModuleSym, to: ModuleSym) -> Option<Self> {
         match self {
             Self::Functor {
@@ -128,7 +128,7 @@ impl Substitute<ModuleNamespace> for ModuleBindConstraint {
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct ModuleRef {
+pub struct ModuleConst {
     /// The path that references some other module bind.
     pub path: Vec<ModuleName>,
     /// The global identifier of the module path that references some other module bind.
@@ -139,7 +139,7 @@ pub struct ModuleRef {
     pub loc: Loc,
 }
 
-impl ModuleRef {
+impl ModuleConst {
     pub fn new(
         path: Vec<ModuleName>,
         id: Id<node::ModulePath>,
@@ -155,7 +155,7 @@ impl ModuleRef {
     }
 }
 
-impl Substitute<ModuleNamespace> for ModuleRef {
+impl Substitute<ModuleNamespace> for ModuleConst {
     fn try_substitute(&self, from: ModuleSym, to: ModuleSym) -> Option<Self> {
         if self.source == from {
             Some(Self::new(self.path.clone(), self.id, to, self.loc))
@@ -172,7 +172,7 @@ impl Substitute<ModuleNamespace> for ModuleRef {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct ValueRef {
+pub struct ValueConst {
     /// The name of the value reference.
     pub name: ValueName,
     /// The identifier of the path expression that references some other value bind.
@@ -183,7 +183,7 @@ pub struct ValueRef {
     pub loc: Loc,
 }
 
-impl ValueRef {
+impl ValueConst {
     pub fn new(name: ValueName, id: Id<node::QualifiedExpr>, source: ValueSym, loc: Loc) -> Self {
         Self {
             name,
@@ -195,7 +195,7 @@ impl ValueRef {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct TypeBindRef {
+pub struct TypeBindConst {
     /// The name of the type reference.
     pub name: TypeName,
     /// The identifier of the type path that references some other type bind.
@@ -206,7 +206,7 @@ pub struct TypeBindRef {
     pub loc: Loc,
 }
 
-impl TypeBindRef {
+impl TypeBindConst {
     pub fn new(name: TypeName, id: Id<node::QualifiedType>, source: TypeSym, loc: Loc) -> Self {
         Self {
             name,
@@ -218,7 +218,7 @@ impl TypeBindRef {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct TypeRef {
+pub struct TypeConst {
     /// The name of the type reference.
     pub name: TypeName,
     /// The identifier of the type path that references some other type bind.
@@ -227,14 +227,14 @@ pub struct TypeRef {
     pub loc: Loc,
 }
 
-impl TypeRef {
+impl TypeConst {
     pub fn new(name: TypeName, id: Id<node::QualifiedType>, loc: Loc) -> Self {
         Self { name, id, loc }
     }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct ModuleTypeBindRef {
+pub struct ModuleTypeBindConst {
     /// The name of the module type reference.
     pub name: ModuleTypeName,
     /// The identifier of the qualified module type that references some other module type bind.
@@ -245,7 +245,7 @@ pub struct ModuleTypeBindRef {
     pub loc: Loc,
 }
 
-impl ModuleTypeBindRef {
+impl ModuleTypeBindConst {
     pub fn new(
         name: ModuleTypeName,
         id: Id<node::QualifiedModuleType>,
@@ -262,7 +262,7 @@ impl ModuleTypeBindRef {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct ModuleTypeRef {
+pub struct ModuleTypeConst {
     /// The name of the module type reference.
     pub name: ModuleTypeName,
     /// The identifier of the qualified module type that references some other module type bind.
@@ -271,7 +271,7 @@ pub struct ModuleTypeRef {
     pub loc: Loc,
 }
 
-impl ModuleTypeRef {
+impl ModuleTypeConst {
     pub fn new(name: ModuleTypeName, id: Id<node::QualifiedModuleType>, loc: Loc) -> Self {
         Self { name, id, loc }
     }
@@ -279,14 +279,13 @@ impl ModuleTypeRef {
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct Constraints {
-    module_type_binds: Vec<ModuleTypeBindRef>,
-    module_types: Vec<ModuleTypeRef>,
-    module_binds: HashMap<ModuleSym, ModuleBindConstraint>,
-    modules: Vec<ModuleRef>,
-    type_binds: Vec<TypeBindRef>,
-    types: Vec<TypeRef>,
-    values: Vec<ValueRef>,
-    // constructors: Vec<ConstructorRef>,
+    module_type_binds: Vec<ModuleTypeBindConst>,
+    module_types: Vec<ModuleTypeConst>,
+    module_binds: HashMap<ModuleSym, ModuleBindConst>,
+    modules: Vec<ModuleConst>,
+    type_binds: Vec<TypeBindConst>,
+    types: Vec<TypeConst>,
+    values: Vec<ValueConst>,
 }
 
 impl Constraints {
@@ -296,83 +295,83 @@ impl Constraints {
     }
 
     #[inline]
-    pub fn insert_module_type_bind(&mut self, type_ref: ModuleTypeBindRef) {
+    pub fn insert_module_type_bind(&mut self, type_ref: ModuleTypeBindConst) {
         self.module_type_binds.push(type_ref);
     }
 
     #[inline]
-    pub fn insert_module_type(&mut self, type_ref: ModuleTypeRef) {
+    pub fn insert_module_type(&mut self, type_ref: ModuleTypeConst) {
         self.module_types.push(type_ref);
     }
 
     #[inline]
-    pub fn constrain_module_bind(&mut self, sym: ModuleSym, constraint: ModuleBindConstraint) {
+    pub fn insert_module_bind(&mut self, sym: ModuleSym, constraint: ModuleBindConst) {
         self.module_binds.insert(sym, constraint);
     }
 
     #[inline]
-    pub fn insert_module(&mut self, module_ref: ModuleRef) {
+    pub fn insert_module(&mut self, module_ref: ModuleConst) {
         self.modules.push(module_ref);
     }
 
     #[inline]
-    pub fn insert_type_bind(&mut self, type_ref: TypeBindRef) {
+    pub fn insert_type_bind(&mut self, type_ref: TypeBindConst) {
         self.type_binds.push(type_ref);
     }
 
     #[inline]
-    pub fn insert_type(&mut self, type_ref: TypeRef) {
+    pub fn insert_type(&mut self, type_ref: TypeConst) {
         self.types.push(type_ref);
     }
 
     #[inline]
-    pub fn insert_value(&mut self, value_ref: ValueRef) {
+    pub fn insert_value(&mut self, value_ref: ValueConst) {
         self.values.push(value_ref);
     }
 
     #[inline]
-    pub fn get_module_bind(&self, sym: ModuleSym) -> Option<&ModuleBindConstraint> {
+    pub fn get_module_bind(&self, sym: ModuleSym) -> Option<&ModuleBindConst> {
         self.module_binds.get(&sym)
     }
 
     #[inline]
-    pub fn module_type_binds(&self) -> &[ModuleTypeBindRef] {
+    pub fn module_type_binds(&self) -> &[ModuleTypeBindConst] {
         &self.module_type_binds
     }
 
     #[inline]
-    pub fn module_types(&self) -> &[ModuleTypeRef] {
+    pub fn module_types(&self) -> &[ModuleTypeConst] {
         &self.module_types
     }
 
     #[inline]
-    pub fn module_binds(&self) -> &HashMap<ModuleSym, ModuleBindConstraint> {
+    pub fn module_binds(&self) -> &HashMap<ModuleSym, ModuleBindConst> {
         &self.module_binds
     }
 
     #[inline]
-    pub fn modules(&self) -> &[ModuleRef] {
+    pub fn modules(&self) -> &[ModuleConst] {
         &self.modules
     }
 
     #[inline]
-    pub fn type_binds(&self) -> &[TypeBindRef] {
+    pub fn type_binds(&self) -> &[TypeBindConst] {
         &self.type_binds
     }
 
     #[inline]
-    pub fn types(&self) -> &[TypeRef] {
+    pub fn types(&self) -> &[TypeConst] {
         &self.types
     }
 
     #[inline]
-    pub fn values(&self) -> &[ValueRef] {
+    pub fn values(&self) -> &[ValueConst] {
         &self.values
     }
 }
 
 impl Index<ModuleSym> for Constraints {
-    type Output = ModuleBindConstraint;
+    type Output = ModuleBindConst;
 
     fn index(&self, index: ModuleSym) -> &Self::Output {
         self.module_binds
@@ -388,7 +387,7 @@ impl Substitute<ModuleNamespace> for Constraints {
         if self.module_binds.contains_key(&from) {
             let new_constraints = result.get_or_insert_with(|| self.clone());
             let constraint = new_constraints.module_binds.remove(&from).unwrap(); // Safe to unwrap since we checked above
-            new_constraints.constrain_module_bind(to, constraint);
+            new_constraints.insert_module_bind(to, constraint);
         }
 
         if let Some(modules) = self.modules.try_substitute(from, to) {
@@ -400,7 +399,7 @@ impl Substitute<ModuleNamespace> for Constraints {
 
     fn substitute_mut(&mut self, from: ModuleSym, to: ModuleSym) {
         if let Some(constraint) = self.module_binds.remove(&from) {
-            self.constrain_module_bind(to, constraint);
+            self.insert_module_bind(to, constraint);
         }
 
         for module_ref in &mut self.modules {

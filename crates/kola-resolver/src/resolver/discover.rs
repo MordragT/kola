@@ -13,8 +13,8 @@ use kola_utils::{interner::StrInterner, io::FileSystem};
 use crate::{
     GlobalId,
     constraints::{
-        ModuleBindConstraint, ModuleRef, ModuleTypeBindRef, ModuleTypeRef, TypeBindRef, TypeRef,
-        ValueRef,
+        ModuleBindConst, ModuleConst, ModuleTypeBindConst, ModuleTypeConst, TypeBindConst,
+        TypeConst, ValueConst,
     },
     defs::Def,
     forest::Forest,
@@ -355,32 +355,9 @@ where
         let name = *func.get(tree);
         let loc = self.span(id);
 
-        // TODO I need to somehow visit the argument here
-        // Now because the arg is a ModuleExpr it can be an import, path, inline module or another functor app.
-        // Due to the way functor refs are inserted (depth first), there is no need for dependency tracking between functor apps.
-        // I believe before visiting I should create a ModuleSym here and insert it into the "current_module_bind_sym" field,
-        // so that the visitor can associated this symbol with the argument.
-        // Maybe I should also do something with the current_module_bind_sym in this visitor.
-        // After visiting the argument, I can then create a FunctorRef and insert it into the stack's refs.
-        // I believe I should have all the required information at this point:
-        // 1. The namne of the functor
-        // 2. The symbol of the resolved (or soon to be resolved) argument
-        // 3. The current module bind symbol, which responds to the "source" field of the FunctorRef
-        // 4. The span and id of the FunctorApp node.
-
-        // TODO: the upper is not longer correct
-        //
-        // Now I restrict arguments to be just module paths,
-        // which mean they no longer need the module symbol, because they are not own real modules (only binds can be).
-        // I have both alternatives here one with module symbol and one without.
-        // I think the one with symbols is easier to implement but lets see.
-
         let arg_sym = ModuleSym::new();
-        dbg!(arg_sym);
         let bind = self.current_module_bind_sym.replace(arg_sym).unwrap();
         self.stack.resolved_mut().insert_meta(id, bind);
-
-        // let bind = self.current_module_bind_sym.take().unwrap();
 
         let node::ModuleExpr::Path(arg_id) = *tree.node(arg) else {
             // TODO for functor arguments other than module paths, the current module resolution implementation is insufficient
@@ -405,10 +382,8 @@ where
 
         self.visit_module_path(arg_id, tree)?;
 
-        let constraint = ModuleBindConstraint::functor(id, bind, loc, name, arg_sym);
-        self.stack
-            .cons_mut()
-            .constrain_module_bind(bind, constraint);
+        let constraint = ModuleBindConst::functor(id, bind, loc, name, arg_sym);
+        self.stack.cons_mut().insert_module_bind(bind, constraint);
 
         ControlFlow::Continue(())
     }
@@ -473,10 +448,10 @@ where
         }
         // Either a forward reference or not found in the current module scope
         else if let Some(current_sym) = self.current_module_type_bind_sym {
-            let ref_ = ModuleTypeBindRef::new(name, id, current_sym, loc);
+            let ref_ = ModuleTypeBindConst::new(name, id, current_sym, loc);
             self.stack.cons_mut().insert_module_type_bind(ref_);
         } else {
-            let ref_ = ModuleTypeRef::new(name, id, loc);
+            let ref_ = ModuleTypeConst::new(name, id, loc);
             self.stack.cons_mut().insert_module_type(ref_);
         }
         ControlFlow::Continue(())
@@ -658,16 +633,14 @@ where
 
             self.insert_symbol(id, ResolvedModule(bind));
 
-            let constraint = ModuleBindConstraint::path(id, bind, loc, path);
-            self.stack
-                .cons_mut()
-                .constrain_module_bind(bind, constraint);
+            let constraint = ModuleBindConst::path(id, bind, loc, path);
+            self.stack.cons_mut().insert_module_bind(bind, constraint);
         } else {
             // If we don't have a current module bind, we need to create a reference
             // module::record.field
 
             let current_sym = self.stack.info().sym;
-            let ref_ = ModuleRef::new(path, id, current_sym, self.span(id));
+            let ref_ = ModuleConst::new(path, id, current_sym, self.span(id));
 
             self.stack.cons_mut().insert_module(ref_);
         }
@@ -921,7 +894,7 @@ where
             // Either a forward reference or not found in the current module scope
 
             let current_sym = self.current_value_bind_sym.unwrap();
-            let ref_ = ValueRef::new(name, id, current_sym, self.span(id));
+            let ref_ = ValueConst::new(name, id, current_sym, self.span(id));
 
             self.stack.cons_mut().insert_value(ref_);
 
@@ -1028,12 +1001,12 @@ where
         } else
         // Either a forward reference or not found in the current module scope
         if let Some(current_sym) = self.current_type_bind_sym {
-            let ref_ = TypeBindRef::new(name, id, current_sym, loc);
+            let ref_ = TypeBindConst::new(name, id, current_sym, loc);
             self.stack.cons_mut().insert_type_bind(ref_);
 
             ControlFlow::Continue(())
         } else {
-            let ref_ = TypeRef::new(name, id, loc);
+            let ref_ = TypeConst::new(name, id, loc);
             self.stack.cons_mut().insert_type(ref_);
 
             ControlFlow::Continue(())

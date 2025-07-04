@@ -4,7 +4,7 @@ use log::debug;
 
 use super::ValueOrders;
 use crate::{
-    constraints::ValueRef,
+    constraints::ValueConst,
     phase::ResolvedValue,
     scope::{ModuleScope, ModuleScopes},
 };
@@ -64,7 +64,7 @@ pub fn resolve_values(scopes: &mut ModuleScopes, report: &mut Report) -> ValueRe
 
 fn resolve_values_in_module(scope: &mut ModuleScope, report: &mut Report) {
     // First pass: resolve all forward value references
-    for &ValueRef {
+    for &ValueConst {
         name,
         id,
         source,

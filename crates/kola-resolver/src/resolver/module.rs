@@ -11,7 +11,7 @@ use kola_utils::{
 };
 
 use crate::{
-    constraints::{ModuleBindConstraint, ModuleRef},
+    constraints::{ModuleBindConst, ModuleConst},
     defs::ModuleDef,
     functor::Functor,
     info::{ModuleGraph, ModuleInfos},
@@ -160,7 +160,7 @@ pub fn resolve_module_scope(
 
 // TODO return error type instead of on the fly reporting.
 pub fn resolve_module_bind(
-    constraint: ModuleBindConstraint,
+    constraint: ModuleBindConst,
     scope_sym: ModuleSym,
     functors: &HashMap<FunctorSym, Functor>,
     report: &mut Report,
@@ -170,7 +170,7 @@ pub fn resolve_module_bind(
     interner: &StrInterner,
 ) {
     match constraint {
-        ModuleBindConstraint::Functor {
+        ModuleBindConst::Functor {
             id,
             bind,
             loc,
@@ -246,7 +246,6 @@ pub fn resolve_module_bind(
             }
 
             let mut scope = functor.apply(arg);
-            // module_graph.add_dependency(bind, scope.info.sym); // Add the functor body as dependency on the applied module.
             scope.info.sym = bind;
             let id = scope.info.id;
             scope.resolved.insert_meta(id, bind);
@@ -271,7 +270,7 @@ pub fn resolve_module_bind(
                 interner,
             );
         }
-        ModuleBindConstraint::Path {
+        ModuleBindConst::Path {
             id,
             bind,
             loc,
@@ -368,12 +367,12 @@ pub fn resolve_module_bind(
 
 pub fn resolve_module_ref(
     source_sym: ModuleSym,
-    module_ref: &ModuleRef,
+    module_ref: &ModuleConst,
     report: &mut Report,
     module_graph: &mut ModuleGraph,
     scopes: &mut ModuleScopes,
 ) {
-    let ModuleRef {
+    let ModuleConst {
         path,
         id,
         source,

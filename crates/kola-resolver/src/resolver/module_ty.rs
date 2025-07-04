@@ -4,7 +4,7 @@ use kola_utils::interner::StrInterner;
 use log::debug;
 
 use crate::{
-    constraints::{ModuleTypeBindRef, ModuleTypeRef},
+    constraints::{ModuleTypeBindConst, ModuleTypeConst},
     phase::ResolvedModuleType,
     resolver::ModuleTypeOrders,
     scope::{ModuleScope, ModuleScopes},
@@ -51,7 +51,7 @@ fn resolve_module_types_in_module(
     interner: &StrInterner,
 ) {
     // Resolve module type bind references
-    for &ModuleTypeBindRef {
+    for &ModuleTypeBindConst {
         name,
         id,
         source,
@@ -72,7 +72,7 @@ fn resolve_module_types_in_module(
     }
 
     // Resolve module type references
-    for &ModuleTypeRef { name, id, loc } in scope.cons.module_types() {
+    for &ModuleTypeConst { name, id, loc } in scope.cons.module_types() {
         dbg!(&interner[name.0], "ref");
 
         if let Some(module_type_sym) = scope.shape.get_module_type(name) {

@@ -3,7 +3,7 @@ use kola_tree::meta::MetaMapExt;
 use log::debug;
 
 use crate::{
-    constraints::{TypeBindRef, TypeRef},
+    constraints::{TypeBindConst, TypeConst},
     phase::ResolvedType,
     scope::{ModuleScope, ModuleScopes},
 };
@@ -40,7 +40,7 @@ pub fn resolve_types(scopes: &mut ModuleScopes, report: &mut Report) -> TypeReso
 
 fn resolve_types_in_module(scope: &mut ModuleScope, report: &mut Report) {
     // Resolve type references similar to value references
-    for &TypeBindRef {
+    for &TypeBindConst {
         name,
         id,
         source,
@@ -60,7 +60,7 @@ fn resolve_types_in_module(scope: &mut ModuleScope, report: &mut Report) {
         }
     }
 
-    for &TypeRef { name, id, loc } in scope.cons.types() {
+    for &TypeConst { name, id, loc } in scope.cons.types() {
         if let Some(type_sym) = scope.shape.get_type(name) {
             scope
                 .resolved

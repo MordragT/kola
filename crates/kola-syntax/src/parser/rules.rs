@@ -952,7 +952,51 @@ pub fn expr_parser<'t>() -> impl KolaParser<'t, Id<node::Expr>> + Clone {
             )
             .boxed();
 
-        logical
+        // Pipe backward (<|) - right associative, higher precedence
+        // f <| g <| x should parse as f(g(x))
+        let pipe_backward = logical
+            .clone()
+            .spanned()
+            .then(
+                ctrl(CtrlT::PIPE_BACKWARD)
+                    .ignore_then(logical.clone().spanned())
+                    .repeated()
+                    .collect::<Vec<_>>(),
+            )
+            .map_with(|(first, mut rest), e| {
+                let tree: &mut State = e.state();
+
+                // The first element is actually the last, therefore we need to do some swapping
+                rest.insert(0, first);
+                let first = rest.pop().unwrap().0; // Safety: rest is not empty
+
+                // Right-fold the rest to handle right associativity
+                rest.into_iter().rfold(first, |acc, (func, span)| {
+                    tree.insert_as::<node::Expr, _>(node::CallExpr { func, arg: acc }, span)
+                })
+            })
+            .boxed();
+
+        // Pipe forward (|>) - left associative, lower precedence
+        // a |> f |> g should parse as g(f(a))
+        let pipe_forward = pipe_backward.clone().foldl_with(
+            ctrl(CtrlT::PIPE_FORWARD)
+                .ignore_then(pipe_backward)
+                .repeated(),
+            |lhs, rhs, e| {
+                let span = e.span();
+                let tree: &mut State = e.state();
+                tree.insert_as::<node::Expr, _>(
+                    node::CallExpr {
+                        func: rhs,
+                        arg: lhs,
+                    },
+                    span,
+                )
+            },
+        );
+
+        pipe_forward
     })
     .boxed()
 }

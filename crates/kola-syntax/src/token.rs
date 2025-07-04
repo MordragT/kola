@@ -250,6 +250,8 @@ define_token_type!(Ctrl {
     Comma => ",",
     Tilde => "~",
     Pipe => "|",
+    PipeForward => "|>",
+    PipeBackward => "<|",
     Backslash => "\\",
     Underscore => "_",
     Arrow => "->",
