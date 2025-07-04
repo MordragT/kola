@@ -32,7 +32,7 @@ use kola_print::prelude::*;
 use super::{Expr, ModuleName, TypeScheme};
 use crate::{
     id::Id,
-    node::{FunctorName, ModuleTypeName, TypeName, ValueName},
+    node::{EffectName, EffectRowType, FunctorName, ModuleTypeName, TypeName, ValueName},
     print::NodePrinter,
     tree::{TreeBuilder, TreeView},
 };
@@ -56,6 +56,7 @@ pub enum Bind {
     Value(Id<ValueBind>),
     Type(Id<TypeBind>),
     OpaqueType(Id<OpaqueTypeBind>),
+    EffectType(Id<EffectTypeBind>),
     Module(Id<ModuleBind>),
     ModuleType(Id<ModuleTypeBind>),
     Functor(Id<FunctorBind>),
@@ -67,6 +68,7 @@ impl<'a> Notate<'a> for NodePrinter<'a, Bind> {
             Bind::Value(v) => self.to(v).notate(arena),
             Bind::Type(t) => self.to(t).notate(arena),
             Bind::OpaqueType(o) => self.to(o).notate(arena),
+            Bind::EffectType(e) => self.to(e).notate(arena),
             Bind::Module(m) => self.to(m).notate(arena),
             Bind::ModuleType(mt) => self.to(mt).notate(arena),
             Bind::Functor(f) => self.to(f).notate(arena),
@@ -185,6 +187,27 @@ pub struct TypeBind {
 pub struct OpaqueTypeBind {
     pub name: Id<TypeName>,
     pub ty_scheme: Id<TypeScheme>,
+}
+
+#[derive(
+    Debug,
+    Notate,
+    Inspector,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
+)]
+#[notate(color = "green")]
+pub struct EffectTypeBind {
+    pub vis: Id<Vis>,
+    pub name: Id<EffectName>,
+    pub ty: Id<EffectRowType>,
 }
 
 #[derive(

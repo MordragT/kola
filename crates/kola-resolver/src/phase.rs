@@ -9,7 +9,9 @@ use kola_tree::{
 };
 use kola_utils::as_variant;
 
-use crate::symbol::{FunctorSym, ModuleSym, ModuleTypeSym, Substitute, TypeSym, ValueSym};
+use crate::symbol::{
+    EffectSym, FunctorSym, ModuleSym, ModuleTypeSym, Substitute, TypeSym, ValueSym,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum ResolvedValue {
@@ -149,6 +151,7 @@ pub struct ResolvePhase;
 impl Phase for ResolvePhase {
     // ===== NAMES =====
     // Names are the source of symbols, not targets of resolution
+    type EffectName = !;
     type FunctorName = !;
     type ModuleTypeName = !;
     type ModuleName = !;
@@ -186,6 +189,8 @@ impl Phase for ResolvePhase {
     type Expr = !;
 
     type QualifiedExpr = ResolvedValue;
+    type HandleExpr = !;
+    type DoExpr = !;
     type TagExpr = !;
     type FieldPath = !;
 
@@ -201,10 +206,16 @@ impl Phase for ResolvePhase {
     // Binding expressions - create new symbols
     type LetExpr = ValueSym; // Creates symbol for the bound variable
     type LambdaExpr = ValueSym; // Creates symbol for the parameter binding
+    type HandlerClause = ValueSym; // Creates symbol for the handler parameter
 
     // ===== TYPES =====
     // Type expressions are not needed for the untyped lowerer phase
     // Future: When adding typed IR, these could get ModuleSym for qualified types
+    type QualifiedEffectType = !;
+    type EffectOpType = !;
+    type EffectRowType = !;
+    type EffectType = !;
+
     type QualifiedType = ResolvedType;
     type TypeVar = TypeSym; // Type variables only occur in forall quantifier definitions
     type RecordFieldType = !; // Field names exist in value namespace but no symbols needed here
@@ -223,6 +234,7 @@ impl Phase for ResolvePhase {
     type ValueBind = ValueSym; // Creates symbol for the bound value
     type TypeBind = TypeSym; // Creates symbol for the bound type
     type OpaqueTypeBind = TypeSym; // Creates symbol for the opaque type
+    type EffectTypeBind = EffectSym;
     type ModuleBind = ModuleSym; // Creates symbol for the module alias
     type ModuleTypeBind = ModuleTypeSym; // Module type bindings - future feature
     type FunctorBind = FunctorSym; // Creates symbol for the functor binding

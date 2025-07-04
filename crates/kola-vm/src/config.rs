@@ -6,7 +6,7 @@ use kola_ir::{
 };
 
 /// The standard configuration in the CEK machine
-/// C = hM | γ | κi, where:
+/// C = M | γ | κi, where:
 /// - M is the computation term (control)
 /// - γ is the environment (binds free variables)
 /// - κ is the continuation (what to do next)
@@ -21,7 +21,7 @@ pub struct StandardConfig {
 }
 
 /// The operation handling configuration in the CEK machine
-/// C = hM | γ | κ | κ0iop, where:
+/// C = M | γ | κ | κ0iop, where:
 /// - M is the operation being performed
 /// - γ is the environment (binds free variables)
 /// - κ is the continuation (what to do next)
@@ -41,9 +41,8 @@ pub struct OperationConfig {
 }
 
 /// Pattern matching configuration in the CEK machine
-/// C = hP | v | γ | κi, where:
+/// C = P | γ | κi, where:
 /// - P is the pattern matcher instruction currently being evaluated
-/// - v is the value being matched against
 /// - γ is the environment (binds free variables)
 /// - κ is the continuation (what to do next)
 #[derive(Debug, Clone, PartialEq)]

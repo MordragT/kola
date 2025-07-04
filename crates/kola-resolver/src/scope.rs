@@ -1,15 +1,17 @@
 use indexmap::IndexMap;
-use kola_tree::node::{FunctorName, ModuleName, ModuleTypeName, TypeName, ValueName};
+use kola_tree::node::{EffectName, FunctorName, ModuleName, ModuleTypeName, TypeName, ValueName};
 use kola_utils::scope::LinearScope;
 
 use crate::{
     constraints::Constraints,
-    defs::{AnyDef, Definitions, FunctorDef, ModuleDef, ModuleTypeDef, TypeDef, ValueDef},
+    defs::{
+        AnyDef, Definitions, EffectTypeDef, FunctorDef, ModuleDef, ModuleTypeDef, TypeDef, ValueDef,
+    },
     error::NameCollision,
     info::{ModuleInfo, ModuleTypeGraph, TypeGraph, ValueGraph},
     phase::ResolvedNodes,
     shape::Shape,
-    symbol::{FunctorSym, ModuleSym, ModuleTypeSym, TypeSym, ValueSym},
+    symbol::{EffectSym, FunctorSym, ModuleSym, ModuleTypeSym, TypeSym, ValueSym},
 };
 
 pub type ModuleScopes = IndexMap<ModuleSym, ModuleScope>;
@@ -92,18 +94,18 @@ impl ModuleScope {
         Ok(())
     }
 
-    pub fn insert_value(
+    pub fn insert_effect(
         &mut self,
-        name: ValueName,
-        sym: ValueSym,
-        def: ValueDef,
+        name: EffectName,
+        sym: EffectSym,
+        def: EffectTypeDef,
     ) -> Result<(), NameCollision> {
         if let Some(bind) = self.shape.get(name).and_then(|sym| self.defs.get(sym)) {
             return Err(name_collision(def.into(), bind));
         }
 
-        self.shape.insert_value(name, sym);
-        self.defs.insert_value(sym, def);
+        self.shape.insert_effect(name, sym);
+        self.defs.insert_effect(sym, def);
         Ok(())
     }
 
@@ -119,6 +121,21 @@ impl ModuleScope {
 
         self.shape.insert_type(name, sym);
         self.defs.insert_type(sym, def);
+        Ok(())
+    }
+
+    pub fn insert_value(
+        &mut self,
+        name: ValueName,
+        sym: ValueSym,
+        def: ValueDef,
+    ) -> Result<(), NameCollision> {
+        if let Some(bind) = self.shape.get(name).and_then(|sym| self.defs.get(sym)) {
+            return Err(name_collision(def.into(), bind));
+        }
+
+        self.shape.insert_value(name, sym);
+        self.defs.insert_value(sym, def);
         Ok(())
     }
 }
@@ -148,6 +165,7 @@ const fn name_collision(this: AnyDef, other: AnyDef) -> NameCollision {
             NameCollision::module_type_bind(this.loc, other.location(), help)
         }
         AnyDef::Module(this) => NameCollision::module_bind(this.loc, other.location(), help),
+        AnyDef::Effect(this) => NameCollision::effect_type_bind(this.loc, other.location(), help),
         AnyDef::Value(this) => NameCollision::value_bind(this.loc, other.location(), help),
         AnyDef::Type(this) => NameCollision::type_bind(this.loc, other.location(), help),
     }
@@ -202,6 +220,15 @@ impl ModuleScopeStack {
         def: ModuleDef,
     ) -> Result<(), NameCollision> {
         self.todo.last_mut().unwrap().insert_module(name, sym, def)
+    }
+
+    pub fn insert_effect(
+        &mut self,
+        name: EffectName,
+        sym: EffectSym,
+        def: EffectTypeDef,
+    ) -> Result<(), NameCollision> {
+        self.todo.last_mut().unwrap().insert_effect(name, sym, def)
     }
 
     pub fn insert_type(

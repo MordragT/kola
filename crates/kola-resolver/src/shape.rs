@@ -1,10 +1,13 @@
 use std::{borrow::Cow, ops::Index};
 
-use crate::symbol::{AnySym, FunctorSym, ModuleSym, ModuleTypeSym, Substitute, TypeSym, ValueSym};
+use crate::symbol::{
+    AnySym, EffectSym, FunctorSym, ModuleSym, ModuleTypeSym, Substitute, TypeSym, ValueSym,
+};
 use kola_collections::HashMap;
 use kola_tree::node::{
-    AnyName, FunctorName, FunctorNamespace, ModuleName, ModuleNamespace, ModuleTypeName,
-    ModuleTypeNamespace, TypeName, TypeNamespace, ValueName, ValueNamespace,
+    AnyName, EffectName, EffectNamespace, FunctorName, FunctorNamespace, ModuleName,
+    ModuleNamespace, ModuleTypeName, ModuleTypeNamespace, TypeName, TypeNamespace, ValueName,
+    ValueNamespace,
 };
 
 // TODO this is more of a symbol table than a shape, consider renaming
@@ -13,6 +16,7 @@ pub struct Shape {
     functors: HashMap<FunctorName, FunctorSym>,
     module_types: HashMap<ModuleTypeName, ModuleTypeSym>,
     modules: HashMap<ModuleName, ModuleSym>,
+    effects: HashMap<EffectName, EffectSym>,
     types: HashMap<TypeName, TypeSym>,
     values: HashMap<ValueName, ValueSym>,
 }
@@ -43,6 +47,11 @@ impl Shape {
     }
 
     #[inline]
+    pub fn insert_effect(&mut self, name: EffectName, sym: EffectSym) -> Option<EffectSym> {
+        self.effects.insert(name, sym)
+    }
+
+    #[inline]
     pub fn insert_type(&mut self, name: TypeName, sym: TypeSym) -> Option<TypeSym> {
         self.types.insert(name, sym)
     }
@@ -58,8 +67,9 @@ impl Shape {
             AnyName::Functor(name) => self.functors.contains_key(&name),
             AnyName::ModuleType(name) => self.module_types.contains_key(&name),
             AnyName::Module(name) => self.modules.contains_key(&name),
-            AnyName::Value(name) => self.values.contains_key(&name),
+            AnyName::Effect(name) => self.effects.contains_key(&name),
             AnyName::Type(name) => self.types.contains_key(&name),
+            AnyName::Value(name) => self.values.contains_key(&name),
         }
     }
 
@@ -79,6 +89,11 @@ impl Shape {
     }
 
     #[inline]
+    pub fn get_effect(&self, name: EffectName) -> Option<EffectSym> {
+        self.effects.get(&name).copied()
+    }
+
+    #[inline]
     pub fn get_type(&self, name: TypeName) -> Option<TypeSym> {
         self.types.get(&name).copied()
     }
@@ -94,8 +109,9 @@ impl Shape {
             AnyName::Functor(name) => self.get_functor(name).map(AnySym::Functor),
             AnyName::ModuleType(name) => self.get_module_type(name).map(AnySym::ModuleType),
             AnyName::Module(name) => self.get_module(name).map(AnySym::Module),
-            AnyName::Value(name) => self.get_value(name).map(AnySym::Value),
+            AnyName::Effect(name) => self.get_effect(name).map(AnySym::Effect),
             AnyName::Type(name) => self.get_type(name).map(AnySym::Type),
+            AnyName::Value(name) => self.get_value(name).map(AnySym::Value),
         }
     }
 
@@ -115,6 +131,11 @@ impl Shape {
     }
 
     #[inline]
+    pub fn iter_effects(&self) -> impl Iterator<Item = (EffectName, EffectSym)> {
+        self.effects.iter().map(|(&name, &sym)| (name, sym))
+    }
+
+    #[inline]
     pub fn iter_types(&self) -> impl Iterator<Item = (TypeName, TypeSym)> {
         self.types.iter().map(|(&name, &sym)| (name, sym))
     }
@@ -130,6 +151,7 @@ impl Shape {
         HashMap<FunctorName, FunctorSym>,
         HashMap<ModuleTypeName, ModuleTypeSym>,
         HashMap<ModuleName, ModuleSym>,
+        HashMap<EffectName, EffectSym>,
         HashMap<TypeName, TypeSym>,
         HashMap<ValueName, ValueSym>,
     ) {
@@ -137,6 +159,7 @@ impl Shape {
             self.functors,
             self.module_types,
             self.modules,
+            self.effects,
             self.types,
             self.values,
         )
@@ -167,11 +190,11 @@ impl Index<ModuleName> for Shape {
     }
 }
 
-impl Index<ValueName> for Shape {
-    type Output = ValueSym;
+impl Index<EffectName> for Shape {
+    type Output = EffectSym;
 
-    fn index(&self, index: ValueName) -> &Self::Output {
-        &self.values[&index]
+    fn index(&self, index: EffectName) -> &Self::Output {
+        &self.effects[&index]
     }
 }
 
@@ -180,6 +203,14 @@ impl Index<TypeName> for Shape {
 
     fn index(&self, index: TypeName) -> &Self::Output {
         &self.types[&index]
+    }
+}
+
+impl Index<ValueName> for Shape {
+    type Output = ValueSym;
+
+    fn index(&self, index: ValueName) -> &Self::Output {
+        &self.values[&index]
     }
 }
 
@@ -249,6 +280,29 @@ impl Substitute<ModuleNamespace> for Shape {
         Self: Sized,
     {
         self.modules.substitute_mut(from, to);
+    }
+}
+
+impl Substitute<EffectNamespace> for Shape {
+    fn try_substitute(&self, from: EffectSym, to: EffectSym) -> Option<Self>
+    where
+        Self: Sized,
+    {
+        if let Some(effects) = self.effects.try_substitute(from, to) {
+            Some(Self {
+                effects,
+                ..self.clone()
+            })
+        } else {
+            None
+        }
+    }
+
+    fn substitute_mut(&mut self, from: EffectSym, to: EffectSym)
+    where
+        Self: Sized,
+    {
+        self.effects.substitute_mut(from, to);
     }
 }
 

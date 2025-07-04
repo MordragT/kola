@@ -19,6 +19,11 @@ pub enum NameCollision {
         other: Loc,
         help: &'static str,
     },
+    EffectTypeBind {
+        span: Loc,
+        other: Loc,
+        help: &'static str,
+    },
     ModuleBind {
         span: Loc,
         other: Loc,
@@ -50,6 +55,11 @@ impl NameCollision {
     #[inline]
     pub const fn type_bind(span: Loc, other: Loc, help: &'static str) -> Self {
         NameCollision::TypeBind { span, other, help }
+    }
+
+    #[inline]
+    pub const fn effect_type_bind(span: Loc, other: Loc, help: &'static str) -> Self {
+        NameCollision::EffectTypeBind { span, other, help }
     }
 
     #[inline]
@@ -86,6 +96,12 @@ impl From<NameCollision> for Diagnostic {
                     .with_trace([("This type bind here".to_owned(), other)])
                     .with_help(help)
             }
+            NameCollision::EffectTypeBind { span, other, help } => Diagnostic::error(
+                span,
+                "An effect type bind with the same name was defined before",
+            )
+            .with_trace([("This effect type bind here".to_owned(), other)])
+            .with_help(help),
             NameCollision::ModuleBind { span, other, help } => {
                 Diagnostic::error(span, "A module bind with the same name was defined before")
                     .with_trace([("This module bind here".to_owned(), other)])

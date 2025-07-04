@@ -11,6 +11,7 @@ pub type TypedNodes = MetaMap<TypePhase>;
 pub struct TypePhase;
 
 impl Phase for TypePhase {
+    type EffectName = !;
     type FunctorName = !;
     type ModuleTypeName = !;
     type ModuleName = !;
@@ -50,9 +51,16 @@ impl Phase for TypePhase {
     type IfExpr = types::MonoType;
     type LambdaExpr = types::MonoType;
     type CallExpr = types::MonoType;
+    type HandlerClause = types::MonoType;
+    type HandleExpr = types::MonoType;
+    type DoExpr = types::MonoType;
     type ExprError = !;
     type Expr = types::MonoType;
 
+    type QualifiedEffectType = !;
+    type EffectOpType = !;
+    type EffectRowType = !;
+    type EffectType = !;
     type QualifiedType = types::PolyType;
     type TypeVar = types::PolyType;
     type RecordFieldType = types::LabeledType;
@@ -69,6 +77,7 @@ impl Phase for TypePhase {
     type ValueBind = types::PolyType; // is a MonoType for the typer but a PolyType for the Printer (after generalization)
     type TypeBind = types::PolyType;
     type OpaqueTypeBind = !;
+    type EffectTypeBind = !;
     type ModuleBind = !;
     type ModuleTypeBind = !;
     type FunctorBind = !;

@@ -230,16 +230,18 @@ define_token_type!(Kw {
     Import => "import",
     Export => "export",
     Functor => "functor",
+    Effect => "effect",
     Type => "type",
     Forall => "forall",
     Fn => "fn",
+    Do => "do",
     Let => "let",
     In => "in",
     If => "if",
     Then => "then",
     Else => "else",
     Case => "case",
-    Of => "of",
+    Handle => "handle",
 });
 
 define_token_type!(Ctrl {

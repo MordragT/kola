@@ -34,9 +34,9 @@
     conditional = if my_bool then "yes" else "no",
 
     # Case-of expression
-    #case_example = case my_number of
-    #    0 => "zero",
-    #    n => if n > 0 then "positive" else "negative",,
+    case_example = case my_number
+        | 0 => "zero"
+        | n => if n > 0 then "positive" else "negative",
 
     # Record restriction (removing a field)
     base_record = { subrecord = { field1 = 1, field2 = 2 } },

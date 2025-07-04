@@ -1,4 +1,4 @@
-use derive_more::From;
+use derive_more::{From, IntoIterator};
 use enum_as_inner::EnumAsInner;
 use kola_macros::{Inspector, Notate};
 use serde::{Deserialize, Serialize};
@@ -9,7 +9,7 @@ use kola_utils::interner::StrKey;
 
 use crate::{
     id::Id,
-    node::{ModulePath, TypeName, ValueName},
+    node::{EffectName, ModulePath, TypeName, ValueName},
     print::NodePrinter,
     tree::TreeView,
 };
@@ -37,6 +37,87 @@ as well as (or just allow the latter, as it doesn't need any special handling)
 forall a b . < Some : a, None | b >
 forall a . { name : Str, age : Num | b }
 */
+
+#[derive(
+    Debug,
+    Notate,
+    Inspector,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
+)]
+#[notate(color = "cyan")]
+pub struct QualifiedEffectType {
+    pub path: Option<Id<ModulePath>>,
+    pub ty: Id<EffectName>,
+}
+
+#[derive(
+    Debug,
+    Notate,
+    Inspector,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
+)]
+#[notate(color = "green")]
+pub struct EffectOpType {
+    pub name: Id<ValueName>,
+    pub ty_scheme: Id<TypeScheme>,
+}
+
+#[derive(
+    Debug,
+    Notate,
+    Inspector,
+    From,
+    IntoIterator,
+    Clone,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
+)]
+#[notate(color = "green")]
+#[into_iterator(owned, ref)]
+pub struct EffectRowType(pub Vec<Id<EffectOpType>>);
+
+#[derive(
+    Debug,
+    Notate,
+    Inspector,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
+)]
+#[notate(color = "cyan")]
+pub enum EffectType {
+    // ~ Io (reference to bound effect type)
+    Qualified(Id<QualifiedEffectType>),
+    // ~ { print : Str -> Unit }
+    Row(Id<EffectRowType>),
+}
 
 #[derive(
     Debug, Notate, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,

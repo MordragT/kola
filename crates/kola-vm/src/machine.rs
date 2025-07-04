@@ -7,7 +7,7 @@ use crate::{
     eval::Eval,
     value::Value,
 };
-use kola_ir::ir::Ir;
+use kola_ir::{instr::Func, ir::Ir};
 use kola_utils::interner::StrInterner;
 
 /// CEK-style abstract machine for interpreting the language
@@ -93,46 +93,45 @@ impl CekMachine {
             mut forward,
         } = config;
 
-        // // Check for handler in current continuation
-        // let Some(ContFrame { pure, handler_closure }) = cont.pop() else {
-        //     // No handler found
-        //     return MachineState::Error(format!("Unhandled effect operation: {}", op,));
-        // };
+        // Check for handler in current continuation
+        let Some(ContFrame {
+            pure,
+            handler_closure,
+        }) = cont.pop()
+        else {
+            // No handler found
+            return MachineState::Error(format!("Unhandled effect operation: {}", op,));
+        };
 
-        // let Some(Func { param, body }) = handler_closure.handler.find_operation(&op)
+        // Check if the top handler can handle this operation
+        // And get the handler function
+        if let Some(Func { param, body }) = handler_closure.handler.find_operation(&op) {
+            // M-OP-HANDLE: Handler found, apply it
 
-        // // Check if the top handler can handle this operation
-        // // And get the handler function
-        // if let Some(Func { param, body }) = frame.handler_closure.handler.find_operation(&op) {
-        //     // M-OP-HANDLE: Handler found, apply it
+            // Apply the handler to the argument and the captured continuation
 
-        //     // Apply the handler to the argument and the captured continuation
+            // TODO: Implement handler application
+            // This is complex and requires creating a continuation value
 
-        //     // TODO: Implement handler application
-        //     // This is complex and requires creating a continuation value
+            todo!()
+        } else {
+            // M-OP-FORWARD: Handler doesn't handle this operation, forward it
 
-        //     todo!()
-        // } else {
-        //     // M-OP-FORWARD: Handler doesn't handle this operation, forward it
+            // Create a new forwarding continuation by adding current frame to it
+            forward.push(ContFrame {
+                pure,
+                handler_closure,
+            });
 
-        //     // Create a new forwarding continuation by adding current frame to it
-        //     let current_frame = frame.clone(); // TODO this clone is not needed
-        //     forward.push(current_frame);
-
-        //     // Remove the top frame from the current continuation
-        //     cont.frames.remove(0);
-
-        //     // Forward the operation
-        //     MachineState::Operation(OperationConfig {
-        //         op,
-        //         arg,
-        //         env,
-        //         cont,
-        //         forward,
-        //     })
-        // }
-        //
-        todo!()
+            // Forward the operation
+            MachineState::Operation(OperationConfig {
+                op,
+                arg,
+                env,
+                cont,
+                forward,
+            })
+        }
     }
 }
 #[cfg(test)]

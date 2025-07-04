@@ -44,6 +44,9 @@ impl<'a> Decorator<'a> for TypeDecorator<'a> {
             | Meta::IfExpr(t)
             | Meta::LambdaExpr(t)
             | Meta::CallExpr(t)
+            | Meta::HandlerClause(t)
+            | Meta::HandleExpr(t)
+            | Meta::DoExpr(t)
             | Meta::TagExpr(t)
             | Meta::Expr(t) => t.green().display_in(arena),
             Meta::RecordField(lt) => lt.green().display_in(arena),

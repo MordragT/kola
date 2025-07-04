@@ -894,6 +894,68 @@ impl LambdaExpr {
     Deserialize,
 )]
 #[notate(color = "blue")]
+pub struct HandlerClause {
+    pub op: Id<ValueName>,
+    pub param: Id<ValueName>,
+    pub body: Id<Expr>,
+}
+
+#[derive(
+    Debug,
+    Notate,
+    Inspector,
+    From,
+    Clone,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
+)]
+#[notate(color = "blue")]
+pub struct HandleExpr {
+    pub source: Id<Expr>,
+    pub clauses: Vec<Id<HandlerClause>>,
+}
+
+#[derive(
+    Debug,
+    Notate,
+    Inspector,
+    From,
+    Clone,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
+)]
+#[notate(color = "blue")]
+pub struct DoExpr {
+    pub op: Id<ValueName>,
+    pub arg: Id<Expr>,
+}
+
+#[derive(
+    Debug,
+    Notate,
+    Inspector,
+    From,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
+)]
+#[notate(color = "blue")]
 pub struct TagExpr(pub Id<ValueName>);
 
 impl TagExpr {
@@ -935,6 +997,8 @@ pub enum Expr {
     Case(Id<CaseExpr>),
     Call(Id<CallExpr>),
     Lambda(Id<LambdaExpr>),
+    Handle(Id<HandleExpr>),
+    Do(Id<DoExpr>),
     Tag(Id<TagExpr>),
 }
 
@@ -956,6 +1020,8 @@ impl<'a> Notate<'a> for NodePrinter<'a, Expr> {
             Expr::Case(c) => self.to_id(c).notate(arena),
             Expr::Call(c) => self.to_id(c).notate(arena),
             Expr::Lambda(f) => self.to_id(f).notate(arena),
+            Expr::Handle(h) => self.to_id(h).notate(arena),
+            Expr::Do(d) => self.to_id(d).notate(arena),
             Expr::Tag(t) => self.to_id(t).notate(arena),
         }
     }

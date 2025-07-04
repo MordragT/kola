@@ -67,6 +67,7 @@ macro_rules! define_nodes {
 }
 
 define_nodes!(
+    EffectName,
     FunctorName,
     ModuleTypeName,
     ModuleName,
@@ -105,10 +106,17 @@ define_nodes!(
     IfExpr,
     LambdaExpr,
     CallExpr,
+    HandlerClause,
+    HandleExpr,
+    DoExpr,
     TagExpr,
     ExprError,
     Expr,
     // Types
+    QualifiedEffectType,
+    EffectOpType,
+    EffectRowType,
+    EffectType,
     QualifiedType,
     TypeVar,
     RecordFieldType,
@@ -125,6 +133,7 @@ define_nodes!(
     ValueBind,
     TypeBind,
     OpaqueTypeBind,
+    EffectTypeBind,
     ModuleBind,
     ModuleTypeBind,
     FunctorBind,

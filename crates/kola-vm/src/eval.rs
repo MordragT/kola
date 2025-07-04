@@ -279,7 +279,7 @@ impl Eval for CallExpr {
                 })
             }
             Value::Builtin(builtin) => {
-                match eval_builtin(builtin, arg_val) {
+                match eval_builtin(builtin, arg_val, &env) {
                     Ok(value) => {
                         // Create a new environment with the result bound to the variable
                         env.insert(bind, value);
@@ -313,9 +313,21 @@ impl Eval for CallExpr {
     }
 }
 
-fn eval_builtin(builtin: BuiltinId, arg: Value) -> Result<Value, String> {
+fn eval_builtin(builtin: BuiltinId, arg: Value, env: &Env) -> Result<Value, String> {
     match (builtin, arg) {
-        (BuiltinId::ListLen, Value::List(list)) => Ok(Value::Num(list.len() as f64)),
+        (BuiltinId::ListLength, Value::List(list)) => Ok(Value::Num(list.len() as f64)),
+        (BuiltinId::ListIsEmpty, Value::List(list)) => Ok(Value::Bool(list.is_empty())),
+        // (BuiltinId::ListMap, Value::Record(record)) => {
+        //     let Some(Value::Func(f_env, f)) = record.get(env.interner["f"]) else {
+        //         return Err("ListMap requires a function 'f' in the record".to_owned());
+        //     };
+
+        //     let Some(Value::List(list)) = record.get(env.interner["list"]) else {
+        //         return Err("ListMap requires a list in the record".to_owned());
+        //     };
+
+        //     todo!()
+        // }
         (_, value) => Err(format!("Cannot apply {builtin} to: {:?}", value)),
     }
 }

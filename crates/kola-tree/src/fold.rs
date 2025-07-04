@@ -29,6 +29,7 @@ macro_rules! define_folder_trait {
 }
 
 define_folder_trait!(
+    EffectName,
     FunctorName,
     ModuleTypeName,
     ModuleName,
@@ -67,10 +68,17 @@ define_folder_trait!(
     IfExpr,
     LambdaExpr,
     CallExpr,
+    HandlerClause,
+    HandleExpr,
+    DoExpr,
     TagExpr,
     ExprError,
     Expr,
     // Types
+    QualifiedEffectType,
+    EffectOpType,
+    EffectRowType,
+    EffectType,
     QualifiedType,
     TypeVar,
     RecordFieldType,
@@ -87,6 +95,7 @@ define_folder_trait!(
     ValueBind,
     TypeBind,
     OpaqueTypeBind,
+    EffectTypeBind,
     ModuleBind,
     ModuleTypeBind,
     FunctorBind,

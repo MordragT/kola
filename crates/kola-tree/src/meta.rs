@@ -195,6 +195,7 @@ macro_rules! define {
 }
 
 define!(
+    EffectName,
     FunctorName,
     ModuleTypeName,
     ModuleName,
@@ -233,10 +234,17 @@ define!(
     IfExpr,
     LambdaExpr,
     CallExpr,
+    HandlerClause,
+    HandleExpr,
+    DoExpr,
     TagExpr,
     ExprError,
     Expr,
     // Types
+    QualifiedEffectType,
+    EffectOpType,
+    EffectRowType,
+    EffectType,
     QualifiedType,
     TypeVar,
     RecordFieldType,
@@ -253,6 +261,7 @@ define!(
     ValueBind,
     TypeBind,
     OpaqueTypeBind,
+    EffectTypeBind,
     ModuleBind,
     ModuleTypeBind,
     FunctorBind,

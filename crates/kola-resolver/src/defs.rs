@@ -6,13 +6,13 @@ use kola_span::Loc;
 use kola_tree::{
     id::Id,
     node::{
-        self, FunctorNamespace, ModuleNamespace, ModuleTypeNamespace, Namespace, NamespaceKind,
-        TypeNamespace, ValueNamespace, Vis,
+        self, EffectNamespace, FunctorNamespace, ModuleNamespace, ModuleTypeNamespace, Namespace,
+        NamespaceKind, TypeNamespace, ValueNamespace, Vis,
     },
 };
 
 use crate::symbol::{
-    AnySym, FunctorSym, ModuleSym, ModuleTypeSym, Substitute, Sym, TypeSym, ValueSym,
+    AnySym, EffectSym, FunctorSym, ModuleSym, ModuleTypeSym, Substitute, Sym, TypeSym, ValueSym,
 };
 
 pub struct Def<T> {
@@ -98,6 +98,7 @@ impl<T> Hash for Def<T> {
 pub type FunctorDef = Def<node::FunctorBind>;
 pub type ModuleTypeDef = Def<node::ModuleTypeBind>;
 pub type ModuleDef = Def<node::ModuleBind>;
+pub type EffectTypeDef = Def<node::EffectTypeBind>;
 pub type TypeDef = Def<node::TypeBind>;
 pub type ValueDef = Def<node::ValueBind>;
 
@@ -106,6 +107,7 @@ pub enum AnyDef {
     Functor(FunctorDef),
     ModuleType(ModuleTypeDef),
     Module(ModuleDef),
+    Effect(EffectTypeDef),
     Type(TypeDef),
     Value(ValueDef),
 }
@@ -116,6 +118,7 @@ impl AnyDef {
             AnyDef::Functor(_) => NamespaceKind::Functor,
             AnyDef::ModuleType(_) => NamespaceKind::ModuleType,
             AnyDef::Module(_) => NamespaceKind::Module,
+            AnyDef::Effect(_) => NamespaceKind::Effect,
             AnyDef::Type(_) => NamespaceKind::Type,
             AnyDef::Value(_) => NamespaceKind::Value,
         }
@@ -126,6 +129,7 @@ impl AnyDef {
             AnyDef::Functor(info) => info.loc,
             AnyDef::ModuleType(info) => info.loc,
             AnyDef::Module(info) => info.loc,
+            AnyDef::Effect(info) => info.loc,
             AnyDef::Type(info) => info.loc,
             AnyDef::Value(info) => info.loc,
         }
@@ -136,6 +140,7 @@ impl AnyDef {
             AnyDef::Functor(info) => info.vis,
             AnyDef::ModuleType(info) => info.vis,
             AnyDef::Module(info) => info.vis,
+            AnyDef::Effect(info) => info.vis,
             AnyDef::Type(info) => info.vis,
             AnyDef::Value(info) => info.vis,
         }
@@ -248,6 +253,7 @@ pub struct Definitions {
     functors: Defs<FunctorNamespace, node::FunctorBind>,
     module_types: Defs<ModuleTypeNamespace, node::ModuleTypeBind>,
     modules: Defs<ModuleNamespace, node::ModuleBind>,
+    effects: Defs<EffectNamespace, node::EffectTypeBind>,
     types: Defs<TypeNamespace, node::TypeBind>,
     values: Defs<ValueNamespace, node::ValueBind>,
 }
@@ -271,6 +277,11 @@ impl Definitions {
     #[inline]
     pub fn insert_module(&mut self, sym: ModuleSym, def: ModuleDef) {
         self.modules.insert(sym, def);
+    }
+
+    #[inline]
+    pub fn insert_effect(&mut self, sym: EffectSym, def: EffectTypeDef) {
+        self.effects.insert(sym, def);
     }
 
     #[inline]
@@ -299,6 +310,11 @@ impl Definitions {
     }
 
     #[inline]
+    pub fn get_effect(&self, sym: EffectSym) -> Option<EffectTypeDef> {
+        self.effects.get(sym)
+    }
+
+    #[inline]
     pub fn get_type(&self, sym: TypeSym) -> Option<TypeDef> {
         self.types.get(sym)
     }
@@ -314,8 +330,9 @@ impl Definitions {
             AnySym::Functor(sym) => self.get_functor(sym).map(AnyDef::Functor),
             AnySym::ModuleType(sym) => self.get_module_type(sym).map(AnyDef::ModuleType),
             AnySym::Module(sym) => self.get_module(sym).map(AnyDef::Module),
-            AnySym::Value(sym) => self.get_value(sym).map(AnyDef::Value),
+            AnySym::Effect(sym) => self.get_effect(sym).map(AnyDef::Effect),
             AnySym::Type(sym) => self.get_type(sym).map(AnyDef::Type),
+            AnySym::Value(sym) => self.get_value(sym).map(AnyDef::Value),
         }
     }
 
@@ -332,6 +349,11 @@ impl Definitions {
     #[inline]
     pub fn iter_modules(&self) -> impl Iterator<Item = (ModuleSym, ModuleDef)> {
         self.modules.iter().map(|(&sym, &def)| (sym, def))
+    }
+
+    #[inline]
+    pub fn iter_effects(&self) -> impl Iterator<Item = (EffectSym, EffectTypeDef)> {
+        self.effects.iter().map(|(&sym, &def)| (sym, def))
     }
 
     #[inline]
@@ -369,11 +391,11 @@ impl Index<ModuleSym> for Definitions {
     }
 }
 
-impl Index<ValueSym> for Definitions {
-    type Output = ValueDef;
+impl Index<EffectSym> for Definitions {
+    type Output = EffectTypeDef;
 
-    fn index(&self, index: ValueSym) -> &Self::Output {
-        &self.values[index]
+    fn index(&self, index: EffectSym) -> &Self::Output {
+        &self.effects[index]
     }
 }
 
@@ -382,6 +404,14 @@ impl Index<TypeSym> for Definitions {
 
     fn index(&self, index: TypeSym) -> &Self::Output {
         &self.types[index]
+    }
+}
+
+impl Index<ValueSym> for Definitions {
+    type Output = ValueDef;
+
+    fn index(&self, index: ValueSym) -> &Self::Output {
+        &self.values[index]
     }
 }
 
@@ -451,6 +481,29 @@ impl Substitute<ModuleNamespace> for Definitions {
         Self: Sized,
     {
         self.modules.substitute_mut(from, to);
+    }
+}
+
+impl Substitute<EffectNamespace> for Definitions {
+    fn try_substitute(&self, from: EffectSym, to: EffectSym) -> Option<Self>
+    where
+        Self: Sized,
+    {
+        if let Some(effects) = self.effects.try_substitute(from, to) {
+            Some(Self {
+                effects,
+                ..self.clone()
+            })
+        } else {
+            None
+        }
+    }
+
+    fn substitute_mut(&mut self, from: EffectSym, to: EffectSym)
+    where
+        Self: Sized,
+    {
+        self.effects.substitute_mut(from, to);
     }
 }
 

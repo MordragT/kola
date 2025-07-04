@@ -280,6 +280,7 @@ macro_rules! impl_meta_substitutable {
 }
 
 impl_meta_substitutable!(
+    EffectName,
     FunctorName,
     ModuleTypeName,
     ModuleName,
@@ -319,9 +320,16 @@ impl_meta_substitutable!(
     IfExpr,
     LambdaExpr,
     CallExpr,
+    HandlerClause,
+    HandleExpr,
+    DoExpr,
     ExprError,
     Expr,
     // Types
+    QualifiedEffectType,
+    EffectOpType,
+    EffectRowType,
+    EffectType,
     QualifiedType,
     TypeVar,
     RecordFieldType,
@@ -338,6 +346,7 @@ impl_meta_substitutable!(
     ValueBind,
     TypeBind,
     OpaqueTypeBind,
+    EffectTypeBind,
     ModuleBind,
     ModuleTypeBind,
     FunctorBind,

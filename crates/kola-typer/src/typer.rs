@@ -1663,6 +1663,8 @@ where
             node::Expr::Case(id) => self.types.meta(id),
             node::Expr::Lambda(id) => self.types.meta(id),
             node::Expr::Call(id) => self.types.meta(id),
+            node::Expr::Handle(id) => self.types.meta(id),
+            node::Expr::Do(id) => self.types.meta(id),
             node::Expr::Tag(id) => self.types.meta(id),
         }
         .clone();

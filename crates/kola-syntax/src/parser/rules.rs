@@ -48,30 +48,6 @@ CallExpr := '(' Callable Expr ')'
 // TODO case expr also end in a ',' which is ambiguos to binds being separated by ','
 // Therefore replace the "case x of 10 => ..., 5 => ...," with something different.
 
-// pub fn root_parser<'t>() -> impl KolaParser<'t, Id<node::ModuleBind>> + Clone {
-//     module_parser().map_with(|module, e| {
-//         let span = e.span();
-//         let tree: &mut State = e.state();
-
-//         let vis = tree.insert(node::Vis::Export, span);
-//         let key = tree.intern("root");
-//         let name = tree.insert(node::Name(key), span);
-//         let value = tree.insert(node::ModuleExpr::Module(module), span);
-
-//         tree.insert(
-//             node::ModuleBind {
-//                 vis,
-//                 name,
-//                 ty: None,
-//                 value,
-//             },
-//             span,
-//         )
-//     })
-// }
-
-// TODO case related errors
-
 pub fn functor_name_parser<'t>() -> impl KolaParser<'t, Id<node::FunctorName>> + Clone {
     // TODO SCREAMING_CASE ?
     lower_symbol().map(node::FunctorName::new).to_node().boxed()
@@ -86,6 +62,10 @@ pub fn module_type_name_parser<'t>() -> impl KolaParser<'t, Id<node::ModuleTypeN
 
 pub fn module_name_parser<'t>() -> impl KolaParser<'t, Id<node::ModuleName>> + Clone {
     lower_symbol().map(node::ModuleName::new).to_node().boxed()
+}
+
+pub fn effect_name_parser<'t>() -> impl KolaParser<'t, Id<node::EffectName>> + Clone {
+    upper_symbol().map(node::EffectName::new).to_node().boxed()
 }
 
 pub fn type_name_parser<'t>() -> impl KolaParser<'t, Id<node::TypeName>> + Clone {
@@ -169,6 +149,28 @@ pub fn module_parser<'t>() -> impl KolaParser<'t, Id<node::Module>> + Clone {
 
         // TODO opaque type bind
 
+        let effect_op = lower_value_name_parser()
+            .then_ignore(ctrl(CtrlT::COLON))
+            .then(type_scheme_parser())
+            .map_to_node(|(name, ty_scheme)| node::EffectOpType { name, ty_scheme });
+
+        let effect_row_type = effect_op
+            .separated_by(ctrl(CtrlT::COMMA))
+            .allow_trailing()
+            .collect()
+            .map_to_node(node::EffectRowType)
+            .delimited_by(open_delim(OpenT::BRACE), close_delim(CloseT::BRACE));
+
+        let effect_type_bind = group((
+            vis.clone(),
+            kw(KwT::EFFECT)
+                .ignore_then(kw(KwT::TYPE))
+                .ignore_then(effect_name_parser()),
+            op(OpT::ASSIGN).ignore_then(effect_row_type),
+        ))
+        .map_to_node(|(vis, name, ty)| node::EffectTypeBind { vis, name, ty })
+        .to_bind();
+
         let module_bind = vis
             .clone()
             .then_ignore(kw(KwT::MODULE))
@@ -217,6 +219,7 @@ pub fn module_parser<'t>() -> impl KolaParser<'t, Id<node::Module>> + Clone {
             functor_bind,
             module_type_bind,
             module_bind,
+            effect_type_bind,
             type_bind,
             value_bind,
         ))
@@ -271,33 +274,6 @@ pub fn module_type_parser<'t>() -> impl KolaParser<'t, Id<node::ModuleType>> + C
             .map_to_node(|(path, ty)| node::QualifiedModuleType { path, ty })
             .to_module_type();
 
-        // let qualified = module_name_parser()
-        //     .spanned()
-        //     .separated_by(ctrl(CtrlT::DOUBLE_COLON))
-        //     .at_least(1)
-        //     .collect::<Vec<_>>()
-        //     .map_with(|mut path, e| {
-        //         let tree: &mut State = e.state();
-
-        //         let (ty, _) = path.pop().unwrap();
-
-        //         let path = if !path.is_empty() {
-        //             let module_loc = Loc::covering_located(&path).unwrap(); // Safety: Path is not empty
-        //             let module_path = path
-        //                 .into_iter()
-        //                 .map(|(name, _span)| name)
-        //                 .collect::<Vec<_>>();
-
-        //             Some(tree.insert(node::ModulePath(module_path), module_loc))
-        //         } else {
-        //             None
-        //         };
-
-        //         node::QualifiedModuleType { path, ty }
-        //     })
-        //     .to_node()
-        //     .to_module_type();
-
         concrete.or(qualified).boxed()
     })
 }
@@ -324,115 +300,6 @@ pub fn literal_parser<'t>() -> impl KolaParser<'t, node::LiteralExpr> + Sized {
     })
 }
 
-/*
-Some more rambling about syntax:
-
-While I like this more generic solution for lists, lists are very often typed for configurations.
-Also tuples are very often typed.
-This means that they should probably have a first class syntax which is good on the eyes and the most
-used syntax for list and tuples are sadly : [] and ()
-These are the symbols I am not yet using: ; ` @ $ % ^ \
-
-So maybe I could also use [] for Variants, but use it not in value position.
-Then the [] becomes free for lists (while I still kind of like [] in pattern matching for variants)
-Also <> is kind of free in patterns and also in type position:
-
-type Color = < Red, Green, Blue, Other : str >
-let color = Other "cyan"
-case color of <Other cyan, Green> => ... # looks kind of funny I don't like it
-
-so maybe:
-
-type Color = [Red, Green, Blue, Other : str]
-let color = Other "cyan"
-case color of Other "cyan" or|, Green => # well seems no good to me
-
-Also combinations are possible like:
-
-type Color = [|Red, Green, Blue, Other : str|]
-type Color = |Red, Green, Blue, Other : str|*
-
-type Test = { name : Str } | { peter : [Red | Blue]}
-
-type ColorOpen = [| Red | Green | Blue | Other : str |*]
-
-type Color = [| Red, Green, Blue |]
-type Person = {| name : Str, age : Num |}
-
-type OpenPerson = {| name : Str, age : Num |*}
-*/
-
-/*
-TODO
-- list/array patterns (Idea: Implement lists like functions)
-- tuples as special function which creates Types of { 0 : a, 1 : b }
-- guards
-- potentially as-patterns
-- test case of Variants
-
-\1 2 3 4 5\
-\head ...tail\ => ...
-
-let xs : List Num = (List 1 2 3 4 5 6) in case xs of # I could also capitalize them to somehow say they are data constructors.
-    (List head) => ...,
-    (List head ...tail) => ...,
-    (List a _ c) => ...,
-    (List ...init last) => ...,
-    (List a ...middle z) => ...,
-
-Potential List syntax
-(List 1 2 3) 11 keystrokes
-[1, 2, 3] 8 keystrokes
-(:1 2 3) 8 keystrokes
-\1 2 3\ 7 keystrokes
-{1 2 3} 7 keystrokes
-(.1 2 3) 6 keystrokes
-(,1 2 3) 6 keystrokes
-(1 2 3) 5 keystrokes
-[1 2 3] 4 keystrokes
-
-type Color = [Red, Green, Blue, Other : Str] # Maybe also remove the colon here ?
-
-Maybe also remove the `:` in pattern matchin to be consistent with Variant Constructors ?
-
-let color = [Other "Cyan"] in case color of
-    [Red] => "Red",
-    [Green, Blue] => "GreenBlue",
-    [Other str] => str
-    vs.
-    [Other : str] => str
-
-
-Tuples:
-
-module type Stack = {
-   opaque type Stack : Type -> Type
-   push : forall a . a -> Stack a -> Stack a
-   pop : forall a . Stack a -> [Some : Tuple (Stack a) a, None]
-}
-
-module list_impl_stack : Stack = {
-  opaque type Stack = List
-
-  push = fn x => fn xs => (list x ...xs)
-
-  pop = fn xs => case xs of
-    (list) => [None],
-    (list ...init tail) => [Some (tuple init tail)]
-}
-
-Data Types:
-
-data type Machine = { ip : Str, cmd : Str }
-let machine = (Machine { ip = "127.0.0.1", cmd = "echo /passwords" })
-
-Schemes
-
-data scheme Machine : { ip : Str, cmd : Str }
-    = constructor { ip, cmd ? "ssh -p 8070" + ip} => { ip, cmd, } # field prunit? (what was the term) ip = ip
-    ~ validator
-
-*/
 /// Parser for pattern expressions used in match statements.
 ///
 /// Grammar:
@@ -590,48 +457,12 @@ pub fn expr_parser<'t>() -> impl KolaParser<'t, Id<node::Expr>> + Clone {
         .as_context()
         .boxed();
 
-        // let partial_qualified = group((
-        //     symbol().spanned(),
-        //     ctrl(CtrlT::DOUBLE_COLON)
-        //         .ignore_then(symbol().spanned())
-        //         .repeated()
-        //         .collect::<Vec<_>>(),
-        // ))
-        // .map_with(|(mut source, mut path), e| {
-        //     let tree: &mut State = e.state();
-
-        //     let path = if path.is_empty() {
-        //         None
-        //     } else {
-        //         // For a::b::c.field1.field2:
-        //         // - Original: source=a, path=[b, c]
-        //         // - After transform: source=c, path=[a, b]
-        //         // - Result: ModulePath=[a, b], SelectExpr={source: c, fields: [field1, field2]}
-        //         let new_source = path.pop().unwrap();
-        //         path.insert(0, source);
-        //         source = new_source;
-
-        //         let path_loc = Loc::covering_located(&path).unwrap(); // Safety: Path is not empty
-
-        //         let path = path
-        //             .into_iter()
-        //             .map(|(key, span)| tree.insert(node::ModuleName::new(key), span))
-        //             .collect();
-        //         let path = tree.insert(node::ModulePath(path), path_loc);
-
-        //         Some(path)
-        //     };
-
-        //     (path, source)
-        // });
-
         let literal = literal_parser()
             .to_node()
             .to_expr()
             .labelled("LiteralExpr")
             .as_context();
 
-        // TODO use new syntax: let xs = (list 1 2 3) in ...
         let list = nested_parser(
             expr.clone()
                 .separated_by(ctrl(CtrlT::COMMA))
@@ -806,14 +637,15 @@ pub fn expr_parser<'t>() -> impl KolaParser<'t, Id<node::Expr>> + Clone {
             .then(expr.clone())
             .map(|(pat, body)| node::CaseBranch { pat, body })
             .to_node();
-        let branches = branch
-            .separated_by(ctrl(CtrlT::COMMA))
-            .allow_trailing()
+
+        let branches = ctrl(CtrlT::PIPE)
+            .ignore_then(branch)
+            .repeated()
             .at_least(1)
             .collect();
+
         let case = kw(KwT::CASE)
             .ignore_then(qualified.clone())
-            .then_ignore(kw(KwT::OF))
             .then(branches)
             .map_to_node(|(source, branches)| node::CaseExpr { source, branches })
             .to_expr()
@@ -821,7 +653,37 @@ pub fn expr_parser<'t>() -> impl KolaParser<'t, Id<node::Expr>> + Clone {
             .as_context()
             .boxed();
 
-        // Allow type annotation of ident
+        let clause = group((
+            lower_value_name_parser(),
+            lower_value_name_parser(),
+            ctrl(CtrlT::DOUBLE_ARROW).ignore_then(expr.clone()),
+        ))
+        .map_to_node(|(op, param, body)| node::HandlerClause { op, param, body });
+
+        let clauses = ctrl(CtrlT::PIPE)
+            .ignore_then(clause)
+            .repeated()
+            .at_least(1)
+            .collect();
+
+        let handle = kw(KwT::HANDLE)
+            .ignore_then(qualified.clone())
+            .then(clauses)
+            .map_to_node(|(source, clauses)| node::HandleExpr { source, clauses })
+            .to_expr()
+            .labelled("HandleExpr")
+            .as_context()
+            .boxed();
+
+        let do_expr = kw(KwT::DO)
+            .ignore_then(lower_value_name_parser())
+            .then(expr.clone())
+            .map_to_node(|(op, arg)| node::DoExpr { op, arg })
+            .to_expr()
+            .labelled("DoExpr")
+            .as_context()
+            .boxed();
+
         let func = group((
             kw(KwT::FN).ignore_then(lower_value_name_parser()),
             ctrl(CtrlT::COLON).ignore_then(type_parser()).or_not(),
@@ -837,7 +699,7 @@ pub fn expr_parser<'t>() -> impl KolaParser<'t, Id<node::Expr>> + Clone {
         .as_context()
         .boxed();
 
-        // TODO allow "recursive" (a (b c)) and maybe also syntactic sugar (a b c)
+        // TODO allow syntactic sugar (a b c)
         let call = recursive(|call| {
             let callable = choice((qualified.clone(), tag.clone(), func.clone(), call));
 
@@ -862,6 +724,8 @@ pub fn expr_parser<'t>() -> impl KolaParser<'t, Id<node::Expr>> + Clone {
             let_,
             if_,
             case,
+            handle,
+            do_expr,
             func,
             call,
             qualified,

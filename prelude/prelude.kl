@@ -1,0 +1,9 @@
+{
+    export module list = import list,
+    export module math = import math,
+    export module string = import string,
+
+    list = [1, 2, 3, 4],
+
+    main = (list::is_empty list),
+}

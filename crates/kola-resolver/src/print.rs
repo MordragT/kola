@@ -15,6 +15,7 @@ impl<'a> Decorator<'a> for ResolutionDecorator<'a> {
             Meta::QualifiedExpr(resolved) => resolved.red().display_in(arena),
             Meta::LetExpr(value_sym)
             | Meta::LambdaExpr(value_sym)
+            | Meta::HandlerClause(value_sym)
             | Meta::BindPat(value_sym)
             | Meta::ListElPat(value_sym)
             | Meta::RecordFieldPat(value_sym)
@@ -24,6 +25,9 @@ impl<'a> Decorator<'a> for ResolutionDecorator<'a> {
             Meta::TypeVar(type_sym) | Meta::TypeBind(type_sym) | Meta::OpaqueTypeBind(type_sym) => {
                 type_sym.red().display_in(arena)
             }
+
+            Meta::EffectTypeBind(effect_sym) => effect_sym.red().display_in(arena),
+
             Meta::Module(module_sym)
             | Meta::ModulePath(ResolvedModule(module_sym))
             | Meta::ModuleImport(module_sym)

@@ -1,0 +1,11 @@
+{
+    # High-frequency, low-level operations - direct builtins
+    export length : forall a . List a -> Num = list_length,
+    export is_empty : forall a . List a -> Bool = list_is_empty,
+
+
+    export map : forall a b . (a -> b) -> List a -> List b = fn f => fn list =>
+        todo!(),
+
+    # filter, append, prepend, reverse
+}

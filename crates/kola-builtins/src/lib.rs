@@ -79,7 +79,7 @@ pub enum TypeProtocol {
     Str,
     List(&'static Self),
     Record(&'static [(&'static str, Self)]),
-    Lambda(&'static Self, &'static Self),
+    Lambda(&'static Self, &'static Self), // restrict to first order functions
     Var(u32),
 }
 
@@ -138,7 +138,7 @@ pub struct TypeSchemeProtocol {
 macro_rules! define_builtins {
     (
         $(
-            $name:ident : forall $($var:literal),+ . $input:tt -> $output:tt
+            $name:ident : forall $count:literal . $input:tt -> $output:tt
         ),* $(,)?
     ) => {
         paste::paste! {
@@ -178,7 +178,7 @@ macro_rules! define_builtins {
                 Builtin {
                     name: stringify!($name),
                     type_: TypeSchemeProtocol {
-                        vars_count: define_builtins!(@count $($var),+),
+                        vars_count: $count,
                         input: define_builtins!(@type $input),
                         output: define_builtins!(@type $output),
                     },
@@ -186,15 +186,6 @@ macro_rules! define_builtins {
             )*
         ];
     };
-
-    // Simple counting - assumes variables are sequential starting from 0
-    (@count 0) => { 1 };
-    (@count 0, 1) => { 2 };
-    (@count 0, 1, 2) => { 3 };
-    (@count 0, 1, 2, 3) => { 4 };
-
-    // For single variable cases
-    (@count $var:literal) => { $var + 1 };
 
     // Type expression parsing
     (@type Unit) => { TypeProtocol::Unit };
@@ -220,11 +211,12 @@ macro_rules! define_builtins {
 }
 
 define_builtins! {
-    list_len: forall 0 . (List 0) -> Num,
+    list_length: forall 0 . (List 0) -> Num,
+    list_is_empty: forall 0 . (List 0) -> Bool,
+    list_map: forall 1 . ((0 -> 1) -> (List 0)) -> (List 1),
+
     // list_head: forall 0 . (List 0) -> { "value": 0, "next": (List 0) },
     // list_tail: forall 0 . (List 0) -> (List 0),
     // list_cons: forall 0 . { "value": 0, "next": (List 0) } -> (List 0),
-    // list_is_empty: forall 0 . (List 0) -> Bool,
-    // list_map: forall 0, 1 . (({ "value": 0 } -> { "value": 1 }) -> (List 0)) -> (List 1),
     // list_filter: forall 0 . (({ "value": 0 } -> Bool) -> (List 0)) -> (List 0),
 }

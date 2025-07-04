@@ -23,7 +23,7 @@ use crate::{
     phase::{ResolvePhase, ResolvedModule, ResolvedModuleType, ResolvedType, ResolvedValue},
     prelude::Topography,
     scope::{ModuleScope, ModuleScopeStack},
-    symbol::{FunctorSym, ModuleSym, ModuleTypeSym, TypeSym, ValueSym},
+    symbol::{EffectSym, FunctorSym, ModuleSym, ModuleTypeSym, TypeSym, ValueSym},
 };
 
 use super::ModuleGraph;
@@ -762,6 +762,26 @@ where
         ControlFlow::Continue(())
     }
 
+    fn visit_handler_clause(
+        &mut self,
+        id: Id<node::HandlerClause>,
+        tree: &T,
+    ) -> ControlFlow<Self::BreakValue> {
+        let node::HandlerClause { op: _, param, body } = *tree.node(id);
+
+        let param_name = *param.get(tree);
+        let param_sym = ValueSym::new();
+
+        self.insert_symbol(id, param_sym);
+        self.stack.value_scope_mut().enter(param_name, param_sym);
+
+        self.visit_expr(body, tree)?;
+
+        self.stack.value_scope_mut().exit(&param_name);
+
+        ControlFlow::Continue(())
+    }
+
     // TODOs insert symbols
 
     fn visit_bind_pat(&mut self, id: Id<node::BindPat>, tree: &T) -> ControlFlow<Self::BreakValue> {
@@ -910,7 +930,6 @@ where
         let node::TypeBind { name, ty_scheme } = *tree.node(id);
 
         let name = *tree.node(name);
-
         let span = self.span(id);
 
         let type_sym = TypeSym::new();
@@ -1011,5 +1030,30 @@ where
 
             ControlFlow::Continue(())
         }
+    }
+
+    fn visit_effect_type_bind(
+        &mut self,
+        id: Id<node::EffectTypeBind>,
+        tree: &T,
+    ) -> ControlFlow<Self::BreakValue> {
+        let node::EffectTypeBind { vis, name, ty } = *tree.node(id);
+
+        let name = *name.get(tree);
+        let vis = *vis.get(tree);
+        let loc = self.span(id);
+
+        let sym = EffectSym::new();
+        self.insert_symbol(id, sym);
+
+        // Register the type binding in the current scope
+        if let Err(e) = self
+            .stack
+            .insert_effect(name, sym, Def::bound(id, vis, loc))
+        {
+            self.report.add_diagnostic(e.into());
+        }
+
+        ControlFlow::Continue(())
     }
 }
