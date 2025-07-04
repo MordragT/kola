@@ -15,9 +15,10 @@
         rand = fn x => (ab::a::rand (ab::b::rand x)),
     },
 
+    # For this to work I will need proper lexical scoping of inline modules
     #module input = {
-    #    module a = super::rand_a,
-    #    module b = super::rand_b,
+    #    export module a = rand_a, # Note here not super::rand_a but just rand_a
+    #    export module b = rand_b,
     #},
     module input = {
         export module a = {
@@ -33,4 +34,9 @@
     #module rand_ab = (combined_rand { module a = rand_a, module b = rand_b }),
 
     main = let x = 10 in (rand_ab::rand x),
+
+
+    module type Iterable = {
+        map : forall a b . (a -> b) -> List a -> List b,
+    },
 }

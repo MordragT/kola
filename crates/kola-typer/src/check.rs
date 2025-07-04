@@ -38,13 +38,13 @@
 use kola_print::prelude::*;
 use kola_resolver::{
     forest::Forest,
-    info::ModuleGraph,
     prelude::Topography,
     print::ResolutionDecorator,
     resolver::{TypeOrders, ValueOrders},
     scope::ModuleScopes,
+    symbol::ModuleSym,
 };
-use kola_span::{IntoDiagnostic, Issue, Report};
+use kola_span::{IntoDiagnostic, Report};
 use kola_tree::{
     meta::MetaView,
     print::{Decorators, TreePrinter},
@@ -87,8 +87,8 @@ pub struct TypeCheckOutput {
 pub fn type_check(
     forest: &Forest,
     topography: &Topography,
-    module_graph: &ModuleGraph,
     module_scopes: &ModuleScopes,
+    module_order: &[ModuleSym],
     value_orders: &ValueOrders,
     type_orders: &TypeOrders,
     arena: &Bump,
@@ -100,18 +100,7 @@ pub fn type_check(
     let mut kind_env = KindEnv::new();
     let mut type_annotations = TypeAnnotations::new();
 
-    let module_order = match module_graph.topological_sort() {
-        Ok(order) => order,
-        Err(cycle) => {
-            // TODO error reporting isn't great here,
-            // but it is hard to know where the exact error is,
-            // still should report the cycle.
-            report.add_issue(Issue::error(cycle.to_string(), 0));
-            return TypeCheckOutput::default();
-        }
-    };
-
-    for module_sym in module_order {
+    for &module_sym in module_order {
         dbg!(module_sym);
 
         let module_scope = module_scopes[&module_sym].clone();

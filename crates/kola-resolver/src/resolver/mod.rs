@@ -4,7 +4,7 @@ use camino::Utf8Path;
 use indexmap::IndexMap;
 
 use kola_print::prelude::*;
-use kola_span::{Report, SourceManager};
+use kola_span::{Issue, Report, SourceManager};
 use kola_tree::print::{Decorators, TreePrinter};
 use kola_utils::{interner::StrInterner, io::FileSystem};
 use log::debug;
@@ -30,9 +30,9 @@ use module::ModuleResolution;
 use module_ty::ModuleTypeResolution;
 use value::ValueResolution;
 
+pub type ModuleTypeOrders = IndexMap<ModuleSym, Vec<ModuleTypeSym>>;
 pub type TypeOrders = IndexMap<ModuleSym, Vec<TypeSym>>;
 pub type ValueOrders = IndexMap<ModuleSym, Vec<ValueSym>>;
-pub type ModuleTypeOrders = IndexMap<ModuleSym, Vec<ModuleTypeSym>>;
 
 #[derive(Debug, Clone, Default)]
 pub struct ResolveOutput {
@@ -44,6 +44,7 @@ pub struct ResolveOutput {
     pub value_orders: ValueOrders,
     pub type_orders: TypeOrders,
     pub module_type_orders: ModuleTypeOrders,
+    pub module_order: Vec<ModuleSym>,
     pub entry_points: Vec<ValueSym>,
 }
 
@@ -132,6 +133,28 @@ pub fn resolve(
         module_graph.to_dot()
     );
 
+    let module_order = match module_graph.topological_sort() {
+        Ok(order) => order,
+        Err(cycle) => {
+            report.add_issue(
+                Issue::error(cycle.to_string(), 0)
+                    .with_help("Check for circular dependencies in module definitions."),
+            );
+            return Ok(ResolveOutput {
+                source_manager,
+                forest,
+                topography,
+                module_graph,
+                module_scopes,
+                value_orders,
+                type_orders,
+                module_type_orders,
+                entry_points,
+                ..Default::default()
+            });
+        }
+    };
+
     Ok(ResolveOutput {
         source_manager,
         forest,
@@ -141,6 +164,7 @@ pub fn resolve(
         value_orders,
         type_orders,
         module_type_orders,
+        module_order,
         entry_points,
     })
 }

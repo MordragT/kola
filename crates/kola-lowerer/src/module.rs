@@ -240,6 +240,7 @@ pub fn lower_module(
 pub fn lower(
     entry_point: ValueSym,
     scopes: &ModuleScopes,
+    module_order: &[ModuleSym],
     value_orders: &ValueOrders,
     forest: &Forest,
     arena: &Bump,
@@ -253,7 +254,8 @@ pub fn lower(
     let arg = builder.add(ir::Atom::Symbol(entry));
     let mut next = builder.add(ir::Expr::Ret(ir::RetExpr { arg }));
 
-    for (&sym, scope) in scopes {
+    for &sym in module_order.iter().rev() {
+        let scope = &scopes[&sym];
         let value_order = &value_orders[&sym];
         let tree = &*forest[scope.info.source];
 

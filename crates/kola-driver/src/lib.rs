@@ -41,6 +41,7 @@ impl Driver {
             value_orders,
             type_orders,
             module_type_orders,
+            module_order,
         } = resolve(
             path,
             &self.io,
@@ -60,8 +61,8 @@ impl Driver {
         } = type_check(
             &forest,
             &topography,
-            &module_graph,
             &module_scopes,
+            &module_order,
             &value_orders,
             &type_orders,
             &self.arena,
@@ -78,6 +79,7 @@ impl Driver {
         let Program { ir, modules } = lower(
             entry_points[0],
             &module_scopes,
+            &module_order,
             &value_orders,
             &forest,
             &self.arena,
