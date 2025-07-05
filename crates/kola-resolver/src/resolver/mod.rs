@@ -14,12 +14,13 @@ use crate::{
     info::ModuleGraph,
     prelude::Topography,
     print::ResolutionDecorator,
-    resolver::ty::TypeResolution,
+    resolver::{effect::EffectResolution, ty::TypeResolution},
     scope::ModuleScopes,
-    symbol::{ModuleSym, ModuleTypeSym, TypeSym, ValueSym},
+    symbol::{EffectSym, ModuleSym, ModuleTypeSym, TypeSym, ValueSym},
 };
 
 mod discover;
+mod effect;
 mod module;
 mod module_ty;
 mod ty;
@@ -31,6 +32,7 @@ use module_ty::ModuleTypeResolution;
 use value::ValueResolution;
 
 pub type ModuleTypeOrders = IndexMap<ModuleSym, Vec<ModuleTypeSym>>;
+pub type EffectOrders = IndexMap<ModuleSym, Vec<EffectSym>>;
 pub type TypeOrders = IndexMap<ModuleSym, Vec<TypeSym>>;
 pub type ValueOrders = IndexMap<ModuleSym, Vec<ValueSym>>;
 
@@ -41,10 +43,11 @@ pub struct ResolveOutput {
     pub topography: Topography,
     pub module_graph: ModuleGraph,
     pub module_scopes: ModuleScopes,
-    pub value_orders: ValueOrders,
-    pub type_orders: TypeOrders,
-    pub module_type_orders: ModuleTypeOrders,
     pub module_order: Vec<ModuleSym>,
+    pub module_type_orders: ModuleTypeOrders,
+    pub effect_orders: EffectOrders,
+    pub type_orders: TypeOrders,
+    pub value_orders: ValueOrders,
     pub entry_points: Vec<ValueSym>,
 }
 
@@ -102,6 +105,8 @@ pub fn resolve(
 
     let TypeResolution { type_orders } = ty::resolve_types(&mut module_scopes, report);
 
+    let EffectResolution { effect_orders } = effect::resolve_effects(&mut module_scopes, report);
+
     let ValueResolution { value_orders } = value::resolve_values(&mut module_scopes, report);
 
     for (sym, scope) in &module_scopes {
@@ -146,9 +151,10 @@ pub fn resolve(
                 topography,
                 module_graph,
                 module_scopes,
-                value_orders,
-                type_orders,
                 module_type_orders,
+                effect_orders,
+                type_orders,
+                value_orders,
                 entry_points,
                 ..Default::default()
             });
@@ -161,10 +167,11 @@ pub fn resolve(
         topography,
         module_graph,
         module_scopes,
-        value_orders,
-        type_orders,
-        module_type_orders,
         module_order,
+        module_type_orders,
+        effect_orders,
+        type_orders,
+        value_orders,
         entry_points,
     })
 }

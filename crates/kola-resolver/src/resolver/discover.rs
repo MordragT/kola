@@ -3,7 +3,7 @@ use log::debug;
 use owo_colors::OwoColorize;
 use std::{collections::HashMap, io, ops::ControlFlow};
 
-use kola_builtins::{BuiltinType, find_builtin_id};
+use kola_builtins::{BuiltinEffect, BuiltinType, find_builtin_id};
 use kola_print::prelude::*;
 use kola_span::{Diagnostic, IntoDiagnostic, Loc, Report, SourceId, SourceManager};
 use kola_syntax::prelude::*;
@@ -13,14 +13,17 @@ use kola_utils::{interner::StrInterner, io::FileSystem};
 use crate::{
     GlobalId,
     constraints::{
-        ModuleBindConst, ModuleConst, ModuleTypeBindConst, ModuleTypeConst, TypeBindConst,
-        TypeConst, ValueConst,
+        EffectBindConst, EffectConst, ModuleBindConst, ModuleConst, ModuleTypeBindConst,
+        ModuleTypeConst, TypeBindConst, TypeConst, ValueConst,
     },
     defs::Def,
     forest::Forest,
     functor::Functor,
     info::ModuleInfo,
-    phase::{ResolvePhase, ResolvedModule, ResolvedModuleType, ResolvedType, ResolvedValue},
+    phase::{
+        ResolvePhase, ResolvedEffect, ResolvedModule, ResolvedModuleType, ResolvedType,
+        ResolvedValue,
+    },
     prelude::Topography,
     scope::{ModuleScope, ModuleScopeStack},
     symbol::{EffectSym, FunctorSym, ModuleSym, ModuleTypeSym, TypeSym, ValueSym},
@@ -188,6 +191,7 @@ struct Discoverer<'a> {
     source_id: SourceId,
     current_module_type_bind_sym: Option<ModuleTypeSym>,
     current_module_bind_sym: Option<ModuleSym>,
+    current_effect_type_bind_sym: Option<EffectSym>,
     current_type_bind_sym: Option<TypeSym>,
     current_value_bind_sym: Option<ValueSym>,
     stack: ModuleScopeStack,
@@ -226,6 +230,7 @@ impl<'a> Discoverer<'a> {
             source_id,
             current_module_type_bind_sym: None,
             current_module_bind_sym: Some(module_sym),
+            current_effect_type_bind_sym: None,
             current_type_bind_sym: None,
             current_value_bind_sym: None,
             stack: ModuleScopeStack::new(),
@@ -1017,9 +1022,9 @@ where
             // This is a builtin type - resolve immediately, no dependencies needed
             self.insert_symbol(id, ResolvedType::Builtin(builtin));
             ControlFlow::Continue(())
-        } else
+        }
         // Either a forward reference or not found in the current module scope
-        if let Some(current_sym) = self.current_type_bind_sym {
+        else if let Some(current_sym) = self.current_type_bind_sym {
             let ref_ = TypeBindConst::new(name, id, current_sym, loc);
             self.stack.cons_mut().insert_type_bind(ref_);
 
@@ -1044,7 +1049,9 @@ where
         let loc = self.span(id);
 
         let sym = EffectSym::new();
+        self.current_effect_type_bind_sym = Some(sym);
         self.insert_symbol(id, sym);
+        self.stack.effect_graph_mut().add_node(sym);
 
         // Register the type binding in the current scope
         if let Err(e) = self
@@ -1054,6 +1061,58 @@ where
             self.report.add_diagnostic(e.into());
         }
 
+        self.visit_effect_row_type(ty, tree)?;
+
+        self.current_effect_type_bind_sym = None;
+
         ControlFlow::Continue(())
+    }
+
+    fn visit_qualified_effect_type(
+        &mut self,
+        id: Id<node::QualifiedEffectType>,
+        tree: &T,
+    ) -> ControlFlow<Self::BreakValue> {
+        let node::QualifiedEffectType { path, ty } = *tree.node(id);
+
+        let name = *ty.get(tree);
+        let loc = self.span(id);
+
+        if let Some(path) = path {
+            // Just visit the module path if it exists
+            self.visit_module_path(path, tree)
+        } else if let Some(type_sym) = self.stack.shape().get_effect(name) {
+            // Found a effect type binding in the current module scope
+            // which was defined before this type path (no forward reference)
+
+            self.insert_symbol(id, ResolvedEffect::Reference(type_sym));
+
+            // Qualified effect types can occur in both effect type binds and effect type annotations.
+            // Only in the former case we need to add a dependency.
+            if let Some(current_sym) = self.current_effect_type_bind_sym {
+                // Add dependency from the current type bind to this type
+                self.stack
+                    .effect_graph_mut()
+                    .add_dependency(current_sym, type_sym);
+            }
+
+            ControlFlow::Continue(())
+        } else if let Some(builtin) = self.interner.get(name.0).and_then(BuiltinEffect::from_name) {
+            // This is a builtin effect type - resolve immediately, no dependencies needed
+            self.insert_symbol(id, ResolvedEffect::Builtin(builtin));
+            ControlFlow::Continue(())
+        }
+        // Either a forward reference or not found in the current module scope
+        else if let Some(current_sym) = self.current_effect_type_bind_sym {
+            let ref_ = EffectBindConst::new(name, id, current_sym, loc);
+            self.stack.cons_mut().insert_effect_bind(ref_);
+
+            ControlFlow::Continue(())
+        } else {
+            let ref_ = EffectConst::new(name, id, loc);
+            self.stack.cons_mut().insert_effect(ref_);
+
+            ControlFlow::Continue(())
+        }
     }
 }

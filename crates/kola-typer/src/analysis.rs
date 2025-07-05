@@ -49,7 +49,7 @@ use thiserror::Error;
 
 use crate::{
     phase::TypedNodes,
-    types::{ListType, MonoType, PrimitiveType, RowType},
+    types::{CompType, ListType, MonoType, PrimitiveType, RowType},
 };
 
 #[derive(Debug, Error, Clone, PartialEq, Eq, Hash)]

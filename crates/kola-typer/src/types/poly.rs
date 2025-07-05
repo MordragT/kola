@@ -8,6 +8,7 @@ use super::{MonoType, TypeVar, Typed};
 use crate::{
     error::TypeConversionError,
     substitute::{Substitutable, Substitution},
+    types::CompType,
 };
 
 /// Polytype
@@ -40,7 +41,9 @@ impl PolyType {
 
         // Convert types using simple array indexing
         let input = MonoType::from_protocol(input, &vars, interner);
-        let output = MonoType::from_protocol(output, &vars, interner);
+        let ty = MonoType::from_protocol(output, &vars, interner);
+        let output = CompType::pure(ty);
+
         let ty = MonoType::func(input, output);
 
         PolyType { vars, ty }

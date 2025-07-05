@@ -43,19 +43,27 @@ impl<'a> Decorator<'a> for TypeDecorator<'a> {
             | Meta::CaseExpr(t)
             | Meta::IfExpr(t)
             | Meta::LambdaExpr(t)
-            | Meta::CallExpr(t)
-            | Meta::HandlerClause(t)
-            | Meta::HandleExpr(t)
-            | Meta::DoExpr(t)
             | Meta::TagExpr(t)
-            | Meta::Expr(t) => t.green().display_in(arena),
+            | Meta::Expr(t)
+            | Meta::HandlerClause(t) => t.green().display_in(arena),
+            Meta::HandleExpr(ct) | Meta::DoExpr(ct) | Meta::CallExpr(ct) => {
+                ct.green().display_in(arena)
+            }
             Meta::RecordField(lt) => lt.green().display_in(arena),
 
+            // Effects
+            Meta::EffectOpType(lt) => lt.green().display_in(arena),
+            Meta::QualifiedEffectType(rt)
+            | Meta::EffectRowType(rt)
+            | Meta::EffectType(rt)
+            | Meta::EffectTypeBind(rt) => rt.green().display_in(arena),
+
             // Types
-            Meta::RecordFieldType(lt) | Meta::VariantTagType(lt) => lt.green().display_in(arena),
+            Meta::RecordFieldType(lt) | Meta::TagType(lt) => lt.green().display_in(arena),
             Meta::RecordType(t) | Meta::VariantType(t) | Meta::FuncType(t) => {
                 t.green().display_in(arena)
             }
+            Meta::CompType(ct) => ct.green().display_in(arena),
             Meta::QualifiedType(pt)
             | Meta::TypeApplication(pt)
             | Meta::Type(pt)

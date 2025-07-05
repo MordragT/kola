@@ -151,22 +151,22 @@ pub fn module_parser<'t>() -> impl KolaParser<'t, Id<node::Module>> + Clone {
 
         let effect_op = lower_value_name_parser()
             .then_ignore(ctrl(CtrlT::COLON))
-            .then(type_scheme_parser())
-            .map_to_node(|(name, ty_scheme)| node::EffectOpType { name, ty_scheme });
+            .then(type_parser())
+            .map_to_node(|(name, ty)| node::EffectOpType { name, ty });
 
-        let effect_row_type = effect_op
+        let effect_row = effect_op
             .separated_by(ctrl(CtrlT::COMMA))
             .allow_trailing()
             .collect()
-            .map_to_node(node::EffectRowType)
-            .delimited_by(open_delim(OpenT::BRACE), close_delim(CloseT::BRACE));
+            .delimited_by(open_delim(OpenT::BRACE), close_delim(CloseT::BRACE))
+            .map_to_node(node::EffectRowType);
 
         let effect_type_bind = group((
             vis.clone(),
             kw(KwT::EFFECT)
                 .ignore_then(kw(KwT::TYPE))
                 .ignore_then(effect_name_parser()),
-            op(OpT::ASSIGN).ignore_then(effect_row_type),
+            op(OpT::ASSIGN).ignore_then(effect_row),
         ))
         .map_to_node(|(vis, name, ty)| node::EffectTypeBind { vis, name, ty })
         .to_bind();
@@ -890,7 +890,7 @@ pub fn expr_parser<'t>() -> impl KolaParser<'t, Id<node::Expr>> + Clone {
 /// ```
 pub fn type_parser<'t>() -> impl KolaParser<'t, Id<node::Type>> + Clone {
     recursive(|ty| {
-        let qualified = symbol()
+        let qual_ty = symbol()
             .spanned()
             .separated_by(ctrl(CtrlT::DOUBLE_COLON))
             .at_least(1)
@@ -942,24 +942,24 @@ pub fn type_parser<'t>() -> impl KolaParser<'t, Id<node::Type>> + Clone {
             |_span| node::TypeError,
         );
 
-        let case = upper_value_name_parser()
+        let tag = upper_value_name_parser()
             .then(ctrl(CtrlT::COLON).ignore_then(ty.clone()).or_not())
-            .map_to_node(|(name, ty)| node::VariantTagType { name, ty });
+            .map_to_node(|(name, ty)| node::TagType { name, ty });
 
         let variant = nested_parser(
-            case.separated_by(ctrl(CtrlT::COMMA))
+            tag.separated_by(ctrl(CtrlT::COMMA))
                 .at_least(1)
                 .allow_trailing()
                 .collect()
                 .then(row_var)
-                .map_to_node(|(cases, extension)| node::VariantType { cases, extension })
+                .map_to_node(|(tags, extension)| node::VariantType { tags, extension })
                 .to_type(),
             Delim::Angle,
             |_span| node::TypeError,
         );
 
         let atom = choice((
-            qualified,
+            qual_ty,
             record,
             variant,
             nested_parser(ty.clone(), Delim::Paren, |_| node::TypeError),
@@ -975,10 +975,61 @@ pub fn type_parser<'t>() -> impl KolaParser<'t, Id<node::Type>> + Clone {
             })
             .boxed();
 
+        let effect_op = lower_value_name_parser()
+            .then_ignore(ctrl(CtrlT::COLON))
+            .then(ty.clone())
+            .map_to_node(|(name, ty)| node::EffectOpType { name, ty });
+
+        let effect_row = effect_op
+            .separated_by(ctrl(CtrlT::COMMA))
+            .allow_trailing()
+            .collect()
+            .delimited_by(open_delim(OpenT::BRACE), close_delim(CloseT::BRACE))
+            .map_to_node(node::EffectRowType)
+            .map_to_node(node::EffectType::Row);
+
+        let qual_effect = symbol()
+            .spanned()
+            .separated_by(ctrl(CtrlT::DOUBLE_COLON))
+            .at_least(1)
+            .collect::<Vec<_>>()
+            .map_with(|mut path, e| {
+                let tree: &mut State = e.state();
+
+                let (eff_name, ty_loc) = path.pop().unwrap();
+                let ty = tree.insert(node::EffectName::new(eff_name), ty_loc);
+
+                let path = if !path.is_empty() {
+                    let module_loc = Loc::covering_located(&path).unwrap(); // Safety: Path is not empty
+                    let module_path = path
+                        .into_iter()
+                        .map(|(name, span)| tree.insert(node::ModuleName::new(name), span))
+                        .collect::<Vec<_>>();
+
+                    Some(tree.insert(node::ModulePath(module_path), module_loc))
+                } else {
+                    None
+                };
+
+                node::QualifiedEffectType { path, ty }
+            })
+            .to_node()
+            .map_to_node(node::EffectType::Qualified)
+            .boxed();
+
+        let computation = ty
+            .clone()
+            .then(
+                ctrl(CtrlT::TILDE)
+                    .ignore_then(effect_row.or(qual_effect))
+                    .or_not(),
+            )
+            .map_to_node(|(ty, effect)| node::CompType { ty, effect });
+
         let func = appl
             .clone()
             .foldl_with(
-                ctrl(CtrlT::ARROW).ignore_then(ty.clone()).repeated(),
+                ctrl(CtrlT::ARROW).ignore_then(computation).repeated(),
                 |input, output, e| {
                     let span = e.span();
                     let tree: &mut State = e.state();
@@ -1595,14 +1646,14 @@ mod tests {
         let func = inspector.to_func();
         func.input().to_qualified().ty().has_name("Num");
 
-        let func2 = func.output().to_func();
+        let func2 = func.output().ty().to_func();
         let record = func2.input().to_record();
         record.has_fields_count(2);
         record.fields_at(0).name().has_name("a");
         record.fields_at(0).ty().to_qualified().ty().has_name("Num");
         record.fields_at(1).name().has_name("b");
         record.fields_at(1).ty().to_func();
-        func2.output().to_qualified().ty().has_name("Str");
+        func2.output().ty().to_qualified().ty().has_name("Str");
     }
 
     #[test]
@@ -1667,6 +1718,7 @@ mod tests {
             .ty()
             .to_func()
             .output()
+            .ty()
             .to_qualified()
             .ty()
             .has_name("b");
@@ -1713,11 +1765,11 @@ mod tests {
             });
 
         let variant = inspector.ty_scheme().ty().to_variant();
-        variant.has_cases_count(2);
-        variant.cases_at(0).name().has_name("Some");
-        variant.cases_at(0).ty().to_qualified().ty().has_name("a");
-        variant.cases_at(1).name().has_name("None");
-        variant.cases_at(1).has_none_ty();
+        variant.has_tags_count(2);
+        variant.tags_at(0).name().has_name("Some");
+        variant.tags_at(0).ty().to_qualified().ty().has_name("a");
+        variant.tags_at(1).name().has_name("None");
+        variant.tags_at(1).has_none_ty();
         variant.extension().has_name("b");
     }
 

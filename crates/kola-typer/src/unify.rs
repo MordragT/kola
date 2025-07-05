@@ -40,6 +40,18 @@ impl Unifiable for FuncType {
     }
 }
 
+impl Unifiable for CompType {
+    fn try_unify(&self, rhs: &Self, s: &mut Substitution) -> Result<(), TypeErrors> {
+        let mut unifier = Unifier::new(s);
+        unifier.unify_comp(self, rhs);
+        if unifier.errors.has_errors() {
+            Err(unifier.errors)
+        } else {
+            Ok(())
+        }
+    }
+}
+
 impl Unifiable for MonoType {
     fn try_unify(&self, rhs: &Self, s: &mut Substitution) -> Result<(), TypeErrors> {
         let mut unifier = Unifier::new(s);
@@ -125,9 +137,7 @@ impl<'s> Unifier<'s> {
 
     fn unify_func(&mut self, lhs: &FuncType, rhs: &FuncType) {
         self.unify_mono(&lhs.input, &rhs.input);
-        let l = lhs.output.apply_cow(self.substitution);
-        let r = rhs.output.apply_cow(self.substitution);
-        self.unify_mono(&l, &r);
+        self.unify_comp(&lhs.output, &rhs.output);
     }
 
     fn unify_list(&mut self, lhs: &ListType, rhs: &ListType) {
@@ -153,6 +163,15 @@ impl<'s> Unifier<'s> {
                 });
             }
         }
+    }
+
+    fn unify_comp(&mut self, lhs: &CompType, rhs: &CompType) {
+        // Apply current substitution to resolve any already-bound variables
+        let lhs = lhs.apply_cow(self.substitution);
+        let rhs = rhs.apply_cow(self.substitution);
+
+        self.unify_mono(&lhs.ty, &rhs.ty);
+        self.unify_row(&lhs.effect, &rhs.effect);
     }
 
     // Below are the rules for row unification. In what follows monotypes
@@ -431,10 +450,10 @@ mod tests {
         let mut subs = Substitution::empty();
 
         // f1: Int -> String
-        let f1 = MonoType::func(MonoType::NUM, MonoType::STR);
+        let f1 = MonoType::pure_func(MonoType::NUM, MonoType::STR);
 
         // f2: Int -> Bool (should fail)
-        let f2 = MonoType::func(MonoType::NUM, MonoType::BOOL);
+        let f2 = MonoType::pure_func(MonoType::NUM, MonoType::BOOL);
 
         let result = f1.try_unify(&f2, &mut subs);
         assert!(result.is_err(), "Should fail - different return types");
@@ -447,10 +466,10 @@ mod tests {
         let var_b = TypeVar::new();
 
         // f1: a -> a (identity function)
-        let f1 = MonoType::func(MonoType::Var(var_a), MonoType::Var(var_a));
+        let f1 = MonoType::pure_func(MonoType::Var(var_a), MonoType::Var(var_a));
 
         // f2: Int -> b
-        let f2 = MonoType::func(MonoType::NUM, MonoType::Var(var_b));
+        let f2 = MonoType::pure_func(MonoType::NUM, MonoType::Var(var_b));
 
         let result = f1.try_unify(&f2, &mut subs);
         assert!(result.is_ok(), "Should unify with a=Int, b=Int");
@@ -546,7 +565,7 @@ mod tests {
             LabeledType::new(interner.intern("field"), MonoType::NUM),
             MonoType::empty_row(),
         );
-        let func_type = MonoType::func(int_type.clone(), str_type.clone());
+        let func_type = MonoType::pure_func(int_type.clone(), str_type.clone());
 
         // Test all incompatible pairs
         assert!(int_type.try_unify(&str_type, &mut subs).is_err());

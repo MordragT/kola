@@ -1,10 +1,13 @@
 use derive_more::From;
+use enum_as_inner::EnumAsInner;
 use kola_builtins::TypeProtocol;
 use kola_utils::{as_variant, interner::StrInterner};
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
-use super::{FuncType, LabeledType, ListType, PolyType, PrimitiveType, RowType, TypeVar, Typed};
+use super::{
+    CompType, FuncType, LabeledType, ListType, PolyType, PrimitiveType, RowType, TypeVar, Typed,
+};
 use crate::{
     env::KindEnv,
     error::{TypeConversionError, TypeError},
@@ -15,7 +18,7 @@ use crate::{
 /// Non-polymorphic types (e.g. `α → β`, `int → bool`)
 /// https://en.wikipedia.org/wiki/Hindley%e2%80%93Milner_type_system#Monotypes
 /// τ ::= α | gn τ1 .. τn
-#[derive(Debug, From, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[derive(Debug, From, EnumAsInner, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum MonoType {
     Primitive(PrimitiveType),
     Func(Box<FuncType>),
@@ -37,8 +40,12 @@ impl MonoType {
         Self::Var(TypeVar::new())
     }
 
-    pub fn func(arg: Self, ret: Self) -> Self {
+    pub fn func(arg: Self, ret: CompType) -> Self {
         Self::Func(Box::new(FuncType::new(arg, ret)))
+    }
+
+    pub fn pure_func(arg: Self, ret: Self) -> Self {
+        Self::Func(Box::new(FuncType::new(arg, CompType::pure(ret))))
     }
 
     pub fn list(el: Self) -> Self {
@@ -74,74 +81,12 @@ impl MonoType {
                 }
                 row
             }
-            TypeProtocol::Lambda(&arg, &ret) => Self::func(
-                Self::from_protocol(arg, bound, interner),
-                Self::from_protocol(ret, bound, interner),
-            ),
+            // TypeProtocol::Lambda(&arg, &ret) => Self::func(
+            //     Self::from_protocol(arg, bound, interner),
+            //     Self::from_protocol(ret, bound, interner),
+            // ),
             TypeProtocol::Var(id) => Self::Var(bound[id as usize]),
         }
-    }
-}
-
-impl MonoType {
-    pub fn into_primitive(self) -> Option<PrimitiveType> {
-        as_variant!(self, Self::Primitive)
-    }
-
-    pub fn into_func(self) -> Option<FuncType> {
-        as_variant!(self, Self::Func).map(Box::into_inner)
-    }
-
-    pub fn into_list(self) -> Option<ListType> {
-        as_variant!(self, Self::List).map(Box::into_inner)
-    }
-
-    pub fn into_row(self) -> Option<RowType> {
-        as_variant!(self, Self::Row).map(Box::into_inner)
-    }
-
-    pub fn into_var(self) -> Option<TypeVar> {
-        as_variant!(self, Self::Var)
-    }
-
-    pub fn as_primitive(&self) -> Option<&PrimitiveType> {
-        as_variant!(self, Self::Primitive)
-    }
-
-    pub fn as_func(&self) -> Option<&FuncType> {
-        as_variant!(self, Self::Func)
-    }
-
-    pub fn as_list(&self) -> Option<&ListType> {
-        as_variant!(self, Self::List)
-    }
-
-    pub fn as_row(&self) -> Option<&RowType> {
-        as_variant!(self, Self::Row)
-    }
-
-    pub fn as_var(&self) -> Option<&TypeVar> {
-        as_variant!(self, Self::Var)
-    }
-
-    pub fn is_primitive(&self) -> bool {
-        matches!(self, Self::Primitive(_))
-    }
-
-    pub fn is_func(&self) -> bool {
-        matches!(self, Self::Func(_))
-    }
-
-    pub fn is_list(&self) -> bool {
-        matches!(self, Self::List(_))
-    }
-
-    pub fn is_row(&self) -> bool {
-        matches!(self, Self::Row(_))
-    }
-
-    pub fn is_var(&self) -> bool {
-        matches!(self, Self::Var(_))
     }
 }
 
@@ -212,6 +157,12 @@ impl From<FuncType> for MonoType {
         Self::Func(Box::new(value))
     }
 }
+
+// impl From<CompType> for MonoType {
+//     fn from(value: CompType) -> Self {
+//         Self::Comp(Box::new(value))
+//     }
+// }
 
 impl From<RowType> for MonoType {
     fn from(value: RowType) -> Self {

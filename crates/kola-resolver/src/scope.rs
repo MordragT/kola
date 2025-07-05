@@ -8,7 +8,7 @@ use crate::{
         AnyDef, Definitions, EffectTypeDef, FunctorDef, ModuleDef, ModuleTypeDef, TypeDef, ValueDef,
     },
     error::NameCollision,
-    info::{ModuleInfo, ModuleTypeGraph, TypeGraph, ValueGraph},
+    info::{EffectGraph, ModuleInfo, ModuleTypeGraph, TypeGraph, ValueGraph},
     phase::ResolvedNodes,
     shape::Shape,
     symbol::{EffectSym, FunctorSym, ModuleSym, ModuleTypeSym, TypeSym, ValueSym},
@@ -30,6 +30,7 @@ pub struct ModuleScope {
     pub value_graph: ValueGraph,
     pub type_scope: TypeScope,
     pub type_graph: TypeGraph,
+    pub effect_graph: EffectGraph,
     pub module_type_graph: ModuleTypeGraph,
 }
 
@@ -45,6 +46,7 @@ impl ModuleScope {
             value_graph: ValueGraph::new(),
             type_scope: TypeScope::new(),
             type_graph: TypeGraph::new(),
+            effect_graph: EffectGraph::new(),
             module_type_graph: ModuleTypeGraph::new(),
         }
     }
@@ -416,6 +418,26 @@ impl ModuleScopeStack {
     #[inline]
     pub fn type_graph_mut(&mut self) -> &mut TypeGraph {
         self.try_type_graph_mut().unwrap()
+    }
+
+    #[inline]
+    pub fn try_effect_graph(&self) -> Option<&EffectGraph> {
+        self.todo.last().map(|scope| &scope.effect_graph)
+    }
+
+    #[inline]
+    pub fn effect_graph(&self) -> &EffectGraph {
+        self.try_effect_graph().unwrap()
+    }
+
+    #[inline]
+    pub fn try_effect_graph_mut(&mut self) -> Option<&mut EffectGraph> {
+        self.todo.last_mut().map(|scope| &mut scope.effect_graph)
+    }
+
+    #[inline]
+    pub fn effect_graph_mut(&mut self) -> &mut EffectGraph {
+        self.try_effect_graph_mut().unwrap()
     }
 
     #[inline]

@@ -75,7 +75,7 @@ pub struct QualifiedEffectType {
 #[notate(color = "green")]
 pub struct EffectOpType {
     pub name: Id<ValueName>,
-    pub ty_scheme: Id<TypeScheme>,
+    pub ty: Id<Type>,
 }
 
 #[derive(
@@ -97,6 +97,64 @@ pub struct EffectOpType {
 #[into_iterator(owned, ref)]
 pub struct EffectRowType(pub Vec<Id<EffectOpType>>);
 
+// #[derive(
+//     Debug,
+//     Notate,
+//     Inspector,
+//     Clone,
+//     Copy,
+//     PartialEq,
+//     Eq,
+//     PartialOrd,
+//     Ord,
+//     Hash,
+//     Serialize,
+//     Deserialize,
+// )]
+// #[notate(color = "green")]
+// pub struct EffectOpTypeScheme {
+//     pub name: Id<ValueName>,
+//     pub ty_scheme: Id<TypeScheme>,
+// }
+
+// #[derive(
+//     Debug,
+//     Notate,
+//     Inspector,
+//     From,
+//     IntoIterator,
+//     Clone,
+//     PartialEq,
+//     Eq,
+//     PartialOrd,
+//     Ord,
+//     Hash,
+//     Serialize,
+//     Deserialize,
+// )]
+// #[notate(color = "green")]
+// #[into_iterator(owned, ref)]
+// pub struct EffectRowTypeScheme(pub Vec<Id<EffectOpTypeScheme>>);
+
+#[derive(
+    Debug, Inspector, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+)]
+pub enum EffectType {
+    // ~ Io (reference to bound effect type)
+    Qualified(Id<QualifiedEffectType>),
+    // ~ { print : Str -> Unit }
+    Row(Id<EffectRowType>),
+}
+
+impl<'a> Notate<'a> for NodePrinter<'a, EffectType> {
+    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
+        match *self.value {
+            EffectType::Qualified(q) => self.to(q).notate(arena),
+            EffectType::Row(r) => self.to(r).notate(arena),
+        }
+    }
+}
+
 #[derive(
     Debug,
     Notate,
@@ -112,11 +170,9 @@ pub struct EffectRowType(pub Vec<Id<EffectOpType>>);
     Deserialize,
 )]
 #[notate(color = "cyan")]
-pub enum EffectType {
-    // ~ Io (reference to bound effect type)
-    Qualified(Id<QualifiedEffectType>),
-    // ~ { print : Str -> Unit }
-    Row(Id<EffectRowType>),
+pub struct CompType {
+    pub ty: Id<Type>,
+    pub effect: Option<Id<EffectType>>,
 }
 
 #[derive(
@@ -264,7 +320,7 @@ impl RecordType {
     Deserialize,
 )]
 #[notate(color = "cyan")]
-pub struct VariantTagType {
+pub struct TagType {
     pub name: Id<ValueName>, // These are data constructors, therefore ValueName is used
     pub ty: Option<Id<Type>>,
 }
@@ -285,13 +341,13 @@ pub struct VariantTagType {
 )]
 #[notate(color = "blue")]
 pub struct VariantType {
-    pub cases: Vec<Id<VariantTagType>>,
+    pub tags: Vec<Id<TagType>>,
     pub extension: Option<Id<TypeName>>,
 }
 
 impl VariantType {
-    pub fn get(&self, index: usize, tree: &impl TreeView) -> VariantTagType {
-        *self.cases[index].get(tree)
+    pub fn get(&self, index: usize, tree: &impl TreeView) -> TagType {
+        *self.tags[index].get(tree)
     }
 }
 
@@ -313,7 +369,7 @@ impl VariantType {
 #[notate(color = "cyan")]
 pub struct FuncType {
     pub input: Id<Type>,
-    pub output: Id<Type>,
+    pub output: Id<CompType>,
 }
 
 #[derive(

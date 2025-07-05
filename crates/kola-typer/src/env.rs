@@ -1,11 +1,11 @@
 use std::{collections::HashMap, ops::Index};
 
 use indexmap::IndexMap;
-use kola_resolver::symbol::{ModuleSym, Sym, TypeSym, ValueSym};
+use kola_resolver::symbol::{EffectSym, ModuleSym, Sym, TypeSym, ValueSym};
 use kola_tree::node::{ModuleNamespace, TypeNamespace, ValueNamespace};
 use kola_utils::{interner::StrKey, scope::LinearScope};
 
-use crate::types::{Kind, ModuleType, MonoType, PolyType, TypeVar};
+use crate::types::{Kind, ModuleType, MonoType, PolyType, RowType, TypeVar};
 
 pub type KindEnv = IndexMap<TypeVar, Vec<Kind>>;
 
@@ -77,6 +77,8 @@ pub struct GlobalTypeEnv {
     pub types: HashMap<TypeSym, PolyType>,
     pub equiv_types: TypeCache,
 
+    pub effects: HashMap<EffectSym, RowType>,
+
     pub modules: HashMap<ModuleSym, ModuleType>,
     pub equiv_modules: ModuleCache,
 }
@@ -94,6 +96,10 @@ impl GlobalTypeEnv {
         self.types.insert(sym, ty);
     }
 
+    pub fn insert_effect(&mut self, sym: EffectSym, ty: RowType) {
+        self.effects.insert(sym, ty);
+    }
+
     pub fn insert_module(&mut self, sym: ModuleSym, ty: ModuleType) {
         self.modules.insert(sym, ty);
     }
@@ -104,6 +110,10 @@ impl GlobalTypeEnv {
 
     pub fn get_type(&self, sym: TypeSym) -> Option<&PolyType> {
         self.types.get(&sym)
+    }
+
+    pub fn get_effect(&self, sym: EffectSym) -> Option<&RowType> {
+        self.effects.get(&sym)
     }
 
     pub fn get_module(&self, sym: ModuleSym) -> Option<&ModuleType> {
@@ -172,6 +182,16 @@ impl Index<TypeSym> for GlobalTypeEnv {
         self.types
             .get(&sym)
             .expect("TypeSym not found in TypeEnvironment")
+    }
+}
+
+impl Index<EffectSym> for GlobalTypeEnv {
+    type Output = RowType;
+
+    fn index(&self, sym: EffectSym) -> &Self::Output {
+        self.effects
+            .get(&sym)
+            .expect("EffectSym not found in TypeEnvironment")
     }
 }
 

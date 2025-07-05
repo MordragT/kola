@@ -2,10 +2,10 @@
 
 use std::fmt;
 
-use kola_builtins::{BuiltinId, BuiltinType};
+use kola_builtins::{BuiltinEffect, BuiltinId, BuiltinType};
 use kola_tree::{
     meta::{MetaMap, Phase},
-    node::{ModuleNamespace, ModuleTypeNamespace, TypeNamespace, ValueNamespace},
+    node::{EffectNamespace, ModuleNamespace, ModuleTypeNamespace, TypeNamespace, ValueNamespace},
 };
 use kola_utils::as_variant;
 
@@ -103,6 +103,55 @@ impl Substitute<TypeNamespace> for ResolvedType {
 }
 
 impl Substitute<ModuleNamespace> for ResolvedType {
+    fn try_substitute(&self, _from: ModuleSym, _to: ModuleSym) -> Option<Self>
+    where
+        Self: Sized,
+    {
+        None
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum ResolvedEffect {
+    Reference(EffectSym),
+    Builtin(BuiltinEffect),
+}
+
+impl ResolvedEffect {
+    pub fn into_builtin(self) -> Option<BuiltinEffect> {
+        as_variant!(self, Self::Builtin)
+    }
+
+    pub fn into_reference(self) -> Option<EffectSym> {
+        as_variant!(self, Self::Reference)
+    }
+}
+
+impl fmt::Display for ResolvedEffect {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ResolvedEffect::Reference(sym) => sym.fmt(f),
+            ResolvedEffect::Builtin(ty) => ty.fmt(f),
+        }
+    }
+}
+
+impl Substitute<EffectNamespace> for ResolvedEffect {
+    fn try_substitute(&self, from: EffectSym, to: EffectSym) -> Option<Self>
+    where
+        Self: Sized,
+    {
+        if let Self::Reference(sym) = self
+            && *sym == from
+        {
+            Some(Self::Reference(to))
+        } else {
+            None
+        }
+    }
+}
+
+impl Substitute<ModuleNamespace> for ResolvedEffect {
     fn try_substitute(&self, _from: ModuleSym, _to: ModuleSym) -> Option<Self>
     where
         Self: Sized,
@@ -211,7 +260,7 @@ impl Phase for ResolvePhase {
     // ===== TYPES =====
     // Type expressions are not needed for the untyped lowerer phase
     // Future: When adding typed IR, these could get ModuleSym for qualified types
-    type QualifiedEffectType = !;
+    type QualifiedEffectType = ResolvedEffect;
     type EffectOpType = !;
     type EffectRowType = !;
     type EffectType = !;
@@ -220,10 +269,11 @@ impl Phase for ResolvePhase {
     type TypeVar = TypeSym; // Type variables only occur in forall quantifier definitions
     type RecordFieldType = !; // Field names exist in value namespace but no symbols needed here
     type RecordType = !; // Structural type, no symbols
-    type VariantTagType = !; // Variant cases exist in value namespace
+    type TagType = !; // Variant tags exist in value namespace
     type VariantType = !; // Structural type, no symbols
     type FuncType = !;
     type TypeApplication = !;
+    type CompType = !;
     type Type = !;
     type TypeError = !;
     type TypeScheme = !;

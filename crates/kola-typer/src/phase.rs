@@ -50,25 +50,29 @@ impl Phase for TypePhase {
     type CaseExpr = types::MonoType;
     type IfExpr = types::MonoType;
     type LambdaExpr = types::MonoType;
-    type CallExpr = types::MonoType;
+    type CallExpr = types::CompType;
     type HandlerClause = types::MonoType;
-    type HandleExpr = types::MonoType;
-    type DoExpr = types::MonoType;
+    type HandleExpr = types::CompType;
+    type DoExpr = types::CompType;
     type ExprError = !;
+    // TODO this is MonoType for now but this should change when CompTypes are properly handled
     type Expr = types::MonoType;
 
-    type QualifiedEffectType = !;
-    type EffectOpType = !;
-    type EffectRowType = !;
-    type EffectType = !;
+    // Effects are implemented via row types
+    type QualifiedEffectType = types::RowType;
+    type EffectOpType = types::LabeledType;
+    type EffectRowType = types::RowType;
+    type EffectType = types::RowType;
+
     type QualifiedType = types::PolyType;
     type TypeVar = types::PolyType;
     type RecordFieldType = types::LabeledType;
     type RecordType = types::MonoType;
-    type VariantTagType = types::LabeledType;
+    type TagType = types::LabeledType;
     type VariantType = types::MonoType;
     type FuncType = types::MonoType;
     type TypeApplication = types::PolyType;
+    type CompType = types::CompType;
     type Type = types::PolyType;
     type TypeError = !;
     type TypeScheme = types::PolyType;
@@ -77,7 +81,7 @@ impl Phase for TypePhase {
     type ValueBind = types::PolyType; // is a MonoType for the typer but a PolyType for the Printer (after generalization)
     type TypeBind = types::PolyType;
     type OpaqueTypeBind = !;
-    type EffectTypeBind = !;
+    type EffectTypeBind = types::RowType;
     type ModuleBind = !;
     type ModuleTypeBind = !;
     type FunctorBind = !;

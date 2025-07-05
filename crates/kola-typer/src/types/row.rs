@@ -71,6 +71,29 @@ pub enum RowType {
     },
 }
 
+impl RowType {
+    /// Creates a new `RowType::Empty`.
+    #[inline]
+    pub fn empty() -> Self {
+        Self::Empty
+    }
+
+    /// Creates a new `RowType::Extension` with the given head and tail.
+    #[inline]
+    pub fn unit(head: LabeledType) -> Self {
+        Self::Extension {
+            head,
+            tail: MonoType::Row(Box::new(RowType::Empty)),
+        }
+    }
+
+    pub fn extend(self, head: LabeledType) -> Self {
+        let tail = MonoType::Row(Box::new(self));
+
+        Self::Extension { head, tail }
+    }
+}
+
 impl fmt::Display for RowType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {

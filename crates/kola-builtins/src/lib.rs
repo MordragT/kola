@@ -2,6 +2,27 @@ use derive_more::{Display, FromStr};
 use std::fmt;
 
 #[derive(Debug, Display, FromStr, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum BuiltinEffect {
+    Pure,
+    Yield,
+}
+
+impl BuiltinEffect {
+    pub fn from_name(name: &str) -> Option<Self> {
+        match name {
+            "Pure" => Some(Self::Pure),
+            "Yield" => Some(Self::Yield),
+            _ => None,
+        }
+    }
+}
+
+#[inline]
+pub fn is_builtin_effect(s: &str) -> bool {
+    matches!(s, "Pure" | "Yield")
+}
+
+#[derive(Debug, Display, FromStr, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum BuiltinType {
     Unit,
     Bool,
@@ -79,7 +100,7 @@ pub enum TypeProtocol {
     Str,
     List(&'static Self),
     Record(&'static [(&'static str, Self)]),
-    Lambda(&'static Self, &'static Self), // restrict to first order functions
+    // Lambda(&'static Self, &'static Self), // restrict to first order functions
     Var(u32),
 }
 
@@ -202,18 +223,18 @@ macro_rules! define_builtins {
             $(($field, define_builtins!(@type $field_type))),*
         ])
     };
-    (@type ($left:tt -> $right:tt)) => {
-        TypeProtocol::Lambda(
-            &define_builtins!(@type $left),
-            &define_builtins!(@type $right)
-        )
-    };
+    // (@type ($left:tt -> $right:tt)) => {
+    //     TypeProtocol::Lambda(
+    //         &define_builtins!(@type $left),
+    //         &define_builtins!(@type $right)
+    //     )
+    // };
 }
 
 define_builtins! {
     list_length: forall 0 . (List 0) -> Num,
     list_is_empty: forall 0 . (List 0) -> Bool,
-    list_map: forall 1 . ((0 -> 1) -> (List 0)) -> (List 1),
+    // list_map: forall 1 . ((0 -> 1) -> (List 0)) -> (List 1),
 
     // list_head: forall 0 . (List 0) -> { "value": 0, "next": (List 0) },
     // list_tail: forall 0 . (List 0) -> (List 0),

@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
-use super::{Kind, MonoType, Typed};
+use super::{CompType, Kind, MonoType, Typed};
 use crate::{
     env::KindEnv,
     error::TypeError,
@@ -11,11 +11,11 @@ use crate::{
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct FuncType {
     pub input: MonoType,
-    pub output: MonoType,
+    pub output: CompType,
 }
 
 impl FuncType {
-    pub fn new(input: MonoType, output: MonoType) -> Self {
+    pub fn new(input: MonoType, output: CompType) -> Self {
         Self { input, output }
     }
 }

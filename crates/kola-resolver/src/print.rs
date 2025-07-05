@@ -26,6 +26,7 @@ impl<'a> Decorator<'a> for ResolutionDecorator<'a> {
                 type_sym.red().display_in(arena)
             }
 
+            Meta::QualifiedEffectType(resolved) => resolved.red().display_in(arena),
             Meta::EffectTypeBind(effect_sym) => effect_sym.red().display_in(arena),
 
             Meta::Module(module_sym)

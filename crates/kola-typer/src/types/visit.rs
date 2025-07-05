@@ -12,7 +12,14 @@ pub trait TypeVisitor: Sized {
 
     fn visit_func(&mut self, func: &super::FuncType) -> ControlFlow<Self::BreakValue> {
         self.visit_mono(&func.input)?;
-        self.visit_mono(&func.output)?;
+        self.visit_comp(&func.output)?;
+        ControlFlow::Continue(())
+    }
+
+    fn visit_comp(&mut self, comp: &super::CompType) -> ControlFlow<Self::BreakValue> {
+        self.visit_mono(&comp.ty)?;
+        self.visit_row(&comp.effect)?;
+
         ControlFlow::Continue(())
     }
 
@@ -26,7 +33,7 @@ pub trait TypeVisitor: Sized {
             super::MonoType::Primitive(b) => self.visit_primitive(b),
             super::MonoType::Func(f) => self.visit_func(f),
             super::MonoType::List(l) => self.visit_list(l),
-            super::MonoType::Row(r) => self.visit_record(r),
+            super::MonoType::Row(r) => self.visit_row(r),
             super::MonoType::Var(v) => self.visit_var(v),
         }
     }
@@ -36,7 +43,7 @@ pub trait TypeVisitor: Sized {
         ControlFlow::Continue(())
     }
 
-    fn visit_record(&mut self, record: &super::RowType) -> ControlFlow<Self::BreakValue> {
+    fn visit_row(&mut self, record: &super::RowType) -> ControlFlow<Self::BreakValue> {
         match record {
             super::RowType::Empty => ControlFlow::Continue(()),
             super::RowType::Extension { head, tail } => {
@@ -64,7 +71,14 @@ pub trait TypeVisitorMut: Sized {
 
     fn visit_func_mut(&mut self, func: &mut super::FuncType) -> ControlFlow<Self::BreakValue> {
         self.visit_mono_mut(&mut func.input)?;
-        self.visit_mono_mut(&mut func.output)?;
+        self.visit_comp_mut(&mut func.output)?;
+        ControlFlow::Continue(())
+    }
+
+    fn visit_comp_mut(&mut self, comp: &mut super::CompType) -> ControlFlow<Self::BreakValue> {
+        self.visit_mono_mut(&mut comp.ty)?;
+        self.visit_row_mut(&mut comp.effect)?;
+
         ControlFlow::Continue(())
     }
 
@@ -78,7 +92,7 @@ pub trait TypeVisitorMut: Sized {
             super::MonoType::Primitive(b) => self.visit_primitive_mut(b),
             super::MonoType::Func(f) => self.visit_func_mut(f),
             super::MonoType::List(l) => self.visit_list_mut(l),
-            super::MonoType::Row(r) => self.visit_record_mut(r),
+            super::MonoType::Row(r) => self.visit_row_mut(r),
             super::MonoType::Var(v) => self.visit_var_mut(v),
         }
     }
@@ -91,7 +105,7 @@ pub trait TypeVisitorMut: Sized {
         ControlFlow::Continue(())
     }
 
-    fn visit_record_mut(&mut self, record: &mut super::RowType) -> ControlFlow<Self::BreakValue> {
+    fn visit_row_mut(&mut self, record: &mut super::RowType) -> ControlFlow<Self::BreakValue> {
         match record {
             super::RowType::Empty => ControlFlow::Continue(()),
             super::RowType::Extension { head, tail } => {
@@ -148,6 +162,22 @@ impl TypeVisitable for super::FuncType {
     }
 }
 
+impl TypeVisitable for super::CompType {
+    fn visit_type_by<V>(&self, visitor: &mut V) -> ControlFlow<V::BreakValue>
+    where
+        V: TypeVisitor,
+    {
+        visitor.visit_comp(self)
+    }
+
+    fn visit_type_mut_by<V>(&mut self, visitor: &mut V) -> ControlFlow<V::BreakValue>
+    where
+        V: TypeVisitorMut,
+    {
+        visitor.visit_comp_mut(self)
+    }
+}
+
 impl TypeVisitable for super::ListType {
     fn visit_type_by<V>(&self, visitor: &mut V) -> ControlFlow<V::BreakValue>
     where
@@ -201,14 +231,14 @@ impl TypeVisitable for super::RowType {
     where
         V: TypeVisitor,
     {
-        visitor.visit_record(self)
+        visitor.visit_row(self)
     }
 
     fn visit_type_mut_by<V>(&mut self, visitor: &mut V) -> ControlFlow<V::BreakValue>
     where
         V: TypeVisitorMut,
     {
-        visitor.visit_record_mut(self)
+        visitor.visit_row_mut(self)
     }
 }
 

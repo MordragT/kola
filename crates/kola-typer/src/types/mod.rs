@@ -1,3 +1,4 @@
+pub use comp::*;
 pub use func::*;
 pub use list::*;
 pub use module::*;
@@ -8,6 +9,7 @@ pub use row::*;
 pub use var::*;
 pub use visit::*;
 
+mod comp;
 mod func;
 mod list;
 mod module;

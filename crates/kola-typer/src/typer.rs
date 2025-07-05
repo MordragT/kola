@@ -1,6 +1,6 @@
 use std::{ops::ControlFlow, rc::Rc};
 
-use kola_builtins::{Builtin, BuiltinType};
+use kola_builtins::{Builtin, BuiltinEffect, BuiltinType};
 use kola_resolver::phase::{ResolvedModule, ResolvedNodes};
 use kola_span::{Diagnostic, IntoDiagnostic, Loc, Report};
 use kola_syntax::prelude::*;
@@ -13,7 +13,7 @@ use crate::{
     pattern_typer::PatternTyper,
     phase::{TypePhase, TypedNodes},
     substitute::{Substitutable, Substitution},
-    types::{Kind, LabeledType, MonoType, PolyType, TypeVar},
+    types::{CompType, Kind, LabeledType, MonoType, PolyType, RowType, TypeVar},
 };
 
 // https://blog.stimsina.com/post/implementing-a-hindley-milner-type-system-part-2
@@ -106,6 +106,116 @@ where
     Id<N>: Visitable<T>,
 {
     type BreakValue = Diagnostic;
+
+    fn visit_effect_type_bind(
+        &mut self,
+        id: Id<node::EffectTypeBind>,
+        tree: &T,
+    ) -> ControlFlow<Self::BreakValue> {
+        let node::EffectTypeBind { ty, .. } = *id.get(tree);
+
+        self.visit_effect_row_type(ty, tree)?;
+
+        let row_t = self.types.meta(ty).clone();
+        self.insert_type(id, row_t);
+        ControlFlow::Continue(())
+    }
+
+    fn visit_effect_row_type(
+        &mut self,
+        id: Id<node::EffectRowType>,
+        tree: &T,
+    ) -> ControlFlow<Self::BreakValue> {
+        let effects = &id.get(tree).0;
+
+        let mut row_t = RowType::Empty;
+
+        for effect in effects {
+            self.visit_effect_op_type(*effect, tree)?;
+            let effect_t = self.types.meta(*effect).clone();
+            row_t = row_t.extend(effect_t);
+        }
+
+        self.insert_type(id, row_t);
+        ControlFlow::Continue(())
+    }
+
+    fn visit_effect_op_type(
+        &mut self,
+        id: Id<node::EffectOpType>,
+        tree: &T,
+    ) -> ControlFlow<Self::BreakValue> {
+        let node::EffectOpType { name, ty } = *id.get(tree);
+
+        let label = name.get(tree).0;
+
+        self.visit_type(ty, tree)?;
+        let ty = match self.types.meta(ty).to_mono() {
+            Ok(t) => t,
+            Err(e) => return ControlFlow::Break(e.into_diagnostic(self.span(id))),
+        };
+
+        let effect_t = LabeledType { label, ty };
+        self.insert_type(id, effect_t);
+        ControlFlow::Continue(())
+    }
+
+    fn visit_qualified_effect_type(
+        &mut self,
+        id: Id<node::QualifiedEffectType>,
+        tree: &T,
+    ) -> ControlFlow<Self::BreakValue> {
+        let node::QualifiedEffectType { path, ty } = *id.get(tree);
+
+        let eff_name = ty.get(tree).0;
+        let span = self.span(id);
+
+        let row_t = if let Some(path) = path {
+            // Module-qualified path
+            let ResolvedModule(module_sym) = *self.resolved.meta(path);
+
+            let eff_sym = self.global_env[module_sym]
+                .get_effect(eff_name)
+                .expect("Type not found in module");
+
+            self.global_env[eff_sym].clone()
+        } else if let Some(global_row_t) = self
+            .resolved
+            .meta(id)
+            .into_reference()
+            .and_then(|sym| self.global_env.get_effect(sym))
+        {
+            // Module-level effect type definition (like 'Io')
+            // unlike module-level value binds, these are properly solved and ready to use
+            global_row_t.clone()
+        } else if let Some(builtin) = self.resolved.meta(id).into_builtin() {
+            match builtin {
+                BuiltinEffect::Pure => todo!(),
+                BuiltinEffect::Yield => todo!(),
+            }
+        } else {
+            return ControlFlow::Break(Diagnostic::error(span, "Type not found in scope"));
+        };
+
+        self.insert_type(id, row_t);
+        ControlFlow::Continue(())
+    }
+
+    fn visit_effect_type(
+        &mut self,
+        id: Id<node::EffectType>,
+        tree: &T,
+    ) -> ControlFlow<Self::BreakValue> {
+        self.walk_effect_type(id, tree)?;
+
+        let row_t = match id.get(tree) {
+            node::EffectType::Qualified(id) => self.types.meta(*id).clone(),
+            node::EffectType::Row(id) => self.types.meta(*id).clone(),
+        };
+
+        self.insert_type(id, row_t);
+        ControlFlow::Continue(())
+    }
 
     /// Rule for Type Binding
     ///
@@ -288,6 +398,32 @@ where
         ControlFlow::Continue(())
     }
 
+    fn visit_comp_type(
+        &mut self,
+        id: Id<node::CompType>,
+        tree: &T,
+    ) -> ControlFlow<Self::BreakValue> {
+        let node::CompType { ty, effect } = *id.get(tree);
+
+        self.visit_type(ty, tree)?;
+        let ty = match self.types.meta(ty).to_mono() {
+            Ok(t) => t,
+            Err(e) => return ControlFlow::Break(e.into_diagnostic(self.span(id))),
+        };
+
+        let effect = if let Some(effect) = effect {
+            self.visit_effect_type(effect, tree)?;
+            self.types.meta(effect).clone()
+        } else {
+            RowType::Empty
+        };
+
+        let comp_t = CompType::new(ty, effect);
+        self.insert_type(id, comp_t);
+
+        ControlFlow::Continue(())
+    }
+
     /// Rule for Function Type
     ///
     /// ```ignore
@@ -315,11 +451,8 @@ where
             Err(e) => return ControlFlow::Break(e.into_diagnostic(self.span(id))),
         };
 
-        self.visit_type(output, tree)?;
-        let output_t = match self.types.meta(output).to_mono() {
-            Ok(t) => t,
-            Err(e) => return ControlFlow::Break(e.into_diagnostic(self.span(id))),
-        };
+        self.visit_comp_type(output, tree)?;
+        let output_t = self.types.meta(output).clone();
 
         let func_t = MonoType::func(input_t, output_t);
 
@@ -506,7 +639,7 @@ where
     ) -> ControlFlow<Self::BreakValue> {
         self.walk_variant_type(id, tree)?;
 
-        let node::VariantType { cases, extension } = id.get(tree);
+        let node::VariantType { tags, extension } = id.get(tree);
 
         let tail_t = if let Some(extension_var) = extension {
             let extension_name = extension_var.get(tree).0;
@@ -521,7 +654,7 @@ where
             MonoType::empty_row()
         };
 
-        let variant_t = cases.iter().fold(tail_t, |acc_t, &case| {
+        let variant_t = tags.iter().fold(tail_t, |acc_t, &case| {
             let head_t = self.types.meta(case).clone();
             MonoType::row(head_t, acc_t)
         });
@@ -552,12 +685,8 @@ where
     /// - Creates a labeled type for the variant case
     ///
     /// Type signature: Creates `LabeledType` for variant type construction
-    fn visit_variant_tag_type(
-        &mut self,
-        id: Id<node::VariantTagType>,
-        tree: &T,
-    ) -> ControlFlow<Self::BreakValue> {
-        let node::VariantTagType { name, ty } = *id.get(tree);
+    fn visit_tag_type(&mut self, id: Id<node::TagType>, tree: &T) -> ControlFlow<Self::BreakValue> {
+        let node::TagType { name, ty } = *id.get(tree);
 
         let label = name.get(tree).0;
 
@@ -1090,7 +1219,7 @@ where
             | node::RecordUpdateOp::RemAssign => MonoType::NUM,
         };
 
-        let update_func_t = MonoType::func(value_t.clone(), value_t);
+        let update_func_t = MonoType::pure_func(value_t.clone(), value_t);
 
         self.insert_type(id, update_func_t);
         ControlFlow::Continue(())
@@ -1209,7 +1338,7 @@ where
         let op_t = self.types.meta(op).clone();
         self.cons.constrain(
             op_t,
-            MonoType::func(old_value_t.clone(), new_value_t.clone()),
+            MonoType::pure_func(old_value_t.clone(), new_value_t.clone()),
             span,
         );
 
@@ -1234,7 +1363,7 @@ where
             &node::UnaryOp::Not => MonoType::BOOL,
         };
 
-        let unary_func_t = MonoType::func(operand_t.clone(), operand_t);
+        let unary_func_t = MonoType::pure_func(operand_t.clone(), operand_t);
 
         self.insert_type(id, unary_func_t);
         ControlFlow::Continue(())
@@ -1270,7 +1399,7 @@ where
 
         // Constrain the operator to be a function from operand type to result type
         self.cons
-            .constrain(op_t, MonoType::func(operand_t, result_t.clone()), span);
+            .constrain(op_t, MonoType::pure_func(operand_t, result_t.clone()), span);
 
         self.insert_type(id, result_t);
         ControlFlow::Continue(())
@@ -1329,7 +1458,8 @@ where
             }
         };
 
-        let binary_func_t = MonoType::func(operand_t.clone(), MonoType::func(operand_t, result_t));
+        let binary_func_t =
+            MonoType::pure_func(operand_t.clone(), MonoType::pure_func(operand_t, result_t));
 
         self.insert_type(id, binary_func_t);
         ControlFlow::Continue(())
@@ -1365,7 +1495,8 @@ where
 
         let result_t = MonoType::variable();
 
-        let expected_op_t = MonoType::func(left_t, MonoType::func(right_t, result_t.clone()));
+        let expected_op_t =
+            MonoType::pure_func(left_t, MonoType::pure_func(right_t, result_t.clone()));
         self.cons.constrain(op_t, expected_op_t, span);
 
         self.insert_type(id, result_t);
@@ -1589,7 +1720,7 @@ where
         self.local_env.exit(&name);
 
         let body_t = self.types.meta(body).clone();
-        let lambda_t = MonoType::func(param_t, body_t);
+        let lambda_t = MonoType::pure_func(param_t, body_t); // TODO this should definitely not be a pure func
 
         self.insert_type(id, lambda_t);
         ControlFlow::Continue(())
@@ -1619,13 +1750,69 @@ where
         let node::CallExpr { func, arg } = *id.get(tree);
 
         let func_t = self.types.meta(func).clone();
-        let arg_t = self.types.meta(arg).clone();
-        let result_t = MonoType::variable();
+        let arg_t = self.types.meta(arg).clone(); // TODO this could be a CompType in the future
+
+        // TODO If the argument was a CompType, we could just push its effect into the result type's effect row.
+        // Not completelty sure if it would be correct though e.g:
+        //
+        // a = (f do effect "arg") # argument is a do notation and of CompType, but should its effect
+        // propagate to the binding "a" and error out, or be propagated to the call here?
+        let result_t = CompType::new(MonoType::variable(), RowType::Empty);
 
         self.cons
             .constrain(func_t, MonoType::func(arg_t, result_t.clone()), span);
 
         self.insert_type(id, result_t);
+        ControlFlow::Continue(())
+    }
+
+    fn visit_handle_expr(
+        &mut self,
+        id: Id<node::HandleExpr>,
+        tree: &T,
+    ) -> ControlFlow<Self::BreakValue> {
+        let node::HandleExpr { source, clauses } = id.get(tree);
+
+        self.visit_expr(*source, tree)?;
+        let source_t = self.types.meta(*source).clone();
+
+        for &_clause in clauses {
+            // TODO: Handle clause typing
+            // self.visit_handler_clause(clause, tree)?;
+        }
+
+        let result_t = CompType::new(
+            source_t,
+            RowType::Empty, // TODO: Should be the union of all clause result types
+        );
+
+        self.insert_type(id, result_t);
+        ControlFlow::Continue(())
+    }
+
+    fn visit_do_expr(&mut self, id: Id<node::DoExpr>, tree: &T) -> ControlFlow<Self::BreakValue> {
+        let node::DoExpr { op, arg } = *id.get(tree);
+
+        let name = op.get(tree).0;
+
+        self.visit_expr(arg, tree)?;
+        let arg_t = self.types.meta(arg).clone();
+
+        let result_t = MonoType::variable();
+
+        let op_t = MonoType::func(arg_t, CompType::pure(result_t.clone()));
+
+        // TODO is this sufficient, I want to have a structural approach to effect rows
+        // so in the best case I woudlnt want to lookup the effect operation by name.
+
+        let effect_row = RowType::unit(LabeledType {
+            label: name,
+            ty: op_t,
+        });
+
+        let result_comp = CompType::new(result_t, effect_row);
+
+        self.insert_type(id, result_comp);
         ControlFlow::Continue(())
     }
 
@@ -1637,7 +1824,7 @@ where
 
         let arg_t = MonoType::variable();
         let ret_t = MonoType::row(LabeledType::new(tag.0, arg_t.clone()), row_var);
-        let tag_t = MonoType::func(arg_t, ret_t);
+        let tag_t = MonoType::pure_func(arg_t, ret_t);
 
         self.insert_type(id, tag_t);
 
@@ -1662,9 +1849,9 @@ where
             node::Expr::If(id) => self.types.meta(id),
             node::Expr::Case(id) => self.types.meta(id),
             node::Expr::Lambda(id) => self.types.meta(id),
-            node::Expr::Call(id) => self.types.meta(id),
-            node::Expr::Handle(id) => self.types.meta(id),
-            node::Expr::Do(id) => self.types.meta(id),
+            node::Expr::Call(id) => &self.types.meta(id).ty, // TODO this discards the effect
+            node::Expr::Handle(id) => &self.types.meta(id).ty, // TODO this discards the effect
+            node::Expr::Do(id) => &self.types.meta(id).ty,   // TODO this discards the effect
             node::Expr::Tag(id) => self.types.meta(id),
         }
         .clone();

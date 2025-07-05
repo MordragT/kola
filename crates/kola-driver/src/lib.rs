@@ -40,6 +40,7 @@ impl Driver {
             entry_points,
             value_orders,
             type_orders,
+            effect_orders,
             module_type_orders,
             module_order,
         } = resolve(
@@ -63,8 +64,9 @@ impl Driver {
             &topography,
             &module_scopes,
             &module_order,
-            &value_orders,
+            &effect_orders,
             &type_orders,
+            &value_orders,
             &self.arena,
             &mut self.interner,
             &mut self.report,

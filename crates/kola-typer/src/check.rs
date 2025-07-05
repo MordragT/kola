@@ -40,7 +40,7 @@ use kola_resolver::{
     forest::Forest,
     prelude::Topography,
     print::ResolutionDecorator,
-    resolver::{TypeOrders, ValueOrders},
+    resolver::{EffectOrders, TypeOrders, ValueOrders},
     scope::ModuleScopes,
     symbol::ModuleSym,
 };
@@ -89,8 +89,9 @@ pub fn type_check(
     topography: &Topography,
     module_scopes: &ModuleScopes,
     module_order: &[ModuleSym],
-    value_orders: &ValueOrders,
+    effect_orders: &EffectOrders,
     type_orders: &TypeOrders,
+    value_orders: &ValueOrders,
     arena: &Bump,
     interner: &mut StrInterner,
     report: &mut Report,
@@ -110,10 +111,48 @@ pub fn type_check(
         let spans = topography[info.source].clone();
         let value_order = &value_orders[&module_sym];
         let type_order = &type_orders[&module_sym];
+        let effect_order = &effect_orders[&module_sym];
 
         let mut subs = Substitution::empty(); // TODO better if this is bind local ?
         let mut module_annotations = TypedNodes::new();
         let mut module_env = ModuleTypeEnv::new();
+
+        for &eff_sym in effect_order {
+            let id = module_scope.defs[eff_sym].id();
+
+            let mut constraints = Constraints::new();
+
+            let typer = Typer::new(
+                id,
+                spans.clone(),
+                &mut constraints,
+                &module_env,
+                &global_env,
+                interner,
+                &module_scope.resolved,
+            );
+
+            let Some((typed_nodes, _)) = typer.run(tree, report) else {
+                // If there are errors in type checking effects, break out early
+                break;
+            };
+
+            if let Err((errs, loc)) = constraints.solve(&mut subs, &mut kind_env) {
+                let diag = interner.display(&errs).into_diagnostic(loc);
+                report.add_diagnostic(diag);
+                break;
+            }
+
+            let type_ = typed_nodes.meta(id).clone().apply(&mut subs);
+
+            global_env.insert_effect(eff_sym, type_);
+            module_annotations.extend(typed_nodes);
+        }
+
+        if !report.is_empty() {
+            // If there are errors in type checking effects, break out early
+            break;
+        }
 
         for &type_sym in type_order {
             let id = module_scope.defs[type_sym].id();

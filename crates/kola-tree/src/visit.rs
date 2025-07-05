@@ -27,6 +27,7 @@ macro_rules! impl_visitable {
 }
 
 impl_visitable!(
+    EffectName,
     FunctorName,
     ModuleTypeName,
     ModuleName,
@@ -36,6 +37,8 @@ impl_visitable!(
     AnyPat,
     LiteralPat,
     BindPat,
+    ListElPat,
+    ListPat,
     RecordFieldPat,
     RecordPat,
     VariantTagPat,
@@ -44,7 +47,6 @@ impl_visitable!(
     Pat,
     // Expressions
     LiteralExpr,
-    QualifiedExpr,
     ListExpr,
     RecordField,
     RecordExpr,
@@ -52,6 +54,8 @@ impl_visitable!(
     RecordRestrictExpr,
     RecordUpdateOp,
     RecordUpdateExpr,
+    FieldPath,
+    QualifiedExpr,
     UnaryOp,
     UnaryExpr,
     BinaryOp,
@@ -62,18 +66,26 @@ impl_visitable!(
     IfExpr,
     LambdaExpr,
     CallExpr,
+    HandlerClause,
+    HandleExpr,
+    DoExpr,
     TagExpr,
     ExprError,
     Expr,
     // Types
+    QualifiedEffectType,
+    EffectOpType,
+    EffectRowType,
+    EffectType,
     QualifiedType,
     TypeVar,
     RecordFieldType,
     RecordType,
-    VariantTagType,
+    TagType,
     VariantType,
     FuncType,
     TypeApplication,
+    CompType,
     Type,
     TypeError,
     TypeScheme,
@@ -82,18 +94,24 @@ impl_visitable!(
     ValueBind,
     TypeBind,
     OpaqueTypeBind,
+    EffectTypeBind,
     ModuleBind,
     ModuleTypeBind,
+    FunctorBind,
     Bind,
+    ModuleError,
     Module,
     ModulePath,
     ModuleImport,
+    FunctorApp,
     ModuleExpr,
     ValueSpec,
     OpaqueTypeKind,
     OpaqueTypeSpec,
     ModuleSpec,
     Spec,
+    ConcreteModuleType,
+    QualifiedModuleType,
     ModuleType
 );
 
@@ -900,10 +918,10 @@ pub trait Visitor<T: TreeView> {
         id: Id<node::EffectOpType>,
         tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
-        let node::EffectOpType { name, ty_scheme } = *id.get(tree);
+        let node::EffectOpType { name, ty } = *id.get(tree);
 
         self.visit_value_name(name, tree)?;
-        self.visit_type_scheme(ty_scheme, tree)?;
+        self.visit_type(ty, tree)?;
 
         ControlFlow::Continue(())
     }
@@ -935,6 +953,47 @@ pub trait Visitor<T: TreeView> {
     ) -> ControlFlow<Self::BreakValue> {
         self.walk_effect_row_type(id, tree)
     }
+
+    // fn walk_effect_op_type_scheme(
+    //     &mut self,
+    //     id: Id<node::EffectOpTypeScheme>,
+    //     tree: &T,
+    // ) -> ControlFlow<Self::BreakValue> {
+    //     let node::EffectOpTypeScheme { name, ty_scheme } = *id.get(tree);
+
+    //     self.visit_value_name(name, tree)?;
+    //     self.visit_type_scheme(ty_scheme, tree)?;
+
+    //     ControlFlow::Continue(())
+    // }
+
+    // fn visit_effect_op_type_scheme(
+    //     &mut self,
+    //     id: Id<node::EffectOpTypeScheme>,
+    //     tree: &T,
+    // ) -> ControlFlow<Self::BreakValue> {
+    //     self.walk_effect_op_type_scheme(id, tree)
+    // }
+
+    // fn walk_effect_row_type_scheme(
+    //     &mut self,
+    //     id: Id<node::EffectRowTypeScheme>,
+    //     tree: &T,
+    // ) -> ControlFlow<Self::BreakValue> {
+    //     for op in id.get(tree) {
+    //         self.visit_effect_op_type_scheme(*op, tree)?;
+    //     }
+
+    //     ControlFlow::Continue(())
+    // }
+
+    // fn visit_effect_row_type_scheme(
+    //     &mut self,
+    //     id: Id<node::EffectRowTypeScheme>,
+    //     tree: &T,
+    // ) -> ControlFlow<Self::BreakValue> {
+    //     self.walk_effect_row_type_scheme(id, tree)
+    // }
 
     fn walk_effect_type(
         &mut self,
@@ -1036,12 +1095,8 @@ pub trait Visitor<T: TreeView> {
         self.walk_record_type(id, tree)
     }
 
-    fn walk_variant_tag_type(
-        &mut self,
-        id: Id<node::VariantTagType>,
-        tree: &T,
-    ) -> ControlFlow<Self::BreakValue> {
-        let node::VariantTagType { name, ty } = id.get(tree);
+    fn walk_tag_type(&mut self, id: Id<node::TagType>, tree: &T) -> ControlFlow<Self::BreakValue> {
+        let node::TagType { name, ty } = id.get(tree);
 
         self.visit_value_name(*name, tree)?;
         if let Some(ty) = ty {
@@ -1051,12 +1106,8 @@ pub trait Visitor<T: TreeView> {
         ControlFlow::Continue(())
     }
 
-    fn visit_variant_tag_type(
-        &mut self,
-        id: Id<node::VariantTagType>,
-        tree: &T,
-    ) -> ControlFlow<Self::BreakValue> {
-        self.walk_variant_tag_type(id, tree)
+    fn visit_tag_type(&mut self, id: Id<node::TagType>, tree: &T) -> ControlFlow<Self::BreakValue> {
+        self.walk_tag_type(id, tree)
     }
 
     fn walk_variant_type(
@@ -1064,10 +1115,10 @@ pub trait Visitor<T: TreeView> {
         id: Id<node::VariantType>,
         tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
-        let node::VariantType { cases, extension } = id.get(tree);
+        let node::VariantType { tags, extension } = id.get(tree);
 
-        for id in cases {
-            self.visit_variant_tag_type(*id, tree)?;
+        for id in tags {
+            self.visit_tag_type(*id, tree)?;
         }
 
         if let Some(ext) = extension {
@@ -1093,7 +1144,7 @@ pub trait Visitor<T: TreeView> {
         let node::FuncType { input, output } = id.get(tree);
 
         self.visit_type(*input, tree)?;
-        self.visit_type(*output, tree)?;
+        self.visit_comp_type(*output, tree)?;
 
         ControlFlow::Continue(())
     }
@@ -1125,6 +1176,29 @@ pub trait Visitor<T: TreeView> {
         tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
         self.walk_type_application(id, tree)
+    }
+
+    fn walk_comp_type(
+        &mut self,
+        id: Id<node::CompType>,
+        tree: &T,
+    ) -> ControlFlow<Self::BreakValue> {
+        let node::CompType { effect, ty } = *id.get(tree);
+
+        if let Some(effect) = effect {
+            self.visit_effect_type(effect, tree)?;
+        }
+        self.visit_type(ty, tree)?;
+
+        ControlFlow::Continue(())
+    }
+
+    fn visit_comp_type(
+        &mut self,
+        id: Id<node::CompType>,
+        tree: &T,
+    ) -> ControlFlow<Self::BreakValue> {
+        self.walk_comp_type(id, tree)
     }
 
     fn visit_type_error(

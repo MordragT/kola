@@ -1,17 +1,20 @@
 use kola_collections::HashMap;
 use kola_resolver::{
     shape::Shape,
-    symbol::{ModuleSym, TypeSym, ValueSym},
+    symbol::{EffectSym, ModuleSym, TypeSym, ValueSym},
 };
-use kola_tree::node::{ModuleName, TypeName, ValueName};
+use kola_tree::node::{EffectName, ModuleName, TypeName, ValueName};
 use kola_utils::interner::StrKey;
 
 use crate::env::GlobalTypeEnv;
 
+/// TODO this paragraph is completely outdated,
+/// this type is only used as a side table at the moment.
+///
 /// Represents the interface/signature of a module, mapping exported names to their types.
 ///
 /// Used for module signature matching, functor application, and interface comparison.
-/// NOT for type lookup during type checking (use symbol tables for that).
+/// NOT for type lookup during type checking (use symbol tables for that). (Sure thing guess what this is currently used for)
 ///
 /// ## Design
 ///
@@ -23,6 +26,8 @@ use crate::env::GlobalTypeEnv;
 pub struct ModuleType {
     /// Nested module interfaces exported by this module
     pub modules: HashMap<ModuleName, ModuleSym>,
+    /// Effect types exported by this module
+    pub effects: HashMap<EffectName, EffectSym>,
     /// Type definitions exported by this module
     pub types: HashMap<TypeName, TypeSym>,
     /// Value bindings exported by this module
@@ -33,6 +38,7 @@ impl ModuleType {
     pub fn new() -> Self {
         Self {
             modules: HashMap::new(),
+            effects: HashMap::new(),
             types: HashMap::new(),
             values: HashMap::new(),
         }
@@ -40,6 +46,10 @@ impl ModuleType {
 
     pub fn insert_module(&mut self, name: ModuleName, sym: ModuleSym) {
         self.modules.insert(name, sym);
+    }
+
+    pub fn insert_effect(&mut self, name: EffectName, sym: EffectSym) {
+        self.effects.insert(name, sym);
     }
 
     pub fn insert_type(&mut self, name: TypeName, sym: TypeSym) {
@@ -50,9 +60,12 @@ impl ModuleType {
         self.values.insert(name, sym);
     }
 
-    // Dafuq ??
     pub fn get_module(&self, name: StrKey) -> Option<ModuleSym> {
         self.modules.get(&name).copied()
+    }
+
+    pub fn get_effect(&self, name: StrKey) -> Option<EffectSym> {
+        self.effects.get(&name).copied()
     }
 
     pub fn get_type(&self, name: StrKey) -> Option<TypeSym> {
@@ -63,100 +76,101 @@ impl ModuleType {
         self.values.get(&name).copied()
     }
 
-    /// Returns true if this module type subsumes the other (contains all its requirements)
-    /// In other words: self ⊇ other (self is a superset of other)
-    pub fn subsumes(&self, other: &Self, env: &GlobalTypeEnv) -> bool {
-        if self.modules.len() < other.modules.len()
-            || self.types.len() < other.types.len()
-            || self.values.len() < other.values.len()
-        {
-            return false;
-        }
+    // /// Returns true if this module type subsumes the other (contains all its requirements)
+    // /// In other words: self ⊇ other (self is a superset of other)
+    // pub fn subsumes(&self, other: &Self, env: &GlobalTypeEnv) -> bool {
+    //     if self.modules.len() < other.modules.len()
+    //         || self.types.len() < other.types.len()
+    //         || self.values.len() < other.values.len()
+    //     {
+    //         return false;
+    //     }
 
-        for (name, other) in &other.modules {
-            if !self
-                .modules
-                .get(name)
-                .is_some_and(|this_module| env[*this_module].subsumes(&env[*other], env))
-            {
-                return false;
-            }
-        }
+    //     for (name, other) in &other.modules {
+    //         if !self
+    //             .modules
+    //             .get(name)
+    //             .is_some_and(|this_module| env[*this_module].subsumes(&env[*other], env))
+    //         {
+    //             return false;
+    //         }
+    //     }
 
-        for (name, other) in &other.types {
-            if !self
-                .types
-                .get(name)
-                .is_some_and(|this_type| env[*this_type].alpha_equivalent(&env[*other]))
-            {
-                return false;
-            }
-        }
+    //     for (name, other) in &other.types {
+    //         if !self
+    //             .types
+    //             .get(name)
+    //             .is_some_and(|this_type| env[*this_type].alpha_equivalent(&env[*other]))
+    //         {
+    //             return false;
+    //         }
+    //     }
 
-        for (name, other) in &other.values {
-            if !self
-                .values
-                .get(name)
-                .is_some_and(|this_value| env[*this_value].alpha_equivalent(&env[*other]))
-            {
-                return false;
-            }
-        }
+    //     for (name, other) in &other.values {
+    //         if !self
+    //             .values
+    //             .get(name)
+    //             .is_some_and(|this_value| env[*this_value].alpha_equivalent(&env[*other]))
+    //         {
+    //             return false;
+    //         }
+    //     }
 
-        true
-    }
+    //     true
+    // }
 
-    pub fn alpha_equivalent(&self, other: &Self, env: &GlobalTypeEnv) -> bool {
-        if self.modules.len() != other.modules.len()
-            || self.types.len() != other.types.len()
-            || self.values.len() != other.values.len()
-        {
-            return false;
-        }
+    // pub fn alpha_equivalent(&self, other: &Self, env: &GlobalTypeEnv) -> bool {
+    //     if self.modules.len() != other.modules.len()
+    //         || self.types.len() != other.types.len()
+    //         || self.values.len() != other.values.len()
+    //     {
+    //         return false;
+    //     }
 
-        // TODO can't I just zip them together and compare ?
-        for (name, this) in &self.modules {
-            if !other
-                .modules
-                .get(name)
-                .is_some_and(|other_module| env[*this].alpha_equivalent(&env[*other_module], env))
-            {
-                return false;
-            }
-        }
+    //     // TODO can't I just zip them together and compare ?
+    //     for (name, this) in &self.modules {
+    //         if !other
+    //             .modules
+    //             .get(name)
+    //             .is_some_and(|other_module| env[*this].alpha_equivalent(&env[*other_module], env))
+    //         {
+    //             return false;
+    //         }
+    //     }
 
-        for (name, this) in &self.types {
-            if !other
-                .types
-                .get(name)
-                .is_some_and(|other_type| env[*this].alpha_equivalent(&env[*other_type]))
-            {
-                return false;
-            }
-        }
+    //     for (name, this) in &self.types {
+    //         if !other
+    //             .types
+    //             .get(name)
+    //             .is_some_and(|other_type| env[*this].alpha_equivalent(&env[*other_type]))
+    //         {
+    //             return false;
+    //         }
+    //     }
 
-        for (name, this) in &self.values {
-            if !other
-                .values
-                .get(name)
-                .is_some_and(|other_value| env[*this].alpha_equivalent(&env[*other_value]))
-            {
-                return false;
-            }
-        }
+    //     for (name, this) in &self.values {
+    //         if !other
+    //             .values
+    //             .get(name)
+    //             .is_some_and(|other_value| env[*this].alpha_equivalent(&env[*other_value]))
+    //         {
+    //             return false;
+    //         }
+    //     }
 
-        true
-    }
+    //     true
+    // }
 }
 
 // TODO this works for now but non exported items shouldn't be part of the module type,
 // but are included in the shape.
 impl From<Shape> for ModuleType {
     fn from(shape: Shape) -> Self {
-        let (_functors, _module_types, modules, _effects, types, values) = shape.into_raw();
+        let (_functors, _module_types, modules, effects, types, values) = shape.into_raw();
 
         Self {
             modules,
+            effects,
             types,
             values,
         }

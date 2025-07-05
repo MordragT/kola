@@ -14,7 +14,9 @@
 
     mocked_print = fn x => "mocked",
 
-    effectful = fn x => do print x,
+    #this doesn't work currently, because effects are currently just discarded
+    #effectful : Str -> Unit ~ Io = fn x => do print x,
+    effectful : Str -> Unit = fn x => do print x,
 
     simple = handle effectful
         | print arg => (mocked_print arg),

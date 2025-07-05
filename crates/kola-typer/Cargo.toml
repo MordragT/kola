@@ -19,3 +19,4 @@ log.workspace = true
 camino.workspace = true
 indexmap.workspace = true
 enumset.workspace = true
+enum-as-inner.workspace = true

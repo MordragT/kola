@@ -596,6 +596,7 @@ version = "0.1.0"
 dependencies = [
  "camino",
  "derive_more",
+ "enum-as-inner",
  "enumset",
  "indexmap",
  "kola-builtins",
