@@ -3,9 +3,10 @@ use std::rc::Rc;
 use crate::env::Env;
 use kola_ir::{
     id::Id,
-    instr::{Atom, Expr, Func, Symbol},
+    instr::{Expr, Func, HandlerClause, Symbol},
+    ir::{Ir, IrView},
 };
-use kola_utils::interner::StrInterner;
+use kola_utils::interner::{StrInterner, StrKey};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum ReturnClause {
@@ -29,7 +30,7 @@ pub enum ReturnClause {
 pub struct Handler {
     // The return clause handles the normal result when no effects are performed.
     pub return_clause: ReturnClause,
-    pub op_clauses: Vec<(Symbol, Func)>,
+    pub op_clauses: Vec<(StrKey, Func)>,
 }
 
 impl Handler {
@@ -47,14 +48,38 @@ impl Handler {
         }
     }
 
-    pub fn add_operation(&mut self, op: Symbol, handler: Func) {
+    /// Create a handler from IR handler clauses
+    pub fn from_clauses(head: Id<HandlerClause>, ir: &Ir) -> Self {
+        // TODO Currently handler clauses cannot create a user defined return clause
+        // therefore we start with the identity return clause.
+        let mut handler = Handler::identity();
+
+        // Walk the linked list of clauses
+        for HandlerClause {
+            op, param, body, ..
+        } in ir.iter_clauses(Some(head))
+        {
+            // Create a function for this handler clause
+            let handler_func = Func {
+                param, // The operation argument parameter
+                body,  // The handler body
+            };
+
+            // Add the operation clause to the handler
+            handler.add_operation(op, handler_func);
+        }
+
+        handler
+    }
+
+    pub fn add_operation(&mut self, op: StrKey, handler: Func) {
         self.op_clauses.push((op, handler));
     }
 
-    pub fn find_operation(&self, op: &Symbol) -> Option<Func> {
+    pub fn find_operation(&self, op: StrKey) -> Option<Func> {
         self.op_clauses
             .iter()
-            .find(|(name, _)| name == op)
+            .find(|(name, _)| *name == op)
             .map(|(_, handler)| *handler)
     }
 }
@@ -168,9 +193,12 @@ impl Cont {
     }
 
     pub fn pop_or_identity(&mut self, interner: impl Into<Rc<StrInterner>>) -> ContFrame {
-        self.frames
-            .pop()
-            .unwrap_or_else(|| ContFrame::identity(interner))
+        if let Some(cont_frame) = self.frames.pop() {
+            cont_frame
+        } else {
+            // If the stack is empty, return the identity frame
+            ContFrame::identity(interner)
+        }
     }
 
     pub fn top(&self) -> Option<&ContFrame> {
@@ -187,5 +215,9 @@ impl Cont {
 
     pub fn is_empty(&self) -> bool {
         self.frames.is_empty()
+    }
+
+    pub fn iter(&self) -> impl Iterator<Item = &ContFrame> {
+        self.frames.iter()
     }
 }

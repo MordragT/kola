@@ -31,6 +31,7 @@ pub enum Instr {
     Item(ListItem),
     Path(FieldPath),
     PatternMatcher(PatternMatcher),
+    HandlerClause(HandlerClause),
 }
 
 impl Instr {
@@ -56,5 +57,6 @@ impl_try_as!(
     Field(RecordField),
     Item(ListItem),
     Path(FieldPath),
-    PatternMatcher(PatternMatcher)
+    PatternMatcher(PatternMatcher),
+    HandlerClause(HandlerClause)
 );

@@ -5,7 +5,7 @@ use kola_utils::{
 
 use crate::{
     id::Id,
-    instr::{Atom, Expr, FieldPath, Instr, ListItem, RecordField},
+    instr::{Atom, Expr, FieldPath, HandlerClause, Instr, ListItem, RecordField},
 };
 
 pub trait IrView {
@@ -24,6 +24,10 @@ pub trait IrView {
 
     fn iter_path(&self, head: Option<Id<FieldPath>>) -> PathIter<'_, Self> {
         PathIter::new(self, head)
+    }
+
+    fn iter_clauses(&self, head: Option<Id<HandlerClause>>) -> ClauseIter<'_, Self> {
+        ClauseIter::new(self, head)
     }
 }
 
@@ -96,6 +100,31 @@ impl<'a, T: IrView + ?Sized> Iterator for PathIter<'a, T> {
             let path = self.ir.instr(path_id);
             self.current = path.next;
             Some(path)
+        } else {
+            None
+        }
+    }
+}
+
+pub struct ClauseIter<'a, T: IrView + ?Sized> {
+    ir: &'a T,
+    current: Option<Id<HandlerClause>>,
+}
+
+impl<'a, T: IrView + ?Sized> ClauseIter<'a, T> {
+    pub fn new(ir: &'a T, head: Option<Id<HandlerClause>>) -> Self {
+        Self { ir, current: head }
+    }
+}
+
+impl<'a, T: IrView + ?Sized> Iterator for ClauseIter<'a, T> {
+    type Item = HandlerClause;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if let Some(clause_id) = self.current {
+            let clause = self.ir.instr(clause_id);
+            self.current = clause.next;
+            Some(clause)
         } else {
             None
         }

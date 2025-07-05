@@ -1,6 +1,6 @@
 use crate::{
-    config::{MachineState, PatternConfig, StandardConfig},
-    cont::{Cont, ContFrame, HandlerClosure, PureContFrame, ReturnClause},
+    config::{MachineState, OperationConfig, PatternConfig, StandardConfig},
+    cont::{Cont, ContFrame, Handler, HandlerClosure, PureCont, PureContFrame, ReturnClause},
     env::Env,
     value::{List, Record, Value},
 };
@@ -9,12 +9,12 @@ use kola_collections::ImShadowMap;
 use kola_ir::{
     id::Id,
     instr::{
-        Atom, BinaryExpr, BinaryOp, CallExpr, Expr, Func, Identity, IfExpr, IsBool, IsChar, IsList,
-        IsNum, IsRecord, IsStr, IsUnit, IsVariant, LetExpr, ListExpr, ListGetAt, ListIsAtLeast,
-        ListIsExact, ListItem, ListSplitAt, ListSplitHead, ListSplitTail, PatternMatchExpr,
-        PatternMatcher, PatternSuccess, RecordAccessExpr, RecordExpr, RecordExtendExpr,
-        RecordField, RecordGetAt, RecordHasField, RecordRestrictExpr, RecordUpdateExpr,
-        RecordUpdateOp, RetExpr, Symbol, UnaryExpr, UnaryOp, VariantGet,
+        Atom, BinaryExpr, BinaryOp, CallExpr, DoExpr, Expr, Func, HandleExpr, Identity, IfExpr,
+        IsBool, IsChar, IsList, IsNum, IsRecord, IsStr, IsUnit, IsVariant, LetExpr, ListExpr,
+        ListGetAt, ListIsAtLeast, ListIsExact, ListItem, ListSplitAt, ListSplitHead, ListSplitTail,
+        PatternMatchExpr, PatternMatcher, PatternSuccess, RecordAccessExpr, RecordExpr,
+        RecordExtendExpr, RecordField, RecordGetAt, RecordHasField, RecordRestrictExpr,
+        RecordUpdateExpr, RecordUpdateOp, RetExpr, Symbol, UnaryExpr, UnaryOp, VariantGet,
     },
     ir::{Ir, IrView},
 };
@@ -51,8 +51,10 @@ impl Eval for Expr {
     fn eval(&self, env: Env, cont: Cont, ir: &Ir) -> MachineState {
         match self {
             Expr::Ret(ret_expr) => ret_expr.eval(env, cont, ir),
-            Expr::Let(let_expr) => let_expr.eval(env, cont, ir),
             Expr::Call(call) => call.eval(env, cont, ir),
+            Expr::Handle(handle) => handle.eval(env, cont, ir),
+            Expr::Do(do_expr) => do_expr.eval(env, cont, ir),
+            Expr::Let(let_expr) => let_expr.eval(env, cont, ir),
             Expr::If(if_expr) => if_expr.eval(env, cont, ir),
             Expr::Unary(unary_expr) => unary_expr.eval(env, cont, ir),
             Expr::Binary(binary_expr) => binary_expr.eval(env, cont, ir),
@@ -154,37 +156,6 @@ impl Eval for RetExpr {
         // Continue with the next expression
         MachineState::Standard(StandardConfig {
             control: body.get(ir),
-            env,
-            cont,
-        })
-    }
-}
-
-// M-LET : <let x ← M in N | γ | (σ, χ) :: κ> --> <M | γ | ((γ, x, N) :: σ, χ) :: κ>
-//
-// This rule handles let-bindings in the CEK machine. When evaluating a let-expression:
-// 1. We push a pure continuation frame onto the current continuation stack
-// 2. The pure frame captures: the current environment (γ), the variable to be bound (x),
-//    and the body expression (N) to evaluate after binding
-// 3. We then proceed to evaluate the right-hand-side expression (M) with the current environment
-// 4. When M evaluates to a value, it will be bound to x via the continuation mechanism,
-//    which will then evaluate N with the extended environment
-impl Eval for LetExpr {
-    fn eval(&self, env: Env, mut cont: Cont, _ir: &Ir) -> MachineState {
-        // Create a pure continuation frame
-        let pure_frame = PureContFrame {
-            var: self.bind,
-            body: self.next,
-            env: env.clone(),
-        };
-
-        let mut frame = cont.pop_or_identity(env.interner());
-        frame.pure.push(pure_frame);
-        cont.push(frame);
-
-        // Evaluate the bound value
-        MachineState::Standard(StandardConfig {
-            control: Expr::from(RetExpr { arg: self.value }),
             env,
             cont,
         })
@@ -314,21 +285,180 @@ impl Eval for CallExpr {
 }
 
 fn eval_builtin(builtin: BuiltinId, arg: Value, env: &Env) -> Result<Value, String> {
+    let head_key = env.interner["head"];
+    let tail_key = env.interner["tail"];
+
     match (builtin, arg) {
         (BuiltinId::ListLength, Value::List(list)) => Ok(Value::Num(list.len() as f64)),
         (BuiltinId::ListIsEmpty, Value::List(list)) => Ok(Value::Bool(list.is_empty())),
-        // (BuiltinId::ListMap, Value::Record(record)) => {
-        //     let Some(Value::Func(f_env, f)) = record.get(env.interner["f"]) else {
-        //         return Err("ListMap requires a function 'f' in the record".to_owned());
+        (BuiltinId::ListPrepend, Value::Record(record)) => {
+            let Some(head_value) = record.get(head_key) else {
+                return Err("list_prepend requires 'head' field".to_owned());
+            };
+
+            let Some(Value::List(tail_list)) = record.get(tail_key) else {
+                return Err("list_prepend requires 'tail' field with a list".to_owned());
+            };
+
+            let mut list = tail_list.clone();
+            list.prepend(head_value.clone());
+
+            Ok(Value::List(list))
+        }
+        (BuiltinId::ListAppend, Value::Record(record)) => {
+            let Some(Value::List(head_list)) = record.get(head_key) else {
+                return Err("list_append requires 'head' field with a list".to_owned());
+            };
+
+            let Some(tail_value) = record.get(tail_key) else {
+                return Err("list_append requires 'tail' field".to_owned());
+            };
+
+            let mut list = head_list.clone();
+            list.append(tail_value.clone());
+
+            Ok(Value::List(list))
+        }
+        (BuiltinId::Lookup, Value::Str(str)) => {
+            // env.get(name);
+            todo!()
+        }
+        // (BuiltinId::MakeRecursiveCall, Value::Record(record)) => {
+        //     let Some(name_value) = record.get(env.interner["name"]) else {
+        //         return Err("make_recursive_call requires 'name' field".to_owned());
         //     };
 
-        //     let Some(Value::List(list)) = record.get(env.interner["list"]) else {
-        //         return Err("ListMap requires a list in the record".to_owned());
+        //     let Some(args_value) = record.get(env.interner["args"]) else {
+        //         return Err("make_recursive_call requires 'args' field".to_owned());
         //     };
 
-        //     todo!()
+        //     // Create a recursive call with the name and arguments
+        //     Ok(Value::Func(
+        //         env.clone(),
+        //         Func {
+        //             param: name_value.clone(),
+        //             body: args_value.clone(),
+        //         },
+        //     ))
         // }
         (_, value) => Err(format!("Cannot apply {builtin} to: {:?}", value)),
+    }
+}
+
+// M-HANDLE: ⟨handle M with H | γ | κ⟩ → ⟨M | γ | ([], (γ, H)) :: κ⟩
+//
+// This rule pushes a handler frame onto the continuation stack and
+// continues evaluating the source computation M with the handler available.
+impl Eval for HandleExpr {
+    fn eval(&self, env: Env, mut cont: Cont, ir: &Ir) -> MachineState {
+        let Self {
+            bind,
+            source,
+            clause,
+            next,
+        } = *self;
+
+        // Create a pure continuation frame for the ANF binding
+        let pure_frame = PureContFrame {
+            var: bind,
+            body: next,
+            env: env.clone(),
+        };
+
+        // Get the current frame and add our pure continuation to it
+        let mut current_frame = cont.pop_or_identity(env.interner());
+        current_frame.pure.push(pure_frame);
+
+        // Create handler from clauses (H in the rule)
+        let handler = Handler::from_clauses(clause, ir);
+        let handler_closure = HandlerClosure {
+            handler,
+            env: env.clone(),
+        };
+
+        // Push handler frame first ([], (γ, H)) :: κ
+        // This ensures the handler is deeper in the stack
+        cont.push(ContFrame {
+            pure: PureCont::empty(), // Empty pure continuation as per M-HANDLE rule
+            handler_closure,
+        });
+
+        // Push the frame with our ANF continuation on top
+        cont.push(current_frame);
+
+        // Continue evaluating the source computation with the handler active
+        MachineState::Standard(StandardConfig {
+            control: Expr::Ret(RetExpr { arg: source }),
+            env,
+            cont,
+        })
+    }
+}
+
+// M-OP: ⟨(do ℓ V)^E | γ | κ⟩ → ⟨(do ℓ V)^E | γ | κ | []⟩^op
+//
+// This rule transitions to an operation configuration where the machine
+// searches for a handler that can handle operation ℓ with argument V.
+impl Eval for DoExpr {
+    fn eval(&self, env: Env, mut cont: Cont, _ir: &Ir) -> MachineState {
+        let Self {
+            bind,
+            op,
+            arg,
+            next,
+        } = *self;
+
+        // Create a pure continuation frame
+        let pure_frame = PureContFrame {
+            var: bind,
+            body: next,
+            env: env.clone(),
+        };
+
+        let mut frame = cont.pop_or_identity(env.interner());
+        frame.pure.push(pure_frame);
+        cont.push(frame);
+
+        // Transition to operation configuration
+        // The forwarding continuation starts empty ([])
+        MachineState::Operation(OperationConfig {
+            op,                     // ℓ - operation name
+            arg,                    // V - operation argument (as atom ID)
+            env,                    // γ - current environment
+            cont,                   // κ - current continuation
+            forward: Cont::empty(), // [] - empty forwarding continuation
+        })
+    }
+}
+
+// M-LET : <let x ← M in N | γ | (σ, χ) :: κ> --> <M | γ | ((γ, x, N) :: σ, χ) :: κ>
+//
+// This rule handles let-bindings in the CEK machine. When evaluating a let-expression:
+// 1. We push a pure continuation frame onto the current continuation stack
+// 2. The pure frame captures: the current environment (γ), the variable to be bound (x),
+//    and the body expression (N) to evaluate after binding
+// 3. We then proceed to evaluate the right-hand-side expression (M) with the current environment
+// 4. When M evaluates to a value, it will be bound to x via the continuation mechanism,
+//    which will then evaluate N with the extended environment
+impl Eval for LetExpr {
+    fn eval(&self, env: Env, mut cont: Cont, _ir: &Ir) -> MachineState {
+        // Create a pure continuation frame
+        let pure_frame = PureContFrame {
+            var: self.bind,
+            body: self.next,
+            env: env.clone(),
+        };
+
+        let mut frame = cont.pop_or_identity(env.interner());
+        frame.pure.push(pure_frame);
+        cont.push(frame);
+
+        // Evaluate the bound value
+        MachineState::Standard(StandardConfig {
+            control: Expr::from(RetExpr { arg: self.value }),
+            env,
+            cont,
+        })
     }
 }
 

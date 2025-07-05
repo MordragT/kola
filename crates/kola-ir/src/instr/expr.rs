@@ -92,6 +92,205 @@ impl<'a> Notate<'a> for IrPrinter<'a, RetExpr> {
             .then(single.or(multi, arena), arena)
     }
 }
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct HandlerClause {
+    pub op: StrKey,                      // Operation name
+    pub param: Symbol,                   // Parameter symbol
+    pub body: Id<Expr>,                  // Handler body
+    pub next: Option<Id<HandlerClause>>, // Next clause in the chain
+}
+
+impl HandlerClause {
+    pub fn new(op: StrKey, param: Symbol, body: impl Into<Expr>, builder: &mut IrBuilder) -> Self {
+        let body = builder.add(body.into());
+        Self {
+            op,
+            param,
+            body,
+            next: None,
+        }
+    }
+
+    pub fn with_next(mut self, next: Id<HandlerClause>) -> Self {
+        self.next = Some(next);
+        self
+    }
+}
+//
+// | <op> <param> =>
+//      <body>
+impl<'a> Notate<'a> for IrPrinter<'a, HandlerClause> {
+    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
+        let HandlerClause {
+            op,
+            param,
+            body,
+            next,
+        } = self.node;
+
+        let op = self.interner[op].display_in(arena);
+        let param = param.display_in(arena);
+        let body = self.to(body).notate(arena);
+
+        let head = [
+            arena.notate("| "),
+            op,
+            arena.just(' '),
+            param,
+            " =>".blue().display_in(arena),
+        ]
+        .concat_in(arena)
+        .flatten(arena);
+
+        let clause = [head, arena.newline(), body.indent(arena)].concat_in(arena);
+
+        let next = next
+            .map(|next| {
+                let next = self.to(self.ir.instr(next)).notate(arena);
+
+                let single = [arena.notate("; "), next.clone().flatten(arena)].concat_in(arena);
+                let multi = [arena.newline(), next].concat_in(arena);
+
+                single.or(multi, arena)
+            })
+            .or_not(arena);
+
+        [clause, next].concat_in(arena)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct HandleExpr {
+    pub bind: Symbol,
+    pub source: Id<Atom>,
+    pub clause: Id<HandlerClause>, // Head of linked list of clauses
+    pub next: Id<Expr>,
+}
+
+impl HandleExpr {
+    pub fn new(
+        bind: Symbol,
+        source: impl Into<Atom>,
+        clause: Id<HandlerClause>,
+        next: impl Into<Expr>,
+        builder: &mut IrBuilder,
+    ) -> Self {
+        let source = builder.add(source.into());
+        let next = builder.add(next.into());
+        Self {
+            bind,
+            source,
+            clause,
+            next,
+        }
+    }
+}
+
+// <bind> = handle <source>
+//      [ <clauses> ];
+impl<'a> Notate<'a> for IrPrinter<'a, HandleExpr> {
+    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
+        let HandleExpr {
+            bind,
+            source,
+            clause,
+            next,
+        } = self.node;
+
+        let bind = bind.display_in(arena);
+        let source = self.to(source).notate(arena);
+        let clauses = self.to(self.ir.instr(clause)).notate(arena);
+        let next = arena.newline().then(self.to(next).notate(arena), arena);
+
+        let head = [
+            bind.clone(),
+            arena.notate(" = handle "),
+            source.clone().flatten(arena),
+        ]
+        .concat_in(arena);
+
+        let body = [
+            arena.newline(),
+            arena.notate("["),
+            arena.newline(),
+            clauses.indent(arena),
+            arena.newline(),
+            arena.notate("]"),
+        ]
+        .concat_in(arena);
+
+        [head, body, next].concat_in(arena)
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct DoExpr {
+    pub bind: Symbol,
+    pub op: StrKey,    // Operation name
+    pub arg: Id<Atom>, // Argument to the operation
+    pub next: Id<Expr>,
+}
+
+impl DoExpr {
+    pub fn new(
+        bind: Symbol,
+        op: StrKey,
+        arg: impl Into<Atom>,
+        next: impl Into<Expr>,
+        builder: &mut IrBuilder,
+    ) -> Self {
+        let arg = builder.add(arg.into());
+        let next = builder.add(next.into());
+        Self {
+            bind,
+            op,
+            arg,
+            next,
+        }
+    }
+}
+
+// <bind> = do <op> <arg>;
+// <bind> =
+//     do <op>
+//     <arg>;
+impl<'a> Notate<'a> for IrPrinter<'a, DoExpr> {
+    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
+        let DoExpr {
+            bind,
+            op,
+            arg,
+            next,
+        } = self.node;
+
+        let bind = bind.display_in(arena);
+        let op = self.interner[op].display_in(arena);
+        let arg = self.to(arg).notate(arena);
+        let next = arena.newline().then(self.to(next).notate(arena), arena);
+
+        let single = [
+            bind.clone(),
+            arena.notate(" = do "),
+            op.clone(),
+            arena.just(' '),
+            arg.clone().flatten(arena),
+        ]
+        .concat_in(arena);
+
+        let multi = [
+            bind,
+            arena.newline(),
+            arena.notate("= do "),
+            op,
+            arena.newline(),
+            arg,
+        ]
+        .concat_in(arena)
+        .indent(arena);
+
+        single.or(multi, arena).then(next, arena)
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct CallExpr {
@@ -1247,6 +1446,8 @@ impl<'a> Notate<'a> for IrPrinter<'a, PatternMatchExpr> {
 pub enum Expr {
     Ret(RetExpr),
     Call(CallExpr),
+    Handle(HandleExpr),
+    Do(DoExpr),
     If(IfExpr),
     Let(LetExpr),
     Unary(UnaryExpr),
@@ -1258,17 +1459,6 @@ pub enum Expr {
     RecordUpdate(RecordUpdateExpr),
     RecordAccess(RecordAccessExpr),
     PatternMatch(PatternMatchExpr),
-    // // Capture a continuation
-    // Callcc {
-    //     bind: Symbol,
-    //     body: InstrId<Expr>,
-    //     next: InstrId<Expr>,
-    // },
-    // // Jump with a value to a continuation
-    // Jump {
-    //     continuation: InstrId<Atom>,
-    //     value: InstrId<Atom>,
-    // },
 }
 
 impl<T> From<&T> for Expr
@@ -1284,6 +1474,8 @@ impl_try_as!(
     Expr,
     Ret(RetExpr),
     Call(CallExpr),
+    Handle(HandleExpr),
+    Do(DoExpr),
     If(IfExpr),
     Let(LetExpr),
     Unary(UnaryExpr),
@@ -1295,6 +1487,8 @@ impl<'a> Notate<'a> for IrPrinter<'a, Id<Expr>> {
         let expr = match self.ir.instr(self.node) {
             Expr::Ret(expr) => self.to(expr).notate(arena),
             Expr::Call(expr) => self.to(expr).notate(arena),
+            Expr::Handle(expr) => self.to(expr).notate(arena),
+            Expr::Do(expr) => self.to(expr).notate(arena),
             Expr::If(expr) => self.to(expr).notate(arena),
             Expr::Let(expr) => self.to(expr).notate(arena),
             Expr::Unary(expr) => self.to(expr).notate(arena),

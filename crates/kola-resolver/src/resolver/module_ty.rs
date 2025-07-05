@@ -58,8 +58,6 @@ fn resolve_module_types_in_module(
         loc,
     } in scope.cons.module_type_binds()
     {
-        dbg!(&interner[name.0], "bind");
-
         if let Some(target) = scope.shape.get_module_type(name) {
             scope.module_type_graph.add_dependency(source, target);
             scope.resolved.insert_meta(id, ResolvedModuleType(target));
@@ -73,8 +71,6 @@ fn resolve_module_types_in_module(
 
     // Resolve module type references
     for &ModuleTypeConst { name, id, loc } in scope.cons.module_types() {
-        dbg!(&interner[name.0], "ref");
-
         if let Some(module_type_sym) = scope.shape.get_module_type(name) {
             scope
                 .resolved

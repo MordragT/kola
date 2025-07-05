@@ -311,15 +311,11 @@ where
         self.stack
             .start(ModuleInfo::new(body, body_sym, self.source_id, loc));
 
-        dbg!(body_sym);
-
         // Create a new unique ModuleSym for the functor's parameter (e.g., 'x' in 'functor f x : S => ...').
         // This is the 'virtual' module that exists inside the functor's scope.
         let param_sym = ModuleSym::new();
         let param_loc = self.span(param);
         let param_name = *param.get(tree);
-
-        dbg!(param_sym);
 
         // Insert the parameter module into the scope of the functor
         if let Err(e) =

@@ -4,10 +4,13 @@ use crate::{
     config::{MachineState, OperationConfig, PatternConfig, StandardConfig},
     cont::{Cont, ContFrame},
     env::Env,
-    eval::Eval,
+    eval::{Eval, eval_atom},
     value::Value,
 };
-use kola_ir::{instr::Func, ir::Ir};
+use kola_ir::{
+    instr::Func,
+    ir::{Ir, IrView},
+};
 use kola_utils::interner::StrInterner;
 
 /// CEK-style abstract machine for interpreting the language
@@ -100,20 +103,53 @@ impl CekMachine {
         }) = cont.pop()
         else {
             // No handler found
-            return MachineState::Error(format!("Unhandled effect operation: {}", op,));
+            return MachineState::Error(format!(
+                "Unhandled effect operation: {} ({})",
+                env.interner[op], op,
+            ));
         };
 
         // Check if the top handler can handle this operation
         // And get the handler function
-        if let Some(Func { param, body }) = handler_closure.handler.find_operation(&op) {
+        if let Some(Func { param, body }) = handler_closure.handler.find_operation(op) {
             // M-OP-HANDLE: Handler found, apply it
+            // ⟨(do ℓ V)^E | γ | (σ, (γ', H)) :: κ | κ'⟩^op → ⟨M | γ'[x ↦ ⟦V⟧_γ, k ↦ (κ' ++ [(σ, (γ', H))])^B] | κ⟩
 
-            // Apply the handler to the argument and the captured continuation
+            // Evaluate the operation argument
+            let arg_value = match eval_atom(ir.instr(arg), &env) {
+                Ok(value) => value,
+                Err(err) => return MachineState::Error(err),
+            };
 
-            // TODO: Implement handler application
-            // This is complex and requires creating a continuation value
+            // Create the handler environment γ'[x ↦ ⟦V⟧_γ]
+            let mut handler_env = handler_closure.env.clone();
+            handler_env.insert(param, arg_value);
 
-            todo!()
+            // Info: Continuation parameters are currently not present in the syntax, consider:
+            // handle some_computation | read arg k => (k "Hello from read") # k resumes the computation
+            // vs.
+            // handle some_computation | read arg => ("Hello from read") # implicitly resumes the computation
+
+            // For now, we ignore the continuation parameter 'k' since the syntax doesn't expose it
+            // In a full implementation, you would create a continuation value representing:
+            // k ↦ (κ' ++ [(σ, (γ', H))])^B (the forwarding continuation plus current frame)
+
+            // Create the captured continuation by combining forwarding + current frame
+            let mut captured_continuation = forward;
+            captured_continuation.push(ContFrame {
+                pure,
+                handler_closure,
+            });
+
+            // TODO: For continuation parameters, bind them here:
+            // handler_env.bind(continuation_param, captured_continuation);
+
+            // Continue with the handler body (M in the rule) and remaining continuation (κ)
+            MachineState::Standard(StandardConfig {
+                control: ir.instr(body),
+                env: handler_env,
+                cont,
+            })
         } else {
             // M-OP-FORWARD: Handler doesn't handle this operation, forward it
 

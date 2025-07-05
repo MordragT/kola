@@ -636,15 +636,13 @@ impl<'a, T: TreeView> ExhaustChecker<'a, T> {
             .iter()
             .map(|&branch_id| {
                 let branch = branch_id.get(self.tree);
-                dbg!(branch.pat.actual_set(self.tree))
+                branch.pat.actual_set(self.tree)
             })
             .fold(CoverSet::Empty, |acc, set| acc.union(set));
-        dbg!(&actual_set);
 
         let required_set = source_type.required_set();
-        dbg!(&required_set);
 
-        if dbg!(actual_set.is_superset(&required_set)) {
+        if actual_set.is_superset(&required_set) {
             Ok(())
         } else {
             Err(self.error(source_type.clone()))

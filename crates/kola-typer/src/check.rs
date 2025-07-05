@@ -102,8 +102,6 @@ pub fn type_check(
     let mut type_annotations = TypeAnnotations::new();
 
     for &module_sym in module_order {
-        dbg!(module_sym);
-
         let module_scope = module_scopes[&module_sym].clone();
         let info = module_scope.info;
 

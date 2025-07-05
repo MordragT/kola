@@ -7,19 +7,25 @@
 
     #main = let r = { a = { b = { c = "hello" } } } in r.a.b.c,
 
+
+    #this doesn't work currently, because effects are currently just discarded
+    #effectful : Str -> Unit ~ Io = fn x => do print x,
+
     effect type Io = {
         print : Str -> Unit,
         read : Unit -> Str,
     },
 
-    mocked_print = fn x => "mocked",
-
-    #this doesn't work currently, because effects are currently just discarded
-    #effectful : Str -> Unit ~ Io = fn x => do print x,
-    effectful : Str -> Unit = fn x => do print x,
+    effectful : Unit -> Str = fn x => do read (),
 
     simple = handle effectful
-        | print arg => (mocked_print arg),
+        | read arg => "Hello from read",
 
-    main = (simple "Hello"),
+    main = (simple ()),
+
+
+
+
+
+
 }

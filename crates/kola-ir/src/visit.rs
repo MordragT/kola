@@ -21,6 +21,8 @@ where
         match ir.instr(expr) {
             Expr::Ret(ret_expr) => self.visit_ret_expr(ret_expr, ir),
             Expr::Call(call_expr) => self.visit_call_expr(call_expr, ir),
+            Expr::Handle(handle_expr) => self.visit_handle_expr(handle_expr, ir),
+            Expr::Do(do_expr) => self.visit_do_expr(do_expr, ir),
             Expr::If(if_expr) => self.visit_if_expr(if_expr, ir),
             Expr::Let(let_expr) => self.visit_let_expr(let_expr, ir),
             Expr::Unary(unary_expr) => self.visit_unary_expr(unary_expr, ir),
@@ -73,6 +75,63 @@ where
 
     fn visit_call_expr(&mut self, call_expr: CallExpr, ir: &Ir) -> Result<(), Self::Error> {
         self.walk_call_expr(call_expr, ir)
+    }
+
+    fn walk_handler_clause(
+        &mut self,
+        clause: Id<HandlerClause>,
+        ir: &Ir,
+    ) -> Result<(), Self::Error> {
+        let HandlerClause {
+            param, body, next, ..
+        } = ir.instr(clause);
+
+        self.visit_symbol(param)?;
+        self.visit_expr(body, ir)?;
+
+        if let Some(next) = next {
+            self.visit_handler_clause(next, ir)?;
+        }
+
+        Ok(())
+    }
+
+    fn visit_handler_clause(
+        &mut self,
+        clause: Id<HandlerClause>,
+        ir: &Ir,
+    ) -> Result<(), Self::Error> {
+        self.walk_handler_clause(clause, ir)
+    }
+
+    fn walk_handle_expr(&mut self, handle_expr: HandleExpr, ir: &Ir) -> Result<(), Self::Error> {
+        let HandleExpr {
+            bind,
+            source,
+            clause,
+            next,
+        } = handle_expr;
+        self.visit_symbol(bind)?;
+        self.visit_atom(source, ir)?;
+        self.visit_handler_clause(clause, ir)?;
+        self.visit_expr(next, ir)
+    }
+
+    fn visit_handle_expr(&mut self, handle_expr: HandleExpr, ir: &Ir) -> Result<(), Self::Error> {
+        self.walk_handle_expr(handle_expr, ir)
+    }
+
+    fn walk_do_expr(&mut self, do_expr: DoExpr, ir: &Ir) -> Result<(), Self::Error> {
+        let DoExpr {
+            bind, arg, next, ..
+        } = do_expr;
+        self.visit_symbol(bind)?;
+        self.visit_atom(arg, ir)?;
+        self.visit_expr(next, ir)
+    }
+
+    fn visit_do_expr(&mut self, do_expr: DoExpr, ir: &Ir) -> Result<(), Self::Error> {
+        self.walk_do_expr(do_expr, ir)
     }
 
     fn walk_if_expr(&mut self, if_expr: IfExpr, ir: &Ir) -> Result<(), Self::Error> {

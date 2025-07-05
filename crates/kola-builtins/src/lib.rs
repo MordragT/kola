@@ -234,8 +234,11 @@ macro_rules! define_builtins {
 define_builtins! {
     list_length: forall 0 . (List 0) -> Num,
     list_is_empty: forall 0 . (List 0) -> Bool,
-    // list_map: forall 1 . ((0 -> 1) -> (List 0)) -> (List 1),
+    list_prepend: forall 0 . { "head": 0, "tail": (List 0) } -> (List 0),
+    list_append: forall 0 . { "head": (List 0), "tail": 0 } -> (List 0),
+    lookup: forall 0 . Str -> 0,
 
+    // list_map: forall 1 . ((0 -> 1) -> (List 0)) -> (List 1),
     // list_head: forall 0 . (List 0) -> { "value": 0, "next": (List 0) },
     // list_tail: forall 0 . (List 0) -> (List 0),
     // list_cons: forall 0 . { "value": 0, "next": (List 0) } -> (List 0),

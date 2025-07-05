@@ -307,6 +307,86 @@ where
         ControlFlow::Continue(())
     }
 
+    fn visit_handle_expr(
+        &mut self,
+        id: TreeId<node::HandleExpr>,
+        tree: &T,
+    ) -> ControlFlow<Self::BreakValue> {
+        let node::HandleExpr { source, clauses } = id.get(tree);
+
+        // Create a fresh symbol and atom for the source
+        let source_sym = self.next_symbol();
+        let source_atom = self.builder.add(ir::Atom::Symbol(source_sym));
+
+        let mut next = None;
+
+        for &clause_id in clauses.iter().rev() {
+            let node::HandlerClause { op, body, .. } = *clause_id.get(tree);
+
+            // Get the operation name as StrKey
+            let op_name = op.get(tree).0;
+
+            // Get the parameter symbol
+            let param_sym = self.symbol_of(clause_id);
+
+            // Normalize the handler body with fresh context
+            let body =
+                self.with_fresh_context(tree, |normalizer, tree| normalizer.visit_expr(body, tree));
+
+            // Create the handler clause
+            let clause = self.builder.add(ir::HandlerClause {
+                op: op_name,
+                param: param_sym,
+                body,
+                next, // Link to the previous clause (building backwards)
+            });
+
+            next = Some(clause);
+        }
+
+        let clause = next.expect("HandleExpr should have at least one clause");
+
+        // Create the handle expression context and set continuation
+        let handle_expr = self.builder.add(ir::Expr::Handle(ir::HandleExpr {
+            bind: self.hole,
+            source: source_atom,
+            clause,
+            next: self.next,
+        }));
+        self.next = handle_expr;
+
+        // Normalize in reverse order (CPS style)
+        self.hole = source_sym;
+        self.visit_expr(*source, tree)
+    }
+
+    fn visit_do_expr(
+        &mut self,
+        id: TreeId<node::DoExpr>,
+        tree: &T,
+    ) -> ControlFlow<Self::BreakValue> {
+        let node::DoExpr { op, arg } = *id.get(tree);
+
+        let op = op.get(tree).0;
+
+        // Create fresh symbols and corresponding atoms
+        let arg_sym = self.next_symbol();
+        let arg_atom = self.builder.add(ir::Atom::Symbol(arg_sym));
+
+        // Create the do expression context and set continuation
+        let do_expr = self.builder.add(ir::Expr::Do(ir::DoExpr {
+            bind: self.hole,
+            op,
+            arg: arg_atom,
+            next: self.next,
+        }));
+        self.next = do_expr;
+
+        // Normalize in reverse order (CPS style)
+        self.hole = arg_sym;
+        self.visit_expr(arg, tree)
+    }
+
     fn visit_if_expr(
         &mut self,
         id: TreeId<node::IfExpr>,
@@ -895,8 +975,6 @@ where
 
         // Spread must be processed first as it happens last in execution
         if let Some(bind) = spread_sym {
-            dbg!(bind);
-
             // Add extractor for the spread
             self.on_success = self.builder.add(ir::PatternMatcher::Identity(ir::Identity {
                 bind,
@@ -912,8 +990,6 @@ where
             pat,
         } in tails
         {
-            dbg!(head, tail);
-
             // Create nested pattern normalizer for this element
             let mut nested_normalizer = PatternNormalizer::new(
                 self.hole,
@@ -946,8 +1022,6 @@ where
             pat,
         } in heads.into_iter().rev()
         {
-            dbg!(head, tail);
-
             // Create nested pattern normalizer for this element
             let mut nested_normalizer = PatternNormalizer::new(
                 self.hole,

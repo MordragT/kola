@@ -5,5 +5,7 @@
 
     list = [1, 2, 3, 4],
 
-    main = (list::is_empty list),
+    #main = (list::is_empty list),
+
+    main = let f = fn x => x + 1 in ((list::map f) list),
 }

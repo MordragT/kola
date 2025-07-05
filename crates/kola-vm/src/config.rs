@@ -4,6 +4,7 @@ use kola_ir::{
     id::Id,
     instr::{Atom, Expr, Instr, PatternMatcher, Symbol},
 };
+use kola_utils::interner::StrKey;
 
 /// The standard configuration in the CEK machine
 /// C = M | γ | κi, where:
@@ -29,7 +30,7 @@ pub struct StandardConfig {
 #[derive(Debug, Clone, PartialEq)]
 pub struct OperationConfig {
     /// The operation name being performed
-    pub op: Symbol,
+    pub op: StrKey,
     /// The argument to the operation
     pub arg: Id<Atom>,
     /// Environment for the operation
