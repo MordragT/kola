@@ -1,8 +1,8 @@
 use crate::{
-    config::{MachineState, OperationConfig, PatternConfig, StandardConfig},
+    config::{MachineState, OperationConfig, PatternConfig, PrimitiveRecConfig, StandardConfig},
     cont::{Cont, ContFrame, Handler, HandlerClosure, PureCont, PureContFrame, ReturnClause},
     env::Env,
-    value::{List, Record, Value},
+    value::{Closure, List, Record, Value},
 };
 use kola_builtins::BuiltinId;
 use kola_collections::ImShadowMap;
@@ -35,7 +35,7 @@ pub fn eval_atom(atom: Atom, env: &Env) -> Result<Value, String> {
         Atom::Str(s) => Ok(Value::str(&env[s])),
         Atom::Func(f) => {
             // Create a closure by capturing the current environment
-            Ok(Value::Func(env.clone(), f))
+            Ok(Value::Closure(Closure::new(env.clone(), f)))
         }
         Atom::Symbol(s) => eval_symbol(s, env),
         Atom::Builtin(b) => Ok(Value::Builtin(b)),
@@ -128,6 +128,23 @@ impl Eval for RetExpr {
                         cont,
                     })
                 }
+                ReturnClause::PrimitiveRec {
+                    head,
+                    step: Func { param, body },
+                } => {
+                    // Create argument for the step function
+                    let mut record = Record::new();
+                    record.insert(env.interner["acc"], value); // value = result from previous step
+                    record.insert(env.interner["head"], head);
+
+                    env.insert(param, Value::Record(record));
+
+                    MachineState::Standard(StandardConfig {
+                        control: body.get(ir),
+                        env,
+                        cont, // Remaining handlers continue the chain
+                    })
+                }
             };
         };
 
@@ -192,7 +209,10 @@ impl Eval for CallExpr {
 
         match func_val {
             // Apply the function to the argument
-            Value::Func(mut func_env, Func { param, body }) => {
+            Value::Closure(Closure {
+                env: mut func_env,
+                func: Func { param, body },
+            }) => {
                 // Create a pure continuation frame for the next expression
                 let pure_frame = PureContFrame {
                     var: bind,
@@ -249,22 +269,7 @@ impl Eval for CallExpr {
                     cont: captured,
                 })
             }
-            Value::Builtin(builtin) => {
-                match eval_builtin(builtin, arg_val, &env) {
-                    Ok(value) => {
-                        // Create a new environment with the result bound to the variable
-                        env.insert(bind, value);
-
-                        // Continue with the next expression
-                        MachineState::Standard(StandardConfig {
-                            control: next.get(ir),
-                            env,
-                            cont,
-                        })
-                    }
-                    Err(err) => MachineState::Error(err),
-                }
-            }
+            Value::Builtin(builtin) => eval_builtin(builtin, bind, arg_val, env, cont, next, ir),
             Value::Tag(tag) => {
                 let value = Value::variant(tag, arg_val);
 
@@ -284,65 +289,102 @@ impl Eval for CallExpr {
     }
 }
 
-fn eval_builtin(builtin: BuiltinId, arg: Value, env: &Env) -> Result<Value, String> {
-    let head_key = env.interner["head"];
-    let tail_key = env.interner["tail"];
-
-    match (builtin, arg) {
-        (BuiltinId::ListLength, Value::List(list)) => Ok(Value::Num(list.len() as f64)),
-        (BuiltinId::ListIsEmpty, Value::List(list)) => Ok(Value::Bool(list.is_empty())),
+fn eval_builtin(
+    builtin: BuiltinId,
+    bind: Symbol,
+    arg: Value,
+    mut env: Env,
+    mut cont: Cont,
+    next: Id<Expr>,
+    ir: &Ir,
+) -> MachineState {
+    let value = match (builtin, arg) {
+        (BuiltinId::ListLength, Value::List(list)) => Value::Num(list.len() as f64),
+        (BuiltinId::ListIsEmpty, Value::List(list)) => Value::Bool(list.is_empty()),
         (BuiltinId::ListPrepend, Value::Record(record)) => {
-            let Some(head_value) = record.get(head_key) else {
-                return Err("list_prepend requires 'head' field".to_owned());
+            let Some(head_value) = record.get(env.interner["head"]) else {
+                return MachineState::Error("list_prepend requires 'head' field".to_owned());
             };
 
-            let Some(Value::List(tail_list)) = record.get(tail_key) else {
-                return Err("list_prepend requires 'tail' field with a list".to_owned());
+            let Some(Value::List(tail_list)) = record.get(env.interner["tail"]) else {
+                return MachineState::Error(
+                    "list_prepend requires 'tail' field with a list".to_owned(),
+                );
             };
 
             let mut list = tail_list.clone();
             list.prepend(head_value.clone());
 
-            Ok(Value::List(list))
+            Value::List(list)
         }
+        // (BuiltinId::Lookup, Value::Num(id)) => env
+        //     .get(&Symbol(id as u32))
+        //     .cloned()
+        //     .ok_or(format!("Lookup failed for ID: {}", id)),
         (BuiltinId::ListAppend, Value::Record(record)) => {
-            let Some(Value::List(head_list)) = record.get(head_key) else {
-                return Err("list_append requires 'head' field with a list".to_owned());
+            let Some(Value::List(head_list)) = record.get(env.interner["head"]) else {
+                return MachineState::Error(
+                    "list_append requires 'head' field with a list".to_owned(),
+                );
             };
 
-            let Some(tail_value) = record.get(tail_key) else {
-                return Err("list_append requires 'tail' field".to_owned());
+            let Some(tail_value) = record.get(env.interner["tail"]) else {
+                return MachineState::Error("list_append requires 'tail' field".to_owned());
             };
 
             let mut list = head_list.clone();
             list.append(tail_value.clone());
 
-            Ok(Value::List(list))
+            Value::List(list)
         }
-        (BuiltinId::Lookup, Value::Str(str)) => {
-            // env.get(name);
-            todo!()
+        // list_rec([], base, step) = base
+        // list_rec([head, ...tail], base, step) = step(head, list_rec(tail, base step))
+        (BuiltinId::ListRec, Value::Record(record)) => {
+            let Some(Value::List(list)) = record.get(env.interner["list"]).cloned() else {
+                return MachineState::Error(
+                    "list_rec requires 'list' field with a list".to_owned(),
+                );
+            };
+
+            let Some(base) = record.get(env.interner["base"]).cloned() else {
+                return MachineState::Error("list_rec requires 'base' field".to_owned());
+            };
+
+            let Some(Value::Closure(step)) = record.get(env.interner["step"]).cloned() else {
+                return MachineState::Error("list_rec requires 'step' field".to_owned());
+            };
+
+            // Create a pure continuation frame for the next expression
+            let mut frame = cont.pop_or_identity(env.interner());
+            let pure_frame = PureContFrame {
+                var: bind,
+                body: next,
+                env,
+            };
+            frame.pure.push(pure_frame);
+            cont.push(frame);
+
+            return MachineState::PrimitiveRec(PrimitiveRecConfig {
+                data: Value::List(list),
+                base,
+                step,
+                cont,
+            });
         }
-        // (BuiltinId::MakeRecursiveCall, Value::Record(record)) => {
-        //     let Some(name_value) = record.get(env.interner["name"]) else {
-        //         return Err("make_recursive_call requires 'name' field".to_owned());
-        //     };
+        (_, value) => {
+            return MachineState::Error(format!("Cannot apply {builtin} to: {:?}", value));
+        }
+    };
 
-        //     let Some(args_value) = record.get(env.interner["args"]) else {
-        //         return Err("make_recursive_call requires 'args' field".to_owned());
-        //     };
+    // Create a new environment with the result bound to the variable
+    env.insert(bind, value);
 
-        //     // Create a recursive call with the name and arguments
-        //     Ok(Value::Func(
-        //         env.clone(),
-        //         Func {
-        //             param: name_value.clone(),
-        //             body: args_value.clone(),
-        //         },
-        //     ))
-        // }
-        (_, value) => Err(format!("Cannot apply {builtin} to: {:?}", value)),
-    }
+    // Continue with the next expression
+    MachineState::Standard(StandardConfig {
+        control: next.get(ir),
+        env,
+        cont,
+    })
 }
 
 // M-HANDLE: ⟨handle M with H | γ | κ⟩ → ⟨M | γ | ([], (γ, H)) :: κ⟩

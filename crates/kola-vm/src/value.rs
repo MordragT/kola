@@ -1,18 +1,18 @@
 use derive_more::From;
+use enum_as_inner::EnumAsInner;
 use kola_builtins::BuiltinId;
 use kola_collections::{ImShadowMap, ImVec};
 use kola_ir::instr::{Func, Tag};
 use kola_utils::{
-    as_variant,
     fmt::DisplayWithInterner,
     interner::{StrInterner, StrKey},
 };
-use std::{fmt, ops::RangeBounds};
+use std::fmt;
 
 use crate::{cont::Cont, env::Env};
 
 /// Values produced by evaluating expressions
-#[derive(Debug, From, Clone, PartialEq)]
+#[derive(Debug, EnumAsInner, From, Clone, PartialEq)]
 pub enum Value {
     /// A unit value (no value)
     None,
@@ -25,7 +25,7 @@ pub enum Value {
     /// A string value
     Str(String),
     /// A function closure (environment, function definition)
-    Func(Env, Func),
+    Closure(Closure),
     /// A captured continuation
     Cont(Cont),
     /// A built-in function (e.g., `__builtin_first`)
@@ -48,119 +48,6 @@ impl Value {
     pub fn variant(tag: Tag, value: Self) -> Self {
         Value::Variant(Variant::new(tag, value))
     }
-
-    pub fn is_bool(&self) -> bool {
-        matches!(self, Value::Bool(_))
-    }
-
-    pub fn is_char(&self) -> bool {
-        matches!(self, Value::Char(_))
-    }
-
-    pub fn is_num(&self) -> bool {
-        matches!(self, Value::Num(_))
-    }
-
-    pub fn is_str(&self) -> bool {
-        matches!(self, Value::Str(_))
-    }
-
-    pub fn is_func(&self) -> bool {
-        matches!(self, Value::Func(_, _))
-    }
-
-    pub fn is_cont(&self) -> bool {
-        matches!(self, Value::Cont(_))
-    }
-
-    pub fn is_builtin(&self) -> bool {
-        matches!(self, Value::Builtin(_))
-    }
-
-    pub fn is_tag(&self) -> bool {
-        matches!(self, Value::Tag(_))
-    }
-
-    pub fn is_variant(&self) -> bool {
-        matches!(self, Value::Variant(_))
-    }
-
-    pub fn is_record(&self) -> bool {
-        matches!(self, Value::Record(_))
-    }
-
-    pub fn as_bool(&self) -> Option<bool> {
-        as_variant!(self, Self::Bool).copied()
-    }
-
-    pub fn as_char(&self) -> Option<char> {
-        as_variant!(self, Self::Char).copied()
-    }
-
-    pub fn as_num(&self) -> Option<f64> {
-        as_variant!(self, Self::Num).copied()
-    }
-
-    pub fn as_str(&self) -> Option<&str> {
-        as_variant!(self, Self::Str).map(|s| s.as_str())
-    }
-
-    pub fn as_func(&self) -> Option<&Func> {
-        todo!()
-    }
-
-    pub fn as_cont(&self) -> Option<&Cont> {
-        as_variant!(self, Self::Cont)
-    }
-
-    pub fn as_builtin(&self) -> Option<&BuiltinId> {
-        as_variant!(self, Self::Builtin)
-    }
-
-    pub fn as_tag(&self) -> Option<&Tag> {
-        as_variant!(self, Self::Tag)
-    }
-
-    pub fn as_variant(&self) -> Option<&Variant> {
-        as_variant!(self, Self::Variant)
-    }
-
-    pub fn as_record(&self) -> Option<&Record> {
-        as_variant!(self, Self::Record)
-    }
-
-    pub fn into_bool(self) -> Option<bool> {
-        as_variant!(self, Self::Bool)
-    }
-
-    pub fn into_char(self) -> Option<char> {
-        as_variant!(self, Self::Char)
-    }
-
-    pub fn into_num(self) -> Option<f64> {
-        as_variant!(self, Self::Num)
-    }
-
-    pub fn into_str(self) -> Option<String> {
-        as_variant!(self, Self::Str)
-    }
-
-    pub fn into_func(self) -> Option<(Env, Func)> {
-        // as_variant!(self, Self::Func)
-        todo!()
-    }
-
-    pub fn into_cont(self) -> Option<Cont> {
-        as_variant!(self, Self::Cont)
-    }
-
-    pub fn into_variant(self) -> Option<Variant> {
-        as_variant!(self, Self::Variant)
-    }
-
-    pub fn into_record(self) -> Option<Record> {
-        as_variant!(self, Self::Record)
-    }
 }
 
 impl DisplayWithInterner for Value {
@@ -171,7 +58,7 @@ impl DisplayWithInterner for Value {
             Value::Char(c) => write!(f, "{}", c),
             Value::Num(n) => write!(f, "{}", n),
             Value::Str(s) => write!(f, "{}", s),
-            Value::Func(_, _) => write!(f, "<function>"),
+            Value::Closure(_) => write!(f, "<closure>"),
             Value::Cont(_) => write!(f, "<continuation>"),
             Value::Builtin(b) => write!(f, "{}", b),
             Value::Tag(t) => t.fmt(f, interner),
@@ -179,6 +66,19 @@ impl DisplayWithInterner for Value {
             Value::Record(r) => r.fmt(f, interner),
             Value::List(l) => l.fmt(f, interner),
         }
+    }
+}
+
+#[derive(Debug, From, Clone, PartialEq)]
+pub struct Closure {
+    pub env: Env,
+    pub func: Func,
+}
+
+impl Closure {
+    #[inline]
+    pub fn new(env: Env, func: Func) -> Self {
+        Self { env, func }
     }
 }
 
@@ -416,8 +316,6 @@ impl List {
 
         Some((Self(tail), head))
     }
-
-    // __builtin_first
 
     #[inline]
     pub fn len(&self) -> usize {

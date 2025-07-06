@@ -1852,6 +1852,7 @@ where
             node::Expr::Call(id) => &self.types.meta(id).ty, // TODO this discards the effect
             node::Expr::Handle(id) => &self.types.meta(id).ty, // TODO this discards the effect
             node::Expr::Do(id) => &self.types.meta(id).ty,   // TODO this discards the effect
+            node::Expr::Symbol(_id) => &MonoType::NUM,
             node::Expr::Tag(id) => self.types.meta(id),
         }
         .clone();

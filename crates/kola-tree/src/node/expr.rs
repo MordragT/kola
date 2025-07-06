@@ -968,6 +968,24 @@ impl TagExpr {
 
 #[derive(
     Debug,
+    Notate,
+    Inspector,
+    From,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
+)]
+#[notate(color = "blue")]
+pub struct SymbolExpr(pub StrKey);
+
+#[derive(
+    Debug,
     EnumAsInner,
     Inspector,
     From,
@@ -1000,6 +1018,7 @@ pub enum Expr {
     Handle(Id<HandleExpr>),
     Do(Id<DoExpr>),
     Tag(Id<TagExpr>),
+    Symbol(Id<SymbolExpr>),
 }
 
 impl<'a> Notate<'a> for NodePrinter<'a, Expr> {
@@ -1023,6 +1042,7 @@ impl<'a> Notate<'a> for NodePrinter<'a, Expr> {
             Expr::Handle(h) => self.to_id(h).notate(arena),
             Expr::Do(d) => self.to_id(d).notate(arena),
             Expr::Tag(t) => self.to_id(t).notate(arena),
+            Expr::Symbol(s) => self.to_id(s).notate(arena),
         }
     }
 }

@@ -323,6 +323,7 @@ impl_meta_substitutable!(
     HandlerClause,
     HandleExpr,
     DoExpr,
+    SymbolExpr,
     ExprError,
     Expr,
     // Types

@@ -36,6 +36,11 @@ impl<'a> SymbolEnv<'a> {
         ir::Symbol(sym.id())
     }
 
+    pub fn symbol_expr_id(&self, id: TreeId<node::SymbolExpr>) -> u32 {
+        let sym = *self.resolved.meta(id);
+        sym.id()
+    }
+
     pub fn atom_of_expr(&self, id: TreeId<node::QualifiedExpr>) -> ir::Atom {
         match *self.resolved.meta(id) {
             ResolvedValue::Reference(sym) => ir::Atom::Symbol(ir::Symbol(sym.id())),

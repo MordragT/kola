@@ -10,7 +10,7 @@ use kola_tree::{
 use kola_utils::as_variant;
 
 use crate::symbol::{
-    EffectSym, FunctorSym, ModuleSym, ModuleTypeSym, Substitute, TypeSym, ValueSym,
+    AnySym, EffectSym, FunctorSym, ModuleSym, ModuleTypeSym, Substitute, TypeSym, ValueSym,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -234,6 +234,7 @@ impl Phase for ResolvePhase {
     type CaseExpr = !;
     type IfExpr = !;
     type CallExpr = !;
+    type SymbolExpr = AnySym;
     type ExprError = !;
     type Expr = !;
 

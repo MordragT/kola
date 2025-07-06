@@ -238,6 +238,7 @@ define!(
     HandleExpr,
     DoExpr,
     TagExpr,
+    SymbolExpr,
     ExprError,
     Expr,
     // Types

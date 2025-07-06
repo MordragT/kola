@@ -24,6 +24,10 @@ impl Env {
         self.bindings.insert(name, value.into());
     }
 
+    pub fn remove(&mut self, name: &Symbol) -> Option<Value> {
+        self.bindings.remove(name)
+    }
+
     pub fn get(&self, name: &Symbol) -> Option<&Value> {
         self.bindings.get(name)
     }

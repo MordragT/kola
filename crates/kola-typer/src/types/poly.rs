@@ -41,8 +41,7 @@ impl PolyType {
 
         // Convert types using simple array indexing
         let input = MonoType::from_protocol(input, &vars, interner);
-        let ty = MonoType::from_protocol(output, &vars, interner);
-        let output = CompType::pure(ty);
+        let output = CompType::from_protocol(output, &vars, interner);
 
         let ty = MonoType::func(input, output);
 

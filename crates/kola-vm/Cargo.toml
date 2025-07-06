@@ -9,3 +9,4 @@ kola-ir.workspace = true
 kola-utils.workspace = true
 kola-collections.workspace = true
 derive_more.workspace = true
+enum-as-inner.workspace = true

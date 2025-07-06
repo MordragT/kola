@@ -1,14 +1,14 @@
-use std::rc::Rc;
+use std::{rc::Rc, u32};
 
 use crate::{
-    config::{MachineState, OperationConfig, PatternConfig, StandardConfig},
-    cont::{Cont, ContFrame},
+    config::{MachineState, OperationConfig, PatternConfig, PrimitiveRecConfig, StandardConfig},
+    cont::{Cont, ContFrame, Handler, HandlerClosure, PureCont, ReturnClause},
     env::Env,
     eval::{Eval, eval_atom},
-    value::Value,
+    value::{Closure, List, Record, Value},
 };
 use kola_ir::{
-    instr::Func,
+    instr::{Func, Symbol},
     ir::{Ir, IrView},
 };
 use kola_utils::interner::StrInterner;
@@ -50,6 +50,7 @@ impl CekMachine {
         self.state = match state {
             MachineState::Standard(config) => Self::step_standard(config, &self.ir),
             MachineState::Operation(config) => Self::step_operation(config, &self.ir),
+            MachineState::PrimitiveRec(config) => Self::step_primitive_rec(config, &self.ir),
             MachineState::Pattern(config) => Self::step_pattern(config, &self.ir),
             MachineState::Value(_) | MachineState::Error(_) => {
                 // If the machine is in a terminal state, we don't need to do anything
@@ -84,6 +85,86 @@ impl CekMachine {
     /// Execute a pattern matching configuration step
     fn step_pattern(config: PatternConfig, ir: &Ir) -> MachineState {
         config.eval(config.env.clone(), config.cont.clone(), ir)
+    }
+
+    fn step_primitive_rec(config: PrimitiveRecConfig, ir: &Ir) -> MachineState {
+        let PrimitiveRecConfig {
+            data,
+            base,
+            step,
+            cont,
+        } = config;
+
+        match data {
+            Value::List(list) => Self::step_list_rec(list, base, step, cont, ir),
+            _ => MachineState::Error(format!("Cannot recurse over {:?}", data)),
+        }
+    }
+
+    // list_rec([], base, step) = base
+    // list_rec([head, ...tail], base, step) = step(head, list_rec(tail, base, step))
+    fn step_list_rec(
+        list: List,
+        base: Value,
+        step: Closure,
+        mut cont: Cont,
+        ir: &Ir,
+    ) -> MachineState {
+        let Some((head, tail)) = list.split_first() else {
+            // Base case: return the base value
+
+            // Remove the top continuation frame
+            let Some(cont_frame) = cont.pop() else {
+                // If the continuation is empty, return the value
+                return MachineState::Value(base);
+            };
+
+            let HandlerClosure { handler, mut env } = cont_frame.handler_closure;
+
+            let ReturnClause::PrimitiveRec {
+                head,
+                step: Func { param, body },
+            } = handler.return_clause
+            else {
+                return MachineState::Error("Expected primitive return clause".to_string());
+            };
+
+            // Create argument for the step function
+            let mut record = Record::new();
+            record.insert(env.interner["acc"], base);
+            record.insert(env.interner["head"], head);
+
+            env.insert(param, Value::Record(record));
+
+            return MachineState::Standard(StandardConfig {
+                control: body.get(ir),
+                env,
+                cont, // Remaining handlers continue the chain
+            });
+        };
+
+        // Recursive case: we need to compute step(head, list_rec(tail, base, step))
+
+        // The idea here is to create a new handler for each step,
+        // then when the base case is reached,
+        // the machine needs to continue processing the contniuation stack,
+        // so the value will flow through them via the handler clauses
+        let Closure { env, func } = step.clone();
+
+        let handler = Handler::primitive_rec(head, func);
+        let handler_closure = HandlerClosure::new(handler, env);
+
+        cont.push(ContFrame {
+            pure: PureCont::empty(),
+            handler_closure,
+        });
+
+        MachineState::PrimitiveRec(PrimitiveRecConfig {
+            data: Value::List(tail),
+            base,
+            step,
+            cont,
+        })
     }
 
     /// Execute an operation configuration step

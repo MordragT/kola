@@ -54,6 +54,7 @@ impl Phase for TypePhase {
     type HandlerClause = types::MonoType;
     type HandleExpr = types::CompType;
     type DoExpr = types::CompType;
+    type SymbolExpr = types::MonoType;
     type ExprError = !;
     // TODO this is MonoType for now but this should change when CompTypes are properly handled
     type Expr = types::MonoType;

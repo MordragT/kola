@@ -61,7 +61,7 @@ impl MonoType {
     }
 
     pub fn from_protocol(proto: TypeProtocol, bound: &[TypeVar], interner: &StrInterner) -> Self {
-        match proto {
+        let this = match proto {
             TypeProtocol::Unit => Self::UNIT,
             TypeProtocol::Bool => Self::BOOL,
             TypeProtocol::Num => Self::NUM,
@@ -71,6 +71,7 @@ impl MonoType {
             TypeProtocol::Record(fields) => {
                 let mut row = Self::empty_row();
                 for &(label, ty) in fields.iter().rev() {
+                    dbg!("Need to properly insert builtins labels", label);
                     // TODO: I don't trust this unwrap in test cases so handle this better
                     // Safety: `label` is guaranteed to be in the interner
                     let labeled = LabeledType::new(
@@ -81,12 +82,14 @@ impl MonoType {
                 }
                 row
             }
-            // TypeProtocol::Lambda(&arg, &ret) => Self::func(
-            //     Self::from_protocol(arg, bound, interner),
-            //     Self::from_protocol(ret, bound, interner),
-            // ),
+            TypeProtocol::Lambda(&arg, &ret) => Self::func(
+                Self::from_protocol(arg, bound, interner),
+                CompType::from_protocol(ret, bound, interner),
+            ),
             TypeProtocol::Var(id) => Self::Var(bound[id as usize]),
-        }
+        };
+
+        this
     }
 }
 

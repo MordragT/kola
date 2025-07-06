@@ -241,6 +241,18 @@ where
         ControlFlow::Continue(())
     }
 
+    fn visit_symbol_expr(
+        &mut self,
+        id: TreeId<node::SymbolExpr>,
+        tree: &T,
+    ) -> ControlFlow<Self::BreakValue> {
+        let id = self.symbols.symbol_expr_id(id);
+        let atom = self.builder.add(ir::Atom::Num(id as f64));
+
+        self.emit(atom);
+        ControlFlow::Continue(())
+    }
+
     /// normalize(let x = e1 in e2, hole, ctx) =
     /// normalize(e1,x,normalize(e2,hole,ctx))
     fn visit_let_expr(

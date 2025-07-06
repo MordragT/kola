@@ -1,11 +1,13 @@
 use std::fmt::{self};
 
+use kola_builtins::TypeProtocol;
+use kola_utils::interner::StrInterner;
 use serde::{Deserialize, Serialize};
 
 use crate::{
     prelude::{Substitutable, Substitution},
     substitute::merge,
-    types::{MonoType, RowType},
+    types::{MonoType, RowType, TypeVar},
 };
 
 /// Computation type
@@ -26,13 +28,26 @@ impl CompType {
     pub fn new(ty: MonoType, effect: RowType) -> Self {
         Self { ty, effect }
     }
+
+    pub fn from_protocol(proto: TypeProtocol, bound: &[TypeVar], interner: &StrInterner) -> Self {
+        let ty = MonoType::from_protocol(proto, bound, interner);
+        let effect = RowType::Empty;
+
+        Self { ty, effect }
+    }
 }
 
 impl fmt::Display for CompType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let Self { ty, effect } = self;
 
-        write!(f, "{ty} ~ {effect}")
+        ty.fmt(f)?;
+
+        if *effect != RowType::Empty {
+            write!(f, " ~ {effect}")?;
+        }
+
+        Ok(())
     }
 }
 

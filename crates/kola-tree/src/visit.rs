@@ -852,6 +852,14 @@ pub trait Visitor<T: TreeView> {
         self.walk_tag_expr(id, tree)
     }
 
+    fn visit_symbol_expr(
+        &mut self,
+        _id: Id<node::SymbolExpr>,
+        _tree: &T,
+    ) -> ControlFlow<Self::BreakValue> {
+        ControlFlow::Continue(())
+    }
+
     fn visit_expr_error(
         &mut self,
         _id: Id<node::ExprError>,
@@ -882,6 +890,7 @@ pub trait Visitor<T: TreeView> {
             Handle(id) => self.visit_handle_expr(id, tree),
             Do(id) => self.visit_do_expr(id, tree),
             Tag(id) => self.visit_tag_expr(id, tree),
+            Symbol(id) => self.visit_symbol_expr(id, tree),
         }
     }
 

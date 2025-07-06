@@ -631,6 +631,7 @@ name = "kola-vm"
 version = "0.1.0"
 dependencies = [
  "derive_more",
+ "enum-as-inner",
  "kola-builtins",
  "kola-collections",
  "kola-ir",

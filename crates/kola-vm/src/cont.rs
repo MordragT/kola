@@ -1,6 +1,9 @@
 use std::rc::Rc;
 
-use crate::env::Env;
+use crate::{
+    env::Env,
+    value::{Closure, Value},
+};
 use kola_ir::{
     id::Id,
     instr::{Expr, Func, HandlerClause, Symbol},
@@ -8,12 +11,14 @@ use kola_ir::{
 };
 use kola_utils::interner::{StrInterner, StrKey};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum ReturnClause {
     /// Built-in identity function (x -> x)
     Identity,
     /// User-defined function from IR
     Function(Func),
+    /// Primitive recursive function with a head and a step function.
+    PrimitiveRec { head: Value, step: Func },
 }
 
 /// Contains the behavior of the handler, which is a set of clauses.
@@ -26,7 +31,7 @@ pub enum ReturnClause {
 ///   operation1 x k -> ...   // This is an operation clause
 ///   operation2 x k -> ...   // Another operation clause
 /// ```
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Handler {
     // The return clause handles the normal result when no effects are performed.
     pub return_clause: ReturnClause,
@@ -34,16 +39,23 @@ pub struct Handler {
 }
 
 impl Handler {
-    pub fn new(return_clause: Func) -> Self {
+    pub fn identity() -> Self {
+        Self {
+            return_clause: ReturnClause::Identity,
+            op_clauses: Vec::new(),
+        }
+    }
+
+    pub fn function(return_clause: Func) -> Self {
         Self {
             return_clause: ReturnClause::Function(return_clause),
             op_clauses: Vec::new(),
         }
     }
 
-    pub fn identity() -> Self {
+    pub fn primitive_rec(head: Value, step: Func) -> Self {
         Self {
-            return_clause: ReturnClause::Identity,
+            return_clause: ReturnClause::PrimitiveRec { head, step },
             op_clauses: Vec::new(),
         }
     }
@@ -140,6 +152,21 @@ impl PureCont {
 pub struct HandlerClosure {
     pub handler: Handler,
     pub env: Env,
+}
+
+impl HandlerClosure {
+    pub fn new(handler: Handler, env: Env) -> Self {
+        Self { handler, env }
+    }
+}
+
+impl From<Closure> for HandlerClosure {
+    fn from(closure: Closure) -> Self {
+        Self {
+            handler: Handler::function(closure.func),
+            env: closure.env,
+        }
+    }
 }
 
 /// Intuitively, each continuation frame δ = (σ, χ) represents the pure continuation σ,

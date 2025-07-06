@@ -100,7 +100,7 @@ pub enum TypeProtocol {
     Str,
     List(&'static Self),
     Record(&'static [(&'static str, Self)]),
-    // Lambda(&'static Self, &'static Self), // restrict to first order functions
+    Lambda(&'static Self, &'static Self), // restrict to first order functions
     Var(u32),
 }
 
@@ -223,21 +223,21 @@ macro_rules! define_builtins {
             $(($field, define_builtins!(@type $field_type))),*
         ])
     };
-    // (@type ($left:tt -> $right:tt)) => {
-    //     TypeProtocol::Lambda(
-    //         &define_builtins!(@type $left),
-    //         &define_builtins!(@type $right)
-    //     )
-    // };
+    (@type ($left:tt -> $right:tt)) => {
+        TypeProtocol::Lambda(
+            &define_builtins!(@type $left),
+            &define_builtins!(@type $right)
+        )
+    };
 }
 
 define_builtins! {
-    list_length: forall 0 . (List 0) -> Num,
-    list_is_empty: forall 0 . (List 0) -> Bool,
-    list_prepend: forall 0 . { "head": 0, "tail": (List 0) } -> (List 0),
-    list_append: forall 0 . { "head": (List 0), "tail": 0 } -> (List 0),
-    lookup: forall 0 . Str -> 0,
-
+    list_length: forall 1 . (List 0) -> Num,
+    list_is_empty: forall 1 . (List 0) -> Bool,
+    list_prepend: forall 1 . { "head": 0, "tail": (List 0) } -> (List 0),
+    list_append: forall 1 . { "head": (List 0), "tail": 0 } -> (List 0),
+    list_rec: forall 2 . { "list": (List 0), "base": 1, "step": ({ "acc": 1, "head": 0 } -> 1) } -> 1,
+    // lookup: forall 1 . Num -> 0, // Why does it have to be forall 2 ??
     // list_map: forall 1 . ((0 -> 1) -> (List 0)) -> (List 1),
     // list_head: forall 0 . (List 0) -> { "value": 0, "next": (List 0) },
     // list_tail: forall 0 . (List 0) -> (List 0),

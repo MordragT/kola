@@ -1,8 +1,12 @@
-use crate::{cont::Cont, env::Env, value::Value};
+use crate::{
+    cont::Cont,
+    env::Env,
+    value::{Closure, Value},
+};
 use derive_more::From;
 use kola_ir::{
     id::Id,
-    instr::{Atom, Expr, Instr, PatternMatcher, Symbol},
+    instr::{Atom, Expr, Func, Instr, PatternMatcher, Symbol},
 };
 use kola_utils::interner::StrKey;
 
@@ -41,6 +45,18 @@ pub struct OperationConfig {
     pub forward: Cont,
 }
 
+#[derive(Debug, Clone, PartialEq)]
+pub struct PrimitiveRecConfig {
+    /// The data being processed
+    pub data: Value,
+    /// The base case value
+    pub base: Value,
+    /// The step closure apply
+    pub step: Closure,
+    /// Continuation to use after primitive recursion completes
+    pub cont: Cont,
+}
+
 /// Pattern matching configuration in the CEK machine
 /// C = P | γ | κi, where:
 /// - P is the pattern matcher instruction currently being evaluated
@@ -63,6 +79,7 @@ pub enum MachineState {
     Standard(StandardConfig),
     /// Operation handling state hM | γ | κ | κ0iop
     Operation(OperationConfig),
+    PrimitiveRec(PrimitiveRecConfig),
     /// Pattern matching state hP | v | γ | κi
     Pattern(PatternConfig),
     /// The machine has produced a final value

@@ -21,7 +21,7 @@
         | [] => []
         | [head, ...tail] =>
             let mapped_head = (f head) in
-            let mapped_tail = do recurse { self = map_impl, f = f, tail = tail } in
+            let mapped_tail = do recurse { self = (lookup @map_impl), f = f, tail = tail } in
             ((prepend mapped_head) mapped_tail),
 
     # filter, append, prepend, reverse

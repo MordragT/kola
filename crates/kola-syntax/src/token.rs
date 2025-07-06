@@ -250,6 +250,7 @@ define_token_type!(Ctrl {
     Colon => ":",
     DoubleColon => "::",
     Comma => ",",
+    At => "@",
     Tilde => "~",
     Pipe => "|",
     PipeForward => "|>",

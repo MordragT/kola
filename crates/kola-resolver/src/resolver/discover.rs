@@ -7,7 +7,10 @@ use kola_builtins::{BuiltinEffect, BuiltinType, find_builtin_id};
 use kola_print::prelude::*;
 use kola_span::{Diagnostic, IntoDiagnostic, Loc, Report, SourceId, SourceManager};
 use kola_syntax::prelude::*;
-use kola_tree::{node::Vis, prelude::*};
+use kola_tree::{
+    node::{AnyName, ValueName, Vis},
+    prelude::*,
+};
 use kola_utils::{interner::StrInterner, io::FileSystem};
 
 use crate::{
@@ -26,7 +29,7 @@ use crate::{
     },
     prelude::Topography,
     scope::{ModuleScope, ModuleScopeStack},
-    symbol::{EffectSym, FunctorSym, ModuleSym, ModuleTypeSym, TypeSym, ValueSym},
+    symbol::{AnySym, EffectSym, FunctorSym, ModuleSym, ModuleTypeSym, TypeSym, ValueSym},
 };
 
 use super::ModuleGraph;
@@ -921,6 +924,29 @@ where
 
             ControlFlow::Continue(())
         }
+    }
+
+    fn visit_symbol_expr(
+        &mut self,
+        id: Id<node::SymbolExpr>,
+        tree: &T,
+    ) -> ControlFlow<Self::BreakValue> {
+        let key = id.get(tree).0;
+
+        // TODO: I will need to decide if I will properly implement this and also resolve forward references
+        if let Some(value_sym) = self.stack.shape().get_value(ValueName::new(key)) {
+            let sym = AnySym::Value(value_sym);
+
+            self.stack.resolved_mut().insert_meta(id, sym);
+        } else if let Some(&value_sym) = self.stack.value_scope().get(&ValueName::new(key)) {
+            let sym = AnySym::Value(value_sym);
+
+            self.stack.resolved_mut().insert_meta(id, sym);
+        } else {
+            todo!()
+        }
+
+        ControlFlow::Continue(())
     }
 
     fn visit_type_bind(

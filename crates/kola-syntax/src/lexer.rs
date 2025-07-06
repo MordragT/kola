@@ -188,6 +188,7 @@ where
         just(':').to(Token::Atom(":")),
         just(',').to(Token::Atom(",")),
         just('~').to(Token::Atom("~")),
+        just('@').to(Token::Atom("@")),
         just('|').to(Token::Atom("|")),
         just('\\').to(Token::Atom("\\")),
         just('_').to(Token::Atom("_")),

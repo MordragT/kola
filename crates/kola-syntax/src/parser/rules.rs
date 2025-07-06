@@ -403,6 +403,14 @@ pub fn expr_parser<'t>() -> impl KolaParser<'t, Id<node::Expr>> + Clone {
             .as_context()
             .boxed();
 
+        let symbol_expr = ctrl(CtrlT::AT)
+            .ignore_then(symbol())
+            .map_to_node(node::SymbolExpr)
+            .to_expr()
+            .labelled("SymbolExpr")
+            .as_context()
+            .boxed();
+
         // Qualified expression (module::record.field) for variable and module access
         let qualified = group((
             lower_symbol().spanned(),
@@ -730,6 +738,7 @@ pub fn expr_parser<'t>() -> impl KolaParser<'t, Id<node::Expr>> + Clone {
             call,
             qualified,
             tag,
+            symbol_expr,
         ))
         .boxed();
 

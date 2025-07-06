@@ -1,0 +1,6 @@
+{
+    main =
+        let base = 0 in
+        let step = fn pair => pair.acc + pair.head in
+        (list_rec { list = [1, 2, 3, 4, 5], base = base, step = step })
+}

@@ -147,6 +147,19 @@ impl AnySym {
     }
 }
 
+impl fmt::Display for AnySym {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Functor(symbol) => write!(f, "{}", symbol),
+            Self::ModuleType(symbol) => write!(f, "{}", symbol),
+            Self::Module(symbol) => write!(f, "{}", symbol),
+            Self::Effect(symbol) => write!(f, "{}", symbol),
+            Self::Type(symbol) => write!(f, "{}", symbol),
+            Self::Value(symbol) => write!(f, "{}", symbol),
+        }
+    }
+}
+
 pub trait Substitute<N: Namespace> {
     fn try_substitute(&self, from: Sym<N>, to: Sym<N>) -> Option<Self>
     where
@@ -191,6 +204,19 @@ impl<N: Namespace> Substitute<N> for Sym<N> {
 
 // TODO kind of tedious to implement this for all symbols, but it's necessary for module sym substitution.
 // For now just implement it for module namespace, if we need this for other namespaces create a macro.
+
+impl Substitute<ModuleNamespace> for AnySym {
+    fn try_substitute(&self, from: ModuleSym, to: ModuleSym) -> Option<Self> {
+        match self {
+            Self::Functor(symbol) => symbol.try_substitute(from, to).map(Self::Functor),
+            Self::ModuleType(symbol) => symbol.try_substitute(from, to).map(Self::ModuleType),
+            Self::Module(symbol) => symbol.try_substitute(from, to).map(Self::Module),
+            Self::Effect(symbol) => symbol.try_substitute(from, to).map(Self::Effect),
+            Self::Type(symbol) => symbol.try_substitute(from, to).map(Self::Type),
+            Self::Value(symbol) => symbol.try_substitute(from, to).map(Self::Value),
+        }
+    }
+}
 
 impl Substitute<ModuleNamespace> for FunctorSym {
     fn try_substitute(&self, _from: ModuleSym, _to: ModuleSym) -> Option<Self> {
@@ -420,6 +446,7 @@ impl_meta_substitute!(
     HandlerClause,
     HandleExpr,
     DoExpr,
+    SymbolExpr,
     ExprError,
     Expr,
     // Types
