@@ -4,14 +4,12 @@ use std::fmt;
 #[derive(Debug, Display, FromStr, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum BuiltinEffect {
     Pure,
-    Yield,
 }
 
 impl BuiltinEffect {
     pub fn from_name(name: &str) -> Option<Self> {
         match name {
             "Pure" => Some(Self::Pure),
-            "Yield" => Some(Self::Yield),
             _ => None,
         }
     }
@@ -19,7 +17,7 @@ impl BuiltinEffect {
 
 #[inline]
 pub fn is_builtin_effect(s: &str) -> bool {
-    matches!(s, "Pure" | "Yield")
+    matches!(s, "Pure")
 }
 
 #[derive(Debug, Display, FromStr, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -100,26 +98,10 @@ pub enum TypeProtocol {
     Str,
     List(&'static Self),
     Record(&'static [(&'static str, Self)]),
+    Variant(&'static [(&'static str, Self)]),
     Lambda(&'static Self, &'static Self), // restrict to first order functions
     Var(u32),
 }
-
-// #[derive(Debug, Clone, PartialEq, Eq)]
-// pub struct ParseTypeError;
-
-// impl FromStr for Type {
-//     type Err = ParseTypeError;
-
-//     fn from_str(s: &str) -> Result<Self, Self::Err> {
-//         match s {
-//             "Bool" => Ok(Type::Bool),
-//             "Num" => Ok(Type::Num),
-//             "Char" => Ok(Type::Char),
-//             "Str" => Ok(Type::Str),
-//             _ => Err(ParseTypeError),
-//         }
-//     }
-// }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct TypeSchemeProtocol {
@@ -127,34 +109,6 @@ pub struct TypeSchemeProtocol {
     pub input: TypeProtocol,
     pub output: TypeProtocol,
 }
-
-// #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-// pub enum BuiltinId {
-//     ListLen = 0,
-//     ListHead = 1,
-// }
-
-// pub const BUILTINS: &[Builtin] = &[
-//     Builtin::new(
-//         BuiltinId::ListLen,
-//         "list_len",
-//         TypeScheme {
-//             vars: &[0],
-//             ty: Type::Lambda(&Type::List(&Type::Var(0)), &Type::Num),
-//         },
-//     ),
-//     Builtin::new(
-//         BuiltinId::ListHead,
-//         "list_head",
-//         TypeScheme {
-//             vars: &[0],
-//             ty: Type::Lambda(
-//                 &Type::List(&Type::Var(0)),
-//                 &Type::Record(&[("value", Type::Var(0)), ("next", Type::List(&Type::Var(0)))]),
-//             ),
-//         },
-//     ),
-// ];
 
 macro_rules! define_builtins {
     (
@@ -223,6 +177,11 @@ macro_rules! define_builtins {
             $(($field, define_builtins!(@type $field_type))),*
         ])
     };
+    (@type [ $($variant:literal : $variant_type:tt),* $(,)? ] ) => {
+        TypeProtocol::Variant(&[
+            $(($variant, define_builtins!(@type $variant_type))),*
+        ])
+    };
     (@type ($left:tt -> $right:tt)) => {
         TypeProtocol::Lambda(
             &define_builtins!(@type $left),
@@ -232,15 +191,36 @@ macro_rules! define_builtins {
 }
 
 define_builtins! {
+    // Builtin List functions
     list_length: forall 1 . (List 0) -> Num,
     list_is_empty: forall 1 . (List 0) -> Bool,
+
+    list_reverse: forall 1 . (List 0) -> (List 0),
+    list_sum: forall 0 . (List Num) -> Num,
+
+    list_contains: forall 1 . { "list": (List 0), "value": 0 } -> Bool,
+    list_get: forall 1 . { "list": (List 0), "index": Num } -> [ "Some": 0, "None": Unit ],
+
+    list_first: forall 1 . (List 0) -> [ "Some": 0, "None": Unit ],
+    list_last: forall 1 . (List 0) -> [ "Some": 0, "None": Unit ],
+
     list_prepend: forall 1 . { "head": 0, "tail": (List 0) } -> (List 0),
     list_append: forall 1 . { "head": (List 0), "tail": 0 } -> (List 0),
+    list_concat: forall 1 . { "head": (List 0), "tail": (List 0) } -> (List 0),
+
     list_rec: forall 2 . { "list": (List 0), "base": 1, "step": ({ "acc": 1, "head": 0 } -> 1) } -> 1,
-    // lookup: forall 1 . Num -> 0, // Why does it have to be forall 2 ??
-    // list_map: forall 1 . ((0 -> 1) -> (List 0)) -> (List 1),
-    // list_head: forall 0 . (List 0) -> { "value": 0, "next": (List 0) },
-    // list_tail: forall 0 . (List 0) -> (List 0),
-    // list_cons: forall 0 . { "value": 0, "next": (List 0) } -> (List 0),
-    // list_filter: forall 0 . (({ "value": 0 } -> Bool) -> (List 0)) -> (List 0),
+
+    // Builtin Math functions
+    num_abs: forall 0 . Num -> Num,
+    num_sqrt: forall 0 . Num -> Num,
+    num_floor: forall 0 . Num -> Num,
+    num_ceil: forall 0 . Num -> Num,
+    num_round: forall 0 . Num -> Num,
+    num_sin: forall 0 . Num -> Num,
+    num_cos: forall 0 . Num -> Num,
+    num_tan: forall 0 . Num -> Num,
+    num_ln: forall 0 . Num -> Num,
+    num_log10: forall 0 . Num -> Num,
+    num_exp: forall 0 . Num -> Num,
+    num_pow: forall 0 . { "base": Num, "exp": Num } -> Num,
 }

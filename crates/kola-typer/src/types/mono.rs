@@ -82,6 +82,19 @@ impl MonoType {
                 }
                 row
             }
+            TypeProtocol::Variant(tags) => {
+                let mut row = Self::empty_row();
+                for &(label, ty) in tags.iter().rev() {
+                    dbg!("Need to properly insert builtins labels", label);
+
+                    let labeled = LabeledType::new(
+                        interner.lookup(label).unwrap(),
+                        Self::from_protocol(ty, bound, interner),
+                    );
+                    row = Self::row(labeled, row);
+                }
+                row
+            }
             TypeProtocol::Lambda(&arg, &ret) => Self::func(
                 Self::from_protocol(arg, bound, interner),
                 CompType::from_protocol(ret, bound, interner),

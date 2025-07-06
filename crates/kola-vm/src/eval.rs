@@ -2,7 +2,7 @@ use crate::{
     config::{MachineState, OperationConfig, PatternConfig, PrimitiveRecConfig, StandardConfig},
     cont::{Cont, ContFrame, Handler, HandlerClosure, PureCont, PureContFrame, ReturnClause},
     env::Env,
-    value::{Closure, List, Record, Value},
+    value::{Closure, List, Record, Value, Variant},
 };
 use kola_builtins::BuiltinId;
 use kola_collections::ImShadowMap;
@@ -14,7 +14,7 @@ use kola_ir::{
         ListGetAt, ListIsAtLeast, ListIsExact, ListItem, ListSplitAt, ListSplitHead, ListSplitTail,
         PatternMatchExpr, PatternMatcher, PatternSuccess, RecordAccessExpr, RecordExpr,
         RecordExtendExpr, RecordField, RecordGetAt, RecordHasField, RecordRestrictExpr,
-        RecordUpdateExpr, RecordUpdateOp, RetExpr, Symbol, UnaryExpr, UnaryOp, VariantGet,
+        RecordUpdateExpr, RecordUpdateOp, RetExpr, Symbol, Tag, UnaryExpr, UnaryOp, VariantGet,
     },
     ir::{Ir, IrView},
 };
@@ -289,6 +289,38 @@ impl Eval for CallExpr {
     }
 }
 
+fn to_usize_exact(value: f64) -> Option<usize> {
+    // 1. Check for special floating-point values (NaN, Inf)
+    if !value.is_finite() {
+        // is_finite() checks for NaN, +/- infinity
+        return None;
+    }
+
+    // 2. Check if the number is an exact integer
+    // `floor()` is used here. If value is 10.0, floor is 10.0. If value is 10.7, floor is 10.0.
+    // So `value == value.floor()` is true ONLY if value is an exact integer.
+    if value != value.floor() {
+        return None; // Not an exact integer
+    }
+
+    // 3. Check if the number is positive (since usize is unsigned)
+    if value < 0.0 {
+        return None; // Negative number
+    }
+
+    // 4. Check for overflow against usize::MAX
+    // Note: f64 can represent all integers up to 2^53 exactly.
+    // usize::MAX depends on the architecture (32-bit, 64-bit).
+    // So check for explicit overflow.
+    if value > usize::MAX as f64 {
+        return None; // Value is too large for usize
+    }
+
+    // 5. If all checks pass, it's safe to cast.
+    // The cast `as usize` is then safe because we've covered all edge cases.
+    Some(value as usize)
+}
+
 fn eval_builtin(
     builtin: BuiltinId,
     bind: Symbol,
@@ -301,6 +333,60 @@ fn eval_builtin(
     let value = match (builtin, arg) {
         (BuiltinId::ListLength, Value::List(list)) => Value::Num(list.len() as f64),
         (BuiltinId::ListIsEmpty, Value::List(list)) => Value::Bool(list.is_empty()),
+        (BuiltinId::ListReverse, Value::List(list)) => Value::List(list.reverse()),
+        (BuiltinId::ListSum, Value::List(list)) => {
+            match list.iter().try_fold(0.0, |acc, v| {
+                if let Value::Num(n) = v {
+                    Ok(acc + n)
+                } else {
+                    Err(format!("Cannot sum non-numeric value: {:?}", v))
+                }
+            }) {
+                Ok(sum) => Value::Num(sum),
+                Err(err) => {
+                    return MachineState::Error(err);
+                }
+            }
+        }
+        (BuiltinId::ListContains, Value::Record(record)) => {
+            let Some(Value::List(list)) = record.get(env.interner["list"]) else {
+                return MachineState::Error(
+                    "list_contains requires 'list' field with a list".to_owned(),
+                );
+            };
+
+            let Some(value) = record.get(env.interner["value"]) else {
+                return MachineState::Error("list_contains requires 'value' field".to_owned());
+            };
+
+            Value::Bool(list.contains(value))
+        }
+        (BuiltinId::ListGet, Value::Record(record)) => {
+            let Some(Value::List(list)) = record.get(env.interner["list"]) else {
+                return MachineState::Error(
+                    "list_get requires 'list' field with a list".to_owned(),
+                );
+            };
+
+            let Some(Value::Num(index)) = record.get(env.interner["index"]) else {
+                return MachineState::Error("list_get requires 'index' field".to_owned());
+            };
+
+            match to_usize_exact(*index).and_then(|idx| list.get(idx)) {
+                Some(value) => {
+                    Value::Variant(Variant::new(Tag(env.interner["Some"]), value.clone()))
+                }
+                None => Value::Variant(Variant::new(Tag(env.interner["None"]), Value::None)),
+            }
+        }
+        (BuiltinId::ListFirst, Value::List(list)) => match list.first() {
+            Some(head) => Value::Variant(Variant::new(Tag(env.interner["Some"]), head)),
+            None => Value::Variant(Variant::new(Tag(env.interner["None"]), Value::None)),
+        },
+        (BuiltinId::ListLast, Value::List(list)) => match list.last() {
+            Some(tail) => Value::Variant(Variant::new(Tag(env.interner["Some"]), tail)),
+            None => Value::Variant(Variant::new(Tag(env.interner["None"]), Value::None)),
+        },
         (BuiltinId::ListPrepend, Value::Record(record)) => {
             let Some(head_value) = record.get(env.interner["head"]) else {
                 return MachineState::Error("list_prepend requires 'head' field".to_owned());
@@ -312,15 +398,8 @@ fn eval_builtin(
                 );
             };
 
-            let mut list = tail_list.clone();
-            list.prepend(head_value.clone());
-
-            Value::List(list)
+            Value::List(tail_list.prepend(head_value))
         }
-        // (BuiltinId::Lookup, Value::Num(id)) => env
-        //     .get(&Symbol(id as u32))
-        //     .cloned()
-        //     .ok_or(format!("Lookup failed for ID: {}", id)),
         (BuiltinId::ListAppend, Value::Record(record)) => {
             let Some(Value::List(head_list)) = record.get(env.interner["head"]) else {
                 return MachineState::Error(
@@ -332,10 +411,22 @@ fn eval_builtin(
                 return MachineState::Error("list_append requires 'tail' field".to_owned());
             };
 
-            let mut list = head_list.clone();
-            list.append(tail_value.clone());
+            Value::List(head_list.append(tail_value))
+        }
+        (BuiltinId::ListConcat, Value::Record(record)) => {
+            let Some(Value::List(head_list)) = record.get(env.interner["head"]) else {
+                return MachineState::Error(
+                    "list_concat requires 'head' field with a list".to_owned(),
+                );
+            };
 
-            Value::List(list)
+            let Some(Value::List(tail_list)) = record.get(env.interner["tail"]) else {
+                return MachineState::Error(
+                    "list_concat requires 'tail' field with a list".to_owned(),
+                );
+            };
+
+            Value::List(head_list.concat(tail_list))
         }
         // list_rec([], base, step) = base
         // list_rec([head, ...tail], base, step) = step(head, list_rec(tail, base step))
@@ -370,6 +461,35 @@ fn eval_builtin(
                 step,
                 cont,
             });
+        }
+        /*
+        num_tan: forall 0 . Num -> Num,
+        num_ln: forall 0 . Num -> Num,
+        num_log10: forall 0 . Num -> Num,
+        num_exp: forall 0 . Num -> Num,
+        num_pow: forall 0 . { "base": Num, "exp": Num } -> Num,
+        *
+        */
+        (BuiltinId::NumAbs, Value::Num(n)) => Value::Num(n.abs()),
+        (BuiltinId::NumSqrt, Value::Num(n)) => Value::Num(n.sqrt()),
+        (BuiltinId::NumFloor, Value::Num(n)) => Value::Num(n.floor()),
+        (BuiltinId::NumCeil, Value::Num(n)) => Value::Num(n.ceil()),
+        (BuiltinId::NumRound, Value::Num(n)) => Value::Num(n.round()),
+        (BuiltinId::NumSin, Value::Num(n)) => Value::Num(n.sin()),
+        (BuiltinId::NumCos, Value::Num(n)) => Value::Num(n.cos()),
+        (BuiltinId::NumTan, Value::Num(n)) => Value::Num(n.tan()),
+        (BuiltinId::NumLn, Value::Num(n)) => Value::Num(n.ln()),
+        (BuiltinId::NumLog10, Value::Num(n)) => Value::Num(n.log10()),
+        (BuiltinId::NumExp, Value::Num(n)) => Value::Num(n.exp()),
+        (BuiltinId::NumPow, Value::Record(record)) => {
+            let Some(Value::Num(base)) = record.get(env.interner["base"]) else {
+                return MachineState::Error("num_pow requires 'base' field".to_owned());
+            };
+            let Some(Value::Num(exp)) = record.get(env.interner["exp"]) else {
+                return MachineState::Error("num_pow requires 'exp' field".to_owned());
+            };
+
+            Value::Num(base.powf(*exp))
         }
         (_, value) => {
             return MachineState::Error(format!("Cannot apply {builtin} to: {:?}", value));
@@ -702,7 +822,7 @@ impl Eval for ListExpr {
 
         for ListItem { value, .. } in ir.iter_items(head) {
             match eval_atom(value.get(ir), &env) {
-                Ok(value) => list.append(value),
+                Ok(value) => list.push_back(value),
                 Err(err) => return MachineState::Error(err),
             }
         }

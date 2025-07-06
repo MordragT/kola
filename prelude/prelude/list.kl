@@ -1,28 +1,93 @@
 {
-    # High-frequency, low-level operations - direct builtins
+
+    type Option = forall a . super::option::Option a,
+
+    #############################################
+    ### High-frequency, low-level operations - direct builtins
+    #############################################
+
     export length : forall a . List a -> Num = list_length,
     export is_empty : forall a . List a -> Bool = list_is_empty,
+    export reverse : forall a . List a -> List a = list_reverse,
+    export sum : List Num -> Num = list_sum,
+    export first : forall a . List a -> Option a = list_first,
+    export last : forall a . List a -> Option a = list_last,
 
-    # High-frequency, low-level operations - wrapped builtins
+    #############################################
+    ### High-frequency, low-level operations - wrapped builtins
+    #############################################
+
     export prepend : forall a . a -> List a -> List a = fn head =>
         fn tail_list => (list_prepend { head = head, tail = tail_list }),
 
     export append : forall a . List a -> a -> List a = fn head_list =>
         fn tail => (list_append { head = head_list, tail = tail }),
 
-    # Map implementation using recursion effect
+    export contains : forall a . a -> List a -> Bool = fn value =>
+        fn list => (list_contains { list = list, value = value }),
+
+    export get : forall a . Num -> List a -> Option a = fn index =>
+        fn list => (list_get { list = list, index = index }),
+
+    #############################################
+    ### Primitive Recursive Functions using list_rec
+    #############################################
+
     export map : forall a b . (a -> b) -> List a -> List b = fn f => fn list =>
-        let mapper = (map_impl f) in
-        let handled = handle mapper
-            | recurse call => ((call.self call.f) call.tail) in  # Runtime handles the recursive call
-        (handled list),
+        (list_rec {
+            list = list,
+            base = [],
+            step = fn pair =>
+                let mapped_head = (f pair.head) in
+                ((prepend mapped_head) pair.acc)
+        }),
 
-    map_impl = fn f => fn list => case list
-        | [] => []
-        | [head, ...tail] =>
-            let mapped_head = (f head) in
-            let mapped_tail = do recurse { self = (lookup @map_impl), f = f, tail = tail } in
-            ((prepend mapped_head) mapped_tail),
+    export filter : forall a . (a -> Bool) -> List a -> List a = fn predicate => fn list =>
+        (list_rec {
+            list = list,
+            base = [],
+            step = fn pair =>
+                if (predicate pair.head)
+                then ((prepend pair.head) pair.acc)
+                else pair.acc
+        }),
 
-    # filter, append, prepend, reverse
+    export fold_left : forall a b . (b -> a -> b) -> b -> List a -> b = fn f => fn init => fn list =>
+        (list_rec {
+            list = list,
+            base = init,
+            step = fn pair => ((f pair.acc) pair.head)
+        }),
+
+    export fold_right : forall a b . (a -> b -> b) -> b -> List a -> b = fn f => fn init => fn list =>
+        (list_rec {
+            list = list,
+            base = init,
+            step = fn pair => ((f pair.head) pair.acc)
+        }),
+
+    export all : forall a . (a -> Bool) -> List a -> Bool = fn predicate => fn list =>
+        (list_rec {
+            list = list,
+            base = true,
+            step = fn pair =>
+                if (predicate pair.head)
+                then pair.acc
+                else false
+        }),
+
+    export any : forall a . (a -> Bool) -> List a -> Bool = fn predicate => fn list =>
+        (list_rec {
+            list = list,
+            base = false,
+            step = fn pair =>
+                if (predicate pair.head)
+                then true
+                else pair.acc
+        }),
+
+    #############################################
+    ### Derived Utilities
+    #############################################
+
 }

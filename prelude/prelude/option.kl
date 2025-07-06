@@ -1,0 +1,14 @@
+{
+    # TODO export should be optional (currently just all types are exported)
+    type Option = forall a . < Some : a, None >,
+
+    #############################################
+    ### Core option operations
+    #############################################
+
+    export is_some : forall a . Option a -> Bool = fn opt =>
+        case opt
+        | < Some : _ > => true
+        | < None : _ > => false,
+
+}

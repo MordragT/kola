@@ -191,7 +191,6 @@ where
         } else if let Some(builtin) = self.resolved.meta(id).into_builtin() {
             match builtin {
                 BuiltinEffect::Pure => todo!(),
-                BuiltinEffect::Yield => todo!(),
             }
         } else {
             return ControlFlow::Break(Diagnostic::error(span, "Type not found in scope"));

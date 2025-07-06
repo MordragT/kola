@@ -1,1 +1,48 @@
-{}
+{
+    #############################################
+    ### Advanced math functions (builtins)
+    #############################################
+
+    export abs : Num -> Num = num_abs,
+    export sqrt : Num -> Num = num_sqrt,
+    export floor : Num -> Num = num_floor,
+    export ceil : Num -> Num = num_ceil,
+    export round : Num -> Num = num_round,
+
+    export sin : Num -> Num = num_sin,
+    export cos : Num -> Num = num_cos,
+    export tan : Num -> Num = num_tan,
+
+    export ln : Num -> Num = num_ln,
+    export log10 : Num -> Num = num_log10,
+    export exp : Num -> Num = num_exp,
+
+    export pow : Num -> Num -> Num = fn base => fn exp =>
+        (num_pow { base = base, exp = exp }),
+
+    #############################################
+    ### Utility functions
+    #############################################
+
+    export max : Num -> Num -> Num = fn a => fn b =>
+        if a > b then a else b,
+
+    export min : Num -> Num -> Num = fn a => fn b =>
+        if a < b then a else b,
+
+    export clamp : Num -> Num -> Num -> Num = fn min_val => fn max_val => fn value =>
+        if value < min_val then min_val
+        else if value > max_val then max_val
+        else value,
+
+    export sign : Num -> Num = fn n =>
+        if n == 0 then 0
+        else if n > 0 then 1
+        else -1,
+
+    export is_even : Num -> Bool = fn n => n % 2 == 0,
+    export is_odd : Num -> Bool = fn n => n % 2 != 0,
+
+    export square : Num -> Num = fn n => n * n,
+    export cube : Num -> Num = fn n => n * n * n,
+}
