@@ -1,0 +1,32 @@
+{
+    type Pair = forall a b . { a : a, b : b },
+
+    export pair : forall a b . a -> b -> Pair a b = fn a => fn b =>
+        { a = a, b = b },
+
+    export swap : forall a b . Pair a b -> Pair b a = fn p =>
+        { a = p.b, b = p.a },
+
+    export map_pair : forall a b c d . (a -> c) -> (b -> d) -> Pair a b -> Pair c d =
+        fn f => fn g => fn p =>
+            { a = (f p.a), b = (g p.b) },
+
+    type Triple = forall a b c . { a : a, b : b, c : c },
+
+    export triple : forall a b c . a -> b -> c -> Triple a b c = fn a => fn b => fn c =>
+        { a = a, b = b, c = c },
+
+    export map_triple : forall a b c d e f. (a -> d) -> (b -> e) -> (c -> f) -> Triple a b c -> Triple d e f =
+        fn f => fn g => fn h => fn t =>
+            { a = (f t.a), b = (g t.b), c = (h t.c) },
+
+    type Quadruple = forall a b c d . { a : a, b : b, c : c, d : d },
+
+    export quadruple : forall a b c d . a -> b -> c -> d -> Quadruple a b c d =
+        fn a => fn b => fn c => fn d =>
+            { a = a, b = b, c = c, d = d },
+
+    export map_quadruple : forall a b c d e f g h . (a -> e) -> (b -> f) -> (c -> g) -> (d -> h) -> Quadruple a b c d -> Quadruple e f g h =
+        fn f => fn g => fn h => fn i => fn q =>
+            { a = (f q.a), b = (g q.b), c = (h q.c), d = (i q.d) },
+}

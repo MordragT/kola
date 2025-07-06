@@ -1,24 +1,31 @@
 {
     export module list = import list,
-    export module math = import math,
+    export module num = import num,
     export module option = import option,
+    export module record = import record,
     export module string = import string,
+    export module tuple = import tuple,
 
     list = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
 
-    #main = let f = fn x => x * x in ((list::map f) list),
+    #main = let f = fn x => x * x in (list::map f list),
 
-    #main = let f = fn x => x % 2 == 0 in ((list::filter f) list),
+    #main = let f = fn x => x % 2 == 0 in (list::filter f list),
 
-    #main = ((list::all fn x => x > 5) list),
+    #main = (list::all (fn x => x > 5) list),
 
-    #main = ((list::contains 5) list),
+    #main = (list::contains 5 list),
 
     #main = (list::first list),
 
-    #main = ((list::get 4) list),
+    #main = (list::get 4 list),
 
-    opt = (Some 42),
+    opt_a = (Some 42),
+    opt_b = (Some 100),
 
-    main = (option::is_some opt),
+    #main = (option::is_some opt_a),
+
+    #main = (option::zip opt_a opt_b),
+
+    #main = (3 + 4),
 }

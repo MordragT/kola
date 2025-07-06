@@ -1,4 +1,24 @@
 {
+
+    #############################################
+    ### Named operator functions (for composition)
+    #############################################
+
+    # Arithmetic
+    export add : Num -> Num -> Num = fn a => fn b => a + b,
+    export sub : Num -> Num -> Num = fn a => fn b => a - b,
+    export mul : Num -> Num -> Num = fn a => fn b => a * b,
+    export div : Num -> Num -> Num = fn a => fn b => a / b,
+    export rem : Num -> Num -> Num = fn a => fn b => a % b,
+
+    # Comparison
+    export eq : Num -> Num -> Bool = fn a => fn b => a == b,
+    export ne : Num -> Num -> Bool = fn a => fn b => a != b,
+    export lt : Num -> Num -> Bool = fn a => fn b => a < b,
+    export le : Num -> Num -> Bool = fn a => fn b => a <= b,
+    export gt : Num -> Num -> Bool = fn a => fn b => a > b,
+    export ge : Num -> Num -> Bool = fn a => fn b => a >= b,
+
     #############################################
     ### Advanced math functions (builtins)
     #############################################

@@ -707,21 +707,51 @@ pub fn expr_parser<'t>() -> impl KolaParser<'t, Id<node::Expr>> + Clone {
         .as_context()
         .boxed();
 
-        // TODO allow syntactic sugar (a b c)
-        let call = recursive(|call| {
-            let callable = choice((qualified.clone(), tag.clone(), func.clone(), call));
+        // // TODO allow syntactic sugar (a b c)
+        // let call = recursive(|call| {
+        //     let callable = choice((qualified.clone(), tag.clone(), func.clone(), call));
 
-            nested_parser(
-                callable
-                    .then(expr.clone())
-                    .map_to_node(|(func, arg)| node::CallExpr { func, arg })
-                    .to_expr(),
-                Delim::Paren,
-                |_span| node::ExprError,
-            )
-            .boxed()
-        })
-        .labelled("CallExpr")
+        //     nested_parser(
+        //         callable
+        //             .then(expr.clone())
+        //             .map_to_node(|(func, arg)| node::CallExpr { func, arg })
+        //             .to_expr(),
+        //         Delim::Paren,
+        //         |_span| node::ExprError,
+        //     )
+        //     .boxed()
+        // })
+        // .labelled("CallExpr")
+        // .as_context()
+        // .boxed();
+
+        let paren_expr = nested_parser(
+            expr.clone()
+                .repeated()
+                .at_least(1) // At least 1 expression
+                .collect::<Vec<_>>()
+                .map_with(|exprs, e| {
+                    let span = e.span();
+                    let tree: &mut State = e.state();
+
+                    let len = exprs.len();
+                    let mut iter = exprs.into_iter();
+                    let first = iter.next().unwrap(); // Safety: len >= 1
+
+                    if len == 1 {
+                        // Single expression - this is grouping, just return the inner expression
+                        first
+                    } else {
+                        // Multiple expressions - this is a function call
+                        iter.fold(first, |acc, arg| {
+                            tree.insert_as::<node::Expr, _>(node::CallExpr { func: acc, arg }, span)
+                        })
+                    }
+                }),
+            Delim::Paren,
+            |_span| node::ExprError,
+        )
+        .labelled("ParenExpr")
         .as_context()
         .boxed();
 
@@ -735,7 +765,7 @@ pub fn expr_parser<'t>() -> impl KolaParser<'t, Id<node::Expr>> + Clone {
             handle,
             do_expr,
             func,
-            call,
+            paren_expr,
             qualified,
             tag,
             symbol_expr,

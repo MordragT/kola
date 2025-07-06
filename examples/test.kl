@@ -23,7 +23,7 @@
 
     #main = (simple ()),
 
-
-
-    main = lookup,
+    main = let x = 0 in case x
+        | 0 => "zero"
+        | n => (case n | _ => "other"),
 }

@@ -39,30 +39,45 @@
 //! - Row polymorphism (`{x: Bool, ...}`) requires universal tail coverage
 //! - Labels can appear in any order due to reordering semantics
 
+use std::fmt;
+
+use derive_more::Display;
 use enumset::{EnumSet, EnumSetType};
 use kola_collections::OrdSet;
 use kola_span::{Diagnostic, Loc};
 use kola_syntax::loc::Locations;
 use kola_tree::prelude::*;
 use kola_utils::{as_variant, errors::Errors, interner::StrKey};
-use thiserror::Error;
 
 use crate::{
     phase::TypedNodes,
-    types::{CompType, ListType, MonoType, PrimitiveType, RowType},
+    types::{ListType, MonoType, PrimitiveType, RowType},
 };
 
-#[derive(Debug, Error, Clone, PartialEq, Eq, Hash)]
-#[error("Exhaustiveness error in case expression for {mono_t}")]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ExhaustError {
     pub case: Id<node::CaseExpr>,
     pub mono_t: MonoType,
+    pub actual: CoverSet,
+    pub required: CoverSet,
     pub loc: Loc,
 }
 
 impl From<ExhaustError> for Diagnostic {
     fn from(error: ExhaustError) -> Self {
-        Diagnostic::error(error.loc, error.to_string())
+        let ExhaustError {
+            mono_t,
+            actual,
+            required,
+            loc,
+            ..
+        } = error;
+
+        Diagnostic::error(loc, "Exhaustiveness error in case expression").with_notes([
+            format!("Type: {}", mono_t),
+            format!("Required coverage: {}", required),
+            format!("Actual coverage: {}", actual),
+        ])
     }
 }
 
@@ -92,7 +107,7 @@ pub fn exhaust_check_all<T: TreeView>(
     }
 }
 
-#[derive(EnumSetType, Debug, Hash)]
+#[derive(EnumSetType, Display, Debug, Hash)]
 pub enum Atom {
     True,
     False,
@@ -255,10 +270,51 @@ impl ListSet {
     }
 }
 
+impl fmt::Display for ListSet {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Empty => write!(f, "[]"),
+            Self::Universal => write!(f, "[...]"),
+            Self::Exact(set) => {
+                let lengths: Vec<_> = set.iter().collect();
+                write!(
+                    f,
+                    "[{}]",
+                    lengths
+                        .iter()
+                        .map(|l| l.to_string())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                )
+            }
+            Self::AtLeast(min) => write!(f, "[{}+]", min),
+            Self::Combined { exact, at_least } => {
+                let lengths: Vec<_> = exact.iter().collect();
+                write!(
+                    f,
+                    "[{}+ (exact: {})]",
+                    at_least,
+                    lengths
+                        .iter()
+                        .map(|l| l.to_string())
+                        .collect::<Vec<_>>()
+                        .join(", ")
+                )
+            }
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct LabelledSet {
     pub label: StrKey,
     pub set: Box<CoverSet>,
+}
+
+impl fmt::Display for LabelledSet {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, " {}: {} ", self.label, self.set)
+    }
 }
 
 /// Represents pattern matching sets for row types (records/variants)
@@ -346,6 +402,22 @@ impl RowSet {
     }
 }
 
+impl fmt::Display for RowSet {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Empty => write!(f, "{{}}"),
+            Self::Universal => write!(f, "{{...}}"),
+            Self::Extension { head, tail } => {
+                write!(f, "{{{}}}", head)?;
+                if let RowSet::Extension { .. } = **tail {
+                    write!(f, ", ")?;
+                }
+                write!(f, "{}", tail)
+            }
+        }
+    }
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 /// Represents the set of values that patterns can match against
 pub enum CoverSet {
@@ -401,6 +473,19 @@ impl CoverSet {
 
     pub fn is_subset(&self, other: &Self) -> bool {
         other.is_superset(self)
+    }
+}
+
+impl fmt::Display for CoverSet {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Empty => write!(f, "∅"),
+            Self::Universal => write!(f, "∀"),
+            Self::Atom(set) => write!(f, "{{{}}}", set),
+            Self::Row(row) => write!(f, "{}", row),
+            Self::List(list) => write!(f, "{}", list),
+            Self::Opaque => write!(f, "Opaque"),
+        }
     }
 }
 
@@ -645,14 +730,16 @@ impl<'a, T: TreeView> ExhaustChecker<'a, T> {
         if actual_set.is_superset(&required_set) {
             Ok(())
         } else {
-            Err(self.error(source_type.clone()))
+            Err(self.error(source_type.clone(), actual_set, required_set))
         }
     }
 
-    fn error(&self, mono_t: MonoType) -> ExhaustError {
+    fn error(&self, mono_t: MonoType, actual: CoverSet, required: CoverSet) -> ExhaustError {
         ExhaustError {
             case: self.case_id,
             mono_t,
+            actual,
+            required,
             loc: self.loc,
         }
     }

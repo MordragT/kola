@@ -11,4 +11,88 @@
         | < Some : _ > => true
         | < None : _ > => false,
 
+    export is_some_and : forall a . (a -> Bool) -> Option a -> Bool = fn predicate => fn opt =>
+        case opt
+        | < Some : value > => (predicate value)
+        | < None : _ > => false,
+
+    export is_none : forall a . Option a -> Bool = fn opt =>
+        case opt
+        | < Some : _ > => false
+        | < None : _ > => true,
+
+    export is_none_or : forall a . (a -> Bool) -> Option a -> Bool = fn predicate => fn opt =>
+        case opt
+        | < Some : value > => (predicate value)
+        | < None : _ > => true,
+
+    export flatten : forall a . Option (Option a) -> Option a = fn opt =>
+        case opt
+        | < Some : inner > => inner
+        | < None : _ > => (None ()),
+
+    export zip : forall a b . Option a -> Option b -> Option (super::tuple::Pair a b) = fn opt_a => fn opt_b =>
+        case opt_a
+        | < Some : a > => (
+            case opt_b
+                | < Some : b > => (Some (super::tuple::pair a b))
+                | < None : _ > => (None ())
+            )
+        | < None : _ > => (None ()),
+
+    export map : forall a b . (a -> b) -> Option a -> Option b = fn f => fn opt =>
+        case opt
+        | < Some : value > => (Some (f value))
+        | < None : _ > => (None ()),
+
+    # This is the same as fold
+    export map_or : forall a b . b -> (a -> b) -> Option a -> b = fn default => fn f => fn opt =>
+        case opt
+        | < Some : value > => (f value)
+        | < None : _ > => default,
+
+    export map_or_else : forall a b . (Unit -> b) -> (a -> b) -> Option a -> b = fn f => fn g => fn opt =>
+        case opt
+        | < Some : value > => (g value)
+        | < None : _ > => (f ()),
+
+    export and_with : forall a b . Option a -> Option b -> Option b = fn opt_a => fn opt_b =>
+        case opt_a
+        | < Some : _ > => opt_b
+        | < None : _ > => (None ()),
+
+    export and_then : forall a b . (a -> Option b) -> Option a -> Option b = fn f => fn opt =>
+        case opt
+        | < Some : value > => (f value)
+        | < None : _ > => (None ()),
+
+    export or_with : forall a . Option a -> Option a -> Option a = fn opt_a => fn opt_b =>
+        case opt_a
+        | < Some : _ > => opt_a
+        | < None : _ > => opt_b,
+
+    export or_else : forall a . (Unit -> Option a) -> Option a -> Option a = fn f => fn opt =>
+        case opt
+        | < Some : _ > => opt
+        | < None : _ > => (f ()),
+
+    export get_or : forall a . a -> Option a -> a = fn default => fn opt =>
+        case opt
+        | < Some : value > => value
+        | < None : _ > => default,
+
+    export get_or_else : forall a . (Unit -> a) -> Option a -> a = fn f => fn opt =>
+        case opt
+        | < Some : value > => value
+        | < None : _ > => (f ()),
+
+    export filter : forall a . (a -> Bool) -> Option a -> Option a = fn predicate => fn opt =>
+        case opt
+        | < Some : value > => if (predicate value) then opt else (None ())
+        | < None : _ > => (None ()),
+
+    export contains : forall a . a -> Option a -> Bool = fn target => fn opt =>
+        case opt
+        | < Some : value > => value == target
+        | < None : _ > => false,
 }

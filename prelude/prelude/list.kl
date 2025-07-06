@@ -39,7 +39,7 @@
             base = [],
             step = fn pair =>
                 let mapped_head = (f pair.head) in
-                ((prepend mapped_head) pair.acc)
+                (prepend mapped_head pair.acc)
         }),
 
     export filter : forall a . (a -> Bool) -> List a -> List a = fn predicate => fn list =>
@@ -48,7 +48,7 @@
             base = [],
             step = fn pair =>
                 if (predicate pair.head)
-                then ((prepend pair.head) pair.acc)
+                then (prepend pair.head pair.acc)
                 else pair.acc
         }),
 
@@ -56,14 +56,14 @@
         (list_rec {
             list = list,
             base = init,
-            step = fn pair => ((f pair.acc) pair.head)
+            step = fn pair => (f pair.acc pair.head)
         }),
 
     export fold_right : forall a b . (a -> b -> b) -> b -> List a -> b = fn f => fn init => fn list =>
         (list_rec {
             list = list,
             base = init,
-            step = fn pair => ((f pair.head) pair.acc)
+            step = fn pair => (f pair.head pair.acc)
         }),
 
     export all : forall a . (a -> Bool) -> List a -> Bool = fn predicate => fn list =>

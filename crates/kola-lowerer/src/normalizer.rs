@@ -723,6 +723,9 @@ where
     ) -> ControlFlow<Self::BreakValue> {
         let node::CaseExpr { source, branches } = id.get(tree);
 
+        // Save the current hole - this is where the case result should go
+        let result_hole = self.hole;
+
         // Create symbol for the value being matched
         let source_sym = self.next_symbol();
 
@@ -735,6 +738,9 @@ where
 
             // Save the current continuation
             let saved_next = self.next;
+
+            // Set hole to result_hole for the branch body
+            self.hole = result_hole;
 
             self.visit_expr(body, tree)?;
             let branch_next = self.next; // Capture the branch expression
@@ -749,8 +755,8 @@ where
                 }));
 
             let mut pat_normalizer = PatternNormalizer::new(
-                self.hole,  // result binding
-                source_sym, // value being matched
+                result_hole, // result binding
+                source_sym,  // value being matched
                 on_success,
                 on_failure,
                 self.builder,
@@ -763,7 +769,7 @@ where
 
         // Create the case expression with the final pattern matcher
         let case_expr = ir::PatternMatchExpr {
-            bind: self.hole,
+            bind: result_hole, // Use the saved hole
             matcher: on_failure,
             next: self.next,
         };
