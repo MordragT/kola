@@ -8,7 +8,7 @@ use kola_print::prelude::*;
 use kola_span::{Diagnostic, IntoDiagnostic, Loc, Report, SourceId, SourceManager};
 use kola_syntax::prelude::*;
 use kola_tree::{
-    node::{AnyName, ValueName, Vis},
+    node::{ValueName, Vis},
     prelude::*,
 };
 use kola_utils::{interner::StrInterner, io::FileSystem};

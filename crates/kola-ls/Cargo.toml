@@ -1,0 +1,13 @@
+[package]
+name = "kola-ls"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+kola-span.workspace = true
+kola-syntax.workspace = true
+kola-utils.workspace = true
+camino.workspace = true
+dashmap = "6.1.0"
+tower-lsp-server = "0.22.0"
+tokio = { version = "1.46.1", features = ["full"] }

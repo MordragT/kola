@@ -41,5 +41,11 @@
 
     #main = (str::concat my_str " How are you?"),
 
-    main = (str::any (fn x => x == 'Q') my_str),
+    #main = (str::any (fn x => x == 'Q') my_str),
+
+    my_record = record::empty,
+
+    main = 10,
+
+    main = 10,
 }

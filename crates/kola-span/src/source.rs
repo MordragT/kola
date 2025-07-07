@@ -24,6 +24,26 @@ impl SourceManager {
         Self::default()
     }
 
+    pub fn refetch<'p>(
+        &mut self,
+        path: impl Into<Cow<'p, Utf8Path>>,
+        io: &impl FileSystem,
+    ) -> io::Result<(SourceId, &Source)> {
+        let path = path.into();
+
+        let name = path.file_stem().unwrap(); // TODO assert that files have the right Extension
+        let import_path = path.parent().unwrap().join(name); // path is absolute so this mustn't panic
+
+        let text: Arc<str> = io.read_file(&path)?.into();
+        let key = self.interner.intern(path);
+
+        if io.is_dir(&import_path) {
+            self.import_dirs.insert(key, import_path);
+        }
+
+        Ok((key, self.sources.entry(key).or_insert(Source::from(text))))
+    }
+
     pub fn fetch<'p>(
         &mut self,
         path: impl Into<Cow<'p, Utf8Path>>,
@@ -35,17 +55,7 @@ impl SourceManager {
         if let Some(key) = self.interner.lookup(&path) {
             Ok((key, &self.sources[&key]))
         } else {
-            let name = path.file_stem().unwrap(); // TODO assert that files have the right Extension
-            let import_path = path.parent().unwrap().join(name); // path is absolute so this mustn't panic
-
-            let text: Arc<str> = io.read_file(&path)?.into();
-            let key = self.interner.intern(path);
-
-            if io.is_dir(&import_path) {
-                self.import_dirs.insert(key, import_path);
-            }
-
-            Ok((key, self.sources.entry(key).or_insert(Source::from(text))))
+            self.refetch(path, io)
         }
     }
 

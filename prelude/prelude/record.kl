@@ -1,1 +1,38 @@
-{}
+{
+    export empty = { },
+
+    # TODO: These implementations use 'r' as type variable for the record.
+    # However it is currently not enforced because there are no kind checks.
+    # In the future we want to enforce kind checks of builtin kinds.
+    # They are also possibly unsafe because I currently enforce
+    # variants vs records only by their differing upper or lower case field names.
+    # Also I am not able to express label polymorphism in the type system yet.
+
+
+    #export insert : forall a r . Str -> a -> r -> { ? : a | r } = fn key =>
+    #    fn value => fn record => { record | +? = value },
+
+    #export remove : forall a r . Str -> { ? : a | r } -> r,
+
+    #export get : forall a r . Str -> { ? : a | r } -> Option a,
+
+    #export contains : forall a r . Str -> { ? : a | r } -> Bool,
+
+    #export keys : forall r . r -> List Str,
+
+    #export values : forall a r . r -> List a, # how to express that all field values should be of type 'a'?
+
+    #export size : forall r . r -> Num,
+
+    # Both map and fold are not really safe because they assume that all fields
+    # in the record are of the same type.
+
+    # both r and g should be records here
+    #export map : forall a b r g . ({ key : Str, value : a } -> b) -> r -> g,
+
+    #export fold : forall a b r . ({ key : Str, value : a } -> b -> b) -> b -> r -> b,
+
+    # both r and g should be records here
+    #export filter : forall a r g. ({ key : Str, value : a } -> Bool) -> r -> g,
+
+}

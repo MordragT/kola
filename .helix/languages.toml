@@ -1,0 +1,10 @@
+[language-server.kola]
+command = "target/debug/kola-ls"
+args = []
+
+[[language]]
+name = "kola"
+scope = "source.kola"
+file-types = ["kl"]
+roots = [".git"]
+language-servers = ["kola"]

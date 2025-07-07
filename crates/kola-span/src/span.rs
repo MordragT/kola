@@ -1,6 +1,6 @@
 use std::{
     fmt,
-    ops::{Add, BitAnd, BitOr, Range, Sub},
+    ops::{BitAnd, BitOr, Range},
 };
 
 pub type Spanned<T> = (T, Span);

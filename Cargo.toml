@@ -8,6 +8,7 @@ kola-collections = { path = "crates/kola-collections" }
 kola-driver = { path = "crates/kola-driver" }
 kola-ir = { path = "crates/kola-ir" }
 kola-lowerer = { path = "crates/kola-lowerer" }
+kola-ls = { path = "crates/kola-ls" }
 kola-macros = { path = "crates/kola-macros" }
 kola-print = { path = "crates/kola-print" }
 kola-resolver = { path = "crates/kola-resolver" }
