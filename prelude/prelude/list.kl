@@ -23,6 +23,9 @@
     export append : forall a . List a -> a -> List a = fn head_list =>
         fn tail => (list_append { head = head_list, tail = tail }),
 
+    export concat : forall a . List a -> List a -> List a = fn list_a =>
+        fn list_b => (list_concat { head = list_a, tail = list_b }),
+
     export contains : forall a . a -> List a -> Bool = fn value =>
         fn list => (list_contains { list = list, value = value }),
 
@@ -56,6 +59,7 @@
         (list_rec {
             list = list,
             base = None,
+            # TODO investigate why type annotations are necessary here
             step : { acc : Option a, head : a } -> Option a = fn pair =>
                 if (predicate pair.head)
                 then (Some pair.head)

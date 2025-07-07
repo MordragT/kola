@@ -136,16 +136,15 @@ impl<K, V> ShadowMap<K, V> {
     {
         // Collect visible indices first
         let mut seen_keys = HashSet::new();
-        let visible_indices: Vec<usize> = self.entries
+        let visible_indices: Vec<usize> = self
+            .entries
             .iter()
             .enumerate()
-            .filter_map(|(i, (k, _))| {
-                if seen_keys.insert(k) {
-                    Some(i)
-                } else {
-                    None
-                }
-            })
+            .filter_map(
+                |(i, (k, _))| {
+                    if seen_keys.insert(k) { Some(i) } else { None }
+                },
+            )
             .collect();
 
         // Clear and rebuild with only visible entries
@@ -248,6 +247,22 @@ where
         }
     }
 
+    pub fn first(&self) -> Option<&(K, V)> {
+        self.entries.first()
+    }
+
+    pub fn first_mut(&mut self) -> Option<&mut (K, V)> {
+        self.entries.first_mut()
+    }
+
+    pub fn pop_first(&mut self) -> Option<(K, V)> {
+        if self.entries.is_empty() {
+            None
+        } else {
+            Some(self.entries.remove(0))
+        }
+    }
+
     /// Returns `true` if the map contains the specified key.
     pub fn contains_key(&self, key: &K) -> bool {
         self.binary_search(key).is_ok()
@@ -326,7 +341,7 @@ mod tests {
     #[test]
     fn test_shadowing_iterators() {
         let mut map = ShadowMap::new();
-        
+
         // Insert some values with duplicate keys
         map.insert("a", 1);
         map.insert("b", 2);
@@ -342,9 +357,18 @@ mod tests {
         let mut found_c = false;
         for (k, v) in visible {
             match *k {
-                "a" => { assert_eq!(*v, 10); found_a = true; },
-                "b" => { assert_eq!(*v, 20); found_b = true; },
-                "c" => { assert_eq!(*v, 3); found_c = true; },
+                "a" => {
+                    assert_eq!(*v, 10);
+                    found_a = true;
+                }
+                "b" => {
+                    assert_eq!(*v, 20);
+                    found_b = true;
+                }
+                "c" => {
+                    assert_eq!(*v, 3);
+                    found_c = true;
+                }
                 _ => panic!("Unexpected key"),
             }
         }

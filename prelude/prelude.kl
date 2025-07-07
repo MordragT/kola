@@ -22,7 +22,11 @@
 
     list2 = [1, 2, 3, 4, 1, 2, 3, 4],
 
-    main = (list::find (fn x => x == 3) list2),
+    #main = (list::find (fn x => x == 3) list2),
+
+    #main = (list::fold_left (fn a => fn b => a - b) 0 list),
+
+    #main = (list::fold_right (fn a => fn b => a - b) 0 list),
 
     opt_a = (Some 42),
     opt_b = (Some 100),
@@ -32,4 +36,10 @@
     #main = (option::zip opt_a opt_b),
 
     #main = (3 + 4),
+
+    my_str = "Hello, World!",
+
+    #main = (str::concat my_str " How are you?"),
+
+    main = (str::any (fn x => x == 'Q') my_str),
 }

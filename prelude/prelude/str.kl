@@ -16,11 +16,88 @@
     ### High-frequency, low-level operations - wrapped builtins
     #############################################
 
-    #export prepend : Char -> Str -> Str,
+    export prepend : Char -> Str -> Str = fn head =>
+        fn tail_str => (str_prepend { head = head, tail = tail_str }),
 
-    #export append : Str -> Char -> Str,
+    export append : Str -> Char -> Str = fn head_str =>
+        fn tail => (str_append { head = head_str, tail = tail }),
 
-    #export contains : Char -> Str -> Bool,
+    export concat : Str -> Str -> Str = fn str_a =>
+        fn str_b => (str_concat { head = str_a, tail = str_b }),
 
-    #export at : Num -> Str -> Option Char,
+    export contains : Char -> Str -> Bool = fn value =>
+        fn str => (str_contains { str = str, value = value }),
+
+    export at : Num -> Str -> Option Char = fn index =>
+        fn str => (str_at { str = str, index = index }),
+
+    #############################################
+    ### Primitive Recursive Functions using str_rec
+    #############################################
+
+    # to_list, from_list, join, split
+
+    export map :  (Char -> Char) -> Str -> Str = fn f => fn str =>
+        (str_rec {
+            str = str,
+            base = "",
+            step = fn pair =>
+                let mapped_head = (f pair.head) in
+                (prepend mapped_head pair.acc)
+        }),
+
+    export filter : (Char -> Bool) -> Str -> Str = fn predicate => fn str =>
+        (str_rec {
+            str = str,
+            base = "",
+            step = fn pair =>
+                if (predicate pair.head)
+                then (prepend pair.head pair.acc)
+                else pair.acc
+        }),
+
+    export find : (Char -> Bool) -> Str -> Option Char = fn predicate => fn str =>
+        (str_rec {
+            str = str,
+            base = None,
+            # TODO investigate why type annotations are necessary here
+            step : { acc : Option Char, head : Char } -> Option Char = fn pair =>
+                if (predicate pair.head)
+                then (Some pair.head)
+                else pair.acc
+        }),
+
+    export fold_left : forall a . (a -> Char -> a) -> a -> Str -> a = fn f => fn init => fn str =>
+        (str_rec {
+            str = str,
+            base = init,
+            step = fn pair => (f pair.acc pair.head)
+        }),
+
+    export fold_right : forall a . (Char -> a -> a) -> a -> Str -> a = fn f => fn init => fn str =>
+        (str_rec {
+            str = str,
+            base = init,
+            step = fn pair => (f pair.head pair.acc)
+        }),
+
+    export all : (Char -> Bool) -> Str -> Bool = fn predicate => fn str =>
+        (str_rec {
+            str = str,
+            base = true,
+            step = fn pair =>
+                if (predicate pair.head)
+                then pair.acc
+                else false
+        }),
+
+    export any : (Char -> Bool) -> Str -> Bool = fn predicate => fn str =>
+        (str_rec {
+            str = str,
+            base = false,
+            step = fn pair =>
+                if (predicate pair.head)
+                then true
+                else pair.acc
+        }),
 }

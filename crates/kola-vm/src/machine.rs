@@ -5,7 +5,7 @@ use crate::{
     cont::{Cont, ContFrame, Handler, HandlerClosure, PureCont, ReturnClause},
     env::Env,
     eval::{Eval, eval_atom},
-    value::{Closure, List, Record, Value},
+    value::{Closure, List, Record, Value, to_usize_exact},
 };
 use kola_ir::{
     instr::{Func, Symbol},
@@ -97,6 +97,8 @@ impl CekMachine {
 
         match data {
             Value::List(list) => Self::step_list_rec(list, base, step, cont, ir),
+            Value::Num(n) => Self::step_num_rec(n, base, step, cont, ir),
+            Value::Str(string) => Self::step_str_rec(string, base, step, cont, ir),
             _ => MachineState::Error(format!("Cannot recurse over {:?}", data)),
         }
     }
@@ -161,6 +163,211 @@ impl CekMachine {
 
         MachineState::PrimitiveRec(PrimitiveRecConfig {
             data: Value::List(tail),
+            base,
+            step,
+            cont,
+        })
+    }
+
+    // num_rec(0, base, step) = base
+    // num_rec(n + 1, base, step) = step(n, num_rec(n, base, step))
+    fn step_num_rec(num: f64, base: Value, step: Closure, mut cont: Cont, ir: &Ir) -> MachineState {
+        debug_assert!(
+            to_usize_exact(num).is_some(),
+            "num_rec expects a non-negative integer"
+        );
+
+        let n = num - 1.0;
+
+        if n == 0.0 {
+            // Base case: return the base value
+
+            // Remove the top continuation frame
+            let Some(cont_frame) = cont.pop() else {
+                // If the continuation is empty, return the value
+                return MachineState::Value(base);
+            };
+
+            let HandlerClosure { handler, mut env } = cont_frame.handler_closure;
+
+            let ReturnClause::PrimitiveRec {
+                head,
+                step: Func { param, body },
+            } = handler.return_clause
+            else {
+                return MachineState::Error("Expected primitive return clause".to_string());
+            };
+
+            // Create argument for the step function
+            let mut record = Record::new();
+            record.insert(env.interner["acc"], base);
+            record.insert(env.interner["head"], head);
+
+            env.insert(param, Value::Record(record));
+
+            return MachineState::Standard(StandardConfig {
+                control: body.get(ir),
+                env,
+                cont, // Remaining handlers continue the chain
+            });
+        };
+
+        // Recursive case: we need to compute step(n, num_rec(n, base, step))
+
+        // The idea here is to create a new handler for each step,
+        // then when the base case is reached,
+        // the machine needs to continue processing the contniuation stack,
+        // so the value will flow through them via the handler clauses
+        let Closure { env, func } = step.clone();
+
+        let handler = Handler::primitive_rec(Value::Num(n), func);
+        let handler_closure = HandlerClosure::new(handler, env);
+
+        cont.push(ContFrame {
+            pure: PureCont::empty(),
+            handler_closure,
+        });
+
+        MachineState::PrimitiveRec(PrimitiveRecConfig {
+            data: Value::Num(n),
+            base,
+            step,
+            cont,
+        })
+    }
+
+    // record_rec({}, base, step) = base
+    // record_rec({ a = val | r }, base, step) = step({ key = "a", value = val }, record_rec(r, base, step))
+    fn step_record_rec(
+        mut record: Record,
+        base: Value,
+        step: Closure,
+        mut cont: Cont,
+        ir: &Ir,
+    ) -> MachineState {
+        let Some((label, value)) = record.pop_first() else {
+            // Base case: return the base value
+
+            // Remove the top continuation frame
+            let Some(cont_frame) = cont.pop() else {
+                // If the continuation is empty, return the value
+                return MachineState::Value(base);
+            };
+
+            let HandlerClosure { handler, mut env } = cont_frame.handler_closure;
+
+            let ReturnClause::PrimitiveRec {
+                head,
+                step: Func { param, body },
+            } = handler.return_clause
+            else {
+                return MachineState::Error("Expected primitive return clause".to_string());
+            };
+
+            // Create argument for the step function
+            let mut record = Record::new();
+            record.insert(env.interner["acc"], base);
+            record.insert(env.interner["head"], head);
+
+            env.insert(param, Value::Record(record));
+
+            return MachineState::Standard(StandardConfig {
+                control: body.get(ir),
+                env,
+                cont, // Remaining handlers continue the chain
+            });
+        };
+
+        // Recursive case: we need to compute step({ key = "a", value = val }, record_rec(r, base, step))
+
+        // The idea here is to create a new handler for each step,
+        // then when the base case is reached,
+        // the machine needs to continue processing the contniuation stack,
+        // so the value will flow through them via the handler clauses
+        let Closure { env, func } = step.clone();
+
+        let mut head = Record::new();
+        head.insert(env.interner["key"], Value::Str(env.interner[label].clone()));
+        head.insert(env.interner["value"], value);
+
+        let handler = Handler::primitive_rec(Value::Record(head), func);
+        let handler_closure = HandlerClosure::new(handler, env);
+
+        cont.push(ContFrame {
+            pure: PureCont::empty(),
+            handler_closure,
+        });
+
+        MachineState::PrimitiveRec(PrimitiveRecConfig {
+            data: Value::Record(record),
+            base,
+            step,
+            cont,
+        })
+    }
+
+    // str_rec("", base, step) = base
+    // str_rec('a' ++ "bcd..", base, step) = step('a', str_rec("bcd..", base, step))
+    fn step_str_rec(
+        mut string: String,
+        base: Value,
+        step: Closure,
+        mut cont: Cont,
+        ir: &Ir,
+    ) -> MachineState {
+        if string.is_empty() {
+            // Base case: return the base value
+
+            // Remove the top continuation frame
+            let Some(cont_frame) = cont.pop() else {
+                // If the continuation is empty, return the value
+                return MachineState::Value(base);
+            };
+
+            let HandlerClosure { handler, mut env } = cont_frame.handler_closure;
+
+            let ReturnClause::PrimitiveRec {
+                head,
+                step: Func { param, body },
+            } = handler.return_clause
+            else {
+                return MachineState::Error("Expected primitive return clause".to_string());
+            };
+
+            // Create argument for the step function
+            let mut record = Record::new();
+            record.insert(env.interner["acc"], base);
+            record.insert(env.interner["head"], head);
+
+            env.insert(param, Value::Record(record));
+
+            return MachineState::Standard(StandardConfig {
+                control: body.get(ir),
+                env,
+                cont, // Remaining handlers continue the chain
+            });
+        };
+
+        let head = string.remove(0); // Safety: we know string is not empty
+
+        // Recursive case: we need to compute step('a', str_rec("bcd..", base, step))
+
+        // The idea here is to create a new handler for each step,
+        // then when the base case is reached,
+        // the machine needs to continue processing the contniuation stack,
+        // so the value will flow through them via the handler clauses
+        let Closure { env, func } = step.clone();
+
+        let handler = Handler::primitive_rec(Value::Char(head), func);
+        let handler_closure = HandlerClosure::new(handler, env);
+
+        cont.push(ContFrame {
+            pure: PureCont::empty(),
+            handler_closure,
+        });
+
+        MachineState::PrimitiveRec(PrimitiveRecConfig {
+            data: Value::Str(string),
             base,
             step,
             cont,

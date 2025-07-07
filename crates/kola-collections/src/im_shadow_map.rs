@@ -173,6 +173,10 @@ where
         }
     }
 
+    pub fn first(&self) -> Option<&(K, V)> {
+        self.entries.front()
+    }
+
     /// Returns `true` if the map contains the specified key.
     pub fn contains_key(&self, key: &K) -> bool {
         self.binary_search(key).is_ok()
@@ -210,6 +214,14 @@ where
             Ok(idx) => Some(&mut self.entries[idx].1),
             Err(_) => None,
         }
+    }
+
+    pub fn first_mut(&mut self) -> Option<&mut (K, V)> {
+        self.entries.front_mut()
+    }
+
+    pub fn pop_first(&mut self) -> Option<(K, V)> {
+        self.entries.pop_front()
     }
 
     /// Removes a key-value pair from the map.

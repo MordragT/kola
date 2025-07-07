@@ -2,7 +2,7 @@ use crate::{
     config::{MachineState, OperationConfig, PatternConfig, PrimitiveRecConfig, StandardConfig},
     cont::{Cont, ContFrame, Handler, HandlerClosure, PureCont, PureContFrame, ReturnClause},
     env::Env,
-    value::{Closure, List, Record, Value, Variant},
+    value::{Closure, List, Record, Value, Variant, to_usize_exact},
 };
 use kola_builtins::BuiltinId;
 use kola_collections::ImShadowMap;
@@ -289,38 +289,6 @@ impl Eval for CallExpr {
     }
 }
 
-fn to_usize_exact(value: f64) -> Option<usize> {
-    // 1. Check for special floating-point values (NaN, Inf)
-    if !value.is_finite() {
-        // is_finite() checks for NaN, +/- infinity
-        return None;
-    }
-
-    // 2. Check if the number is an exact integer
-    // `floor()` is used here. If value is 10.0, floor is 10.0. If value is 10.7, floor is 10.0.
-    // So `value == value.floor()` is true ONLY if value is an exact integer.
-    if value != value.floor() {
-        return None; // Not an exact integer
-    }
-
-    // 3. Check if the number is positive (since usize is unsigned)
-    if value < 0.0 {
-        return None; // Negative number
-    }
-
-    // 4. Check for overflow against usize::MAX
-    // Note: f64 can represent all integers up to 2^53 exactly.
-    // usize::MAX depends on the architecture (32-bit, 64-bit).
-    // So check for explicit overflow.
-    if value > usize::MAX as f64 {
-        return None; // Value is too large for usize
-    }
-
-    // 5. If all checks pass, it's safe to cast.
-    // The cast `as usize` is then safe because we've covered all edge cases.
-    Some(value as usize)
-}
-
 fn eval_builtin(
     builtin: BuiltinId,
     bind: Symbol,
@@ -330,12 +298,19 @@ fn eval_builtin(
     next: Id<Expr>,
     ir: &Ir,
 ) -> MachineState {
+    // TODO use mutable functions to avoid copying.
+    // arg is moved by value anyway.
+    // On the other hand the underlying data structure of the record is a persistent data structure,
+    // where removal is O(log n), while lookup is only O(1).
+    // So bottom line I think get + clone might be a tad faster than get_mut + remove.
+    // Before changing anything definitely profile this code.
+
     let value = match (builtin, arg) {
         (BuiltinId::ListLength, Value::List(list)) => Value::Num(list.len() as f64),
         (BuiltinId::ListIsEmpty, Value::List(list)) => Value::Bool(list.is_empty()),
         (BuiltinId::ListReverse, Value::List(list)) => Value::List(list.reverse()),
         (BuiltinId::ListSum, Value::List(list)) => {
-            match list.iter().try_fold(0.0, |acc, v| {
+            match list.into_iter().try_fold(0.0, |acc, v| {
                 if let Value::Num(n) = v {
                     Ok(acc + n)
                 } else {
@@ -442,7 +417,9 @@ fn eval_builtin(
             };
 
             let Some(Value::Closure(step)) = record.get(env.interner["step"]).cloned() else {
-                return MachineState::Error("list_rec requires 'step' field".to_owned());
+                return MachineState::Error(
+                    "list_rec requires 'step' field with a func".to_owned(),
+                );
             };
 
             // Create a pure continuation frame for the next expression
@@ -462,14 +439,6 @@ fn eval_builtin(
                 cont,
             });
         }
-        /*
-        num_tan: forall 0 . Num -> Num,
-        num_ln: forall 0 . Num -> Num,
-        num_log10: forall 0 . Num -> Num,
-        num_exp: forall 0 . Num -> Num,
-        num_pow: forall 0 . { "base": Num, "exp": Num } -> Num,
-        *
-        */
         (BuiltinId::NumAbs, Value::Num(n)) => Value::Num(n.abs()),
         (BuiltinId::NumSqrt, Value::Num(n)) => Value::Num(n.sqrt()),
         (BuiltinId::NumFloor, Value::Num(n)) => Value::Num(n.floor()),
@@ -490,6 +459,193 @@ fn eval_builtin(
             };
 
             Value::Num(base.powf(*exp))
+        }
+        (BuiltinId::NumRec, Value::Record(record)) => {
+            let Some(Value::Num(n)) = record.get(env.interner["n"]) else {
+                return MachineState::Error("num_rec requires 'n' field with a number".to_owned());
+            };
+
+            let Some(base) = record.get(env.interner["base"]).cloned() else {
+                return MachineState::Error("num_rec requires 'base' field".to_owned());
+            };
+
+            let Some(Value::Closure(step)) = record.get(env.interner["step"]).cloned() else {
+                return MachineState::Error("num_rec requires 'step' field with a func".to_owned());
+            };
+
+            // Create a pure continuation frame for the next expression
+            let mut frame = cont.pop_or_identity(env.interner());
+            let pure_frame = PureContFrame {
+                var: bind,
+                body: next,
+                env,
+            };
+            frame.pure.push(pure_frame);
+            cont.push(frame);
+
+            return MachineState::PrimitiveRec(PrimitiveRecConfig {
+                data: Value::Num(*n),
+                base,
+                step,
+                cont,
+            });
+        }
+        (BuiltinId::RecordRec, Value::Record(record)) => {
+            let Some(Value::Record(data)) = record.get(env.interner["data"]).cloned() else {
+                return MachineState::Error(
+                    "record_rec requires 'data' field with a record".to_owned(),
+                );
+            };
+
+            let Some(base) = record.get(env.interner["base"]).cloned() else {
+                return MachineState::Error("record_rec requires 'base' field".to_owned());
+            };
+
+            let Some(Value::Closure(step)) = record.get(env.interner["step"]).cloned() else {
+                return MachineState::Error(
+                    "record_rec requires 'step' field with a func".to_owned(),
+                );
+            };
+
+            // Create a pure continuation frame for the next expression
+            let mut frame = cont.pop_or_identity(env.interner());
+            let pure_frame = PureContFrame {
+                var: bind,
+                body: next,
+                env,
+            };
+            frame.pure.push(pure_frame);
+            cont.push(frame);
+
+            return MachineState::PrimitiveRec(PrimitiveRecConfig {
+                data: Value::Record(data),
+                base,
+                step,
+                cont,
+            });
+        }
+        (BuiltinId::StrLength, Value::Str(s)) => Value::Num(s.len() as f64),
+        (BuiltinId::StrIsEmpty, Value::Str(s)) => Value::Bool(s.is_empty()),
+        (BuiltinId::StrReverse, Value::Str(s)) => Value::Str(s.chars().rev().collect()),
+        (BuiltinId::StrFirst, Value::Str(s)) => {
+            if let Some(first) = s.chars().next() {
+                Value::Variant(Variant::new(Tag(env.interner["Some"]), Value::Char(first)))
+            } else {
+                Value::Variant(Variant::new(Tag(env.interner["None"]), Value::None))
+            }
+        }
+        (BuiltinId::StrLast, Value::Str(mut s)) => {
+            if let Some(last) = s.pop() {
+                Value::Variant(Variant::new(Tag(env.interner["Some"]), Value::Char(last)))
+            } else {
+                Value::Variant(Variant::new(Tag(env.interner["None"]), Value::None))
+            }
+        }
+        (BuiltinId::StrContains, Value::Record(record)) => {
+            let Some(Value::Str(s)) = record.get(env.interner["str"]) else {
+                return MachineState::Error(
+                    "str_contains requires 'str' field with a string".to_owned(),
+                );
+            };
+
+            let Some(Value::Char(c)) = record.get(env.interner["value"]) else {
+                return MachineState::Error(
+                    "str_contains requires 'value' field with a char".to_owned(),
+                );
+            };
+
+            Value::Bool(s.contains(*c))
+        }
+        (BuiltinId::StrAt, Value::Record(record)) => {
+            let Some(Value::Str(s)) = record.get(env.interner["str"]) else {
+                return MachineState::Error("str_at requires 'str' field with a string".to_owned());
+            };
+
+            let Some(Value::Num(index)) = record.get(env.interner["index"]) else {
+                return MachineState::Error(
+                    "str_at requires 'index' field with a number".to_owned(),
+                );
+            };
+
+            match to_usize_exact(*index).and_then(|idx| s.chars().nth(idx)) {
+                Some(c) => Value::Variant(Variant::new(Tag(env.interner["Some"]), Value::Char(c))),
+                None => Value::Variant(Variant::new(Tag(env.interner["None"]), Value::None)),
+            }
+        }
+        (BuiltinId::StrPrepend, Value::Record(record)) => {
+            let Some(Value::Char(c)) = record.get(env.interner["head"]) else {
+                return MachineState::Error(
+                    "str_prepend requires 'head' field with a char".to_owned(),
+                );
+            };
+
+            let Some(Value::Str(s)) = record.get(env.interner["tail"]) else {
+                return MachineState::Error(
+                    "str_prepend requires 'tail' field with a string".to_owned(),
+                );
+            };
+
+            Value::Str(format!("{}{}", c, s))
+        }
+        (BuiltinId::StrAppend, Value::Record(record)) => {
+            let Some(Value::Str(s)) = record.get(env.interner["head"]) else {
+                return MachineState::Error(
+                    "str_append requires 'head' field with a string".to_owned(),
+                );
+            };
+
+            let Some(Value::Char(c)) = record.get(env.interner["tail"]) else {
+                return MachineState::Error(
+                    "str_append requires 'tail' field with a char".to_owned(),
+                );
+            };
+
+            Value::Str(format!("{}{}", s, c))
+        }
+        (BuiltinId::StrConcat, Value::Record(record)) => {
+            let Some(Value::Str(s1)) = record.get(env.interner["head"]) else {
+                return MachineState::Error(
+                    "str_concat requires 'head' field with a string".to_owned(),
+                );
+            };
+
+            let Some(Value::Str(s2)) = record.get(env.interner["tail"]) else {
+                return MachineState::Error(
+                    "str_concat requires 'tail' field with a string".to_owned(),
+                );
+            };
+
+            Value::Str(format!("{}{}", s1, s2))
+        }
+        (BuiltinId::StrRec, Value::Record(record)) => {
+            let Some(Value::Str(s)) = record.get(env.interner["str"]).cloned() else {
+                return MachineState::Error("str_rec requires 's' field with a string".to_owned());
+            };
+
+            let Some(base) = record.get(env.interner["base"]).cloned() else {
+                return MachineState::Error("str_rec requires 'base' field".to_owned());
+            };
+
+            let Some(Value::Closure(step)) = record.get(env.interner["step"]).cloned() else {
+                return MachineState::Error("str_rec requires 'step' field with a func".to_owned());
+            };
+
+            // Create a pure continuation frame for the next expression
+            let mut frame = cont.pop_or_identity(env.interner());
+            let pure_frame = PureContFrame {
+                var: bind,
+                body: next,
+                env,
+            };
+            frame.pure.push(pure_frame);
+            cont.push(frame);
+
+            return MachineState::PrimitiveRec(PrimitiveRecConfig {
+                data: Value::Str(s),
+                base,
+                step,
+                cont,
+            });
         }
         (_, value) => {
             return MachineState::Error(format!("Cannot apply {builtin} to: {:?}", value));
