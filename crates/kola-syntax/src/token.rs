@@ -226,6 +226,7 @@ define_token_type!(Op {
 });
 
 define_token_type!(Kw {
+    None => "None",
     Module => "module",
     Import => "import",
     Export => "export",

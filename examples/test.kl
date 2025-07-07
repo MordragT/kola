@@ -23,7 +23,18 @@
 
     #main = (simple ()),
 
-    main = let x = 0 in case x
-        | 0 => "zero"
-        | n => (case n | _ => "other"),
+    #main = let x = 0 in case x
+    #    | 0 => "zero"
+    #    | n => (case n | _ => "other"),
+
+    #opt = None,
+
+    #main = case opt
+    #    | < None > => "No value"
+    #    | < Some: v > => "Value"
+    #    | _ => "Unknown case",
+
+    f : forall a . a -> { a : a } = fn x => { a : a = x },
+
+    main = (f 42),
 }

@@ -198,11 +198,11 @@ define_builtins! {
     list_reverse: forall 1 . (List 0) -> (List 0),
     list_sum: forall 0 . (List Num) -> Num,
 
-    list_contains: forall 1 . { "list": (List 0), "value": 0 } -> Bool,
-    list_get: forall 1 . { "list": (List 0), "index": Num } -> [ "Some": 0, "None": Unit ],
-
     list_first: forall 1 . (List 0) -> [ "Some": 0, "None": Unit ],
     list_last: forall 1 . (List 0) -> [ "Some": 0, "None": Unit ],
+
+    list_contains: forall 1 . { "list": (List 0), "value": 0 } -> Bool,
+    list_at: forall 1 . { "list": (List 0), "index": Num } -> [ "Some": 0, "None": Unit ],
 
     list_prepend: forall 1 . { "head": 0, "tail": (List 0) } -> (List 0),
     list_append: forall 1 . { "head": (List 0), "tail": 0 } -> (List 0),
@@ -210,7 +210,7 @@ define_builtins! {
 
     list_rec: forall 2 . { "list": (List 0), "base": 1, "step": ({ "acc": 1, "head": 0 } -> 1) } -> 1,
 
-    // Builtin Math functions
+    // Builtin Number functions
     num_abs: forall 0 . Num -> Num,
     num_sqrt: forall 0 . Num -> Num,
     num_floor: forall 0 . Num -> Num,
@@ -223,4 +223,11 @@ define_builtins! {
     num_log10: forall 0 . Num -> Num,
     num_exp: forall 0 . Num -> Num,
     num_pow: forall 0 . { "base": Num, "exp": Num } -> Num,
+
+    // Builtin String functions
+    str_length: forall 0 . Str -> Num,
+    str_is_empty: forall 0 . Str -> Bool,
+    str_reverse: forall 0 . Str -> Str,
+    str_first: forall 0 . Str -> [ "Some": Char, "None": Unit ],
+    str_last: forall 0 . Str -> [ "Some": Char, "None": Unit ],
 }

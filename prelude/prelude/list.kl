@@ -26,8 +26,8 @@
     export contains : forall a . a -> List a -> Bool = fn value =>
         fn list => (list_contains { list = list, value = value }),
 
-    export get : forall a . Num -> List a -> Option a = fn index =>
-        fn list => (list_get { list = list, index = index }),
+    export at : forall a . Num -> List a -> Option a = fn index =>
+        fn list => (list_at { list = list, index = index }),
 
     #############################################
     ### Primitive Recursive Functions using list_rec
@@ -49,6 +49,16 @@
             step = fn pair =>
                 if (predicate pair.head)
                 then (prepend pair.head pair.acc)
+                else pair.acc
+        }),
+
+    export find : forall a . (a -> Bool) -> List a -> Option a = fn predicate => fn list =>
+        (list_rec {
+            list = list,
+            base = None,
+            step : { acc : Option a, head : a } -> Option a = fn pair =>
+                if (predicate pair.head)
+                then (Some pair.head)
                 else pair.acc
         }),
 

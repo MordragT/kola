@@ -228,6 +228,7 @@ where
     // Combined word and symbol handling
     let ident = text::ident()
         .map(|s| match s {
+            "None" => Token::Atom("None"),
             // Type and module keywords
             "module" => Token::Atom("module"),
             "import" => Token::Atom("import"),

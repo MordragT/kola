@@ -361,7 +361,7 @@ fn eval_builtin(
 
             Value::Bool(list.contains(value))
         }
-        (BuiltinId::ListGet, Value::Record(record)) => {
+        (BuiltinId::ListAt, Value::Record(record)) => {
             let Some(Value::List(list)) = record.get(env.interner["list"]) else {
                 return MachineState::Error(
                     "list_get requires 'list' field with a list".to_owned(),

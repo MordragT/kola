@@ -1,7 +1,7 @@
 use chumsky::prelude::*;
 
 use kola_span::Loc;
-use kola_tree::prelude::*;
+use kola_tree::{node::ValueName, prelude::*};
 
 use super::{KolaParser, State, primitives::*};
 use crate::{
@@ -375,12 +375,26 @@ pub fn pat_parser<'t>() -> impl KolaParser<'t, Id<node::Pat>> + Clone {
         );
 
         // Variant case pattern
+        let none_case = kw(KwT::NONE)
+            .map_with(|_, e| {
+                let span = e.span();
+                let tree: &mut State = e.state();
+
+                let name = ValueName::new(tree.interner.intern("None"));
+                let tag = tree.insert(name, span);
+
+                node::VariantTagPat { tag, pat: None }
+            })
+            .to_node();
+
         let case = upper_value_name_parser()
             .then(ctrl(CtrlT::COLON).ignore_then(pat.clone()).or_not())
-            .map_to_node(|(case, pat)| node::VariantTagPat { tag: case, pat });
+            .map_to_node(|(tag, pat)| node::VariantTagPat { tag, pat });
 
         let variant = nested_parser(
-            case.separated_by(ctrl(CtrlT::COMMA))
+            none_case
+                .or(case)
+                .separated_by(ctrl(CtrlT::COMMA))
                 .allow_trailing()
                 .collect()
                 .map_to_node(node::VariantPat)
@@ -396,6 +410,24 @@ pub fn pat_parser<'t>() -> impl KolaParser<'t, Id<node::Pat>> + Clone {
 
 pub fn expr_parser<'t>() -> impl KolaParser<'t, Id<node::Expr>> + Clone {
     recursive(|expr| {
+        let none = kw(KwT::NONE)
+            .map_with(|_, e| {
+                let span = e.span();
+                let tree: &mut State = e.state();
+
+                let name = ValueName::new(tree.interner.intern("None"));
+                let name_id = tree.insert(name, span);
+                let tag = tree.insert_as::<node::Expr, _>(node::TagExpr(name_id), span);
+                let arg = tree.insert_as::<node::Expr, _>(node::LiteralExpr::Unit, span);
+
+                node::CallExpr { func: tag, arg }
+            })
+            .to_node()
+            .to_expr()
+            .labelled("NoneExpr")
+            .as_context()
+            .boxed();
+
         let tag = upper_value_name_parser()
             .map_to_node(node::TagExpr)
             .to_expr()
@@ -767,6 +799,7 @@ pub fn expr_parser<'t>() -> impl KolaParser<'t, Id<node::Expr>> + Clone {
             func,
             paren_expr,
             qualified,
+            none,
             tag,
             symbol_expr,
         ))
@@ -981,12 +1014,29 @@ pub fn type_parser<'t>() -> impl KolaParser<'t, Id<node::Type>> + Clone {
             |_span| node::TypeError,
         );
 
+        let none_tag = kw(KwT::NONE)
+            .map_with(|_, e| {
+                let span = e.span();
+                let tree: &mut State = e.state();
+
+                let name = ValueName::new(tree.interner.intern("None"));
+                let tag = tree.insert(name, span);
+
+                node::TagType {
+                    name: tag,
+                    ty: None,
+                }
+            })
+            .to_node();
+
         let tag = upper_value_name_parser()
             .then(ctrl(CtrlT::COLON).ignore_then(ty.clone()).or_not())
             .map_to_node(|(name, ty)| node::TagType { name, ty });
 
         let variant = nested_parser(
-            tag.separated_by(ctrl(CtrlT::COMMA))
+            none_tag
+                .or(tag)
+                .separated_by(ctrl(CtrlT::COMMA))
                 .at_least(1)
                 .allow_trailing()
                 .collect()

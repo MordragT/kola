@@ -687,12 +687,18 @@ where
             self.report.add_diagnostic(e.into());
         }
 
+        // Intuitively I would guess that this is always 0
+        // and I could just create a fresh type scope for every type and value bind.
+        let depth = self.stack.type_scope().depth();
+
         if let Some(ty_scheme) = ty_scheme {
             // If there is a type annotation, we need to visit it
             self.visit_type_scheme(ty_scheme, tree)?;
         }
 
         self.visit_expr(value, tree)?;
+
+        self.stack.type_scope_mut().restore_depth(depth);
 
         self.current_value_bind_sym = None;
 
@@ -972,7 +978,13 @@ where
             self.report.add_diagnostic(e.into());
         }
 
+        // Intuitively I would guess that this is always 0
+        // and I could just create a fresh type scope for every type and value bind.
+        let depth = self.stack.type_scope().depth();
+
         self.visit_type_scheme(ty_scheme, tree)?; // walk to discover module paths in type expressions
+
+        self.stack.type_scope_mut().restore_depth(depth);
 
         self.current_type_bind_sym = None;
 
@@ -998,10 +1010,10 @@ where
         self.visit_type(*ty, tree)?;
 
         // Exit type parameter scope (in reverse order)
-        for var in vars.iter().rev() {
-            let name = var.get(tree).0.into();
-            self.stack.type_scope_mut().exit(&name);
-        }
+        // for var in vars.iter().rev() {
+        //     let name = var.get(tree).0.into();
+        //     self.stack.type_scope_mut().exit(&name);
+        // }
 
         ControlFlow::Continue(())
     }

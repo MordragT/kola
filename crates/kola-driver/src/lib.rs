@@ -4,7 +4,7 @@ use camino::Utf8Path;
 use kola_lowerer::module::{Program, lower};
 use kola_print::{PrintOptions, prelude::*};
 use kola_resolver::prelude::*;
-use kola_span::Report;
+use kola_span::{Issue, Report};
 use kola_typer::check::{TypeCheckOutput, type_check};
 use kola_utils::{fmt::StrInternerExt, interner::StrInterner, io::FileSystem};
 use kola_vm::machine::CekMachine;
@@ -77,9 +77,17 @@ impl Driver {
             return self.report.eprint(&source_manager);
         }
 
-        // TODO entry_points logic
+        // TODO entry points should return locs for better error reporting
+        let &[entry_point] = entry_points.as_slice() else {
+            self.report.add_issue(
+                Issue::error("No entry point, or multiple entry points defined.", 0)
+                    .with_help("Ensure that exactly one entry point is defined."),
+            );
+            return self.report.eprint(&source_manager);
+        };
+
         let Program { ir, modules } = lower(
-            entry_points[0],
+            entry_point,
             &module_scopes,
             &module_order,
             &value_orders,

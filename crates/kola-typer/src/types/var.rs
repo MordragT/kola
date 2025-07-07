@@ -12,56 +12,26 @@ use crate::{
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
-pub struct TypeVar {
-    id: u32,
-    level: u32,
-}
+pub struct TypeVar(u32);
 
 impl fmt::Display for TypeVar {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "'t{}", self.id)
+        write!(f, "'t{}", self.0)
     }
 }
 /// Efficient generalization with levels
 /// https://okmij.org/ftp/ML/generalization.html#levels
-static LEVEL: AtomicU32 = AtomicU32::new(0);
+// static LEVEL: AtomicU32 = AtomicU32::new(0);
 static GENERATOR: AtomicU32 = AtomicU32::new(0);
 
 impl TypeVar {
     pub fn new() -> Self {
         let id = GENERATOR.fetch_add(1, Ordering::Relaxed);
-        let level = Self::load_level();
-        Self { id, level }
-    }
-
-    pub fn level(&self) -> u32 {
-        self.level
+        Self(id)
     }
 
     pub fn id(&self) -> u32 {
-        self.id
-    }
-
-    pub fn load_level() -> u32 {
-        LEVEL.load(Ordering::Relaxed)
-    }
-
-    pub fn enter() {
-        LEVEL.fetch_add(1, Ordering::Relaxed);
-    }
-
-    pub fn exit() {
-        LEVEL.fetch_sub(1, Ordering::Relaxed);
-    }
-
-    pub fn branch<F, T>(mut f: F) -> T
-    where
-        F: FnMut() -> T,
-    {
-        LEVEL.fetch_add(1, Ordering::Relaxed);
-        let result = f();
-        LEVEL.fetch_sub(1, Ordering::Relaxed);
-        result
+        self.0
     }
 
     pub fn try_apply(&self, s: &mut Substitution) -> Option<MonoType> {

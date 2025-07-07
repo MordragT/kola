@@ -236,8 +236,13 @@ where
     ) -> ControlFlow<Self::BreakValue> {
         let node::TypeBind { ty_scheme, .. } = *id.get(tree);
 
+        let depth = self.local_env.depth();
+
         self.visit_type_scheme(ty_scheme, tree)?;
         let poly_t = self.types.meta(ty_scheme).clone();
+
+        // Restore depth so that type variables are not left in scope
+        self.local_env.restore_depth(depth);
 
         self.insert_type(id, poly_t);
         ControlFlow::Continue(())
@@ -256,6 +261,7 @@ where
     /// - Creates fresh type variables for each declared variable
     /// - Enters type variables into scope
     /// - Visits the type expression in the extended scope
+    /// // TODO the following is wrong because for example in value binds type annotation may want to reference type vars as well
     /// - Exits type variables from scope in reverse order
     /// - Constructs polymorphic type with collected variables
     ///
@@ -284,10 +290,11 @@ where
             Err(e) => return ControlFlow::Break(e.into_diagnostic(self.span(id))),
         };
 
-        for var_node in vars.iter().rev() {
-            let var_name = var_node.get(tree).0;
-            self.local_env.exit(&var_name);
-        }
+        // Do not exit type variables here, as they might be referenced in inner type annotations of value bind expr.
+        // for var_node in vars.iter().rev() {
+        //     let var_name = var_node.get(tree).0;
+        //     self.local_env.exit(&var_name);
+        // }
 
         let poly_t = PolyType {
             vars: type_vars,
@@ -730,18 +737,23 @@ where
 
         let span = self.span(id);
 
-        TypeVar::enter();
-        self.visit_expr(value, tree)?;
-        TypeVar::exit();
+        let depth = self.local_env.depth();
 
+        // First visit type_scheme if present to bring type variables into scope
+        if let Some(ty_scheme) = ty_scheme {
+            self.visit_type_scheme(ty_scheme, tree)?;
+        }
+
+        self.visit_expr(value, tree)?;
         let value_t = self.types.meta(value).clone();
 
-        if let Some(annotation_ty) = ty_scheme {
-            self.visit_type_scheme(annotation_ty, tree)?;
-            let expected_t = self.types.meta(annotation_ty).instantiate();
-
+        if let Some(ty_scheme) = ty_scheme {
+            let expected_t = self.types.meta(ty_scheme).instantiate();
             self.cons.constrain_check(expected_t, value_t.clone(), span);
         }
+
+        // Restore depth so that type variables from ty_scheme are not left in scope
+        self.local_env.restore_depth(depth);
 
         self.insert_type(id, PolyType::new(value_t)); // Use fake PolyType to aid printer
 
@@ -1526,9 +1538,7 @@ where
 
         let name = name.get(tree).0.clone();
 
-        TypeVar::enter();
         self.visit_expr(value, tree)?;
-        TypeVar::exit();
 
         let value_t = self.types.meta(value).clone();
 

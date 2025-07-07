@@ -1,0 +1,26 @@
+{
+    type Option = forall a . super::option::Option a,
+
+    #############################################
+    ### High-frequency, low-level operations - direct builtins
+    #############################################
+
+    export length : Str -> Num = str_length,
+    export is_empty : Str -> Bool = str_is_empty,
+    export reverse : Str -> Str = str_reverse,
+    export first : Str -> Option Char = str_first,
+    export last : Str -> Option Char = str_last,
+
+
+    #############################################
+    ### High-frequency, low-level operations - wrapped builtins
+    #############################################
+
+    #export prepend : Char -> Str -> Str,
+
+    #export append : Str -> Char -> Str,
+
+    #export contains : Char -> Str -> Bool,
+
+    #export at : Num -> Str -> Option Char,
+}
