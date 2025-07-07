@@ -486,7 +486,6 @@ where
             node::BinaryOp::GreaterEq => ir::BinaryOp::GreaterEq,
             node::BinaryOp::And => ir::BinaryOp::And,
             node::BinaryOp::Or => ir::BinaryOp::Or,
-            node::BinaryOp::Xor => ir::BinaryOp::Xor,
             node::BinaryOp::Merge => ir::BinaryOp::Merge,
         };
 

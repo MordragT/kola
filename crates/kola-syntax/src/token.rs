@@ -215,9 +215,8 @@ define_token_type!(Op {
     GreaterEq => ">=",
     // Logical
     Not => "!",
-    And => "and",
-    Or => "or",
-    Xor => "xor",
+    And => "&&",
+    Or => "||",
     // Equality
     Eq => "==",
     NotEq => "!=",

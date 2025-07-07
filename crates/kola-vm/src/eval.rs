@@ -907,7 +907,6 @@ pub fn eval_binary_op(op: BinaryOp, left: Value, right: Value) -> Result<Value, 
         (BinaryOp::GreaterEq, Value::Num(l), Value::Num(r)) => Ok(Value::Bool(l >= r)),
         (BinaryOp::And, Value::Bool(l), Value::Bool(r)) => Ok(Value::Bool(l && r)),
         (BinaryOp::Or, Value::Bool(l), Value::Bool(r)) => Ok(Value::Bool(l || r)),
-        (BinaryOp::Xor, Value::Bool(l), Value::Bool(r)) => Ok(Value::Bool(l ^ r)),
         (BinaryOp::Eq, l, r) => Ok(Value::Bool(l == r)), // TODO: might need special handling
         (BinaryOp::NotEq, l, r) => Ok(Value::Bool(l != r)), // TODO: might need special handling
         (BinaryOp::Merge, l, r) => todo!(),              // TODO: Merge records

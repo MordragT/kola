@@ -1,0 +1,6 @@
+{
+    #io_debug: forall 1 . 1 -> 1,
+    #io_read_file: forall 0 . Str -> [ "Ok": Str, "Err": Str ],
+    #io_write_file: forall 0 . { "path": Str, "content": Str } -> [ "Ok": Unit, "Err": Str ],
+
+}

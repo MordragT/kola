@@ -23,18 +23,36 @@
           inherit system;
           overlays = [fenix.overlays.default];
         };
-        toolchain = pkgs.fenix.complete;
+        toolchain = with pkgs.fenix;
+          combine [
+            latest.toolchain
+            targets.wasm32-unknown-unknown.latest.rust-std
+            targets.wasm32-wasip1.latest.rust-std
+            targets.wasm32-wasip2.latest.rust-std
+          ];
+
+        platform = pkgs.makeRustPlatform {
+          # Use nightly rustc and cargo provided by fenix for building
+          inherit (toolchain) cargo rustc;
+        };
       in rec
       {
         # Executed by `nix build`
-        packages.default = toolchain.buildRustPackage {
-          pname = "template";
+        packages.default = self.packages."${system}".kola;
+
+        packages.kola = platform.buildRustPackage {
+          pname = "kola";
           version = "0.1.0";
           src = ./.;
           cargoLock.lockFile = ./Cargo.lock;
+        };
 
-          # For other makeRustPlatform features see:
-          # https://github.com/NixOS/nixpkgs/blob/master/doc/languages-frameworks/rust.section.md#cargo-features-cargo-features
+        packages.kola-ls = platform.buildRustPackage {
+          pname = "kola-ls";
+          version = "0.1.0";
+          src = ./.;
+          cargoLock.lockFile = ./Cargo.lock;
+          cargoBuildFlags = ["-p" "kola-ls"];
         };
 
         # Executed by `nix run`
@@ -43,20 +61,17 @@
         # Used by `nix develop`
         devShells.default = pkgs.mkShell {
           buildInputs = with pkgs; [
-            (with toolchain; [
-              cargo
-              rustc
-              rust-src
-            ])
+            toolchain
             clippy
             rustfmt
             pkg-config
             lldb
             cargo-expand
+            wasm-tools
           ];
 
           # Specify the rust-src path (many editors rely on this)
-          RUST_SRC_PATH = "${toolchain.rust-src}/lib/rustlib/src/rust/library";
+          RUST_SRC_PATH = "${pkgs.fenix.complete.rust-src}/lib/rustlib/src/rust/library";
         };
       }
     );

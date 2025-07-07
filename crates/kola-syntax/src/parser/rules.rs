@@ -873,7 +873,6 @@ pub fn expr_parser<'t>() -> impl KolaParser<'t, Id<node::Expr>> + Clone {
         let logical_op = choice((
             op(OpT::AND).to(node::BinaryOp::And),
             op(OpT::OR).to(node::BinaryOp::Or),
-            op(OpT::XOR).to(node::BinaryOp::Xor),
         ))
         .to_node();
         let logical = comparison

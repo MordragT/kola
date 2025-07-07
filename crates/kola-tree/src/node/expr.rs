@@ -553,7 +553,6 @@ pub enum BinaryOp {
     // Logical
     And,
     Or,
-    Xor,
     // Equality
     Eq,
     NotEq,

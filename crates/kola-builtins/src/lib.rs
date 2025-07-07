@@ -191,6 +191,11 @@ macro_rules! define_builtins {
 }
 
 define_builtins! {
+    // Builtin Io functions
+    io_debug: forall 1 . 1 -> 1,
+    io_read_file: forall 0 . Str -> [ "Ok": Str, "Err": Str ],
+    io_write_file: forall 0 . { "path": Str, "content": Str } -> [ "Ok": Unit, "Err": Str ],
+
     // Builtin List functions
     list_length: forall 1 . (List 0) -> Num,
     list_is_empty: forall 1 . (List 0) -> Bool,

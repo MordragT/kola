@@ -1,4 +1,8 @@
 {
+    export module bool = import bool,
+    export module cmp = import cmp,
+    export module func = import func,
+    export module io = import io,
     export module list = import list,
     export module num = import num,
     export module option = import option,
@@ -44,8 +48,6 @@
     #main = (str::any (fn x => x == 'Q') my_str),
 
     my_record = record::empty,
-
-    main = 10,
 
     main = 10,
 }

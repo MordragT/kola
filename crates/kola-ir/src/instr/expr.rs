@@ -32,7 +32,6 @@ pub enum BinaryOp {
     // Logical
     And,
     Or,
-    Xor,
     // Equality
     Eq,
     NotEq,
@@ -52,9 +51,8 @@ impl fmt::Display for BinaryOp {
             Self::Greater => ">",
             Self::LessEq => "<=",
             Self::GreaterEq => ">=",
-            Self::And => "and",
-            Self::Or => "or",
-            Self::Xor => "xor",
+            Self::And => "&&",
+            Self::Or => "||",
             Self::Eq => "==",
             Self::NotEq => "!=",
             Self::Merge => "&",

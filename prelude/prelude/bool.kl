@@ -1,0 +1,18 @@
+{
+    export not : Bool -> Bool = fn b => if b then false else true,
+
+    export and : Bool -> Bool -> Bool = fn a => fn b => a && b,
+
+    export or : Bool -> Bool -> Bool = fn a => fn b => a || b,
+
+    # TODO why is this not working ?
+    #export xor : Bool -> Bool -> Bool = fn a => fn b => (a && !b) || (!a && b),
+
+    export eq : Bool -> Bool -> Bool = fn a => fn b => a == b,
+
+    export ne : Bool -> Bool -> Bool = fn a => fn b => a != b,
+
+    export to_num : Bool -> Num = fn b => if b then 1 else 0,
+
+    export to_str : Bool -> Str = fn b => if b then "true" else "false",
+}

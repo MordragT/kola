@@ -1453,9 +1453,7 @@ where
                 (comparable_t, MonoType::BOOL)
             }
             // Logical
-            node::BinaryOp::And | node::BinaryOp::Or | node::BinaryOp::Xor => {
-                (MonoType::BOOL, MonoType::BOOL)
-            }
+            node::BinaryOp::And | node::BinaryOp::Or => (MonoType::BOOL, MonoType::BOOL),
             // Equality
             node::BinaryOp::Eq | node::BinaryOp::NotEq => {
                 let equatable_t = MonoType::variable();

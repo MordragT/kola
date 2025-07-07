@@ -1,0 +1,11 @@
+id = "kola-zed-ext"
+name = "Kola Extension"
+version = "0.0.1"
+schema_version = 1
+authors = ["Thomas Wehmöller <contact.mordrag+zed@gmail.com>"]
+description = "Provides Kola support for Zed."
+repository = "https://github.com/MordragT/kola"
+
+[language_servers.kola-ls]
+name = "kola-ls"
+languages = ["Kola"]

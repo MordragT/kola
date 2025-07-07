@@ -222,6 +222,8 @@ where
         just("::").to(Token::Atom("::")),
         just("|>").to(Token::Atom("|>")),
         just("<|").to(Token::Atom("<|")),
+        just("&&").to(Token::Atom("&&")),
+        just("||").to(Token::Atom("||")),
     ))
     .boxed();
 
@@ -247,10 +249,6 @@ where
             "else" => Token::Atom("else"),
             "case" => Token::Atom("case"),
             "handle" => Token::Atom("handle"),
-            // Logical operators
-            "and" => Token::Atom("and"),
-            "or" => Token::Atom("or"),
-            "xor" => Token::Atom("xor"),
             // If not a keyword, treat as a symbol
             _ => Token::Symbol(s),
         })
