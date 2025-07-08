@@ -1,53 +1,28 @@
-use std::{ops::Index, path::PathBuf, rc::Rc};
+use std::ops::Index;
 
 use kola_collections::ImHashMap;
 use kola_ir::instr::Symbol;
-use kola_utils::interner::{StrInterner, StrKey};
 
 use crate::value::Value;
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct Env {
-    pub bindings: ImHashMap<Symbol, Value>,
-    pub interner: Rc<StrInterner>,
-    pub working_dir: PathBuf,
-}
+#[derive(Debug, Clone, PartialEq, Default)]
+pub struct Env(ImHashMap<Symbol, Value>);
 
 impl Env {
-    pub fn new(interner: impl Into<Rc<StrInterner>>, working_dir: impl Into<PathBuf>) -> Self {
-        Self {
-            bindings: ImHashMap::new(),
-            interner: interner.into(),
-            working_dir: working_dir.into(),
-        }
-    }
-
-    pub fn from_env(env: &Self) -> Self {
-        Self {
-            bindings: ImHashMap::new(),
-            interner: env.interner.clone(),
-            working_dir: env.working_dir.clone(),
-        }
+    pub fn new() -> Self {
+        Self::default()
     }
 
     pub fn insert(&mut self, name: Symbol, value: impl Into<Value>) {
-        self.bindings.insert(name, value.into());
+        self.0.insert(name, value.into());
     }
 
     pub fn remove(&mut self, name: &Symbol) -> Option<Value> {
-        self.bindings.remove(name)
+        self.0.remove(name)
     }
 
     pub fn get(&self, name: &Symbol) -> Option<&Value> {
-        self.bindings.get(name)
-    }
-
-    pub fn get_str(&self, key: StrKey) -> Option<&str> {
-        self.interner.get(key)
-    }
-
-    pub fn interner(&self) -> Rc<StrInterner> {
-        self.interner.clone()
+        self.0.get(name)
     }
 }
 
@@ -55,18 +30,6 @@ impl Index<Symbol> for Env {
     type Output = Value;
 
     fn index(&self, index: Symbol) -> &Self::Output {
-        self.bindings
-            .get(&index)
-            .expect("Symbol not found in environment")
-    }
-}
-
-impl Index<StrKey> for Env {
-    type Output = str;
-
-    fn index(&self, index: StrKey) -> &Self::Output {
-        self.interner
-            .get(index)
-            .expect("String key not found in interner")
+        self.0.get(&index).expect("Symbol not found in environment")
     }
 }

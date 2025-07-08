@@ -11,3 +11,4 @@ kola-collections.workspace = true
 derive_more.workspace = true
 enum-as-inner.workspace = true
 serde.workspace = true
+camino.workspace = true

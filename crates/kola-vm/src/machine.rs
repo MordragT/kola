@@ -1,4 +1,4 @@
-use std::{path::PathBuf, rc::Rc};
+use camino::Utf8PathBuf;
 
 use crate::{
     config::{MachineState, OperationConfig, PatternConfig, PrimitiveRecConfig, StandardConfig},
@@ -20,18 +20,16 @@ pub struct CekMachine {
     pub ir: Ir,
     /// The current state of the machine
     pub state: MachineState,
+    /// The working directory for the machine
+    pub working_dir: Utf8PathBuf,
+    /// The interner used for symbol resolution
+    pub interner: StrInterner,
 }
 
 impl CekMachine {
     /// Create a new CEK machine to evaluate an expression
-    pub fn new(
-        ir: Ir,
-        interner: impl Into<Rc<StrInterner>>,
-        working_dir: impl Into<PathBuf>,
-    ) -> Self {
-        let interner = interner.into();
-
-        let env = Env::new(interner.clone(), working_dir);
+    pub fn new(ir: Ir, interner: StrInterner, working_dir: impl Into<Utf8PathBuf>) -> Self {
+        let env = Env::new();
         let cont = Cont::identity(env.clone());
 
         // Initial configuration (M-INIT in the paper)
@@ -45,6 +43,8 @@ impl CekMachine {
         Self {
             ir,
             state: MachineState::Standard(config),
+            working_dir: working_dir.into(),
+            interner,
         }
     }
 
@@ -55,10 +55,18 @@ impl CekMachine {
         let state = std::mem::replace(&mut self.state, MachineState::InProgress);
 
         self.state = match state {
-            MachineState::Standard(config) => Self::step_standard(config, &self.ir),
-            MachineState::Operation(config) => Self::step_operation(config, &self.ir),
-            MachineState::PrimitiveRec(config) => Self::step_primitive_rec(config, &self.ir),
-            MachineState::Pattern(config) => Self::step_pattern(config, &self.ir),
+            MachineState::Standard(config) => {
+                Self::step_standard(config, &self.ir, &mut self.interner)
+            }
+            MachineState::Operation(config) => {
+                Self::step_operation(config, &self.ir, &mut self.interner)
+            }
+            MachineState::PrimitiveRec(config) => {
+                Self::step_primitive_rec(config, &self.ir, &mut self.interner)
+            }
+            MachineState::Pattern(config) => {
+                Self::step_pattern(config, &self.ir, &mut self.interner)
+            }
             MachineState::Value(_) | MachineState::Error(_) => {
                 // If the machine is in a terminal state, we don't need to do anything
                 state
@@ -84,17 +92,21 @@ impl CekMachine {
     }
 
     /// Execute a standard configuration step
-    fn step_standard(config: StandardConfig, ir: &Ir) -> MachineState {
+    fn step_standard(config: StandardConfig, ir: &Ir, interner: &mut StrInterner) -> MachineState {
         let StandardConfig { control, env, cont } = config;
-        control.eval(env, cont, ir)
+        control.eval(env, cont, ir, interner)
     }
 
     /// Execute a pattern matching configuration step
-    fn step_pattern(config: PatternConfig, ir: &Ir) -> MachineState {
-        config.eval(config.env.clone(), config.cont.clone(), ir)
+    fn step_pattern(config: PatternConfig, ir: &Ir, interner: &mut StrInterner) -> MachineState {
+        config.eval(config.env.clone(), config.cont.clone(), ir, interner)
     }
 
-    fn step_primitive_rec(config: PrimitiveRecConfig, ir: &Ir) -> MachineState {
+    fn step_primitive_rec(
+        config: PrimitiveRecConfig,
+        ir: &Ir,
+        interner: &mut StrInterner,
+    ) -> MachineState {
         let PrimitiveRecConfig {
             data,
             base,
@@ -103,10 +115,10 @@ impl CekMachine {
         } = config;
 
         match data {
-            Value::List(list) => Self::step_list_rec(list, base, step, cont, ir),
-            Value::Num(n) => Self::step_num_rec(n, base, step, cont, ir),
-            Value::Record(record) => Self::step_record_rec(record, base, step, cont, ir),
-            Value::Str(string) => Self::step_str_rec(string, base, step, cont, ir),
+            Value::List(list) => Self::step_list_rec(list, base, step, cont, ir, interner),
+            Value::Num(n) => Self::step_num_rec(n, base, step, cont, ir, interner),
+            Value::Record(record) => Self::step_record_rec(record, base, step, cont, ir, interner),
+            Value::Str(string) => Self::step_str_rec(string, base, step, cont, ir, interner),
             _ => MachineState::Error(format!("Cannot recurse over {:?}", data)),
         }
     }
@@ -119,6 +131,7 @@ impl CekMachine {
         step: Closure,
         mut cont: Cont,
         ir: &Ir,
+        interner: &mut StrInterner,
     ) -> MachineState {
         let Some((head, tail)) = list.split_first() else {
             // Base case: return the base value
@@ -141,8 +154,8 @@ impl CekMachine {
 
             // Create argument for the step function
             let mut record = Record::new();
-            record.insert(env.interner["acc"], base);
-            record.insert(env.interner["head"], head);
+            record.insert(interner.intern("acc"), base);
+            record.insert(interner.intern("head"), head);
 
             env.insert(param, Value::Record(record));
 
@@ -179,7 +192,14 @@ impl CekMachine {
 
     // num_rec(0, base, step) = base
     // num_rec(n + 1, base, step) = step(n, num_rec(n, base, step))
-    fn step_num_rec(num: f64, base: Value, step: Closure, mut cont: Cont, ir: &Ir) -> MachineState {
+    fn step_num_rec(
+        num: f64,
+        base: Value,
+        step: Closure,
+        mut cont: Cont,
+        ir: &Ir,
+        interner: &mut StrInterner,
+    ) -> MachineState {
         debug_assert!(
             to_usize_exact(num).is_some(),
             "num_rec expects a non-negative integer"
@@ -208,8 +228,8 @@ impl CekMachine {
 
             // Create argument for the step function
             let mut record = Record::new();
-            record.insert(env.interner["acc"], base);
-            record.insert(env.interner["head"], head);
+            record.insert(interner.intern("acc"), base);
+            record.insert(interner.intern("head"), head);
 
             env.insert(param, Value::Record(record));
 
@@ -252,6 +272,7 @@ impl CekMachine {
         step: Closure,
         mut cont: Cont,
         ir: &Ir,
+        interner: &mut StrInterner,
     ) -> MachineState {
         let Some((label, value)) = record.pop_first() else {
             // Base case: return the base value
@@ -274,8 +295,8 @@ impl CekMachine {
 
             // Create argument for the step function
             let mut record = Record::new();
-            record.insert(env.interner["acc"], base);
-            record.insert(env.interner["head"], head);
+            record.insert(interner.intern("acc"), base);
+            record.insert(interner.intern("head"), head);
 
             env.insert(param, Value::Record(record));
 
@@ -295,8 +316,8 @@ impl CekMachine {
         let Closure { env, func } = step.clone();
 
         let mut head = Record::new();
-        head.insert(env.interner["key"], Value::Str(env.interner[label].clone()));
-        head.insert(env.interner["value"], value);
+        head.insert(interner.intern("key"), Value::Str(interner[label].clone()));
+        head.insert(interner.intern("value"), value);
 
         let handler = Handler::primitive_rec(Value::Record(head), func);
         let handler_closure = HandlerClosure::new(handler, env);
@@ -322,6 +343,7 @@ impl CekMachine {
         step: Closure,
         mut cont: Cont,
         ir: &Ir,
+        interner: &mut StrInterner,
     ) -> MachineState {
         if string.is_empty() {
             // Base case: return the base value
@@ -344,8 +366,8 @@ impl CekMachine {
 
             // Create argument for the step function
             let mut record = Record::new();
-            record.insert(env.interner["acc"], base);
-            record.insert(env.interner["head"], head);
+            record.insert(interner.intern("acc"), base);
+            record.insert(interner.intern("head"), head);
 
             env.insert(param, Value::Record(record));
 
@@ -383,7 +405,11 @@ impl CekMachine {
     }
 
     /// Execute an operation configuration step
-    fn step_operation(config: OperationConfig, ir: &Ir) -> MachineState {
+    fn step_operation(
+        config: OperationConfig,
+        ir: &Ir,
+        interner: &mut StrInterner,
+    ) -> MachineState {
         let OperationConfig {
             op,
             arg,
@@ -401,7 +427,7 @@ impl CekMachine {
             // No handler found
             return MachineState::Error(format!(
                 "Unhandled effect operation: {} ({})",
-                env.interner[op], op,
+                interner[op], op,
             ));
         };
 
@@ -412,7 +438,7 @@ impl CekMachine {
             // ⟨(do ℓ V)^E | γ | (σ, (γ', H)) :: κ | κ'⟩^op → ⟨M | γ'[x ↦ ⟦V⟧_γ, k ↦ (κ' ++ [(σ, (γ', H))])^B] | κ⟩
 
             // Evaluate the operation argument
-            let arg_value = match eval_atom(ir.instr(arg), &env) {
+            let arg_value = match eval_atom(ir.instr(arg), &env, interner) {
                 Ok(value) => value,
                 Err(err) => return MachineState::Error(err),
             };

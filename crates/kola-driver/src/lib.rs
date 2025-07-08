@@ -268,12 +268,11 @@ impl Driver {
             return Ok(());
         };
 
-        let interner = Rc::new(self.interner);
-        let mut machine = CekMachine::new(ir, interner.clone(), path.parent().unwrap()); // TODO handle unwrap
+        let mut machine = CekMachine::new(ir, self.interner, path.parent().unwrap()); // TODO handle unwrap
 
         match machine.run() {
             Ok(value) => {
-                println!("\nExecution result: {}", interner.with(&value))
+                println!("\nExecution result: {}", machine.interner.with(&value))
             }
             Err(e) => eprintln!("\nRuntime error: {}", e),
         }

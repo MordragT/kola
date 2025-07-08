@@ -217,12 +217,12 @@ impl Cont {
         self.frames.pop()
     }
 
-    pub fn pop_or_identity(&mut self, handler_env_f: impl FnOnce() -> Env) -> ContFrame {
+    pub fn pop_or_identity(&mut self) -> ContFrame {
         if let Some(cont_frame) = self.frames.pop() {
             cont_frame
         } else {
             // If the stack is empty, return the identity frame
-            ContFrame::identity(handler_env_f())
+            ContFrame::identity(Env::new())
         }
     }
 
