@@ -1,4 +1,4 @@
-use std::{collections::VecDeque, ops::ControlFlow};
+use std::ops::ControlFlow;
 
 use kola_ir::prelude::{Id as InstrId, instr as ir, *};
 use kola_resolver::{phase::ResolvePhase, symbol::Sym};
@@ -244,7 +244,7 @@ where
     fn visit_symbol_expr(
         &mut self,
         id: TreeId<node::SymbolExpr>,
-        tree: &T,
+        _tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
         let id = self.symbols.symbol_expr_id(id);
         let atom = self.builder.add(ir::Atom::Num(id as f64));
@@ -404,21 +404,26 @@ where
         id: TreeId<node::IfExpr>,
         tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
-        let node::IfExpr { pred, then, else_ } = *id.get(tree);
+        let node::IfExpr {
+            pred,
+            then,
+            or_else,
+        } = *id.get(tree);
 
         // Create fresh symbol and corresponding atom
         let pred_sym = self.next_symbol();
         let pred_atom = self.builder.add(ir::Atom::Symbol(pred_sym));
 
         let then_expr = self.with_fresh_context(tree, |this, tree| this.visit_expr(then, tree));
-        let or_expr = self.with_fresh_context(tree, |this, tree| this.visit_expr(else_, tree));
+        let or_else_expr =
+            self.with_fresh_context(tree, |this, tree| this.visit_expr(or_else, tree));
 
         // Create the if expression context and set continuation
         let if_expr = self.builder.add(ir::Expr::If(ir::IfExpr {
             bind: self.hole,
             predicate: pred_atom,
             then: then_expr,
-            or: or_expr,
+            or: or_else_expr,
             next: self.next,
         }));
         self.next = if_expr;
@@ -844,7 +849,7 @@ where
     fn visit_bind_pat(
         &mut self,
         id: TreeId<node::BindPat>,
-        tree: &Tree,
+        _tree: &Tree,
     ) -> ControlFlow<Self::BreakValue> {
         let bind = self.symbol_of(id);
 

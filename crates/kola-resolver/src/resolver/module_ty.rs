@@ -1,6 +1,5 @@
 use kola_span::{Diagnostic, Report};
 use kola_tree::meta::MetaMapExt;
-use kola_utils::interner::StrInterner;
 use log::debug;
 
 use crate::{
@@ -17,12 +16,11 @@ pub struct ModuleTypeResolution {
 pub fn resolve_module_types(
     scopes: &mut ModuleScopes,
     report: &mut Report,
-    interner: &StrInterner,
 ) -> ModuleTypeResolution {
     let mut module_type_orders = ModuleTypeOrders::new();
 
     for (sym, scope) in scopes {
-        resolve_module_types_in_module(scope, report, interner);
+        resolve_module_types_in_module(scope, report);
 
         match scope.module_type_graph.topological_sort() {
             Ok(order) => {
@@ -45,11 +43,7 @@ pub fn resolve_module_types(
     ModuleTypeResolution { module_type_orders }
 }
 
-fn resolve_module_types_in_module(
-    scope: &mut ModuleScope,
-    report: &mut Report,
-    interner: &StrInterner,
-) {
+fn resolve_module_types_in_module(scope: &mut ModuleScope, report: &mut Report) {
     // Resolve module type bind references
     for &ModuleTypeBindConst {
         name,

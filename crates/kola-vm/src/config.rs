@@ -6,7 +6,7 @@ use crate::{
 use derive_more::From;
 use kola_ir::{
     id::Id,
-    instr::{Atom, Expr, Func, Instr, PatternMatcher, Symbol},
+    instr::{Atom, Expr, PatternMatcher},
 };
 use kola_utils::interner::StrKey;
 

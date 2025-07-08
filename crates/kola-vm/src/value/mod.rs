@@ -6,7 +6,7 @@ use kola_utils::{
     interner::StrInterner,
     interner_ext::{DisplayWithInterner, SerializeWithInterner},
 };
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 use std::fmt;
 
 use crate::cont::Cont;

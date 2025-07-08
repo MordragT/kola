@@ -717,11 +717,15 @@ pub trait Visitor<T: TreeView> {
     }
 
     fn walk_if_expr(&mut self, id: Id<node::IfExpr>, tree: &T) -> ControlFlow<Self::BreakValue> {
-        let node::IfExpr { pred, then, else_ } = *id.get(tree);
+        let node::IfExpr {
+            pred,
+            then,
+            or_else,
+        } = *id.get(tree);
 
         self.visit_expr(pred, tree)?;
         self.visit_expr(then, tree)?;
-        self.visit_expr(else_, tree)?;
+        self.visit_expr(or_else, tree)?;
 
         ControlFlow::Continue(())
     }

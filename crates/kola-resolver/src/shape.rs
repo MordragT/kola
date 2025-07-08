@@ -1,4 +1,4 @@
-use std::{borrow::Cow, ops::Index};
+use std::ops::Index;
 
 use crate::symbol::{
     AnySym, EffectSym, FunctorSym, ModuleSym, ModuleTypeSym, Substitute, TypeSym, ValueSym,

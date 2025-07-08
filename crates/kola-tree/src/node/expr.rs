@@ -692,21 +692,25 @@ impl LetExpr {
 pub struct IfExpr {
     pub pred: Id<Expr>,
     pub then: Id<Expr>,
-    pub else_: Id<Expr>,
+    pub or_else: Id<Expr>,
 }
 
 impl IfExpr {
     pub fn new_in(
         pred: impl Into<Expr>,
         then: impl Into<Expr>,
-        or: impl Into<Expr>,
+        or_else: impl Into<Expr>,
         builder: &mut TreeBuilder,
     ) -> Id<Self> {
         let pred = builder.insert(pred.into());
         let then = builder.insert(then.into());
-        let else_ = builder.insert(or.into());
+        let or_else = builder.insert(or_else.into());
 
-        builder.insert(Self { pred, then, else_ })
+        builder.insert(Self {
+            pred,
+            then,
+            or_else,
+        })
     }
 
     pub fn pred(self, tree: &impl TreeView) -> Expr {
@@ -717,8 +721,8 @@ impl IfExpr {
         *self.then.get(tree)
     }
 
-    pub fn else_(self, tree: &impl TreeView) -> Expr {
-        *self.else_.get(tree)
+    pub fn or_else(self, tree: &impl TreeView) -> Expr {
+        *self.or_else.get(tree)
     }
 }
 

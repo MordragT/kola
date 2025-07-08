@@ -9,6 +9,7 @@ use kola_utils::{
     interner::StrInterner,
     visit::{VisitMap, VisitState},
 };
+use log::debug;
 
 use crate::{
     constraints::{ModuleBindConst, ModuleConst},
@@ -171,7 +172,7 @@ pub fn resolve_module_bind(
 ) {
     match constraint {
         ModuleBindConst::Functor {
-            id,
+            id: _,
             bind,
             loc,
             functor,
@@ -271,7 +272,7 @@ pub fn resolve_module_bind(
             );
         }
         ModuleBindConst::Path {
-            id,
+            id: _,
             bind,
             loc,
             path,
@@ -378,6 +379,10 @@ pub fn resolve_module_ref(
         source,
         loc,
     } = module_ref;
+
+    if source_sym != *source {
+        debug!("I think a functor is present: {} != {}", source_sym, source);
+    }
 
     let mut path = path.as_slice();
     let mut scope = &scopes[&source_sym];

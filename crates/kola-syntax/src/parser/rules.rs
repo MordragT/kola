@@ -659,17 +659,20 @@ pub fn expr_parser<'t>() -> impl KolaParser<'t, Id<node::Expr>> + Clone {
         .as_context()
         .boxed();
 
-        let if_ = kw(KwT::IF)
-            .ignore_then(expr.clone())
-            .then_ignore(kw(KwT::THEN))
-            .then(expr.clone())
-            .then_ignore(kw(KwT::ELSE))
-            .then(expr.clone())
-            .map_to_node(|((pred, then), else_)| node::IfExpr { pred, then, else_ })
-            .to_expr()
-            .labelled("IfExpr")
-            .as_context()
-            .boxed();
+        let if_ = group((
+            kw(KwT::IF).ignore_then(expr.clone()),
+            kw(KwT::THEN).ignore_then(expr.clone()),
+            kw(KwT::ELSE).ignore_then(expr.clone()),
+        ))
+        .map_to_node(|(pred, then, or_else)| node::IfExpr {
+            pred,
+            then,
+            or_else,
+        })
+        .to_expr()
+        .labelled("IfExpr")
+        .as_context()
+        .boxed();
 
         let branch = pat_parser()
             .then_ignore(ctrl(CtrlT::DOUBLE_ARROW))
@@ -1651,7 +1654,7 @@ mod tests {
         if_expr.pred().to_qualified().source().has_name("y");
         if_expr.then().to_qualified().source().has_name("x");
         if_expr
-            .else_()
+            .or_else()
             .to_literal()
             .assert_eq(&node::LiteralExpr::Num(0.0));
     }

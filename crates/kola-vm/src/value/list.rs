@@ -6,7 +6,7 @@ use kola_utils::{
     interner::StrInterner,
     interner_ext::{DisplayWithInterner, InternerExt, SerializeWithInterner},
 };
-use serde::{Serialize, ser::SerializeSeq};
+use serde::ser::SerializeSeq;
 
 use super::Value;
 

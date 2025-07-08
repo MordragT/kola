@@ -115,7 +115,7 @@ use kola_resolver::{
 };
 use kola_tree::tree::Tree;
 use kola_utils::interner::StrInterner;
-use log::{debug, trace};
+use log::trace;
 
 use crate::{normalizer::Normalizer, symbol::SymbolEnv};
 

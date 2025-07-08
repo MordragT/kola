@@ -1710,14 +1710,18 @@ where
 
         let span = self.span(id);
 
-        let node::IfExpr { pred, then, else_ } = *id.get(tree);
+        let node::IfExpr {
+            pred,
+            then,
+            or_else,
+        } = *id.get(tree);
 
         let pred_t = self.types.meta(pred).clone();
 
         self.cons.constrain(MonoType::BOOL, pred_t, span);
 
         let then_t = self.types.meta(then).clone();
-        let else_t = self.types.meta(else_).clone();
+        let else_t = self.types.meta(or_else).clone();
 
         self.cons.constrain(then_t.clone(), else_t, span);
 

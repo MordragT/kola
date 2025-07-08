@@ -1913,14 +1913,7 @@ fn eval_list_split_at(extract: &ListSplitAt, mut env: Env, cont: Cont, _ir: &Ir)
 }
 
 /// Evaluates PatternSuccess - pattern matching succeeded, continue to the matched expression
-fn eval_pattern_success(
-    success: &PatternSuccess,
-    // source_value: Value,
-    // bind: Symbol,
-    mut env: Env,
-    cont: Cont,
-    ir: &Ir,
-) -> MachineState {
+fn eval_pattern_success(success: &PatternSuccess, env: Env, cont: Cont, ir: &Ir) -> MachineState {
     // TODO either use PatternMatcherExpr to setup continuation and use it here,
     // or use the next id of PatternSuccess directly but do not do both
     let PatternSuccess { next } = *success;

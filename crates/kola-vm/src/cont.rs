@@ -1,5 +1,3 @@
-use std::rc::Rc;
-
 use crate::{
     env::Env,
     value::{Closure, Value},
@@ -9,7 +7,7 @@ use kola_ir::{
     instr::{Expr, Func, HandlerClause, Symbol},
     ir::{Ir, IrView},
 };
-use kola_utils::interner::{StrInterner, StrKey};
+use kola_utils::interner::StrKey;
 
 #[derive(Debug, Clone, PartialEq)]
 pub enum ReturnClause {

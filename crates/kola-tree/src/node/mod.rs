@@ -31,12 +31,6 @@ macro_rules! define_nodes {
         }
 
         impl NodeId {
-            pub(crate) fn from_usize(id: usize, kind: NodeKind) -> Self {
-                match kind{
-                    $(NodeKind::$variant => Self::$variant(Id::unchecked_from_usize(id)),)*
-                }
-            }
-
             pub fn kind(&self) -> NodeKind {
                 match self {
                     $(Self::$variant(_) => NodeKind::$variant,)*

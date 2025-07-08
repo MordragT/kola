@@ -1,4 +1,4 @@
-use std::{path::PathBuf, rc::Rc, u32};
+use std::{path::PathBuf, rc::Rc};
 
 use crate::{
     config::{MachineState, OperationConfig, PatternConfig, PrimitiveRecConfig, StandardConfig},
@@ -8,7 +8,7 @@ use crate::{
     value::{Closure, List, Record, Value, to_usize_exact},
 };
 use kola_ir::{
-    instr::{Func, Symbol},
+    instr::Func,
     ir::{Ir, IrView},
 };
 use kola_utils::interner::StrInterner;
@@ -105,6 +105,7 @@ impl CekMachine {
         match data {
             Value::List(list) => Self::step_list_rec(list, base, step, cont, ir),
             Value::Num(n) => Self::step_num_rec(n, base, step, cont, ir),
+            Value::Record(record) => Self::step_record_rec(record, base, step, cont, ir),
             Value::Str(string) => Self::step_str_rec(string, base, step, cont, ir),
             _ => MachineState::Error(format!("Cannot recurse over {:?}", data)),
         }
@@ -469,9 +470,9 @@ impl CekMachine {
 mod tests {
     use kola_ir::{
         instr::{
-            Atom, BinaryExpr, BinaryOp, CallExpr, Expr, Func, LetExpr, PatternFailure,
-            PatternSuccess, RecordAccessExpr, RecordExpr, RecordExtendExpr, RecordField,
-            RecordUpdateExpr, RecordUpdateOp, RetExpr, Symbol,
+            Atom, BinaryExpr, BinaryOp, CallExpr, Func, LetExpr, PatternFailure, PatternSuccess,
+            RecordAccessExpr, RecordExpr, RecordExtendExpr, RecordUpdateExpr, RecordUpdateOp,
+            RetExpr, Symbol,
         },
         ir::IrBuilder,
     };

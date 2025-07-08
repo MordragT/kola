@@ -101,7 +101,7 @@ pub fn resolve(
     }
 
     let ModuleTypeResolution { module_type_orders } =
-        module_ty::resolve_module_types(&mut module_scopes, report, interner);
+        module_ty::resolve_module_types(&mut module_scopes, report);
 
     let TypeResolution { type_orders } = ty::resolve_types(&mut module_scopes, report);
 
