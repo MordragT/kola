@@ -90,7 +90,7 @@
 
     module my_config = (caddy_config my_inputs),
 
-    main = (serde::to_json my_config::config),
+    #main = (serde::to_json my_config::config),
 
 
 
@@ -150,5 +150,5 @@
 
     #main = (io::debug list),
 
-    #main = (io::read_file "test"),
+    main = (io::read_file "test"),
 }

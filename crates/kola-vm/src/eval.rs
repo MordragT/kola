@@ -6,6 +6,7 @@ use crate::{
     env::Env,
     value::{Closure, List, Record, Value, Variant, to_usize_exact},
 };
+use camino::Utf8Path;
 use kola_builtins::BuiltinId;
 use kola_collections::ImShadowMap;
 use kola_ir::{
@@ -47,36 +48,50 @@ pub fn eval_atom(atom: Atom, env: &Env, interner: &mut StrInterner) -> Result<Va
 }
 
 pub trait Eval {
-    fn eval(&self, env: Env, cont: Cont, ir: &Ir, interner: &mut StrInterner) -> MachineState;
+    fn eval(
+        &self,
+        env: Env,
+        cont: Cont,
+        ir: &Ir,
+        working_dir: &Utf8Path,
+        interner: &mut StrInterner,
+    ) -> MachineState;
 }
 
 impl Eval for Expr {
-    fn eval(&self, env: Env, cont: Cont, ir: &Ir, interner: &mut StrInterner) -> MachineState {
+    fn eval(
+        &self,
+        env: Env,
+        cont: Cont,
+        ir: &Ir,
+        working_dir: &Utf8Path,
+        interner: &mut StrInterner,
+    ) -> MachineState {
         match self {
-            Expr::Ret(ret_expr) => ret_expr.eval(env, cont, ir, interner),
-            Expr::Call(call) => call.eval(env, cont, ir, interner),
-            Expr::Handle(handle) => handle.eval(env, cont, ir, interner),
-            Expr::Do(do_expr) => do_expr.eval(env, cont, ir, interner),
-            Expr::Let(let_expr) => let_expr.eval(env, cont, ir, interner),
-            Expr::If(if_expr) => if_expr.eval(env, cont, ir, interner),
-            Expr::Unary(unary_expr) => unary_expr.eval(env, cont, ir, interner),
-            Expr::Binary(binary_expr) => binary_expr.eval(env, cont, ir, interner),
-            Expr::List(list_expr) => list_expr.eval(env, cont, ir, interner),
-            Expr::Record(record_expr) => record_expr.eval(env, cont, ir, interner),
+            Expr::Ret(ret_expr) => ret_expr.eval(env, cont, ir, working_dir, interner),
+            Expr::Call(call) => call.eval(env, cont, ir, working_dir, interner),
+            Expr::Handle(handle) => handle.eval(env, cont, ir, working_dir, interner),
+            Expr::Do(do_expr) => do_expr.eval(env, cont, ir, working_dir, interner),
+            Expr::Let(let_expr) => let_expr.eval(env, cont, ir, working_dir, interner),
+            Expr::If(if_expr) => if_expr.eval(env, cont, ir, working_dir, interner),
+            Expr::Unary(unary_expr) => unary_expr.eval(env, cont, ir, working_dir, interner),
+            Expr::Binary(binary_expr) => binary_expr.eval(env, cont, ir, working_dir, interner),
+            Expr::List(list_expr) => list_expr.eval(env, cont, ir, working_dir, interner),
+            Expr::Record(record_expr) => record_expr.eval(env, cont, ir, working_dir, interner),
             Expr::RecordExtend(record_extend_expr) => {
-                record_extend_expr.eval(env, cont, ir, interner)
+                record_extend_expr.eval(env, cont, ir, working_dir, interner)
             }
             Expr::RecordRestrict(record_restrict_expr) => {
-                record_restrict_expr.eval(env, cont, ir, interner)
+                record_restrict_expr.eval(env, cont, ir, working_dir, interner)
             }
             Expr::RecordUpdate(record_update_expr) => {
-                record_update_expr.eval(env, cont, ir, interner)
+                record_update_expr.eval(env, cont, ir, working_dir, interner)
             }
             Expr::RecordAccess(record_access_expr) => {
-                record_access_expr.eval(env, cont, ir, interner)
+                record_access_expr.eval(env, cont, ir, working_dir, interner)
             }
             Expr::PatternMatch(pattern_match_expr) => {
-                pattern_match_expr.eval(env, cont, ir, interner)
+                pattern_match_expr.eval(env, cont, ir, working_dir, interner)
             }
         }
     }
@@ -84,7 +99,14 @@ impl Eval for Expr {
 
 // M-RET : Return with a value
 impl Eval for RetExpr {
-    fn eval(&self, env: Env, mut cont: Cont, ir: &Ir, interner: &mut StrInterner) -> MachineState {
+    fn eval(
+        &self,
+        env: Env,
+        mut cont: Cont,
+        ir: &Ir,
+        _working_dir: &Utf8Path,
+        interner: &mut StrInterner,
+    ) -> MachineState {
         // Evaluate the return machine state of value
         let value = match eval_atom(self.arg.get(ir), &env, interner) {
             Ok(value) => value,
@@ -206,6 +228,7 @@ impl Eval for CallExpr {
         mut env: Env,
         mut cont: Cont,
         ir: &Ir,
+        working_dir: &Utf8Path,
         interner: &mut StrInterner,
     ) -> MachineState {
         let Self {
@@ -288,9 +311,17 @@ impl Eval for CallExpr {
                     cont: captured,
                 })
             }
-            Value::Builtin(builtin) => {
-                eval_builtin(builtin, bind, arg_val, env, cont, next, ir, interner)
-            }
+            Value::Builtin(builtin) => eval_builtin(
+                builtin,
+                bind,
+                arg_val,
+                env,
+                cont,
+                next,
+                ir,
+                working_dir,
+                interner,
+            ),
             Value::Tag(tag) => {
                 let value = Value::variant(tag, arg_val);
 
@@ -317,6 +348,7 @@ fn eval_builtin(
     mut cont: Cont,
     next: Id<Expr>,
     ir: &Ir,
+    working_dir: &Utf8Path,
     interner: &mut StrInterner,
 ) -> MachineState {
     let value = match (builtin, arg) {
@@ -324,10 +356,14 @@ fn eval_builtin(
             println!("Debug: {:?}", value);
             value
         }
-        (BuiltinId::IoReadFile, Value::Str(path)) => match fs::read_to_string(path) {
-            Err(err) => Value::variant(Tag(interner.intern("Err")), Value::Str(err.to_string())),
-            Ok(contents) => Value::variant(Tag(interner.intern("Ok")), Value::Str(contents)),
-        },
+        (BuiltinId::IoReadFile, Value::Str(path)) => {
+            match fs::read_to_string(working_dir.join(path)) {
+                Err(err) => {
+                    Value::variant(Tag(interner.intern("Err")), Value::Str(err.to_string()))
+                }
+                Ok(contents) => Value::variant(Tag(interner.intern("Ok")), Value::Str(contents)),
+            }
+        }
         (BuiltinId::IoWriteFile, Value::Record(record)) => {
             let Some(Value::Str(path)) = record.get(interner.intern("path")) else {
                 return MachineState::Error(
@@ -341,7 +377,7 @@ fn eval_builtin(
                 );
             };
 
-            match fs::write(path, contents) {
+            match fs::write(working_dir.join(path), contents) {
                 Err(err) => {
                     Value::variant(Tag(interner.intern("Err")), Value::Str(err.to_string()))
                 }
@@ -722,13 +758,20 @@ fn eval_builtin(
         cont,
     })
 }
-
+//
 // M-HANDLE: ⟨handle M with H | γ | κ⟩ → ⟨M | γ | ([], (γ, H)) :: κ⟩
 //
 // This rule pushes a handler frame onto the continuation stack and
 // continues evaluating the source computation M with the handler available.
 impl Eval for HandleExpr {
-    fn eval(&self, env: Env, mut cont: Cont, ir: &Ir, interner: &mut StrInterner) -> MachineState {
+    fn eval(
+        &self,
+        env: Env,
+        mut cont: Cont,
+        ir: &Ir,
+        _working_dir: &Utf8Path,
+        _interner: &mut StrInterner,
+    ) -> MachineState {
         let Self {
             bind,
             source,
@@ -783,6 +826,7 @@ impl Eval for DoExpr {
         env: Env,
         mut cont: Cont,
         _ir: &Ir,
+        _working_dir: &Utf8Path,
         _interner: &mut StrInterner,
     ) -> MachineState {
         let Self {
@@ -830,6 +874,7 @@ impl Eval for LetExpr {
         env: Env,
         mut cont: Cont,
         _ir: &Ir,
+        _working_dir: &Utf8Path,
         _interner: &mut StrInterner,
     ) -> MachineState {
         // Create a pure continuation frame
@@ -862,7 +907,14 @@ impl Eval for LetExpr {
 // 4. In both cases, we maintain the same environment γ and continuation κ
 // 5. The machine state transitions directly to evaluating the selected branch
 impl Eval for IfExpr {
-    fn eval(&self, env: Env, mut cont: Cont, ir: &Ir, interner: &mut StrInterner) -> MachineState {
+    fn eval(
+        &self,
+        env: Env,
+        mut cont: Cont,
+        ir: &Ir,
+        _working_dir: &Utf8Path,
+        interner: &mut StrInterner,
+    ) -> MachineState {
         let Self {
             bind,
             predicate,
@@ -932,7 +984,14 @@ pub fn eval_unary_op(op: UnaryOp, value: Value) -> Result<Value, String> {
 // 4. The machine transitions directly to evaluating the next expression N
 // 5. The continuation κ remains unchanged during this transition
 impl Eval for UnaryExpr {
-    fn eval(&self, mut env: Env, cont: Cont, ir: &Ir, interner: &mut StrInterner) -> MachineState {
+    fn eval(
+        &self,
+        mut env: Env,
+        cont: Cont,
+        ir: &Ir,
+        _working_dir: &Utf8Path,
+        interner: &mut StrInterner,
+    ) -> MachineState {
         let Self {
             bind,
             op,
@@ -997,7 +1056,14 @@ pub fn eval_binary_op(op: BinaryOp, left: Value, right: Value) -> Result<Value, 
 // 3. The result is bound to variable x in the environment
 // 4. The machine transitions directly to evaluating the next expression N
 impl Eval for BinaryExpr {
-    fn eval(&self, mut env: Env, cont: Cont, ir: &Ir, interner: &mut StrInterner) -> MachineState {
+    fn eval(
+        &self,
+        mut env: Env,
+        cont: Cont,
+        ir: &Ir,
+        _working_dir: &Utf8Path,
+        interner: &mut StrInterner,
+    ) -> MachineState {
         let Self {
             bind,
             op,
@@ -1037,7 +1103,14 @@ impl Eval for BinaryExpr {
 }
 
 impl Eval for ListExpr {
-    fn eval(&self, mut env: Env, cont: Cont, ir: &Ir, interner: &mut StrInterner) -> MachineState {
+    fn eval(
+        &self,
+        mut env: Env,
+        cont: Cont,
+        ir: &Ir,
+        _working_dir: &Utf8Path,
+        interner: &mut StrInterner,
+    ) -> MachineState {
         let ListExpr {
             bind,
             head,
@@ -1073,7 +1146,14 @@ impl Eval for ListExpr {
 // 3. The record value is bound to the variable specified in the RecordExpr
 // 4. We continue with the next expression
 impl Eval for RecordExpr {
-    fn eval(&self, mut env: Env, cont: Cont, ir: &Ir, interner: &mut StrInterner) -> MachineState {
+    fn eval(
+        &self,
+        mut env: Env,
+        cont: Cont,
+        ir: &Ir,
+        _working_dir: &Utf8Path,
+        interner: &mut StrInterner,
+    ) -> MachineState {
         let RecordExpr { bind, head, next } = *self;
 
         let mut record = ImShadowMap::new();
@@ -1109,7 +1189,14 @@ impl Eval for RecordExpr {
 // 3. The resulting extended record is bound to variable x in the environment
 // 4. The machine transitions directly to evaluating the next expression N
 impl Eval for RecordExtendExpr {
-    fn eval(&self, mut env: Env, cont: Cont, ir: &Ir, interner: &mut StrInterner) -> MachineState {
+    fn eval(
+        &self,
+        mut env: Env,
+        cont: Cont,
+        ir: &Ir,
+        _working_dir: &Utf8Path,
+        interner: &mut StrInterner,
+    ) -> MachineState {
         let Self {
             bind,
             base,
@@ -1166,7 +1253,14 @@ impl Eval for RecordExtendExpr {
 // 3. The resulting restricted record is bound to variable x in the environment
 // 4. The machine transitions directly to evaluating the next expression N
 impl Eval for RecordRestrictExpr {
-    fn eval(&self, mut env: Env, cont: Cont, ir: &Ir, interner: &mut StrInterner) -> MachineState {
+    fn eval(
+        &self,
+        mut env: Env,
+        cont: Cont,
+        ir: &Ir,
+        _working_dir: &Utf8Path,
+        interner: &mut StrInterner,
+    ) -> MachineState {
         let Self {
             bind,
             base,
@@ -1232,7 +1326,14 @@ pub fn eval_record_op(op: RecordUpdateOp, left: Value, right: Value) -> Result<V
 // 3. The resulting updated record is bound to variable x in the environment
 // 4. The machine transitions directly to evaluating the next expression N
 impl Eval for RecordUpdateExpr {
-    fn eval(&self, mut env: Env, cont: Cont, ir: &Ir, interner: &mut StrInterner) -> MachineState {
+    fn eval(
+        &self,
+        mut env: Env,
+        cont: Cont,
+        ir: &Ir,
+        _working_dir: &Utf8Path,
+        interner: &mut StrInterner,
+    ) -> MachineState {
         let Self {
             bind,
             base,
@@ -1291,7 +1392,14 @@ impl Eval for RecordUpdateExpr {
 // 3. The resulting field value is bound to variable x in the environment
 // 4. The machine transitions directly to evaluating the next expression N
 impl Eval for RecordAccessExpr {
-    fn eval(&self, mut env: Env, cont: Cont, ir: &Ir, interner: &mut StrInterner) -> MachineState {
+    fn eval(
+        &self,
+        mut env: Env,
+        cont: Cont,
+        ir: &Ir,
+        _working_dir: &Utf8Path,
+        interner: &mut StrInterner,
+    ) -> MachineState {
         let Self {
             bind,
             base,
@@ -1335,6 +1443,7 @@ impl Eval for PatternMatchExpr {
         env: Env,
         mut cont: Cont,
         _ir: &Ir,
+        _working_dir: &Utf8Path,
         _interner: &mut StrInterner,
     ) -> MachineState {
         let Self {
@@ -1362,7 +1471,14 @@ impl Eval for PatternMatchExpr {
 
 /// Evaluates a pattern matching configuration
 impl Eval for PatternConfig {
-    fn eval(&self, _env: Env, _cont: Cont, ir: &Ir, interner: &mut StrInterner) -> MachineState {
+    fn eval(
+        &self,
+        _env: Env,
+        _cont: Cont,
+        ir: &Ir,
+        _working_dir: &Utf8Path,
+        interner: &mut StrInterner,
+    ) -> MachineState {
         let PatternConfig { matcher, env, cont } = self;
 
         eval_pattern_matcher(&matcher.get(ir), env.clone(), cont.clone(), ir, interner)

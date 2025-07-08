@@ -44,7 +44,12 @@ pub struct OperationConfig {
     /// κ0 - Forwarding continuation (handlers already tried)
     pub forward: Cont,
 }
-
+/// Primitive recursion configuration in the CEK machine
+/// C = data | base | step | κ, where:
+/// - data is the value being processed recursively
+/// - base is the value for the base case
+/// - step is the closure to apply at each step
+/// - κ is the continuation to use after primitive recursion completes
 #[derive(Debug, Clone, PartialEq)]
 pub struct PrimitiveRecConfig {
     /// The data being processed
@@ -75,12 +80,13 @@ pub struct PatternConfig {
 /// Machine states represent the different configurations of the CEK machine
 #[derive(Debug, From, Clone, PartialEq)]
 pub enum MachineState {
-    /// Normal evaluation state hM | γ | κi
+    /// Normal evaluation state M | γ | κi
     Standard(StandardConfig),
-    /// Operation handling state hM | γ | κ | κ0iop
+    /// Operation handling state M | γ | κ | κ0iop
     Operation(OperationConfig),
+    /// Primitive recursion state data | base | step | κi
     PrimitiveRec(PrimitiveRecConfig),
-    /// Pattern matching state hP | v | γ | κi
+    /// Pattern matching state P | v | γ | κi
     Pattern(PatternConfig),
     /// The machine has produced a final value
     Value(Value),

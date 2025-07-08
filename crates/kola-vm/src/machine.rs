@@ -1,4 +1,4 @@
-use camino::Utf8PathBuf;
+use camino::{Utf8Path, Utf8PathBuf};
 
 use crate::{
     config::{MachineState, OperationConfig, PatternConfig, PrimitiveRecConfig, StandardConfig},
@@ -56,7 +56,7 @@ impl CekMachine {
 
         self.state = match state {
             MachineState::Standard(config) => {
-                Self::step_standard(config, &self.ir, &mut self.interner)
+                Self::step_standard(config, &self.ir, &self.working_dir, &mut self.interner)
             }
             MachineState::Operation(config) => {
                 Self::step_operation(config, &self.ir, &mut self.interner)
@@ -65,7 +65,7 @@ impl CekMachine {
                 Self::step_primitive_rec(config, &self.ir, &mut self.interner)
             }
             MachineState::Pattern(config) => {
-                Self::step_pattern(config, &self.ir, &mut self.interner)
+                Self::step_pattern(config, &self.ir, &self.working_dir, &mut self.interner)
             }
             MachineState::Value(_) | MachineState::Error(_) => {
                 // If the machine is in a terminal state, we don't need to do anything
@@ -92,14 +92,30 @@ impl CekMachine {
     }
 
     /// Execute a standard configuration step
-    fn step_standard(config: StandardConfig, ir: &Ir, interner: &mut StrInterner) -> MachineState {
+    fn step_standard(
+        config: StandardConfig,
+        ir: &Ir,
+        working_dir: &Utf8Path,
+        interner: &mut StrInterner,
+    ) -> MachineState {
         let StandardConfig { control, env, cont } = config;
-        control.eval(env, cont, ir, interner)
+        control.eval(env, cont, ir, working_dir, interner)
     }
 
     /// Execute a pattern matching configuration step
-    fn step_pattern(config: PatternConfig, ir: &Ir, interner: &mut StrInterner) -> MachineState {
-        config.eval(config.env.clone(), config.cont.clone(), ir, interner)
+    fn step_pattern(
+        config: PatternConfig,
+        ir: &Ir,
+        working_dir: &Utf8Path,
+        interner: &mut StrInterner,
+    ) -> MachineState {
+        config.eval(
+            config.env.clone(),
+            config.cont.clone(),
+            ir,
+            working_dir,
+            interner,
+        )
     }
 
     fn step_primitive_rec(
