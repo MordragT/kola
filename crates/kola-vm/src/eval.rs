@@ -1,3 +1,5 @@
+use std::fs;
+
 use crate::{
     config::{MachineState, OperationConfig, PatternConfig, PrimitiveRecConfig, StandardConfig},
     cont::{Cont, ContFrame, Handler, HandlerClosure, PureCont, PureContFrame, ReturnClause},
@@ -221,7 +223,7 @@ impl Eval for CallExpr {
                 };
 
                 // Add the frame to the continuation
-                let mut frame = cont.pop_or_identity(env.interner());
+                let mut frame = cont.pop_or_identity(|| Env::from_env(&env));
                 frame.pure.push(pure_frame);
                 cont.push(frame);
 
@@ -256,7 +258,7 @@ impl Eval for CallExpr {
                 };
 
                 // Add the frame to the continuation
-                let mut frame = cont.pop_or_identity(env.interner());
+                let mut frame = cont.pop_or_identity(|| Env::from_env(&env));
                 frame.pure.push(pure_frame);
                 cont.push(frame);
 
@@ -306,6 +308,34 @@ fn eval_builtin(
     // Before changing anything definitely profile this code.
 
     let value = match (builtin, arg) {
+        (BuiltinId::IoDebug, value) => {
+            println!("Debug: {:?}", value);
+            value
+        }
+        (BuiltinId::IoReadFile, Value::Str(path)) => {
+            match fs::read_to_string(env.working_dir.join(path)) {
+                Err(err) => Value::variant(Tag(env.interner["Err"]), Value::Str(err.to_string())),
+                Ok(contents) => Value::variant(Tag(env.interner["Ok"]), Value::Str(contents)),
+            }
+        }
+        (BuiltinId::IoWriteFile, Value::Record(record)) => {
+            let Some(Value::Str(path)) = record.get(env.interner["path"]) else {
+                return MachineState::Error(
+                    "io_write_file requires 'path' field with a string".to_owned(),
+                );
+            };
+
+            let Some(Value::Str(contents)) = record.get(env.interner["contents"]) else {
+                return MachineState::Error(
+                    "io_write_file requires 'contents' field with a string".to_owned(),
+                );
+            };
+
+            match fs::write(env.working_dir.join(path), contents) {
+                Err(err) => Value::variant(Tag(env.interner["Err"]), Value::Str(err.to_string())),
+                Ok(_) => Value::variant(Tag(env.interner["Ok"]), Value::None),
+            }
+        }
         (BuiltinId::ListLength, Value::List(list)) => Value::Num(list.len() as f64),
         (BuiltinId::ListIsEmpty, Value::List(list)) => Value::Bool(list.is_empty()),
         (BuiltinId::ListReverse, Value::List(list)) => Value::List(list.reverse()),
@@ -423,7 +453,7 @@ fn eval_builtin(
             };
 
             // Create a pure continuation frame for the next expression
-            let mut frame = cont.pop_or_identity(env.interner());
+            let mut frame = cont.pop_or_identity(|| Env::from_env(&env));
             let pure_frame = PureContFrame {
                 var: bind,
                 body: next,
@@ -474,7 +504,7 @@ fn eval_builtin(
             };
 
             // Create a pure continuation frame for the next expression
-            let mut frame = cont.pop_or_identity(env.interner());
+            let mut frame = cont.pop_or_identity(|| Env::from_env(&env));
             let pure_frame = PureContFrame {
                 var: bind,
                 body: next,
@@ -508,7 +538,7 @@ fn eval_builtin(
             };
 
             // Create a pure continuation frame for the next expression
-            let mut frame = cont.pop_or_identity(env.interner());
+            let mut frame = cont.pop_or_identity(|| Env::from_env(&env));
             let pure_frame = PureContFrame {
                 var: bind,
                 body: next,
@@ -631,7 +661,7 @@ fn eval_builtin(
             };
 
             // Create a pure continuation frame for the next expression
-            let mut frame = cont.pop_or_identity(env.interner());
+            let mut frame = cont.pop_or_identity(|| Env::from_env(&env));
             let pure_frame = PureContFrame {
                 var: bind,
                 body: next,
@@ -684,7 +714,7 @@ impl Eval for HandleExpr {
         };
 
         // Get the current frame and add our pure continuation to it
-        let mut current_frame = cont.pop_or_identity(env.interner());
+        let mut current_frame = cont.pop_or_identity(|| Env::from_env(&env));
         current_frame.pure.push(pure_frame);
 
         // Create handler from clauses (H in the rule)
@@ -733,7 +763,7 @@ impl Eval for DoExpr {
             env: env.clone(),
         };
 
-        let mut frame = cont.pop_or_identity(env.interner());
+        let mut frame = cont.pop_or_identity(|| Env::from_env(&env));
         frame.pure.push(pure_frame);
         cont.push(frame);
 
@@ -767,7 +797,7 @@ impl Eval for LetExpr {
             env: env.clone(),
         };
 
-        let mut frame = cont.pop_or_identity(env.interner());
+        let mut frame = cont.pop_or_identity(|| Env::from_env(&env));
         frame.pure.push(pure_frame);
         cont.push(frame);
 
@@ -813,7 +843,7 @@ impl Eval for IfExpr {
         };
 
         // Add the frame to the continuation
-        let mut frame = cont.pop_or_identity(env.interner());
+        let mut frame = cont.pop_or_identity(|| Env::from_env(&env));
         frame.pure.push(pure_frame);
         cont.push(frame);
 
@@ -1273,7 +1303,7 @@ impl Eval for PatternMatchExpr {
         };
 
         // Add the frame to the continuation
-        let mut frame = cont.pop_or_identity(env.interner());
+        let mut frame = cont.pop_or_identity(|| Env::from_env(&env));
         frame.pure.push(pure_frame);
         cont.push(frame);
 

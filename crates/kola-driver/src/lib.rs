@@ -262,12 +262,14 @@ impl Driver {
     }
 
     pub fn run(mut self, path: impl AsRef<Utf8Path>) -> io::Result<()> {
-        let Some(Program { ir, modules }) = self._compile(path, false)? else {
+        let path = path.as_ref().canonicalize_utf8()?;
+
+        let Some(Program { ir, modules }) = self._compile(&path, false)? else {
             return Ok(());
         };
 
         let interner = Rc::new(self.interner);
-        let mut machine = CekMachine::new(ir, interner.clone());
+        let mut machine = CekMachine::new(ir, interner.clone(), path.parent().unwrap()); // TODO handle unwrap
 
         match machine.run() {
             Ok(value) => {

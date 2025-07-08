@@ -1,4 +1,4 @@
-use std::{ops::Index, rc::Rc};
+use std::{ops::Index, path::PathBuf, rc::Rc};
 
 use kola_collections::ImHashMap;
 use kola_ir::instr::Symbol;
@@ -10,13 +10,23 @@ use crate::value::Value;
 pub struct Env {
     pub bindings: ImHashMap<Symbol, Value>,
     pub interner: Rc<StrInterner>,
+    pub working_dir: PathBuf,
 }
 
 impl Env {
-    pub fn new(interner: impl Into<Rc<StrInterner>>) -> Self {
+    pub fn new(interner: impl Into<Rc<StrInterner>>, working_dir: impl Into<PathBuf>) -> Self {
         Self {
             bindings: ImHashMap::new(),
             interner: interner.into(),
+            working_dir: working_dir.into(),
+        }
+    }
+
+    pub fn from_env(env: &Self) -> Self {
+        Self {
+            bindings: ImHashMap::new(),
+            interner: env.interner.clone(),
+            working_dir: env.working_dir.clone(),
         }
     }
 

@@ -1,4 +1,4 @@
-use std::{rc::Rc, u32};
+use std::{path::PathBuf, rc::Rc, u32};
 
 use crate::{
     config::{MachineState, OperationConfig, PatternConfig, PrimitiveRecConfig, StandardConfig},
@@ -24,15 +24,22 @@ pub struct CekMachine {
 
 impl CekMachine {
     /// Create a new CEK machine to evaluate an expression
-    pub fn new(ir: Ir, interner: impl Into<Rc<StrInterner>>) -> Self {
+    pub fn new(
+        ir: Ir,
+        interner: impl Into<Rc<StrInterner>>,
+        working_dir: impl Into<PathBuf>,
+    ) -> Self {
         let interner = interner.into();
+
+        let env = Env::new(interner.clone(), working_dir);
+        let cont = Cont::identity(env.clone());
 
         // Initial configuration (M-INIT in the paper)
         // C = hM | ∅ | κ0i
         let config = StandardConfig {
             control: ir.root().get(&ir),
-            env: Env::new(interner.clone()),
-            cont: Cont::identity(interner.clone()),
+            env,
+            cont,
         };
 
         Self {
@@ -490,7 +497,7 @@ mod tests {
 
         let ir = ir.finish(root);
 
-        let mut machine = CekMachine::new(ir, StrInterner::new());
+        let mut machine = CekMachine::new(ir, StrInterner::new(), "/mocked/path");
         let result = machine.run().unwrap();
 
         match result {
@@ -539,7 +546,7 @@ mod tests {
         let ir = ir.finish(root);
 
         // Run the machine
-        let mut machine = CekMachine::new(ir, StrInterner::new());
+        let mut machine = CekMachine::new(ir, StrInterner::new(), "/mocked/path");
         let result = machine.run().unwrap();
 
         // Check the result
@@ -584,7 +591,7 @@ mod tests {
         let ir = ir.finish(root);
 
         // Run the machine
-        let mut machine = CekMachine::new(ir, interner);
+        let mut machine = CekMachine::new(ir, interner, "/mocked/path");
         let result = machine.run().unwrap();
 
         // Check the result - should be the value of the x field (10)
@@ -636,7 +643,7 @@ mod tests {
         let ir = ir.finish(root);
 
         // Run the machine
-        let mut machine = CekMachine::new(ir, interner);
+        let mut machine = CekMachine::new(ir, interner, "/mocked/path");
         let result = machine.run().unwrap();
 
         // Check the result - should be the value of the z field (30)
@@ -695,7 +702,7 @@ mod tests {
         let ir = ir.finish(root);
 
         // Run the machine
-        let mut machine = CekMachine::new(ir, interner);
+        let mut machine = CekMachine::new(ir, interner, "/mocked/path");
         let result = machine.run().unwrap();
 
         // Check the result - should be the updated value of x (20)
@@ -747,7 +754,7 @@ mod tests {
         let ir = ir.finish(root);
 
         // Run the machine
-        let mut machine = CekMachine::new(ir, interner);
+        let mut machine = CekMachine::new(ir, interner, "/mocked/path");
         let result = machine.run().unwrap();
 
         // Check the result - should be 42

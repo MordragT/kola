@@ -49,5 +49,9 @@
 
     my_record = record::empty,
 
-    main = 10,
+    #main = 10,
+
+    #main = (io::debug list),
+
+    main = (io::read_file "test"),
 }

@@ -179,12 +179,12 @@ pub struct ContFrame {
 
 impl ContFrame {
     /// Creates the identity continuation frame  ([ ], (∅, {return x → x}))
-    pub fn identity(interner: impl Into<Rc<StrInterner>>) -> Self {
+    pub fn identity(env: Env) -> Self {
         Self {
             pure: PureCont::empty(),
             handler_closure: HandlerClosure {
                 handler: Handler::identity(),
-                env: Env::new(interner),
+                env,
             },
         }
     }
@@ -204,10 +204,10 @@ impl Cont {
     }
 
     /// Creates the identity continuation κ0 = [([ ], (∅, {return x → x}))]
-    pub fn identity(interner: impl Into<Rc<StrInterner>>) -> Self {
+    pub fn identity(handler_env: Env) -> Self {
         // Return continuation with single frame
         Self {
-            frames: vec![ContFrame::identity(interner)],
+            frames: vec![ContFrame::identity(handler_env)],
         }
     }
 
@@ -219,12 +219,12 @@ impl Cont {
         self.frames.pop()
     }
 
-    pub fn pop_or_identity(&mut self, interner: impl Into<Rc<StrInterner>>) -> ContFrame {
+    pub fn pop_or_identity(&mut self, handler_env_f: impl FnOnce() -> Env) -> ContFrame {
         if let Some(cont_frame) = self.frames.pop() {
             cont_frame
         } else {
             // If the stack is empty, return the identity frame
-            ContFrame::identity(interner)
+            ContFrame::identity(handler_env_f())
         }
     }
 
