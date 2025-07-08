@@ -554,6 +554,15 @@ fn eval_builtin(
                 cont,
             });
         }
+        // TODO these serde methods do not enforce type annotations
+        (BuiltinId::SerdeFromJson, Value::Str(json_str)) => match Value::from_json(&json_str) {
+            Ok(value) => Value::variant(Tag(env.interner["Ok"]), value),
+            Err(err) => Value::variant(Tag(env.interner["Err"]), Value::Str(err.to_string())),
+        },
+        (BuiltinId::SerdeToJson, value) => match value.to_json() {
+            Ok(json_str) => Value::variant(Tag(env.interner["Ok"]), Value::Str(json_str)),
+            Err(err) => Value::variant(Tag(env.interner["Err"]), Value::Str(err.to_string())),
+        },
         (BuiltinId::StrLength, Value::Str(s)) => Value::Num(s.len() as f64),
         (BuiltinId::StrIsEmpty, Value::Str(s)) => Value::Bool(s.is_empty()),
         (BuiltinId::StrReverse, Value::Str(s)) => Value::Str(s.chars().rev().collect()),

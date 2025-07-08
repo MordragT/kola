@@ -1,4 +1,10 @@
 {
+    export effect type Io = {
+        print : Str -> Unit,
+        read_file : Str -> < Ok : Str, Err : Str >,
+        write_file : Str -> Str -> < Ok : Unit, Err : Str >,
+    },
+
     export debug : forall a . a -> a = io_debug,
 
     # TODO I should use a proper Result abstraction (or Either abstraction) here

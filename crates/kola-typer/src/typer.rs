@@ -4,12 +4,12 @@ use kola_builtins::{Builtin, BuiltinEffect, BuiltinType};
 use kola_resolver::phase::{ResolvedModule, ResolvedNodes};
 use kola_span::{Diagnostic, IntoDiagnostic, Loc, Report};
 use kola_syntax::prelude::*;
-use kola_tree::prelude::*;
+use kola_tree::{node::Vis, prelude::*};
 use kola_utils::interner::StrInterner;
 
 use crate::{
     constraints::Constraints,
-    env::{GlobalTypeEnv, LocalTypeEnv, ModuleTypeEnv},
+    env::{LocalTypeEnv, TypeEnv},
     pattern_typer::PatternTyper,
     phase::{TypePhase, TypedNodes},
     substitute::{Substitutable, Substitution},
@@ -30,8 +30,8 @@ pub struct Typer<'a, N> {
     types: TypedNodes,
     cases: Vec<Id<node::CaseExpr>>, // TODO maybe proper wrapper
     local_env: LocalTypeEnv,
-    module_env: &'a ModuleTypeEnv,
-    global_env: &'a GlobalTypeEnv,
+    module_env: &'a TypeEnv,
+    global_env: &'a TypeEnv,
     cons: &'a mut Constraints,
     interner: &'a StrInterner,
     resolved: &'a ResolvedNodes,
@@ -42,19 +42,19 @@ impl<'a, N> Typer<'a, N> {
         root_id: Id<N>,
         spans: Rc<Locations>,
         cons: &'a mut Constraints,
-        module_scope: &'a ModuleTypeEnv,
-        env: &'a GlobalTypeEnv,
+        module_env: &'a TypeEnv,
+        global_env: &'a TypeEnv,
         interner: &'a StrInterner,
         resolved: &'a ResolvedNodes,
     ) -> Self {
         Self {
             root_id,
-            local_env: LocalTypeEnv::new(),
-            module_env: module_scope,
+            spans,
             types: TypedNodes::new(),
             cases: Vec::new(),
-            spans,
-            global_env: env,
+            local_env: LocalTypeEnv::new(),
+            module_env,
+            global_env,
             interner,
             resolved,
             cons,
@@ -174,20 +174,35 @@ where
             // Module-qualified path
             let ResolvedModule(module_sym) = *self.resolved.meta(path);
 
-            let eff_sym = self.global_env[module_sym]
-                .get_effect(eff_name)
-                .expect("Type not found in module");
+            let (module_info, module) = &self.global_env[module_sym];
 
-            self.global_env[eff_sym].clone()
-        } else if let Some(global_row_t) = self
+            let Some(eff_sym) = module.get_effect(eff_name) else {
+                return ControlFlow::Break(
+                    Diagnostic::error(span, "Effect not found")
+                        .with_trace([("In this module".to_owned(), module_info.loc)]),
+                );
+            };
+
+            let (effect_def, effect) = &self.global_env[eff_sym];
+
+            if effect_def.vis != Vis::Export {
+                return ControlFlow::Break(
+                    Diagnostic::error(span, "Effect is not exported from the module").with_trace([
+                        ("In this module".to_owned(), module_info.loc),
+                        ("Declared here".to_owned(), effect_def.loc),
+                    ]),
+                );
+            }
+
+            effect.clone()
+        } else if let Some((_, row_t)) = self
             .resolved
             .meta(id)
             .into_reference()
-            .and_then(|sym| self.global_env.get_effect(sym))
+            .and_then(|sym| self.module_env.get_effect(sym))
         {
             // Module-level effect type definition (like 'Io')
-            // unlike module-level value binds, these are properly solved and ready to use
-            global_row_t.clone()
+            row_t.clone()
         } else if let Some(builtin) = self.resolved.meta(id).into_builtin() {
             match builtin {
                 BuiltinEffect::Pure => todo!(),
@@ -363,24 +378,38 @@ where
             // Module-qualified path
             let ResolvedModule(module_sym) = *self.resolved.meta(path);
 
-            let type_sym = self.global_env[module_sym]
-                .get_type(type_name)
-                .expect("Type not found in module");
+            let (module_info, module) = &self.global_env[module_sym];
 
-            let module_poly_t = &self.global_env[type_sym];
-            module_poly_t.clone()
+            let Some(type_sym) = module.get_type(type_name) else {
+                return ControlFlow::Break(
+                    Diagnostic::error(span, "Type not found")
+                        .with_trace([("In this module".to_owned(), module_info.loc)]),
+                );
+            };
+
+            let (type_def, poly_t) = &self.global_env[type_sym];
+
+            if type_def.vis != Vis::Export {
+                return ControlFlow::Break(
+                    Diagnostic::error(span, "Type is not exported from the module").with_trace([
+                        ("In this module".to_owned(), module_info.loc),
+                        ("Declared here".to_owned(), type_def.loc),
+                    ]),
+                );
+            }
+
+            poly_t.clone()
         } else if let Some(local_t) = self.local_env.get(&type_name) {
             // Local type parameter (like 'a' in forall a)
             PolyType::new(local_t.clone())
-        } else if let Some(global_poly_t) = self
+        } else if let Some((_, poly_t)) = self
             .resolved
             .meta(id)
             .into_reference()
-            .and_then(|sym| self.global_env.get_type(sym))
+            .and_then(|sym| self.module_env.get_type(sym))
         {
             // Module-level type definition (like 'Person')
-            // unlike module-level value binds, these are properly solved and ready to use
-            global_poly_t.clone()
+            poly_t.clone()
         } else if let Some(builtin_t) = self.resolved.meta(id).into_builtin() {
             match builtin_t {
                 BuiltinType::Unit => PolyType::new(MonoType::UNIT),
@@ -873,39 +902,51 @@ where
         let name = source.get(tree).0;
 
         let base_t = if let Some(path) = module_path {
-            // Case 1: Other module (real PolyType)
+            // Module-qualified path
             let ResolvedModule(module_sym) = *self.resolved.meta(path);
 
-            let value_sym = self.global_env[module_sym]
-                .get_value(name)
-                .expect("Value not found in module");
+            let (module_info, module) = &self.global_env[module_sym];
 
-            let pt = &self.global_env[value_sym];
-            pt.instantiate()
-        } else if let Some(t) = self.local_env.get(&name) {
-            // Case 2: Let-bind (MonoType)
+            let Some(value_sym) = module.get_value(name) else {
+                return ControlFlow::Break(
+                    Diagnostic::error(span, "Value not found")
+                        .with_trace([("In this module".to_owned(), module_info.loc)]),
+                );
+            };
 
-            t.clone()
-        } else if let Some(pt) = self
+            let (value_def, poly_t) = &self.global_env[value_sym];
+
+            if value_def.vis != Vis::Export {
+                return ControlFlow::Break(
+                    Diagnostic::error(span, "Value is not exported from the module").with_trace([
+                        ("In this module".to_owned(), module_info.loc),
+                        ("Declared here".to_owned(), value_def.loc),
+                    ]),
+                );
+            }
+
+            poly_t.instantiate()
+        } else if let Some(local_t) = self.local_env.get(&name) {
+            // Local let-bound variable
+            local_t.clone()
+        } else if let Some((_, poly_t)) = self
             .resolved
             .meta(id)
             .into_reference()
-            .and_then(|sym| self.module_env.get(&sym))
+            .and_then(|sym| self.module_env.get_value(sym))
         {
-            // Case 3: Module local value-bind
-            pt.instantiate()
-        } else if let Some(id) = self.resolved.meta(id).into_builtin() {
-            let builtin = Builtin::from_id(id);
+            // Module-level value definition
+            poly_t.instantiate()
+        } else if let Some(builtin_id) = self.resolved.meta(id).into_builtin() {
+            let builtin = Builtin::from_id(builtin_id);
 
-            // TODO this instantiate isn't really necessary
-            // from_protocols creates new variables anyway
             PolyType::from_protocol(builtin.type_, self.interner).instantiate()
         } else {
             return ControlFlow::Break(Diagnostic::error(span, "Value not found in scope"));
         };
 
         let Some(field_path) = field_path else {
-            // Case 4: Variable lookup
+            // Variable lookup
             self.insert_type(id, base_t.clone());
             return ControlFlow::Continue(());
         };

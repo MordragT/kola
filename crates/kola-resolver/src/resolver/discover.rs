@@ -397,8 +397,9 @@ where
         id: Id<node::ModuleTypeBind>,
         tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
-        let node::ModuleTypeBind { name, .. } = *tree.node(id);
+        let node::ModuleTypeBind { vis, name, .. } = *tree.node(id);
 
+        let vis = *tree.node(vis);
         let name = *tree.node(name);
 
         let span = self.span(id);
@@ -410,7 +411,7 @@ where
         // Register the module type binding in the current scope
         if let Err(e) =
             self.stack
-                .insert_module_type(name, module_type_sym, Def::bound(id, Vis::Export, span))
+                .insert_module_type(name, module_type_sym, Def::bound(id, vis, span))
         {
             self.report.add_diagnostic(e.into());
         }
@@ -960,8 +961,13 @@ where
         id: Id<node::TypeBind>,
         tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
-        let node::TypeBind { name, ty_scheme } = *tree.node(id);
+        let node::TypeBind {
+            vis,
+            name,
+            ty_scheme,
+        } = *tree.node(id);
 
+        let vis = *vis.get(tree);
         let name = *tree.node(name);
         let span = self.span(id);
 
@@ -973,7 +979,7 @@ where
         // Register the type binding in the current scope
         if let Err(e) = self
             .stack
-            .insert_type(name, type_sym, Def::bound(id, Vis::Export, span))
+            .insert_type(name, type_sym, Def::bound(id, vis, span))
         {
             self.report.add_diagnostic(e.into());
         }

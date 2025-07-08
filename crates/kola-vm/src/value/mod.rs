@@ -3,6 +3,7 @@ use enum_as_inner::EnumAsInner;
 use kola_builtins::BuiltinId;
 use kola_ir::instr::Tag;
 use kola_utils::{fmt::DisplayWithInterner, interner::StrInterner};
+use serde::{Deserialize, Serialize};
 use std::fmt;
 
 use crate::cont::Cont;
@@ -54,6 +55,14 @@ impl Value {
     pub fn variant(tag: Tag, value: Self) -> Self {
         Value::Variant(Variant::new(tag, value))
     }
+
+    pub fn from_json(json: &str) -> Result<Self, serde_json::Error> {
+        serde_json::from_str(json)
+    }
+
+    pub fn to_json(&self) -> Result<String, serde_json::Error> {
+        serde_json::to_string_pretty(self)
+    }
 }
 
 impl DisplayWithInterner for Value {
@@ -72,6 +81,36 @@ impl DisplayWithInterner for Value {
             Value::Record(r) => r.fmt(f, interner),
             Value::List(l) => l.fmt(f, interner),
         }
+    }
+}
+
+impl Serialize for Value {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        match self {
+            Value::None => serializer.serialize_unit(),
+            Value::Bool(b) => serializer.serialize_bool(*b),
+            Value::Char(c) => serializer.serialize_char(*c),
+            Value::Num(n) => serializer.serialize_f64(*n),
+            Value::Str(s) => serializer.serialize_str(s),
+            Value::Variant(v) => v.serialize(serializer),
+            Value::Record(r) => r.serialize(serializer),
+            Value::List(l) => l.serialize(serializer),
+            _ => Err(serde::ser::Error::custom(
+                "Cannot serialize this Value variant",
+            )),
+        }
+    }
+}
+
+impl<'de> Deserialize<'de> for Value {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        todo!()
     }
 }
 

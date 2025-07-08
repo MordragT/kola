@@ -127,23 +127,21 @@ pub fn module_parser<'t>() -> impl KolaParser<'t, Id<node::Module>> + Clone {
             .map_to_node(|vis| vis.unwrap_or(node::Vis::None))
             .boxed();
 
-        let value_bind = vis
-            .clone()
-            .then(lower_value_name_parser())
-            .then(
-                ctrl(CtrlT::COLON)
-                    .ignore_then(type_scheme_parser())
-                    .or_not(),
-            )
-            .then_ignore(op(OpT::ASSIGN))
-            .then(expr_parser())
-            .map_to_node(|(((vis, name), ty_scheme), value)| node::ValueBind {
-                vis,
-                name,
-                ty_scheme,
-                value,
-            })
-            .to_bind();
+        let value_bind = group((
+            vis.clone(),
+            lower_value_name_parser(),
+            ctrl(CtrlT::COLON)
+                .ignore_then(type_scheme_parser())
+                .or_not(),
+            op(OpT::ASSIGN).ignore_then(expr_parser()),
+        ))
+        .map_to_node(|(vis, name, ty_scheme, value)| node::ValueBind {
+            vis,
+            name,
+            ty_scheme,
+            value,
+        })
+        .to_bind();
 
         let type_bind = type_bind_parser().to_bind();
 
@@ -171,28 +169,29 @@ pub fn module_parser<'t>() -> impl KolaParser<'t, Id<node::Module>> + Clone {
         .map_to_node(|(vis, name, ty)| node::EffectTypeBind { vis, name, ty })
         .to_bind();
 
-        let module_bind = vis
-            .clone()
-            .then_ignore(kw(KwT::MODULE))
-            .then(module_name_parser())
-            .then(ctrl(CtrlT::COLON).ignore_then(module_type.clone()).or_not())
-            .then_ignore(op(OpT::ASSIGN))
-            .then(module_expr)
-            .map_to_node(|(((vis, name), ty), value)| node::ModuleBind {
-                vis,
-                name,
-                ty,
-                value,
-            })
-            .to_bind();
+        let module_bind = group((
+            vis.clone(),
+            kw(KwT::MODULE).ignore_then(module_name_parser()),
+            ctrl(CtrlT::COLON).ignore_then(module_type.clone()).or_not(),
+            op(OpT::ASSIGN).ignore_then(module_expr),
+        ))
+        .map_to_node(|(vis, name, ty, value)| node::ModuleBind {
+            vis,
+            name,
+            ty,
+            value,
+        })
+        .to_bind();
 
-        let module_type_bind = kw(KwT::MODULE)
-            .ignore_then(kw(KwT::TYPE))
-            .ignore_then(module_type_name_parser())
-            .then_ignore(op(OpT::ASSIGN))
-            .then(module_type.clone())
-            .map_to_node(|(name, ty)| node::ModuleTypeBind { name, ty })
-            .to_bind();
+        let module_type_bind = group((
+            vis.clone(),
+            kw(KwT::MODULE)
+                .ignore_then(kw(KwT::TYPE))
+                .ignore_then(module_type_name_parser()),
+            op(OpT::ASSIGN).ignore_then(module_type.clone()),
+        ))
+        .map_to_node(|(vis, name, ty)| node::ModuleTypeBind { vis, name, ty })
+        .to_bind();
 
         let functor_bind = group((
             vis,
@@ -1166,12 +1165,23 @@ pub fn type_scheme_parser<'t>() -> impl KolaParser<'t, Id<node::TypeScheme>> + C
 /// type_bind ::= 'type' name '=' type
 /// ```
 pub fn type_bind_parser<'t>() -> impl KolaParser<'t, Id<node::TypeBind>> + Clone {
-    kw(KwT::TYPE)
-        .ignore_then(type_name_parser())
-        .then_ignore(op(OpT::ASSIGN))
-        .then(type_scheme_parser())
-        .map_to_node(|(name, ty_scheme)| node::TypeBind { name, ty_scheme })
-        .boxed()
+    let vis = kw(KwT::EXPORT)
+        .to(node::Vis::Export)
+        .or_not()
+        .map_to_node(|vis| vis.unwrap_or(node::Vis::None))
+        .boxed();
+
+    group((
+        vis,
+        kw(KwT::TYPE).ignore_then(type_name_parser()),
+        op(OpT::ASSIGN).ignore_then(type_scheme_parser()),
+    ))
+    .map_to_node(|(vis, name, ty_scheme)| node::TypeBind {
+        vis,
+        name,
+        ty_scheme,
+    })
+    .boxed()
 }
 
 pub fn nested_parser<'t, T, U>(

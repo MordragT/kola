@@ -165,6 +165,7 @@ impl ValueBind {
 )]
 #[notate(color = "green")]
 pub struct TypeBind {
+    pub vis: Id<Vis>,
     pub name: Id<TypeName>,
     pub ty_scheme: Id<TypeScheme>,
 }
@@ -185,6 +186,7 @@ pub struct TypeBind {
 )]
 #[notate(color = "green")]
 pub struct OpaqueTypeBind {
+    pub vis: Id<Vis>,
     pub name: Id<TypeName>,
     pub ty_scheme: Id<TypeScheme>,
 }
@@ -443,6 +445,7 @@ pub struct FunctorApp {
 )]
 #[notate(color = "green")]
 pub struct ModuleTypeBind {
+    pub vis: Id<Vis>,
     pub name: Id<ModuleTypeName>,
     pub ty: Id<ModuleType>,
 }

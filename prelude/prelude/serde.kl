@@ -1,0 +1,4 @@
+{
+    export from_json : forall a . Str -> < Ok : a, Err : Str > = serde_from_json,
+    export to_json : forall a . a -> < Ok : Str, Err : Str > = serde_to_json,
+}

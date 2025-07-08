@@ -7,10 +7,107 @@
     export module num = import num,
     export module option = import option,
     export module record = import record,
+    export module serde = import serde,
     export module str = import str,
     export module tuple = import tuple,
 
-    list = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
+    module type CaddyInputs = {
+        domain : Str,
+        root : Str,
+    },
+
+    module my_inputs = {
+        #export to_json = super::serde::to_json,
+        export domain = "example.com",
+        export root = "/var/www/html",
+    },
+
+    module functor caddy_config inputs : CaddyInputs => {
+        # Helper for the route block
+        route = {
+            h_handle = [
+                {
+                    browse = {},
+                    handler = "file_server",
+                    root = inputs::root,
+                }
+            ],
+            match = [
+                {
+                    host = [ inputs::domain ],
+                }
+            ],
+        },
+
+        # Helper for the tls policy block
+        tls_policy = {
+            subjects = [ inputs::domain ],
+            issuers = [
+                {
+                    m_module = "acme",
+                    challenges = {
+                        dns = {
+                            provider = {
+                                name = "dnspod",
+                                auth_token = "id,token",
+                            }
+                        }
+                    }
+                }
+            ]
+        },
+
+        # The full config
+        export config = {
+            admin = {
+                disabled = true,
+            },
+            apps = {
+                http = {
+                    servers = {
+                        static = {
+                            automatic_https = {
+                                disable_redirects = true,
+                            },
+                            idle_timeout = 30000000000,
+                            listen = [ ":3443" ],
+                            max_header_bytes = 10240,
+                            read_header_timeout = 10000000000,
+                            routes = [ route ],
+                        }
+                    }
+                },
+                tls = {
+                    automation = {
+                        policies = [ tls_policy ],
+                    }
+                }
+            }
+        },
+
+        #export to_json = (inputs::to_json config),
+    },
+
+    module my_config = (caddy_config my_inputs),
+
+    main = (serde::to_json my_config::config),
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+    #list = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10],
 
     #main = let f = fn x => x * x in (list::map f list),
 
@@ -24,7 +121,7 @@
 
     #main = (list::get 4 list),
 
-    list2 = [1, 2, 3, 4, 1, 2, 3, 4],
+    #list2 = [1, 2, 3, 4, 1, 2, 3, 4],
 
     #main = (list::find (fn x => x == 3) list2),
 
@@ -32,8 +129,8 @@
 
     #main = (list::fold_right (fn a => fn b => a - b) 0 list),
 
-    opt_a = (Some 42),
-    opt_b = (Some 100),
+    #opt_a = (Some 42),
+    #opt_b = (Some 100),
 
     #main = (option::is_some opt_a),
 
@@ -41,17 +138,17 @@
 
     #main = (3 + 4),
 
-    my_str = "Hello, World!",
+    #my_str = "Hello, World!",
 
     #main = (str::concat my_str " How are you?"),
 
     #main = (str::any (fn x => x == 'Q') my_str),
 
-    my_record = record::empty,
+    #my_record = record::empty,
 
     #main = 10,
 
     #main = (io::debug list),
 
-    main = (io::read_file "test"),
+    #main = (io::read_file "test"),
 }

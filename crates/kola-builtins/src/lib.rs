@@ -229,6 +229,10 @@ define_builtins! {
     // TODO type kinds
     record_rec: forall 3 . { "record": 0, "base": 1, "step": ({ "acc": 1, "head": { "key": Str, "value": 2 } } -> 1) } -> 1,
 
+    // Builtin Serde functions
+    serde_from_json: forall 1 . Str -> [ "Ok": 0, "Err": Str ],
+    serde_to_json: forall 1 . 0 -> [ "Ok": Str, "Err": Str ],
+
     // Builtin String functions
     str_length: forall 0 . Str -> Num,
     str_is_empty: forall 0 . Str -> Bool,

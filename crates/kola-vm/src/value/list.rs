@@ -3,6 +3,7 @@ use std::fmt;
 use derive_more::From;
 use kola_collections::{ImVec, Ptr, im_vec};
 use kola_utils::{fmt::DisplayWithInterner, interner::StrInterner};
+use serde::{Serialize, ser::SerializeSeq};
 
 use super::Value;
 
@@ -144,5 +145,18 @@ impl DisplayWithInterner for List {
             first = false;
         }
         write!(f, "]")
+    }
+}
+
+impl Serialize for List {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        let mut seq = serializer.serialize_seq(Some(self.len()))?;
+        for value in &self.0 {
+            seq.serialize_element(value)?;
+        }
+        seq.end()
     }
 }

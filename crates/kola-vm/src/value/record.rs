@@ -6,6 +6,7 @@ use kola_utils::{
     fmt::DisplayWithInterner,
     interner::{StrInterner, StrKey},
 };
+use serde::{Serialize, ser::SerializeMap};
 
 use super::Value;
 
@@ -168,5 +169,20 @@ impl DisplayWithInterner for Record {
             first = false;
         }
         write!(f, "}}")
+    }
+}
+
+impl Serialize for Record {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        // TODO len is probably wrong because it referes to all items (including overriden ones)
+        // Probably better to fix that inside the ImShadowMap
+        let mut map = serializer.serialize_map(Some(self.0.len()))?;
+        for (key, value) in &self.0 {
+            map.serialize_entry(&key.to_string(), value)?;
+        }
+        map.end()
     }
 }

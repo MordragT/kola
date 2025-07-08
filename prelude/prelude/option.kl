@@ -1,6 +1,5 @@
 {
-    # TODO export should be optional (currently just all types are exported)
-    type Option = forall a . < Some : a, None >,
+    export type Option = forall a . < Some : a, None >,
 
     #############################################
     ### Core option operations

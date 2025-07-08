@@ -55,7 +55,7 @@ use log::trace;
 use crate::{
     analysis::exhaust_check_all,
     constraints::Constraints,
-    env::{GlobalTypeEnv, KindEnv, ModuleTypeEnv},
+    env::{KindEnv, TypeEnv},
     phase::{TypeAnnotations, TypedNodes},
     print::TypeDecorator,
     substitute::{Substitutable, Substitution},
@@ -65,7 +65,7 @@ use crate::{
 
 #[derive(Debug, Clone, Default)]
 pub struct TypeCheckOutput {
-    pub global_env: GlobalTypeEnv,
+    pub global_env: TypeEnv,
     pub type_annotations: TypeAnnotations,
 }
 
@@ -97,7 +97,7 @@ pub fn type_check(
     report: &mut Report,
     print_options: PrintOptions,
 ) -> TypeCheckOutput {
-    let mut global_env = GlobalTypeEnv::new();
+    let mut global_env = TypeEnv::new();
     let mut kind_env = KindEnv::new();
     let mut type_annotations = TypeAnnotations::new();
 
@@ -113,15 +113,15 @@ pub fn type_check(
 
         let mut subs = Substitution::empty(); // TODO better if this is bind local ?
         let mut module_annotations = TypedNodes::new();
-        let mut module_env = ModuleTypeEnv::new();
+        let mut module_env = TypeEnv::new();
 
         for &eff_sym in effect_order {
-            let id = module_scope.defs[eff_sym].id();
+            let def = module_scope.defs[eff_sym];
 
             let mut constraints = Constraints::new();
 
             let typer = Typer::new(
-                id,
+                def.id(),
                 spans.clone(),
                 &mut constraints,
                 &module_env,
@@ -141,9 +141,9 @@ pub fn type_check(
                 break;
             }
 
-            let type_ = typed_nodes.meta(id).clone().apply(&mut subs);
+            let type_ = typed_nodes.meta(def.id()).clone().apply(&mut subs);
 
-            global_env.insert_effect(eff_sym, type_);
+            module_env.insert_effect(eff_sym, def, type_);
             module_annotations.extend(typed_nodes);
         }
 
@@ -153,12 +153,12 @@ pub fn type_check(
         }
 
         for &type_sym in type_order {
-            let id = module_scope.defs[type_sym].id();
+            let def = module_scope.defs[type_sym];
 
             let mut constraints = Constraints::new();
 
             let typer = Typer::new(
-                id,
+                def.id(),
                 spans.clone(),
                 &mut constraints,
                 &module_env,
@@ -178,11 +178,11 @@ pub fn type_check(
                 break;
             }
 
-            let type_ = typed_nodes.meta(id).clone().apply(&mut subs);
+            let type_ = typed_nodes.meta(def.id()).clone().apply(&mut subs);
 
             // TODO generalize ?
 
-            global_env.insert_type(type_sym, type_);
+            module_env.insert_type(type_sym, def, type_);
             module_annotations.extend(typed_nodes);
         }
 
@@ -192,12 +192,12 @@ pub fn type_check(
         }
 
         for &value_sym in value_order {
-            let id = module_scope.defs[value_sym].id();
+            let def = module_scope.defs[value_sym];
 
             let mut constraints = Constraints::new();
 
             let typer = Typer::new(
-                id,
+                def.id(),
                 spans.clone(),
                 &mut constraints,
                 &module_env,
@@ -227,12 +227,12 @@ pub fn type_check(
             }
 
             // Generalize immediately (making it available for subsequent binds)
-            let actual_t = typed_nodes.meta(id).to_mono().unwrap();
+            let actual_t = typed_nodes.meta(def.id()).to_mono().unwrap();
             let poly_type = actual_t.generalize(&[]); // TODO should bound be something ? &type_env.bound_vars()
-            module_env.insert(value_sym, poly_type.clone()); // replace
+            module_env.insert_value(value_sym, def, poly_type.clone());
 
             // Update annotations with the final type
-            *typed_nodes.meta_mut(id) = poly_type;
+            *typed_nodes.meta_mut(def.id()) = poly_type;
             module_annotations.extend(typed_nodes);
         }
 
@@ -242,14 +242,10 @@ pub fn type_check(
         }
 
         module_annotations.apply_mut(&mut subs);
-
-        // Merge the generalized types into the global environment
-        for (value_sym, poly_type) in module_env {
-            global_env.insert_value(value_sym, poly_type);
-        }
+        global_env.merge(module_env);
 
         let module_type = ModuleType::from(module_scope.shape.clone());
-        global_env.insert_module(module_sym, module_type);
+        global_env.insert_module(module_sym, info, module_type);
 
         let resolution_decorator = ResolutionDecorator(&module_scope.resolved);
         let type_decorator = TypeDecorator(&module_annotations);

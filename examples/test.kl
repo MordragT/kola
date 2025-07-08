@@ -11,15 +11,15 @@
     #this doesn't work currently, because effects are currently just discarded
     #effectful : Str -> Unit ~ Io = fn x => do print x,
 
-    #effect type Io = {
-    #    print : Str -> Unit,
-    #    read : Unit -> Str,
-    #},
+    effect type Io = {
+        print : Str -> Unit,
+        read : Unit -> Str,
+    },
 
     #effectful : Unit -> Str = fn x => do read (),
 
     #simple = handle effectful
-    #    | read arg => "Hello from read",
+    #   | read arg => "Hello from read",
 
     #main = (simple ()),
 
@@ -34,7 +34,9 @@
     #    | < Some: v > => "Value"
     #    | _ => "Unknown case",
 
-    f : forall a . a -> { a : a } = fn x => { a : a = x },
+    module test = {
+        private_pi = 3.14,
+    },
 
-    main = (f 42),
+    main = test::private_pi,
 }

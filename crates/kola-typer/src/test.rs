@@ -8,7 +8,7 @@ use kola_tree::prelude::*;
 use kola_utils::interner::{PathInterner, StrInterner};
 
 use crate::{
-    env::{GlobalTypeEnv, KindEnv, ModuleTypeEnv},
+    env::{KindEnv, TypeEnv},
     error::TypeErrors,
     phase::TypedNodes,
     prelude::{Constraints, Substitutable, Substitution},
@@ -32,8 +32,8 @@ where
     let source_id = mocked_source();
     let spans = Rc::new(mocked_spans(source_id, &tree));
 
-    let type_env = GlobalTypeEnv::new();
-    let module_scope = ModuleTypeEnv::new();
+    let global_type_env = TypeEnv::new();
+    let module_type_env = TypeEnv::new();
     let interner = StrInterner::new(); // TODO for tests with builtin types the interner should be passed
     let resolved = ResolvedNodes::new();
 
@@ -42,8 +42,8 @@ where
         root_id,
         spans,
         &mut cons,
-        &module_scope,
-        &type_env,
+        &module_type_env,
+        &global_type_env,
         &interner,
         &resolved,
     );

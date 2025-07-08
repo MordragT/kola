@@ -1403,8 +1403,13 @@ pub trait Visitor<T: TreeView> {
         id: Id<node::TypeBind>,
         tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
-        let node::TypeBind { name, ty_scheme } = *id.get(tree);
+        let node::TypeBind {
+            vis,
+            name,
+            ty_scheme,
+        } = *id.get(tree);
 
+        self.visit_vis(vis, tree)?;
         self.visit_type_name(name, tree)?;
         self.visit_type_scheme(ty_scheme, tree)?;
 
@@ -1424,8 +1429,13 @@ pub trait Visitor<T: TreeView> {
         id: Id<node::OpaqueTypeBind>,
         tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
-        let node::OpaqueTypeBind { name, ty_scheme } = *id.get(tree);
+        let node::OpaqueTypeBind {
+            vis,
+            name,
+            ty_scheme,
+        } = *id.get(tree);
 
+        self.visit_vis(vis, tree)?;
         self.visit_type_name(name, tree)?;
         self.visit_type_scheme(ty_scheme, tree)?;
 
@@ -1497,8 +1507,9 @@ pub trait Visitor<T: TreeView> {
         id: Id<node::ModuleTypeBind>,
         tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
-        let node::ModuleTypeBind { name, ty } = *id.get(tree);
+        let node::ModuleTypeBind { vis, name, ty } = *id.get(tree);
 
+        self.visit_vis(vis, tree)?;
         self.visit_module_type_name(name, tree)?;
         self.visit_module_type(ty, tree)?;
 

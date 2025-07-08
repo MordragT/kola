@@ -1022,6 +1022,8 @@ dependencies = [
  "kola-collections",
  "kola-ir",
  "kola-utils",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]

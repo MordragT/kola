@@ -1,16 +1,28 @@
 {
-    type Ordering = < Less, Equal, Greater >,
+    export type Ordering = < Less, Equal, Greater >,
 
-    module type Ord = {
+    export module type Ord = {
         compare : forall a . a -> a -> Ordering,
     },
 
     export module functor max ord : Ord => {
-        max = fn x => fn y =>
+        export max = fn x => fn y =>
             let ordering = (ord::compare x y) in # TODO remove need for let bind because of case
                 case ordering
                     | < Less : _ > => y
                     | < Equal : _ > => x
-                    | < Greater : _ > => x,
+                    | < Greater : _ > => x
+                    | _ => x, # TODO this case is needed to make the compiler happy because of functor weirdness
     },
+
+    # TODO this is more for showcasing the functor than for practical use
+
+    export module num_ord = {
+        export compare = fn x => fn y =>
+            if x < y then (Less ())
+            else if x > y then (Greater ())
+            else (Equal ()),
+    },
+
+    export module num_max = (max num_ord),
 }
