@@ -49,7 +49,7 @@ use kola_tree::{
     meta::MetaView,
     print::{Decorators, TreePrinter},
 };
-use kola_utils::{fmt::StrInternerExt, interner::StrInterner};
+use kola_utils::{interner::StrInterner, interner_ext::InternerExt};
 use log::trace;
 
 use crate::{
@@ -136,7 +136,7 @@ pub fn type_check(
             };
 
             if let Err((errs, loc)) = constraints.solve(&mut subs, &mut kind_env) {
-                let diag = interner.display(&errs).into_diagnostic(loc);
+                let diag = interner.with(&errs).into_diagnostic(loc);
                 report.add_diagnostic(diag);
                 break;
             }
@@ -173,7 +173,7 @@ pub fn type_check(
             };
 
             if let Err((errs, loc)) = constraints.solve(&mut subs, &mut kind_env) {
-                let diag = interner.display(&errs).into_diagnostic(loc);
+                let diag = interner.with(&errs).into_diagnostic(loc);
                 report.add_diagnostic(diag);
                 break;
             }
@@ -212,7 +212,7 @@ pub fn type_check(
             };
 
             if let Err((errs, loc)) = constraints.solve(&mut subs, &mut kind_env) {
-                let diag = interner.display(&errs).into_diagnostic(loc);
+                let diag = interner.with(&errs).into_diagnostic(loc);
                 report.add_diagnostic(diag);
                 break;
             }

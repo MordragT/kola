@@ -315,12 +315,6 @@ impl<'s> Unifier<'s> {
     }
 }
 
-/// Helper function that concatenates two vectors into a single vector while removing duplicates.
-pub(crate) fn union<T: PartialEq>(mut vars: Vec<T>, mut with: Vec<T>) -> Vec<T> {
-    with.retain(|tv| !vars.contains(tv));
-    vars.append(&mut with);
-    vars
-}
 #[cfg(test)]
 mod tests {
     use super::*;

@@ -18,7 +18,7 @@ use kola_typer::{
     check::{TypeCheckOutput, type_check},
     print::TypeDecorator,
 };
-use kola_utils::{fmt::StrInternerExt, interner::StrInterner, io::FileSystem};
+use kola_utils::{interner::StrInterner, interner_ext::InternerExt, io::FileSystem};
 use kola_vm::machine::CekMachine;
 
 pub enum DriverOptions {}
@@ -273,7 +273,7 @@ impl Driver {
 
         match machine.run() {
             Ok(value) => {
-                println!("\nExecution result: {}", interner.display(&value))
+                println!("\nExecution result: {}", interner.with(&value))
             }
             Err(e) => eprintln!("\nRuntime error: {}", e),
         }

@@ -1,7 +1,10 @@
 use std::fmt;
 
 use kola_ir::instr::Tag;
-use kola_utils::{fmt::DisplayWithInterner, interner::StrInterner};
+use kola_utils::{
+    interner::StrInterner,
+    interner_ext::{DisplayWithInterner, InternerExt, SerializeWithInterner},
+};
 use serde::{Serialize, ser::SerializeStruct};
 
 use super::Value;
@@ -32,7 +35,7 @@ impl Variant {
     }
 }
 
-impl DisplayWithInterner for Variant {
+impl DisplayWithInterner<str> for Variant {
     fn fmt(&self, f: &mut fmt::Formatter<'_>, interner: &StrInterner) -> fmt::Result {
         self.tag.fmt(f, interner)?;
         write!(f, "(")?;
@@ -41,14 +44,14 @@ impl DisplayWithInterner for Variant {
     }
 }
 
-impl Serialize for Variant {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+impl SerializeWithInterner<str> for Variant {
+    fn serialize<S>(&self, serializer: S, interner: &StrInterner) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
     {
         let mut state = serializer.serialize_struct("Variant", 2)?;
         state.serialize_field("tag", &self.tag.0)?; // TODO this would need to also consult the StrInterner
-        state.serialize_field("value", &self.value)?;
+        state.serialize_field("value", &interner.with(&*self.value))?;
         state.end()
     }
 }

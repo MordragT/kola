@@ -20,6 +20,7 @@ use kola_ir::{
     },
     ir::{Ir, IrView},
 };
+use kola_utils::interner_ext::InternerExt;
 
 pub fn eval_symbol(symbol: Symbol, env: &Env) -> Result<Value, String> {
     // Look up the symbol in the environment
@@ -555,11 +556,12 @@ fn eval_builtin(
             });
         }
         // TODO these serde methods do not enforce type annotations
-        (BuiltinId::SerdeFromJson, Value::Str(json_str)) => match Value::from_json(&json_str) {
-            Ok(value) => Value::variant(Tag(env.interner["Ok"]), value),
-            Err(err) => Value::variant(Tag(env.interner["Err"]), Value::Str(err.to_string())),
-        },
-        (BuiltinId::SerdeToJson, value) => match value.to_json() {
+        // TODO from_json would mean that the interner is mutable
+        // (BuiltinId::SerdeFromJson, Value::Str(json_str)) => match Value::from_json(&json_str) {
+        //     Ok(value) => Value::variant(Tag(env.interner["Ok"]), value),
+        //     Err(err) => Value::variant(Tag(env.interner["Err"]), Value::Str(err.to_string())),
+        // },
+        (BuiltinId::SerdeToJson, value) => match env.interner.to_json(&value) {
             Ok(json_str) => Value::variant(Tag(env.interner["Ok"]), Value::Str(json_str)),
             Err(err) => Value::variant(Tag(env.interner["Err"]), Value::Str(err.to_string())),
         },

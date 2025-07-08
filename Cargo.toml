@@ -28,6 +28,7 @@ chumsky = { version = "0.10", features = [
 ] }
 indexmap = "2.7.1"
 serde = { version = "1.0", features = ["derive"] }
+serde_json = "1.0"
 derive_more = { version = "2.0", features = [
     "from",
     "try_into",

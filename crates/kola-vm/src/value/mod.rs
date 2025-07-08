@@ -2,7 +2,10 @@ use derive_more::From;
 use enum_as_inner::EnumAsInner;
 use kola_builtins::BuiltinId;
 use kola_ir::instr::Tag;
-use kola_utils::{fmt::DisplayWithInterner, interner::StrInterner};
+use kola_utils::{
+    interner::StrInterner,
+    interner_ext::{DisplayWithInterner, SerializeWithInterner},
+};
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
@@ -55,17 +58,9 @@ impl Value {
     pub fn variant(tag: Tag, value: Self) -> Self {
         Value::Variant(Variant::new(tag, value))
     }
-
-    pub fn from_json(json: &str) -> Result<Self, serde_json::Error> {
-        serde_json::from_str(json)
-    }
-
-    pub fn to_json(&self) -> Result<String, serde_json::Error> {
-        serde_json::to_string_pretty(self)
-    }
 }
 
-impl DisplayWithInterner for Value {
+impl DisplayWithInterner<str> for Value {
     fn fmt(&self, f: &mut fmt::Formatter<'_>, interner: &StrInterner) -> fmt::Result {
         match self {
             Value::None => write!(f, "()"),
@@ -84,8 +79,8 @@ impl DisplayWithInterner for Value {
     }
 }
 
-impl Serialize for Value {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+impl SerializeWithInterner<str> for Value {
+    fn serialize<S>(&self, serializer: S, interner: &StrInterner) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
     {
@@ -95,9 +90,9 @@ impl Serialize for Value {
             Value::Char(c) => serializer.serialize_char(*c),
             Value::Num(n) => serializer.serialize_f64(*n),
             Value::Str(s) => serializer.serialize_str(s),
-            Value::Variant(v) => v.serialize(serializer),
-            Value::Record(r) => r.serialize(serializer),
-            Value::List(l) => l.serialize(serializer),
+            Value::Variant(v) => v.serialize(serializer, interner),
+            Value::Record(r) => r.serialize(serializer, interner),
+            Value::List(l) => l.serialize(serializer, interner),
             _ => Err(serde::ser::Error::custom(
                 "Cannot serialize this Value variant",
             )),

@@ -6,8 +6,6 @@ use kola_resolver::{
 use kola_tree::node::{EffectName, ModuleName, TypeName, ValueName};
 use kola_utils::interner::StrKey;
 
-use crate::env::TypeEnv;
-
 /// TODO this paragraph is completely outdated,
 /// this type is only used as a side table at the moment.
 ///

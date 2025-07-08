@@ -3,8 +3,8 @@ use std::fmt;
 use derive_more::From;
 use kola_collections::ImShadowMap;
 use kola_utils::{
-    fmt::DisplayWithInterner,
     interner::{StrInterner, StrKey},
+    interner_ext::{DisplayWithInterner, InternerExt, SerializeWithInterner},
 };
 use serde::{Serialize, ser::SerializeMap};
 
@@ -156,7 +156,7 @@ impl Record {
     }
 }
 
-impl DisplayWithInterner for Record {
+impl DisplayWithInterner<str> for Record {
     fn fmt(&self, f: &mut fmt::Formatter<'_>, interner: &StrInterner) -> fmt::Result {
         write!(f, "{{")?;
         let mut first = true;
@@ -172,8 +172,8 @@ impl DisplayWithInterner for Record {
     }
 }
 
-impl Serialize for Record {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+impl SerializeWithInterner<str> for Record {
+    fn serialize<S>(&self, serializer: S, interner: &StrInterner) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
     {
@@ -181,7 +181,7 @@ impl Serialize for Record {
         // Probably better to fix that inside the ImShadowMap
         let mut map = serializer.serialize_map(Some(self.0.len()))?;
         for (key, value) in &self.0 {
-            map.serialize_entry(&key.to_string(), value)?;
+            map.serialize_entry(&interner[*key], &interner.with(value))?;
         }
         map.end()
     }

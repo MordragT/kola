@@ -1,6 +1,7 @@
+use camino::Utf8Path;
 use chumsky::error::Rich;
 use derive_more::Display;
-use kola_utils::fmt::{DisplayWithInterner, WithInterner};
+use kola_utils::interner_ext::{DisplayWithInterner, WithInterner};
 use owo_colors::{OwoColorize, Style};
 use std::{
     fmt,
@@ -208,7 +209,8 @@ pub trait IntoDiagnostic: fmt::Display + Sized {
 
 impl IntoDiagnostic for io::Error {}
 
-impl<T> IntoDiagnostic for WithInterner<'_, T> where T: DisplayWithInterner {}
+impl<T> IntoDiagnostic for WithInterner<'_, T, str> where T: DisplayWithInterner<str> {}
+impl<T> IntoDiagnostic for WithInterner<'_, T, Utf8Path> where T: DisplayWithInterner<Utf8Path> {}
 
 /// Represents a diagnostic message with source location information.
 ///

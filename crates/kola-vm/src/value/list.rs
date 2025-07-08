@@ -2,7 +2,10 @@ use std::fmt;
 
 use derive_more::From;
 use kola_collections::{ImVec, Ptr, im_vec};
-use kola_utils::{fmt::DisplayWithInterner, interner::StrInterner};
+use kola_utils::{
+    interner::StrInterner,
+    interner_ext::{DisplayWithInterner, InternerExt, SerializeWithInterner},
+};
 use serde::{Serialize, ser::SerializeSeq};
 
 use super::Value;
@@ -133,7 +136,7 @@ impl FromIterator<Value> for List {
     }
 }
 
-impl DisplayWithInterner for List {
+impl DisplayWithInterner<str> for List {
     fn fmt(&self, f: &mut fmt::Formatter<'_>, interner: &StrInterner) -> fmt::Result {
         write!(f, "[")?;
         let mut first = true;
@@ -148,14 +151,14 @@ impl DisplayWithInterner for List {
     }
 }
 
-impl Serialize for List {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+impl SerializeWithInterner<str> for List {
+    fn serialize<S>(&self, serializer: S, interner: &StrInterner) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
     {
         let mut seq = serializer.serialize_seq(Some(self.len()))?;
         for value in &self.0 {
-            seq.serialize_element(value)?;
+            seq.serialize_element(&interner.with(value))?;
         }
         seq.end()
     }

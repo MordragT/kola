@@ -7,6 +7,7 @@ edition = "2024"
 kola-collections.workspace = true
 camino.workspace = true
 serde.workspace = true
+serde_json.workspace = true
 thiserror.workspace = true
 derive_more.workspace = true
 pathdiff = { version = "0.2.3", features = ["camino"] }

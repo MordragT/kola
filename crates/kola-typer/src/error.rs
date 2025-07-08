@@ -1,5 +1,5 @@
 use kola_span::IntoDiagnostic;
-use kola_utils::{errors::Errors, fmt::DisplayWithInterner, interner::StrKey};
+use kola_utils::{errors::Errors, interner::StrKey, interner_ext::DisplayWithInterner};
 use thiserror::Error;
 
 use crate::types::{Kind, MonoType, PolyType, TypeVar};
@@ -36,7 +36,7 @@ pub enum TypeError {
     MissingLabel(StrKey),
 }
 
-impl DisplayWithInterner for TypeError {
+impl DisplayWithInterner<str> for TypeError {
     fn fmt(
         &self,
         f: &mut std::fmt::Formatter<'_>,

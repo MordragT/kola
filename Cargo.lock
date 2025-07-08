@@ -1008,6 +1008,7 @@ dependencies = [
  "kola-collections",
  "pathdiff",
  "serde",
+ "serde_json",
  "thiserror",
  "typenum",
 ]
@@ -1023,7 +1024,6 @@ dependencies = [
  "kola-ir",
  "kola-utils",
  "serde",
- "serde_json",
 ]
 
 [[package]]

@@ -4,9 +4,9 @@ use std::fmt;
 use kola_builtins::BuiltinId;
 use kola_print::prelude::*;
 use kola_utils::{
-    fmt::{DisplayWithInterner, StrInternerExt},
     impl_try_as,
     interner::{StrInterner, StrKey},
+    interner_ext::{DisplayWithInterner, InternerExt},
 };
 
 use super::{Expr, Symbol};
@@ -72,7 +72,7 @@ impl<'a> Notate<'a> for IrPrinter<'a, Func> {
 #[derive(Debug, From, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Tag(pub StrKey);
 
-impl DisplayWithInterner for Tag {
+impl DisplayWithInterner<str> for Tag {
     fn fmt(&self, f: &mut fmt::Formatter<'_>, interner: &StrInterner) -> fmt::Result {
         write!(f, "#{}", interner[self.0].blue())
     }
@@ -127,7 +127,7 @@ impl<'a> Notate<'a> for IrPrinter<'a, Id<Atom>> {
             Atom::Func(f) => self.to(f).notate(arena),
             Atom::Symbol(s) => s.display_in(arena),
             Atom::Builtin(b) => b.display_in(arena),
-            Atom::Tag(t) => self.interner.display(&t).display_in(arena),
+            Atom::Tag(t) => self.interner.with(&t).display_in(arena),
         };
 
         notation

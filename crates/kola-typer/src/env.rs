@@ -2,11 +2,10 @@ use std::{collections::HashMap, ops::Index};
 
 use indexmap::IndexMap;
 use kola_resolver::{
-    defs::{EffectTypeDef, ModuleDef, TypeDef, ValueDef},
+    defs::{EffectTypeDef, TypeDef, ValueDef},
     info::ModuleInfo,
     symbol::{EffectSym, ModuleSym, TypeSym, ValueSym},
 };
-use kola_tree::node::Vis;
 use kola_utils::{interner::StrKey, scope::LinearScope};
 
 use crate::types::{Kind, ModuleType, MonoType, PolyType, RowType, TypeVar};
