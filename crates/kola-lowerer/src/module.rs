@@ -115,7 +115,7 @@ use kola_resolver::{
 };
 use kola_tree::tree::Tree;
 use kola_utils::interner::StrInterner;
-use log::debug;
+use log::{debug, trace};
 
 use crate::{normalizer::Normalizer, symbol::SymbolEnv};
 
@@ -266,7 +266,7 @@ pub fn lower(
 
     let ir = builder.finish(next);
 
-    debug!(
+    trace!(
         "{}\n{}",
         "Intermediate Representation".bold().bright_white(),
         render_ir(&ir, arena, interner, print_options)

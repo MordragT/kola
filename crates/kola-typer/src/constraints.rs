@@ -1,6 +1,6 @@
 use kola_span::{Loc, Located};
 use kola_utils::errors::Errors;
-use log::debug;
+use log::trace;
 
 use crate::{
     env::KindEnv,
@@ -103,7 +103,7 @@ impl Constraints {
                     let lhs = expected.apply_cow(s);
                     let rhs = actual.apply_cow(s);
 
-                    debug!("SOLVING: {} ≈ {}", lhs, rhs);
+                    trace!("SOLVING: {} ≈ {}", lhs, rhs);
 
                     lhs.try_unify(&rhs, s).map_err(|errors| ((errors, span)))?;
                 }

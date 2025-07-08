@@ -807,7 +807,7 @@ pub fn expr_parser<'t>() -> impl KolaParser<'t, Id<node::Expr>> + Clone {
 
         let unary_op = op(OpT::SUB)
             .to(node::UnaryOp::Neg)
-            .or(op(OpT::NOT).to(node::UnaryOp::Neg))
+            .or(op(OpT::NOT).to(node::UnaryOp::Not))
             .to_node();
         let unary = unary_op
             .repeated()

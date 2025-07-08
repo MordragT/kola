@@ -1,5 +1,5 @@
 use camino::Utf8Path;
-use log::debug;
+use log::trace;
 use owo_colors::OwoColorize;
 use std::{collections::HashMap, io, ops::ControlFlow};
 
@@ -57,7 +57,7 @@ pub fn discover(
     let path = io.canonicalize(path.as_ref())?;
     let (source_id, source) = source_manager.fetch(path.as_path(), &io)?;
 
-    debug!(
+    trace!(
         "{} {}\n{}",
         "Source".bold().bright_white(),
         &path,
@@ -72,7 +72,7 @@ pub fn discover(
         });
     };
 
-    debug!(
+    trace!(
         "{} {:?}\n{}",
         "Tokens".bold().bright_white(),
         &path,
@@ -95,7 +95,7 @@ pub fn discover(
         let decorators = Decorators::new();
         let tree_printer = TreePrinter::root(&tree, interner, decorators);
 
-        debug!(
+        trace!(
             "{} {:?}\n{}",
             "Untyped Abstract Syntax Tree".bold().bright_white(),
             &path,
@@ -549,7 +549,7 @@ where
             }
         };
 
-        debug!(
+        trace!(
             "{} {}\n{}",
             "Source".bold().bright_white(),
             &path,
@@ -561,7 +561,7 @@ where
             return ControlFlow::Continue(());
         };
 
-        debug!(
+        trace!(
             "{} {:?}\n{}",
             "Tokens".bold().bright_white(),
             &path,
@@ -581,7 +581,7 @@ where
         let decorators = Decorators::new();
         let tree_printer = TreePrinter::root(&tree, &self.interner, decorators);
 
-        debug!(
+        trace!(
             "{} {:?}\n{}",
             "Untyped Abstract Syntax Tree".bold().bright_white(),
             &path,

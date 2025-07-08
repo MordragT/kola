@@ -1,3 +1,21 @@
 {
-    # compose, id, const, etc.
+    export id : forall a . a -> a = fn x => x,
+
+    export const : forall a b . a -> b -> a = fn a => fn b => a,
+
+    export compose : forall a b c . (b -> c) -> (a -> b) -> (a -> c) = fn f =>
+        fn g => fn x => (f (g x)),
+
+    export flip : forall a b c . (a -> b -> c) -> (b -> a -> c) = fn f =>
+        fn b => fn a => (f a b),
+
+    export negate : forall a . (a -> Bool) -> a -> Bool =
+        fn p => fn x => !(p x),
+
+    export apply : forall a b . (a -> b) -> a -> b = fn f => fn x => (f x),
+
+    export pipe : forall a b . a -> (a -> b) -> b = fn x => fn f => (f x),
+
+    export on : forall a b c . (b -> b -> c) -> (a -> b) -> a -> a -> c =
+            fn op => fn f => fn x => fn y => (op (f x) (f y)),
 }

@@ -50,7 +50,7 @@ use kola_tree::{
     print::{Decorators, TreePrinter},
 };
 use kola_utils::{fmt::StrInternerExt, interner::StrInterner};
-use log::debug;
+use log::trace;
 
 use crate::{
     analysis::exhaust_check_all,
@@ -259,7 +259,7 @@ pub fn type_check(
 
         let tree_printer = TreePrinter::new(&tree, &interner, decorators, info.id);
 
-        debug!(
+        trace!(
             "{} SourceId {}, ModuleSym {}\n{}",
             "Typed Abstract Syntax Tree".bold().bright_white(),
             info.source,

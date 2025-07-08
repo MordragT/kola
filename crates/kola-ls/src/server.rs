@@ -131,30 +131,16 @@ impl Server {
     }
 
     pub async fn on_semantic_tokens_full(&self, uri: Uri) -> Option<SemanticTokensResult> {
-        // let path = Self::uri_to_path(&uri)?;
+        let path = Self::uri_to_path(&uri)?;
 
-        // let source = self.sources.get(&path)?;
-        // let output = self.outputs.get(&path)?;
+        let source = self.sources.get(&path)?;
+        let output = self.outputs.get(&path)?;
 
-        // let data = to_lsp_tokens(&output.tokens, &*source);
+        let data = to_lsp_tokens(&output.tokens, &*source);
 
-        // Some(SemanticTokensResult::Tokens(SemanticTokens {
-        //     result_id: None,
-        //     data,
-        // }))
-
-        use tower_lsp_server::lsp_types::{SemanticToken, SemanticTokens, SemanticTokensResult};
-
-        let tokens = vec![SemanticToken {
-            delta_line: 0,
-            delta_start: 0,
-            length: 3,
-            token_type: 0, // 0 = keyword if LEGEND[0] is keyword
-            token_modifiers_bitset: 0,
-        }];
         Some(SemanticTokensResult::Tokens(SemanticTokens {
             result_id: None,
-            data: tokens,
+            data,
         }))
     }
 

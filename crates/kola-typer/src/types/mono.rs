@@ -71,9 +71,9 @@ impl MonoType {
             TypeProtocol::Record(fields) => {
                 let mut row = Self::empty_row();
                 for &(label, ty) in fields.iter().rev() {
-                    dbg!("Need to properly insert builtins labels", label);
-                    // TODO: I don't trust this unwrap in test cases so handle this better
-                    // Safety: `label` is guaranteed to be in the interner
+                    // TODO Need to properly insert builtins labels
+                    // I don't trust this unwrap in test cases so handle this better
+                    // Safety: `label` is (not :D) guaranteed to be in the interner
                     let labeled = LabeledType::new(
                         interner.lookup(label).unwrap(),
                         Self::from_protocol(ty, bound, interner),
@@ -85,8 +85,9 @@ impl MonoType {
             TypeProtocol::Variant(tags) => {
                 let mut row = Self::empty_row();
                 for &(label, ty) in tags.iter().rev() {
-                    dbg!("Need to properly insert builtins labels", label);
-
+                    // TODO Need to properly insert builtins labels
+                    // I don't trust this unwrap in test cases so handle this better
+                    // Safety: `label` is (not :D) guaranteed to be in the interner
                     let labeled = LabeledType::new(
                         interner.lookup(label).unwrap(),
                         Self::from_protocol(ty, bound, interner),

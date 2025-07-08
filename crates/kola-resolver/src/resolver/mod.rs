@@ -7,7 +7,7 @@ use kola_print::prelude::*;
 use kola_span::{Issue, Report, SourceManager};
 use kola_tree::print::{Decorators, TreePrinter};
 use kola_utils::{interner::StrInterner, io::FileSystem};
-use log::debug;
+use log::{debug, trace};
 
 use crate::{
     forest::Forest,
@@ -123,7 +123,7 @@ pub fn resolve(
 
         let tree_printer = TreePrinter::new(tree, interner, decorators, scope.info.id);
 
-        debug!(
+        trace!(
             "{} SourceId {}, ModuleSym {}\n{}",
             "Resolved Abstract Syntax Tree".bold().bright_white(),
             source,

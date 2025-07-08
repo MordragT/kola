@@ -155,7 +155,7 @@ impl Issue {
         self
     }
 
-    pub fn write(self, mut w: impl Write) -> io::Result<()> {
+    pub fn write(&self, mut w: impl Write) -> io::Result<()> {
         let Issue {
             message,
             code,
@@ -183,11 +183,11 @@ impl Issue {
         Ok(())
     }
 
-    pub fn print(self) -> io::Result<()> {
+    pub fn print(&self) -> io::Result<()> {
         self.write(io::stdout())
     }
 
-    pub fn eprint(self) -> io::Result<()> {
+    pub fn eprint(&self) -> io::Result<()> {
         self.write(io::stderr())
     }
 }

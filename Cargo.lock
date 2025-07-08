@@ -853,6 +853,7 @@ dependencies = [
  "kola-resolver",
  "kola-span",
  "kola-syntax",
+ "kola-tree",
  "kola-typer",
  "kola-utils",
  "kola-vm",

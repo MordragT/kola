@@ -1,11 +1,8 @@
 use camino::Utf8PathBuf;
-use kola_utils::io::{FileSystem, RealFileSystem};
-use log::info;
+use kola_utils::io::RealFileSystem;
 use std::io;
 
-// use kola_compiler::prelude::*;
 use kola_driver::Driver;
-use kola_print::prelude::*;
 
 #[derive(Debug, clap::Parser)]
 #[command(author, version, about, long_about = None)]
@@ -18,6 +15,10 @@ pub struct Cli {
 pub enum Cmd {
     Parse { path: Utf8PathBuf },
     Analyze { path: Utf8PathBuf },
+    Compile { path: Utf8PathBuf },
+    Run { path: Utf8PathBuf },
+    Test { path: Utf8PathBuf },
+    Doc { path: Utf8PathBuf },
 }
 
 fn main() -> io::Result<()> {
@@ -27,35 +28,29 @@ fn main() -> io::Result<()> {
         .init();
 
     let cli: Cli = clap::Parser::parse();
-    let options = PrintOptions::default().with_width(120);
+
+    let mut driver = Driver::new(RealFileSystem);
 
     match cli.command {
         Cmd::Parse { path } => {
-            todo!()
-            // let (file_path, import_path) = FilePath::open(path).into_diagnostic()?;
-            // let source = Source::from_path(file_path, import_path).into_diagnostic()?;
-            // let _file = FileParser::new(source, options).try_parse()?;
+            driver.parse(path)?;
         }
         Cmd::Analyze { path } => {
-            // let mut world = World::explore(path, options)?;
-
-            // info!(
-            //     "{}\n{}",
-            //     "Module Dependency Order".bold().bright_white(),
-            //     world
-            //         .order
-            //         .iter()
-            //         .map(ToString::to_string)
-            //         .fold(String::new(), |mut s, m| {
-            //             s.push_str(&m);
-            //             s.push('\n');
-            //             s
-            //         }),
-            // );
-
-            // world.type_check().unwrap();
-
-            Driver::new(RealFileSystem).compile(path)
+            driver.analyze(path)?;
+        }
+        Cmd::Compile { path } => {
+            driver.compile(path)?;
+        }
+        Cmd::Run { path } => {
+            driver.run(path)?;
+        }
+        Cmd::Test { path } => {
+            todo!()
+        }
+        Cmd::Doc { path } => {
+            todo!()
         }
     }
+
+    Ok(())
 }

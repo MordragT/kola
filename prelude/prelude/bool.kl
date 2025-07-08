@@ -5,8 +5,7 @@
 
     export or : Bool -> Bool -> Bool = fn a => fn b => a || b,
 
-    # TODO why is this not working ?
-    #export xor : Bool -> Bool -> Bool = fn a => fn b => (a && !b) || (!a && b),
+    export xor : Bool -> Bool -> Bool = fn a => fn b => (a && !b) || (!a && b),
 
     export eq : Bool -> Bool -> Bool = fn a => fn b => a == b,
 
