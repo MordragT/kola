@@ -222,6 +222,7 @@ define!(
     RecordRestrictExpr,
     RecordUpdateOp,
     RecordUpdateExpr,
+    RecordMergeExpr,
     FieldPath,
     QualifiedExpr,
     UnaryOp,

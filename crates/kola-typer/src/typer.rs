@@ -8,7 +8,7 @@ use kola_tree::{node::Vis, prelude::*};
 use kola_utils::interner::StrInterner;
 
 use crate::{
-    constraints::Constraints,
+    constraints::{Constraints, MergeKind},
     env::{LocalTypeEnv, TypeEnv},
     pattern_typer::PatternTyper,
     phase::{TypePhase, TypedNodes},
@@ -33,7 +33,7 @@ pub struct Typer<'a, N> {
     module_env: &'a TypeEnv,
     global_env: &'a TypeEnv,
     cons: &'a mut Constraints,
-    interner: &'a StrInterner,
+    interner: &'a mut StrInterner,
     resolved: &'a ResolvedNodes,
 }
 
@@ -44,7 +44,7 @@ impl<'a, N> Typer<'a, N> {
         cons: &'a mut Constraints,
         module_env: &'a TypeEnv,
         global_env: &'a TypeEnv,
-        interner: &'a StrInterner,
+        interner: &'a mut StrInterner,
         resolved: &'a ResolvedNodes,
     ) -> Self {
         Self {
@@ -778,7 +778,7 @@ where
 
         if let Some(ty_scheme) = ty_scheme {
             let expected_t = self.types.meta(ty_scheme).instantiate();
-            self.cons.constrain_check(expected_t, value_t.clone(), span);
+            self.cons.constrain_equal(expected_t, value_t.clone(), span);
         }
 
         // Restore depth so that type variables from ty_scheme are not left in scope
@@ -856,7 +856,7 @@ where
                 let span = self.span(id);
                 let elem_t = self.types.meta(elem).clone();
 
-                self.cons.constrain(first_t.clone(), elem_t, span);
+                self.cons.constrain_equal(first_t.clone(), elem_t, span);
             }
         } else {
             self.insert_type(id, MonoType::list(MonoType::variable()));
@@ -963,7 +963,7 @@ where
                 ty: value_t.clone(),
             };
 
-            self.cons.constrain(
+            self.cons.constrain_equal(
                 MonoType::row(head_t, MonoType::variable()),
                 record_t.clone(),
                 span,
@@ -1011,7 +1011,7 @@ where
             };
 
             self.cons
-                .constrain_check(expected_t, value_t.clone(), self.span(id));
+                .constrain_equal(expected_t, value_t.clone(), self.span(id));
         }
 
         self.insert_type(id, LabeledType { label, ty: value_t });
@@ -1087,7 +1087,7 @@ where
             };
 
             self.cons
-                .constrain_check(expected_t, source_t.clone(), span);
+                .constrain_equal(expected_t, source_t.clone(), span);
         }
 
         // Split path into navigation fields and final extension field
@@ -1106,7 +1106,7 @@ where
                 ty: value_t.clone(),
             };
 
-            self.cons.constrain(
+            self.cons.constrain_equal(
                 MonoType::row(head_t, MonoType::variable()),
                 source_t.clone(),
                 span,
@@ -1126,7 +1126,7 @@ where
                 Err(e) => return ControlFlow::Break(e.into_diagnostic(span)),
             };
 
-            self.cons.constrain_check(expected_t, value_t.clone(), span);
+            self.cons.constrain_equal(expected_t, value_t.clone(), span);
         }
 
         let label = field.get(tree).0.clone();
@@ -1185,7 +1185,7 @@ where
             };
 
             self.cons
-                .constrain_check(expected_t, source_t.clone(), span);
+                .constrain_equal(expected_t, source_t.clone(), span);
         }
 
         // Split path into navigation fields and final restriction field
@@ -1205,7 +1205,7 @@ where
                 ty: value_t.clone(),
             };
 
-            self.cons.constrain(
+            self.cons.constrain_equal(
                 MonoType::row(head_t, MonoType::variable()),
                 source_t.clone(),
                 span,
@@ -1227,14 +1227,14 @@ where
                 Err(e) => return ControlFlow::Break(e.into_diagnostic(span)),
             };
 
-            self.cons.constrain_check(expected_t, value_t.clone(), span);
+            self.cons.constrain_equal(expected_t, value_t.clone(), span);
         }
 
         let label = field.get(tree).0.clone();
         let head_t = LabeledType { label, ty: value_t };
         let tail_t = MonoType::variable();
 
-        self.cons.constrain(
+        self.cons.constrain_equal(
             MonoType::row(head_t, tail_t.clone()),
             source_t.clone(),
             span,
@@ -1327,7 +1327,7 @@ where
             };
 
             self.cons
-                .constrain_check(expected_t, source_t.clone(), span);
+                .constrain_equal(expected_t, source_t.clone(), span);
         }
 
         // Split path into navigation fields and final update field
@@ -1347,7 +1347,7 @@ where
                 ty: value_t.clone(),
             };
 
-            self.cons.constrain(
+            self.cons.constrain_equal(
                 MonoType::row(head_t, MonoType::variable()),
                 source_t.clone(),
                 span,
@@ -1367,7 +1367,7 @@ where
             ty: old_value_t.clone(),
         };
         let tail_t = MonoType::variable();
-        self.cons.constrain(
+        self.cons.constrain_equal(
             MonoType::row(old_head_t, tail_t.clone()),
             source_t.clone(),
             span,
@@ -1383,12 +1383,12 @@ where
             };
 
             self.cons
-                .constrain_check(expected_t, new_value_t.clone(), span);
+                .constrain_equal(expected_t, new_value_t.clone(), span);
         }
 
         // Treat the update operation as a function: old_value_t -> new_value_t
         let op_t = self.types.meta(op).clone();
-        self.cons.constrain(
+        self.cons.constrain_equal(
             op_t,
             MonoType::pure_func(old_value_t.clone(), new_value_t.clone()),
             span,
@@ -1401,6 +1401,32 @@ where
         let result_t = MonoType::row(new_head_t, tail_t);
 
         self.insert_type(id, result_t);
+        ControlFlow::Continue(())
+    }
+
+    fn visit_record_merge_expr(
+        &mut self,
+        id: Id<node::RecordMergeExpr>,
+        tree: &T,
+    ) -> ControlFlow<Self::BreakValue> {
+        let node::RecordMergeExpr { lhs, rhs } = *id.get(tree);
+
+        let span = self.span(id);
+
+        self.visit_expr(lhs, tree)?;
+        self.visit_expr(rhs, tree)?;
+
+        let lhs_t = self.types.meta(lhs).clone();
+        let rhs_t = self.types.meta(rhs).clone();
+
+        self.cons.constrain_kind(Kind::Record, lhs_t.clone(), span);
+        self.cons.constrain_kind(Kind::Record, rhs_t.clone(), span);
+
+        let result = TypeVar::new();
+        self.cons
+            .constrain_merge(result, lhs_t, rhs_t, MergeKind::Deep, span);
+
+        self.insert_type(id, MonoType::Var(result));
         ControlFlow::Continue(())
     }
 
@@ -1451,7 +1477,7 @@ where
 
         // Constrain the operator to be a function from operand type to result type
         self.cons
-            .constrain(op_t, MonoType::pure_func(operand_t, result_t.clone()), span);
+            .constrain_equal(op_t, MonoType::pure_func(operand_t, result_t.clone()), span);
 
         self.insert_type(id, result_t);
         ControlFlow::Continue(())
@@ -1502,9 +1528,11 @@ where
                     .constrain_kind(Kind::Equatable, equatable_t.clone(), span);
                 (equatable_t, MonoType::BOOL)
             }
-            // Record
-            node::BinaryOp::Merge => {
-                todo!();
+            // Other
+            node::BinaryOp::Concat => {
+                let el_t = MonoType::variable();
+                let list_t = MonoType::list(el_t);
+                (list_t.clone(), list_t)
             }
         };
 
@@ -1547,7 +1575,7 @@ where
 
         let expected_op_t =
             MonoType::pure_func(left_t, MonoType::pure_func(right_t, result_t.clone()));
-        self.cons.constrain(op_t, expected_op_t, span);
+        self.cons.constrain_equal(op_t, expected_op_t, span);
 
         self.insert_type(id, result_t);
         ControlFlow::Continue(())
@@ -1591,7 +1619,7 @@ where
 
             // Constrain the value type against the annotation
             self.cons
-                .constrain(expected_t, value_t.clone(), self.span(id));
+                .constrain_equal(expected_t, value_t.clone(), self.span(id));
         }
         self.local_env.enter(name, value_t);
 
@@ -1683,7 +1711,8 @@ where
 
         for branch_t in remaining {
             // Constrain all branch expressions to have the same type
-            self.cons.constrain(first.clone(), branch_t.clone(), span);
+            self.cons
+                .constrain_equal(first.clone(), branch_t.clone(), span);
         }
 
         // Assign the unified type to the case expression
@@ -1718,12 +1747,12 @@ where
 
         let pred_t = self.types.meta(pred).clone();
 
-        self.cons.constrain(MonoType::BOOL, pred_t, span);
+        self.cons.constrain_equal(MonoType::BOOL, pred_t, span);
 
         let then_t = self.types.meta(then).clone();
         let else_t = self.types.meta(or_else).clone();
 
-        self.cons.constrain(then_t.clone(), else_t, span);
+        self.cons.constrain_equal(then_t.clone(), else_t, span);
 
         self.insert_type(id, then_t);
         ControlFlow::Continue(())
@@ -1762,7 +1791,7 @@ where
 
             // Constrain the parameter type against the expected type
             self.cons
-                .constrain_check(expected_param_t, param_t.clone(), self.span(id));
+                .constrain_equal(expected_param_t, param_t.clone(), self.span(id));
         }
 
         let name = param.get(tree).0.clone();
@@ -1812,7 +1841,7 @@ where
         let result_t = CompType::new(MonoType::variable(), RowType::Empty);
 
         self.cons
-            .constrain(func_t, MonoType::func(arg_t, result_t.clone()), span);
+            .constrain_equal(func_t, MonoType::func(arg_t, result_t.clone()), span);
 
         self.insert_type(id, result_t);
         ControlFlow::Continue(())
@@ -1895,6 +1924,7 @@ where
             node::Expr::RecordExtend(id) => self.types.meta(id),
             node::Expr::RecordRestrict(id) => self.types.meta(id),
             node::Expr::RecordUpdate(id) => self.types.meta(id),
+            node::Expr::RecordMerge(id) => self.types.meta(id),
             node::Expr::Unary(id) => self.types.meta(id),
             node::Expr::Binary(id) => self.types.meta(id),
             node::Expr::Let(id) => self.types.meta(id),

@@ -8,7 +8,7 @@ use crate::{
 };
 use camino::Utf8Path;
 use kola_builtins::BuiltinId;
-use kola_collections::ImShadowMap;
+use kola_collections::ShadowMap;
 use kola_ir::{
     id::Id,
     instr::{
@@ -1040,7 +1040,11 @@ pub fn eval_binary_op(op: BinaryOp, left: Value, right: Value) -> Result<Value, 
         (BinaryOp::Or, Value::Bool(l), Value::Bool(r)) => Ok(Value::Bool(l || r)),
         (BinaryOp::Eq, l, r) => Ok(Value::Bool(l == r)), // TODO: might need special handling
         (BinaryOp::NotEq, l, r) => Ok(Value::Bool(l != r)), // TODO: might need special handling
-        (BinaryOp::Merge, l, r) => todo!(),              // TODO: Merge records
+        (BinaryOp::Merge, Value::Record(l), Value::Record(r)) => l
+            .merge(r)
+            .map(Value::Record)
+            .ok_or("Cannot merge records with conflicting fields".to_owned()),
+        (BinaryOp::Concat, Value::List(l), Value::List(r)) => Ok(Value::List(l.concat(&r))),
         (op, left, right) => Err(format!(
             "Cannot apply binary operation {:?} to: {:?} and {:?}",
             op, left, right
@@ -1156,7 +1160,7 @@ impl Eval for RecordExpr {
     ) -> MachineState {
         let RecordExpr { bind, head, next } = *self;
 
-        let mut record = ImShadowMap::new();
+        let mut record = ShadowMap::new();
 
         // Evaluate each field value
         for RecordField { label, value, .. } in ir.iter_fields(head) {

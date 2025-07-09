@@ -18,6 +18,15 @@ pub type TypeErrors = Errors<TypeError>;
 pub enum TypeError {
     Unbound(StrKey),
     Occurs(TypeVar),
+    CannotMerge {
+        lhs: MonoType,
+        rhs: MonoType,
+    },
+    CannotMergeLabel {
+        label: StrKey,
+        lhs: MonoType,
+        rhs: MonoType,
+    },
     CannotUnify {
         expected: MonoType,
         actual: MonoType,
@@ -45,6 +54,12 @@ impl DisplayWithInterner<str> for TypeError {
         match self {
             TypeError::Unbound(name) => writeln!(f, "Unbound: {}", interner[*name]),
             TypeError::Occurs(var) => writeln!(f, "Occurs: {}", var),
+            TypeError::CannotMerge { lhs, rhs } => {
+                writeln!(f, "Cannot Merge: Cannot merge `{}` with `{}`", lhs, rhs)
+            }
+            TypeError::CannotMergeLabel { label, lhs, rhs } => {
+                writeln!(f, "Cannot Merge Label: {} : {} with {}", label, lhs, rhs)
+            }
             TypeError::CannotUnify { expected, actual } => writeln!(
                 f,
                 "Cannot Unify: Expected `{}` but got `{}`",

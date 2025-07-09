@@ -491,7 +491,7 @@ where
             node::BinaryOp::GreaterEq => ir::BinaryOp::GreaterEq,
             node::BinaryOp::And => ir::BinaryOp::And,
             node::BinaryOp::Or => ir::BinaryOp::Or,
-            node::BinaryOp::Merge => ir::BinaryOp::Merge,
+            node::BinaryOp::Concat => ir::BinaryOp::Concat,
         };
 
         // Create the binary expression that will be the "context" for our normalizations
@@ -716,6 +716,40 @@ where
 
         self.hole = source_sym;
         self.visit_expr(source, tree)?;
+
+        ControlFlow::Continue(())
+    }
+
+    fn visit_record_merge_expr(
+        &mut self,
+        id: TreeId<node::RecordMergeExpr>,
+        tree: &T,
+    ) -> ControlFlow<Self::BreakValue> {
+        let node::RecordMergeExpr { lhs, rhs } = *id.get(tree);
+
+        // Create fresh symbols and correpsonding atoms
+        let lhs_sym = self.next_symbol();
+        let rhs_sym = self.next_symbol();
+
+        let lhs_atom = self.builder.add(ir::Atom::Symbol(lhs_sym));
+        let rhs_atom = self.builder.add(ir::Atom::Symbol(rhs_sym));
+
+        // Create the binary expression that will be the "context" for our normalizations
+        let binary_expr = self.builder.add(ir::Expr::Binary(ir::BinaryExpr {
+            bind: self.hole,
+            op: ir::BinaryOp::Merge,
+            lhs: lhs_atom,
+            rhs: rhs_atom,
+            next: self.next,
+        }));
+        self.next = binary_expr;
+
+        // Normalize in reverse order (CPS style):
+        self.hole = rhs_sym;
+        self.visit_expr(rhs, tree)?;
+
+        self.hole = lhs_sym;
+        self.visit_expr(lhs, tree)?;
 
         ControlFlow::Continue(())
     }

@@ -224,6 +224,7 @@ where
         just("<|").to(Token::Atom("<|")),
         just("&&").to(Token::Atom("&&")),
         just("||").to(Token::Atom("||")),
+        just("++").to(Token::Atom("++")),
     ))
     .boxed();
 

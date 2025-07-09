@@ -93,7 +93,7 @@ where
         // Constrain the source type to match the literal type exactly
         // This implements the rule: ∆;Γ ⊢ literal ⇒ literal_type ⊣ Γ
         self.cons
-            .constrain(self.source.clone(), literal_type, self.span);
+            .constrain_equal(self.source.clone(), literal_type, self.span);
 
         // Literal patterns don't bind any variables, so no environment changes
         ControlFlow::Continue(())
@@ -144,7 +144,7 @@ where
         // This implements: ∆;Γ ⊢ [p₁, p₂, ..., pₙ] ⇒ List τ ⊣ Γₙ
         let expected_list_type = MonoType::list(element_type.clone());
         self.cons
-            .constrain(self.source.clone(), expected_list_type, self.span);
+            .constrain_equal(self.source.clone(), expected_list_type, self.span);
 
         // Process each element in the list pattern
         for &element_id in elements {
@@ -224,7 +224,7 @@ where
         // - Exact: { l₁ : p₁, ..., lₙ : pₙ } ⇒ { l₁ : τ₁, ..., lₙ : τₙ }
         // - Polymorphic: { l₁ : p₁, ..., lₙ : pₙ, ... } ⇒ { l₁ : τ₁, ..., lₙ : τₙ | ρ }
         self.cons
-            .constrain(self.source.clone(), expected_record_type, self.span);
+            .constrain_equal(self.source.clone(), expected_record_type, self.span);
 
         ControlFlow::Continue(())
     }
@@ -276,7 +276,7 @@ where
         // Constrain the source type to match our expected variant type
         // This implements: ∆;Γ ⊢ < l₁ : p₁, l₂ : p₂, ... > ⇒ < l₁ : τ₁, l₂ : τ₂, ... | ρ > ⊣ Γₙ
         self.cons
-            .constrain(self.source.clone(), expected_variant_type, self.span);
+            .constrain_equal(self.source.clone(), expected_variant_type, self.span);
 
         ControlFlow::Continue(())
     }

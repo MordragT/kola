@@ -35,8 +35,9 @@ pub enum BinaryOp {
     // Equality
     Eq,
     NotEq,
-    // Record
+    // Other
     Merge,
+    Concat,
 }
 
 impl fmt::Display for BinaryOp {
@@ -56,6 +57,7 @@ impl fmt::Display for BinaryOp {
             Self::Eq => "==",
             Self::NotEq => "!=",
             Self::Merge => "&",
+            Self::Concat => "++",
         };
         write!(f, "{}", op.blue())
     }

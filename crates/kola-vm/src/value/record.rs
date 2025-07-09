@@ -1,7 +1,7 @@
 use std::fmt;
 
 use derive_more::From;
-use kola_collections::ImShadowMap;
+use kola_collections::ShadowMap;
 use kola_utils::{
     interner::{StrInterner, StrKey},
     interner_ext::{DisplayWithInterner, InternerExt, SerializeWithInterner},
@@ -11,12 +11,12 @@ use serde::ser::SerializeMap;
 use super::Value;
 
 #[derive(Debug, From, Clone, PartialEq)]
-pub struct Record(ImShadowMap<StrKey, Value>);
+pub struct Record(ShadowMap<StrKey, Value>);
 
 impl Record {
     #[inline]
     pub fn new() -> Self {
-        Self(ImShadowMap::new())
+        Self(ShadowMap::new())
     }
 
     #[inline]
@@ -69,6 +69,70 @@ impl Record {
     #[inline]
     pub fn is_empty(&self) -> bool {
         self.0.is_empty()
+    }
+
+    /// Essentially a concatenation of two records.
+    /// Through the shadow semantics, the left record's entries will take precedence over the right's
+    #[inline]
+    pub fn merge_left(self, other: Self) -> Self {
+        Self(self.0.merge_left(other.0))
+    }
+
+    /// Essentially a concatenation of two records.
+    /// Through the shadow semantics, the right record's entries will take precedence over the left's
+    #[inline]
+    pub fn merge_right(self, other: Self) -> Self {
+        Self(self.0.merge_right(other.0))
+    }
+
+    /// 1. r & {} or {} & r = r
+    /// 2. {a: t | r} & {a: u | s} = {a: (t & u) | (r & s)}
+    /// 3. {a : t | r} & {b: u | s} = {a: t | b : u | (u & r)} if a != b
+    pub fn merge(mut self, mut other: Self) -> Option<Self> {
+        if self.is_empty() {
+            return Some(other);
+        }
+
+        if other.is_empty() {
+            return Some(self);
+        }
+
+        // TODO I think due to that both records are ordered,
+        // the insert operations which does a binary search can be optimized,
+        // by just pushing onto the inner Vec.
+
+        let mut merged = Self::new();
+
+        while let Some(((left_label, left_value), (right_label, right_value))) =
+            self.pop_first().zip(other.pop_first())
+        {
+            if left_label == right_label {
+                // Same label, merge values
+                let (Value::Record(left), Value::Record(right)) = (left_value, right_value) else {
+                    return None; // Cannot merge non-record values
+                };
+
+                let merged_value = left.merge(right)?;
+                merged.insert(left_label, Value::Record(merged_value));
+            } else {
+                // Different labels, insert both
+                merged.insert(left_label, left_value);
+                merged.insert(right_label, right_value);
+            }
+        }
+
+        // Insert any remaining values from either record
+        if !self.is_empty() {
+            for (label, value) in self.0 {
+                merged.insert(label, value);
+            }
+        } else if !other.is_empty() {
+            for (label, value) in other.0 {
+                merged.insert(label, value);
+            }
+        }
+
+        Some(merged)
     }
 
     /// Extend a record at the specified field path
@@ -177,9 +241,7 @@ impl SerializeWithInterner<str> for Record {
     where
         S: serde::Serializer,
     {
-        // TODO len is probably wrong because it referes to all items (including overriden ones)
-        // Probably better to fix that inside the ImShadowMap
-        let mut map = serializer.serialize_map(Some(self.0.len()))?;
+        let mut map = serializer.serialize_map(None)?;
         for (key, value) in &self.0 {
             map.serialize_entry(&interner[*key], &interner.with(value))?;
         }

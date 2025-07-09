@@ -29,7 +29,7 @@ impl PolyType {
         }
     }
 
-    pub fn from_protocol(scheme: TypeSchemeProtocol, interner: &StrInterner) -> Self {
+    pub fn from_protocol(scheme: TypeSchemeProtocol, interner: &mut StrInterner) -> Self {
         let TypeSchemeProtocol {
             vars_count,
             input,

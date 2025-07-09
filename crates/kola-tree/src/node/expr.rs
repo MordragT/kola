@@ -408,6 +408,39 @@ impl RecordUpdateExpr {
     Debug,
     Notate,
     Inspector,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
+)]
+#[notate(color = "blue")]
+pub struct RecordMergeExpr {
+    pub lhs: Id<Expr>,
+    pub rhs: Id<Expr>,
+}
+
+impl RecordMergeExpr {
+    pub fn new_in(
+        lhs: impl Into<Expr>,
+        rhs: impl Into<Expr>,
+        builder: &mut TreeBuilder,
+    ) -> Id<Self> {
+        let lhs = builder.insert(lhs.into());
+        let rhs = builder.insert(rhs.into());
+
+        builder.insert(Self { lhs, rhs })
+    }
+}
+
+#[derive(
+    Debug,
+    Notate,
+    Inspector,
     From,
     IntoIterator,
     Default,
@@ -556,8 +589,8 @@ pub enum BinaryOp {
     // Equality
     Eq,
     NotEq,
-    // Record
-    Merge,
+    // ?
+    Concat,
 }
 
 impl<'a> Notate<'a> for NodePrinter<'a, BinaryOp> {
@@ -1011,6 +1044,7 @@ pub enum Expr {
     RecordExtend(Id<RecordExtendExpr>),
     RecordRestrict(Id<RecordRestrictExpr>),
     RecordUpdate(Id<RecordUpdateExpr>),
+    RecordMerge(Id<RecordMergeExpr>),
     Unary(Id<UnaryExpr>),
     Binary(Id<BinaryExpr>),
     Let(Id<LetExpr>),
@@ -1035,6 +1069,7 @@ impl<'a> Notate<'a> for NodePrinter<'a, Expr> {
             Expr::RecordExtend(r) => self.to_id(r).notate(arena),
             Expr::RecordRestrict(r) => self.to_id(r).notate(arena),
             Expr::RecordUpdate(r) => self.to_id(r).notate(arena),
+            Expr::RecordMerge(r) => self.to_id(r).notate(arena),
             Expr::Unary(u) => self.to_id(u).notate(arena),
             Expr::Binary(b) => self.to_id(b).notate(arena),
             Expr::Let(l) => self.to_id(l).notate(arena),

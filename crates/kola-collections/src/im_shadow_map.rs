@@ -74,6 +74,9 @@ where
 /// Duplicate keys are explicitly allowed.
 ///
 /// Keys are maintained in sorted order with binary search.
+///
+/// Because the underlying vector doesn't support stable sorting,
+/// merging operations are not implemented.
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ImShadowMap<K, V> {
     entries: ImVec<(K, V)>,
@@ -88,7 +91,7 @@ impl<K, V> ImShadowMap<K, V> {
     }
 
     /// Returns the number of elements in the map.
-    pub fn len(&self) -> usize {
+    pub fn len_all(&self) -> usize {
         self.entries.len()
     }
 

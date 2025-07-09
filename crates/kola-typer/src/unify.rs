@@ -304,6 +304,7 @@ impl<'s> Unifier<'s> {
         }
     }
 
+    // TODO order here really correct ?
     fn bind_var(&mut self, var: &TypeVar, with: &MonoType) {
         if let MonoType::Var(with) = with {
             self.unify_var(var, with);

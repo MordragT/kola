@@ -307,6 +307,7 @@ impl_meta_substitutable!(
     RecordRestrictExpr,
     RecordUpdateOp,
     RecordUpdateExpr,
+    RecordMergeExpr,
     FieldPath,
     QualifiedExpr,
     TagExpr,

@@ -60,7 +60,11 @@ impl MonoType {
         Self::Row(Box::new(RowType::Empty))
     }
 
-    pub fn from_protocol(proto: TypeProtocol, bound: &[TypeVar], interner: &StrInterner) -> Self {
+    pub fn from_protocol(
+        proto: TypeProtocol,
+        bound: &[TypeVar],
+        interner: &mut StrInterner,
+    ) -> Self {
         let this = match proto {
             TypeProtocol::Unit => Self::UNIT,
             TypeProtocol::Bool => Self::BOOL,
@@ -71,11 +75,8 @@ impl MonoType {
             TypeProtocol::Record(fields) => {
                 let mut row = Self::empty_row();
                 for &(label, ty) in fields.iter().rev() {
-                    // TODO Need to properly insert builtins labels
-                    // I don't trust this unwrap in test cases so handle this better
-                    // Safety: `label` is (not :D) guaranteed to be in the interner
                     let labeled = LabeledType::new(
-                        interner.lookup(label).unwrap(),
+                        interner.intern(label),
                         Self::from_protocol(ty, bound, interner),
                     );
                     row = Self::row(labeled, row);
@@ -85,11 +86,8 @@ impl MonoType {
             TypeProtocol::Variant(tags) => {
                 let mut row = Self::empty_row();
                 for &(label, ty) in tags.iter().rev() {
-                    // TODO Need to properly insert builtins labels
-                    // I don't trust this unwrap in test cases so handle this better
-                    // Safety: `label` is (not :D) guaranteed to be in the interner
                     let labeled = LabeledType::new(
-                        interner.lookup(label).unwrap(),
+                        interner.intern(label),
                         Self::from_protocol(ty, bound, interner),
                     );
                     row = Self::row(labeled, row);
@@ -104,6 +102,37 @@ impl MonoType {
         };
 
         this
+    }
+
+    /// Only works, if the left-hand side is a concrete row type.
+    /// The right-hand side can be a row type or a row variable.
+    pub fn merge_left(&self, other: &Self) -> Result<Self, TypeError> {
+        if let Self::Row(row) = self {
+            row.merge_left(other).map(Into::into)
+        } else {
+            return Err(TypeError::CannotMerge {
+                lhs: self.clone(),
+                rhs: other.clone(),
+            });
+        }
+    }
+
+    /// Only works, if the right-hand side is a concrete row type.
+    /// The left-hand side can be a row type or a row variable.
+    pub fn merge_right(&self, other: &Self) -> Result<Self, TypeError> {
+        other.merge_left(self)
+    }
+
+    /// Only works, if both sides are concrete row types.
+    pub fn merge_deep(&self, other: &Self) -> Result<Self, TypeError> {
+        if let (Self::Row(r1), Self::Row(r2)) = (self, other) {
+            r1.merge_deep(r2).map(Into::into)
+        } else {
+            Err(TypeError::CannotMerge {
+                lhs: self.clone(),
+                rhs: other.clone(),
+            })
+        }
     }
 }
 

@@ -537,6 +537,27 @@ pub trait Visitor<T: TreeView> {
         self.walk_record_update_expr(id, tree)
     }
 
+    fn walk_record_merge_expr(
+        &mut self,
+        id: Id<node::RecordMergeExpr>,
+        tree: &T,
+    ) -> ControlFlow<Self::BreakValue> {
+        let node::RecordMergeExpr { lhs, rhs } = *id.get(tree);
+
+        self.visit_expr(lhs, tree)?;
+        self.visit_expr(rhs, tree)?;
+
+        ControlFlow::Continue(())
+    }
+
+    fn visit_record_merge_expr(
+        &mut self,
+        id: Id<node::RecordMergeExpr>,
+        tree: &T,
+    ) -> ControlFlow<Self::BreakValue> {
+        self.walk_record_merge_expr(id, tree)
+    }
+
     fn walk_field_path(
         &mut self,
         id: Id<node::FieldPath>,
@@ -884,6 +905,7 @@ pub trait Visitor<T: TreeView> {
             RecordExtend(id) => self.visit_record_extend_expr(id, tree),
             RecordRestrict(id) => self.visit_record_restrict_expr(id, tree),
             RecordUpdate(id) => self.visit_record_update_expr(id, tree),
+            RecordMerge(id) => self.visit_record_merge_expr(id, tree),
             Unary(id) => self.visit_unary_expr(id, tree),
             Binary(id) => self.visit_binary_expr(id, tree),
             Let(id) => self.visit_let_expr(id, tree),

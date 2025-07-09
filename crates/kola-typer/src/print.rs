@@ -33,6 +33,7 @@ impl<'a> Decorator<'a> for TypeDecorator<'a> {
             | Meta::RecordRestrictExpr(t)
             | Meta::RecordUpdateOp(t)
             | Meta::RecordUpdateExpr(t)
+            | Meta::RecordMergeExpr(t)
             | Meta::QualifiedExpr(t)
             | Meta::UnaryOp(t)
             | Meta::UnaryExpr(t)

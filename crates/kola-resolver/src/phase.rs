@@ -252,6 +252,7 @@ impl Phase for ResolvePhase {
     type RecordRestrictExpr = !; // { r | -field } - no new symbols
     type RecordUpdateOp = !; // Update operations are structural
     type RecordUpdateExpr = !; // { r | field = value } - no new symbols
+    type RecordMergeExpr = !;
 
     // Binding expressions - create new symbols
     type LetExpr = ValueSym; // Creates symbol for the bound variable

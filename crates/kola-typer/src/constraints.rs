@@ -1,3 +1,4 @@
+use derive_more::Display;
 use kola_span::{Loc, Located};
 use kola_utils::errors::Errors;
 use log::trace;
@@ -6,9 +7,16 @@ use crate::{
     env::KindEnv,
     error::TypeErrors,
     substitute::{Substitutable, Substitution},
-    types::{Kind, MonoType, Typed},
+    types::{Kind, MonoType, TypeVar, Typed},
     unify::Unifiable,
 };
+
+#[derive(Debug, Display, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum MergeKind {
+    Left,
+    Right,
+    Deep,
+}
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Constraint {
@@ -17,9 +25,16 @@ pub enum Constraint {
         actual: MonoType,
         span: Loc,
     },
-    Ty {
+    Equal {
         expected: MonoType,
         actual: MonoType,
+        span: Loc,
+    },
+    Merge {
+        result: TypeVar,
+        lhs: MonoType,
+        rhs: MonoType,
+        kind: MergeKind,
         span: Loc,
     },
 }
@@ -32,29 +47,37 @@ impl Constraints {
         Self(Vec::new())
     }
 
-    pub fn constrain(&mut self, expected: MonoType, actual: MonoType, span: Loc) {
-        let c = Constraint::Ty {
-            expected,
-            actual,
-            span,
-        };
-        self.0.push(c);
-    }
-
-    // Same as constrains for debugging
-    pub fn constrain_check(&mut self, expected: MonoType, actual: MonoType, span: Loc) {
-        let c = Constraint::Ty {
-            expected,
-            actual,
-            span,
-        };
-        self.0.push(c);
-    }
-
     pub fn constrain_kind(&mut self, expected: Kind, actual: MonoType, span: Loc) {
         let c = Constraint::Kind {
             expected,
             actual,
+            span,
+        };
+        self.0.push(c);
+    }
+
+    pub fn constrain_equal(&mut self, expected: MonoType, actual: MonoType, span: Loc) {
+        let c = Constraint::Equal {
+            expected,
+            actual,
+            span,
+        };
+        self.0.push(c);
+    }
+
+    pub fn constrain_merge(
+        &mut self,
+        result: TypeVar,
+        lhs: MonoType,
+        rhs: MonoType,
+        kind: MergeKind,
+        span: Loc,
+    ) {
+        let c = Constraint::Merge {
+            result,
+            lhs,
+            rhs,
+            kind,
             span,
         };
         self.0.push(c);
@@ -90,12 +113,15 @@ impl Constraints {
                     actual,
                     span,
                 } => {
+                    let actual = actual.apply_cow(s);
+
+                    trace!("KIND: {} :: {}", actual, expected);
+
                     actual
-                        .apply_cow(s)
                         .constrain(expected, kind_env)
                         .map_err(|e| (Errors::unit(e), span))?;
                 }
-                Constraint::Ty {
+                Constraint::Equal {
                     expected,
                     actual,
                     span,
@@ -103,9 +129,57 @@ impl Constraints {
                     let lhs = expected.apply_cow(s);
                     let rhs = actual.apply_cow(s);
 
-                    trace!("SOLVING: {} ≈ {}", lhs, rhs);
+                    trace!("EQUALITY: {} ≈ {}", lhs, rhs);
 
                     lhs.try_unify(&rhs, s).map_err(|errors| ((errors, span)))?;
+                }
+                Constraint::Merge {
+                    result,
+                    lhs,
+                    rhs,
+                    kind: MergeKind::Left,
+                    span,
+                } => {
+                    let lhs = lhs.apply_cow(s);
+                    let rhs = rhs.apply_cow(s);
+
+                    trace!("MERGE LEFT: {} ⊑ {}", lhs, rhs);
+
+                    let result_t = lhs.merge_left(&rhs).map_err(|e| (Errors::unit(e), span))?;
+
+                    s.insert(result, result_t);
+                }
+                Constraint::Merge {
+                    result,
+                    lhs,
+                    rhs,
+                    kind: MergeKind::Right,
+                    span,
+                } => {
+                    let lhs = lhs.apply_cow(s);
+                    let rhs = rhs.apply_cow(s);
+
+                    trace!("MERGE RIGHT: {} ⊒ {}", lhs, rhs);
+
+                    let result_t = lhs.merge_right(&rhs).map_err(|e| (Errors::unit(e), span))?;
+
+                    s.insert(result, result_t);
+                }
+                Constraint::Merge {
+                    result,
+                    lhs,
+                    rhs,
+                    kind: MergeKind::Deep,
+                    span,
+                } => {
+                    let lhs = lhs.apply_cow(s);
+                    let rhs = rhs.apply_cow(s);
+
+                    trace!("MERGE DEEP: {} ⊑ {}", lhs, rhs); // better symbol ?
+
+                    let result_t = lhs.merge_deep(&rhs).map_err(|e| (Errors::unit(e), span))?;
+
+                    s.insert(result, result_t);
                 }
             }
         }

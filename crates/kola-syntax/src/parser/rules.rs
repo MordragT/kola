@@ -854,6 +854,34 @@ pub fn expr_parser<'t>() -> impl KolaParser<'t, Id<node::Expr>> + Clone {
             })
             .boxed();
 
+        let concat = sum
+            .clone()
+            .foldl_with(
+                op(OpT::CONCAT)
+                    .to(node::BinaryOp::Concat)
+                    .to_node()
+                    .then(sum)
+                    .repeated(),
+                |lhs, (op, rhs), e| {
+                    let span = e.span();
+                    let tree: &mut State = e.state();
+                    tree.insert_as::<node::Expr, _>(node::BinaryExpr { op, lhs, rhs }, span)
+                },
+            )
+            .boxed();
+
+        let merge = concat
+            .clone()
+            .foldl_with(
+                op(OpT::MERGE).ignore_then(concat).repeated(),
+                |lhs, rhs, e| {
+                    let span = e.span();
+                    let tree: &mut State = e.state();
+                    tree.insert_as::<node::Expr, _>(node::RecordMergeExpr { lhs, rhs }, span)
+                },
+            )
+            .boxed();
+
         let comparison_op = choice((
             op(OpT::LESS).to(node::BinaryOp::Less),
             op(OpT::LESS_EQ).to(node::BinaryOp::LessEq),
@@ -863,9 +891,9 @@ pub fn expr_parser<'t>() -> impl KolaParser<'t, Id<node::Expr>> + Clone {
             op(OpT::NOT_EQ).to(node::BinaryOp::NotEq),
         ))
         .to_node();
-        let comparison = sum
+        let comparison = merge
             .clone()
-            .foldl_with(comparison_op.then(sum).repeated(), |lhs, (op, rhs), e| {
+            .foldl_with(comparison_op.then(merge).repeated(), |lhs, (op, rhs), e| {
                 let span = e.span();
                 let tree: &mut State = e.state();
                 tree.insert_as::<node::Expr, _>(node::BinaryExpr { op, lhs, rhs }, span)

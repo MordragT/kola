@@ -88,7 +88,7 @@ impl<K, V> ShadowMap<K, V> {
     }
 
     /// Returns the number of elements in the map.
-    pub fn len(&self) -> usize {
+    pub fn len_all(&self) -> usize {
         self.entries.len()
     }
 
@@ -278,6 +278,34 @@ where
             Err(_) => None,
         }
     }
+
+    /// Merges two `ImShadowMap`s in a left-biased fashion.
+    ///
+    /// For each key present in both maps, the value from `self` will be visible,
+    /// and the value from `other` will be shadowed (preserved, but not visible).
+    /// Shadowed entries are preserved in the merged map, so if the visible entry
+    /// is removed later, the next shadowed value will resurface.
+    pub fn merge_left(self, mut other: Self) -> Self {
+        let mut merged = self.entries;
+        merged.append(&mut other.entries);
+        merged.sort_by(|(k1, _), (k2, _)| k1.cmp(k2));
+
+        Self { entries: merged }
+    }
+
+    /// Merges two `ImShadowMap`s in a right-biased fashion.
+    ///
+    /// For each key present in both maps, the value from `other` will be visible,
+    /// and the value from `self` will be shadowed (preserved, but not visible).
+    /// Shadowed entries are preserved in the merged map, so if the visible entry
+    /// is removed later, the next shadowed value will resurface.
+    pub fn merge_right(mut self, other: Self) -> Self {
+        let mut merged = other.entries;
+        merged.append(&mut self.entries);
+        merged.sort_by(|(k1, _), (k2, _)| k1.cmp(k2));
+
+        Self { entries: merged }
+    }
 }
 
 impl<K, V> Default for ShadowMap<K, V> {
@@ -446,6 +474,51 @@ mod tests {
         assert_eq!(map.get(&"b"), Some(&1002));
 
         // After values_mut(), the map should only contain visible entries
-        assert_eq!(map.len(), 2); // Shadowed entries removed
+        assert_eq!(map.len_all(), 2); // Shadowed entries removed
+    }
+
+    #[test]
+    fn test_merge_left() {
+        let mut left = ShadowMap::new();
+        left.insert("a", 1);
+        left.insert("b", 2);
+        let mut right = ShadowMap::new();
+        right.insert("a", 3);
+        right.insert("c", 4);
+
+        let merged = left.merge_left(right);
+
+        // "a" comes from left, "b" from left, "c" from right
+        assert_eq!(merged.get(&"a"), Some(&1));
+        assert_eq!(merged.get(&"b"), Some(&2));
+        assert_eq!(merged.get(&"c"), Some(&4));
+
+        // Remove "a" and check that the shadowed value from right resurfaces
+        let mut merged = merged;
+        merged.remove(&"a");
+        assert_eq!(merged.get(&"a"), Some(&3));
+    }
+
+    #[test]
+    fn test_merge_right() {
+        let mut left = ShadowMap::new();
+        left.insert("a", 1);
+        left.insert("b", 2);
+
+        let mut right = ShadowMap::new();
+        right.insert("a", 3);
+        right.insert("c", 4);
+
+        let merged = left.merge_right(right);
+
+        // "a" comes from right, "b" from left, "c" from right
+        assert_eq!(merged.get(&"a"), Some(&3));
+        assert_eq!(merged.get(&"b"), Some(&2));
+        assert_eq!(merged.get(&"c"), Some(&4));
+
+        // Remove "a" and check that the shadowed value from left resurfaces
+        let mut merged = merged;
+        merged.remove(&"a");
+        assert_eq!(merged.get(&"a"), Some(&1));
     }
 }

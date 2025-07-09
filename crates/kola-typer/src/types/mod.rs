@@ -1,4 +1,5 @@
 pub use comp::*;
+use derive_more::Display;
 pub use func::*;
 pub use list::*;
 pub use module::*;
@@ -25,7 +26,7 @@ use std::ops::ControlFlow;
 
 /// Represents a constraint on a type variable to a specific kind (*i.e.*, a type class).
 /// kind preserving unification (see Extensible Records with Scoped Labels)
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, Display, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum Kind {
     Addable,
     Comparable,

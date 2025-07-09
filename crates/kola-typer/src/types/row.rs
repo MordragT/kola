@@ -1,6 +1,10 @@
+use derive_more::Display;
 use kola_utils::interner::StrKey;
 use serde::{Deserialize, Serialize};
-use std::fmt;
+use std::{
+    fmt,
+    sync::atomic::{AtomicU32, Ordering},
+};
 
 use super::{Kind, MonoType, Typed};
 use crate::{
@@ -8,6 +12,54 @@ use crate::{
     error::TypeError,
     substitute::{Substitutable, Substitution, merge},
 };
+
+// I thought maybe label polymorphism would be useful for record merging.
+// For now we'll just use a simple label type.
+
+// #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+// pub struct LabelVar(u32);
+
+// impl fmt::Display for LabelVar {
+//     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+//         write!(f, "'l{}", self.0)
+//     }
+// }
+
+// static GENERATOR: AtomicU32 = AtomicU32::new(0);
+
+// impl LabelVar {
+//     pub fn new() -> Self {
+//         let id = GENERATOR.fetch_add(1, Ordering::Relaxed);
+//         Self(id)
+//     }
+
+//     pub fn id(&self) -> u32 {
+//         self.0
+//     }
+
+//     pub fn try_apply(&self, s: &mut Substitution) -> Option<Label> {
+//         todo!()
+//     }
+// }
+
+// #[derive(
+//     Debug, Display, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+// )]
+// pub enum Label {
+//     /// A label that is a variable.
+//     Var(LabelVar),
+//     /// A label that is a string key.
+//     Key(StrKey),
+// }
+
+// impl Substitutable for Label {
+//     fn try_apply(&self, s: &mut Substitution) -> Option<Self> {
+//         match self {
+//             Self::Var(var) => var.try_apply(s),
+//             Self::Key(key) => Some(Self::Key(*key)),
+//         }
+//     }
+// }
 
 /// A key-value pair representing a property type in a record.
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Serialize, Deserialize)]
@@ -21,6 +73,22 @@ impl LabeledType {
     pub fn new(label: StrKey, ty: MonoType) -> Self {
         Self { label, ty }
     }
+
+    pub fn merge_deep(&self, other: &Self) -> Result<Self, TypeError> {
+        if self.label != other.label {
+            return Err(TypeError::CannotMergeLabel {
+                label: self.label,
+                lhs: self.ty.clone(),
+                rhs: other.ty.clone(),
+            });
+        }
+
+        let merged_ty = self.ty.merge_deep(&other.ty)?;
+        Ok(Self {
+            label: self.label,
+            ty: merged_ty,
+        })
+    }
 }
 
 impl fmt::Display for LabeledType {
@@ -31,6 +99,12 @@ impl fmt::Display for LabeledType {
 
 impl Substitutable for LabeledType {
     fn try_apply(&self, s: &mut Substitution) -> Option<Self> {
+        // let label = self.label.try_apply(s);
+        // let ty = self.ty.try_apply(s);
+
+        // merge(label, || self.label, ty, || self.ty.clone())
+        //     .map(|(label, ty)| LabeledType { label, ty })
+
         self.ty.try_apply(s).map(|v| LabeledType {
             label: self.label.clone(),
             ty: v,
@@ -92,13 +166,81 @@ impl RowType {
 
         Self::Extension { head, tail }
     }
+
+    pub fn merge_left(&self, other: &MonoType) -> Result<MonoType, TypeError> {
+        match (self, other) {
+            (Self::Extension { head, tail: l_tail }, r) => {
+                let tail = l_tail.merge_left(r)?;
+
+                let next = Self::Extension {
+                    head: head.clone(),
+                    tail,
+                };
+                Ok(MonoType::Row(Box::new(next)))
+            }
+            (Self::Empty, MonoType::Var(var)) => Ok(MonoType::Var(var.clone())),
+            (Self::Empty, MonoType::Row(row)) => Ok(MonoType::Row(row.clone())),
+            (lhs, rhs) => Err(TypeError::CannotMerge {
+                lhs: MonoType::Row(Box::new(lhs.clone())),
+                rhs: rhs.clone(),
+            }),
+        }
+    }
+
+    /// Below are the rules for deep row merging. In what follows monotypes
+    /// and labels are denoted using lowercase letters,
+    /// and type variables are not allowed.
+    ///
+    /// 1. r & {} or {} & r = r
+    /// 2. {a: t | r} & {a: u | s} = {a: (t & u) | (r & s)}
+    /// 3. {a : t | r} & {b: u | s} = {a: t | b : u | (u & r)} if a != b
+    ///
+    /// 1. Identity: Merging an empty row with any row results in that row.
+    /// 2. Common Field: Recursively merge field types and row tails
+    /// 3. Disjoint Fields: Concatenate fields; recursively merge row tails.
+    ///    The 'a != b' condition merely distinguishes this case from Rule 2.
+    ///    In scoped labels, distinct field order is semantically equivalent,
+    ///    eliminating the need for explicit negative (absence) constraints here.
+    pub fn merge_deep(&self, other: &Self) -> Result<Self, TypeError> {
+        match (self, other) {
+            (
+                Self::Extension {
+                    head: l_head,
+                    tail: l_tail,
+                },
+                Self::Extension {
+                    head: r_head,
+                    tail: r_tail,
+                },
+            ) => {
+                if l_head.label == r_head.label {
+                    let head = l_head.merge_deep(&r_head)?;
+                    let tail = l_tail.merge_deep(&r_tail)?;
+
+                    Ok(Self::Extension { head, tail })
+                } else {
+                    let head = l_head.clone();
+
+                    let tail = MonoType::Row(Box::new(Self::Extension {
+                        head: r_head.clone(),
+                        tail: l_tail.merge_deep(r_tail)?,
+                    }));
+
+                    Ok(Self::Extension { head, tail })
+                }
+            }
+
+            (Self::Empty, r) => Ok(r.clone()),
+            (l, Self::Empty) => Ok(l.clone()),
+        }
+    }
 }
 
 impl fmt::Display for RowType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Empty => write!(f, "{{}}"),
-            Self::Extension { head, tail } => write!(f, "{{ {head} | {tail} }}"),
+            Self::Extension { head, tail } => write!(f, "{{{head} | {tail}}}"),
         }
     }
 }

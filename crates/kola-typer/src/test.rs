@@ -34,7 +34,7 @@ where
 
     let global_type_env = TypeEnv::new();
     let module_type_env = TypeEnv::new();
-    let interner = StrInterner::new(); // TODO for tests with builtin types the interner should be passed
+    let mut interner = StrInterner::new(); // TODO for tests with builtin types the interner should be passed
     let resolved = ResolvedNodes::new();
 
     let mut cons = Constraints::new();
@@ -44,7 +44,7 @@ where
         &mut cons,
         &module_type_env,
         &global_type_env,
-        &interner,
+        &mut interner,
         &resolved,
     );
 

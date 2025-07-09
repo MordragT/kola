@@ -38,6 +38,7 @@ impl Phase for TypePhase {
     type RecordRestrictExpr = types::MonoType;
     type RecordUpdateOp = types::MonoType;
     type RecordUpdateExpr = types::MonoType;
+    type RecordMergeExpr = types::MonoType;
     type FieldPath = !;
     type QualifiedExpr = types::MonoType;
     type TagExpr = types::MonoType;

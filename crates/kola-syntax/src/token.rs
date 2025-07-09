@@ -197,6 +197,7 @@ macro_rules! define_token_type {
 }
 
 define_token_type!(Op {
+    // Numeric
     Assign => "=",
     Add => "+",
     AddAssign => "+=",
@@ -220,8 +221,9 @@ define_token_type!(Op {
     // Equality
     Eq => "==",
     NotEq => "!=",
-    // Record
+    // Other
     Merge => "&",
+    Concat => "++",
 });
 
 define_token_type!(Kw {

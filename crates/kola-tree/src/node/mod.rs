@@ -88,6 +88,7 @@ define_nodes!(
     RecordRestrictExpr,
     RecordUpdateOp,
     RecordUpdateExpr,
+    RecordMergeExpr,
     FieldPath,
     QualifiedExpr,
     UnaryOp,
