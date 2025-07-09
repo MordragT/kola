@@ -1,10 +1,6 @@
-use derive_more::Display;
 use kola_utils::interner::StrKey;
 use serde::{Deserialize, Serialize};
-use std::{
-    fmt,
-    sync::atomic::{AtomicU32, Ordering},
-};
+use std::fmt;
 
 use super::{Kind, MonoType, Typed};
 use crate::{

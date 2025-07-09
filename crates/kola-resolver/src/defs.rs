@@ -170,7 +170,7 @@ impl<N: Namespace, T> Defs<N, T> {
     }
 
     #[inline]
-    pub fn iter(&self) -> hash_map::Iter<Sym<N>, Def<T>> {
+    pub fn iter(&self) -> hash_map::Iter<'_, Sym<N>, Def<T>> {
         self.0.iter()
     }
 }

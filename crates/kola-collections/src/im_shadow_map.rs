@@ -130,7 +130,7 @@ impl<K, V> ImShadowMap<K, V> {
 
     /// Returns an iterator over the visible (non-shadowed) key-value pairs of the map.
     /// For keys that appear multiple times, only the first occurrence (most recent) is included.
-    pub fn iter(&self) -> VisibleIter<K, V>
+    pub fn iter(&self) -> VisibleIter<'_, K, V>
     where
         K: Eq + std::hash::Hash,
     {

@@ -570,6 +570,7 @@ impl RequiredSet for MonoType {
             MonoType::Row(row) => row.required_set(),
             MonoType::Var(_) => CoverSet::Universal, // Conservative but correct
             MonoType::Func(_) => CoverSet::Opaque,
+            MonoType::TypeRep(_) => CoverSet::Opaque,
         }
     }
 }

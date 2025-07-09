@@ -28,6 +28,7 @@ pub mod check;
 pub mod constraints;
 pub mod env;
 pub mod error;
+pub mod obligations;
 pub mod pattern_typer;
 pub mod phase;
 pub mod print;

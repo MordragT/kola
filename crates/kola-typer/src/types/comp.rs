@@ -31,10 +31,11 @@ impl CompType {
 
     pub fn from_protocol(
         proto: TypeProtocol,
-        bound: &[TypeVar],
+        bound_forall: &[TypeVar],
+        bound_exists: &[TypeVar],
         interner: &mut StrInterner,
     ) -> Self {
-        let ty = MonoType::from_protocol(proto, bound, interner);
+        let ty = MonoType::from_protocol(proto, bound_forall, bound_exists, interner);
         let effect = RowType::Empty;
 
         Self { ty, effect }

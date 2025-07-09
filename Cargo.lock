@@ -832,6 +832,7 @@ name = "kola-builtins"
 version = "0.1.0"
 dependencies = [
  "derive_more",
+ "kola-utils",
  "paste",
 ]
 

@@ -1,5 +1,67 @@
 use derive_more::{Display, FromStr};
-use std::fmt;
+use kola_utils::interner::Interner;
+use std::{cell::LazyCell, fmt};
+
+pub type TypeInterner = Interner<TypeProtocol>;
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct TypeSchemeProtocol {
+    pub forall: u32,
+    pub ty: TypeProtocol,
+}
+
+impl TypeSchemeProtocol {
+    pub fn new(forall: u32, ty: TypeProtocol) -> Self {
+        Self { forall, ty }
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub enum TypeProtocol {
+    Unit,
+    Bool,
+    Num,
+    Char,
+    Str,
+    List(Box<Self>),
+    Record(Vec<(String, Self)>),
+    Variant(Vec<(String, Self)>),
+    Lambda(Box<Self>, Box<Self>),
+    ForallVar(u32),
+    ExistsVar(u32),
+}
+
+impl TypeProtocol {
+    pub const UNIT: Self = TypeProtocol::Unit;
+    pub const BOOL: Self = TypeProtocol::Bool;
+    pub const NUM: Self = TypeProtocol::Num;
+    pub const CHAR: Self = TypeProtocol::Char;
+    pub const STR: Self = TypeProtocol::Str;
+
+    pub fn list(inner: Self) -> Self {
+        TypeProtocol::List(Box::new(inner))
+    }
+
+    pub fn record(fields: Vec<(String, Self)>) -> Self {
+        TypeProtocol::Record(fields)
+    }
+
+    pub fn variant(variants: Vec<(String, Self)>) -> Self {
+        TypeProtocol::Variant(variants)
+    }
+
+    pub fn lambda(input: Self, output: Self) -> Self {
+        TypeProtocol::Lambda(Box::new(input), Box::new(output))
+    }
+
+    pub fn forall(id: u32) -> Self {
+        TypeProtocol::ForallVar(id)
+    }
+
+    pub fn exists(id: u32) -> Self {
+        TypeProtocol::ExistsVar(id)
+    }
+}
 
 #[derive(Debug, Display, FromStr, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum BuiltinEffect {
@@ -49,25 +111,34 @@ pub fn is_builtin_type(s: &str) -> bool {
     matches!(s, "Unit" | "Bool" | "Num" | "Char" | "Str" | "List")
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Builtin {
     pub name: &'static str,
-    pub type_: TypeSchemeProtocol,
+    pub forall: u32,
+    pub input: TypeProtocol,
+    pub output: TypeProtocol,
 }
 
 impl Builtin {
-    const fn new(name: &'static str, type_: TypeSchemeProtocol) -> Self {
-        Self { name, type_ }
-    }
-
     #[inline]
     pub fn from_name(name: &'static str) -> Option<Self> {
         find_builtin(name)
     }
 
+    pub fn type_scheme(self) -> TypeSchemeProtocol {
+        let Self {
+            forall,
+            input,
+            output,
+            ..
+        } = self;
+
+        TypeSchemeProtocol::new(forall, TypeProtocol::lambda(input, output))
+    }
+
     #[inline]
     pub fn from_id(id: BuiltinId) -> Self {
-        BUILTINS[id as usize]
+        BUILTINS[id as usize].clone()
     }
 }
 
@@ -78,7 +149,7 @@ pub fn is_builtin(s: &str) -> bool {
 
 #[inline]
 pub fn find_builtin(s: &str) -> Option<Builtin> {
-    BUILTINS.iter().find(|builtin| builtin.name == s).copied()
+    BUILTINS.iter().find(|builtin| builtin.name == s).cloned()
 }
 
 #[inline]
@@ -89,31 +160,10 @@ pub fn find_builtin_id(s: &str) -> Option<BuiltinId> {
         .map(|id| BuiltinId::from_usize(id))
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub enum TypeProtocol {
-    Unit,
-    Bool,
-    Num,
-    Char,
-    Str,
-    List(&'static Self),
-    Record(&'static [(&'static str, Self)]),
-    Variant(&'static [(&'static str, Self)]),
-    Lambda(&'static Self, &'static Self), // restrict to first order functions
-    Var(u32),
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
-pub struct TypeSchemeProtocol {
-    pub vars_count: u32,
-    pub input: TypeProtocol,
-    pub output: TypeProtocol,
-}
-
 macro_rules! define_builtins {
     (
         $(
-            $name:ident : forall $count:literal . $input:tt -> $output:tt
+            $name:ident : forall $forall:literal . $input:tt -> $output:tt
         ),* $(,)?
     ) => {
         paste::paste! {
@@ -148,18 +198,16 @@ macro_rules! define_builtins {
         }
 
         #[doc = "Array of all builtin function definitions"]
-        const BUILTINS: &[Builtin] = &[
+        const BUILTINS: LazyCell<Vec<Builtin>> = LazyCell::new(|| vec![
             $(
                 Builtin {
                     name: stringify!($name),
-                    type_: TypeSchemeProtocol {
-                        vars_count: $count,
-                        input: define_builtins!(@type $input),
-                        output: define_builtins!(@type $output),
-                    },
+                    forall: $forall,
+                    input: define_builtins!(@type $input),
+                    output: define_builtins!(@type $output),
                 },
             )*
-        ];
+        ]);
     };
 
     // Type expression parsing
@@ -168,24 +216,24 @@ macro_rules! define_builtins {
     (@type Num) => { TypeProtocol::Num };
     (@type Char) => { TypeProtocol::Char };
     (@type Str) => { TypeProtocol::Str };
-    (@type $var:literal) => { TypeProtocol::Var($var) };
+    (@type $var:literal) => { TypeProtocol::ForallVar($var) };
     (@type (List $inner:tt)) => {
-        TypeProtocol::List(&define_builtins!(@type $inner))
+        TypeProtocol::List(Box::new(define_builtins!(@type $inner)))
     };
     (@type { $($field:literal : $field_type:tt),* $(,)? }) => {
-        TypeProtocol::Record(&[
-            $(($field, define_builtins!(@type $field_type))),*
+        TypeProtocol::Record(vec![
+            $((String::from($field), define_builtins!(@type $field_type))),*
         ])
     };
     (@type [ $($variant:literal : $variant_type:tt),* $(,)? ] ) => {
-        TypeProtocol::Variant(&[
-            $(($variant, define_builtins!(@type $variant_type))),*
+        TypeProtocol::Variant(vec![
+            $((String::from($variant), define_builtins!(@type $variant_type))),*
         ])
     };
     (@type ($left:tt -> $right:tt)) => {
         TypeProtocol::Lambda(
-            &define_builtins!(@type $left),
-            &define_builtins!(@type $right)
+            Box::new(define_builtins!(@type $left)),
+            Box::new(define_builtins!(@type $right))
         )
     };
 }

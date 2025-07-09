@@ -6,7 +6,8 @@ use serde::{Deserialize, Serialize};
 use std::fmt;
 
 use super::{
-    CompType, FuncType, LabeledType, ListType, PolyType, PrimitiveType, RowType, TypeVar, Typed,
+    CompType, FuncType, LabeledType, ListType, PolyType, PrimitiveType, RowType, TypeRep, TypeVar,
+    Typed,
 };
 use crate::{
     env::KindEnv,
@@ -24,6 +25,7 @@ pub enum MonoType {
     Func(Box<FuncType>),
     List(Box<ListType>),
     Row(Box<RowType>),
+    TypeRep(Box<TypeRep>),
     Var(TypeVar),
 }
 
@@ -52,6 +54,10 @@ impl MonoType {
         Self::List(Box::new(ListType::new(el)))
     }
 
+    pub fn type_rep(ty: Self) -> Self {
+        Self::TypeRep(Box::new(TypeRep::new(ty)))
+    }
+
     pub fn row(head: LabeledType, tail: Self) -> Self {
         Self::Row(Box::new(RowType::Extension { head, tail }))
     }
@@ -62,7 +68,8 @@ impl MonoType {
 
     pub fn from_protocol(
         proto: TypeProtocol,
-        bound: &[TypeVar],
+        bound_forall: &[TypeVar],
+        bound_exists: &[TypeVar],
         interner: &mut StrInterner,
     ) -> Self {
         let this = match proto {
@@ -71,13 +78,18 @@ impl MonoType {
             TypeProtocol::Num => Self::NUM,
             TypeProtocol::Char => Self::CHAR,
             TypeProtocol::Str => Self::STR,
-            TypeProtocol::List(&el) => Self::list(Self::from_protocol(el, bound, interner)),
+            TypeProtocol::List(el) => Self::list(Self::from_protocol(
+                *el,
+                bound_forall,
+                bound_exists,
+                interner,
+            )),
             TypeProtocol::Record(fields) => {
                 let mut row = Self::empty_row();
-                for &(label, ty) in fields.iter().rev() {
+                for (label, ty) in fields.into_iter().rev() {
                     let labeled = LabeledType::new(
                         interner.intern(label),
-                        Self::from_protocol(ty, bound, interner),
+                        Self::from_protocol(ty, bound_forall, bound_exists, interner),
                     );
                     row = Self::row(labeled, row);
                 }
@@ -85,20 +97,21 @@ impl MonoType {
             }
             TypeProtocol::Variant(tags) => {
                 let mut row = Self::empty_row();
-                for &(label, ty) in tags.iter().rev() {
+                for (label, ty) in tags.into_iter().rev() {
                     let labeled = LabeledType::new(
                         interner.intern(label),
-                        Self::from_protocol(ty, bound, interner),
+                        Self::from_protocol(ty, bound_forall, bound_exists, interner),
                     );
                     row = Self::row(labeled, row);
                 }
                 row
             }
-            TypeProtocol::Lambda(&arg, &ret) => Self::func(
-                Self::from_protocol(arg, bound, interner),
-                CompType::from_protocol(ret, bound, interner),
+            TypeProtocol::Lambda(arg, ret) => Self::func(
+                Self::from_protocol(*arg, bound_forall, bound_exists, interner),
+                CompType::from_protocol(*ret, bound_forall, bound_exists, interner),
             ),
-            TypeProtocol::Var(id) => Self::Var(bound[id as usize]),
+            TypeProtocol::ForallVar(id) => Self::Var(bound_forall[id as usize]),
+            TypeProtocol::ExistsVar(id) => Self::Var(bound_exists[id as usize]),
         };
 
         this
@@ -155,6 +168,7 @@ impl Typed for MonoType {
             Self::Func(f) => f.constrain(with, env),
             Self::List(l) => l.constrain(with, env),
             Self::Row(r) => r.constrain(with, env),
+            Self::TypeRep(tr) => tr.constrain(with, env),
             Self::Var(v) => v.constrain(with, env),
         }
     }
@@ -167,6 +181,7 @@ impl Substitutable for MonoType {
             Self::Func(f) => f.try_apply(s).map(Into::into),
             Self::List(l) => l.try_apply(s).map(Into::into),
             Self::Row(r) => r.try_apply(s).map(Into::into),
+            Self::TypeRep(tr) => tr.try_apply(s).map(Into::into),
             Self::Var(v) => v.try_apply(s),
         }
     }
@@ -181,6 +196,7 @@ impl fmt::Display for MonoType {
             Self::Func(func) => func.fmt(f),
             Self::List(l) => l.fmt(f),
             Self::Row(r) => r.fmt(f),
+            Self::TypeRep(tr) => tr.fmt(f),
             Self::Var(tv) => tv.fmt(f),
         }
     }
@@ -204,11 +220,11 @@ impl From<FuncType> for MonoType {
     }
 }
 
-// impl From<CompType> for MonoType {
-//     fn from(value: CompType) -> Self {
-//         Self::Comp(Box::new(value))
-//     }
-// }
+impl From<ListType> for MonoType {
+    fn from(value: ListType) -> Self {
+        Self::List(Box::new(value))
+    }
+}
 
 impl From<RowType> for MonoType {
     fn from(value: RowType) -> Self {
@@ -216,9 +232,9 @@ impl From<RowType> for MonoType {
     }
 }
 
-impl From<ListType> for MonoType {
-    fn from(value: ListType) -> Self {
-        Self::List(Box::new(value))
+impl From<TypeRep> for MonoType {
+    fn from(value: TypeRep) -> Self {
+        Self::TypeRep(Box::new(value))
     }
 }
 

@@ -7,6 +7,7 @@ pub use mono::*;
 pub use poly::*;
 pub use primitive::*;
 pub use row::*;
+pub use type_rep::*;
 pub use var::*;
 pub use visit::*;
 
@@ -18,6 +19,7 @@ mod mono;
 mod poly;
 mod primitive;
 mod row;
+mod type_rep;
 mod var;
 mod visit;
 

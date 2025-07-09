@@ -1,14 +1,11 @@
 use std::{collections::HashMap, fmt};
 
-use kola_builtins::TypeSchemeProtocol;
-use kola_utils::interner::StrInterner;
 use serde::{Deserialize, Serialize};
 
 use super::{MonoType, TypeVar, Typed};
 use crate::{
     error::TypeConversionError,
     substitute::{Substitutable, Substitution},
-    types::CompType,
 };
 
 /// Polytype
@@ -22,30 +19,15 @@ pub struct PolyType {
 }
 
 impl PolyType {
-    pub fn new(ty: MonoType) -> Self {
+    pub fn new(vars: Vec<TypeVar>, ty: MonoType) -> Self {
+        Self { vars, ty }
+    }
+
+    pub fn from_mono(ty: MonoType) -> Self {
         Self {
             vars: Vec::new(),
             ty,
         }
-    }
-
-    pub fn from_protocol(scheme: TypeSchemeProtocol, interner: &mut StrInterner) -> Self {
-        let TypeSchemeProtocol {
-            vars_count,
-            input,
-            output,
-        } = scheme;
-
-        // Create exactly vars_count TypeVars
-        let vars: Vec<TypeVar> = (0..vars_count).map(|_| TypeVar::new()).collect();
-
-        // Convert types using simple array indexing
-        let input = MonoType::from_protocol(input, &vars, interner);
-        let output = CompType::from_protocol(output, &vars, interner);
-
-        let ty = MonoType::func(input, output);
-
-        PolyType { vars, ty }
     }
 
     pub fn bound_vars(&self) -> &Vec<TypeVar> {
@@ -138,7 +120,7 @@ impl PolyType {
 
 impl From<MonoType> for PolyType {
     fn from(ty: MonoType) -> Self {
-        Self::new(ty)
+        Self::from_mono(ty)
     }
 }
 

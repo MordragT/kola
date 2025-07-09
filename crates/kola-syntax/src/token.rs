@@ -86,7 +86,7 @@ impl<'t> TokenCache<'t> {
         Self::default()
     }
 
-    pub fn get(&self, source: SourceId) -> Option<&Tokens> {
+    pub fn get(&self, source: SourceId) -> Option<&Tokens<'_>> {
         self.cache.get(&source)
     }
 

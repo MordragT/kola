@@ -1,6 +1,6 @@
 use std::{ops::ControlFlow, rc::Rc};
 
-use kola_builtins::{Builtin, BuiltinEffect, BuiltinType};
+use kola_builtins::{Builtin, BuiltinEffect, BuiltinType, TypeProtocol, TypeSchemeProtocol};
 use kola_resolver::phase::{ResolvedModule, ResolvedNodes};
 use kola_span::{Diagnostic, IntoDiagnostic, Loc, Report};
 use kola_syntax::prelude::*;
@@ -10,6 +10,7 @@ use kola_utils::interner::StrInterner;
 use crate::{
     constraints::{Constraints, MergeKind},
     env::{LocalTypeEnv, TypeEnv},
+    obligations::Obligations,
     pattern_typer::PatternTyper,
     phase::{TypePhase, TypedNodes},
     substitute::{Substitutable, Substitution},
@@ -32,20 +33,22 @@ pub struct Typer<'a, N> {
     local_env: LocalTypeEnv,
     module_env: &'a TypeEnv,
     global_env: &'a TypeEnv,
-    cons: &'a mut Constraints,
-    interner: &'a mut StrInterner,
     resolved: &'a ResolvedNodes,
+    cons: &'a mut Constraints,
+    obls: &'a mut Obligations,
+    interner: &'a mut StrInterner,
 }
 
 impl<'a, N> Typer<'a, N> {
     pub fn new(
         root_id: Id<N>,
         spans: Rc<Locations>,
-        cons: &'a mut Constraints,
         module_env: &'a TypeEnv,
         global_env: &'a TypeEnv,
-        interner: &'a mut StrInterner,
         resolved: &'a ResolvedNodes,
+        cons: &'a mut Constraints,
+        obls: &'a mut Obligations,
+        interner: &'a mut StrInterner,
     ) -> Self {
         Self {
             root_id,
@@ -55,9 +58,10 @@ impl<'a, N> Typer<'a, N> {
             local_env: LocalTypeEnv::new(),
             module_env,
             global_env,
-            interner,
             resolved,
             cons,
+            obls,
+            interner,
         }
     }
 
@@ -326,10 +330,14 @@ where
         let poly_t = match *id.get(tree) {
             node::Type::Error(_) => todo!(),
             node::Type::Qualified(path_id) => self.types.meta(path_id).clone(),
-            node::Type::Func(func_id) => PolyType::new(self.types.meta(func_id).clone()),
+            node::Type::Func(func_id) => PolyType::from_mono(self.types.meta(func_id).clone()),
             node::Type::Application(app_id) => self.types.meta(app_id).clone(),
-            node::Type::Record(record_id) => PolyType::new(self.types.meta(record_id).clone()),
-            node::Type::Variant(variant_id) => PolyType::new(self.types.meta(variant_id).clone()),
+            node::Type::Record(record_id) => {
+                PolyType::from_mono(self.types.meta(record_id).clone())
+            }
+            node::Type::Variant(variant_id) => {
+                PolyType::from_mono(self.types.meta(variant_id).clone())
+            }
         };
 
         self.insert_type(id, poly_t);
@@ -401,7 +409,7 @@ where
             poly_t.clone()
         } else if let Some(local_t) = self.local_env.get(&type_name) {
             // Local type parameter (like 'a' in forall a)
-            PolyType::new(local_t.clone())
+            PolyType::from_mono(local_t.clone())
         } else if let Some((_, poly_t)) = self
             .resolved
             .meta(id)
@@ -412,11 +420,11 @@ where
             poly_t.clone()
         } else if let Some(builtin_t) = self.resolved.meta(id).into_builtin() {
             match builtin_t {
-                BuiltinType::Unit => PolyType::new(MonoType::UNIT),
-                BuiltinType::Bool => PolyType::new(MonoType::BOOL),
-                BuiltinType::Num => PolyType::new(MonoType::NUM),
-                BuiltinType::Char => PolyType::new(MonoType::CHAR),
-                BuiltinType::Str => PolyType::new(MonoType::STR),
+                BuiltinType::Unit => PolyType::from_mono(MonoType::UNIT),
+                BuiltinType::Bool => PolyType::from_mono(MonoType::BOOL),
+                BuiltinType::Num => PolyType::from_mono(MonoType::NUM),
+                BuiltinType::Char => PolyType::from_mono(MonoType::CHAR),
+                BuiltinType::Str => PolyType::from_mono(MonoType::STR),
                 BuiltinType::List => {
                     let var = TypeVar::new();
                     PolyType {
@@ -784,7 +792,7 @@ where
         // Restore depth so that type variables from ty_scheme are not left in scope
         self.local_env.restore_depth(depth);
 
-        self.insert_type(id, PolyType::new(value_t)); // Use fake PolyType to aid printer
+        self.insert_type(id, PolyType::from_mono(value_t)); // Use fake PolyType to aid printer
 
         ControlFlow::Continue(())
     }
@@ -940,7 +948,22 @@ where
         } else if let Some(builtin_id) = self.resolved.meta(id).into_builtin() {
             let builtin = Builtin::from_id(builtin_id);
 
-            PolyType::from_protocol(builtin.type_, self.interner).instantiate()
+            let TypeSchemeProtocol { forall, exists, ty } = builtin.type_scheme();
+
+            let mut bound_forall: Vec<TypeVar> = (0..forall).map(|_| TypeVar::new()).collect();
+            let mut bound_exists: Vec<TypeVar> = (0..exists).map(|_| TypeVar::new()).collect();
+
+            // Convert types using simple array indexing
+            let ty = MonoType::from_protocol(ty, &bound_forall, &bound_exists, self.interner);
+
+            for &tv in &bound_exists {
+                self.obls.require_exists(tv, span);
+            }
+
+            // Combine bound forall and exists variables
+            bound_forall.append(&mut bound_exists);
+
+            PolyType::new(bound_forall, ty).instantiate()
         } else {
             return ControlFlow::Break(Diagnostic::error(span, "Value not found in scope"));
         };

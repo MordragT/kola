@@ -35,6 +35,7 @@
 //! - **No let-bind generalization**: Local let-binds remain monomorphic for algorithmic
 //!   simplicity while maintaining expressiveness through top-level polymorphism
 
+use kola_builtins::TypeInterner;
 use kola_print::prelude::*;
 use kola_resolver::{
     forest::Forest,
@@ -56,6 +57,7 @@ use crate::{
     analysis::exhaust_check_all,
     constraints::Constraints,
     env::{KindEnv, TypeEnv},
+    obligations::Obligations,
     phase::{TypeAnnotations, TypedNodes},
     print::TypeDecorator,
     substitute::{Substitutable, Substitution},
@@ -93,7 +95,8 @@ pub fn type_check(
     type_orders: &TypeOrders,
     value_orders: &ValueOrders,
     arena: &Bump,
-    interner: &mut StrInterner,
+    str_interner: &mut StrInterner,
+    // type_interner: &mut TypeInterner,
     report: &mut Report,
     print_options: PrintOptions,
 ) -> TypeCheckOutput {
@@ -119,15 +122,17 @@ pub fn type_check(
             let def = module_scope.defs[eff_sym];
 
             let mut constraints = Constraints::new();
+            let mut obligations = Obligations::new();
 
             let typer = Typer::new(
                 def.id(),
                 spans.clone(),
-                &mut constraints,
                 &module_env,
                 &global_env,
-                interner,
                 &module_scope.resolved,
+                &mut constraints,
+                &mut obligations,
+                str_interner,
             );
 
             let Some((typed_nodes, _)) = typer.run(tree, report) else {
@@ -136,7 +141,7 @@ pub fn type_check(
             };
 
             if let Err((errs, loc)) = constraints.solve(&mut subs, &mut kind_env) {
-                let diag = interner.with(&errs).into_diagnostic(loc);
+                let diag = str_interner.with(&errs).into_diagnostic(loc);
                 report.add_diagnostic(diag);
                 break;
             }
@@ -156,15 +161,17 @@ pub fn type_check(
             let def = module_scope.defs[type_sym];
 
             let mut constraints = Constraints::new();
+            let mut obligations = Obligations::new();
 
             let typer = Typer::new(
                 def.id(),
                 spans.clone(),
-                &mut constraints,
                 &module_env,
                 &global_env,
-                interner,
                 &module_scope.resolved,
+                &mut constraints,
+                &mut obligations,
+                str_interner,
             );
 
             let Some((typed_nodes, _)) = typer.run(tree, report) else {
@@ -173,7 +180,7 @@ pub fn type_check(
             };
 
             if let Err((errs, loc)) = constraints.solve(&mut subs, &mut kind_env) {
-                let diag = interner.with(&errs).into_diagnostic(loc);
+                let diag = str_interner.with(&errs).into_diagnostic(loc);
                 report.add_diagnostic(diag);
                 break;
             }
@@ -195,15 +202,17 @@ pub fn type_check(
             let def = module_scope.defs[value_sym];
 
             let mut constraints = Constraints::new();
+            let mut obligations = Obligations::new();
 
             let typer = Typer::new(
                 def.id(),
                 spans.clone(),
-                &mut constraints,
                 &module_env,
                 &global_env,
-                interner,
                 &module_scope.resolved,
+                &mut constraints,
+                &mut obligations,
+                str_interner,
             );
 
             let Some((mut typed_nodes, cases)) = typer.run(tree, report) else {
@@ -212,13 +221,21 @@ pub fn type_check(
             };
 
             if let Err((errs, loc)) = constraints.solve(&mut subs, &mut kind_env) {
-                let diag = interner.with(&errs).into_diagnostic(loc);
+                let diag = str_interner.with(&errs).into_diagnostic(loc);
                 report.add_diagnostic(diag);
                 break;
             }
 
             // Apply the substitution to the typed nodes
             typed_nodes.apply_mut(&mut subs);
+
+            if let Err(errs) = obligations.verify(&mut subs) {
+                report.extend_diagnostics(
+                    errs.into_iter()
+                        .map(|(err, span)| str_interner.with(&err).into_diagnostic(span)),
+                );
+                break;
+            }
 
             // Check for exhaustiveness in case expressions
             if let Err(errs) = exhaust_check_all(&cases, tree, &typed_nodes, &*spans) {
@@ -253,7 +270,7 @@ pub fn type_check(
             .with(&resolution_decorator)
             .with(&type_decorator);
 
-        let tree_printer = TreePrinter::new(&tree, &interner, decorators, info.id);
+        let tree_printer = TreePrinter::new(&tree, &str_interner, decorators, info.id);
 
         trace!(
             "{} SourceId {}, ModuleSym {}\n{}",

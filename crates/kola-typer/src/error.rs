@@ -18,6 +18,7 @@ pub type TypeErrors = Errors<TypeError>;
 pub enum TypeError {
     Unbound(StrKey),
     Occurs(TypeVar),
+    NotExistent(TypeVar),
     CannotMerge {
         lhs: MonoType,
         rhs: MonoType,
@@ -54,6 +55,7 @@ impl DisplayWithInterner<str> for TypeError {
         match self {
             TypeError::Unbound(name) => writeln!(f, "Unbound: {}", interner[*name]),
             TypeError::Occurs(var) => writeln!(f, "Occurs: {}", var),
+            TypeError::NotExistent(var) => writeln!(f, "Not Existent: {}", var),
             TypeError::CannotMerge { lhs, rhs } => {
                 writeln!(f, "Cannot Merge: Cannot merge `{}` with `{}`", lhs, rhs)
             }
