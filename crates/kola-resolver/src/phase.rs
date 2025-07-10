@@ -235,6 +235,7 @@ impl Phase for ResolvePhase {
     type IfExpr = !;
     type CallExpr = !;
     type SymbolExpr = AnySym;
+    type TypeRepExpr = ResolvedType;
     type ExprError = !;
     type Expr = !;
 

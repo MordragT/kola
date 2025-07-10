@@ -31,14 +31,18 @@ impl CompType {
 
     pub fn from_protocol(
         proto: TypeProtocol,
-        bound_forall: &[TypeVar],
-        bound_exists: &[TypeVar],
+        bound: &[TypeVar],
         interner: &mut StrInterner,
     ) -> Self {
-        let ty = MonoType::from_protocol(proto, bound_forall, bound_exists, interner);
+        let ty = MonoType::from_protocol(proto, bound, interner);
         let effect = RowType::Empty;
 
         Self { ty, effect }
+    }
+
+    // TODO also consider effects
+    pub fn to_protocol(&self, interner: &StrInterner) -> TypeProtocol {
+        self.ty.to_protocol(interner)
     }
 }
 

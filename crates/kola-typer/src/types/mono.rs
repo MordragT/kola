@@ -68,8 +68,7 @@ impl MonoType {
 
     pub fn from_protocol(
         proto: TypeProtocol,
-        bound_forall: &[TypeVar],
-        bound_exists: &[TypeVar],
+        bound: &[TypeVar],
         interner: &mut StrInterner,
     ) -> Self {
         let this = match proto {
@@ -78,18 +77,14 @@ impl MonoType {
             TypeProtocol::Num => Self::NUM,
             TypeProtocol::Char => Self::CHAR,
             TypeProtocol::Str => Self::STR,
-            TypeProtocol::List(el) => Self::list(Self::from_protocol(
-                *el,
-                bound_forall,
-                bound_exists,
-                interner,
-            )),
+            TypeProtocol::List(el) => Self::list(Self::from_protocol(*el, bound, interner)),
+            TypeProtocol::TypeRep(ty) => Self::type_rep(Self::from_protocol(*ty, bound, interner)),
             TypeProtocol::Record(fields) => {
                 let mut row = Self::empty_row();
                 for (label, ty) in fields.into_iter().rev() {
                     let labeled = LabeledType::new(
                         interner.intern(label),
-                        Self::from_protocol(ty, bound_forall, bound_exists, interner),
+                        Self::from_protocol(ty, bound, interner),
                     );
                     row = Self::row(labeled, row);
                 }
@@ -100,21 +95,31 @@ impl MonoType {
                 for (label, ty) in tags.into_iter().rev() {
                     let labeled = LabeledType::new(
                         interner.intern(label),
-                        Self::from_protocol(ty, bound_forall, bound_exists, interner),
+                        Self::from_protocol(ty, bound, interner),
                     );
                     row = Self::row(labeled, row);
                 }
                 row
             }
-            TypeProtocol::Lambda(arg, ret) => Self::func(
-                Self::from_protocol(*arg, bound_forall, bound_exists, interner),
-                CompType::from_protocol(*ret, bound_forall, bound_exists, interner),
+            TypeProtocol::Func(arg, ret) => Self::func(
+                Self::from_protocol(*arg, bound, interner),
+                CompType::from_protocol(*ret, bound, interner),
             ),
-            TypeProtocol::ForallVar(id) => Self::Var(bound_forall[id as usize]),
-            TypeProtocol::ExistsVar(id) => Self::Var(bound_exists[id as usize]),
+            TypeProtocol::Var(id) => Self::Var(bound[id as usize]),
         };
 
         this
+    }
+
+    pub fn to_protocol(&self, interner: &StrInterner) -> TypeProtocol {
+        match self {
+            Self::Primitive(prim) => prim.to_protocol(),
+            Self::Func(func) => func.to_protocol(interner),
+            Self::List(list) => list.to_protocol(interner),
+            Self::Row(row) => row.to_protocol(interner),
+            Self::TypeRep(tr) => tr.to_protocol(interner),
+            Self::Var(_tv) => todo!(),
+        }
     }
 
     /// Only works, if the left-hand side is a concrete row type.

@@ -57,7 +57,6 @@ use crate::{
     analysis::exhaust_check_all,
     constraints::Constraints,
     env::{KindEnv, TypeEnv},
-    obligations::Obligations,
     phase::{TypeAnnotations, TypedNodes},
     print::TypeDecorator,
     substitute::{Substitutable, Substitution},
@@ -122,7 +121,6 @@ pub fn type_check(
             let def = module_scope.defs[eff_sym];
 
             let mut constraints = Constraints::new();
-            let mut obligations = Obligations::new();
 
             let typer = Typer::new(
                 def.id(),
@@ -131,7 +129,6 @@ pub fn type_check(
                 &global_env,
                 &module_scope.resolved,
                 &mut constraints,
-                &mut obligations,
                 str_interner,
             );
 
@@ -161,7 +158,6 @@ pub fn type_check(
             let def = module_scope.defs[type_sym];
 
             let mut constraints = Constraints::new();
-            let mut obligations = Obligations::new();
 
             let typer = Typer::new(
                 def.id(),
@@ -170,7 +166,6 @@ pub fn type_check(
                 &global_env,
                 &module_scope.resolved,
                 &mut constraints,
-                &mut obligations,
                 str_interner,
             );
 
@@ -202,7 +197,6 @@ pub fn type_check(
             let def = module_scope.defs[value_sym];
 
             let mut constraints = Constraints::new();
-            let mut obligations = Obligations::new();
 
             let typer = Typer::new(
                 def.id(),
@@ -211,7 +205,6 @@ pub fn type_check(
                 &global_env,
                 &module_scope.resolved,
                 &mut constraints,
-                &mut obligations,
                 str_interner,
             );
 
@@ -228,14 +221,6 @@ pub fn type_check(
 
             // Apply the substitution to the typed nodes
             typed_nodes.apply_mut(&mut subs);
-
-            if let Err(errs) = obligations.verify(&mut subs) {
-                report.extend_diagnostics(
-                    errs.into_iter()
-                        .map(|(err, span)| str_interner.with(&err).into_diagnostic(span)),
-                );
-                break;
-            }
 
             // Check for exhaustiveness in case expressions
             if let Err(errs) = exhaust_check_all(&cases, tree, &typed_nodes, &*spans) {

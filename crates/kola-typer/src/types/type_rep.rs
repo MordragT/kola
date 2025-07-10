@@ -1,5 +1,7 @@
 use std::fmt;
 
+use kola_builtins::TypeProtocol;
+use kola_utils::interner::StrInterner;
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -10,6 +12,7 @@ use crate::{
 };
 
 /// Represents a type representation in the system
+/// Useful for Type Reification
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct TypeRep {
     pub ty: MonoType,
@@ -18,6 +21,12 @@ pub struct TypeRep {
 impl TypeRep {
     pub fn new(ty: MonoType) -> Self {
         Self { ty }
+    }
+
+    pub fn to_protocol(&self, interner: &StrInterner) -> TypeProtocol {
+        let ty = self.ty.to_protocol(interner);
+
+        TypeProtocol::type_rep(ty)
     }
 }
 

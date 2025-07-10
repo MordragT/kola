@@ -1,10 +1,12 @@
 use derive_more::{Display, FromStr};
-use kola_utils::interner::Interner;
-use std::{cell::LazyCell, fmt};
+use kola_utils::interner::{Interner, Key};
+use serde::{Deserialize, Serialize};
+use std::{borrow::Cow, cell::LazyCell, fmt};
 
 pub type TypeInterner = Interner<TypeProtocol>;
+pub type TypeKey = Key<TypeProtocol>;
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct TypeSchemeProtocol {
     pub forall: u32,
     pub ty: TypeProtocol,
@@ -16,7 +18,7 @@ impl TypeSchemeProtocol {
     }
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum TypeProtocol {
     Unit,
     Bool,
@@ -24,11 +26,11 @@ pub enum TypeProtocol {
     Char,
     Str,
     List(Box<Self>),
+    TypeRep(Box<Self>),
     Record(Vec<(String, Self)>),
     Variant(Vec<(String, Self)>),
-    Lambda(Box<Self>, Box<Self>),
-    ForallVar(u32),
-    ExistsVar(u32),
+    Func(Box<Self>, Box<Self>),
+    Var(u32),
 }
 
 impl TypeProtocol {
@@ -42,6 +44,10 @@ impl TypeProtocol {
         TypeProtocol::List(Box::new(inner))
     }
 
+    pub fn type_rep(inner: Self) -> Self {
+        TypeProtocol::TypeRep(Box::new(inner))
+    }
+
     pub fn record(fields: Vec<(String, Self)>) -> Self {
         TypeProtocol::Record(fields)
     }
@@ -50,16 +56,32 @@ impl TypeProtocol {
         TypeProtocol::Variant(variants)
     }
 
-    pub fn lambda(input: Self, output: Self) -> Self {
-        TypeProtocol::Lambda(Box::new(input), Box::new(output))
+    pub fn func(input: Self, output: Self) -> Self {
+        TypeProtocol::Func(Box::new(input), Box::new(output))
     }
 
-    pub fn forall(id: u32) -> Self {
-        TypeProtocol::ForallVar(id)
+    pub fn var(id: u32) -> Self {
+        TypeProtocol::Var(id)
     }
 
-    pub fn exists(id: u32) -> Self {
-        TypeProtocol::ExistsVar(id)
+    pub fn to_json(&self) -> serde_json::Result<String> {
+        serde_json::to_string_pretty(self)
+    }
+
+    pub fn from_json(json: &str) -> serde_json::Result<Self> {
+        serde_json::from_str(json)
+    }
+}
+
+impl From<TypeProtocol> for Cow<'_, TypeProtocol> {
+    fn from(value: TypeProtocol) -> Self {
+        Cow::Owned(value)
+    }
+}
+
+impl<'a> From<&'a TypeProtocol> for Cow<'a, TypeProtocol> {
+    fn from(value: &'a TypeProtocol) -> Self {
+        Cow::Borrowed(value)
     }
 }
 
@@ -133,7 +155,7 @@ impl Builtin {
             ..
         } = self;
 
-        TypeSchemeProtocol::new(forall, TypeProtocol::lambda(input, output))
+        TypeSchemeProtocol::new(forall, TypeProtocol::func(input, output))
     }
 
     #[inline]
@@ -216,9 +238,12 @@ macro_rules! define_builtins {
     (@type Num) => { TypeProtocol::Num };
     (@type Char) => { TypeProtocol::Char };
     (@type Str) => { TypeProtocol::Str };
-    (@type $var:literal) => { TypeProtocol::ForallVar($var) };
+    (@type $var:literal) => { TypeProtocol::Var($var) };
     (@type (List $inner:tt)) => {
         TypeProtocol::List(Box::new(define_builtins!(@type $inner)))
+    };
+    (@type (Type $inner:tt)) => {
+        TypeProtocol::TypeRep(Box::new(define_builtins!(@type $inner)))
     };
     (@type { $($field:literal : $field_type:tt),* $(,)? }) => {
         TypeProtocol::Record(vec![
@@ -231,7 +256,7 @@ macro_rules! define_builtins {
         ])
     };
     (@type ($left:tt -> $right:tt)) => {
-        TypeProtocol::Lambda(
+        TypeProtocol::Func(
             Box::new(define_builtins!(@type $left)),
             Box::new(define_builtins!(@type $right))
         )
@@ -278,7 +303,7 @@ define_builtins! {
     record_rec: forall 3 . { "record": 0, "base": 1, "step": ({ "acc": 1, "head": { "key": Str, "value": 2 } } -> 1) } -> 1,
 
     // Builtin Serde functions
-    serde_from_json: forall 1 . Str -> [ "Ok": 0, "Err": Str ],
+    serde_from_json: forall 1 . { "rep": (Type 0), "json": Str } -> [ "Ok": 0, "Err": Str ],
     serde_to_json: forall 1 . 0 -> [ "Ok": Str, "Err": Str ],
 
     // Builtin String functions

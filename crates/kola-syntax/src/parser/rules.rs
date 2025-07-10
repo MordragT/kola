@@ -434,12 +434,36 @@ pub fn expr_parser<'t>() -> impl KolaParser<'t, Id<node::Expr>> + Clone {
             .as_context()
             .boxed();
 
-        let symbol_expr = ctrl(CtrlT::AT)
-            .ignore_then(symbol())
-            .map_to_node(node::SymbolExpr)
+        let type_rep_expr = ctrl(CtrlT::AT)
+            .ignore_then(
+                symbol()
+                    .spanned()
+                    .separated_by(ctrl(CtrlT::DOUBLE_COLON))
+                    .at_least(1)
+                    .collect::<Vec<_>>(),
+            )
+            .map_with(|mut path, e| {
+                let tree: &mut State = e.state();
+
+                let (ty_name, ty_loc) = path.pop().unwrap();
+                let ty = tree.insert(node::TypeName::new(ty_name), ty_loc);
+
+                let path = if !path.is_empty() {
+                    let module_loc = Loc::covering_located(&path).unwrap(); // Safety: Path is not empty
+                    let module_path = path
+                        .into_iter()
+                        .map(|(name, span)| tree.insert(node::ModuleName::new(name), span))
+                        .collect::<Vec<_>>();
+
+                    Some(tree.insert(node::ModulePath(module_path), module_loc))
+                } else {
+                    None
+                };
+
+                node::TypeRepExpr { path, ty }
+            })
+            .to_node()
             .to_expr()
-            .labelled("SymbolExpr")
-            .as_context()
             .boxed();
 
         // Qualified expression (module::record.field) for variable and module access
@@ -803,7 +827,7 @@ pub fn expr_parser<'t>() -> impl KolaParser<'t, Id<node::Expr>> + Clone {
             qualified,
             none,
             tag,
-            symbol_expr,
+            type_rep_expr,
         ))
         .boxed();
 

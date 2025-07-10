@@ -1,5 +1,7 @@
 use std::fmt;
 
+use kola_builtins::TypeProtocol;
+use kola_utils::interner::StrInterner;
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -18,6 +20,12 @@ pub struct ListType {
 impl ListType {
     pub fn new(el: MonoType) -> Self {
         Self { el }
+    }
+
+    pub fn to_protocol(&self, interner: &StrInterner) -> TypeProtocol {
+        let el = self.el.to_protocol(interner);
+
+        TypeProtocol::list(el)
     }
 }
 

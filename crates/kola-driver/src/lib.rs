@@ -1,6 +1,7 @@
-use std::{io, rc::Rc};
-
 use camino::Utf8Path;
+use std::io;
+
+use kola_builtins::TypeInterner;
 use kola_ir::print::render_ir;
 use kola_lowerer::module::{Program, lower};
 use kola_print::{PrintOptions, prelude::*};
@@ -19,14 +20,15 @@ use kola_typer::{
     print::TypeDecorator,
 };
 use kola_utils::{interner::StrInterner, interner_ext::InternerExt, io::FileSystem};
-use kola_vm::machine::CekMachine;
+use kola_vm::machine::{CekMachine, MachineContext};
 
 pub enum DriverOptions {}
 
 pub struct Driver {
     io: Box<dyn FileSystem>,
     arena: Bump,
-    interner: StrInterner,
+    str_interner: StrInterner,
+    type_interner: TypeInterner,
     print_options: PrintOptions,
 }
 
@@ -35,7 +37,8 @@ impl Driver {
         Self {
             io: Box::new(io),
             arena: Bump::new(),
-            interner: StrInterner::new(),
+            str_interner: StrInterner::new(),
+            type_interner: TypeInterner::new(),
             print_options: PrintOptions::default(),
         }
     }
@@ -64,7 +67,7 @@ impl Driver {
             spans: _,
         } = parse(
             ParseInput::new(source_id, tokens, source.len()),
-            &mut self.interner,
+            &mut self.str_interner,
             &mut report,
         );
 
@@ -72,7 +75,7 @@ impl Driver {
             && print
         {
             let decorators = Decorators::new();
-            let printer = TreePrinter::root(&tree, &self.interner, decorators);
+            let printer = TreePrinter::root(&tree, &self.str_interner, decorators);
             printer.print(self.print_options, &self.arena);
         }
 
@@ -84,7 +87,10 @@ impl Driver {
     }
 
     #[inline]
-    pub fn analyze(&mut self, path: impl AsRef<Utf8Path>) -> io::Result<Option<ResolveOutput>> {
+    pub fn analyze(
+        &mut self,
+        path: impl AsRef<Utf8Path>,
+    ) -> io::Result<Option<(ResolveOutput, TypeCheckOutput)>> {
         self._analyze(path, true)
     }
 
@@ -92,14 +98,14 @@ impl Driver {
         &mut self,
         path: impl AsRef<Utf8Path>,
         print: bool,
-    ) -> io::Result<Option<ResolveOutput>> {
+    ) -> io::Result<Option<(ResolveOutput, TypeCheckOutput)>> {
         let mut report = Report::new();
 
         let resolve_output = resolve(
             path,
             &self.io,
             &self.arena,
-            &mut self.interner,
+            &mut self.str_interner,
             &mut report,
             self.print_options,
         )?;
@@ -128,7 +134,7 @@ impl Driver {
                 let decorators = Decorators::new().with(&resolution_decorator);
 
                 let tree_printer =
-                    TreePrinter::new(tree, &self.interner, decorators, scope.info.id);
+                    TreePrinter::new(tree, &self.str_interner, decorators, scope.info.id);
 
                 println!(
                     "{} SourceId {}, ModuleSym {}\n{}",
@@ -151,10 +157,7 @@ impl Driver {
             return Ok(None);
         }
 
-        let TypeCheckOutput {
-            global_env,
-            type_annotations,
-        } = type_check(
+        let type_check_output = type_check(
             &forest,
             &topography,
             &module_scopes,
@@ -163,10 +166,15 @@ impl Driver {
             &type_orders,
             &value_orders,
             &self.arena,
-            &mut self.interner,
+            &mut self.str_interner,
             &mut report,
             self.print_options,
         );
+
+        let TypeCheckOutput {
+            global_env,
+            type_annotations,
+        } = &type_check_output;
 
         if print {
             for (sym, scope) in module_scopes {
@@ -183,7 +191,7 @@ impl Driver {
                     .with(&resolution_decorator)
                     .with(&type_decorator);
 
-                let tree_printer = TreePrinter::new(&tree, &self.interner, decorators, info.id);
+                let tree_printer = TreePrinter::new(&tree, &self.str_interner, decorators, info.id);
 
                 println!(
                     "{} SourceId {}, ModuleSym {}\n{}",
@@ -200,7 +208,7 @@ impl Driver {
             return Ok(None);
         }
 
-        Ok(Some(resolve_output))
+        Ok(Some((resolve_output, type_check_output)))
     }
 
     pub fn compile(&mut self, path: impl AsRef<Utf8Path>) -> io::Result<Option<Program>> {
@@ -210,19 +218,25 @@ impl Driver {
     fn _compile(&mut self, path: impl AsRef<Utf8Path>, print: bool) -> io::Result<Option<Program>> {
         let mut report = Report::new();
 
-        let Some(ResolveOutput {
-            source_manager,
-            forest,
-            topography,
-            module_graph,
-            module_scopes,
-            entry_points,
-            value_orders,
-            type_orders,
-            effect_orders,
-            module_type_orders,
-            module_order,
-        }) = self._analyze(path, false)?
+        let Some((
+            ResolveOutput {
+                source_manager,
+                forest,
+                topography,
+                module_graph,
+                module_scopes,
+                entry_points,
+                value_orders,
+                type_orders,
+                effect_orders,
+                module_type_orders,
+                module_order,
+            },
+            TypeCheckOutput {
+                global_env,
+                type_annotations,
+            },
+        )) = self._analyze(path, false)?
         else {
             return Ok(None);
         };
@@ -240,11 +254,13 @@ impl Driver {
         let program = lower(
             entry_point,
             &module_scopes,
+            &type_annotations,
             &module_order,
             &value_orders,
             &forest,
             &self.arena,
-            &self.interner,
+            &self.str_interner,
+            &mut self.type_interner,
             self.print_options,
         );
 
@@ -254,7 +270,7 @@ impl Driver {
             println!(
                 "{}\n{}",
                 "Intermediate Representation".bold().bright_white(),
-                render_ir(&ir, &self.arena, &self.interner, self.print_options)
+                render_ir(&ir, &self.arena, &self.str_interner, self.print_options)
             );
         }
 
@@ -268,11 +284,20 @@ impl Driver {
             return Ok(());
         };
 
-        let mut machine = CekMachine::new(ir, self.interner, path.parent().unwrap()); // TODO handle unwrap
+        let context = MachineContext::new(
+            ir,
+            path.parent().unwrap(),
+            self.str_interner,
+            self.type_interner,
+        ); // TODO handle unwrap
+        let mut machine = CekMachine::new(context);
 
         match machine.run() {
             Ok(value) => {
-                println!("\nExecution result: {}", machine.interner.with(&value))
+                println!(
+                    "\nExecution result: {}",
+                    machine.context.str_interner.with(&value)
+                )
             }
             Err(e) => eprintln!("\nRuntime error: {}", e),
         }

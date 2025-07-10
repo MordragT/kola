@@ -5,7 +5,7 @@ use kola_print::prelude::*;
 use kola_utils::interner::StrKey;
 use serde::{Deserialize, Serialize};
 
-use super::{ModulePath, Pat, Type, ValueName};
+use super::{ModulePath, Pat, Type, TypeName, ValueName};
 use crate::{
     id::Id,
     print::NodePrinter,
@@ -1022,6 +1022,27 @@ pub struct SymbolExpr(pub StrKey);
 
 #[derive(
     Debug,
+    Notate,
+    Inspector,
+    From,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
+)]
+#[notate(color = "blue")]
+pub struct TypeRepExpr {
+    pub path: Option<Id<ModulePath>>,
+    pub ty: Id<TypeName>,
+}
+
+#[derive(
+    Debug,
     EnumAsInner,
     Inspector,
     From,
@@ -1056,6 +1077,7 @@ pub enum Expr {
     Do(Id<DoExpr>),
     Tag(Id<TagExpr>),
     Symbol(Id<SymbolExpr>),
+    TypeRep(Id<TypeRepExpr>),
 }
 
 impl<'a> Notate<'a> for NodePrinter<'a, Expr> {
@@ -1081,6 +1103,7 @@ impl<'a> Notate<'a> for NodePrinter<'a, Expr> {
             Expr::Do(d) => self.to_id(d).notate(arena),
             Expr::Tag(t) => self.to_id(t).notate(arena),
             Expr::Symbol(s) => self.to_id(s).notate(arena),
+            Expr::TypeRep(t) => self.to_id(t).notate(arena),
         }
     }
 }

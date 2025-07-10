@@ -1,4 +1,5 @@
-use kola_utils::interner::StrKey;
+use kola_builtins::TypeProtocol;
+use kola_utils::interner::{StrInterner, StrKey};
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
@@ -161,6 +162,27 @@ impl RowType {
         let tail = MonoType::Row(Box::new(self));
 
         Self::Extension { head, tail }
+    }
+
+    pub fn to_protocol(&self, interner: &StrInterner) -> TypeProtocol {
+        let mut fields = Vec::new();
+        let mut next = self;
+
+        while let Self::Extension {
+            head: LabeledType { label, ty },
+            tail,
+        } = next
+        {
+            let ty = ty.to_protocol(interner);
+            fields.push((interner[*label].to_owned(), ty));
+
+            match tail {
+                MonoType::Row(row) => next = &**row,
+                _ => todo!(),
+            }
+        }
+
+        TypeProtocol::Record(fields)
     }
 
     pub fn merge_left(&self, other: &MonoType) -> Result<MonoType, TypeError> {

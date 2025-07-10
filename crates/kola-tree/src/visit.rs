@@ -70,6 +70,8 @@ impl_visitable!(
     HandleExpr,
     DoExpr,
     TagExpr,
+    SymbolExpr,
+    TypeRepExpr,
     ExprError,
     Expr,
     // Types
@@ -885,6 +887,30 @@ pub trait Visitor<T: TreeView> {
         ControlFlow::Continue(())
     }
 
+    fn walk_type_rep_expr(
+        &mut self,
+        id: Id<node::TypeRepExpr>,
+        tree: &T,
+    ) -> ControlFlow<Self::BreakValue> {
+        let node::TypeRepExpr { path, ty } = *id.get(tree);
+
+        if let Some(path) = path {
+            self.visit_module_path(path, tree)?;
+        }
+
+        self.visit_type_name(ty, tree)?;
+
+        ControlFlow::Continue(())
+    }
+
+    fn visit_type_rep_expr(
+        &mut self,
+        id: Id<node::TypeRepExpr>,
+        tree: &T,
+    ) -> ControlFlow<Self::BreakValue> {
+        self.walk_type_rep_expr(id, tree)
+    }
+
     fn visit_expr_error(
         &mut self,
         _id: Id<node::ExprError>,
@@ -917,6 +943,7 @@ pub trait Visitor<T: TreeView> {
             Do(id) => self.visit_do_expr(id, tree),
             Tag(id) => self.visit_tag_expr(id, tree),
             Symbol(id) => self.visit_symbol_expr(id, tree),
+            TypeRep(id) => self.visit_type_rep_expr(id, tree),
         }
     }
 

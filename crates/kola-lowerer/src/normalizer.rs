@@ -1,13 +1,17 @@
 use std::ops::ControlFlow;
 
+use kola_builtins::TypeInterner;
 use kola_ir::prelude::{Id as InstrId, instr as ir, *};
-use kola_resolver::{phase::ResolvePhase, symbol::Sym};
+use kola_resolver::{
+    phase::{ResolvePhase, ResolvedModule, ResolvedNodes, ResolvedValue},
+    symbol::{Sym, ValueSym},
+};
 use kola_tree::{
     node::Namespace,
     prelude::{Id as TreeId, *},
 };
-
-use crate::symbol::SymbolEnv;
+use kola_typer::phase::TypedNodes;
+use kola_utils::interner::StrInterner;
 
 // https://matt.might.net/articles/cps-conversion/
 
@@ -16,8 +20,11 @@ pub struct Normalizer<'a, Node> {
     root_id: TreeId<Node>,
     next: InstrId<ir::Expr>,
     hole: ir::Symbol,
+    resolved: &'a ResolvedNodes,
+    typed: &'a TypedNodes,
     builder: &'a mut IrBuilder,
-    symbols: SymbolEnv<'a>,
+    type_interner: &'a mut TypeInterner,
+    str_interner: &'a StrInterner,
 }
 
 impl<'a, Node> Normalizer<'a, Node> {
@@ -25,20 +32,28 @@ impl<'a, Node> Normalizer<'a, Node> {
         root_id: TreeId<Node>,
         next: InstrId<ir::Expr>,
         hole: ir::Symbol,
+        resolved: &'a ResolvedNodes,
+        typed: &'a TypedNodes,
         builder: &'a mut IrBuilder,
-        symbols: SymbolEnv<'a>,
+        type_interner: &'a mut TypeInterner,
+        str_interner: &'a StrInterner,
     ) -> Self {
         Self {
             root_id,
             next,
             hole,
+            resolved,
+            typed,
             builder,
-            symbols,
+            type_interner,
+            str_interner,
         }
     }
 
     pub fn next_symbol(&mut self) -> ir::Symbol {
-        self.symbols.next()
+        let sym = ValueSym::new();
+        let symbol = ir::Symbol(sym.id());
+        symbol
     }
 
     pub fn symbol_of<T, N>(&self, id: TreeId<T>) -> ir::Symbol
@@ -46,7 +61,8 @@ impl<'a, Node> Normalizer<'a, Node> {
         N: Namespace,
         T: MetaCast<ResolvePhase, Meta = Sym<N>>, // TODO maybe ValueSym ??
     {
-        self.symbols.symbol_of(id)
+        let sym = self.resolved.meta(id);
+        ir::Symbol(sym.id())
     }
 
     /// emit(atom) ~= let self.hole = atom; self.next
@@ -159,7 +175,8 @@ where
         } = *id.get(tree);
 
         if let Some(path) = module_path {
-            let module_atom = self.builder.add(self.symbols.atom_of_module(path));
+            let ResolvedModule(sym) = *self.resolved.meta(path);
+            let module_atom = self.builder.add(ir::Atom::Symbol(ir::Symbol(sym.id())));
 
             let name = source.get(tree).0;
 
@@ -177,7 +194,11 @@ where
         }
 
         // Create atom
-        let source_atom = self.builder.add(self.symbols.atom_of_expr(id)); // This is only defined if path is None so be careful about moving this
+        let source_atom = match *self.resolved.meta(id) {
+            ResolvedValue::Reference(sym) => ir::Atom::Symbol(ir::Symbol(sym.id())),
+            ResolvedValue::Builtin(b) => ir::Atom::Builtin(b),
+        }; // This is only defined if path is None so be careful about moving this
+        let source_atom = self.builder.add(source_atom);
 
         if let Some(field_path) = field_path {
             let field_path = &field_path.get(tree).0;
@@ -246,10 +267,26 @@ where
         id: TreeId<node::SymbolExpr>,
         _tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
-        let id = self.symbols.symbol_expr_id(id);
-        let atom = self.builder.add(ir::Atom::Num(id as f64));
+        let sym = *self.resolved.meta(id);
 
+        let atom = self.builder.add(ir::Atom::Num(sym.id() as f64));
         self.emit(atom);
+
+        ControlFlow::Continue(())
+    }
+
+    fn visit_type_rep_expr(
+        &mut self,
+        id: TreeId<node::TypeRepExpr>,
+        _tree: &T,
+    ) -> ControlFlow<Self::BreakValue> {
+        let ty = self.typed.meta(id);
+        let ty_proto = ty.to_protocol(self.str_interner);
+        let ty_key = self.type_interner.intern(ty_proto);
+
+        let atom = self.builder.add(ir::Atom::TypeRep(ir::TypeRep(ty_key)));
+        self.emit(atom);
+
         ControlFlow::Continue(())
     }
 
@@ -797,8 +834,8 @@ where
                 source_sym,  // value being matched
                 on_success,
                 on_failure,
+                self.resolved,
                 self.builder,
-                self.symbols,
             );
             pat.visit_by(&mut pat_normalizer, tree)?;
 
@@ -827,8 +864,8 @@ pub struct PatternNormalizer<'a> {
     source: ir::Symbol, // What we're matching against
     on_success: InstrId<ir::PatternMatcher>,
     on_failure: InstrId<ir::PatternMatcher>,
+    resolved: &'a ResolvedNodes,
     builder: &'a mut IrBuilder,
-    symbols: SymbolEnv<'a>,
 }
 
 impl<'a> PatternNormalizer<'a> {
@@ -837,29 +874,32 @@ impl<'a> PatternNormalizer<'a> {
         source: ir::Symbol,
         on_success: InstrId<ir::PatternMatcher>,
         on_failure: InstrId<ir::PatternMatcher>,
+        resolved: &'a ResolvedNodes,
         builder: &'a mut IrBuilder,
-        symbols: SymbolEnv<'a>,
     ) -> Self {
         Self {
             hole,
             source,
             on_success,
             on_failure,
+            resolved,
             builder,
-            symbols,
         }
     }
 
     pub fn next_symbol(&mut self) -> ir::Symbol {
-        self.symbols.next()
+        let sym = ValueSym::new();
+        let symbol = ir::Symbol(sym.id());
+        symbol
     }
 
-    pub fn symbol_of<Node, Space>(&self, id: TreeId<Node>) -> ir::Symbol
+    pub fn symbol_of<T, N>(&self, id: TreeId<T>) -> ir::Symbol
     where
-        Space: Namespace,
-        Node: MetaCast<ResolvePhase, Meta = Sym<Space>>,
+        N: Namespace,
+        T: MetaCast<ResolvePhase, Meta = Sym<N>>, // TODO maybe ValueSym ??
     {
-        self.symbols.symbol_of(id)
+        let sym = self.resolved.meta(id);
+        ir::Symbol(sym.id())
     }
 }
 
@@ -1052,8 +1092,8 @@ where
                 tail,
                 self.on_success,
                 self.on_failure,
+                self.resolved,
                 self.builder,
-                self.symbols,
             );
 
             // Visit the nested pattern
@@ -1084,8 +1124,8 @@ where
                 head,
                 self.on_success,
                 self.on_failure,
+                self.resolved,
                 self.builder,
-                self.symbols,
             );
 
             // Visit the nested pattern
@@ -1164,8 +1204,8 @@ where
                     field_sym,
                     current_success,
                     self.on_failure,
+                    self.resolved,
                     self.builder,
-                    self.symbols,
                 );
 
                 // Visit the nested pattern
@@ -1255,8 +1295,8 @@ where
                     pat_sym, // Variant value is in here after VariantGet extraction
                     tag_success,
                     current_failure,
+                    self.resolved,
                     self.builder,
-                    self.symbols,
                 );
 
                 // Visit the nested pattern
@@ -1297,8 +1337,11 @@ where
 #[cfg(test)]
 mod tests {
 
+    use std::collections::HashMap;
+
+    use kola_builtins::TypeInterner;
     use kola_ir::{
-        instr as ir,
+        instr::{self as ir, Symbol},
         ir::{Ir, IrBuilder},
     };
     use kola_resolver::{
@@ -1307,10 +1350,12 @@ mod tests {
     };
     use kola_tree::prelude::*;
     use kola_utils::interner::StrInterner;
-    use kola_vm::{machine::CekMachine, value::Value};
+    use kola_vm::{
+        machine::{CekMachine, MachineContext},
+        value::Value,
+    };
 
     use super::Normalizer;
-    use crate::symbol::SymbolEnv;
 
     // TODO this wont work for path expressions using bound symbols,
     fn mock_resolved(tree: &impl TreeView) -> ResolvedNodes {
@@ -1329,21 +1374,42 @@ mod tests {
         resolved
     }
 
-    fn normalize<T>(tree: TreeBuilder, root_id: Id<T>, resolved: &ResolvedNodes) -> Ir
+    fn normalize<T>(
+        tree: TreeBuilder,
+        root_id: Id<T>,
+        resolved: &ResolvedNodes,
+        str_interner: &StrInterner,
+    ) -> Ir
     where
         Id<T>: Visitable<TreeBuilder>,
     {
-        let mut symbols = SymbolEnv::new(resolved);
+        let mut type_interner = TypeInterner::new();
         let mut builder = IrBuilder::new();
 
-        let hole = symbols.next();
+        let mocked_typed = HashMap::new();
+
+        let hole = Symbol(ValueSym::new().id());
         let arg = builder.add(ir::Atom::Symbol(hole));
         let next = builder.add(ir::Expr::Ret(ir::RetExpr { arg }));
 
-        let normalizer = Normalizer::new(root_id, next, hole, &mut builder, symbols);
+        let normalizer = Normalizer::new(
+            root_id,
+            next,
+            hole,
+            resolved,
+            &mocked_typed,
+            &mut builder,
+            &mut type_interner,
+            str_interner,
+        );
         let root = normalizer.run(&tree);
 
         builder.finish(root)
+    }
+
+    fn new_machine(ir: Ir, interner: StrInterner) -> CekMachine {
+        let context = MachineContext::new(ir, "/mocked/path", interner, TypeInterner::new());
+        CekMachine::new(context)
     }
 
     #[test]
@@ -1352,8 +1418,8 @@ mod tests {
         let lit = builder.insert(node::LiteralExpr::Num(10.0));
 
         let resolved = mock_resolved(&builder);
-        let ir = normalize(builder, lit, &resolved);
-        let mut machine = CekMachine::new(ir, StrInterner::new(), "/mocked/path");
+        let ir = normalize(builder, lit, &resolved, &StrInterner::new());
+        let mut machine = new_machine(ir, StrInterner::new());
         let value = machine.run().unwrap();
 
         assert_eq!(value, Value::Num(10.0))
@@ -1370,8 +1436,8 @@ mod tests {
         let path_expr = node::QualifiedExpr::new_in(None, x, None, &mut builder);
 
         let resolved = mock_resolved(&builder);
-        let ir = normalize(builder, path_expr, &resolved);
-        let mut machine = CekMachine::new(ir, interner, "/mocked/path");
+        let ir = normalize(builder, path_expr, &resolved, &interner);
+        let mut machine = new_machine(ir, interner);
 
         // Expect unbound symbol error.
         let _err = machine.run().unwrap_err();
@@ -1395,8 +1461,8 @@ mod tests {
         let let_expr = node::LetExpr::new_in(x, None, value, inside, &mut builder);
         resolved.insert_meta(let_expr, x_sym);
 
-        let ir = normalize(builder, let_expr, &resolved);
-        let mut machine = CekMachine::new(ir, interner, "/mocked/path");
+        let ir = normalize(builder, let_expr, &resolved, &interner);
+        let mut machine = new_machine(ir, interner);
         let value = machine.run().unwrap();
 
         // Should evaluate to 42 (the value bound to x)
@@ -1430,8 +1496,8 @@ mod tests {
         // Create the call: (\x => x) 42
         let call_expr = builder.insert(node::CallExpr { func: lambda, arg });
 
-        let ir = normalize(builder, call_expr, &resolved);
-        let mut machine = CekMachine::new(ir, interner, "/mocked/path");
+        let ir = normalize(builder, call_expr, &resolved, &interner);
+        let mut machine = new_machine(ir, interner);
         let value = machine.run().unwrap();
 
         // Should evaluate to 42 (identity function returns its argument)
@@ -1461,8 +1527,8 @@ mod tests {
         let record_expr = node::RecordExpr::new_in([a_field, b_field], &mut builder);
         let record_id = builder.insert(node::Expr::Record(record_expr));
 
-        let ir = normalize(builder, record_id, &resolved);
-        let mut machine = CekMachine::new(ir, interner, "/mocked/path");
+        let ir = normalize(builder, record_id, &resolved, &interner);
+        let mut machine = new_machine(ir, interner);
         let value = machine.run().unwrap();
 
         // Should evaluate to a record with two fields
@@ -1513,8 +1579,8 @@ mod tests {
         let let_expr = node::LetExpr::new_in(r, None, record_expr, qualified_expr, &mut builder);
         resolved.insert_meta(let_expr, r_sym);
 
-        let ir = normalize(builder, let_expr, &resolved);
-        let mut machine = CekMachine::new(ir, interner, "/mocked/path");
+        let ir = normalize(builder, let_expr, &resolved, &interner);
+        let mut machine = new_machine(ir, interner);
         let value = machine.run().unwrap();
 
         // Should evaluate to "hello" (the value of r.a.b.c)

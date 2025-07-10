@@ -1,6 +1,6 @@
 use std::{ops::ControlFlow, rc::Rc};
 
-use kola_builtins::{Builtin, BuiltinEffect, BuiltinType, TypeProtocol, TypeSchemeProtocol};
+use kola_builtins::{Builtin, BuiltinEffect, BuiltinType, TypeSchemeProtocol};
 use kola_resolver::phase::{ResolvedModule, ResolvedNodes};
 use kola_span::{Diagnostic, IntoDiagnostic, Loc, Report};
 use kola_syntax::prelude::*;
@@ -10,7 +10,6 @@ use kola_utils::interner::StrInterner;
 use crate::{
     constraints::{Constraints, MergeKind},
     env::{LocalTypeEnv, TypeEnv},
-    obligations::Obligations,
     pattern_typer::PatternTyper,
     phase::{TypePhase, TypedNodes},
     substitute::{Substitutable, Substitution},
@@ -35,7 +34,6 @@ pub struct Typer<'a, N> {
     global_env: &'a TypeEnv,
     resolved: &'a ResolvedNodes,
     cons: &'a mut Constraints,
-    obls: &'a mut Obligations,
     interner: &'a mut StrInterner,
 }
 
@@ -47,7 +45,6 @@ impl<'a, N> Typer<'a, N> {
         global_env: &'a TypeEnv,
         resolved: &'a ResolvedNodes,
         cons: &'a mut Constraints,
-        obls: &'a mut Obligations,
         interner: &'a mut StrInterner,
     ) -> Self {
         Self {
@@ -60,7 +57,6 @@ impl<'a, N> Typer<'a, N> {
             global_env,
             resolved,
             cons,
-            obls,
             interner,
         }
     }
@@ -948,22 +944,7 @@ where
         } else if let Some(builtin_id) = self.resolved.meta(id).into_builtin() {
             let builtin = Builtin::from_id(builtin_id);
 
-            let TypeSchemeProtocol { forall, exists, ty } = builtin.type_scheme();
-
-            let mut bound_forall: Vec<TypeVar> = (0..forall).map(|_| TypeVar::new()).collect();
-            let mut bound_exists: Vec<TypeVar> = (0..exists).map(|_| TypeVar::new()).collect();
-
-            // Convert types using simple array indexing
-            let ty = MonoType::from_protocol(ty, &bound_forall, &bound_exists, self.interner);
-
-            for &tv in &bound_exists {
-                self.obls.require_exists(tv, span);
-            }
-
-            // Combine bound forall and exists variables
-            bound_forall.append(&mut bound_exists);
-
-            PolyType::new(bound_forall, ty).instantiate()
+            PolyType::from_proto(builtin.type_scheme(), self.interner).instantiate()
         } else {
             return ControlFlow::Break(Diagnostic::error(span, "Value not found in scope"));
         };
@@ -1935,6 +1916,69 @@ where
         ControlFlow::Continue(())
     }
 
+    fn visit_type_rep_expr(
+        &mut self,
+        id: Id<node::TypeRepExpr>,
+        tree: &T,
+    ) -> ControlFlow<Self::BreakValue> {
+        let node::TypeRepExpr { ty, path } = *id.get(tree);
+
+        let type_name = ty.get(tree).0;
+        let span = self.span(id);
+
+        let ty = if let Some(path) = path {
+            // Module-qualified path
+            let ResolvedModule(module_sym) = *self.resolved.meta(path);
+
+            let (module_info, module) = &self.global_env[module_sym];
+
+            let Some(type_sym) = module.get_type(type_name) else {
+                return ControlFlow::Break(
+                    Diagnostic::error(span, "Type not found")
+                        .with_trace([("In this module".to_owned(), module_info.loc)]),
+                );
+            };
+
+            let (type_def, poly_t) = &self.global_env[type_sym];
+
+            if type_def.vis != Vis::Export {
+                return ControlFlow::Break(
+                    Diagnostic::error(span, "Type is not exported from the module").with_trace([
+                        ("In this module".to_owned(), module_info.loc),
+                        ("Declared here".to_owned(), type_def.loc),
+                    ]),
+                );
+            }
+
+            poly_t.instantiate()
+        } else if let Some(local_t) = self.local_env.get(&type_name) {
+            // Local type parameter (like 'a' in forall a)
+            local_t.clone()
+        } else if let Some((_, poly_t)) = self
+            .resolved
+            .meta(id)
+            .into_reference()
+            .and_then(|sym| self.module_env.get_type(sym))
+        {
+            // Module-level type definition (like 'Person')
+            poly_t.instantiate()
+        } else if let Some(builtin_t) = self.resolved.meta(id).into_builtin() {
+            match builtin_t {
+                BuiltinType::Unit => MonoType::UNIT,
+                BuiltinType::Bool => MonoType::BOOL,
+                BuiltinType::Num => MonoType::NUM,
+                BuiltinType::Char => MonoType::CHAR,
+                BuiltinType::Str => MonoType::STR,
+                BuiltinType::List => MonoType::list(MonoType::Var(TypeVar::new())),
+            }
+        } else {
+            return ControlFlow::Break(Diagnostic::error(span, "Type not found in scope"));
+        };
+
+        self.insert_type(id, MonoType::type_rep(ty));
+        ControlFlow::Continue(())
+    }
+
     fn visit_expr(&mut self, id: Id<node::Expr>, tree: &T) -> ControlFlow<Self::BreakValue> {
         self.walk_expr(id, tree)?;
 
@@ -1959,6 +2003,7 @@ where
             node::Expr::Do(id) => &self.types.meta(id).ty,   // TODO this discards the effect
             node::Expr::Symbol(_id) => &MonoType::NUM,
             node::Expr::Tag(id) => self.types.meta(id),
+            node::Expr::TypeRep(id) => self.types.meta(id),
         }
         .clone();
 

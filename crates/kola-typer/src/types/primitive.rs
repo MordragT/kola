@@ -1,3 +1,4 @@
+use kola_builtins::TypeProtocol;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
@@ -11,6 +12,18 @@ pub enum PrimitiveType {
     Num,
     Char,
     Str,
+}
+
+impl PrimitiveType {
+    pub fn to_protocol(&self) -> TypeProtocol {
+        match self {
+            PrimitiveType::Unit => TypeProtocol::Unit,
+            PrimitiveType::Bool => TypeProtocol::Bool,
+            PrimitiveType::Num => TypeProtocol::Num,
+            PrimitiveType::Char => TypeProtocol::Char,
+            PrimitiveType::Str => TypeProtocol::Str,
+        }
+    }
 }
 
 impl fmt::Display for PrimitiveType {

@@ -1,5 +1,7 @@
 use std::{collections::HashMap, fmt};
 
+use kola_builtins::TypeSchemeProtocol;
+use kola_utils::interner::StrInterner;
 use serde::{Deserialize, Serialize};
 
 use super::{MonoType, TypeVar, Typed};
@@ -28,6 +30,17 @@ impl PolyType {
             vars: Vec::new(),
             ty,
         }
+    }
+
+    pub fn from_proto(proto: TypeSchemeProtocol, interner: &mut StrInterner) -> Self {
+        let TypeSchemeProtocol { forall, ty } = proto;
+
+        let vars: Vec<TypeVar> = (0..forall).map(|_| TypeVar::new()).collect();
+
+        // Convert types using simple array indexing
+        let ty = MonoType::from_protocol(ty, &vars, interner);
+
+        Self { vars, ty }
     }
 
     pub fn bound_vars(&self) -> &Vec<TypeVar> {

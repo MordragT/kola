@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+kola-builtins.workspace = true
 kola-ir.workspace = true
 kola-vm.workspace = true
 kola-lowerer.workspace = true

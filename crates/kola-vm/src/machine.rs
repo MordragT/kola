@@ -1,4 +1,7 @@
+use std::borrow::Cow;
+
 use camino::{Utf8Path, Utf8PathBuf};
+use kola_builtins::{TypeInterner, TypeKey, TypeProtocol};
 
 use crate::{
     config::{MachineState, OperationConfig, PatternConfig, PrimitiveRecConfig, StandardConfig},
@@ -11,40 +14,75 @@ use kola_ir::{
     instr::Func,
     ir::{Ir, IrView},
 };
-use kola_utils::interner::StrInterner;
+use kola_utils::interner::{StrInterner, StrKey};
+
+#[derive(Debug, Clone)]
+pub struct MachineContext {
+    /// The IR being interpreted
+    pub ir: Ir,
+    /// The working directory for the machine
+    pub working_dir: Utf8PathBuf,
+    /// The interner used for symbol to string conversion
+    pub str_interner: StrInterner,
+    /// The type interner used for type reification
+    pub type_interner: TypeInterner,
+}
+
+impl MachineContext {
+    pub fn new(
+        ir: Ir,
+        working_dir: impl Into<Utf8PathBuf>,
+        str_interner: StrInterner,
+        type_interner: TypeInterner,
+    ) -> Self {
+        Self {
+            ir,
+            working_dir: working_dir.into(),
+            str_interner,
+            type_interner,
+        }
+    }
+
+    pub fn start_config(&self) -> StandardConfig {
+        let control = self.ir.root().get(&self.ir);
+        let env = Env::new();
+        let cont = Cont::identity(env.clone());
+
+        StandardConfig { control, env, cont }
+    }
+
+    pub fn join_path(&self, path: impl AsRef<Utf8Path>) -> Utf8PathBuf {
+        self.working_dir.join(path)
+    }
+
+    pub fn intern_str<'a>(&mut self, s: impl Into<Cow<'a, str>>) -> StrKey {
+        self.str_interner.intern(s)
+    }
+
+    pub fn intern_type<'a>(&mut self, t: impl Into<Cow<'a, TypeProtocol>>) -> TypeKey {
+        self.type_interner.intern(t)
+    }
+}
 
 /// CEK-style abstract machine for interpreting the language
 #[derive(Debug, Clone)]
 pub struct CekMachine {
-    /// The IR being interpreted
-    pub ir: Ir,
     /// The current state of the machine
     pub state: MachineState,
-    /// The working directory for the machine
-    pub working_dir: Utf8PathBuf,
-    /// The interner used for symbol resolution
-    pub interner: StrInterner,
+    /// The context of the machine
+    pub context: MachineContext,
 }
 
 impl CekMachine {
     /// Create a new CEK machine to evaluate an expression
-    pub fn new(ir: Ir, interner: StrInterner, working_dir: impl Into<Utf8PathBuf>) -> Self {
-        let env = Env::new();
-        let cont = Cont::identity(env.clone());
-
+    pub fn new(context: MachineContext) -> Self {
         // Initial configuration (M-INIT in the paper)
         // C = hM | ∅ | κ0i
-        let config = StandardConfig {
-            control: ir.root().get(&ir),
-            env,
-            cont,
-        };
+        let config = context.start_config();
 
         Self {
-            ir,
+            context,
             state: MachineState::Standard(config),
-            working_dir: working_dir.into(),
-            interner,
         }
     }
 
@@ -55,18 +93,12 @@ impl CekMachine {
         let state = std::mem::replace(&mut self.state, MachineState::InProgress);
 
         self.state = match state {
-            MachineState::Standard(config) => {
-                Self::step_standard(config, &self.ir, &self.working_dir, &mut self.interner)
-            }
-            MachineState::Operation(config) => {
-                Self::step_operation(config, &self.ir, &mut self.interner)
-            }
+            MachineState::Standard(config) => Self::step_standard(config, &mut self.context),
+            MachineState::Operation(config) => Self::step_operation(config, &mut self.context),
             MachineState::PrimitiveRec(config) => {
-                Self::step_primitive_rec(config, &self.ir, &mut self.interner)
+                Self::step_primitive_rec(config, &mut self.context)
             }
-            MachineState::Pattern(config) => {
-                Self::step_pattern(config, &self.ir, &self.working_dir, &mut self.interner)
-            }
+            MachineState::Pattern(config) => Self::step_pattern(config, &mut self.context),
             MachineState::Value(_) | MachineState::Error(_) => {
                 // If the machine is in a terminal state, we don't need to do anything
                 state
@@ -92,36 +124,20 @@ impl CekMachine {
     }
 
     /// Execute a standard configuration step
-    fn step_standard(
-        config: StandardConfig,
-        ir: &Ir,
-        working_dir: &Utf8Path,
-        interner: &mut StrInterner,
-    ) -> MachineState {
+    fn step_standard(config: StandardConfig, context: &mut MachineContext) -> MachineState {
         let StandardConfig { control, env, cont } = config;
-        control.eval(env, cont, ir, working_dir, interner)
+        control.eval(env, cont, context)
     }
 
     /// Execute a pattern matching configuration step
-    fn step_pattern(
-        config: PatternConfig,
-        ir: &Ir,
-        working_dir: &Utf8Path,
-        interner: &mut StrInterner,
-    ) -> MachineState {
-        config.eval(
-            config.env.clone(),
-            config.cont.clone(),
-            ir,
-            working_dir,
-            interner,
-        )
+    fn step_pattern(config: PatternConfig, context: &mut MachineContext) -> MachineState {
+        let PatternConfig { matcher, env, cont } = config;
+        matcher.get(&context.ir).eval(env, cont, context)
     }
 
     fn step_primitive_rec(
         config: PrimitiveRecConfig,
-        ir: &Ir,
-        interner: &mut StrInterner,
+        context: &mut MachineContext,
     ) -> MachineState {
         let PrimitiveRecConfig {
             data,
@@ -131,10 +147,10 @@ impl CekMachine {
         } = config;
 
         match data {
-            Value::List(list) => Self::step_list_rec(list, base, step, cont, ir, interner),
-            Value::Num(n) => Self::step_num_rec(n, base, step, cont, ir, interner),
-            Value::Record(record) => Self::step_record_rec(record, base, step, cont, ir, interner),
-            Value::Str(string) => Self::step_str_rec(string, base, step, cont, ir, interner),
+            Value::List(list) => Self::step_list_rec(list, base, step, cont, context),
+            Value::Num(n) => Self::step_num_rec(n, base, step, cont, context),
+            Value::Record(record) => Self::step_record_rec(record, base, step, cont, context),
+            Value::Str(string) => Self::step_str_rec(string, base, step, cont, context),
             _ => MachineState::Error(format!("Cannot recurse over {:?}", data)),
         }
     }
@@ -146,8 +162,7 @@ impl CekMachine {
         base: Value,
         step: Closure,
         mut cont: Cont,
-        ir: &Ir,
-        interner: &mut StrInterner,
+        context: &mut MachineContext,
     ) -> MachineState {
         let Some((head, tail)) = list.split_first() else {
             // Base case: return the base value
@@ -170,13 +185,13 @@ impl CekMachine {
 
             // Create argument for the step function
             let mut record = Record::new();
-            record.insert(interner.intern("acc"), base);
-            record.insert(interner.intern("head"), head);
+            record.insert(context.intern_str("acc"), base);
+            record.insert(context.intern_str("head"), head);
 
             env.insert(param, Value::Record(record));
 
             return MachineState::Standard(StandardConfig {
-                control: body.get(ir),
+                control: body.get(&context.ir),
                 env,
                 cont, // Remaining handlers continue the chain
             });
@@ -213,8 +228,7 @@ impl CekMachine {
         base: Value,
         step: Closure,
         mut cont: Cont,
-        ir: &Ir,
-        interner: &mut StrInterner,
+        context: &mut MachineContext,
     ) -> MachineState {
         debug_assert!(
             to_usize_exact(num).is_some(),
@@ -244,13 +258,13 @@ impl CekMachine {
 
             // Create argument for the step function
             let mut record = Record::new();
-            record.insert(interner.intern("acc"), base);
-            record.insert(interner.intern("head"), head);
+            record.insert(context.intern_str("acc"), base);
+            record.insert(context.intern_str("head"), head);
 
             env.insert(param, Value::Record(record));
 
             return MachineState::Standard(StandardConfig {
-                control: body.get(ir),
+                control: body.get(&context.ir),
                 env,
                 cont, // Remaining handlers continue the chain
             });
@@ -287,8 +301,7 @@ impl CekMachine {
         base: Value,
         step: Closure,
         mut cont: Cont,
-        ir: &Ir,
-        interner: &mut StrInterner,
+        context: &mut MachineContext,
     ) -> MachineState {
         let Some((label, value)) = record.pop_first() else {
             // Base case: return the base value
@@ -311,13 +324,13 @@ impl CekMachine {
 
             // Create argument for the step function
             let mut record = Record::new();
-            record.insert(interner.intern("acc"), base);
-            record.insert(interner.intern("head"), head);
+            record.insert(context.intern_str("acc"), base);
+            record.insert(context.intern_str("head"), head);
 
             env.insert(param, Value::Record(record));
 
             return MachineState::Standard(StandardConfig {
-                control: body.get(ir),
+                control: body.get(&context.ir),
                 env,
                 cont, // Remaining handlers continue the chain
             });
@@ -332,8 +345,11 @@ impl CekMachine {
         let Closure { env, func } = step.clone();
 
         let mut head = Record::new();
-        head.insert(interner.intern("key"), Value::Str(interner[label].clone()));
-        head.insert(interner.intern("value"), value);
+        head.insert(
+            context.intern_str("key"),
+            Value::Str(context.str_interner[label].clone()),
+        );
+        head.insert(context.intern_str("value"), value);
 
         let handler = Handler::primitive_rec(Value::Record(head), func);
         let handler_closure = HandlerClosure::new(handler, env);
@@ -358,8 +374,7 @@ impl CekMachine {
         base: Value,
         step: Closure,
         mut cont: Cont,
-        ir: &Ir,
-        interner: &mut StrInterner,
+        context: &mut MachineContext,
     ) -> MachineState {
         if string.is_empty() {
             // Base case: return the base value
@@ -382,13 +397,13 @@ impl CekMachine {
 
             // Create argument for the step function
             let mut record = Record::new();
-            record.insert(interner.intern("acc"), base);
-            record.insert(interner.intern("head"), head);
+            record.insert(context.intern_str("acc"), base);
+            record.insert(context.intern_str("head"), head);
 
             env.insert(param, Value::Record(record));
 
             return MachineState::Standard(StandardConfig {
-                control: body.get(ir),
+                control: body.get(&context.ir),
                 env,
                 cont, // Remaining handlers continue the chain
             });
@@ -421,11 +436,7 @@ impl CekMachine {
     }
 
     /// Execute an operation configuration step
-    fn step_operation(
-        config: OperationConfig,
-        ir: &Ir,
-        interner: &mut StrInterner,
-    ) -> MachineState {
+    fn step_operation(config: OperationConfig, context: &mut MachineContext) -> MachineState {
         let OperationConfig {
             op,
             arg,
@@ -443,7 +454,7 @@ impl CekMachine {
             // No handler found
             return MachineState::Error(format!(
                 "Unhandled effect operation: {} ({})",
-                interner[op], op,
+                context.str_interner[op], op,
             ));
         };
 
@@ -454,7 +465,7 @@ impl CekMachine {
             // ⟨(do ℓ V)^E | γ | (σ, (γ', H)) :: κ | κ'⟩^op → ⟨M | γ'[x ↦ ⟦V⟧_γ, k ↦ (κ' ++ [(σ, (γ', H))])^B] | κ⟩
 
             // Evaluate the operation argument
-            let arg_value = match eval_atom(ir.instr(arg), &env, interner) {
+            let arg_value = match eval_atom(context.ir.instr(arg), &env, context) {
                 Ok(value) => value,
                 Err(err) => return MachineState::Error(err),
             };
@@ -484,7 +495,7 @@ impl CekMachine {
 
             // Continue with the handler body (M in the rule) and remaining continuation (κ)
             MachineState::Standard(StandardConfig {
-                control: ir.instr(body),
+                control: context.ir.instr(body),
                 env: handler_env,
                 cont,
             })
@@ -520,7 +531,9 @@ mod tests {
     };
     use kola_utils::interner::StrInterner;
 
+    use crate::machine::MachineContext;
     use crate::{machine::CekMachine, value::Value};
+    use kola_builtins::TypeInterner;
 
     #[test]
     fn test_simple_let_and_return() {
@@ -540,7 +553,9 @@ mod tests {
 
         let ir = ir.finish(root);
 
-        let mut machine = CekMachine::new(ir, StrInterner::new(), "/mocked/path");
+        let context =
+            MachineContext::new(ir, "/mocked/path", StrInterner::new(), TypeInterner::new());
+        let mut machine = CekMachine::new(context);
         let result = machine.run().unwrap();
 
         match result {
@@ -589,7 +604,9 @@ mod tests {
         let ir = ir.finish(root);
 
         // Run the machine
-        let mut machine = CekMachine::new(ir, StrInterner::new(), "/mocked/path");
+        let context =
+            MachineContext::new(ir, "/mocked/path", StrInterner::new(), TypeInterner::new());
+        let mut machine = CekMachine::new(context);
         let result = machine.run().unwrap();
 
         // Check the result
@@ -634,7 +651,8 @@ mod tests {
         let ir = ir.finish(root);
 
         // Run the machine
-        let mut machine = CekMachine::new(ir, interner, "/mocked/path");
+        let context = MachineContext::new(ir, "/mocked/path", interner, TypeInterner::new());
+        let mut machine = CekMachine::new(context);
         let result = machine.run().unwrap();
 
         // Check the result - should be the value of the x field (10)
@@ -686,7 +704,8 @@ mod tests {
         let ir = ir.finish(root);
 
         // Run the machine
-        let mut machine = CekMachine::new(ir, interner, "/mocked/path");
+        let context = MachineContext::new(ir, "/mocked/path", interner, TypeInterner::new());
+        let mut machine = CekMachine::new(context);
         let result = machine.run().unwrap();
 
         // Check the result - should be the value of the z field (30)
@@ -745,7 +764,8 @@ mod tests {
         let ir = ir.finish(root);
 
         // Run the machine
-        let mut machine = CekMachine::new(ir, interner, "/mocked/path");
+        let context = MachineContext::new(ir, "/mocked/path", interner, TypeInterner::new());
+        let mut machine = CekMachine::new(context);
         let result = machine.run().unwrap();
 
         // Check the result - should be the updated value of x (20)
@@ -797,7 +817,8 @@ mod tests {
         let ir = ir.finish(root);
 
         // Run the machine
-        let mut machine = CekMachine::new(ir, interner, "/mocked/path");
+        let context = MachineContext::new(ir, "/mocked/path", interner, TypeInterner::new());
+        let mut machine = CekMachine::new(context);
         let result = machine.run().unwrap();
 
         // Check the result - should be 42

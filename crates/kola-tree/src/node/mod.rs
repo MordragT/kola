@@ -106,6 +106,7 @@ define_nodes!(
     DoExpr,
     TagExpr,
     SymbolExpr,
+    TypeRepExpr,
     ExprError,
     Expr,
     // Types

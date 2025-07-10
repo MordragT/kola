@@ -60,16 +60,32 @@ fn resolve_types_in_module(scope: &mut ModuleScope, report: &mut Report) {
         }
     }
 
-    for &TypeConst { name, id, loc } in scope.cons.types() {
-        if let Some(type_sym) = scope.shape.get_type(name) {
-            scope
-                .resolved
-                .insert_meta(id, ResolvedType::Reference(type_sym));
-        } else {
-            report.add_diagnostic(
-                Diagnostic::error(loc, "Type not found in annotation")
-                    .with_help("Check that the type is defined in this module."),
-            );
+    for type_const in scope.cons.types() {
+        match type_const {
+            &TypeConst::Qualified { name, id, loc } => {
+                if let Some(type_sym) = scope.shape.get_type(name) {
+                    scope
+                        .resolved
+                        .insert_meta(id, ResolvedType::Reference(type_sym));
+                } else {
+                    report.add_diagnostic(
+                        Diagnostic::error(loc, "Type not found in annotation")
+                            .with_help("Check that the type is defined in this module."),
+                    );
+                }
+            }
+            &TypeConst::TypeRep { name, id, loc } => {
+                if let Some(type_sym) = scope.shape.get_type(name) {
+                    scope
+                        .resolved
+                        .insert_meta(id, ResolvedType::Reference(type_sym));
+                } else {
+                    report.add_diagnostic(
+                        Diagnostic::error(loc, "Type not found in annotation")
+                            .with_help("Check that the type is defined in this module."),
+                    );
+                }
+            }
         }
     }
 }

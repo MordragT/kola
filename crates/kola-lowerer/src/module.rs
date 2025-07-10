@@ -100,9 +100,10 @@
 //! - **Open Records**: Module extension and record operations
 //! - **Hot Reloading**: Individual module recompilation and replacement
 
+use kola_builtins::TypeInterner;
 use kola_ir::{
     id::Id as InstrId,
-    instr as ir,
+    instr::{self as ir, Symbol},
     ir::{Ir, IrBuilder},
     print::render_ir,
 };
@@ -113,7 +114,8 @@ use kola_resolver::{
     scope::{ModuleScope, ModuleScopes},
     symbol::{ModuleSym, ValueSym},
 };
-use kola_tree::tree::Tree;
+use kola_tree::{meta::MetaView, tree::Tree};
+use kola_typer::phase::{TypeAnnotations, TypedNodes};
 use kola_utils::interner::StrInterner;
 use log::trace;
 
@@ -176,12 +178,15 @@ pub struct LoweredModule {
 /// A `LoweredModule` containing the compiled IR that evaluates to the module's export record.
 pub fn lower_module(
     next: InstrId<ir::Expr>,
-    builder: &mut IrBuilder,
-    scope: &ModuleScope,
     value_order: &[ValueSym],
+    scope: &ModuleScope,
+    typed: &TypedNodes,
     tree: &Tree,
+    builder: &mut IrBuilder,
+    type_interner: &mut TypeInterner,
+    str_interner: &StrInterner,
 ) -> InstrId<ir::Expr> {
-    let symbols = SymbolEnv::new(&scope.resolved);
+    let resolved = &scope.resolved;
 
     // Start with the module result (record creation)
     let bind = ir::Symbol(scope.info.sym.id());
@@ -195,7 +200,7 @@ pub fn lower_module(
     for &value_sym in value_order {
         let id = scope.defs[value_sym].id();
         let label = id.get(tree).name.get(tree).0;
-        let hole = symbols.symbol_of(id);
+        let hole = Symbol(resolved.meta(id).id());
         fields.add_field((label, ir::Atom::Symbol(hole)), builder);
     }
 
@@ -208,9 +213,18 @@ pub fn lower_module(
     for &value_sym in value_order.iter().rev() {
         let id = scope.defs[value_sym].id();
         let value_bind = id.get(tree);
-        let hole = symbols.symbol_of(id);
+        let hole = Symbol(resolved.meta(id).id());
 
-        let normalizer = Normalizer::new(value_bind.value, next, hole, builder, symbols);
+        let normalizer = Normalizer::new(
+            value_bind.value,
+            next,
+            hole,
+            resolved,
+            typed,
+            builder,
+            type_interner,
+            str_interner,
+        );
         next = normalizer.run(tree);
     }
 
@@ -240,11 +254,13 @@ pub fn lower_module(
 pub fn lower(
     entry_point: ValueSym,
     scopes: &ModuleScopes,
+    type_annots: &TypeAnnotations,
     module_order: &[ModuleSym],
     value_orders: &ValueOrders,
     forest: &Forest,
     arena: &Bump,
-    interner: &StrInterner,
+    str_interner: &StrInterner,
+    type_interner: &mut TypeInterner,
     print_options: PrintOptions,
 ) -> Program {
     let mut builder = IrBuilder::new();
@@ -259,7 +275,16 @@ pub fn lower(
         let value_order = &value_orders[&sym];
         let tree = &*forest[scope.info.source];
 
-        next = lower_module(next, &mut builder, scope, value_order, tree);
+        next = lower_module(
+            next,
+            value_order,
+            scope,
+            &type_annots[&sym],
+            tree,
+            &mut builder,
+            type_interner,
+            str_interner,
+        );
 
         modules.push(LoweredModule { sym });
     }
@@ -269,7 +294,7 @@ pub fn lower(
     trace!(
         "{}\n{}",
         "Intermediate Representation".bold().bright_white(),
-        render_ir(&ir, arena, interner, print_options)
+        render_ir(&ir, arena, str_interner, print_options)
     );
 
     Program { ir, modules }

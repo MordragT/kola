@@ -23,7 +23,9 @@ impl<'a> Decorator<'a> for ResolutionDecorator<'a> {
 
             Meta::SymbolExpr(any_sym) => any_sym.red().display_in(arena),
 
-            Meta::QualifiedType(resolved) => resolved.red().display_in(arena),
+            Meta::QualifiedType(resolved) | Meta::TypeRepExpr(resolved) => {
+                resolved.red().display_in(arena)
+            }
             Meta::TypeVar(type_sym) | Meta::TypeBind(type_sym) | Meta::OpaqueTypeBind(type_sym) => {
                 type_sym.red().display_in(arena)
             }

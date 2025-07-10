@@ -10,7 +10,6 @@ use kola_utils::interner::{PathInterner, StrInterner};
 use crate::{
     env::{KindEnv, TypeEnv},
     error::TypeErrors,
-    obligations::Obligations,
     phase::TypedNodes,
     prelude::{Constraints, Substitutable, Substitution},
     typer::Typer,
@@ -39,7 +38,6 @@ where
     let resolved = ResolvedNodes::new();
 
     let mut cons = Constraints::new();
-    let mut obls = Obligations::new();
 
     let typer = Typer::new(
         root_id,
@@ -48,7 +46,6 @@ where
         &global_type_env,
         &resolved,
         &mut cons,
-        &mut obls,
         &mut interner,
     );
 

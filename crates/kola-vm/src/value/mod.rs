@@ -1,13 +1,13 @@
 use derive_more::From;
 use enum_as_inner::EnumAsInner;
-use kola_builtins::BuiltinId;
+use kola_builtins::{BuiltinId, TypeProtocol};
 use kola_ir::instr::Tag;
 use kola_utils::{
     interner::StrInterner,
     interner_ext::{DisplayWithInterner, SerializeWithInterner},
 };
 use serde::Deserialize;
-use std::fmt;
+use std::fmt::{self, Display};
 
 use crate::cont::Cont;
 
@@ -48,6 +48,8 @@ pub enum Value {
     Record(Record),
     /// A list of values
     List(List),
+    /// A Type representation
+    TypeRep(TypeProtocol),
 }
 
 impl Value {
@@ -75,6 +77,7 @@ impl DisplayWithInterner<str> for Value {
             Value::Variant(v) => v.fmt(f, interner),
             Value::Record(r) => r.fmt(f, interner),
             Value::List(l) => l.fmt(f, interner),
+            Value::TypeRep(proto) => proto.to_json().unwrap().fmt(f),
         }
     }
 }

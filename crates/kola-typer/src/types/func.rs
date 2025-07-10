@@ -1,3 +1,5 @@
+use kola_builtins::TypeProtocol;
+use kola_utils::interner::StrInterner;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
@@ -17,6 +19,15 @@ pub struct FuncType {
 impl FuncType {
     pub fn new(input: MonoType, output: CompType) -> Self {
         Self { input, output }
+    }
+
+    pub fn to_protocol(&self, interner: &StrInterner) -> TypeProtocol {
+        let Self { input, output } = self;
+
+        let input = input.to_protocol(interner);
+        let output = output.to_protocol(interner);
+
+        TypeProtocol::func(input, output)
     }
 }
 

@@ -240,6 +240,7 @@ define!(
     DoExpr,
     TagExpr,
     SymbolExpr,
+    TypeRepExpr,
     ExprError,
     Expr,
     // Types

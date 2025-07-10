@@ -48,6 +48,14 @@
     a = { a = { m = 3 }, b = 2 },
     b = { a = { n = 4 }, d = 4 },
 
-    main = a & b,
+    #main = a & b,
 
+    type Person = {
+        name : Str,
+        age : Num,
+    },
+
+    f = fn x => x,
+
+    main = @Person,
 }

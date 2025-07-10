@@ -74,6 +74,7 @@ define_folder_trait!(
     DoExpr,
     TagExpr,
     SymbolExpr,
+    TypeRepExpr,
     ExprError,
     Expr,
     // Types

@@ -834,6 +834,8 @@ dependencies = [
  "derive_more",
  "kola-utils",
  "paste",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -848,6 +850,7 @@ name = "kola-driver"
 version = "0.1.0"
 dependencies = [
  "camino",
+ "kola-builtins",
  "kola-ir",
  "kola-lowerer",
  "kola-print",
@@ -876,11 +879,13 @@ dependencies = [
 name = "kola-lowerer"
 version = "0.1.0"
 dependencies = [
+ "kola-builtins",
  "kola-collections",
  "kola-ir",
  "kola-print",
  "kola-resolver",
  "kola-tree",
+ "kola-typer",
  "kola-utils",
  "kola-vm",
  "log",

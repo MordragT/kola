@@ -220,19 +220,33 @@ impl TypeBindConst {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct TypeConst {
-    /// The name of the type reference.
-    pub name: TypeName,
-    /// The identifier of the type path that references some other type bind.
-    pub id: Id<node::QualifiedType>,
-    /// The location of the type reference in the source code.
-    pub loc: Loc,
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum TypeConst {
+    Qualified {
+        /// The name of the type reference.
+        name: TypeName,
+        /// The identifier of the type path that references some other type bind.
+        id: Id<node::QualifiedType>,
+        /// The location of the type reference in the source code.
+        loc: Loc,
+    },
+    TypeRep {
+        /// The name of the type reference.
+        name: TypeName,
+        /// The identifier of the type path that references some other type bind.
+        id: Id<node::TypeRepExpr>,
+        /// The location of the type reference in the source code.
+        loc: Loc,
+    },
 }
 
 impl TypeConst {
-    pub fn new(name: TypeName, id: Id<node::QualifiedType>, loc: Loc) -> Self {
-        Self { name, id, loc }
+    pub fn qualified(name: TypeName, id: Id<node::QualifiedType>, loc: Loc) -> Self {
+        Self::Qualified { name, id, loc }
+    }
+
+    pub fn type_rep(name: TypeName, id: Id<node::TypeRepExpr>, loc: Loc) -> Self {
+        Self::TypeRep { name, id, loc }
     }
 }
 

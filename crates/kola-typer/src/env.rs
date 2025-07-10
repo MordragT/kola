@@ -6,7 +6,7 @@ use kola_resolver::{
     info::ModuleInfo,
     symbol::{EffectSym, ModuleSym, TypeSym, ValueSym},
 };
-use kola_tree::node::NodeId;
+use kola_tree::node::{self, NodeId};
 use kola_utils::{interner::StrKey, scope::LinearScope};
 
 use crate::types::{Kind, ModuleType, MonoType, PolyType, RowType, TypeVar};
@@ -26,8 +26,6 @@ pub trait BoundVars {
         vars
     }
 }
-
-pub type ExistTypeOriginEnv = HashMap<TypeVar, NodeId>;
 
 pub type LocalTypeEnv = LinearScope<StrKey, MonoType>;
 

@@ -448,6 +448,7 @@ impl_meta_substitute!(
     HandleExpr,
     DoExpr,
     SymbolExpr,
+    TypeRepExpr,
     ExprError,
     Expr,
     // Types

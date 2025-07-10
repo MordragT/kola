@@ -4,9 +4,9 @@ use crate::{
     config::{MachineState, OperationConfig, PatternConfig, PrimitiveRecConfig, StandardConfig},
     cont::{Cont, ContFrame, Handler, HandlerClosure, PureCont, PureContFrame, ReturnClause},
     env::Env,
+    machine::MachineContext,
     value::{Closure, List, Record, Value, Variant, to_usize_exact},
 };
-use camino::Utf8Path;
 use kola_builtins::BuiltinId;
 use kola_collections::ShadowMap;
 use kola_ir::{
@@ -23,6 +23,7 @@ use kola_ir::{
 };
 use kola_utils::{interner::StrInterner, interner_ext::InternerExt};
 
+#[inline]
 pub fn eval_symbol(symbol: Symbol, env: &Env) -> Result<Value, String> {
     // Look up the symbol in the environment
     env.get(&symbol)
@@ -30,13 +31,13 @@ pub fn eval_symbol(symbol: Symbol, env: &Env) -> Result<Value, String> {
         .ok_or(format!("Unbound variable: {}", symbol))
 }
 
-pub fn eval_atom(atom: Atom, env: &Env, interner: &mut StrInterner) -> Result<Value, String> {
+pub fn eval_atom(atom: Atom, env: &Env, context: &MachineContext) -> Result<Value, String> {
     match atom {
         Atom::Noop => Ok(Value::None),
         Atom::Bool(b) => Ok(Value::Bool(b)),
         Atom::Char(c) => Ok(Value::Char(c)),
         Atom::Num(n) => Ok(Value::Num(n)),
-        Atom::Str(s) => Ok(Value::str(interner[s].clone())),
+        Atom::Str(s) => Ok(Value::str(context.str_interner[s].clone())),
         Atom::Func(f) => {
             // Create a closure by capturing the current environment
             Ok(Value::Closure(Closure::new(env.clone(), f)))
@@ -44,71 +45,43 @@ pub fn eval_atom(atom: Atom, env: &Env, interner: &mut StrInterner) -> Result<Va
         Atom::Symbol(s) => eval_symbol(s, env),
         Atom::Builtin(b) => Ok(Value::Builtin(b)),
         Atom::Tag(t) => Ok(Value::Tag(t)),
+        Atom::TypeRep(tr) => Ok(Value::TypeRep(context.type_interner[tr.0].clone())),
     }
 }
 
 pub trait Eval {
-    fn eval(
-        &self,
-        env: Env,
-        cont: Cont,
-        ir: &Ir,
-        working_dir: &Utf8Path,
-        interner: &mut StrInterner,
-    ) -> MachineState;
+    fn eval(&self, env: Env, cont: Cont, context: &mut MachineContext) -> MachineState;
 }
 
 impl Eval for Expr {
-    fn eval(
-        &self,
-        env: Env,
-        cont: Cont,
-        ir: &Ir,
-        working_dir: &Utf8Path,
-        interner: &mut StrInterner,
-    ) -> MachineState {
+    fn eval(&self, env: Env, cont: Cont, context: &mut MachineContext) -> MachineState {
         match self {
-            Expr::Ret(ret_expr) => ret_expr.eval(env, cont, ir, working_dir, interner),
-            Expr::Call(call) => call.eval(env, cont, ir, working_dir, interner),
-            Expr::Handle(handle) => handle.eval(env, cont, ir, working_dir, interner),
-            Expr::Do(do_expr) => do_expr.eval(env, cont, ir, working_dir, interner),
-            Expr::Let(let_expr) => let_expr.eval(env, cont, ir, working_dir, interner),
-            Expr::If(if_expr) => if_expr.eval(env, cont, ir, working_dir, interner),
-            Expr::Unary(unary_expr) => unary_expr.eval(env, cont, ir, working_dir, interner),
-            Expr::Binary(binary_expr) => binary_expr.eval(env, cont, ir, working_dir, interner),
-            Expr::List(list_expr) => list_expr.eval(env, cont, ir, working_dir, interner),
-            Expr::Record(record_expr) => record_expr.eval(env, cont, ir, working_dir, interner),
-            Expr::RecordExtend(record_extend_expr) => {
-                record_extend_expr.eval(env, cont, ir, working_dir, interner)
-            }
+            Expr::Ret(ret_expr) => ret_expr.eval(env, cont, context),
+            Expr::Call(call) => call.eval(env, cont, context),
+            Expr::Handle(handle) => handle.eval(env, cont, context),
+            Expr::Do(do_expr) => do_expr.eval(env, cont, context),
+            Expr::Let(let_expr) => let_expr.eval(env, cont, context),
+            Expr::If(if_expr) => if_expr.eval(env, cont, context),
+            Expr::Unary(unary_expr) => unary_expr.eval(env, cont, context),
+            Expr::Binary(binary_expr) => binary_expr.eval(env, cont, context),
+            Expr::List(list_expr) => list_expr.eval(env, cont, context),
+            Expr::Record(record_expr) => record_expr.eval(env, cont, context),
+            Expr::RecordExtend(record_extend_expr) => record_extend_expr.eval(env, cont, context),
             Expr::RecordRestrict(record_restrict_expr) => {
-                record_restrict_expr.eval(env, cont, ir, working_dir, interner)
+                record_restrict_expr.eval(env, cont, context)
             }
-            Expr::RecordUpdate(record_update_expr) => {
-                record_update_expr.eval(env, cont, ir, working_dir, interner)
-            }
-            Expr::RecordAccess(record_access_expr) => {
-                record_access_expr.eval(env, cont, ir, working_dir, interner)
-            }
-            Expr::PatternMatch(pattern_match_expr) => {
-                pattern_match_expr.eval(env, cont, ir, working_dir, interner)
-            }
+            Expr::RecordUpdate(record_update_expr) => record_update_expr.eval(env, cont, context),
+            Expr::RecordAccess(record_access_expr) => record_access_expr.eval(env, cont, context),
+            Expr::PatternMatch(pattern_match_expr) => pattern_match_expr.eval(env, cont, context),
         }
     }
 }
 
 // M-RET : Return with a value
 impl Eval for RetExpr {
-    fn eval(
-        &self,
-        env: Env,
-        mut cont: Cont,
-        ir: &Ir,
-        _working_dir: &Utf8Path,
-        interner: &mut StrInterner,
-    ) -> MachineState {
+    fn eval(&self, env: Env, mut cont: Cont, context: &mut MachineContext) -> MachineState {
         // Evaluate the return machine state of value
-        let value = match eval_atom(self.arg.get(ir), &env, interner) {
+        let value = match eval_atom(self.arg.get(&context.ir), &env, context) {
             Ok(value) => value,
             Err(err) => return MachineState::Error(err),
         };
@@ -158,7 +131,7 @@ impl Eval for RetExpr {
 
                     // Evaluate the return handler body
                     MachineState::Standard(StandardConfig {
-                        control: body.get(ir),
+                        control: body.get(&context.ir),
                         env,
                         cont,
                     })
@@ -169,13 +142,13 @@ impl Eval for RetExpr {
                 } => {
                     // Create argument for the step function
                     let mut record = Record::new();
-                    record.insert(interner.intern("acc"), value); // value = result from previous step
-                    record.insert(interner.intern("head"), head);
+                    record.insert(context.str_interner.intern("acc"), value); // value = result from previous step
+                    record.insert(context.str_interner.intern("head"), head);
 
                     env.insert(param, Value::Record(record));
 
                     MachineState::Standard(StandardConfig {
-                        control: body.get(ir),
+                        control: body.get(&context.ir),
                         env,
                         cont, // Remaining handlers continue the chain
                     })
@@ -207,7 +180,7 @@ impl Eval for RetExpr {
 
         // Continue with the next expression
         MachineState::Standard(StandardConfig {
-            control: body.get(ir),
+            control: body.get(&context.ir),
             env,
             cont,
         })
@@ -223,14 +196,7 @@ impl Eval for RetExpr {
 // 4. Using an extended environment that adds the binding [x ↦ W] to the function's captured environment γ'
 // 5. The continuation κ remains unchanged during function application
 impl Eval for CallExpr {
-    fn eval(
-        &self,
-        mut env: Env,
-        mut cont: Cont,
-        ir: &Ir,
-        working_dir: &Utf8Path,
-        interner: &mut StrInterner,
-    ) -> MachineState {
+    fn eval(&self, mut env: Env, mut cont: Cont, context: &mut MachineContext) -> MachineState {
         let Self {
             bind,
             func,
@@ -239,12 +205,12 @@ impl Eval for CallExpr {
         } = *self;
 
         // Get the function and argument
-        let func_val = match eval_atom(func.get(ir), &env, interner) {
+        let func_val = match eval_atom(func.get(&context.ir), &env, context) {
             Ok(value) => value,
             Err(err) => return MachineState::Error(err),
         };
 
-        let arg_val = match eval_atom(arg.get(ir), &env, interner) {
+        let arg_val = match eval_atom(arg.get(&context.ir), &env, context) {
             Ok(value) => value,
             Err(err) => return MachineState::Error(err),
         };
@@ -272,7 +238,7 @@ impl Eval for CallExpr {
 
                 // Evaluate the function body
                 MachineState::Standard(StandardConfig {
-                    control: body.get(ir),
+                    control: body.get(&context.ir),
                     env: func_env,
                     cont,
                 })
@@ -311,17 +277,9 @@ impl Eval for CallExpr {
                     cont: captured,
                 })
             }
-            Value::Builtin(builtin) => eval_builtin(
-                builtin,
-                bind,
-                arg_val,
-                env,
-                cont,
-                next,
-                ir,
-                working_dir,
-                interner,
-            ),
+            Value::Builtin(builtin) => {
+                eval_builtin(builtin, bind, arg_val, env, cont, next, context)
+            }
             Value::Tag(tag) => {
                 let value = Value::variant(tag, arg_val);
 
@@ -330,7 +288,7 @@ impl Eval for CallExpr {
 
                 // Continue with the next expression
                 MachineState::Standard(StandardConfig {
-                    control: next.get(ir),
+                    control: next.get(&context.ir),
                     env,
                     cont,
                 })
@@ -340,6 +298,7 @@ impl Eval for CallExpr {
         }
     }
 }
+
 fn eval_builtin(
     builtin: BuiltinId,
     bind: Symbol,
@@ -347,9 +306,7 @@ fn eval_builtin(
     mut env: Env,
     mut cont: Cont,
     next: Id<Expr>,
-    ir: &Ir,
-    working_dir: &Utf8Path,
-    interner: &mut StrInterner,
+    context: &mut MachineContext,
 ) -> MachineState {
     let value = match (builtin, arg) {
         (BuiltinId::IoDebug, value) => {
@@ -357,31 +314,31 @@ fn eval_builtin(
             value
         }
         (BuiltinId::IoReadFile, Value::Str(path)) => {
-            match fs::read_to_string(working_dir.join(path)) {
+            match fs::read_to_string(context.join_path(path)) {
                 Err(err) => {
-                    Value::variant(Tag(interner.intern("Err")), Value::Str(err.to_string()))
+                    Value::variant(Tag(context.intern_str("Err")), Value::Str(err.to_string()))
                 }
-                Ok(contents) => Value::variant(Tag(interner.intern("Ok")), Value::Str(contents)),
+                Ok(contents) => Value::variant(Tag(context.intern_str("Ok")), Value::Str(contents)),
             }
         }
         (BuiltinId::IoWriteFile, Value::Record(record)) => {
-            let Some(Value::Str(path)) = record.get(interner.intern("path")) else {
+            let Some(Value::Str(path)) = record.get(context.intern_str("path")) else {
                 return MachineState::Error(
                     "io_write_file requires 'path' field with a string".to_owned(),
                 );
             };
 
-            let Some(Value::Str(contents)) = record.get(interner.intern("contents")) else {
+            let Some(Value::Str(contents)) = record.get(context.intern_str("contents")) else {
                 return MachineState::Error(
                     "io_write_file requires 'contents' field with a string".to_owned(),
                 );
             };
 
-            match fs::write(working_dir.join(path), contents) {
+            match fs::write(context.join_path(path), contents) {
                 Err(err) => {
-                    Value::variant(Tag(interner.intern("Err")), Value::Str(err.to_string()))
+                    Value::variant(Tag(context.intern_str("Err")), Value::Str(err.to_string()))
                 }
-                Ok(_) => Value::variant(Tag(interner.intern("Ok")), Value::None),
+                Ok(_) => Value::variant(Tag(context.intern_str("Ok")), Value::None),
             }
         }
         (BuiltinId::ListLength, Value::List(list)) => Value::Num(list.len() as f64),
@@ -402,50 +359,50 @@ fn eval_builtin(
             }
         }
         (BuiltinId::ListContains, Value::Record(record)) => {
-            let Some(Value::List(list)) = record.get(interner.intern("list")) else {
+            let Some(Value::List(list)) = record.get(context.intern_str("list")) else {
                 return MachineState::Error(
                     "list_contains requires 'list' field with a list".to_owned(),
                 );
             };
 
-            let Some(value) = record.get(interner.intern("value")) else {
+            let Some(value) = record.get(context.intern_str("value")) else {
                 return MachineState::Error("list_contains requires 'value' field".to_owned());
             };
 
             Value::Bool(list.contains(value))
         }
         (BuiltinId::ListAt, Value::Record(record)) => {
-            let Some(Value::List(list)) = record.get(interner.intern("list")) else {
+            let Some(Value::List(list)) = record.get(context.intern_str("list")) else {
                 return MachineState::Error(
                     "list_get requires 'list' field with a list".to_owned(),
                 );
             };
 
-            let Some(Value::Num(index)) = record.get(interner.intern("index")) else {
+            let Some(Value::Num(index)) = record.get(context.intern_str("index")) else {
                 return MachineState::Error("list_get requires 'index' field".to_owned());
             };
 
             match to_usize_exact(*index).and_then(|idx| list.get(idx)) {
                 Some(value) => {
-                    Value::Variant(Variant::new(Tag(interner.intern("Some")), value.clone()))
+                    Value::Variant(Variant::new(Tag(context.intern_str("Some")), value.clone()))
                 }
-                None => Value::Variant(Variant::new(Tag(interner.intern("None")), Value::None)),
+                None => Value::Variant(Variant::new(Tag(context.intern_str("None")), Value::None)),
             }
         }
         (BuiltinId::ListFirst, Value::List(list)) => match list.first() {
-            Some(head) => Value::Variant(Variant::new(Tag(interner.intern("Some")), head)),
-            None => Value::Variant(Variant::new(Tag(interner.intern("None")), Value::None)),
+            Some(head) => Value::Variant(Variant::new(Tag(context.intern_str("Some")), head)),
+            None => Value::Variant(Variant::new(Tag(context.intern_str("None")), Value::None)),
         },
         (BuiltinId::ListLast, Value::List(list)) => match list.last() {
-            Some(tail) => Value::Variant(Variant::new(Tag(interner.intern("Some")), tail)),
-            None => Value::Variant(Variant::new(Tag(interner.intern("None")), Value::None)),
+            Some(tail) => Value::Variant(Variant::new(Tag(context.intern_str("Some")), tail)),
+            None => Value::Variant(Variant::new(Tag(context.intern_str("None")), Value::None)),
         },
         (BuiltinId::ListPrepend, Value::Record(record)) => {
-            let Some(head_value) = record.get(interner.intern("head")) else {
+            let Some(head_value) = record.get(context.intern_str("head")) else {
                 return MachineState::Error("list_prepend requires 'head' field".to_owned());
             };
 
-            let Some(Value::List(tail_list)) = record.get(interner.intern("tail")) else {
+            let Some(Value::List(tail_list)) = record.get(context.intern_str("tail")) else {
                 return MachineState::Error(
                     "list_prepend requires 'tail' field with a list".to_owned(),
                 );
@@ -454,26 +411,26 @@ fn eval_builtin(
             Value::List(tail_list.prepend(head_value))
         }
         (BuiltinId::ListAppend, Value::Record(record)) => {
-            let Some(Value::List(head_list)) = record.get(interner.intern("head")) else {
+            let Some(Value::List(head_list)) = record.get(context.intern_str("head")) else {
                 return MachineState::Error(
                     "list_append requires 'head' field with a list".to_owned(),
                 );
             };
 
-            let Some(tail_value) = record.get(interner.intern("tail")) else {
+            let Some(tail_value) = record.get(context.intern_str("tail")) else {
                 return MachineState::Error("list_append requires 'tail' field".to_owned());
             };
 
             Value::List(head_list.append(tail_value))
         }
         (BuiltinId::ListConcat, Value::Record(record)) => {
-            let Some(Value::List(head_list)) = record.get(interner.intern("head")) else {
+            let Some(Value::List(head_list)) = record.get(context.intern_str("head")) else {
                 return MachineState::Error(
                     "list_concat requires 'head' field with a list".to_owned(),
                 );
             };
 
-            let Some(Value::List(tail_list)) = record.get(interner.intern("tail")) else {
+            let Some(Value::List(tail_list)) = record.get(context.intern_str("tail")) else {
                 return MachineState::Error(
                     "list_concat requires 'tail' field with a list".to_owned(),
                 );
@@ -484,17 +441,17 @@ fn eval_builtin(
         // list_rec([], base, step) = base
         // list_rec([head, ...tail], base, step) = step(head, list_rec(tail, base step))
         (BuiltinId::ListRec, Value::Record(record)) => {
-            let Some(Value::List(list)) = record.get(interner.intern("list")).cloned() else {
+            let Some(Value::List(list)) = record.get(context.intern_str("list")).cloned() else {
                 return MachineState::Error(
                     "list_rec requires 'list' field with a list".to_owned(),
                 );
             };
 
-            let Some(base) = record.get(interner.intern("base")).cloned() else {
+            let Some(base) = record.get(context.intern_str("base")).cloned() else {
                 return MachineState::Error("list_rec requires 'base' field".to_owned());
             };
 
-            let Some(Value::Closure(step)) = record.get(interner.intern("step")).cloned() else {
+            let Some(Value::Closure(step)) = record.get(context.intern_str("step")).cloned() else {
                 return MachineState::Error(
                     "list_rec requires 'step' field with a func".to_owned(),
                 );
@@ -529,25 +486,25 @@ fn eval_builtin(
         (BuiltinId::NumLog10, Value::Num(n)) => Value::Num(n.log10()),
         (BuiltinId::NumExp, Value::Num(n)) => Value::Num(n.exp()),
         (BuiltinId::NumPow, Value::Record(record)) => {
-            let Some(Value::Num(base)) = record.get(interner.intern("base")) else {
+            let Some(Value::Num(base)) = record.get(context.intern_str("base")) else {
                 return MachineState::Error("num_pow requires 'base' field".to_owned());
             };
-            let Some(Value::Num(exp)) = record.get(interner.intern("exp")) else {
+            let Some(Value::Num(exp)) = record.get(context.intern_str("exp")) else {
                 return MachineState::Error("num_pow requires 'exp' field".to_owned());
             };
 
             Value::Num(base.powf(*exp))
         }
         (BuiltinId::NumRec, Value::Record(record)) => {
-            let Some(Value::Num(n)) = record.get(interner.intern("n")) else {
+            let Some(Value::Num(n)) = record.get(context.intern_str("n")) else {
                 return MachineState::Error("num_rec requires 'n' field with a number".to_owned());
             };
 
-            let Some(base) = record.get(interner.intern("base")).cloned() else {
+            let Some(base) = record.get(context.intern_str("base")).cloned() else {
                 return MachineState::Error("num_rec requires 'base' field".to_owned());
             };
 
-            let Some(Value::Closure(step)) = record.get(interner.intern("step")).cloned() else {
+            let Some(Value::Closure(step)) = record.get(context.intern_str("step")).cloned() else {
                 return MachineState::Error("num_rec requires 'step' field with a func".to_owned());
             };
 
@@ -569,17 +526,17 @@ fn eval_builtin(
             });
         }
         (BuiltinId::RecordRec, Value::Record(record)) => {
-            let Some(Value::Record(data)) = record.get(interner.intern("data")).cloned() else {
+            let Some(Value::Record(data)) = record.get(context.intern_str("data")).cloned() else {
                 return MachineState::Error(
                     "record_rec requires 'data' field with a record".to_owned(),
                 );
             };
 
-            let Some(base) = record.get(interner.intern("base")).cloned() else {
+            let Some(base) = record.get(context.intern_str("base")).cloned() else {
                 return MachineState::Error("record_rec requires 'base' field".to_owned());
             };
 
-            let Some(Value::Closure(step)) = record.get(interner.intern("step")).cloned() else {
+            let Some(Value::Closure(step)) = record.get(context.intern_str("step")).cloned() else {
                 return MachineState::Error(
                     "record_rec requires 'step' field with a func".to_owned(),
                 );
@@ -605,12 +562,12 @@ fn eval_builtin(
         // TODO these serde methods do not enforce type annotations
         // TODO from_json would mean that the interner is mutable
         // (BuiltinId::SerdeFromJson, Value::Str(json_str)) => match Value::from_json(&json_str) {
-        //     Ok(value) => Value::variant(Tag(interner.intern("Ok")), value),
-        //     Err(err) => Value::variant(Tag(interner.intern("Err")), Value::Str(err.to_string())),
+        //     Ok(value) => Value::variant(Tag(context.intern_str("Ok")), value),
+        //     Err(err) => Value::variant(Tag(context.intern_str("Err")), Value::Str(err.to_string())),
         // },
-        (BuiltinId::SerdeToJson, value) => match interner.to_json(&value) {
-            Ok(json_str) => Value::variant(Tag(interner.intern("Ok")), Value::Str(json_str)),
-            Err(err) => Value::variant(Tag(interner.intern("Err")), Value::Str(err.to_string())),
+        (BuiltinId::SerdeToJson, value) => match context.str_interner.to_json(&value) {
+            Ok(json_str) => Value::variant(Tag(context.intern_str("Ok")), Value::Str(json_str)),
+            Err(err) => Value::variant(Tag(context.intern_str("Err")), Value::Str(err.to_string())),
         },
         (BuiltinId::StrLength, Value::Str(s)) => Value::Num(s.len() as f64),
         (BuiltinId::StrIsEmpty, Value::Str(s)) => Value::Bool(s.is_empty()),
@@ -618,31 +575,31 @@ fn eval_builtin(
         (BuiltinId::StrFirst, Value::Str(s)) => {
             if let Some(first) = s.chars().next() {
                 Value::Variant(Variant::new(
-                    Tag(interner.intern("Some")),
+                    Tag(context.intern_str("Some")),
                     Value::Char(first),
                 ))
             } else {
-                Value::Variant(Variant::new(Tag(interner.intern("None")), Value::None))
+                Value::Variant(Variant::new(Tag(context.intern_str("None")), Value::None))
             }
         }
         (BuiltinId::StrLast, Value::Str(mut s)) => {
             if let Some(last) = s.pop() {
                 Value::Variant(Variant::new(
-                    Tag(interner.intern("Some")),
+                    Tag(context.intern_str("Some")),
                     Value::Char(last),
                 ))
             } else {
-                Value::Variant(Variant::new(Tag(interner.intern("None")), Value::None))
+                Value::Variant(Variant::new(Tag(context.intern_str("None")), Value::None))
             }
         }
         (BuiltinId::StrContains, Value::Record(record)) => {
-            let Some(Value::Str(s)) = record.get(interner.intern("str")) else {
+            let Some(Value::Str(s)) = record.get(context.intern_str("str")) else {
                 return MachineState::Error(
                     "str_contains requires 'str' field with a string".to_owned(),
                 );
             };
 
-            let Some(Value::Char(c)) = record.get(interner.intern("value")) else {
+            let Some(Value::Char(c)) = record.get(context.intern_str("value")) else {
                 return MachineState::Error(
                     "str_contains requires 'value' field with a char".to_owned(),
                 );
@@ -651,31 +608,32 @@ fn eval_builtin(
             Value::Bool(s.contains(*c))
         }
         (BuiltinId::StrAt, Value::Record(record)) => {
-            let Some(Value::Str(s)) = record.get(interner.intern("str")) else {
+            let Some(Value::Str(s)) = record.get(context.intern_str("str")) else {
                 return MachineState::Error("str_at requires 'str' field with a string".to_owned());
             };
 
-            let Some(Value::Num(index)) = record.get(interner.intern("index")) else {
+            let Some(Value::Num(index)) = record.get(context.intern_str("index")) else {
                 return MachineState::Error(
                     "str_at requires 'index' field with a number".to_owned(),
                 );
             };
 
             match to_usize_exact(*index).and_then(|idx| s.chars().nth(idx)) {
-                Some(c) => {
-                    Value::Variant(Variant::new(Tag(interner.intern("Some")), Value::Char(c)))
-                }
-                None => Value::Variant(Variant::new(Tag(interner.intern("None")), Value::None)),
+                Some(c) => Value::Variant(Variant::new(
+                    Tag(context.intern_str("Some")),
+                    Value::Char(c),
+                )),
+                None => Value::Variant(Variant::new(Tag(context.intern_str("None")), Value::None)),
             }
         }
         (BuiltinId::StrPrepend, Value::Record(record)) => {
-            let Some(Value::Char(c)) = record.get(interner.intern("head")) else {
+            let Some(Value::Char(c)) = record.get(context.intern_str("head")) else {
                 return MachineState::Error(
                     "str_prepend requires 'head' field with a char".to_owned(),
                 );
             };
 
-            let Some(Value::Str(s)) = record.get(interner.intern("tail")) else {
+            let Some(Value::Str(s)) = record.get(context.intern_str("tail")) else {
                 return MachineState::Error(
                     "str_prepend requires 'tail' field with a string".to_owned(),
                 );
@@ -684,13 +642,13 @@ fn eval_builtin(
             Value::Str(format!("{}{}", c, s))
         }
         (BuiltinId::StrAppend, Value::Record(record)) => {
-            let Some(Value::Str(s)) = record.get(interner.intern("head")) else {
+            let Some(Value::Str(s)) = record.get(context.intern_str("head")) else {
                 return MachineState::Error(
                     "str_append requires 'head' field with a string".to_owned(),
                 );
             };
 
-            let Some(Value::Char(c)) = record.get(interner.intern("tail")) else {
+            let Some(Value::Char(c)) = record.get(context.intern_str("tail")) else {
                 return MachineState::Error(
                     "str_append requires 'tail' field with a char".to_owned(),
                 );
@@ -699,13 +657,13 @@ fn eval_builtin(
             Value::Str(format!("{}{}", s, c))
         }
         (BuiltinId::StrConcat, Value::Record(record)) => {
-            let Some(Value::Str(s1)) = record.get(interner.intern("head")) else {
+            let Some(Value::Str(s1)) = record.get(context.intern_str("head")) else {
                 return MachineState::Error(
                     "str_concat requires 'head' field with a string".to_owned(),
                 );
             };
 
-            let Some(Value::Str(s2)) = record.get(interner.intern("tail")) else {
+            let Some(Value::Str(s2)) = record.get(context.intern_str("tail")) else {
                 return MachineState::Error(
                     "str_concat requires 'tail' field with a string".to_owned(),
                 );
@@ -714,15 +672,15 @@ fn eval_builtin(
             Value::Str(format!("{}{}", s1, s2))
         }
         (BuiltinId::StrRec, Value::Record(record)) => {
-            let Some(Value::Str(s)) = record.get(interner.intern("str")).cloned() else {
+            let Some(Value::Str(s)) = record.get(context.intern_str("str")).cloned() else {
                 return MachineState::Error("str_rec requires 's' field with a string".to_owned());
             };
 
-            let Some(base) = record.get(interner.intern("base")).cloned() else {
+            let Some(base) = record.get(context.intern_str("base")).cloned() else {
                 return MachineState::Error("str_rec requires 'base' field".to_owned());
             };
 
-            let Some(Value::Closure(step)) = record.get(interner.intern("step")).cloned() else {
+            let Some(Value::Closure(step)) = record.get(context.intern_str("step")).cloned() else {
                 return MachineState::Error("str_rec requires 'step' field with a func".to_owned());
             };
 
@@ -753,7 +711,7 @@ fn eval_builtin(
 
     // Continue with the next expression
     MachineState::Standard(StandardConfig {
-        control: next.get(ir),
+        control: next.get(&context.ir),
         env,
         cont,
     })
@@ -764,14 +722,7 @@ fn eval_builtin(
 // This rule pushes a handler frame onto the continuation stack and
 // continues evaluating the source computation M with the handler available.
 impl Eval for HandleExpr {
-    fn eval(
-        &self,
-        env: Env,
-        mut cont: Cont,
-        ir: &Ir,
-        _working_dir: &Utf8Path,
-        _interner: &mut StrInterner,
-    ) -> MachineState {
+    fn eval(&self, env: Env, mut cont: Cont, context: &mut MachineContext) -> MachineState {
         let Self {
             bind,
             source,
@@ -791,7 +742,7 @@ impl Eval for HandleExpr {
         current_frame.pure.push(pure_frame);
 
         // Create handler from clauses (H in the rule)
-        let handler = Handler::from_clauses(clause, ir);
+        let handler = Handler::from_clauses(clause, &context.ir);
         let handler_closure = HandlerClosure {
             handler,
             env: env.clone(),
@@ -821,14 +772,7 @@ impl Eval for HandleExpr {
 // This rule transitions to an operation configuration where the machine
 // searches for a handler that can handle operation ℓ with argument V.
 impl Eval for DoExpr {
-    fn eval(
-        &self,
-        env: Env,
-        mut cont: Cont,
-        _ir: &Ir,
-        _working_dir: &Utf8Path,
-        _interner: &mut StrInterner,
-    ) -> MachineState {
+    fn eval(&self, env: Env, mut cont: Cont, _context: &mut MachineContext) -> MachineState {
         let Self {
             bind,
             op,
@@ -869,14 +813,7 @@ impl Eval for DoExpr {
 // 4. When M evaluates to a value, it will be bound to x via the continuation mechanism,
 //    which will then evaluate N with the extended environment
 impl Eval for LetExpr {
-    fn eval(
-        &self,
-        env: Env,
-        mut cont: Cont,
-        _ir: &Ir,
-        _working_dir: &Utf8Path,
-        _interner: &mut StrInterner,
-    ) -> MachineState {
+    fn eval(&self, env: Env, mut cont: Cont, _context: &mut MachineContext) -> MachineState {
         // Create a pure continuation frame
         let pure_frame = PureContFrame {
             var: self.bind,
@@ -907,14 +844,7 @@ impl Eval for LetExpr {
 // 4. In both cases, we maintain the same environment γ and continuation κ
 // 5. The machine state transitions directly to evaluating the selected branch
 impl Eval for IfExpr {
-    fn eval(
-        &self,
-        env: Env,
-        mut cont: Cont,
-        ir: &Ir,
-        _working_dir: &Utf8Path,
-        interner: &mut StrInterner,
-    ) -> MachineState {
+    fn eval(&self, env: Env, mut cont: Cont, context: &mut MachineContext) -> MachineState {
         let Self {
             bind,
             predicate,
@@ -924,7 +854,7 @@ impl Eval for IfExpr {
         } = *self;
 
         // Evaluate the predicate
-        let pred_val = match eval_atom(predicate.get(ir), &env, interner) {
+        let pred_val = match eval_atom(predicate.get(&context.ir), &env, context) {
             Ok(value) => value,
             Err(err) => return MachineState::Error(err),
         };
@@ -955,7 +885,7 @@ impl Eval for IfExpr {
 
         // Evaluate the selected branch
         MachineState::Standard(StandardConfig {
-            control: branch.get(ir),
+            control: branch.get(&context.ir),
             env,
             cont,
         })
@@ -984,14 +914,7 @@ pub fn eval_unary_op(op: UnaryOp, value: Value) -> Result<Value, String> {
 // 4. The machine transitions directly to evaluating the next expression N
 // 5. The continuation κ remains unchanged during this transition
 impl Eval for UnaryExpr {
-    fn eval(
-        &self,
-        mut env: Env,
-        cont: Cont,
-        ir: &Ir,
-        _working_dir: &Utf8Path,
-        interner: &mut StrInterner,
-    ) -> MachineState {
+    fn eval(&self, mut env: Env, cont: Cont, context: &mut MachineContext) -> MachineState {
         let Self {
             bind,
             op,
@@ -1000,7 +923,7 @@ impl Eval for UnaryExpr {
         } = *self;
 
         // Evaluate the operand
-        let arg_val = match eval_atom(arg.get(ir), &env, interner) {
+        let arg_val = match eval_atom(arg.get(&context.ir), &env, context) {
             Ok(value) => value,
             Err(err) => return MachineState::Error(err),
         };
@@ -1016,7 +939,7 @@ impl Eval for UnaryExpr {
 
         // Continue directly with the next expression
         MachineState::Standard(StandardConfig {
-            control: next.get(ir),
+            control: next.get(&context.ir),
             env,
             cont,
         })
@@ -1060,14 +983,7 @@ pub fn eval_binary_op(op: BinaryOp, left: Value, right: Value) -> Result<Value, 
 // 3. The result is bound to variable x in the environment
 // 4. The machine transitions directly to evaluating the next expression N
 impl Eval for BinaryExpr {
-    fn eval(
-        &self,
-        mut env: Env,
-        cont: Cont,
-        ir: &Ir,
-        _working_dir: &Utf8Path,
-        interner: &mut StrInterner,
-    ) -> MachineState {
+    fn eval(&self, mut env: Env, cont: Cont, context: &mut MachineContext) -> MachineState {
         let Self {
             bind,
             op,
@@ -1077,13 +993,13 @@ impl Eval for BinaryExpr {
         } = *self;
 
         // Evaluate the left operand
-        let left_val = match eval_atom(lhs.get(ir), &env, interner) {
+        let left_val = match eval_atom(lhs.get(&context.ir), &env, context) {
             Ok(value) => value,
             Err(err) => return MachineState::Error(err),
         };
 
         // Evaluate the right operand
-        let right_val = match eval_atom(rhs.get(ir), &env, interner) {
+        let right_val = match eval_atom(rhs.get(&context.ir), &env, context) {
             Ok(value) => value,
             Err(err) => return MachineState::Error(err),
         };
@@ -1099,7 +1015,7 @@ impl Eval for BinaryExpr {
 
         // Continue directly with the next expression
         MachineState::Standard(StandardConfig {
-            control: next.get(ir),
+            control: next.get(&context.ir),
             env,
             cont,
         })
@@ -1107,14 +1023,7 @@ impl Eval for BinaryExpr {
 }
 
 impl Eval for ListExpr {
-    fn eval(
-        &self,
-        mut env: Env,
-        cont: Cont,
-        ir: &Ir,
-        _working_dir: &Utf8Path,
-        interner: &mut StrInterner,
-    ) -> MachineState {
+    fn eval(&self, mut env: Env, cont: Cont, context: &mut MachineContext) -> MachineState {
         let ListExpr {
             bind,
             head,
@@ -1124,8 +1033,8 @@ impl Eval for ListExpr {
 
         let mut list = List::new();
 
-        for ListItem { value, .. } in ir.iter_items(head) {
-            match eval_atom(value.get(ir), &env, interner) {
+        for ListItem { value, .. } in context.ir.iter_items(head) {
+            match eval_atom(value.get(&context.ir), &env, context) {
                 Ok(value) => list.push_back(value),
                 Err(err) => return MachineState::Error(err),
             }
@@ -1135,7 +1044,7 @@ impl Eval for ListExpr {
         env.insert(bind, list_value);
 
         MachineState::Standard(StandardConfig {
-            control: next.get(ir),
+            control: next.get(&context.ir),
             env,
             cont,
         })
@@ -1150,21 +1059,14 @@ impl Eval for ListExpr {
 // 3. The record value is bound to the variable specified in the RecordExpr
 // 4. We continue with the next expression
 impl Eval for RecordExpr {
-    fn eval(
-        &self,
-        mut env: Env,
-        cont: Cont,
-        ir: &Ir,
-        _working_dir: &Utf8Path,
-        interner: &mut StrInterner,
-    ) -> MachineState {
+    fn eval(&self, mut env: Env, cont: Cont, context: &mut MachineContext) -> MachineState {
         let RecordExpr { bind, head, next } = *self;
 
         let mut record = ShadowMap::new();
 
         // Evaluate each field value
-        for RecordField { label, value, .. } in ir.iter_fields(head) {
-            match eval_atom(value.get(ir), &env, interner) {
+        for RecordField { label, value, .. } in context.ir.iter_fields(head) {
+            match eval_atom(value.get(&context.ir), &env, context) {
                 Ok(value) => record.insert(label, value),
                 Err(err) => return MachineState::Error(err),
             }
@@ -1178,7 +1080,7 @@ impl Eval for RecordExpr {
 
         // Continue with the next expression
         MachineState::Standard(StandardConfig {
-            control: next.get(ir),
+            control: next.get(&context.ir),
             env,
             cont,
         })
@@ -1193,14 +1095,7 @@ impl Eval for RecordExpr {
 // 3. The resulting extended record is bound to variable x in the environment
 // 4. The machine transitions directly to evaluating the next expression N
 impl Eval for RecordExtendExpr {
-    fn eval(
-        &self,
-        mut env: Env,
-        cont: Cont,
-        ir: &Ir,
-        _working_dir: &Utf8Path,
-        interner: &mut StrInterner,
-    ) -> MachineState {
+    fn eval(&self, mut env: Env, cont: Cont, context: &mut MachineContext) -> MachineState {
         let Self {
             bind,
             base,
@@ -1210,13 +1105,13 @@ impl Eval for RecordExtendExpr {
         } = *self;
 
         // Evaluate the base record
-        let record_val = match eval_atom(base.get(ir), &env, interner) {
+        let record_val = match eval_atom(base.get(&context.ir), &env, context) {
             Ok(value) => value,
             Err(err) => return MachineState::Error(err),
         };
 
         // Evaluate the value to extend with
-        let extend_value = match eval_atom(value.get(ir), &env, interner) {
+        let extend_value = match eval_atom(value.get(&context.ir), &env, context) {
             Ok(value) => value,
             Err(err) => return MachineState::Error(err),
         };
@@ -1230,7 +1125,11 @@ impl Eval for RecordExtendExpr {
         };
 
         // Get field path as StrKeys
-        let field_path: Vec<_> = ir.iter_path(Some(path)).map(|fp| fp.label).collect();
+        let field_path: Vec<_> = context
+            .ir
+            .iter_path(Some(path))
+            .map(|fp| fp.label)
+            .collect();
 
         // Use Record's extend_at_path method
         if let Err(err) = record.extend_at_path(&field_path, extend_value) {
@@ -1242,7 +1141,7 @@ impl Eval for RecordExtendExpr {
 
         // Continue with the next expression
         MachineState::Standard(StandardConfig {
-            control: next.get(ir),
+            control: next.get(&context.ir),
             env,
             cont,
         })
@@ -1257,14 +1156,7 @@ impl Eval for RecordExtendExpr {
 // 3. The resulting restricted record is bound to variable x in the environment
 // 4. The machine transitions directly to evaluating the next expression N
 impl Eval for RecordRestrictExpr {
-    fn eval(
-        &self,
-        mut env: Env,
-        cont: Cont,
-        ir: &Ir,
-        _working_dir: &Utf8Path,
-        interner: &mut StrInterner,
-    ) -> MachineState {
+    fn eval(&self, mut env: Env, cont: Cont, context: &mut MachineContext) -> MachineState {
         let Self {
             bind,
             base,
@@ -1273,7 +1165,7 @@ impl Eval for RecordRestrictExpr {
         } = *self;
 
         // Evaluate the base record
-        let record_val = match eval_atom(base.get(ir), &env, interner) {
+        let record_val = match eval_atom(base.get(&context.ir), &env, context) {
             Ok(value) => value,
             Err(err) => return MachineState::Error(err),
         };
@@ -1287,7 +1179,11 @@ impl Eval for RecordRestrictExpr {
         };
 
         // Get field path as StrKeys
-        let field_path: Vec<_> = ir.iter_path(Some(path)).map(|fp| fp.label).collect();
+        let field_path: Vec<_> = context
+            .ir
+            .iter_path(Some(path))
+            .map(|fp| fp.label)
+            .collect();
 
         // Use Record's restrict_at_path method
         if let Err(err) = record.restrict_at_path(&field_path) {
@@ -1299,7 +1195,7 @@ impl Eval for RecordRestrictExpr {
 
         // Continue with the next expression
         MachineState::Standard(StandardConfig {
-            control: next.get(ir),
+            control: next.get(&context.ir),
             env,
             cont,
         })
@@ -1321,7 +1217,6 @@ pub fn eval_record_op(op: RecordUpdateOp, left: Value, right: Value) -> Result<V
         )),
     }
 }
-
 // M-RECORDUPDATE: <x = R.{l←V}; N | γ | κ> --> <N | γ[x ↦ (γ(R)[l←V])] | κ>
 //
 // This rule describes record update in the CEK machine:
@@ -1330,14 +1225,7 @@ pub fn eval_record_op(op: RecordUpdateOp, left: Value, right: Value) -> Result<V
 // 3. The resulting updated record is bound to variable x in the environment
 // 4. The machine transitions directly to evaluating the next expression N
 impl Eval for RecordUpdateExpr {
-    fn eval(
-        &self,
-        mut env: Env,
-        cont: Cont,
-        ir: &Ir,
-        _working_dir: &Utf8Path,
-        interner: &mut StrInterner,
-    ) -> MachineState {
+    fn eval(&self, mut env: Env, cont: Cont, context: &mut MachineContext) -> MachineState {
         let Self {
             bind,
             base,
@@ -1348,13 +1236,13 @@ impl Eval for RecordUpdateExpr {
         } = *self;
 
         // Evaluate the base record
-        let record_val = match eval_atom(base.get(ir), &env, interner) {
+        let record_val = match eval_atom(base.get(&context.ir), &env, context) {
             Ok(value) => value,
             Err(err) => return MachineState::Error(err),
         };
 
         // Evaluate the value to update with
-        let update_val = match eval_atom(value.get(ir), &env, interner) {
+        let update_val = match eval_atom(value.get(&context.ir), &env, context) {
             Ok(value) => value,
             Err(err) => return MachineState::Error(err),
         };
@@ -1368,7 +1256,11 @@ impl Eval for RecordUpdateExpr {
         };
 
         // Get field path as StrKeys
-        let field_path: Vec<_> = ir.iter_path(Some(path)).map(|fp| fp.label).collect();
+        let field_path: Vec<_> = context
+            .ir
+            .iter_path(Some(path))
+            .map(|fp| fp.label)
+            .collect();
 
         // Use Record's update_at_path method
         let update_fn = |current_val: Value| eval_record_op(op, current_val, update_val.clone());
@@ -1381,7 +1273,7 @@ impl Eval for RecordUpdateExpr {
 
         // Continue with the next expression
         MachineState::Standard(StandardConfig {
-            control: next.get(ir),
+            control: next.get(&context.ir),
             env,
             cont,
         })
@@ -1396,14 +1288,7 @@ impl Eval for RecordUpdateExpr {
 // 3. The resulting field value is bound to variable x in the environment
 // 4. The machine transitions directly to evaluating the next expression N
 impl Eval for RecordAccessExpr {
-    fn eval(
-        &self,
-        mut env: Env,
-        cont: Cont,
-        ir: &Ir,
-        _working_dir: &Utf8Path,
-        interner: &mut StrInterner,
-    ) -> MachineState {
+    fn eval(&self, mut env: Env, cont: Cont, context: &mut MachineContext) -> MachineState {
         let Self {
             bind,
             base,
@@ -1412,7 +1297,7 @@ impl Eval for RecordAccessExpr {
         } = *self;
 
         // Evaluate the record
-        let record_val = match eval_atom(base.get(ir), &env, interner) {
+        let record_val = match eval_atom(base.get(&context.ir), &env, context) {
             Ok(value) => value,
             Err(err) => return MachineState::Error(err),
         };
@@ -1435,21 +1320,14 @@ impl Eval for RecordAccessExpr {
 
         // Continue with the next expression
         MachineState::Standard(StandardConfig {
-            control: next.get(ir),
+            control: next.get(&context.ir),
             env,
             cont,
         })
     }
 }
 impl Eval for PatternMatchExpr {
-    fn eval(
-        &self,
-        env: Env,
-        mut cont: Cont,
-        _ir: &Ir,
-        _working_dir: &Utf8Path,
-        _interner: &mut StrInterner,
-    ) -> MachineState {
+    fn eval(&self, env: Env, mut cont: Cont, _context: &mut MachineContext) -> MachineState {
         let Self {
             bind,
             matcher,
@@ -1474,55 +1352,40 @@ impl Eval for PatternMatchExpr {
 }
 
 /// Evaluates a pattern matching configuration
-impl Eval for PatternConfig {
-    fn eval(
-        &self,
-        _env: Env,
-        _cont: Cont,
-        ir: &Ir,
-        _working_dir: &Utf8Path,
-        interner: &mut StrInterner,
-    ) -> MachineState {
-        let PatternConfig { matcher, env, cont } = self;
+impl Eval for PatternMatcher {
+    fn eval(&self, env: Env, cont: Cont, context: &mut MachineContext) -> MachineState {
+        match self {
+            PatternMatcher::IsUnit(is_unit) => eval_is_unit(is_unit, env, cont),
+            PatternMatcher::IsBool(is_bool) => eval_is_bool(is_bool, env, cont),
+            PatternMatcher::IsNum(is_num) => eval_is_num(is_num, env, cont),
+            PatternMatcher::IsChar(is_char) => eval_is_char(is_char, env, cont),
+            PatternMatcher::IsStr(is_str) => eval_is_str(is_str, env, cont, &context.str_interner),
+            PatternMatcher::IsVariant(is_variant) => eval_is_variant(is_variant, env, cont),
+            PatternMatcher::IsRecord(is_record) => eval_is_record(is_record, env, cont),
+            PatternMatcher::RecordHasField(record_has_field) => {
+                eval_record_has_field(record_has_field, env, cont)
+            }
+            PatternMatcher::IsList(is_list) => eval_is_list(is_list, env, cont),
+            PatternMatcher::ListIsExact(list_is_exact) => {
+                eval_list_is_exact(list_is_exact, env, cont)
+            }
+            PatternMatcher::ListIsAtLeast(list_is_at_least) => {
+                eval_list_is_at_least(list_is_at_least, env, cont)
+            }
+            PatternMatcher::Identity(extract) => eval_identity(extract, env, cont),
+            PatternMatcher::VariantGet(extract) => eval_variant_get(extract, env, cont),
+            PatternMatcher::RecordGetAt(extract) => eval_record_get_at(extract, env, cont),
+            PatternMatcher::ListSplitHead(extract) => eval_list_split_head(extract, env, cont),
+            PatternMatcher::ListSplitTail(extract) => eval_list_split_tail(extract, env, cont),
+            PatternMatcher::ListGetAt(extract) => eval_list_get_at(extract, env, cont),
+            PatternMatcher::ListSplitAt(extract) => eval_list_split_at(extract, env, cont),
 
-        eval_pattern_matcher(&matcher.get(ir), env.clone(), cont.clone(), ir, interner)
-    }
-}
-/// Evaluates a pattern matcher instruction, returning the next machine state
-fn eval_pattern_matcher(
-    matcher: &PatternMatcher,
-    env: Env,
-    cont: Cont,
-    ir: &Ir,
-    interner: &StrInterner,
-) -> MachineState {
-    match matcher {
-        PatternMatcher::IsUnit(is_unit) => eval_is_unit(is_unit, env, cont),
-        PatternMatcher::IsBool(is_bool) => eval_is_bool(is_bool, env, cont),
-        PatternMatcher::IsNum(is_num) => eval_is_num(is_num, env, cont),
-        PatternMatcher::IsChar(is_char) => eval_is_char(is_char, env, cont),
-        PatternMatcher::IsStr(is_str) => eval_is_str(is_str, env, cont, interner),
-        PatternMatcher::IsVariant(is_variant) => eval_is_variant(is_variant, env, cont),
-        PatternMatcher::IsRecord(is_record) => eval_is_record(is_record, env, cont),
-        PatternMatcher::RecordHasField(record_has_field) => {
-            eval_record_has_field(record_has_field, env, cont)
-        }
-        PatternMatcher::IsList(is_list) => eval_is_list(is_list, env, cont),
-        PatternMatcher::ListIsExact(list_is_exact) => eval_list_is_exact(list_is_exact, env, cont),
-        PatternMatcher::ListIsAtLeast(list_is_at_least) => {
-            eval_list_is_at_least(list_is_at_least, env, cont)
-        }
-        PatternMatcher::Identity(extract) => eval_identity(extract, env, cont),
-        PatternMatcher::VariantGet(extract) => eval_variant_get(extract, env, cont),
-        PatternMatcher::RecordGetAt(extract) => eval_record_get_at(extract, env, cont),
-        PatternMatcher::ListSplitHead(extract) => eval_list_split_head(extract, env, cont),
-        PatternMatcher::ListSplitTail(extract) => eval_list_split_tail(extract, env, cont),
-        PatternMatcher::ListGetAt(extract) => eval_list_get_at(extract, env, cont),
-        PatternMatcher::ListSplitAt(extract) => eval_list_split_at(extract, env, cont),
-
-        PatternMatcher::Success(success) => eval_pattern_success(success, env, cont, ir),
-        PatternMatcher::Failure(_) => {
-            MachineState::Error("Pattern match failure - no matching case found".to_string())
+            PatternMatcher::Success(success) => {
+                eval_pattern_success(success, env, cont, &context.ir)
+            }
+            PatternMatcher::Failure(_) => {
+                MachineState::Error("Pattern match failure - no matching case found".to_string())
+            }
         }
     }
 }
@@ -1692,6 +1555,7 @@ fn eval_is_variant(is_tag: &IsVariant, env: Env, cont: Cont) -> MachineState {
         cont,
     })
 }
+
 fn eval_is_record(is_record: &IsRecord, env: Env, cont: Cont) -> MachineState {
     let IsRecord {
         source,
