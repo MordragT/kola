@@ -1,17 +1,20 @@
 {
-    export effect type Io = {
-        print : Str -> Unit,
-        read_file : Str -> < Ok : Str, Err : Str >,
-        write_file : Str -> Str -> < Ok : Unit, Err : Str >,
-    },
+    type Result = forall a b . super::result::Result a b,
+
+    # Todo this definition doesn't currently work,
+    # because the supplied Result type can not be resolved
+    # https://github.com/MordragT/kola/issues/68
+    #export effect type Io = {
+    #    print : Str -> Unit,
+    #    read_file : Str -> Result Str Str,
+    #    write_file : Str -> Str -> Result Unit Str,
+    #},
 
     export debug : forall a . a -> a = io_debug,
 
-    # TODO I should use a proper Result abstraction (or Either abstraction) here
+    export read_file : Str -> Result Str Str = io_read_file,
 
-    export read_file : Str -> < Ok : Str, Err : Str > = io_read_file,
-
-    export write_file : Str -> Str -> < Ok : Unit, Err : Str > = fn path =>
+    export write_file : Str -> Str -> Result Unit Str = fn path =>
         fn contents => (io_write_file { path = path, contents = contents }),
 
 }

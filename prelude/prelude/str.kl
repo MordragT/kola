@@ -11,7 +11,6 @@
     export first : Str -> Option Char = str_first,
     export last : Str -> Option Char = str_last,
 
-
     #############################################
     ### High-frequency, low-level operations - wrapped builtins
     #############################################

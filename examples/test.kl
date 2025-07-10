@@ -58,4 +58,9 @@
     f = fn x => x,
 
     main = @Person,
+
+    export effect type Test = {
+        test : Num -> Person,
+    },
+
 }

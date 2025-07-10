@@ -208,7 +208,7 @@ where
                 BuiltinEffect::Pure => todo!(),
             }
         } else {
-            return ControlFlow::Break(Diagnostic::error(span, "Type not found in scope"));
+            return ControlFlow::Break(Diagnostic::error(span, "Effect type not found in scope"));
         };
 
         self.insert_type(id, row_t);

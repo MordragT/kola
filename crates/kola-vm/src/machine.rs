@@ -235,9 +235,7 @@ impl CekMachine {
             "num_rec expects a non-negative integer"
         );
 
-        let n = num - 1.0;
-
-        if n == 0.0 {
+        if num == 0.0 {
             // Base case: return the base value
 
             // Remove the top continuation frame
@@ -269,6 +267,8 @@ impl CekMachine {
                 cont, // Remaining handlers continue the chain
             });
         };
+
+        let n = num - 1.0;
 
         // Recursive case: we need to compute step(n, num_rec(n, base, step))
 

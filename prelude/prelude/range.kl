@@ -1,0 +1,79 @@
+{
+    type Option = forall a . super::option::Option a,
+
+    # A half-open range type bounded inclusive at the start and exclusive at the end.
+    # TODO for now this is number (f64) based, but for correctness these should be integral
+    export type Range = { start : Num, end : Num },
+
+    # Half-open: start...end
+    export range : Num -> Num -> Range = fn start => fn end =>
+        { start = start, end = end },
+
+    # Inclusive range: start...=end
+    export range_inclusive : Num -> Num -> Range = fn start => fn end =>
+        { start = start, end = end + 1 },
+
+    export contains : Range -> Num -> Bool = fn r => fn n =>
+        n >= r.start && n < r.end,
+
+    export length : Range -> Num = fn r =>
+        r.end - r.start,
+
+    export is_empty : Range -> Bool = fn r =>
+        r.start >= r.end,
+
+    export fold : forall a . (a -> Num -> a) -> a -> Range -> a = fn f => fn init => fn r =>
+        (num_rec {
+            num = r.end - r.start,
+            base = init,
+            step = fn pair => (f pair.acc (pair.head + r.start))
+        }),
+
+    export map : forall a . (Num -> a) -> Range -> List a = fn f => fn r =>
+        (num_rec {
+            num = r.end - r.start,
+            base = [],
+            step = fn pair => (super::list::prepend (f (pair.head + r.start)) pair.acc)
+        }),
+
+    export filter : (Num -> Bool) -> Range -> List Num = fn predicate => fn r =>
+        (num_rec {
+            num = r.end - r.start,
+            base = [],
+            step = fn pair =>
+                if (predicate (pair.head + r.start))
+                then (super::list::prepend (pair.head + r.start) pair.acc)
+                else pair.acc
+        }),
+
+    export sum : Range -> Num = fn r =>
+        (num_rec {
+            num = r.end - r.start,
+            base = 0,
+            step = fn pair => (pair.acc + (pair.head + r.start))
+        }),
+
+    export to_list : Range -> List Num = fn r =>
+        (num_rec {
+            num = r.end - r.start,
+            base = [],
+            step = fn pair => (super::list::prepend (pair.head + r.start) pair.acc)
+        }),
+
+
+    #export fold_stepped : forall a . (a -> Num -> a) -> a -> Num -> Range -> a =
+    #    fn f => fn init => fn step => fn r =>
+    #        if step == 0 then init
+    #        else
+    #            let count =
+    #                if step > 0 then
+    #                    max 0 (ceil ((r.end - r.start) / step))
+    #                else
+    #                    max 0 (ceil ((r.start - r.end) / (-step)))
+    #            in
+    #            (num_rec {
+    #                num = count,
+    #                base = init,
+    #                step = fn pair => f pair.acc (r.start + pair.head * step)
+    #            }),
+}

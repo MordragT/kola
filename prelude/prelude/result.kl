@@ -1,0 +1,114 @@
+{
+    type Option = forall a . super::option::Option a,
+
+    export type Result = forall a b . < Ok : a, Err : b >,
+
+    #############################################
+    ### Core result operations
+    #############################################
+
+    export is_ok : forall a b . Result a b -> Bool = fn res =>
+        case res
+        | < Ok : _ > => true
+        | < Err : _ > => false,
+
+    export is_ok_and : forall a b . (a -> Bool) -> Result a b -> Bool = fn predicate => fn res =>
+        case res
+        | < Ok : value > => (predicate value)
+        | < Err : _ > => false,
+
+    export is_err : forall a b . Result a b -> Bool = fn res =>
+        case res
+        | < Ok : _ > => false
+        | < Err : _ > => true,
+
+    export is_err_and : forall a b . (b -> Bool) -> Result a b -> Bool = fn predicate => fn res =>
+        case res
+        | < Ok : _ > => false
+        | < Err : err > => (predicate err),
+
+    export ok : forall a b . Result a b -> Option a = fn res =>
+        case res
+        | < Ok : value > => (Some value)
+        | < Err : _ > => None,
+
+    export err : forall a b . Result a b -> Option b = fn res =>
+        case res
+        | < Ok : _ > => None
+        | < Err : err > => (Some err),
+
+    export flatten : forall a b . Result (Result a b) b -> Result a b = fn res =>
+        case res
+        | < Ok : inner > => inner
+        | < Err : err > => (Err err),
+
+    export map : forall a b c . (a -> c) -> Result a b -> Result c b = fn f => fn res =>
+        case res
+        | < Ok : value > => (Ok (f value))
+        | < Err : err > => (Err err),
+
+    export map_err : forall a b c . (b -> c) -> Result a b -> Result a c = fn f => fn res =>
+        case res
+        | < Ok : value > => (Ok value)
+        | < Err : err > => (Err (f err)),
+
+    export map_or : forall a b c . c -> (a -> c) -> Result a b -> c = fn default => fn f => fn res =>
+        case res
+        | < Ok : value > => (f value)
+        | < Err : _ > => default,
+
+    export map_or_else : forall a b c . (b -> c) -> (a -> c) -> Result a b -> c = fn err_f => fn ok_f => fn res =>
+        case res
+        | < Ok : value > => (ok_f value)
+        | < Err : err > => (err_f err),
+
+    export and : forall a b c . Result a b -> Result c b -> Result c b = fn res => fn next =>
+        case res
+        | < Ok : _ > => next
+        | < Err : err > => (Err err),
+
+    export and_then : forall a b c . (a -> Result c b) -> Result a b -> Result c b = fn f => fn res =>
+        case res
+        | < Ok : value > => (f value)
+        | < Err : err > => (Err err),
+
+    export or : forall a b c . Result a b -> Result a c -> Result a c = fn res => fn alt =>
+        case res
+        | < Ok : value > => (Ok value)
+        | < Err : _ > => alt,
+
+    export or_else : forall a b c . (b -> Result a c) -> Result a b -> Result a c = fn f => fn res =>
+        case res
+        | < Ok : value > => (Ok value)
+        | < Err : err > => (f err),
+
+    export get_or : forall a b . a -> Result a b -> a = fn default => fn res =>
+        case res
+        | < Ok : value > => value
+        | < Err : _ > => default,
+
+    export get_or_else : forall a b . (b -> a) -> Result a b -> a = fn f => fn res =>
+        case res
+        | < Ok : value > => value
+        | < Err : err > => (f err),
+
+    export get_err_or : forall a b . b -> Result a b -> b = fn default => fn res =>
+        case res
+        | < Ok : _ > => default
+        | < Err : err > => err,
+
+    export get_err_or_else : forall a b . (a -> b) -> Result a b -> b = fn f => fn res =>
+        case res
+        | < Ok : value > => (f value)
+        | < Err : err > => err,
+
+    export contains : forall a b . a -> Result a b -> Bool = fn target => fn res =>
+        case res
+        | < Ok : value > => value == target
+        | < Err : _ > => false,
+
+    export contains_err : forall a b . b -> Result a b -> Bool = fn target => fn res =>
+        case res
+        | < Ok : _ > => false
+        | < Err : err > => err == target,
+}

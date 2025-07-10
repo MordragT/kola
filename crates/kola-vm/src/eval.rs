@@ -497,7 +497,7 @@ fn eval_builtin(
             Value::Num(base.powf(*exp))
         }
         (BuiltinId::NumRec, Value::Record(record)) => {
-            let Some(Value::Num(n)) = record.get(context.intern_str("n")) else {
+            let Some(Value::Num(n)) = record.get(context.intern_str("num")) else {
                 return MachineState::Error("num_rec requires 'n' field with a number".to_owned());
             };
 
