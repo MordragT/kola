@@ -1,6 +1,6 @@
 use std::fmt;
 
-use kola_builtins::TypeProtocol;
+use kola_protocol::TypeProtocol;
 use kola_utils::interner::StrInterner;
 use serde::{Deserialize, Serialize};
 

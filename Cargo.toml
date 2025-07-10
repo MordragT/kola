@@ -11,6 +11,7 @@ kola-lowerer = { path = "crates/kola-lowerer" }
 kola-ls = { path = "crates/kola-ls" }
 kola-macros = { path = "crates/kola-macros" }
 kola-print = { path = "crates/kola-print" }
+kola-protocol = { path = "crates/kola-protocol" }
 kola-resolver = { path = "crates/kola-resolver" }
 kola-span = { path = "crates/kola-span" }
 kola-syntax = { path = "crates/kola-syntax" }

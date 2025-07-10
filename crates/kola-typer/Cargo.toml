@@ -11,6 +11,7 @@ kola-resolver.workspace = true
 kola-syntax.workspace = true
 kola-utils.workspace = true
 kola-print.workspace = true
+kola-protocol.workspace = true
 kola-collections.workspace = true
 thiserror.workspace = true
 serde.workspace = true

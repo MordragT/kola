@@ -1,10 +1,10 @@
 use camino::Utf8Path;
 use std::io;
 
-use kola_builtins::TypeInterner;
 use kola_ir::print::render_ir;
 use kola_lowerer::module::{Program, lower};
 use kola_print::{PrintOptions, prelude::*};
+use kola_protocol::TypeInterner;
 use kola_resolver::{prelude::*, print::ResolutionDecorator};
 use kola_span::{Issue, Report, SourceManager};
 use kola_syntax::{

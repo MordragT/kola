@@ -100,7 +100,6 @@
 //! - **Open Records**: Module extension and record operations
 //! - **Hot Reloading**: Individual module recompilation and replacement
 
-use kola_builtins::TypeInterner;
 use kola_ir::{
     id::Id as InstrId,
     instr::{self as ir, Symbol},
@@ -108,6 +107,7 @@ use kola_ir::{
     print::render_ir,
 };
 use kola_print::prelude::*;
+use kola_protocol::TypeInterner;
 use kola_resolver::{
     forest::Forest,
     resolver::ValueOrders,
@@ -119,7 +119,7 @@ use kola_typer::phase::{TypeAnnotations, TypedNodes};
 use kola_utils::interner::StrInterner;
 use log::trace;
 
-use crate::{normalizer::Normalizer, symbol::SymbolEnv};
+use crate::normalizer::Normalizer;
 
 #[derive(Debug, Clone)]
 pub struct Program {

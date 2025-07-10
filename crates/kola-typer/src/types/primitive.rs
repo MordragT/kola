@@ -1,4 +1,4 @@
-use kola_builtins::TypeProtocol;
+use kola_protocol::TypeProtocol;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 

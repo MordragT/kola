@@ -1,7 +1,7 @@
 use std::borrow::Cow;
 
 use camino::{Utf8Path, Utf8PathBuf};
-use kola_builtins::{TypeInterner, TypeKey, TypeProtocol};
+use kola_protocol::{TypeInterner, TypeKey, TypeProtocol};
 
 use crate::{
     config::{MachineState, OperationConfig, PatternConfig, PrimitiveRecConfig, StandardConfig},
@@ -533,7 +533,7 @@ mod tests {
 
     use crate::machine::MachineContext;
     use crate::{machine::CekMachine, value::Value};
-    use kola_builtins::TypeInterner;
+    use kola_protocol::TypeInterner;
 
     #[test]
     fn test_simple_let_and_return() {

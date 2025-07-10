@@ -1,6 +1,6 @@
 use std::{collections::HashMap, fmt};
 
-use kola_builtins::TypeSchemeProtocol;
+use kola_protocol::TypeSchemeProtocol;
 use kola_utils::interner::StrInterner;
 use serde::{Deserialize, Serialize};
 

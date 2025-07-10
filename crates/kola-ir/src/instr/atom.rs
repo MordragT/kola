@@ -1,8 +1,9 @@
 use derive_more::From;
 use std::fmt::{self, Display};
 
-use kola_builtins::{BuiltinId, TypeInterner, TypeKey, TypeProtocol};
+use kola_builtins::BuiltinId;
 use kola_print::prelude::*;
+use kola_protocol::{TypeInterner, TypeKey, TypeProtocol};
 use kola_utils::{
     impl_try_as,
     interner::{StrInterner, StrKey},

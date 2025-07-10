@@ -1,89 +1,7 @@
 use derive_more::{Display, FromStr};
-use kola_utils::interner::{Interner, Key};
-use serde::{Deserialize, Serialize};
-use std::{borrow::Cow, cell::LazyCell, fmt};
+use std::{cell::LazyCell, fmt};
 
-pub type TypeInterner = Interner<TypeProtocol>;
-pub type TypeKey = Key<TypeProtocol>;
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct TypeSchemeProtocol {
-    pub forall: u32,
-    pub ty: TypeProtocol,
-}
-
-impl TypeSchemeProtocol {
-    pub fn new(forall: u32, ty: TypeProtocol) -> Self {
-        Self { forall, ty }
-    }
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub enum TypeProtocol {
-    Unit,
-    Bool,
-    Num,
-    Char,
-    Str,
-    List(Box<Self>),
-    TypeRep(Box<Self>),
-    Record(Vec<(String, Self)>),
-    Variant(Vec<(String, Self)>),
-    Func(Box<Self>, Box<Self>),
-    Var(u32),
-}
-
-impl TypeProtocol {
-    pub const UNIT: Self = TypeProtocol::Unit;
-    pub const BOOL: Self = TypeProtocol::Bool;
-    pub const NUM: Self = TypeProtocol::Num;
-    pub const CHAR: Self = TypeProtocol::Char;
-    pub const STR: Self = TypeProtocol::Str;
-
-    pub fn list(inner: Self) -> Self {
-        TypeProtocol::List(Box::new(inner))
-    }
-
-    pub fn type_rep(inner: Self) -> Self {
-        TypeProtocol::TypeRep(Box::new(inner))
-    }
-
-    pub fn record(fields: Vec<(String, Self)>) -> Self {
-        TypeProtocol::Record(fields)
-    }
-
-    pub fn variant(variants: Vec<(String, Self)>) -> Self {
-        TypeProtocol::Variant(variants)
-    }
-
-    pub fn func(input: Self, output: Self) -> Self {
-        TypeProtocol::Func(Box::new(input), Box::new(output))
-    }
-
-    pub fn var(id: u32) -> Self {
-        TypeProtocol::Var(id)
-    }
-
-    pub fn to_json(&self) -> serde_json::Result<String> {
-        serde_json::to_string_pretty(self)
-    }
-
-    pub fn from_json(json: &str) -> serde_json::Result<Self> {
-        serde_json::from_str(json)
-    }
-}
-
-impl From<TypeProtocol> for Cow<'_, TypeProtocol> {
-    fn from(value: TypeProtocol) -> Self {
-        Cow::Owned(value)
-    }
-}
-
-impl<'a> From<&'a TypeProtocol> for Cow<'a, TypeProtocol> {
-    fn from(value: &'a TypeProtocol) -> Self {
-        Cow::Borrowed(value)
-    }
-}
+use kola_protocol::{TypeProtocol, TypeSchemeProtocol};
 
 #[derive(Debug, Display, FromStr, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum BuiltinEffect {
@@ -112,6 +30,7 @@ pub enum BuiltinType {
     Char,
     Str,
     List,
+    Type,
 }
 
 impl BuiltinType {
@@ -123,6 +42,7 @@ impl BuiltinType {
             "Char" => Some(Self::Char),
             "Str" => Some(Self::Str),
             "List" => Some(Self::List),
+            "Type" => Some(Self::Type),
             _ => None,
         }
     }
@@ -130,7 +50,10 @@ impl BuiltinType {
 
 #[inline]
 pub fn is_builtin_type(s: &str) -> bool {
-    matches!(s, "Unit" | "Bool" | "Num" | "Char" | "Str" | "List")
+    matches!(
+        s,
+        "Unit" | "Bool" | "Num" | "Char" | "Str" | "List" | "Type"
+    )
 }
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -303,7 +226,7 @@ define_builtins! {
     record_rec: forall 3 . { "record": 0, "base": 1, "step": ({ "acc": 1, "head": { "key": Str, "value": 2 } } -> 1) } -> 1,
 
     // Builtin Serde functions
-    serde_from_json: forall 1 . { "rep": (Type 0), "json": Str } -> [ "Ok": 0, "Err": Str ],
+    serde_from_json: forall 1 . { "proto": (Type 0), "json": Str } -> [ "Ok": 0, "Err": Str ],
     serde_to_json: forall 1 . 0 -> [ "Ok": Str, "Err": Str ],
 
     // Builtin String functions

@@ -14,3 +14,4 @@ derive_more.workspace = true
 paste.workspace = true
 serde.workspace = true
 camino.workspace = true
+unescaper = "0.1"

@@ -35,7 +35,6 @@
 //! - **No let-bind generalization**: Local let-binds remain monomorphic for algorithmic
 //!   simplicity while maintaining expressiveness through top-level polymorphism
 
-use kola_builtins::TypeInterner;
 use kola_print::prelude::*;
 use kola_resolver::{
     forest::Forest,

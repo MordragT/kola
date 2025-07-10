@@ -76,6 +76,30 @@ impl Unifiable for RowType {
     }
 }
 
+impl Unifiable for ListType {
+    fn try_unify(&self, rhs: &Self, s: &mut Substitution) -> Result<(), TypeErrors> {
+        let mut unifier = Unifier::new(s);
+        unifier.unify_list(self, rhs);
+        if unifier.errors.has_errors() {
+            Err(unifier.errors)
+        } else {
+            Ok(())
+        }
+    }
+}
+
+impl Unifiable for TypeRep {
+    fn try_unify(&self, rhs: &Self, s: &mut Substitution) -> Result<(), TypeErrors> {
+        let mut unifier = Unifier::new(s);
+        unifier.unify_type_rep(self, rhs);
+        if unifier.errors.has_errors() {
+            Err(unifier.errors)
+        } else {
+            Ok(())
+        }
+    }
+}
+
 impl Unifiable for TypeVar {
     fn try_unify(&self, rhs: &Self, s: &mut Substitution) -> Result<(), TypeErrors> {
         let mut unifier = Unifier::new(s);
@@ -135,11 +159,13 @@ impl<'s> Unifier<'s> {
         }
     }
 
+    #[inline]
     fn unify_func(&mut self, lhs: &FuncType, rhs: &FuncType) {
         self.unify_mono(&lhs.input, &rhs.input);
         self.unify_comp(&lhs.output, &rhs.output);
     }
 
+    #[inline]
     fn unify_list(&mut self, lhs: &ListType, rhs: &ListType) {
         self.unify_mono(&lhs.el, &rhs.el);
     }
@@ -154,6 +180,7 @@ impl<'s> Unifier<'s> {
             (MonoType::Func(l), MonoType::Func(r)) => self.unify_func(l, r),
             (MonoType::List(l), MonoType::List(r)) => self.unify_list(l, r),
             (MonoType::Row(l), MonoType::Row(r)) => self.unify_row(l, r),
+            (MonoType::TypeRep(l), MonoType::TypeRep(r)) => self.unify_type_rep(l, r),
             (MonoType::Var(var), with) => self.bind_var(var, with),
             (with, MonoType::Var(var)) => self.bind_var(var, with),
             (l, r) => {
@@ -296,6 +323,12 @@ impl<'s> Unifier<'s> {
         }
     }
 
+    #[inline]
+    fn unify_type_rep(&mut self, lhs: &TypeRep, rhs: &TypeRep) {
+        self.unify_mono(&lhs.ty, &rhs.ty);
+    }
+
+    #[inline]
     fn unify_var(&mut self, lhs: &TypeVar, rhs: &TypeVar) {
         if lhs != rhs {
             // in former apply path compression via cache is already implemented

@@ -39,4 +39,81 @@
     module type Iterable = {
         map : forall a b . (a -> b) -> List a -> List b,
     },
+
+        module type CaddyInputs = {
+        domain : Str,
+        root : Str,
+    },
+
+    module my_inputs = {
+        #export to_json = super::serde::to_json,
+        export domain = "example.com",
+        export root = "/var/www/html",
+    },
+
+    module functor caddy_config inputs : CaddyInputs => {
+        # Helper for the route block
+        route = {
+            h_handle = [
+                {
+                    browse = {},
+                    handler = "file_server",
+                    root = inputs::root,
+                }
+            ],
+            match = [
+                {
+                    host = [ inputs::domain ],
+                }
+            ],
+        },
+
+        # Helper for the tls policy block
+        tls_policy = {
+            subjects = [ inputs::domain ],
+            issuers = [
+                {
+                    m_module = "acme",
+                    challenges = {
+                        dns = {
+                            provider = {
+                                name = "dnspod",
+                                auth_token = "id,token",
+                            }
+                        }
+                    }
+                }
+            ]
+        },
+
+        # The full config
+        export config = {
+            admin = {
+                disabled = true,
+            },
+            apps = {
+                http = {
+                    servers = {
+                        static = {
+                            automatic_https = {
+                                disable_redirects = true,
+                            },
+                            idle_timeout = 30000000000,
+                            listen = [ ":3443" ],
+                            max_header_bytes = 10240,
+                            read_header_timeout = 10000000000,
+                            routes = [ route ],
+                        }
+                    }
+                },
+                tls = {
+                    automation = {
+                        policies = [ tls_policy ],
+                    }
+                }
+            }
+        },
+
+        #export to_json = (inputs::to_json config),
+    },
 }

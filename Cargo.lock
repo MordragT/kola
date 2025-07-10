@@ -832,10 +832,8 @@ name = "kola-builtins"
 version = "0.1.0"
 dependencies = [
  "derive_more",
- "kola-utils",
+ "kola-protocol",
  "paste",
- "serde",
- "serde_json",
 ]
 
 [[package]]
@@ -854,6 +852,7 @@ dependencies = [
  "kola-ir",
  "kola-lowerer",
  "kola-print",
+ "kola-protocol",
  "kola-resolver",
  "kola-span",
  "kola-syntax",
@@ -872,6 +871,7 @@ dependencies = [
  "derive_more",
  "kola-builtins",
  "kola-print",
+ "kola-protocol",
  "kola-utils",
 ]
 
@@ -883,6 +883,7 @@ dependencies = [
  "kola-collections",
  "kola-ir",
  "kola-print",
+ "kola-protocol",
  "kola-resolver",
  "kola-tree",
  "kola-typer",
@@ -919,6 +920,15 @@ version = "0.1.0"
 dependencies = [
  "bumpalo",
  "owo-colors",
+]
+
+[[package]]
+name = "kola-protocol"
+version = "0.1.0"
+dependencies = [
+ "kola-utils",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -967,6 +977,7 @@ dependencies = [
  "paste",
  "serde",
  "thiserror",
+ "unescaper",
 ]
 
 [[package]]
@@ -994,6 +1005,7 @@ dependencies = [
  "kola-builtins",
  "kola-collections",
  "kola-print",
+ "kola-protocol",
  "kola-resolver",
  "kola-span",
  "kola-syntax",
@@ -1029,8 +1041,10 @@ dependencies = [
  "kola-builtins",
  "kola-collections",
  "kola-ir",
+ "kola-protocol",
  "kola-utils",
  "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -1659,6 +1673,15 @@ name = "typenum"
 version = "1.18.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "1dccffe3ce07af9386bfd29e80c0ab1a8205a2fc34e4bcd40364df902cfa8f3f"
+
+[[package]]
+name = "unescaper"
+version = "0.1.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "c01d12e3a56a4432a8b436f293c25f4808bdf9e9f9f98f9260bba1f1bc5a1f26"
+dependencies = [
+ "thiserror",
+]
 
 [[package]]
 name = "unicode-ident"

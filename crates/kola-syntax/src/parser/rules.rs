@@ -294,7 +294,10 @@ pub fn literal_parser<'t>() -> impl KolaParser<'t, node::LiteralExpr> + Sized {
             LiteralT::Num(n) => node::LiteralExpr::Num(n),
             LiteralT::Bool(b) => node::LiteralExpr::Bool(b),
             LiteralT::Char(c) => node::LiteralExpr::Char(c),
-            LiteralT::Str(s) => node::LiteralExpr::Str(state.intern(s)),
+            LiteralT::Str(s) => {
+                let s = unescaper::unescape(s).unwrap(); // TODO maybe handle this ?
+                node::LiteralExpr::Str(state.intern(s))
+            }
         }
     })
 }

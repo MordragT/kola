@@ -1,12 +1,12 @@
 use derive_more::From;
 use enum_as_inner::EnumAsInner;
-use kola_builtins::{BuiltinId, TypeProtocol};
+use kola_builtins::BuiltinId;
 use kola_ir::instr::Tag;
+use kola_protocol::{TypeProtocol, ValueProtocol};
 use kola_utils::{
     interner::StrInterner,
     interner_ext::{DisplayWithInterner, SerializeWithInterner},
 };
-use serde::Deserialize;
 use std::fmt::{self, Display};
 
 use crate::cont::Cont;
@@ -60,6 +60,55 @@ impl Value {
     pub fn variant(tag: Tag, value: Self) -> Self {
         Value::Variant(Variant::new(tag, value))
     }
+
+    pub fn from_json(
+        type_proto: &TypeProtocol,
+        json: &str,
+        interner: &mut StrInterner,
+    ) -> Result<Self, String> {
+        let proto = serde_json::from_str::<ValueProtocol>(json).map_err(|e| e.to_string())?;
+
+        type_proto.validate_value(&proto)?;
+
+        Ok(Self::from_protocol(proto, interner))
+    }
+
+    pub fn from_protocol(proto: ValueProtocol, interner: &mut StrInterner) -> Self {
+        match proto {
+            ValueProtocol::Unit => Value::None,
+            ValueProtocol::Bool(b) => Value::Bool(b),
+            ValueProtocol::Char(c) => Value::Char(c),
+            ValueProtocol::Num(n) => Value::Num(n),
+            ValueProtocol::Str(s) => Value::Str(s),
+            ValueProtocol::Variant(t, v) => {
+                let tag = Tag(interner.intern(t));
+                let value = Self::from_protocol(*v, interner);
+                let variant = Variant::new(tag, value);
+                Value::Variant(variant)
+            }
+            ValueProtocol::Record(r) => {
+                let mut record = Record::new();
+
+                // TODO if ValueProtocol was guaranteed to be sorted,
+                // this manual insertion (and binary searching) could be avoided.
+
+                for (label, value) in r {
+                    let label = interner.intern(label);
+                    let value = Self::from_protocol(value, interner);
+                    record.insert(label, value);
+                }
+
+                Value::Record(record)
+            }
+            ValueProtocol::List(l) => {
+                let list = l
+                    .into_iter()
+                    .map(|v| Self::from_protocol(v, interner))
+                    .collect();
+                Value::List(list)
+            }
+        }
+    }
 }
 
 impl DisplayWithInterner<str> for Value {
@@ -100,15 +149,6 @@ impl SerializeWithInterner<str> for Value {
                 "Cannot serialize this Value variant",
             )),
         }
-    }
-}
-
-impl<'de> Deserialize<'de> for Value {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error>
-    where
-        D: serde::Deserializer<'de>,
-    {
-        todo!()
     }
 }
 

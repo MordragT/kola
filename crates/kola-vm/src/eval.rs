@@ -21,6 +21,7 @@ use kola_ir::{
     },
     ir::{Ir, IrView},
 };
+use kola_protocol::TypeProtocol;
 use kola_utils::{interner::StrInterner, interner_ext::InternerExt};
 
 #[inline]
@@ -560,11 +561,29 @@ fn eval_builtin(
             });
         }
         // TODO these serde methods do not enforce type annotations
-        // TODO from_json would mean that the interner is mutable
-        // (BuiltinId::SerdeFromJson, Value::Str(json_str)) => match Value::from_json(&json_str) {
-        //     Ok(value) => Value::variant(Tag(context.intern_str("Ok")), value),
-        //     Err(err) => Value::variant(Tag(context.intern_str("Err")), Value::Str(err.to_string())),
-        // },
+        // TODO from_json would mean that the interner is mutable ?
+        (BuiltinId::SerdeFromJson, Value::Record(record)) => {
+            let Some(Value::TypeRep(TypeProtocol::TypeRep(type_proto))) =
+                record.get(context.intern_str("proto"))
+            else {
+                return MachineState::Error(
+                    "serde_from_json requires 'proto' field with a TypeRep".to_owned(),
+                );
+            };
+
+            let Some(Value::Str(json_str)) = record.get(context.intern_str("json")) else {
+                return MachineState::Error(
+                    "serde_from_json requires 'json' field with a string".to_owned(),
+                );
+            };
+
+            match Value::from_json(type_proto, &json_str, &mut context.str_interner) {
+                Ok(value) => Value::variant(Tag(context.intern_str("Ok")), value),
+                Err(err) => {
+                    Value::variant(Tag(context.intern_str("Err")), Value::Str(err.to_string()))
+                }
+            }
+        }
         (BuiltinId::SerdeToJson, value) => match context.str_interner.to_json(&value) {
             Ok(json_str) => Value::variant(Tag(context.intern_str("Ok")), Value::Str(json_str)),
             Err(err) => Value::variant(Tag(context.intern_str("Err")), Value::Str(err.to_string())),

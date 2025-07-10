@@ -6,9 +6,11 @@ edition = "2024"
 [dependencies]
 kola-builtins.workspace = true
 kola-ir.workspace = true
+kola-protocol.workspace = true
 kola-utils.workspace = true
 kola-collections.workspace = true
 derive_more.workspace = true
 enum-as-inner.workspace = true
 serde.workspace = true
 camino.workspace = true
+serde_json.workspace = true

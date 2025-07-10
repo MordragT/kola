@@ -1,6 +1,6 @@
 use std::{ops::ControlFlow, rc::Rc};
 
-use kola_builtins::{Builtin, BuiltinEffect, BuiltinType, TypeSchemeProtocol};
+use kola_builtins::{Builtin, BuiltinEffect, BuiltinType};
 use kola_resolver::phase::{ResolvedModule, ResolvedNodes};
 use kola_span::{Diagnostic, IntoDiagnostic, Loc, Report};
 use kola_syntax::prelude::*;
@@ -426,6 +426,13 @@ where
                     PolyType {
                         vars: vec![var],
                         ty: MonoType::list(MonoType::Var(var)),
+                    }
+                }
+                BuiltinType::Type => {
+                    let var = TypeVar::new();
+                    PolyType {
+                        vars: vec![var],
+                        ty: MonoType::type_rep(MonoType::Var(var)),
                     }
                 }
             }
@@ -1969,7 +1976,8 @@ where
                 BuiltinType::Num => MonoType::NUM,
                 BuiltinType::Char => MonoType::CHAR,
                 BuiltinType::Str => MonoType::STR,
-                BuiltinType::List => MonoType::list(MonoType::Var(TypeVar::new())),
+                BuiltinType::List => MonoType::list(MonoType::variable()),
+                BuiltinType::Type => MonoType::type_rep(MonoType::variable()),
             }
         } else {
             return ControlFlow::Break(Diagnostic::error(span, "Type not found in scope"));

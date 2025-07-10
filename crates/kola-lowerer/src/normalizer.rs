@@ -1,7 +1,7 @@
 use std::ops::ControlFlow;
 
-use kola_builtins::TypeInterner;
 use kola_ir::prelude::{Id as InstrId, instr as ir, *};
+use kola_protocol::TypeInterner;
 use kola_resolver::{
     phase::{ResolvePhase, ResolvedModule, ResolvedNodes, ResolvedValue},
     symbol::{Sym, ValueSym},
@@ -1339,11 +1339,11 @@ mod tests {
 
     use std::collections::HashMap;
 
-    use kola_builtins::TypeInterner;
     use kola_ir::{
         instr::{self as ir, Symbol},
         ir::{Ir, IrBuilder},
     };
+    use kola_protocol::TypeInterner;
     use kola_resolver::{
         phase::{ResolvedNodes, ResolvedValue},
         symbol::ValueSym,
