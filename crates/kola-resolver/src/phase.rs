@@ -234,7 +234,6 @@ impl Phase for ResolvePhase {
     type CaseExpr = !;
     type IfExpr = !;
     type CallExpr = !;
-    type SymbolExpr = AnySym;
     type TypeRepExpr = ResolvedType;
     type ExprError = !;
     type Expr = !;
@@ -279,6 +278,10 @@ impl Phase for ResolvePhase {
     type CompType = !;
     type Type = !;
     type TypeError = !;
+    type Kind = !;
+    type TypeVarBind = TypeSym;
+    type WithBinder = !;
+    type ForallBinder = !;
     type TypeScheme = !;
 
     // ===== BINDINGS =====

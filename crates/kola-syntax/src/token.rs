@@ -234,6 +234,9 @@ define_token_type!(Kw {
     Functor => "functor",
     Effect => "effect",
     Type => "type",
+    With => "with",
+    Record => "record",
+    Label => "label",
     Forall => "forall",
     Fn => "fn",
     Do => "do",
@@ -244,6 +247,7 @@ define_token_type!(Kw {
     Else => "else",
     Case => "case",
     Handle => "handle",
+
 });
 
 define_token_type!(Ctrl {

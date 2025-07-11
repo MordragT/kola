@@ -70,7 +70,6 @@ impl_visitable!(
     HandleExpr,
     DoExpr,
     TagExpr,
-    SymbolExpr,
     TypeRepExpr,
     ExprError,
     Expr,
@@ -90,6 +89,8 @@ impl_visitable!(
     CompType,
     Type,
     TypeError,
+    Kind,
+    TypeVarBind,
     TypeScheme,
     // Modules
     Vis,
@@ -879,14 +880,6 @@ pub trait Visitor<T: TreeView> {
         self.walk_tag_expr(id, tree)
     }
 
-    fn visit_symbol_expr(
-        &mut self,
-        _id: Id<node::SymbolExpr>,
-        _tree: &T,
-    ) -> ControlFlow<Self::BreakValue> {
-        ControlFlow::Continue(())
-    }
-
     fn walk_type_rep_expr(
         &mut self,
         id: Id<node::TypeRepExpr>,
@@ -942,7 +935,6 @@ pub trait Visitor<T: TreeView> {
             Handle(id) => self.visit_handle_expr(id, tree),
             Do(id) => self.visit_do_expr(id, tree),
             Tag(id) => self.visit_tag_expr(id, tree),
-            Symbol(id) => self.visit_symbol_expr(id, tree),
             TypeRep(id) => self.visit_type_rep_expr(id, tree),
         }
     }
@@ -1288,17 +1280,88 @@ pub trait Visitor<T: TreeView> {
         self.walk_type(id, tree)
     }
 
+    fn visit_kind(&mut self, _id: Id<node::Kind>, _tree: &T) -> ControlFlow<Self::BreakValue> {
+        ControlFlow::Continue(())
+    }
+
+    fn walk_type_var_bind(
+        &mut self,
+        id: Id<node::TypeVarBind>,
+        tree: &T,
+    ) -> ControlFlow<Self::BreakValue> {
+        let node::TypeVarBind { var, kind } = *id.get(tree);
+
+        if let Some(kind) = kind {
+            self.visit_kind(kind, tree)?;
+        }
+
+        self.visit_type_var(var, tree)?;
+
+        ControlFlow::Continue(())
+    }
+
+    fn visit_type_var_bind(
+        &mut self,
+        id: Id<node::TypeVarBind>,
+        tree: &T,
+    ) -> ControlFlow<Self::BreakValue> {
+        self.walk_type_var_bind(id, tree)
+    }
+
+    fn walk_with_binder(
+        &mut self,
+        id: Id<node::WithBinder>,
+        tree: &T,
+    ) -> ControlFlow<Self::BreakValue> {
+        for bind in id.get(tree) {
+            self.visit_type_var_bind(*bind, tree)?;
+        }
+        ControlFlow::Continue(())
+    }
+
+    fn visit_with_binder(
+        &mut self,
+        id: Id<node::WithBinder>,
+        tree: &T,
+    ) -> ControlFlow<Self::BreakValue> {
+        self.walk_with_binder(id, tree)
+    }
+
+    fn walk_forall_binder(
+        &mut self,
+        id: Id<node::ForallBinder>,
+        tree: &T,
+    ) -> ControlFlow<Self::BreakValue> {
+        for bind in id.get(tree) {
+            self.visit_type_var_bind(*bind, tree)?;
+        }
+        ControlFlow::Continue(())
+    }
+
+    fn visit_forall_binder(
+        &mut self,
+        id: Id<node::ForallBinder>,
+        tree: &T,
+    ) -> ControlFlow<Self::BreakValue> {
+        self.walk_forall_binder(id, tree)
+    }
+
     fn walk_type_scheme(
         &mut self,
         id: Id<node::TypeScheme>,
         tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
-        let node::TypeScheme { vars, ty } = id.get(tree);
+        let node::TypeScheme { with, forall, ty } = *id.get(tree);
 
-        for var in vars {
-            self.visit_type_var(*var, tree)?;
+        if let Some(with) = with {
+            self.visit_with_binder(with, tree)?;
         }
-        self.visit_type(*ty, tree)?;
+
+        if let Some(forall) = forall {
+            self.visit_forall_binder(forall, tree)?;
+        }
+
+        self.visit_type(ty, tree)?;
 
         ControlFlow::Continue(())
     }

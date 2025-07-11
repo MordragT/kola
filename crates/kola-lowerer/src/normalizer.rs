@@ -262,19 +262,6 @@ where
         ControlFlow::Continue(())
     }
 
-    fn visit_symbol_expr(
-        &mut self,
-        id: TreeId<node::SymbolExpr>,
-        _tree: &T,
-    ) -> ControlFlow<Self::BreakValue> {
-        let sym = *self.resolved.meta(id);
-
-        let atom = self.builder.add(ir::Atom::Num(sym.id() as f64));
-        self.emit(atom);
-
-        ControlFlow::Continue(())
-    }
-
     fn visit_type_rep_expr(
         &mut self,
         id: TreeId<node::TypeRepExpr>,

@@ -105,7 +105,6 @@ define_nodes!(
     HandleExpr,
     DoExpr,
     TagExpr,
-    SymbolExpr,
     TypeRepExpr,
     ExprError,
     Expr,
@@ -125,6 +124,10 @@ define_nodes!(
     CompType,
     Type,
     TypeError,
+    Kind,
+    TypeVarBind,
+    WithBinder,
+    ForallBinder,
     TypeScheme,
     // Modules
     Vis,

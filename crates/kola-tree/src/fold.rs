@@ -73,7 +73,6 @@ define_folder_trait!(
     HandleExpr,
     DoExpr,
     TagExpr,
-    SymbolExpr,
     TypeRepExpr,
     ExprError,
     Expr,
@@ -93,6 +92,10 @@ define_folder_trait!(
     CompType,
     Type,
     TypeError,
+    Kind,
+    TypeVarBind,
+    WithBinder,
+    ForallBinder,
     TypeScheme,
     // Modules
     Vis,

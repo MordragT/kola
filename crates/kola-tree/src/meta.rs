@@ -239,7 +239,6 @@ define!(
     HandleExpr,
     DoExpr,
     TagExpr,
-    SymbolExpr,
     TypeRepExpr,
     ExprError,
     Expr,
@@ -259,6 +258,10 @@ define!(
     CompType,
     Type,
     TypeError,
+    Kind,
+    TypeVarBind,
+    WithBinder,
+    ForallBinder,
     TypeScheme,
     // Modules
     Vis,

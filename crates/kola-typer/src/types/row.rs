@@ -1,7 +1,14 @@
+use derive_more::{Display, From};
 use kola_protocol::TypeProtocol;
-use kola_utils::interner::{StrInterner, StrKey};
+use kola_utils::{
+    interner::{StrInterner, StrKey},
+    interner_ext::DisplayWithInterner,
+};
 use serde::{Deserialize, Serialize};
-use std::fmt;
+use std::{
+    fmt,
+    sync::atomic::{AtomicU32, Ordering},
+};
 
 use super::{Kind, MonoType, Typed};
 use crate::{
@@ -13,68 +20,88 @@ use crate::{
 // I thought maybe label polymorphism would be useful for record merging.
 // For now we'll just use a simple label type.
 
-// #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
-// pub struct LabelVar(u32);
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+pub struct LabelVar(u32);
 
-// impl fmt::Display for LabelVar {
-//     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-//         write!(f, "'l{}", self.0)
-//     }
-// }
+impl fmt::Display for LabelVar {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "'l{}", self.0)
+    }
+}
 
-// static GENERATOR: AtomicU32 = AtomicU32::new(0);
+static GENERATOR: AtomicU32 = AtomicU32::new(0);
 
-// impl LabelVar {
-//     pub fn new() -> Self {
-//         let id = GENERATOR.fetch_add(1, Ordering::Relaxed);
-//         Self(id)
-//     }
+impl LabelVar {
+    pub fn new() -> Self {
+        let id = GENERATOR.fetch_add(1, Ordering::Relaxed);
+        Self(id)
+    }
 
-//     pub fn id(&self) -> u32 {
-//         self.0
-//     }
+    pub fn id(&self) -> u32 {
+        self.0
+    }
 
-//     pub fn try_apply(&self, s: &mut Substitution) -> Option<Label> {
-//         todo!()
-//     }
-// }
+    pub fn try_apply(&self, s: &mut Substitution) -> Option<Label> {
+        todo!()
+    }
+}
 
-// #[derive(
-//     Debug, Display, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
-// )]
-// pub enum Label {
-//     /// A label that is a variable.
-//     Var(LabelVar),
-//     /// A label that is a string key.
-//     Key(StrKey),
-// }
+#[derive(
+    Debug, From, Display, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+)]
+pub enum Label {
+    /// A label that is a variable.
+    Var(LabelVar),
+    /// A label that is a string key.
+    Key(StrKey),
+}
 
-// impl Substitutable for Label {
-//     fn try_apply(&self, s: &mut Substitution) -> Option<Self> {
-//         match self {
-//             Self::Var(var) => var.try_apply(s),
-//             Self::Key(key) => Some(Self::Key(*key)),
-//         }
-//     }
-// }
+impl DisplayWithInterner<str> for Label {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>, interner: &StrInterner) -> fmt::Result {
+        match self {
+            Self::Var(var) => write!(f, "{var}"),
+            Self::Key(key) => write!(f, "{}", interner[*key]),
+        }
+    }
+}
+
+impl Substitutable for Label {
+    fn try_apply(&self, s: &mut Substitution) -> Option<Self> {
+        match self {
+            Self::Var(var) => var.try_apply(s),
+            Self::Key(key) => Some(Self::Key(*key)),
+        }
+    }
+}
 
 /// A key-value pair representing a property type in a record.
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Serialize, Deserialize)]
 pub struct LabeledType {
-    pub label: StrKey,
+    pub label: Label,
     pub ty: MonoType,
 }
 
 impl LabeledType {
     /// Creates a new `LabeledType` with the given label and type.
-    pub fn new(label: StrKey, ty: MonoType) -> Self {
-        Self { label, ty }
+    pub fn new(label: impl Into<Label>, ty: impl Into<MonoType>) -> Self {
+        Self {
+            label: label.into(),
+            ty: ty.into(),
+        }
     }
 
     pub fn merge_deep(&self, other: &Self) -> Result<Self, TypeError> {
-        if self.label != other.label {
+        let Label::Key(lhs) = self.label else {
+            todo!("Label::Var not supported for LabeledType merging");
+        };
+
+        let Label::Key(rhs) = other.label else {
+            todo!("Label::Var not supported for LabeledType merging");
+        };
+
+        if lhs != rhs {
             return Err(TypeError::CannotMergeLabel {
-                label: self.label,
+                label: Label::Key(lhs),
                 lhs: self.ty.clone(),
                 rhs: other.ty.clone(),
             });
@@ -173,6 +200,10 @@ impl RowType {
             tail,
         } = next
         {
+            let Label::Key(label) = label else {
+                panic!("RowType::to_protocol only supports Key labels for now");
+            };
+
             let ty = ty.to_protocol(interner);
             fields.push((interner[*label].to_owned(), ty));
 

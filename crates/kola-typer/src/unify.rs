@@ -282,7 +282,7 @@ impl<'s> Unifier<'s> {
                     tail: r,
                 },
             ) if a != b => {
-                let var = TypeVar::new();
+                let var = TypeVar::fresh();
                 let exp = MonoType::from(RowType::Extension {
                     head: LabeledType {
                         label: a.clone(),
@@ -358,7 +358,7 @@ mod tests {
     fn test_same_row_variable_different_extensions_should_fail() {
         let mut interner = StrInterner::new();
         let mut subs = Substitution::empty();
-        let shared_var = TypeVar::new();
+        let shared_var = TypeVar::fresh();
 
         // Type 1: { name : Str | shared_var }
         let type1 = MonoType::row(
@@ -406,7 +406,7 @@ mod tests {
     fn test_record_unification_with_annotation() {
         let mut interner = StrInterner::new();
         let mut subs = Substitution::empty();
-        let shared_row_var = TypeVar::new();
+        let shared_row_var = TypeVar::fresh();
 
         // Person a = { name : Str | a }
         let person_a = MonoType::row(
@@ -461,7 +461,7 @@ mod tests {
     fn test_occurs_check() {
         let mut interner = StrInterner::new();
         let mut subs = Substitution::empty();
-        let var = TypeVar::new();
+        let var = TypeVar::fresh();
 
         // Create a recursive type: var = { field : var }
         let recursive_type = MonoType::row(
@@ -490,8 +490,8 @@ mod tests {
     #[test]
     fn test_function_with_variables() {
         let mut subs = Substitution::empty();
-        let var_a = TypeVar::new();
-        let var_b = TypeVar::new();
+        let var_a = TypeVar::fresh();
+        let var_b = TypeVar::fresh();
 
         // f1: a -> a (identity function)
         let f1 = MonoType::pure_func(MonoType::Var(var_a), MonoType::Var(var_a));
@@ -561,8 +561,8 @@ mod tests {
     fn test_row_variable_chaining() {
         let mut interner = StrInterner::new();
         let mut subs = Substitution::empty();
-        let var1 = TypeVar::new();
-        let var2 = TypeVar::new();
+        let var1 = TypeVar::fresh();
+        let var2 = TypeVar::fresh();
 
         // First bind var1 = var2
         let result1 = MonoType::Var(var1).try_unify(&MonoType::Var(var2), &mut subs);

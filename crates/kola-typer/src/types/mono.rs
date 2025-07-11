@@ -6,8 +6,8 @@ use serde::{Deserialize, Serialize};
 use std::fmt;
 
 use super::{
-    CompType, FuncType, LabeledType, ListType, PolyType, PrimitiveType, RowType, TypeRep, TypeVar,
-    Typed,
+    CompType, FuncType, Kind, KindedVar, Label, LabeledType, ListType, PolyType, PrimitiveType,
+    RowType, TypeRep, TypeVar, Typed,
 };
 use crate::{
     env::KindEnv,
@@ -39,7 +39,7 @@ impl MonoType {
 
 impl MonoType {
     pub fn variable() -> Self {
-        Self::Var(TypeVar::new())
+        Self::Var(TypeVar::fresh())
     }
 
     pub fn func(arg: Self, ret: CompType) -> Self {
@@ -68,7 +68,7 @@ impl MonoType {
 
     pub fn from_protocol(
         proto: TypeProtocol,
-        bound: &[TypeVar],
+        bound: &[KindedVar],
         interner: &mut StrInterner,
     ) -> Self {
         let this = match proto {
@@ -83,7 +83,7 @@ impl MonoType {
                 let mut row = Self::empty_row();
                 for (label, ty) in fields.into_iter().rev() {
                     let labeled = LabeledType::new(
-                        interner.intern(label),
+                        Label::Key(interner.intern(label)),
                         Self::from_protocol(ty, bound, interner),
                     );
                     row = Self::row(labeled, row);
@@ -94,7 +94,7 @@ impl MonoType {
                 let mut row = Self::empty_row();
                 for (label, ty) in tags.into_iter().rev() {
                     let labeled = LabeledType::new(
-                        interner.intern(label),
+                        Label::Key(interner.intern(label)),
                         Self::from_protocol(ty, bound, interner),
                     );
                     row = Self::row(labeled, row);
@@ -105,7 +105,7 @@ impl MonoType {
                 Self::from_protocol(*arg, bound, interner),
                 CompType::from_protocol(*ret, bound, interner),
             ),
-            TypeProtocol::Var(id) => Self::Var(bound[id as usize]),
+            TypeProtocol::Var(id) => Self::Var(bound[id as usize].var),
         };
 
         this
@@ -156,11 +156,30 @@ impl MonoType {
 
 impl MonoType {
     /// Takes a type with type vars inside and returns a polytype, with the type vars generalized inside the forall
-    pub fn generalize(&self, bound: &[TypeVar]) -> PolyType {
-        let vars = self.free_vars(bound);
+    pub fn generalize(&self, bound: &[TypeVar], env: &KindEnv) -> PolyType {
+        let forall = self.free_vars(bound);
+
+        let forall = forall
+            .into_iter()
+            .map(|tv| {
+                let kind = if let Some(kinds) = env.get(&tv) {
+                    assert!(
+                        kinds.len() == 1,
+                        "Type variable {} has multiple kinds: {:?}",
+                        tv,
+                        kinds
+                    );
+                    kinds[0].clone()
+                } else {
+                    Kind::Type
+                };
+                KindedVar::new(tv, kind)
+            })
+            .collect::<Vec<_>>();
 
         PolyType {
-            vars,
+            with: Vec::new(), // with bound variables are only possible in annotated types
+            forall,
             ty: self.clone(),
         }
     }

@@ -229,7 +229,7 @@ pub fn type_check(
 
             // Generalize immediately (making it available for subsequent binds)
             let actual_t = typed_nodes.meta(def.id()).to_mono().unwrap();
-            let poly_type = actual_t.generalize(&[]); // TODO should bound be something ? &type_env.bound_vars()
+            let poly_type = actual_t.generalize(&[], &kind_env); // TODO should bound be something ? &type_env.bound_vars()
             module_env.insert_value(value_sym, def, poly_type.clone());
 
             // Update annotations with the final type

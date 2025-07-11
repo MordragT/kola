@@ -1196,23 +1196,34 @@ pub fn type_parser<'t>() -> impl KolaParser<'t, Id<node::Type>> + Clone {
 ///             | type_expression
 /// ```
 pub fn type_scheme_parser<'t>() -> impl KolaParser<'t, Id<node::TypeScheme>> + Clone {
+    let var = symbol().map_to_node(node::TypeVar);
+
+    let kind = choice((
+        kw(KwT::RECORD).to(node::Kind::Record),
+        kw(KwT::LABEL).to(node::Kind::Label),
+    ))
+    .to_node();
+
+    let bind = kind
+        .or_not()
+        .then(var)
+        .map_to_node(|(kind, var)| node::TypeVarBind { kind, var })
+        .boxed();
+
+    let with = kw(KwT::WITH)
+        .ignore_then(bind.clone().repeated().at_least(1).collect())
+        .then_ignore(ctrl(CtrlT::DOT))
+        .map_to_node(node::WithBinder);
+
     // hindley milner only allows standard polymorphism (top-level forall)
     // higher-rank polymorphism (nested forall) is undecidable for full type-inference
-    kw(KwT::FORALL)
-        .ignore_then(
-            symbol()
-                .map_to_node(node::TypeVar)
-                .repeated()
-                .at_least(1)
-                .collect(),
-        )
+    let forall = kw(KwT::FORALL)
+        .ignore_then(bind.repeated().at_least(1).collect())
         .then_ignore(ctrl(CtrlT::DOT))
-        .or_not()
-        .then(type_parser())
-        .map_to_node(|(vars, ty)| node::TypeScheme {
-            vars: vars.unwrap_or_default(),
-            ty,
-        })
+        .map_to_node(node::ForallBinder);
+
+    group((with.or_not(), forall.or_not(), type_parser()))
+        .map_to_node(|(with, forall, ty)| node::TypeScheme { with, forall, ty })
         .boxed()
 }
 
@@ -1847,12 +1858,14 @@ mod tests {
         let inspector = NodeInspector::new(node, &builder, &interner);
 
         inspector
-            .has_vars_count(2)
-            .vars_at(0)
+            .forall()
+            .has_inner_count(2)
+            .inner_at(0)
+            .var()
             .inspect(|name, tree| {
                 assert_eq!(interner.get(name.get(tree).0).unwrap(), "a");
             });
-        inspector.vars_at(1).inspect(|name, tree| {
+        inspector.forall().inner_at(1).var().inspect(|name, tree| {
             assert_eq!(interner.get(name.get(tree).0).unwrap(), "b");
         });
 
@@ -1892,12 +1905,8 @@ mod tests {
 
         let inspector = NodeInspector::new(node, &builder, &interner);
         inspector.name().has_name("Person");
-        inspector
-            .ty_scheme()
-            .has_vars_count(1)
-            .ty()
-            .to_record()
-            .has_fields_count(3);
+        inspector.ty_scheme().forall().has_inner_count(1);
+        inspector.ty_scheme().ty().to_record().has_fields_count(3);
     }
 
     #[test]
@@ -1914,8 +1923,10 @@ mod tests {
         inspector.name().has_name("Option");
         inspector
             .ty_scheme()
-            .has_vars_count(2)
-            .vars_at(0)
+            .forall()
+            .has_inner_count(2)
+            .inner_at(0)
+            .var()
             .inspect(|name, tree| {
                 assert_eq!(interner.get(name.get(tree).0).unwrap(), "a");
             });

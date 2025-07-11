@@ -1,5 +1,3 @@
-use std::u32;
-
 use kola_ir::instr as ir;
 use kola_resolver::{
     phase::{ResolvePhase, ResolvedModule, ResolvedNodes, ResolvedValue},
@@ -34,11 +32,6 @@ impl<'a> SymbolEnv<'a> {
     {
         let sym = self.resolved.meta(id);
         ir::Symbol(sym.id())
-    }
-
-    pub fn symbol_expr_id(&self, id: TreeId<node::SymbolExpr>) -> u32 {
-        let sym = *self.resolved.meta(id);
-        sym.id()
     }
 
     pub fn atom_of_expr(&self, id: TreeId<node::QualifiedExpr>) -> ir::Atom {

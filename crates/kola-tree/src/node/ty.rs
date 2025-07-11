@@ -1,8 +1,8 @@
-use derive_more::{From, IntoIterator};
+use derive_more::{Display, From, IntoIterator};
 use enum_as_inner::EnumAsInner;
 use kola_macros::{Inspector, Notate};
 use serde::{Deserialize, Serialize};
-use std::{borrow::Borrow, ops::Deref};
+use std::{borrow::Borrow, fmt, ops::Deref};
 
 use kola_print::prelude::*;
 use kola_utils::interner::StrKey;
@@ -430,10 +430,95 @@ impl<'a> Notate<'a> for NodePrinter<'a, Type> {
 }
 
 #[derive(
-    Debug, Notate, Inspector, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+    Debug, Display, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+)]
+pub enum Kind {
+    // Type,
+    Record,
+    Label,
+}
+
+impl<'a> Notate<'a> for NodePrinter<'a, Kind> {
+    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
+        self.value.cyan().display_in(arena)
+    }
+}
+
+#[derive(
+    Debug,
+    Notate,
+    Inspector,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
+)]
+#[notate(color = "cyan")]
+pub struct TypeVarBind {
+    pub kind: Option<Id<Kind>>,
+    pub var: Id<TypeVar>,
+}
+
+#[derive(
+    Debug,
+    Notate,
+    Inspector,
+    From,
+    IntoIterator,
+    Clone,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
+)]
+#[notate(color = "cyan")]
+#[into_iterator(owned, ref)]
+pub struct WithBinder(pub Vec<Id<TypeVarBind>>);
+
+#[derive(
+    Debug,
+    Notate,
+    Inspector,
+    From,
+    IntoIterator,
+    Clone,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
+)]
+#[notate(color = "cyan")]
+#[into_iterator(owned, ref)]
+pub struct ForallBinder(pub Vec<Id<TypeVarBind>>);
+
+#[derive(
+    Debug,
+    Notate,
+    Inspector,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
 )]
 #[notate(color = "green")]
 pub struct TypeScheme {
-    pub vars: Vec<Id<TypeVar>>,
+    pub with: Option<Id<WithBinder>>,
+    pub forall: Option<Id<ForallBinder>>,
     pub ty: Id<Type>,
 }

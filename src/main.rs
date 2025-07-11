@@ -22,10 +22,10 @@ pub enum Cmd {
 }
 
 fn main() -> io::Result<()> {
-    env_logger::init();
-    // env_logger::builder()
-    //     .filter_level(log::LevelFilter::Debug)
-    //     .init();
+    // env_logger::init();
+    env_logger::builder()
+        .filter_level(log::LevelFilter::Debug)
+        .init();
 
     let cli: Cli = clap::Parser::parse();
 

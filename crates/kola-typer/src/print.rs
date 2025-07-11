@@ -45,7 +45,6 @@ impl<'a> Decorator<'a> for TypeDecorator<'a> {
             | Meta::IfExpr(t)
             | Meta::LambdaExpr(t)
             | Meta::TagExpr(t)
-            | Meta::SymbolExpr(t)
             | Meta::TypeRepExpr(t)
             | Meta::Expr(t)
             | Meta::HandlerClause(t) => t.green().display_in(arena),
@@ -62,6 +61,9 @@ impl<'a> Decorator<'a> for TypeDecorator<'a> {
             | Meta::EffectTypeBind(rt) => rt.green().display_in(arena),
 
             // Types
+            Meta::Kind(kind) => kind.green().display_in(arena),
+            Meta::TypeVarBind(kv) => kv.green().display_in(arena),
+            Meta::WithBinder(vars) | Meta::ForallBinder(vars) => return notation,
             Meta::RecordFieldType(lt) | Meta::TagType(lt) => lt.green().display_in(arena),
             Meta::RecordType(t) | Meta::VariantType(t) | Meta::FuncType(t) => {
                 t.green().display_in(arena)

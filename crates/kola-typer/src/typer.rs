@@ -13,7 +13,7 @@ use crate::{
     pattern_typer::PatternTyper,
     phase::{TypePhase, TypedNodes},
     substitute::{Substitutable, Substitution},
-    types::{CompType, Kind, LabeledType, MonoType, PolyType, RowType, TypeVar},
+    types::{CompType, Kind, KindedVar, Label, LabeledType, MonoType, PolyType, RowType, TypeVar},
 };
 
 // https://blog.stimsina.com/post/implementing-a-hindley-milner-type-system-part-2
@@ -147,7 +147,7 @@ where
     ) -> ControlFlow<Self::BreakValue> {
         let node::EffectOpType { name, ty } = *id.get(tree);
 
-        let label = name.get(tree).0;
+        let label = Label::Key(name.get(tree).0);
 
         self.visit_type(ty, tree)?;
         let ty = match self.types.meta(ty).to_mono() {
@@ -263,6 +263,68 @@ where
         ControlFlow::Continue(())
     }
 
+    fn visit_type_var_bind(
+        &mut self,
+        id: Id<node::TypeVarBind>,
+        tree: &T,
+    ) -> ControlFlow<Self::BreakValue> {
+        let node::TypeVarBind { kind, var } = *id.get(tree);
+
+        let name = var.get(tree).0;
+        let var = TypeVar::fresh();
+
+        self.local_env.enter(name, MonoType::Var(var));
+
+        let kind = if let Some(kind_id) = kind {
+            match kind_id.get(tree) {
+                node::Kind::Record => Kind::Record,
+                node::Kind::Label => Kind::Label,
+            }
+        } else {
+            Kind::Type
+        };
+
+        self.insert_type(id, KindedVar::new(var, kind));
+
+        ControlFlow::Continue(())
+    }
+
+    fn visit_forall_binder(
+        &mut self,
+        id: Id<node::ForallBinder>,
+        tree: &T,
+    ) -> ControlFlow<Self::BreakValue> {
+        let mut vars = Vec::new();
+
+        for &bind_id in id.get(tree) {
+            self.visit_type_var_bind(bind_id, tree)?;
+            let kinded_var = self.types.meta(bind_id).clone();
+            vars.push(kinded_var);
+        }
+
+        self.insert_type(id, vars);
+
+        ControlFlow::Continue(())
+    }
+
+    fn visit_with_binder(
+        &mut self,
+        id: Id<node::WithBinder>,
+        tree: &T,
+    ) -> ControlFlow<Self::BreakValue> {
+        let mut vars = Vec::new();
+
+        for &bind_id in id.get(tree) {
+            self.visit_type_var_bind(bind_id, tree)?;
+            let kinded_var = self.types.meta(bind_id).clone();
+            vars.push(kinded_var);
+        }
+
+        self.insert_type(id, vars);
+
+        ControlFlow::Continue(())
+    }
+
     /// Rule for Polymorphic Type with Type Variables
     ///
     /// ```ignore
@@ -286,33 +348,35 @@ where
         id: Id<node::TypeScheme>,
         tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
-        let node::TypeScheme { vars, ty } = id.get(tree);
+        let node::TypeScheme { with, forall, ty } = *id.get(tree);
 
-        let type_vars = vars
-            .iter()
-            .map(|var_node| {
-                let var_name = var_node.get(tree).0;
-                let type_var = TypeVar::new();
+        let with = if let Some(with) = with {
+            // Visit with binder to enter kinded type variables into local scope
+            self.visit_with_binder(with, tree)?;
+            self.types.meta(with).clone()
+        } else {
+            Vec::new()
+        };
 
-                self.local_env.enter(var_name, MonoType::Var(type_var));
-                type_var
-            })
-            .collect::<Vec<_>>();
+        let forall = if let Some(forall) = forall {
+            // Visit forall binder to enter type variables into local scope
+            self.visit_forall_binder(forall, tree)?;
+            self.types.meta(forall).clone()
+        } else {
+            Vec::new()
+        };
 
-        self.visit_type(*ty, tree)?;
-        let mono_t = match self.types.meta(*ty).to_mono() {
+        self.visit_type(ty, tree)?;
+        let mono_t = match self.types.meta(ty).to_mono() {
             Ok(t) => t,
             Err(e) => return ControlFlow::Break(e.into_diagnostic(self.span(id))),
         };
 
         // Do not exit type variables here, as they might be referenced in inner type annotations of value bind expr.
-        // for var_node in vars.iter().rev() {
-        //     let var_name = var_node.get(tree).0;
-        //     self.local_env.exit(&var_name);
-        // }
 
         let poly_t = PolyType {
-            vars: type_vars,
+            with,
+            forall,
             ty: mono_t,
         };
         self.insert_type(id, poly_t);
@@ -422,17 +486,19 @@ where
                 BuiltinType::Char => PolyType::from_mono(MonoType::CHAR),
                 BuiltinType::Str => PolyType::from_mono(MonoType::STR),
                 BuiltinType::List => {
-                    let var = TypeVar::new();
+                    let kinded = KindedVar::fresh();
                     PolyType {
-                        vars: vec![var],
-                        ty: MonoType::list(MonoType::Var(var)),
+                        with: Vec::new(),
+                        forall: vec![kinded],
+                        ty: MonoType::list(MonoType::Var(kinded.var)),
                     }
                 }
                 BuiltinType::Type => {
-                    let var = TypeVar::new();
+                    let kinded = KindedVar::fresh();
                     PolyType {
-                        vars: vec![var],
-                        ty: MonoType::type_rep(MonoType::Var(var)),
+                        with: Vec::new(),
+                        forall: vec![kinded],
+                        ty: MonoType::list(MonoType::Var(kinded.var)),
                     }
                 }
             }
@@ -539,21 +605,36 @@ where
         };
 
         self.visit_type(constructor, tree)?;
-        let PolyType { vars, ty } = self.types.meta(constructor);
+        let PolyType { with, forall, ty } = self.types.meta(constructor);
 
-        let [first_var, remaining_vars @ ..] = vars.as_slice() else {
+        if !with.is_empty() {
+            return ControlFlow::Break(Diagnostic::error(
+                self.span(id),
+                "Type application does not support 'with' type variables",
+            ));
+        }
+
+        let [first_kinded, remaining_kinded @ ..] = forall.as_slice() else {
             return ControlFlow::Break(Diagnostic::error(
                 self.span(id),
                 "Type application requires at least one type variable",
             ));
         };
 
-        let mut substitution = Substitution::unit(*first_var, arg_t);
+        let mut substitution = Substitution::unit(first_kinded.var, arg_t);
         let result_t = ty.clone().apply(&mut substitution);
 
+        if first_kinded.kind != Kind::Type {
+            return ControlFlow::Break(Diagnostic::error(
+                self.span(id),
+                "Type application with a type variable other than 'Type' is not implemented",
+            ));
+        }
+
         let poly_t = PolyType {
+            with: Vec::new(),
+            forall: remaining_kinded.to_vec(),
             ty: result_t,
-            vars: remaining_vars.to_vec(),
         };
 
         self.insert_type(id, poly_t);
@@ -638,7 +719,7 @@ where
     ) -> ControlFlow<Self::BreakValue> {
         let node::RecordFieldType { name, ty } = *id.get(tree);
 
-        let label = name.get(tree).0;
+        let label = Label::Key(name.get(tree).0);
 
         self.visit_type(ty, tree)?;
         let value_t = match self.types.meta(ty).to_mono() {
@@ -734,7 +815,7 @@ where
     fn visit_tag_type(&mut self, id: Id<node::TagType>, tree: &T) -> ControlFlow<Self::BreakValue> {
         let node::TagType { name, ty } = *id.get(tree);
 
-        let label = name.get(tree).0;
+        let label = Label::Key(name.get(tree).0);
 
         let value_t = if let Some(payload_ty) = ty {
             self.visit_type(payload_ty, tree)?;
@@ -967,7 +1048,7 @@ where
                 .constrain_kind(Kind::Record, record_t.clone(), span);
 
             let value_t = MonoType::variable();
-            let label = field.get(tree).0.clone();
+            let label = Label::Key(field.get(tree).0.clone());
 
             let head_t = LabeledType {
                 label,
@@ -1010,7 +1091,7 @@ where
 
         let node::RecordField { label, ty, value } = *id.get(tree);
 
-        let label = label.get(tree).0.clone();
+        let label = Label::Key(label.get(tree).0.clone());
         let value_t = self.types.meta(value).clone();
 
         if let Some(ty) = ty {
@@ -1110,7 +1191,7 @@ where
                 .constrain_kind(Kind::Record, source_t.clone(), span);
 
             let value_t = MonoType::variable();
-            let label = field_id.get(tree).0;
+            let label = Label::Key(field_id.get(tree).0);
 
             let head_t = LabeledType {
                 label,
@@ -1140,7 +1221,7 @@ where
             self.cons.constrain_equal(expected_t, value_t.clone(), span);
         }
 
-        let label = field.get(tree).0.clone();
+        let label = Label::Key(field.get(tree).0.clone());
         let head_t = LabeledType {
             label,
             ty: value_t.clone(),
@@ -1209,7 +1290,7 @@ where
                 .constrain_kind(Kind::Record, source_t.clone(), span);
 
             let value_t = MonoType::variable();
-            let label = field_id.get(tree).0;
+            let label = Label::Key(field_id.get(tree).0);
 
             let head_t = LabeledType {
                 label,
@@ -1241,7 +1322,7 @@ where
             self.cons.constrain_equal(expected_t, value_t.clone(), span);
         }
 
-        let label = field.get(tree).0.clone();
+        let label = Label::Key(field.get(tree).0.clone());
         let head_t = LabeledType { label, ty: value_t };
         let tail_t = MonoType::variable();
 
@@ -1351,7 +1432,7 @@ where
                 .constrain_kind(Kind::Record, source_t.clone(), span);
 
             let value_t = MonoType::variable();
-            let label = field_id.get(tree).0;
+            let label = Label::Key(field_id.get(tree).0);
 
             let head_t = LabeledType {
                 label,
@@ -1372,9 +1453,9 @@ where
             .constrain_kind(Kind::Record, source_t.clone(), span);
 
         let old_value_t = MonoType::variable();
-        let label = field.get(tree).0.clone();
+        let label = Label::Key(field.get(tree).0);
         let old_head_t = LabeledType {
-            label: label.clone(),
+            label,
             ty: old_value_t.clone(),
         };
         let tail_t = MonoType::variable();
@@ -1433,7 +1514,7 @@ where
         self.cons.constrain_kind(Kind::Record, lhs_t.clone(), span);
         self.cons.constrain_kind(Kind::Record, rhs_t.clone(), span);
 
-        let result = TypeVar::new();
+        let result = TypeVar::fresh();
         self.cons
             .constrain_merge(result, lhs_t, rhs_t, MergeKind::Deep, span);
 
@@ -1898,7 +1979,7 @@ where
         // so in the best case I woudlnt want to lookup the effect operation by name.
 
         let effect_row = RowType::unit(LabeledType {
-            label: name,
+            label: Label::Key(name),
             ty: op_t,
         });
 
@@ -1909,13 +1990,13 @@ where
     }
 
     fn visit_tag_expr(&mut self, id: Id<node::TagExpr>, tree: &T) -> ControlFlow<Self::BreakValue> {
-        let tag = *id.get(tree).0.get(tree);
+        let tag = Label::Key(id.get(tree).0.get(tree).0);
 
         // We want to create an open row type for the tag expression
         let row_var = MonoType::variable();
 
         let arg_t = MonoType::variable();
-        let ret_t = MonoType::row(LabeledType::new(tag.0, arg_t.clone()), row_var);
+        let ret_t = MonoType::row(LabeledType::new(tag, arg_t.clone()), row_var);
         let tag_t = MonoType::pure_func(arg_t, ret_t);
 
         self.insert_type(id, tag_t);
@@ -2009,7 +2090,6 @@ where
             node::Expr::Call(id) => &self.types.meta(id).ty, // TODO this discards the effect
             node::Expr::Handle(id) => &self.types.meta(id).ty, // TODO this discards the effect
             node::Expr::Do(id) => &self.types.meta(id).ty,   // TODO this discards the effect
-            node::Expr::Symbol(_id) => &MonoType::NUM,
             node::Expr::Tag(id) => self.types.meta(id),
             node::Expr::TypeRep(id) => self.types.meta(id),
         }

@@ -11,10 +11,10 @@
     #this doesn't work currently, because effects are currently just discarded
     #effectful : Str -> Unit ~ Io = fn x => do print x,
 
-    effect type Io = {
-        print : Str -> Unit,
-        read : Unit -> Str,
-    },
+    #effect type Io = {
+    #    print : Str -> Unit,
+    #    read : Unit -> Str,
+    #},
 
     #effectful : Unit -> Str = fn x => do read (),
 
@@ -34,9 +34,9 @@
     #    | < Some: v > => "Value"
     #    | _ => "Unknown case",
 
-    module test = {
-        private_pi = 3.14,
-    },
+    #module test = {
+    #    private_pi = 3.14,
+    #},
 
     #main = test::private_pi,
 
@@ -45,22 +45,33 @@
 
     #main = bl ++ al,
 
-    a = { a = { m = 3 }, b = 2 },
-    b = { a = { n = 4 }, d = 4 },
+    #a = { a = { m = 3 }, b = 2 },
+    #b = { a = { n = 4 }, d = 4 },
 
     #main = a & b,
 
-    type Person = {
-        name : Str,
-        age : Num,
-    },
+    #type Person = {
+    #    name : Str,
+    #    age : Num,
+    #},
 
-    f = fn x => x,
+    #f = fn x => x,
 
-    main = @Person,
+    #main = @Person,
 
-    export effect type Test = {
-        test : Num -> Person,
-    },
+    #export effect type Test = {
+    #    test : Num -> Person,
+    #},
 
+    row_id : with label l . forall record r . r = fn r => r,
+
+    #row_id label l : forall record r . r = fn r => r,
+    # pros: partial inference feels natural,
+    # more explicit that a value position type expr must be provided
+    # type function in type bind doesn't make sense
+    # cons: could look like a term parameter not a type parameter
+
+    #type Test label l = forall record r . { @label : Num | r },
+
+    main = (row_id { a = 1, b = 2, c = 3 }),
 }

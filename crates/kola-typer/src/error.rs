@@ -2,7 +2,7 @@ use kola_span::IntoDiagnostic;
 use kola_utils::{errors::Errors, interner::StrKey, interner_ext::DisplayWithInterner};
 use thiserror::Error;
 
-use crate::types::{Kind, MonoType, PolyType, TypeVar};
+use crate::types::{Kind, Label, MonoType, PolyType, TypeVar};
 
 #[derive(Debug, Clone, Error)]
 pub enum TypeConversionError {
@@ -24,7 +24,7 @@ pub enum TypeError {
         rhs: MonoType,
     },
     CannotMergeLabel {
-        label: StrKey,
+        label: Label,
         lhs: MonoType,
         rhs: MonoType,
     },
@@ -33,7 +33,7 @@ pub enum TypeError {
         actual: MonoType,
     },
     CannotUnifyLabel {
-        label: StrKey,
+        label: Label,
         expected: MonoType,
         actual: MonoType,
         cause: TypeErrors,
@@ -42,8 +42,8 @@ pub enum TypeError {
         expected: Kind,
         actual: MonoType,
     },
-    ExtraLabel(StrKey),
-    MissingLabel(StrKey),
+    ExtraLabel(Label),
+    MissingLabel(Label),
 }
 
 impl DisplayWithInterner<str> for TypeError {
@@ -84,10 +84,12 @@ impl DisplayWithInterner<str> for TypeError {
                 writeln!(f, "Cannot Constrain: {:?} {}", expected, actual)
             }
             TypeError::ExtraLabel(label) => {
-                writeln!(f, "Extra Label: {}", interner[*label])
+                writeln!(f, "Extra Label: ")?;
+                label.fmt(f, interner)
             }
             TypeError::MissingLabel(label) => {
-                writeln!(f, "Missing Label: {}", interner[*label])
+                writeln!(f, "Missing Label: ")?;
+                label.fmt(f, interner)
             }
         }
     }

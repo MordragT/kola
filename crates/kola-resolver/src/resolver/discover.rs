@@ -969,29 +969,6 @@ where
         }
     }
 
-    fn visit_symbol_expr(
-        &mut self,
-        id: Id<node::SymbolExpr>,
-        tree: &T,
-    ) -> ControlFlow<Self::BreakValue> {
-        let key = id.get(tree).0;
-
-        // TODO: I will need to decide if I will properly implement this and also resolve forward references
-        if let Some(value_sym) = self.stack.shape().get_value(ValueName::new(key)) {
-            let sym = AnySym::Value(value_sym);
-
-            self.stack.resolved_mut().insert_meta(id, sym);
-        } else if let Some(&value_sym) = self.stack.value_scope().get(&ValueName::new(key)) {
-            let sym = AnySym::Value(value_sym);
-
-            self.stack.resolved_mut().insert_meta(id, sym);
-        } else {
-            todo!()
-        }
-
-        ControlFlow::Continue(())
-    }
-
     fn visit_type_bind(
         &mut self,
         id: Id<node::TypeBind>,
@@ -1033,32 +1010,46 @@ where
         ControlFlow::Continue(())
     }
 
-    fn visit_type_scheme(
+    // gets called by with and forall binders
+    fn visit_type_var_bind(
         &mut self,
-        id: Id<node::TypeScheme>,
+        id: Id<node::TypeVarBind>,
         tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
-        let node::TypeScheme { vars, ty } = id.get(tree);
+        let node::TypeVarBind { var, .. } = *id.get(tree);
 
-        // Enter type parameter scope
-        for &var_id in vars {
-            let name = var_id.get(tree).0.into();
-            let sym = TypeSym::new();
+        let name = var.get(tree).0.into();
+        let sym = TypeSym::new();
 
-            self.insert_symbol(var_id, sym);
-            self.stack.type_scope_mut().enter(name, sym);
-        }
-
-        self.visit_type(*ty, tree)?;
-
-        // Exit type parameter scope (in reverse order)
-        // for var in vars.iter().rev() {
-        //     let name = var.get(tree).0.into();
-        //     self.stack.type_scope_mut().exit(&name);
-        // }
+        self.insert_symbol(id, sym);
+        self.stack.type_scope_mut().enter(name, sym);
 
         ControlFlow::Continue(())
     }
+
+    // // TODO this isn't really necessary anymore to implement,
+    // // because it is essentially a walk
+    // fn visit_type_scheme(
+    //     &mut self,
+    //     id: Id<node::TypeScheme>,
+    //     tree: &T,
+    // ) -> ControlFlow<Self::BreakValue> {
+    //     let node::TypeScheme { with, forall, ty } = *id.get(tree);
+
+    //     // Enters with variables in scope
+    //     if let Some(with) = with {
+    //         self.visit_with_binder(with, tree)?;
+    //     }
+
+    //     // Enters forall variables in scope
+    //     if let Some(forall) = forall {
+    //         self.visit_forall_binder(forall, tree)?;
+    //     }
+
+    //     self.visit_type(ty, tree)?;
+
+    //     ControlFlow::Continue(())
+    // }
 
     fn visit_qualified_type(
         &mut self,

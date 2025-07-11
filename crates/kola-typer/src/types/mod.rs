@@ -1,15 +1,6 @@
-pub use comp::*;
 use derive_more::Display;
-pub use func::*;
-pub use list::*;
-pub use module::*;
-pub use mono::*;
-pub use poly::*;
-pub use primitive::*;
-pub use row::*;
-pub use type_rep::*;
-pub use var::*;
-pub use visit::*;
+use serde::{Deserialize, Serialize};
+use std::{fmt, ops::ControlFlow};
 
 mod comp;
 mod func;
@@ -23,21 +14,57 @@ mod type_rep;
 mod var;
 mod visit;
 
+pub use comp::*;
+pub use func::*;
+pub use list::*;
+pub use module::*;
+pub use mono::*;
+pub use poly::*;
+pub use primitive::*;
+pub use row::*;
+pub use type_rep::*;
+pub use var::*;
+pub use visit::*;
+
 use super::{env::KindEnv, error::TypeError};
-use std::ops::ControlFlow;
+use crate::substitute::{Substitutable, Substitution};
+
+// pub type Kinded<T> = (T, Kind);
 
 /// Represents a constraint on a type variable to a specific kind (*i.e.*, a type class).
 /// kind preserving unification (see Extensible Records with Scoped Labels)
-#[derive(Debug, Display, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(
+    Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+)]
 pub enum Kind {
+    #[default]
+    Type,
     Addable,
     Comparable,
     Equatable,
     Stringable,
-    // Logical ??
     Record,
-    Effect,
-    Handler,
+    Label,
+}
+
+impl Substitutable for Kind {
+    fn try_apply(&self, _s: &mut Substitution) -> Option<Self> {
+        None
+    }
+}
+
+impl fmt::Display for Kind {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Kind::Type => write!(f, "type"),
+            Kind::Addable => write!(f, "addable"),
+            Kind::Comparable => write!(f, "comparable"),
+            Kind::Equatable => write!(f, "equatable"),
+            Kind::Stringable => write!(f, "stringable"),
+            Kind::Record => write!(f, "record"),
+            Kind::Label => write!(f, "label"),
+        }
+    }
 }
 
 pub trait Typed: TypeVisitable {

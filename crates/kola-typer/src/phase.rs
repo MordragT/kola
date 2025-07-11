@@ -55,7 +55,6 @@ impl Phase for TypePhase {
     type HandlerClause = types::MonoType;
     type HandleExpr = types::CompType;
     type DoExpr = types::CompType;
-    type SymbolExpr = types::MonoType;
     type TypeRepExpr = types::MonoType;
     type ExprError = !;
     // TODO this is MonoType for now but this should change when CompTypes are properly handled
@@ -78,6 +77,10 @@ impl Phase for TypePhase {
     type CompType = types::CompType;
     type Type = types::PolyType;
     type TypeError = !;
+    type Kind = types::Kind;
+    type TypeVarBind = types::KindedVar;
+    type WithBinder = Vec<types::KindedVar>;
+    type ForallBinder = Vec<types::KindedVar>;
     type TypeScheme = types::PolyType;
 
     type Vis = !;

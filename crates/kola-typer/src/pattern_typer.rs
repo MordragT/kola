@@ -5,7 +5,7 @@ use std::ops::ControlFlow;
 use crate::{
     constraints::Constraints,
     env::LocalTypeEnv,
-    types::{LabeledType, MonoType},
+    types::{Label, LabeledType, MonoType},
 };
 
 pub struct PatternTyper<'a> {
@@ -203,7 +203,7 @@ where
             let field_type = MonoType::variable();
 
             // Create the labeled type for this field
-            let labeled_field = LabeledType::new(field_name, field_type.clone());
+            let labeled_field = LabeledType::new(Label::Key(field_name), field_type.clone());
 
             // Extend the record type with this field
             expected_record_type = MonoType::row(labeled_field, expected_record_type);
@@ -259,7 +259,7 @@ where
             let tag_type = MonoType::variable();
 
             // Create the labeled type for this case
-            let labeled_case = LabeledType::new(tag_name, tag_type.clone());
+            let labeled_case = LabeledType::new(Label::Key(tag_name), tag_type.clone());
 
             // Extend the variant type with this case
             expected_variant_type = MonoType::row(labeled_case, expected_variant_type);

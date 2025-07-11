@@ -324,7 +324,6 @@ impl_meta_substitutable!(
     HandlerClause,
     HandleExpr,
     DoExpr,
-    SymbolExpr,
     TypeRepExpr,
     ExprError,
     Expr,
@@ -344,6 +343,10 @@ impl_meta_substitutable!(
     CompType,
     Type,
     TypeError,
+    Kind,
+    TypeVarBind,
+    WithBinder,
+    ForallBinder,
     TypeScheme,
     // Modules
     Vis,
