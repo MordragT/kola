@@ -8,6 +8,7 @@ use serde::{Deserialize, Serialize};
 use super::{ModulePath, Pat, Type, TypeName, ValueName};
 use crate::{
     id::Id,
+    node::QualifiedType,
     print::NodePrinter,
     tree::{TreeBuilder, TreeView},
 };
@@ -1018,9 +1019,9 @@ impl TagExpr {
     Deserialize,
 )]
 #[notate(color = "blue")]
-pub struct TypeRepExpr {
-    pub path: Option<Id<ModulePath>>,
-    pub ty: Id<TypeName>,
+pub enum TypeWitnessExpr {
+    Qualified(Id<QualifiedType>),
+    Label(Id<ValueName>),
 }
 
 #[derive(
@@ -1058,7 +1059,7 @@ pub enum Expr {
     Handle(Id<HandleExpr>),
     Do(Id<DoExpr>),
     Tag(Id<TagExpr>),
-    TypeRep(Id<TypeRepExpr>),
+    TypeWitness(Id<TypeWitnessExpr>),
 }
 
 impl<'a> Notate<'a> for NodePrinter<'a, Expr> {
@@ -1083,7 +1084,7 @@ impl<'a> Notate<'a> for NodePrinter<'a, Expr> {
             Expr::Handle(h) => self.to_id(h).notate(arena),
             Expr::Do(d) => self.to_id(d).notate(arena),
             Expr::Tag(t) => self.to_id(t).notate(arena),
-            Expr::TypeRep(t) => self.to_id(t).notate(arena),
+            Expr::TypeWitness(t) => self.to_id(t).notate(arena),
         }
     }
 }

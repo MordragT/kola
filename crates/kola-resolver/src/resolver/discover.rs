@@ -761,42 +761,6 @@ where
         ControlFlow::Continue(())
     }
 
-    fn visit_type_rep_expr(
-        &mut self,
-        id: Id<node::TypeRepExpr>,
-        tree: &T,
-    ) -> ControlFlow<Self::BreakValue> {
-        let node::TypeRepExpr { path, ty } = *tree.node(id);
-
-        let name = *ty.get(tree);
-        let loc = self.span(id);
-
-        if let Some(path) = path {
-            // Just visit the module path if it exists
-            self.visit_module_path(path, tree)
-        } else if let Some(type_sym) = self.stack.shape().get_type(name) {
-            // Found a type binding in the current module scope
-            // which was defined before this type path (no forward reference)
-
-            self.insert_symbol(id, ResolvedType::Reference(type_sym));
-
-            ControlFlow::Continue(())
-        } else if let Some(type_sym) = self.stack.type_scope().get(&name) {
-            // Local quantifier will not create type bind cycle either
-            self.insert_symbol(id, ResolvedType::Reference(*type_sym));
-            ControlFlow::Continue(())
-        } else if let Some(builtin) = self.interner.get(name.0).and_then(BuiltinType::from_name) {
-            // This is a builtin type - resolve immediately, no dependencies needed
-            self.insert_symbol(id, ResolvedType::Builtin(builtin));
-            ControlFlow::Continue(())
-        } else {
-            let ref_ = TypeConst::type_rep(name, id, loc);
-            self.stack.cons_mut().insert_type(ref_);
-
-            ControlFlow::Continue(())
-        }
-    }
-
     fn visit_case_branch(
         &mut self,
         id: Id<node::CaseBranch>,

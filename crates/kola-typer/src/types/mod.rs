@@ -1,74 +1,87 @@
-use derive_more::Display;
 use serde::{Deserialize, Serialize};
 use std::{fmt, ops::ControlFlow};
 
 mod comp;
 mod func;
+mod label;
 mod list;
 mod module;
 mod mono;
 mod poly;
 mod primitive;
 mod row;
-mod type_rep;
 mod var;
 mod visit;
+mod wit;
 
 pub use comp::*;
 pub use func::*;
+pub use label::*;
 pub use list::*;
 pub use module::*;
 pub use mono::*;
 pub use poly::*;
 pub use primitive::*;
 pub use row::*;
-pub use type_rep::*;
 pub use var::*;
 pub use visit::*;
+pub use wit::*;
 
-use super::{env::KindEnv, error::TypeError};
+use super::{env::TypeClassEnv, error::TypeError};
 use crate::substitute::{Substitutable, Substitution};
 
-// pub type Kinded<T> = (T, Kind);
+/// Represents a constraint on a type variable to a specific type class.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+pub enum TypeClass {
+    Addable,
+    Comparable,
+    Equatable,
+    Stringable,
+}
 
-/// Represents a constraint on a type variable to a specific kind (*i.e.*, a type class).
-/// kind preserving unification (see Extensible Records with Scoped Labels)
+impl Substitutable for TypeClass {
+    fn try_apply(&self, _s: &mut Substitution) -> Option<Self> {
+        None
+    }
+}
+
+impl fmt::Display for TypeClass {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            TypeClass::Addable => write!(f, "addable"),
+            TypeClass::Comparable => write!(f, "comparable"),
+            TypeClass::Equatable => write!(f, "equatable"),
+            TypeClass::Stringable => write!(f, "stringable"),
+        }
+    }
+}
+
+/// Every type in the system has a kind, which is a classification of the type.
+/// Used for kind preserving unification (see Extensible Records with Scoped Labels)
 #[derive(
     Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
 )]
 pub enum Kind {
     #[default]
     Type,
-    Addable,
-    Comparable,
-    Equatable,
-    Stringable,
     Record,
     Label,
-}
-
-impl Substitutable for Kind {
-    fn try_apply(&self, _s: &mut Substitution) -> Option<Self> {
-        None
-    }
+    Tag,
 }
 
 impl fmt::Display for Kind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Kind::Type => write!(f, "type"),
-            Kind::Addable => write!(f, "addable"),
-            Kind::Comparable => write!(f, "comparable"),
-            Kind::Equatable => write!(f, "equatable"),
-            Kind::Stringable => write!(f, "stringable"),
             Kind::Record => write!(f, "record"),
             Kind::Label => write!(f, "label"),
+            Kind::Tag => write!(f, "tag"),
         }
     }
 }
 
 pub trait Typed: TypeVisitable {
-    fn constrain(&self, with: Kind, env: &mut KindEnv) -> Result<(), TypeError>;
+    fn constrain(&self, with: TypeClass, env: &mut TypeClassEnv) -> Result<(), TypeError>;
 
     /// occurs check
     fn contains(&self, var: &TypeVar) -> bool {

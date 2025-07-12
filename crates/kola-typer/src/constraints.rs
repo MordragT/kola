@@ -4,10 +4,10 @@ use kola_utils::errors::Errors;
 use log::trace;
 
 use crate::{
-    env::KindEnv,
+    env::TypeClassEnv,
     error::TypeErrors,
     substitute::{Substitutable, Substitution},
-    types::{Kind, MonoType, TypeVar, Typed},
+    types::{MonoType, TypeClass, TypeVar, Typed},
     unify::Unifiable,
 };
 
@@ -20,8 +20,8 @@ pub enum MergeKind {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Constraint {
-    Kind {
-        expected: Kind,
+    Class {
+        expected: TypeClass,
         actual: MonoType,
         span: Loc,
     },
@@ -47,8 +47,8 @@ impl Constraints {
         Self(Vec::new())
     }
 
-    pub fn constrain_kind(&mut self, expected: Kind, actual: MonoType, span: Loc) {
-        let c = Constraint::Kind {
+    pub fn constrain_class(&mut self, expected: TypeClass, actual: MonoType, span: Loc) {
+        let c = Constraint::Class {
             expected,
             actual,
             span,
@@ -104,11 +104,11 @@ impl Constraints {
     pub fn solve(
         self,
         s: &mut Substitution,
-        kind_env: &mut KindEnv,
+        kind_env: &mut TypeClassEnv,
     ) -> Result<(), Located<TypeErrors>> {
         for c in self.0 {
             match c {
-                Constraint::Kind {
+                Constraint::Class {
                     expected,
                     actual,
                     span,

@@ -41,7 +41,6 @@ impl Phase for TypePhase {
     type RecordMergeExpr = types::MonoType;
     type FieldPath = !;
     type QualifiedExpr = types::MonoType;
-    type TagExpr = types::MonoType;
     type UnaryOp = types::MonoType;
     type UnaryExpr = types::MonoType;
     type BinaryOp = types::MonoType;
@@ -55,7 +54,8 @@ impl Phase for TypePhase {
     type HandlerClause = types::MonoType;
     type HandleExpr = types::CompType;
     type DoExpr = types::CompType;
-    type TypeRepExpr = types::MonoType;
+    type TagExpr = types::MonoType;
+    type TypeWitnessExpr = types::MonoType;
     type ExprError = !;
     // TODO this is MonoType for now but this should change when CompTypes are properly handled
     type Expr = types::MonoType;
@@ -68,6 +68,7 @@ impl Phase for TypePhase {
 
     type QualifiedType = types::PolyType;
     type TypeVar = types::PolyType;
+    type Label = types::LabelOrVar;
     type RecordFieldType = types::LabeledType;
     type RecordType = types::MonoType;
     type TagType = types::LabeledType;
@@ -77,10 +78,9 @@ impl Phase for TypePhase {
     type CompType = types::CompType;
     type Type = types::PolyType;
     type TypeError = !;
-    type Kind = types::Kind;
-    type TypeVarBind = types::KindedVar;
-    type WithBinder = Vec<types::KindedVar>;
-    type ForallBinder = Vec<types::KindedVar>;
+    type Kind = types::TypeClass;
+    type TypeVarBind = types::TypeVar;
+    type ForallBinder = Vec<types::TypeVar>;
     type TypeScheme = types::PolyType;
 
     type Vis = !;

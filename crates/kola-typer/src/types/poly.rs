@@ -2,12 +2,12 @@ use std::fmt;
 
 use kola_protocol::TypeSchemeProtocol;
 use kola_utils::interner::StrInterner;
-use log::debug;
 use serde::{Deserialize, Serialize};
 
-use super::{Kind, KindedVar, MonoType, TypeVar, Typed};
+use super::{MonoType, TypeVar, Typed};
 use crate::{
     constraints::Constraints,
+    env::TypeClassEnv,
     error::TypeConversionError,
     substitute::{Substitutable, Substitution},
 };
@@ -18,19 +18,17 @@ use crate::{
 /// https://en.wikipedia.org/wiki/Hindley%e2%80%93Milner_type_system#Polytypes
 #[derive(Debug, Default, Clone, Hash, Serialize, Deserialize)]
 pub struct PolyType {
-    pub with: Vec<KindedVar>,   // with label l
-    pub forall: Vec<KindedVar>, // forall a row r
-    pub ty: MonoType,           // a -> { @l : a | r }
+    pub forall: Vec<TypeVar>, // forall label l row r a
+    pub ty: MonoType,         // a -> { @l : a | r }
 }
 
 impl PolyType {
-    pub fn new(with: Vec<KindedVar>, forall: Vec<KindedVar>, ty: MonoType) -> Self {
-        Self { with, forall, ty }
+    pub fn new(forall: Vec<TypeVar>, ty: MonoType) -> Self {
+        Self { forall, ty }
     }
 
     pub fn from_mono(ty: MonoType) -> Self {
         Self {
-            with: Vec::new(),
             forall: Vec::new(),
             ty,
         }
@@ -39,24 +37,22 @@ impl PolyType {
     pub fn from_proto(proto: TypeSchemeProtocol, interner: &mut StrInterner) -> Self {
         let TypeSchemeProtocol { forall, ty } = proto;
 
-        let forall = (0..forall).map(|_| KindedVar::fresh()).collect::<Vec<_>>();
+        // TODO protocol should have a way to define var kinds
+        let forall = (0..forall).map(|_| TypeVar::default()).collect::<Vec<_>>();
 
         // Convert types using simple array indexing
         let ty = MonoType::from_protocol(ty, &forall, interner);
 
-        // TODO with should be part of TypeSchemeProtocol
-        let with = Vec::new();
-
-        Self { with, forall, ty }
+        Self { forall, ty }
     }
 
-    pub fn bound_vars(&self) -> &Vec<KindedVar> {
+    pub fn bound_vars(&self) -> &Vec<TypeVar> {
         &self.forall
     }
 
     pub fn extend_free_vars(&self, buf: &mut Vec<TypeVar>) {
         self.ty.extend_type_vars(buf);
-        buf.retain(|tv| self.forall.iter().all(|kinded| kinded.var != *tv));
+        buf.retain(|tv| self.forall.iter().all(|var| var != tv));
     }
 
     pub fn free_vars(&self) -> Vec<TypeVar> {
@@ -98,21 +94,14 @@ impl PolyType {
             .forall
             .iter()
             .copied()
-            .map(|kinded| {
-                let fresh = MonoType::variable();
+            .map(|var| {
+                let fresh = var.fresh();
 
-                if kinded.kind != Kind::Type {
-                    // TODO constraints could be used but 1. we do not have a span
-                    // and 2. the constraint would be generated before the equal-constraint for the variable
-                    // Meaning the current order dependent constraint solving would not work.
-                    // Better to reintroduce obligations which are checked later.
-                    debug!(
-                        "Instantiation of special type variables is currently not implemented: {}",
-                        kinded.kind
-                    );
-                }
+                // TODO we need to somehow constrain that the fresh variable gets the type classes of the original variable
+                // At the moment though type classes can not be defined for PolyTypes,
+                // the only way is that a mono type gets generalized to a poly type and the variables were constrained before
 
-                (kinded.var, fresh)
+                (var, MonoType::Var(fresh))
             })
             .collect();
         let mut substitution = Substitution::new(table);
@@ -161,17 +150,7 @@ impl From<MonoType> for PolyType {
 
 impl fmt::Display for PolyType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        let Self { with, forall, ty } = self;
-
-        if !with.is_empty() {
-            write!(f, "with")?;
-
-            for kinded in with {
-                write!(f, " {kinded}")?;
-            }
-
-            write!(f, " . ")?;
-        }
+        let Self { forall, ty } = self;
 
         if !forall.is_empty() {
             write!(f, "forall")?;
@@ -223,21 +202,14 @@ impl Substitutable for PolyType {
         self.ty.try_apply(s).map(|ty| {
             // Remove quantified variables that have been resolved by substitution
 
-            let with = self
-                .with
-                .iter()
-                .filter(|kinded| !s.contains(&kinded.var))
-                .copied()
-                .collect();
-
             let forall = self
                 .forall
                 .iter()
-                .filter(|kinded| !s.contains(&kinded.var))
+                .filter(|var| !s.contains(var))
                 .copied()
                 .collect();
 
-            PolyType { with, forall, ty }
+            PolyType { forall, ty }
         })
     }
 }

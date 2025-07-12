@@ -262,9 +262,9 @@ where
         ControlFlow::Continue(())
     }
 
-    fn visit_type_rep_expr(
+    fn visit_type_witness_expr(
         &mut self,
-        id: TreeId<node::TypeRepExpr>,
+        id: TreeId<node::TypeWitnessExpr>,
         _tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
         let ty = self.typed.meta(id);

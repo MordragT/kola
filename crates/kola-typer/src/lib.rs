@@ -40,7 +40,7 @@ pub mod unify;
 
 pub mod prelude {
     pub use crate::constraints::{Constraint, Constraints};
-    pub use crate::env::{BoundVars, KindEnv, LocalTypeEnv, TypeEnv};
+    pub use crate::env::{BoundVars, LocalTypeEnv, TypeClassEnv, TypeEnv};
     pub use crate::error::{TypeError, TypeErrors};
     pub use crate::phase::{TypeAnnotations, TypePhase};
     pub use crate::print::TypeDecorator;

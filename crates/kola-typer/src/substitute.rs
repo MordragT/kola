@@ -310,7 +310,6 @@ impl_meta_substitutable!(
     RecordMergeExpr,
     FieldPath,
     QualifiedExpr,
-    TagExpr,
     UnaryOp,
     UnaryExpr,
     BinaryOp,
@@ -324,7 +323,8 @@ impl_meta_substitutable!(
     HandlerClause,
     HandleExpr,
     DoExpr,
-    TypeRepExpr,
+    TagExpr,
+    TypeWitnessExpr,
     ExprError,
     Expr,
     // Types
@@ -334,6 +334,7 @@ impl_meta_substitutable!(
     EffectType,
     QualifiedType,
     TypeVar,
+    Label,
     RecordFieldType,
     RecordType,
     TagType,
@@ -345,7 +346,6 @@ impl_meta_substitutable!(
     TypeError,
     Kind,
     TypeVarBind,
-    WithBinder,
     ForallBinder,
     TypeScheme,
     // Modules

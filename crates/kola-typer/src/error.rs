@@ -2,7 +2,7 @@ use kola_span::IntoDiagnostic;
 use kola_utils::{errors::Errors, interner::StrKey, interner_ext::DisplayWithInterner};
 use thiserror::Error;
 
-use crate::types::{Kind, Label, MonoType, PolyType, TypeVar};
+use crate::types::{LabelOrVar, MonoType, PolyType, TypeClass, TypeVar};
 
 #[derive(Debug, Clone, Error)]
 pub enum TypeConversionError {
@@ -24,7 +24,7 @@ pub enum TypeError {
         rhs: MonoType,
     },
     CannotMergeLabel {
-        label: Label,
+        label: LabelOrVar,
         lhs: MonoType,
         rhs: MonoType,
     },
@@ -33,17 +33,17 @@ pub enum TypeError {
         actual: MonoType,
     },
     CannotUnifyLabel {
-        label: Label,
+        label: LabelOrVar,
         expected: MonoType,
         actual: MonoType,
         cause: TypeErrors,
     },
     CannotConstrain {
-        expected: Kind,
+        expected: TypeClass,
         actual: MonoType,
     },
-    ExtraLabel(Label),
-    MissingLabel(Label),
+    ExtraLabel(LabelOrVar),
+    MissingLabel(LabelOrVar),
 }
 
 impl DisplayWithInterner<str> for TypeError {

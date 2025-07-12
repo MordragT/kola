@@ -198,7 +198,7 @@ pub struct TypeError;
 #[notate(color = "cyan")]
 pub struct QualifiedType {
     pub path: Option<Id<ModulePath>>,
-    pub ty: Id<TypeName>,
+    pub ty: Id<TypeName>, // TODO This also includes type variables which is a bit surprising
 }
 
 #[derive(
@@ -274,8 +274,29 @@ impl<'a> Notate<'a> for NodePrinter<'a, TypeVar> {
     Deserialize,
 )]
 #[notate(color = "cyan")]
+pub enum Label {
+    // TODO rename to LabelOrVar
+    Var(Id<TypeVar>),
+    Label(Id<ValueName>),
+}
+
+#[derive(
+    Debug,
+    Notate,
+    Inspector,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
+)]
+#[notate(color = "cyan")]
 pub struct RecordFieldType {
-    pub name: Id<ValueName>,
+    pub label_or_var: Id<Label>,
     pub ty: Id<Type>,
 }
 
@@ -410,6 +431,7 @@ pub struct TypeApplication {
 pub enum Type {
     Error(Id<TypeError>),
     Qualified(Id<QualifiedType>),
+    // TODO put a TypeVar here as variant
     Record(Id<RecordType>),
     Variant(Id<VariantType>),
     Func(Id<FuncType>),
@@ -481,25 +503,6 @@ pub struct TypeVarBind {
 )]
 #[notate(color = "cyan")]
 #[into_iterator(owned, ref)]
-pub struct WithBinder(pub Vec<Id<TypeVarBind>>);
-
-#[derive(
-    Debug,
-    Notate,
-    Inspector,
-    From,
-    IntoIterator,
-    Clone,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    Hash,
-    Serialize,
-    Deserialize,
-)]
-#[notate(color = "cyan")]
-#[into_iterator(owned, ref)]
 pub struct ForallBinder(pub Vec<Id<TypeVarBind>>);
 
 #[derive(
@@ -518,7 +521,6 @@ pub struct ForallBinder(pub Vec<Id<TypeVarBind>>);
 )]
 #[notate(color = "green")]
 pub struct TypeScheme {
-    pub with: Option<Id<WithBinder>>,
     pub forall: Option<Id<ForallBinder>>,
     pub ty: Id<Type>,
 }

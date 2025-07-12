@@ -4,7 +4,7 @@ use kola_protocol::TypeProtocol;
 use kola_utils::interner::StrInterner;
 use serde::{Deserialize, Serialize};
 
-use super::{KindedVar, MonoType, RowType, TypeVar};
+use super::{MonoType, RowType, TypeVar};
 use crate::{
     prelude::{Substitutable, Substitution},
     substitute::merge,
@@ -31,7 +31,7 @@ impl CompType {
 
     pub fn from_protocol(
         proto: TypeProtocol,
-        bound: &[KindedVar],
+        bound: &[TypeVar],
         interner: &mut StrInterner,
     ) -> Self {
         let ty = MonoType::from_protocol(proto, bound, interner);

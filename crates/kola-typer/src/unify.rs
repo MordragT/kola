@@ -16,10 +16,10 @@ pub trait Unifiable<Rhs = Self> {
     fn try_unify(&self, rhs: &Rhs, s: &mut Substitution) -> Result<(), TypeErrors>;
 }
 
-impl Unifiable for PrimitiveType {
+impl Unifiable for MonoType {
     fn try_unify(&self, rhs: &Self, s: &mut Substitution) -> Result<(), TypeErrors> {
         let mut unifier = Unifier::new(s);
-        unifier.unify_primitive(self, rhs);
+        unifier.unify_mono(self, rhs);
         if unifier.errors.has_errors() {
             Err(unifier.errors)
         } else {
@@ -28,10 +28,10 @@ impl Unifiable for PrimitiveType {
     }
 }
 
-impl Unifiable for FuncType {
+impl Unifiable for PrimitiveType {
     fn try_unify(&self, rhs: &Self, s: &mut Substitution) -> Result<(), TypeErrors> {
         let mut unifier = Unifier::new(s);
-        unifier.unify_func(self, rhs);
+        unifier.unify_primitive(self, rhs);
         if unifier.errors.has_errors() {
             Err(unifier.errors)
         } else {
@@ -52,10 +52,10 @@ impl Unifiable for CompType {
     }
 }
 
-impl Unifiable for MonoType {
+impl Unifiable for FuncType {
     fn try_unify(&self, rhs: &Self, s: &mut Substitution) -> Result<(), TypeErrors> {
         let mut unifier = Unifier::new(s);
-        unifier.unify_mono(self, rhs);
+        unifier.unify_func(self, rhs);
         if unifier.errors.has_errors() {
             Err(unifier.errors)
         } else {
@@ -88,18 +88,6 @@ impl Unifiable for ListType {
     }
 }
 
-impl Unifiable for TypeRep {
-    fn try_unify(&self, rhs: &Self, s: &mut Substitution) -> Result<(), TypeErrors> {
-        let mut unifier = Unifier::new(s);
-        unifier.unify_type_rep(self, rhs);
-        if unifier.errors.has_errors() {
-            Err(unifier.errors)
-        } else {
-            Ok(())
-        }
-    }
-}
-
 impl Unifiable for TypeVar {
     fn try_unify(&self, rhs: &Self, s: &mut Substitution) -> Result<(), TypeErrors> {
         let mut unifier = Unifier::new(s);
@@ -116,6 +104,18 @@ impl Unifiable<MonoType> for TypeVar {
     fn try_unify(&self, rhs: &MonoType, s: &mut Substitution) -> Result<(), TypeErrors> {
         let mut unifier = Unifier::new(s);
         unifier.bind_var(self, rhs);
+        if unifier.errors.has_errors() {
+            Err(unifier.errors)
+        } else {
+            Ok(())
+        }
+    }
+}
+
+impl Unifiable for TypeWit {
+    fn try_unify(&self, rhs: &Self, s: &mut Substitution) -> Result<(), TypeErrors> {
+        let mut unifier = Unifier::new(s);
+        unifier.unify_type_wit(self, rhs);
         if unifier.errors.has_errors() {
             Err(unifier.errors)
         } else {
@@ -167,31 +167,10 @@ impl<'s> Unifier<'s> {
 
     #[inline]
     fn unify_list(&mut self, lhs: &ListType, rhs: &ListType) {
-        self.unify_mono(&lhs.el, &rhs.el);
+        self.unify_mono(&lhs.0, &rhs.0);
     }
 
-    fn unify_mono(&mut self, lhs: &MonoType, rhs: &MonoType) {
-        // Apply current substitution to resolve any already-bound variables
-        let lhs = lhs.apply_cow(self.substitution);
-        let rhs = rhs.apply_cow(self.substitution);
-
-        match (lhs.as_ref(), rhs.as_ref()) {
-            (MonoType::Primitive(l), MonoType::Primitive(r)) => self.unify_primitive(l, r),
-            (MonoType::Func(l), MonoType::Func(r)) => self.unify_func(l, r),
-            (MonoType::List(l), MonoType::List(r)) => self.unify_list(l, r),
-            (MonoType::Row(l), MonoType::Row(r)) => self.unify_row(l, r),
-            (MonoType::TypeRep(l), MonoType::TypeRep(r)) => self.unify_type_rep(l, r),
-            (MonoType::Var(var), with) => self.bind_var(var, with),
-            (with, MonoType::Var(var)) => self.bind_var(var, with),
-            (l, r) => {
-                self.errors.push(TypeError::CannotUnify {
-                    expected: l.clone(),
-                    actual: r.clone(),
-                });
-            }
-        }
-    }
-
+    #[inline]
     fn unify_comp(&mut self, lhs: &CompType, rhs: &CompType) {
         // Apply current substitution to resolve any already-bound variables
         let lhs = lhs.apply_cow(self.substitution);
@@ -199,6 +178,75 @@ impl<'s> Unifier<'s> {
 
         self.unify_mono(&lhs.ty, &rhs.ty);
         self.unify_row(&lhs.effect, &rhs.effect);
+    }
+
+    #[inline]
+    fn can_unify_var(&mut self, lhs: &TypeVar, rhs: &TypeVar) -> bool {
+        if lhs != rhs {
+            match (lhs.kind(), rhs.kind()) {
+                (Kind::Type, Kind::Type)
+                | (Kind::Record, Kind::Record)
+                | (Kind::Label, Kind::Label)
+                | (Kind::Tag, Kind::Tag) => true,
+                (Kind::Type, _) => true,
+                (_, Kind::Type) => true,
+
+                _ => false,
+            }
+        } else {
+            true
+        }
+    }
+
+    #[inline]
+    fn unify_var(&mut self, lhs: &TypeVar, rhs: &TypeVar) {
+        // in former apply path compression via cache is already implemented
+        // so this should not become essentially an inefficient linked list
+        if lhs != rhs {
+            match (lhs.kind(), rhs.kind()) {
+                (Kind::Type, Kind::Type)
+                | (Kind::Record, Kind::Record)
+                | (Kind::Label, Kind::Label)
+                | (Kind::Tag, Kind::Tag) => {
+                    self.substitution.insert(*lhs, MonoType::Var(*rhs));
+                }
+                (Kind::Type, _) => {
+                    self.substitution.insert(*lhs, MonoType::Var(*rhs));
+                }
+                (_, Kind::Type) => {
+                    self.substitution.insert(*rhs, MonoType::Var(*lhs));
+                }
+
+                _ => {
+                    self.errors.push(TypeError::CannotUnify {
+                        expected: MonoType::Var(*lhs),
+                        actual: MonoType::Var(*rhs),
+                    });
+                }
+            }
+        }
+    }
+
+    #[inline]
+    fn can_unify_label_or_var(&mut self, lhs: &LabelOrVar, rhs: &LabelOrVar) -> bool {
+        match (lhs, rhs) {
+            (LabelOrVar::Label(l), LabelOrVar::Label(r)) => l == r,
+            (LabelOrVar::Var(l), LabelOrVar::Var(r)) => self.can_unify_var(l, r),
+            (LabelOrVar::Label(_), LabelOrVar::Var(_))
+            | (LabelOrVar::Var(_), LabelOrVar::Label(_)) => true,
+        }
+    }
+
+    #[inline]
+    fn unify_label_or_var(&mut self, lhs: &LabelOrVar, rhs: &LabelOrVar) {
+        match (lhs, rhs) {
+            (LabelOrVar::Label(l), LabelOrVar::Label(r)) => self.unify_label(l, r),
+            (LabelOrVar::Var(l), LabelOrVar::Var(r)) => self.unify_var(l, r),
+            (LabelOrVar::Label(label), LabelOrVar::Var(var))
+            | (LabelOrVar::Var(var), LabelOrVar::Label(label)) => {
+                self.bind_var(var, &MonoType::Label(label.clone()))
+            }
+        }
     }
 
     // Below are the rules for row unification. In what follows monotypes
@@ -235,7 +283,8 @@ impl<'s> Unifier<'s> {
                     head: LabeledType { label: b, ty: u },
                     tail: MonoType::Var(r),
                 },
-            ) if a == b && l == r => {
+            ) if self.can_unify_label_or_var(a, b) && l == r => {
+                self.unify_label_or_var(a, b);
                 self.branch_errors(
                     |ctx| ctx.unify_mono(t, u),
                     |cause| TypeError::CannotUnifyLabel {
@@ -255,10 +304,12 @@ impl<'s> Unifier<'s> {
                     head: LabeledType { label: b, .. },
                     tail: MonoType::Var(r),
                 },
-            ) if a != b && l == r => self.errors.push(TypeError::CannotUnify {
-                expected: MonoType::from(lhs.clone()),
-                actual: MonoType::from(rhs.clone()),
-            }),
+            ) if !self.can_unify_label_or_var(a, b) && l == r => {
+                self.errors.push(TypeError::CannotUnify {
+                    expected: MonoType::from(lhs.clone()),
+                    actual: MonoType::from(rhs.clone()),
+                })
+            }
             (
                 RowType::Extension {
                     head: LabeledType { label: a, ty: t },
@@ -268,7 +319,8 @@ impl<'s> Unifier<'s> {
                     head: LabeledType { label: b, ty: u },
                     tail: r,
                 },
-            ) if a == b => {
+            ) if self.can_unify_label_or_var(a, b) => {
+                self.unify_label_or_var(a, b);
                 self.unify_mono(t, u);
                 self.unify_mono(l, r);
             }
@@ -281,8 +333,8 @@ impl<'s> Unifier<'s> {
                     head: LabeledType { label: b, ty: u },
                     tail: r,
                 },
-            ) if a != b => {
-                let var = TypeVar::fresh();
+            ) if !self.can_unify_label_or_var(a, b) => {
+                let var = TypeVar::new(Kind::Type);
                 let exp = MonoType::from(RowType::Extension {
                     head: LabeledType {
                         label: a.clone(),
@@ -324,16 +376,48 @@ impl<'s> Unifier<'s> {
     }
 
     #[inline]
-    fn unify_type_rep(&mut self, lhs: &TypeRep, rhs: &TypeRep) {
-        self.unify_mono(&lhs.ty, &rhs.ty);
+    fn unify_label(&mut self, lhs: &Label, rhs: &Label) {
+        if lhs != rhs {
+            self.errors.push(TypeError::CannotUnify {
+                expected: MonoType::Label(lhs.clone()),
+                actual: MonoType::Label(rhs.clone()),
+            });
+        }
     }
 
     #[inline]
-    fn unify_var(&mut self, lhs: &TypeVar, rhs: &TypeVar) {
-        if lhs != rhs {
-            // in former apply path compression via cache is already implemented
-            // so this should not become essentially an inefficient linked list
-            self.substitution.insert(*lhs, MonoType::Var(*rhs));
+    fn unify_type_wit(&mut self, lhs: &TypeWit, rhs: &TypeWit) {
+        self.unify_mono(&lhs.0, &rhs.0);
+    }
+
+    #[inline]
+    fn unify_label_wit(&mut self, lhs: &LabelWit, rhs: &LabelWit) {
+        self.unify_label(&lhs.0, &rhs.0);
+    }
+
+    fn unify_mono(&mut self, lhs: &MonoType, rhs: &MonoType) {
+        // Apply current substitution to resolve any already-bound variables
+        let lhs = lhs.apply_cow(self.substitution);
+        let rhs = rhs.apply_cow(self.substitution);
+
+        match (lhs.as_ref(), rhs.as_ref()) {
+            (MonoType::Primitive(l), MonoType::Primitive(r)) => self.unify_primitive(l, r),
+            (MonoType::Func(l), MonoType::Func(r)) => self.unify_func(l, r),
+            (MonoType::List(l), MonoType::List(r)) => self.unify_list(l, r),
+            (MonoType::Row(l), MonoType::Row(r)) => self.unify_row(l, r),
+            (MonoType::Var(var), with) => self.bind_var(var, with),
+            (with, MonoType::Var(var)) => self.bind_var(var, with),
+            (MonoType::Label(l), MonoType::Label(r)) => {
+                self.unify_label(l, r);
+            }
+            (MonoType::TypeWit(l), MonoType::TypeWit(r)) => self.unify_type_wit(l, r),
+            (MonoType::LabelWit(l), MonoType::LabelWit(r)) => self.unify_label_wit(l, r),
+            (l, r) => {
+                self.errors.push(TypeError::CannotUnify {
+                    expected: l.clone(),
+                    actual: r.clone(),
+                });
+            }
         }
     }
 
@@ -358,19 +442,19 @@ mod tests {
     fn test_same_row_variable_different_extensions_should_fail() {
         let mut interner = StrInterner::new();
         let mut subs = Substitution::empty();
-        let shared_var = TypeVar::fresh();
+        let shared_var = TypeVar::new(Kind::Type);
 
         // Type 1: { name : Str | shared_var }
         let type1 = MonoType::row(
-            LabeledType::new(interner.intern("name"), MonoType::STR),
+            LabeledType::new(Label(interner.intern("name")), MonoType::STR),
             MonoType::Var(shared_var),
         );
 
         // Type 2: { name : Str, age : Num }
         let type2 = MonoType::row(
-            LabeledType::new(interner.intern("name"), MonoType::STR),
+            LabeledType::new(Label(interner.intern("name")), MonoType::STR),
             MonoType::row(
-                LabeledType::new(interner.intern("age"), MonoType::NUM),
+                LabeledType::new(Label(interner.intern("age")), MonoType::NUM),
                 MonoType::empty_row(),
             ),
         );
@@ -381,16 +465,16 @@ mod tests {
 
         // Type 3: { name : Str, car : Str }
         let type3 = MonoType::row(
-            LabeledType::new(interner.intern("name"), MonoType::STR),
+            LabeledType::new(Label(interner.intern("name")), MonoType::STR),
             MonoType::row(
-                LabeledType::new(interner.intern("car"), MonoType::STR),
+                LabeledType::new(Label(interner.intern("car")), MonoType::STR),
                 MonoType::empty_row(),
             ),
         );
 
         // Type 4: { name : Str | shared_var } (same shared_var!)
         let type4 = MonoType::row(
-            LabeledType::new(interner.intern("name"), MonoType::STR),
+            LabeledType::new(Label(interner.intern("name")), MonoType::STR),
             MonoType::Var(shared_var),
         );
 
@@ -406,45 +490,45 @@ mod tests {
     fn test_record_unification_with_annotation() {
         let mut interner = StrInterner::new();
         let mut subs = Substitution::empty();
-        let shared_row_var = TypeVar::fresh();
+        let shared_row_var = TypeVar::new(Kind::Type);
 
         // Person a = { name : Str | a }
         let person_a = MonoType::row(
-            LabeledType::new(interner.intern("name"), MonoType::STR),
+            LabeledType::new(Label(interner.intern("name")), MonoType::STR),
             MonoType::Var(shared_row_var),
         );
 
         // Annotation type: { zero : Person a, one : Person a }
         let annotation = MonoType::row(
-            LabeledType::new(interner.intern("zero"), person_a.clone()),
+            LabeledType::new(Label(interner.intern("zero")), person_a.clone()),
             MonoType::row(
-                LabeledType::new(interner.intern("one"), person_a.clone()),
+                LabeledType::new(Label(interner.intern("one")), person_a.clone()),
                 MonoType::empty_row(),
             ),
         );
 
         // alice_type = { name : Str, age : Num }
         let alice_type = MonoType::row(
-            LabeledType::new(interner.intern("name"), MonoType::STR),
+            LabeledType::new(Label(interner.intern("name")), MonoType::STR),
             MonoType::row(
-                LabeledType::new(interner.intern("age"), MonoType::NUM),
+                LabeledType::new(Label(interner.intern("age")), MonoType::NUM),
                 MonoType::empty_row(),
             ),
         );
 
         // bob_type = { name : Str, car : Str }
         let bob_type = MonoType::row(
-            LabeledType::new(interner.intern("name"), MonoType::STR),
+            LabeledType::new(Label(interner.intern("name")), MonoType::STR),
             MonoType::row(
-                LabeledType::new(interner.intern("car"), MonoType::STR),
+                LabeledType::new(Label(interner.intern("car")), MonoType::STR),
                 MonoType::empty_row(),
             ),
         );
 
         let inferred = MonoType::row(
-            LabeledType::new(interner.intern("zero"), alice_type),
+            LabeledType::new(Label(interner.intern("zero")), alice_type),
             MonoType::row(
-                LabeledType::new(interner.intern("one"), bob_type),
+                LabeledType::new(Label(interner.intern("one")), bob_type),
                 MonoType::empty_row(),
             ),
         );
@@ -461,11 +545,11 @@ mod tests {
     fn test_occurs_check() {
         let mut interner = StrInterner::new();
         let mut subs = Substitution::empty();
-        let var = TypeVar::fresh();
+        let var = TypeVar::new(Kind::Type);
 
         // Create a recursive type: var = { field : var }
         let recursive_type = MonoType::row(
-            LabeledType::new(interner.intern("field"), MonoType::Var(var)),
+            LabeledType::new(Label(interner.intern("field")), MonoType::Var(var)),
             MonoType::empty_row(),
         );
 
@@ -490,8 +574,8 @@ mod tests {
     #[test]
     fn test_function_with_variables() {
         let mut subs = Substitution::empty();
-        let var_a = TypeVar::fresh();
-        let var_b = TypeVar::fresh();
+        let var_a = TypeVar::new(Kind::Type);
+        let var_b = TypeVar::new(Kind::Type);
 
         // f1: a -> a (identity function)
         let f1 = MonoType::pure_func(MonoType::Var(var_a), MonoType::Var(var_a));
@@ -515,18 +599,18 @@ mod tests {
 
         // Type 1: { a : Int, b : String }
         let type1 = MonoType::row(
-            LabeledType::new(interner.intern("a"), MonoType::NUM),
+            LabeledType::new(Label(interner.intern("a")), MonoType::NUM),
             MonoType::row(
-                LabeledType::new(interner.intern("b"), MonoType::STR),
+                LabeledType::new(Label(interner.intern("b")), MonoType::STR),
                 MonoType::empty_row(),
             ),
         );
 
         // Type 2: { b : String, a : Int } (different order)
         let type2 = MonoType::row(
-            LabeledType::new(interner.intern("b"), MonoType::STR),
+            LabeledType::new(Label(interner.intern("b")), MonoType::STR),
             MonoType::row(
-                LabeledType::new(interner.intern("a"), MonoType::NUM),
+                LabeledType::new(Label(interner.intern("a")), MonoType::NUM),
                 MonoType::empty_row(),
             ),
         );
@@ -542,7 +626,7 @@ mod tests {
 
         // Type 1: { a : Int }
         let type1 = MonoType::row(
-            LabeledType::new(interner.intern("a"), MonoType::NUM),
+            LabeledType::new(Label(interner.intern("a")), MonoType::NUM),
             MonoType::empty_row(),
         );
 
@@ -561,8 +645,8 @@ mod tests {
     fn test_row_variable_chaining() {
         let mut interner = StrInterner::new();
         let mut subs = Substitution::empty();
-        let var1 = TypeVar::fresh();
-        let var2 = TypeVar::fresh();
+        let var1 = TypeVar::new(Kind::Type);
+        let var2 = TypeVar::new(Kind::Type);
 
         // First bind var1 = var2
         let result1 = MonoType::Var(var1).try_unify(&MonoType::Var(var2), &mut subs);
@@ -570,7 +654,7 @@ mod tests {
 
         // Then bind var2 = { field : Int }
         let concrete_type = MonoType::row(
-            LabeledType::new(interner.intern("field"), MonoType::NUM),
+            LabeledType::new(Label(interner.intern("field")), MonoType::NUM),
             MonoType::empty_row(),
         );
 
@@ -590,7 +674,7 @@ mod tests {
         let int_type = MonoType::NUM;
         let str_type = MonoType::STR;
         let record_type = MonoType::row(
-            LabeledType::new(interner.intern("field"), MonoType::NUM),
+            LabeledType::new(Label(interner.intern("field")), MonoType::NUM),
             MonoType::empty_row(),
         );
         let func_type = MonoType::pure_func(int_type.clone(), str_type.clone());

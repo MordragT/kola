@@ -5,12 +5,15 @@ use std::fmt;
 use kola_builtins::{BuiltinEffect, BuiltinId, BuiltinType};
 use kola_tree::{
     meta::{MetaMap, Phase},
-    node::{EffectNamespace, ModuleNamespace, ModuleTypeNamespace, TypeNamespace, ValueNamespace},
+    node::{
+        EffectNamespace, ModuleNamespace, ModuleTypeNamespace, TypeNamespace, ValueName,
+        ValueNamespace,
+    },
 };
 use kola_utils::as_variant;
 
 use crate::symbol::{
-    AnySym, EffectSym, FunctorSym, ModuleSym, ModuleTypeSym, Substitute, TypeSym, ValueSym,
+    EffectSym, FunctorSym, ModuleSym, ModuleTypeSym, Substitute, TypeSym, ValueSym,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -54,6 +57,61 @@ impl Substitute<ValueNamespace> for ResolvedValue {
 }
 
 impl Substitute<ModuleNamespace> for ResolvedValue {
+    fn try_substitute(&self, _from: ModuleSym, _to: ModuleSym) -> Option<Self>
+    where
+        Self: Sized,
+    {
+        None
+    }
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub enum ResolvedTypeWitness {
+    Reference(TypeSym),
+    Label(ValueName),
+    Builtin(BuiltinType),
+}
+
+impl ResolvedTypeWitness {
+    pub fn into_builtin(self) -> Option<BuiltinType> {
+        as_variant!(self, Self::Builtin)
+    }
+
+    pub fn into_label(self) -> Option<ValueName> {
+        as_variant!(self, Self::Label)
+    }
+
+    pub fn into_reference(self) -> Option<TypeSym> {
+        as_variant!(self, Self::Reference)
+    }
+}
+
+impl fmt::Display for ResolvedTypeWitness {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Reference(sym) => sym.fmt(f),
+            Self::Label(name) => name.fmt(f),
+            Self::Builtin(ty) => ty.fmt(f),
+        }
+    }
+}
+
+impl Substitute<TypeNamespace> for ResolvedTypeWitness {
+    fn try_substitute(&self, from: TypeSym, to: TypeSym) -> Option<Self>
+    where
+        Self: Sized,
+    {
+        if let Self::Reference(sym) = self
+            && *sym == from
+        {
+            Some(Self::Reference(to))
+        } else {
+            None
+        }
+    }
+}
+
+impl Substitute<ModuleNamespace> for ResolvedTypeWitness {
     fn try_substitute(&self, _from: ModuleSym, _to: ModuleSym) -> Option<Self>
     where
         Self: Sized,
@@ -234,7 +292,6 @@ impl Phase for ResolvePhase {
     type CaseExpr = !;
     type IfExpr = !;
     type CallExpr = !;
-    type TypeRepExpr = ResolvedType;
     type ExprError = !;
     type Expr = !;
 
@@ -259,6 +316,9 @@ impl Phase for ResolvePhase {
     type LambdaExpr = ValueSym; // Creates symbol for the parameter binding
     type HandlerClause = ValueSym; // Creates symbol for the handler parameter
 
+    // type TypeWitnessExpr = ResolvedTypeWitness;
+    type TypeWitnessExpr = !;
+
     // ===== TYPES =====
     // Type expressions are not needed for the untyped lowerer phase
     // Future: When adding typed IR, these could get ModuleSym for qualified types
@@ -269,6 +329,7 @@ impl Phase for ResolvePhase {
 
     type QualifiedType = ResolvedType;
     type TypeVar = TypeSym; // Type variables only occur in forall quantifier definitions
+    type Label = !;
     type RecordFieldType = !; // Field names exist in value namespace but no symbols needed here
     type RecordType = !; // Structural type, no symbols
     type TagType = !; // Variant tags exist in value namespace
@@ -280,7 +341,6 @@ impl Phase for ResolvePhase {
     type TypeError = !;
     type Kind = !;
     type TypeVarBind = TypeSym;
-    type WithBinder = !;
     type ForallBinder = !;
     type TypeScheme = !;
 

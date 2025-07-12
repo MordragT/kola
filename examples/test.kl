@@ -63,7 +63,8 @@
     #    test : Num -> Person,
     #},
 
-    row_id : with label l . forall record r . r = fn r => r,
+    #type Test = with label l . forall record r . { @l : Num | r },
+
 
     #row_id label l : forall record r . r = fn r => r,
     # pros: partial inference feels natural,
@@ -73,5 +74,11 @@
 
     #type Test label l = forall record r . { @label : Num | r },
 
-    main = (row_id { a = 1, b = 2, c = 3 }),
+    #insert : with label l . forall a record r . a -> r -> { @l : a | r } = fn a => fn r => { r | +@l = a },
+
+    #insert_num : forall record r . Num -> r -> { num : Num | r } = fn n => fn r => (insert 'num n r),
+
+    row_id : forall label l record r . r = fn l => fn r => r,
+
+    main = (row_id 'num { a = 1, b = 2, c = 3 }),
 }

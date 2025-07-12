@@ -239,7 +239,7 @@ define!(
     HandleExpr,
     DoExpr,
     TagExpr,
-    TypeRepExpr,
+    TypeWitnessExpr,
     ExprError,
     Expr,
     // Types
@@ -249,6 +249,7 @@ define!(
     EffectType,
     QualifiedType,
     TypeVar,
+    Label,
     RecordFieldType,
     RecordType,
     TagType,
@@ -260,7 +261,6 @@ define!(
     TypeError,
     Kind,
     TypeVarBind,
-    WithBinder,
     ForallBinder,
     TypeScheme,
     // Modules

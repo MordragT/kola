@@ -70,7 +70,6 @@ impl_visitable!(
     HandleExpr,
     DoExpr,
     TagExpr,
-    TypeRepExpr,
     ExprError,
     Expr,
     // Types
@@ -880,28 +879,23 @@ pub trait Visitor<T: TreeView> {
         self.walk_tag_expr(id, tree)
     }
 
-    fn walk_type_rep_expr(
+    fn walk_type_witness_expr(
         &mut self,
-        id: Id<node::TypeRepExpr>,
+        id: Id<node::TypeWitnessExpr>,
         tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
-        let node::TypeRepExpr { path, ty } = *id.get(tree);
-
-        if let Some(path) = path {
-            self.visit_module_path(path, tree)?;
+        match *id.get(tree) {
+            node::TypeWitnessExpr::Qualified(id) => self.visit_qualified_type(id, tree),
+            node::TypeWitnessExpr::Label(id) => self.visit_value_name(id, tree),
         }
-
-        self.visit_type_name(ty, tree)?;
-
-        ControlFlow::Continue(())
     }
 
-    fn visit_type_rep_expr(
+    fn visit_type_witness_expr(
         &mut self,
-        id: Id<node::TypeRepExpr>,
+        id: Id<node::TypeWitnessExpr>,
         tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
-        self.walk_type_rep_expr(id, tree)
+        self.walk_type_witness_expr(id, tree)
     }
 
     fn visit_expr_error(
@@ -935,7 +929,7 @@ pub trait Visitor<T: TreeView> {
             Handle(id) => self.visit_handle_expr(id, tree),
             Do(id) => self.visit_do_expr(id, tree),
             Tag(id) => self.visit_tag_expr(id, tree),
-            TypeRep(id) => self.visit_type_rep_expr(id, tree),
+            TypeWitness(id) => self.visit_type_witness_expr(id, tree),
         }
     }
 
@@ -1102,15 +1096,26 @@ pub trait Visitor<T: TreeView> {
         ControlFlow::Continue(())
     }
 
+    fn walk_label(&mut self, id: Id<node::Label>, tree: &T) -> ControlFlow<Self::BreakValue> {
+        match *id.get(tree) {
+            node::Label::Label(name_id) => self.visit_value_name(name_id, tree),
+            node::Label::Var(var_id) => self.visit_type_var(var_id, tree),
+        }
+    }
+
+    fn visit_label(&mut self, id: Id<node::Label>, tree: &T) -> ControlFlow<Self::BreakValue> {
+        self.walk_label(id, tree)
+    }
+
     fn walk_record_field_type(
         &mut self,
         id: Id<node::RecordFieldType>,
         tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
-        let node::RecordFieldType { name, ty } = id.get(tree);
+        let node::RecordFieldType { label_or_var, ty } = *id.get(tree);
 
-        self.visit_value_name(*name, tree)?;
-        self.visit_type(*ty, tree)?;
+        self.visit_label(label_or_var, tree)?;
+        self.visit_type(ty, tree)?;
 
         ControlFlow::Continue(())
     }
@@ -1308,25 +1313,6 @@ pub trait Visitor<T: TreeView> {
         self.walk_type_var_bind(id, tree)
     }
 
-    fn walk_with_binder(
-        &mut self,
-        id: Id<node::WithBinder>,
-        tree: &T,
-    ) -> ControlFlow<Self::BreakValue> {
-        for bind in id.get(tree) {
-            self.visit_type_var_bind(*bind, tree)?;
-        }
-        ControlFlow::Continue(())
-    }
-
-    fn visit_with_binder(
-        &mut self,
-        id: Id<node::WithBinder>,
-        tree: &T,
-    ) -> ControlFlow<Self::BreakValue> {
-        self.walk_with_binder(id, tree)
-    }
-
     fn walk_forall_binder(
         &mut self,
         id: Id<node::ForallBinder>,
@@ -1351,11 +1337,7 @@ pub trait Visitor<T: TreeView> {
         id: Id<node::TypeScheme>,
         tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
-        let node::TypeScheme { with, forall, ty } = *id.get(tree);
-
-        if let Some(with) = with {
-            self.visit_with_binder(with, tree)?;
-        }
+        let node::TypeScheme { forall, ty } = *id.get(tree);
 
         if let Some(forall) = forall {
             self.visit_forall_binder(forall, tree)?;

@@ -105,7 +105,7 @@ define_nodes!(
     HandleExpr,
     DoExpr,
     TagExpr,
-    TypeRepExpr,
+    TypeWitnessExpr,
     ExprError,
     Expr,
     // Types
@@ -115,6 +115,7 @@ define_nodes!(
     EffectType,
     QualifiedType,
     TypeVar,
+    Label,
     RecordFieldType,
     RecordType,
     TagType,
@@ -126,7 +127,6 @@ define_nodes!(
     TypeError,
     Kind,
     TypeVarBind,
-    WithBinder,
     ForallBinder,
     TypeScheme,
     // Modules

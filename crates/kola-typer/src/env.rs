@@ -9,9 +9,9 @@ use kola_resolver::{
 use kola_tree::node::{self, NodeId};
 use kola_utils::{interner::StrKey, scope::LinearScope};
 
-use crate::types::{Kind, ModuleType, MonoType, PolyType, RowType, TypeVar};
+use crate::types::{ModuleType, MonoType, PolyType, RowType, TypeClass, TypeVar};
 
-pub type KindEnv = IndexMap<TypeVar, Vec<Kind>>;
+pub type TypeClassEnv = IndexMap<TypeVar, Vec<TypeClass>>;
 
 pub trait BoundVars {
     /// Extends the given vector with the type variables that are bound in this type.

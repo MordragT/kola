@@ -47,11 +47,11 @@ use kola_collections::OrdSet;
 use kola_span::{Diagnostic, Loc};
 use kola_syntax::loc::Locations;
 use kola_tree::prelude::*;
-use kola_utils::{as_variant, errors::Errors, interner::StrKey};
+use kola_utils::{as_variant, errors::Errors};
 
 use crate::{
     phase::TypedNodes,
-    types::{Label, ListType, MonoType, PrimitiveType, RowType},
+    types::{Label, LabelOrVar, ListType, MonoType, PrimitiveType, RowType},
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -307,7 +307,7 @@ impl fmt::Display for ListSet {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct LabelledSet {
-    pub label: StrKey,
+    pub label: Label,
     pub set: Box<CoverSet>,
 }
 
@@ -541,7 +541,7 @@ impl RequiredSet for RowType {
         let row_set = match self {
             RowType::Empty => RowSet::Empty,
             RowType::Extension { head, tail } => {
-                let Label::Key(label) = head.label else {
+                let LabelOrVar::Label(label) = head.label else {
                     todo!("Pattern Matching analysis was performed over type function")
                 };
 
@@ -574,7 +574,7 @@ impl RequiredSet for MonoType {
             MonoType::Row(row) => row.required_set(),
             MonoType::Var(_) => CoverSet::Universal, // Conservative but correct
             MonoType::Func(_) => CoverSet::Opaque,
-            MonoType::TypeRep(_) => CoverSet::Opaque,
+            _ => CoverSet::Opaque,
         }
     }
 }
@@ -644,7 +644,7 @@ impl ActualSet for Id<node::RecordPat> {
         // Process fields in reverse order to build the row set correctly
         let row_set = fields.iter().rev().fold(tail, |accu, field| {
             let node::RecordFieldPat { field, pat } = field.get(tree);
-            let label = field.get(tree).0;
+            let label = Label(field.get(tree).0);
             let set = pat
                 .map(|pat| pat.actual_set(tree))
                 .unwrap_or(CoverSet::Universal);
@@ -668,7 +668,7 @@ impl ActualSet for Id<node::VariantPat> {
 
         let row_set = tags.iter().rev().fold(RowSet::Empty, |accu, tag| {
             let node::VariantTagPat { tag, pat } = tag.get(tree);
-            let label = tag.get(tree).0;
+            let label = Label(tag.get(tree).0);
             let set = pat
                 .map(|pat| pat.actual_set(tree))
                 .unwrap_or(CoverSet::Atom(Atom::Unit.into()));

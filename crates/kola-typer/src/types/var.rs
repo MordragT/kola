@@ -4,67 +4,38 @@ use std::{
     sync::atomic::{AtomicU32, Ordering},
 };
 
-use super::{Kind, MonoType, Typed};
+use super::{MonoType, TypeClass, Typed};
 use crate::{
-    env::KindEnv,
+    env::TypeClassEnv,
     error::TypeError,
     substitute::{Substitutable, Substitution},
+    types::Kind,
 };
 
-// Maybe this should also convey that it is always free ? So maybe rename to FreeVar ?
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
-pub struct KindedVar {
-    pub var: TypeVar,
-    pub kind: Kind,
+pub struct TypeVar {
+    id: u32,
+    kind: Kind,
 }
 
-impl KindedVar {
-    /// Constructor that takes both a TypeVar and a Kind.
-    pub fn new(var: TypeVar, kind: Kind) -> Self {
-        KindedVar { var, kind }
-    }
-
-    /// Constructor that generates a new TypeVar and takes a Kind as input.
-    pub fn with_kind(kind: Kind) -> Self {
-        KindedVar {
-            var: TypeVar::fresh(),
-            kind,
-        }
-    }
-
-    /// Constructor that generates a new TypeVar and uses the default Kind.
-    pub fn fresh() -> Self
-    where
-        Kind: Default,
-    {
-        KindedVar {
-            var: TypeVar::fresh(),
-            kind: Kind::default(),
-        }
-    }
-}
-
-impl fmt::Display for KindedVar {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{} {}", self.kind, self.var)
-    }
-}
-
-// KindedVar returns None because it is only used inside quantifiers
-// meaning they will/should never be substituted,
-// because they are not bound variables in the type system.
-impl Substitutable for KindedVar {
+// TODO this is just to make the compiler happy, the actual implementation of try_apply is under here
+// This should be removed and handled in some better way, but is required,
+// because TypeVar is inside the TypePhase and therefore to implement Substitutable for TypedNodes
+// this is also required.
+impl Substitutable for TypeVar {
     fn try_apply(&self, s: &mut Substitution) -> Option<Self> {
         None
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
-pub struct TypeVar(u32);
-
 impl fmt::Display for TypeVar {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "'t{}", self.0)
+        match self.kind {
+            Kind::Type => write!(f, "'t{}", self.id),
+            Kind::Record => write!(f, "'r{}", self.id),
+            Kind::Label => write!(f, "'l{}", self.id),
+            Kind::Tag => write!(f, "'g{}", self.id),
+        }
     }
 }
 /// Efficient generalization with levels
@@ -73,13 +44,25 @@ impl fmt::Display for TypeVar {
 static GENERATOR: AtomicU32 = AtomicU32::new(0);
 
 impl TypeVar {
-    pub fn fresh() -> Self {
+    pub fn new(kind: Kind) -> Self {
         let id = GENERATOR.fetch_add(1, Ordering::Relaxed);
-        Self(id)
+        Self { id, kind }
     }
 
     pub fn id(&self) -> u32 {
-        self.0
+        self.id
+    }
+
+    pub fn kind(&self) -> Kind {
+        self.kind
+    }
+
+    pub fn fresh(&self) -> Self {
+        // Generate a new TypeVar with the same kind but a new id
+        Self {
+            id: GENERATOR.fetch_add(1, Ordering::Relaxed),
+            kind: self.kind,
+        }
     }
 
     pub fn try_apply(&self, s: &mut Substitution) -> Option<MonoType> {
@@ -94,12 +77,12 @@ impl TypeVar {
 
 impl Default for TypeVar {
     fn default() -> Self {
-        Self::fresh()
+        Self::new(Kind::Type)
     }
 }
 
 impl Typed for TypeVar {
-    fn constrain(&self, with: Kind, env: &mut KindEnv) -> Result<(), TypeError> {
+    fn constrain(&self, with: TypeClass, env: &mut TypeClassEnv) -> Result<(), TypeError> {
         env.entry(*self)
             .and_modify(|constraint| constraint.push(with))
             .or_insert_with(|| vec![with]);

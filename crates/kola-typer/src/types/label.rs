@@ -1,7 +1,10 @@
 use std::fmt;
 
 use kola_protocol::TypeProtocol;
-use kola_utils::interner::StrInterner;
+use kola_utils::{
+    interner::{StrInterner, StrKey},
+    interner_ext::DisplayWithInterner,
+};
 use serde::{Deserialize, Serialize};
 
 use crate::{
@@ -10,29 +13,32 @@ use crate::{
     substitute::{Substitutable, Substitution},
 };
 
-use super::{MonoType, TypeClass, Typed};
+use super::{TypeClass, Typed};
 
-#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct ListType(pub MonoType);
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+pub struct Label(pub StrKey);
 
-impl ListType {
+impl Label {
     pub fn to_protocol(&self, interner: &StrInterner) -> TypeProtocol {
-        let el = self.0.to_protocol(interner);
-
-        TypeProtocol::list(el)
+        todo!()
     }
 }
 
-impl fmt::Display for ListType {
+impl fmt::Display for Label {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "List {}", self.0)
+        write!(f, "Label {}", self.0)
     }
 }
 
-impl Typed for ListType {
+impl DisplayWithInterner<str> for Label {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>, interner: &StrInterner) -> fmt::Result {
+        write!(f, "{}", interner[self.0])
+    }
+}
+
+impl Typed for Label {
     fn constrain(&self, with: TypeClass, _env: &mut TypeClassEnv) -> Result<(), TypeError> {
         match with {
-            TypeClass::Addable | TypeClass::Comparable | TypeClass::Equatable => Ok(()),
             _ => Err(TypeError::CannotConstrain {
                 expected: with,
                 actual: self.clone().into(),
@@ -41,8 +47,8 @@ impl Typed for ListType {
     }
 }
 
-impl Substitutable for ListType {
+impl Substitutable for Label {
     fn try_apply(&self, s: &mut Substitution) -> Option<Self> {
-        self.0.try_apply(s).map(Self)
+        None
     }
 }

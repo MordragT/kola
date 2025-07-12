@@ -55,7 +55,7 @@ use log::trace;
 use crate::{
     analysis::exhaust_check_all,
     constraints::Constraints,
-    env::{KindEnv, TypeEnv},
+    env::{TypeClassEnv, TypeEnv},
     phase::{TypeAnnotations, TypedNodes},
     print::TypeDecorator,
     substitute::{Substitutable, Substitution},
@@ -99,7 +99,7 @@ pub fn type_check(
     print_options: PrintOptions,
 ) -> TypeCheckOutput {
     let mut global_env = TypeEnv::new();
-    let mut kind_env = KindEnv::new();
+    let mut kind_env = TypeClassEnv::new();
     let mut type_annotations = TypeAnnotations::new();
 
     for &module_sym in module_order {
@@ -229,7 +229,7 @@ pub fn type_check(
 
             // Generalize immediately (making it available for subsequent binds)
             let actual_t = typed_nodes.meta(def.id()).to_mono().unwrap();
-            let poly_type = actual_t.generalize(&[], &kind_env); // TODO should bound be something ? &type_env.bound_vars()
+            let poly_type = actual_t.generalize(&[]); // TODO should bound be something ? &type_env.bound_vars()
             module_env.insert_value(value_sym, def, poly_type.clone());
 
             // Update annotations with the final type

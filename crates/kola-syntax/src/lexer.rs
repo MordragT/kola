@@ -148,11 +148,6 @@ where
             .from_str()
             .unwrapped()
             .map(LiteralT::Num),
-        // Character literals
-        just('\'')
-            .ignore_then(any().filter(|c| *c != '\\' && *c != '\'').or(escape))
-            .then_ignore(just('\''))
-            .map(LiteralT::Char),
         // String literals
         just('"')
             .ignore_then(
@@ -187,6 +182,7 @@ where
         just('.').to(Token::Atom(".")),
         just(':').to(Token::Atom(":")),
         just(',').to(Token::Atom(",")),
+        just('\'').to(Token::Atom("'")),
         just('~').to(Token::Atom("~")),
         just('@').to(Token::Atom("@")),
         just('|').to(Token::Atom("|")),
@@ -239,7 +235,6 @@ where
             "effect" => Token::Atom("effect"),
             "functor" => Token::Atom("functor"),
             "type" => Token::Atom("type"),
-            "with" => Token::Atom("with"),
             "record" => Token::Atom("record"),
             "label" => Token::Atom("label"),
             "forall" => Token::Atom("forall"),
@@ -373,17 +368,6 @@ mod test {
         assert_eq!(tokens.len(), 2);
         assert_eq!(tokens[0].0, Token::Literal(LiteralT::Bool(true)));
         assert_eq!(tokens[1].0, Token::Literal(LiteralT::Bool(false)));
-    }
-
-    #[test]
-    fn test_char_literals() {
-        let tokens = tokenize_str("'a' 'b' '\\n' '\\t' '\\''");
-        assert_eq!(tokens.len(), 5);
-        assert_eq!(tokens[0].0, Token::Literal(LiteralT::Char('a')));
-        assert_eq!(tokens[1].0, Token::Literal(LiteralT::Char('b')));
-        assert_eq!(tokens[2].0, Token::Literal(LiteralT::Char('\n')));
-        assert_eq!(tokens[3].0, Token::Literal(LiteralT::Char('\t')));
-        assert_eq!(tokens[4].0, Token::Literal(LiteralT::Char('\'')));
     }
 
     #[test]

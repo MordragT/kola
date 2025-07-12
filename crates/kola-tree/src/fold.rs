@@ -73,7 +73,7 @@ define_folder_trait!(
     HandleExpr,
     DoExpr,
     TagExpr,
-    TypeRepExpr,
+    TypeWitnessExpr,
     ExprError,
     Expr,
     // Types
@@ -83,6 +83,7 @@ define_folder_trait!(
     EffectType,
     QualifiedType,
     TypeVar,
+    Label,
     RecordFieldType,
     RecordType,
     TagType,
@@ -94,7 +95,6 @@ define_folder_trait!(
     TypeError,
     Kind,
     TypeVarBind,
-    WithBinder,
     ForallBinder,
     TypeScheme,
     // Modules

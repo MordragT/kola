@@ -8,7 +8,7 @@ use kola_tree::prelude::*;
 use kola_utils::interner::{PathInterner, StrInterner};
 
 use crate::{
-    env::{KindEnv, TypeEnv},
+    env::{TypeClassEnv, TypeEnv},
     error::TypeErrors,
     phase::TypedNodes,
     prelude::{Constraints, Substitutable, Substitution},
@@ -52,7 +52,7 @@ where
     let (mut types, _) = typer.run(&tree, &mut Report::new()).unwrap();
 
     let mut subs = Substitution::empty();
-    let mut kind_env = KindEnv::new();
+    let mut kind_env = TypeClassEnv::new();
 
     cons.solve(&mut subs, &mut kind_env)?;
     types.apply_mut(&mut subs);

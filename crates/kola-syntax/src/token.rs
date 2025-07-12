@@ -72,7 +72,6 @@ pub enum LiteralT<'t> {
     Unit,
     Num(f64),
     Bool(bool),
-    Char(char),
     Str(&'t str),
 }
 
@@ -234,7 +233,6 @@ define_token_type!(Kw {
     Functor => "functor",
     Effect => "effect",
     Type => "type",
-    With => "with",
     Record => "record",
     Label => "label",
     Forall => "forall",
@@ -256,6 +254,7 @@ define_token_type!(Ctrl {
     Colon => ":",
     DoubleColon => "::",
     Comma => ",",
+    Tick => "'",
     At => "@",
     Tilde => "~",
     Pipe => "|",
@@ -294,7 +293,6 @@ pub enum Literal {
     Unit,
     Num,
     Bool,
-    Char,
     Str,
 }
 
@@ -305,7 +303,6 @@ impl<'t> From<LiteralT<'t>> for Literal {
             LiteralT::Num(_) => Literal::Num,
             LiteralT::Str(_) => Literal::Str,
             LiteralT::Bool(_) => Literal::Bool,
-            LiteralT::Char(_) => Literal::Char,
         }
     }
 }

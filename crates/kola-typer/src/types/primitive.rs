@@ -2,8 +2,8 @@ use kola_protocol::TypeProtocol;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
-use super::{Kind, Typed};
-use crate::{env::KindEnv, error::TypeError};
+use super::{TypeClass, Typed};
+use crate::{env::TypeClassEnv, error::TypeError};
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum PrimitiveType {
@@ -39,35 +39,38 @@ impl fmt::Display for PrimitiveType {
 }
 
 impl Typed for PrimitiveType {
-    fn constrain(&self, with: Kind, _env: &mut KindEnv) -> Result<(), TypeError> {
+    fn constrain(&self, with: TypeClass, _env: &mut TypeClassEnv) -> Result<(), TypeError> {
         match self {
             PrimitiveType::Unit => Err(TypeError::CannotConstrain {
                 expected: with,
                 actual: self.into(),
             }),
             PrimitiveType::Bool => match with {
-                Kind::Equatable | Kind::Stringable => Ok(()),
+                TypeClass::Equatable | TypeClass::Stringable => Ok(()),
                 _ => Err(TypeError::CannotConstrain {
                     expected: with,
                     actual: self.into(),
                 }),
             },
             PrimitiveType::Num => match with {
-                Kind::Addable | Kind::Comparable | Kind::Equatable | Kind::Stringable => Ok(()),
+                TypeClass::Addable
+                | TypeClass::Comparable
+                | TypeClass::Equatable
+                | TypeClass::Stringable => Ok(()),
                 _ => Err(TypeError::CannotConstrain {
                     expected: with,
                     actual: self.into(),
                 }),
             },
             PrimitiveType::Char => match with {
-                Kind::Equatable | Kind::Stringable => Ok(()),
+                TypeClass::Equatable | TypeClass::Stringable => Ok(()),
                 _ => Err(TypeError::CannotConstrain {
                     expected: with,
                     actual: self.into(),
                 }),
             },
             PrimitiveType::Str => match with {
-                Kind::Addable | Kind::Equatable | Kind::Stringable => Ok(()),
+                TypeClass::Addable | TypeClass::Equatable | TypeClass::Stringable => Ok(()),
                 _ => Err(TypeError::CannotConstrain {
                     expected: with,
                     actual: self.into(),

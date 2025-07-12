@@ -5,7 +5,7 @@ use std::ops::ControlFlow;
 use crate::{
     constraints::Constraints,
     env::LocalTypeEnv,
-    types::{Label, LabeledType, MonoType},
+    types::{Kind, Label, LabeledType, MonoType},
 };
 
 pub struct PatternTyper<'a> {
@@ -138,7 +138,7 @@ where
         let elements = &id.get(tree).0;
 
         // Create a fresh type variable for the element type
-        let element_type = MonoType::variable();
+        let element_type = MonoType::variable(Kind::Type);
 
         // Constrain the source type to be List(element_type)
         // This implements: ∆;Γ ⊢ [p₁, p₂, ..., pₙ] ⇒ List τ ⊣ Γₙ
@@ -184,7 +184,7 @@ where
         // Build the expected record type by processing each field pattern
         let tail_type = if *polymorph {
             // For polymorphic records: { ... } creates a row variable
-            MonoType::variable()
+            MonoType::variable(Kind::Record)
         } else {
             // For exact records: no additional fields allowed
             MonoType::empty_row()
@@ -200,10 +200,10 @@ where
             let field_name = field.get(tree).0;
 
             // Create a fresh type variable for this field
-            let field_type = MonoType::variable();
+            let field_type = MonoType::variable(Kind::Type);
 
             // Create the labeled type for this field
-            let labeled_field = LabeledType::new(Label::Key(field_name), field_type.clone());
+            let labeled_field = LabeledType::new(Label(field_name), field_type.clone());
 
             // Extend the record type with this field
             expected_record_type = MonoType::row(labeled_field, expected_record_type);
@@ -244,7 +244,7 @@ where
 
         // Variant patterns are always polymorphic - they create an open variant
         // with a row variable to allow additional cases
-        let tail_type = MonoType::variable();
+        let tail_type = MonoType::variable(Kind::Tag);
 
         // Build the expected variant type by processing each case pattern
         // This creates: < case₁ : τ₁, case₂ : τ₂, ... | ρ >
@@ -256,10 +256,10 @@ where
             let tag_name = tag.get(tree).0;
 
             // Create a fresh type variable for this case
-            let tag_type = MonoType::variable();
+            let tag_type = MonoType::variable(Kind::Tag);
 
             // Create the labeled type for this case
-            let labeled_case = LabeledType::new(Label::Key(tag_name), tag_type.clone());
+            let labeled_case = LabeledType::new(Label(tag_name), tag_type.clone());
 
             // Extend the variant type with this case
             expected_variant_type = MonoType::row(labeled_case, expected_variant_type);

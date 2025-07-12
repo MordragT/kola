@@ -293,7 +293,6 @@ pub fn literal_parser<'t>() -> impl KolaParser<'t, node::LiteralExpr> + Sized {
             LiteralT::Unit => node::LiteralExpr::Unit,
             LiteralT::Num(n) => node::LiteralExpr::Num(n),
             LiteralT::Bool(b) => node::LiteralExpr::Bool(b),
-            LiteralT::Char(c) => node::LiteralExpr::Char(c),
             LiteralT::Str(s) => {
                 let s = unescaper::unescape(s).unwrap(); // TODO maybe handle this ?
                 node::LiteralExpr::Str(state.intern(s))
@@ -437,7 +436,7 @@ pub fn expr_parser<'t>() -> impl KolaParser<'t, Id<node::Expr>> + Clone {
             .as_context()
             .boxed();
 
-        let type_rep_expr = ctrl(CtrlT::AT)
+        let type_wit = ctrl(CtrlT::AT)
             .ignore_then(
                 symbol()
                     .spanned()
@@ -463,10 +462,16 @@ pub fn expr_parser<'t>() -> impl KolaParser<'t, Id<node::Expr>> + Clone {
                     None
                 };
 
-                node::TypeRepExpr { path, ty }
+                node::QualifiedType { path, ty }
             })
             .to_node()
+            .map_to_node(node::TypeWitnessExpr::Qualified)
+            .or(ctrl(CtrlT::TICK)
+                .ignore_then(lower_value_name_parser())
+                .map_to_node(node::TypeWitnessExpr::Label))
             .to_expr()
+            .labelled("TagWitnessExpr")
+            .as_context()
             .boxed();
 
         // Qualified expression (module::record.field) for variable and module access
@@ -768,24 +773,6 @@ pub fn expr_parser<'t>() -> impl KolaParser<'t, Id<node::Expr>> + Clone {
         .as_context()
         .boxed();
 
-        // // TODO allow syntactic sugar (a b c)
-        // let call = recursive(|call| {
-        //     let callable = choice((qualified.clone(), tag.clone(), func.clone(), call));
-
-        //     nested_parser(
-        //         callable
-        //             .then(expr.clone())
-        //             .map_to_node(|(func, arg)| node::CallExpr { func, arg })
-        //             .to_expr(),
-        //         Delim::Paren,
-        //         |_span| node::ExprError,
-        //     )
-        //     .boxed()
-        // })
-        // .labelled("CallExpr")
-        // .as_context()
-        // .boxed();
-
         let paren_expr = nested_parser(
             expr.clone()
                 .repeated()
@@ -830,7 +817,7 @@ pub fn expr_parser<'t>() -> impl KolaParser<'t, Id<node::Expr>> + Clone {
             qualified,
             none,
             tag,
-            type_rep_expr,
+            type_wit,
         ))
         .boxed();
 
@@ -1018,6 +1005,7 @@ pub fn expr_parser<'t>() -> impl KolaParser<'t, Id<node::Expr>> + Clone {
 /// ```
 pub fn type_parser<'t>() -> impl KolaParser<'t, Id<node::Type>> + Clone {
     recursive(|ty| {
+        // TODO this also includes type variables which is a bit surprising
         let qual_ty = symbol()
             .spanned()
             .separated_by(ctrl(CtrlT::DOUBLE_COLON))
@@ -1052,10 +1040,17 @@ pub fn type_parser<'t>() -> impl KolaParser<'t, Id<node::Type>> + Clone {
             .or_not()
             .boxed();
 
-        let field = lower_value_name_parser()
+        let label = lower_value_name_parser()
+            .map_to_node(node::Label::Label)
+            .or(ctrl(CtrlT::AT)
+                .ignore_then(symbol())
+                .map_to_node(node::TypeVar)
+                .map_to_node(node::Label::Var));
+
+        let field = label
             .then_ignore(ctrl(CtrlT::COLON))
             .then(ty.clone())
-            .map_to_node(|(name, ty)| node::RecordFieldType { name, ty });
+            .map_to_node(|(label_or_var, ty)| node::RecordFieldType { label_or_var, ty });
 
         let record = nested_parser(
             field
@@ -1210,11 +1205,6 @@ pub fn type_scheme_parser<'t>() -> impl KolaParser<'t, Id<node::TypeScheme>> + C
         .map_to_node(|(kind, var)| node::TypeVarBind { kind, var })
         .boxed();
 
-    let with = kw(KwT::WITH)
-        .ignore_then(bind.clone().repeated().at_least(1).collect())
-        .then_ignore(ctrl(CtrlT::DOT))
-        .map_to_node(node::WithBinder);
-
     // hindley milner only allows standard polymorphism (top-level forall)
     // higher-rank polymorphism (nested forall) is undecidable for full type-inference
     let forall = kw(KwT::FORALL)
@@ -1222,8 +1212,10 @@ pub fn type_scheme_parser<'t>() -> impl KolaParser<'t, Id<node::TypeScheme>> + C
         .then_ignore(ctrl(CtrlT::DOT))
         .map_to_node(node::ForallBinder);
 
-    group((with.or_not(), forall.or_not(), type_parser()))
-        .map_to_node(|(with, forall, ty)| node::TypeScheme { with, forall, ty })
+    forall
+        .or_not()
+        .then(type_parser())
+        .map_to_node(|(forall, ty)| node::TypeScheme { forall, ty })
         .boxed()
 }
 
@@ -1816,9 +1808,9 @@ mod tests {
         let func2 = func.output().ty().to_func();
         let record = func2.input().to_record();
         record.has_fields_count(2);
-        record.fields_at(0).name().has_name("a");
+        record.fields_at(0).label_or_var().to_label().has_name("a");
         record.fields_at(0).ty().to_qualified().ty().has_name("Num");
-        record.fields_at(1).name().has_name("b");
+        record.fields_at(1).label_or_var().to_label().has_name("b");
         record.fields_at(1).ty().to_func();
         func2.output().ty().to_qualified().ty().has_name("Str");
     }
@@ -1871,9 +1863,17 @@ mod tests {
 
         let record = inspector.ty().to_record();
         record.has_fields_count(2);
-        record.fields_at(0).name().has_name("left");
+        record
+            .fields_at(0)
+            .label_or_var()
+            .to_label()
+            .has_name("left");
         record.fields_at(0).ty().to_qualified().ty().has_name("a");
-        record.fields_at(1).name().has_name("right");
+        record
+            .fields_at(1)
+            .label_or_var()
+            .to_label()
+            .has_name("right");
         record
             .fields_at(1)
             .ty()
