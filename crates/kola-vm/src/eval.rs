@@ -531,14 +531,14 @@ fn eval_builtin(
                 record.get(context.intern_str("label"))
             else {
                 return MachineState::Error(
-                    "record_select requires 'field' field with a string".to_owned(),
+                    "record_select requires 'label' field with a string".to_owned(),
                 );
             };
 
             let Some(Value::Record(record)) = record.get(context.intern_str("record")).cloned()
             else {
                 return MachineState::Error(
-                    "record_select requires 'row' field with a record".to_owned(),
+                    "record_select requires 'record' field with a record".to_owned(),
                 );
             };
 
@@ -549,10 +549,88 @@ fn eval_builtin(
                 }
             }
         }
-        (BuiltinId::RecordRec, Value::Record(record)) => {
-            let Some(Value::Record(data)) = record.get(context.intern_str("data")).cloned() else {
+        (BuiltinId::RecordInsert, Value::Record(record)) => {
+            let Some(Value::Witness(TypeProtocol::Label(label))) =
+                record.get(context.intern_str("label"))
+            else {
                 return MachineState::Error(
-                    "record_rec requires 'data' field with a record".to_owned(),
+                    "record_insert requires 'label' field with a string".to_owned(),
+                );
+            };
+
+            let Some(value) = record.get(context.intern_str("value")) else {
+                return MachineState::Error("record_insert requires 'value' field".to_owned());
+            };
+
+            let Some(Value::Record(mut record)) = record.get(context.intern_str("record")).cloned()
+            else {
+                return MachineState::Error(
+                    "record_insert requires 'record' field with a record".to_owned(),
+                );
+            };
+
+            // Insert the value into the record
+            record.insert(context.intern_str(label), value.clone());
+
+            Value::Record(record)
+        }
+        (BuiltinId::RecordRemove, Value::Record(record)) => {
+            let Some(Value::Witness(TypeProtocol::Label(label))) =
+                record.get(context.intern_str("label"))
+            else {
+                return MachineState::Error(
+                    "record_remove requires 'label' field with a string".to_owned(),
+                );
+            };
+
+            let Some(Value::Record(mut record)) = record.get(context.intern_str("record")).cloned()
+            else {
+                return MachineState::Error(
+                    "record_remove requires 'record' field with a record".to_owned(),
+                );
+            };
+
+            // Remove the field from the record
+            record.remove(context.intern_str(label));
+
+            Value::Record(record)
+        }
+        (BuiltinId::RecordContains, Value::Record(record)) => {
+            let Some(Value::Witness(TypeProtocol::Label(label))) =
+                record.get(context.intern_str("label"))
+            else {
+                return MachineState::Error(
+                    "record_contains requires 'label' field with a string".to_owned(),
+                );
+            };
+
+            let Some(Value::Record(record)) = record.get(context.intern_str("record")).cloned()
+            else {
+                return MachineState::Error(
+                    "record_contains requires 'record' field with a record".to_owned(),
+                );
+            };
+
+            Value::Bool(record.contains_key(context.intern_str(label)))
+        }
+        (BuiltinId::RecordKeys, Value::Record(record)) => {
+            // Collect the keys of the record
+            let keys = record
+                .keys()
+                .map(|key| Value::Str(context.str_interner[key].clone()))
+                .collect();
+
+            Value::List(keys)
+        }
+        (BuiltinId::RecordSize, Value::Record(record)) => {
+            // Return the number of fields in the record
+            Value::Num(record.len() as f64)
+        }
+        (BuiltinId::RecordRec, Value::Record(record)) => {
+            let Some(Value::Record(record)) = record.get(context.intern_str("record")).cloned()
+            else {
+                return MachineState::Error(
+                    "record_rec requires 'record' field with a record".to_owned(),
                 );
             };
 
@@ -577,7 +655,7 @@ fn eval_builtin(
             cont.push(frame);
 
             return MachineState::PrimitiveRec(PrimitiveRecConfig {
-                data: Value::Record(data),
+                data: Value::Record(record),
                 base,
                 step,
                 cont,

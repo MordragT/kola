@@ -31,7 +31,7 @@ impl CompType {
 
     pub fn from_protocol(
         proto: TypeProtocol,
-        bound: &[TypeVar],
+        bound: &mut Vec<TypeVar>,
         interner: &mut StrInterner,
     ) -> Self {
         let ty = MonoType::from_protocol(proto, bound, interner);

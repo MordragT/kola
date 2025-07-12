@@ -1,0 +1,26 @@
+{
+    export empty = { },
+
+    export select : forall (l : Label) (r : Record) a . Label l -> { @l : a | r } -> a =
+        fn label => fn record =>
+            (record_select { label = label, record = record }),
+
+    export insert : forall (l : Label) (r : Record) a . Label l -> a -> r -> { @l : a | r } =
+        fn label => fn value => fn record =>
+            (record_insert { label = label, value = value, record = record }),
+
+    export remove : forall (l : Label) (r : Record) a . Label l -> { @l : a | r } -> r =
+        fn label => fn record =>
+            (record_remove { label = label, record = record }),
+
+    export contains : forall (l : Label) (r : Record) a . Label l -> { @l : a | r } -> Bool =
+        fn label => fn record =>
+            (record_contains { label = label, record = record }),
+
+    export keys : forall r . r -> List Str =
+        fn record => (record_keys record),
+
+    export size : forall r . r -> Num =
+        fn record => (record_size record),
+
+}

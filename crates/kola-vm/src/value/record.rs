@@ -71,6 +71,12 @@ impl Record {
         self.0.is_empty()
     }
 
+    /// Returns the number of visible entries in the record.
+    #[inline]
+    pub fn len(&self) -> usize {
+        self.0.keys().count()
+    }
+
     /// Essentially a concatenation of two records.
     /// Through the shadow semantics, the left record's entries will take precedence over the right's
     #[inline]

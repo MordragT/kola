@@ -57,6 +57,12 @@ impl TypeVar {
         self.kind
     }
 
+    /// Set the kind of the TypeVar
+    /// DANGER: This should only be used when you know what you're doing,
+    pub fn set_kind(&mut self, kind: Kind) {
+        self.kind = kind;
+    }
+
     pub fn fresh(&self) -> Self {
         // Generate a new TypeVar with the same kind but a new id
         Self {

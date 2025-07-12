@@ -1,6 +1,6 @@
 use derive_more::From;
 use enum_as_inner::EnumAsInner;
-use kola_protocol::TypeProtocol;
+use kola_protocol::{KindProtocol, TypeProtocol};
 use kola_utils::interner::{StrInterner, StrKey};
 use serde::{Deserialize, Serialize};
 use std::fmt;
@@ -24,8 +24,8 @@ pub enum MonoType {
     Primitive(PrimitiveType),
     Func(Box<FuncType>),
     List(Box<ListType>),
-    Row(Box<RowType>),
     Var(TypeVar),
+    Row(Box<RowType>),
     Label(Label),
     Wit(Box<Wit>),
 }
@@ -73,7 +73,7 @@ impl MonoType {
 
     pub fn from_protocol(
         proto: TypeProtocol,
-        bound: &[TypeVar],
+        bound: &mut Vec<TypeVar>,
         interner: &mut StrInterner,
     ) -> Self {
         let this = match proto {
@@ -110,11 +110,27 @@ impl MonoType {
                 row
             }
             TypeProtocol::Label(label) => Self::label(interner.intern(label)),
-            // TODO the following two cases would need to also change the kind of the type var
-            // But since the type vars are generated before hand this is currently not possible
-            // By not restricting the kind, essentially all builtins that are not wrapped
-            // in properly typed wrappers are not correctly typed.
-            TypeProtocol::Var(id, kind) => Self::Var(bound[id as usize]),
+            TypeProtocol::Var(id, kind) => {
+                let var = &mut bound[id as usize];
+
+                let var = match (var.kind(), kind) {
+                    (Kind::Type, KindProtocol::Type)
+                    | (Kind::Record, KindProtocol::Record)
+                    | (Kind::Label, KindProtocol::Label)
+                    | (Kind::Tag, KindProtocol::Tag) => *var,
+                    (Kind::Type, _) => {
+                        var.set_kind(kind.into());
+                        *var
+                    }
+                    _ => panic!(
+                        "Cannot convert type var with kind {:?} to kind {:?}",
+                        var.kind(),
+                        kind
+                    ),
+                };
+
+                MonoType::Var(var)
+            }
             TypeProtocol::Witness(proto) => {
                 let ty = Self::from_protocol(*proto, bound, interner);
                 Self::wit(ty)

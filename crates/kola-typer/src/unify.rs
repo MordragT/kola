@@ -200,6 +200,10 @@ impl<'s> Unifier<'s> {
 
     #[inline]
     fn unify_var(&mut self, lhs: &TypeVar, rhs: &TypeVar) {
+        // Apply current substitution to resolve any already-bound variables
+        let lhs = lhs.apply_cow(self.substitution);
+        let rhs = rhs.apply_cow(self.substitution);
+
         // in former apply path compression via cache is already implemented
         // so this should not become essentially an inefficient linked list
         if lhs != rhs {
@@ -239,7 +243,11 @@ impl<'s> Unifier<'s> {
 
     #[inline]
     fn unify_label_or_var(&mut self, lhs: &LabelOrVar, rhs: &LabelOrVar) {
-        match (lhs, rhs) {
+        // Apply current substitution to resolve any already-bound variables
+        let lhs = lhs.apply_cow(self.substitution);
+        let rhs = rhs.apply_cow(self.substitution);
+
+        match (lhs.as_ref(), rhs.as_ref()) {
             (LabelOrVar::Label(l), LabelOrVar::Label(r)) => self.unify_label(l, r),
             (LabelOrVar::Var(l), LabelOrVar::Var(r)) => self.unify_var(l, r),
             (LabelOrVar::Label(label), LabelOrVar::Var(var))
@@ -272,7 +280,11 @@ impl<'s> Unifier<'s> {
     //
     // self represents the expected type.
     fn unify_row(&mut self, lhs: &RowType, rhs: &RowType) {
-        match (lhs, rhs) {
+        // Apply current substitution to resolve any already-bound variables
+        let lhs = lhs.apply_cow(self.substitution);
+        let rhs = rhs.apply_cow(self.substitution);
+
+        match (lhs.as_ref(), rhs.as_ref()) {
             (RowType::Empty, RowType::Empty) => (),
             (
                 RowType::Extension {
@@ -306,8 +318,8 @@ impl<'s> Unifier<'s> {
                 },
             ) if !self.can_unify_label_or_var(a, b) && l == r => {
                 self.errors.push(TypeError::CannotUnify {
-                    expected: MonoType::from(lhs.clone()),
-                    actual: MonoType::from(rhs.clone()),
+                    expected: MonoType::from(lhs.into_owned()),
+                    actual: MonoType::from(rhs.into_owned()),
                 })
             }
             (
@@ -369,8 +381,8 @@ impl<'s> Unifier<'s> {
                 },
             ) => self.errors.push(TypeError::ExtraLabel(a.clone())),
             _ => self.errors.push(TypeError::CannotUnify {
-                expected: MonoType::from(lhs.clone()),
-                actual: MonoType::from(rhs.clone()),
+                expected: MonoType::from(lhs.into_owned()),
+                actual: MonoType::from(rhs.into_owned()),
             }),
         }
     }

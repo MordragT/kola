@@ -35,11 +35,10 @@ impl PolyType {
     pub fn from_proto(proto: TypeSchemeProtocol, interner: &mut StrInterner) -> Self {
         let TypeSchemeProtocol { forall, ty } = proto;
 
-        // TODO protocol should have a way to define var kinds
-        let forall = (0..forall).map(|_| TypeVar::default()).collect::<Vec<_>>();
+        let mut forall = (0..forall).map(|_| TypeVar::default()).collect::<Vec<_>>();
 
         // Convert types using simple array indexing
-        let ty = MonoType::from_protocol(ty, &forall, interner);
+        let ty = MonoType::from_protocol(ty, &mut forall, interner);
 
         Self { forall, ty }
     }

@@ -6,7 +6,6 @@ use kola_resolver::{
     info::ModuleInfo,
     symbol::{EffectSym, ModuleSym, TypeSym, ValueSym},
 };
-use kola_tree::node::{self, NodeId};
 use kola_utils::{interner::StrKey, scope::LinearScope};
 
 use crate::types::{ModuleType, MonoType, PolyType, RowType, TypeClass, TypeVar};

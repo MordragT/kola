@@ -1,3 +1,4 @@
+use kola_protocol::KindProtocol;
 use serde::{Deserialize, Serialize};
 use std::{fmt, ops::ControlFlow};
 
@@ -67,6 +68,17 @@ pub enum Kind {
     Record,
     Label,
     Tag,
+}
+
+impl From<KindProtocol> for Kind {
+    fn from(kind: KindProtocol) -> Self {
+        match kind {
+            KindProtocol::Type => Kind::Type,
+            KindProtocol::Record => Kind::Record,
+            KindProtocol::Label => Kind::Label,
+            KindProtocol::Tag => Kind::Tag,
+        }
+    }
 }
 
 impl fmt::Display for Kind {

@@ -118,6 +118,10 @@ derive that:
 {x :: Int, y :: Int} ∼= {y :: Int, x :: Int}
 */
 
+// TODO RowType's tail shouldn't be a `MonoType` but rather a `RowType`.
+// In order to do that, we need to change the RowType to include a
+// type variable (of kind row)
+
 // An extensible row type.
 ///
 /// A row is either `Empty`, meaning it has no properties,

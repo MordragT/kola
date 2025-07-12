@@ -7,10 +7,11 @@
     export module num = import num,
     export module option = import option,
     export module range = import range,
-    export module records = import records,
+    export module record = import record,
     export module result = import result,
     #export module serde = import serde,
     export module str = import str,
+    export module table = import table,
     export module tuple = import tuple,
 
     #main = (serde::to_json my_config::config),
@@ -72,5 +73,5 @@
 
     #main = (range::to_list (range::range 1 10)),
 
-    main = (records::select 'a { a = 1, b = 2, c = 3 }),
+    main = (record::remove 'a { a = 1, b = 2, c = 3 }),
 }
