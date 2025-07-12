@@ -11,10 +11,11 @@ pub type TypedNodes = MetaMap<TypePhase>;
 pub struct TypePhase;
 
 impl Phase for TypePhase {
-    type EffectName = !;
     type FunctorName = !;
     type ModuleTypeName = !;
     type ModuleName = !;
+    type KindName = !;
+    type EffectName = !;
     type TypeName = !;
     type ValueName = !;
 
@@ -68,7 +69,7 @@ impl Phase for TypePhase {
 
     type QualifiedType = types::PolyType;
     type TypeVar = types::PolyType;
-    type Label = types::LabelOrVar;
+    type LabelOrVar = types::LabelOrVar;
     type RecordFieldType = types::LabeledType;
     type RecordType = types::MonoType;
     type TagType = types::LabeledType;
@@ -78,7 +79,6 @@ impl Phase for TypePhase {
     type CompType = types::CompType;
     type Type = types::PolyType;
     type TypeError = !;
-    type Kind = types::TypeClass;
     type TypeVarBind = types::TypeVar;
     type ForallBinder = Vec<types::TypeVar>;
     type TypeScheme = types::PolyType;

@@ -61,10 +61,11 @@ macro_rules! define_nodes {
 }
 
 define_nodes!(
-    EffectName,
     FunctorName,
     ModuleTypeName,
     ModuleName,
+    KindName,
+    EffectName,
     TypeName,
     ValueName,
     // Patterns
@@ -115,7 +116,7 @@ define_nodes!(
     EffectType,
     QualifiedType,
     TypeVar,
-    Label,
+    LabelOrVar,
     RecordFieldType,
     RecordType,
     TagType,
@@ -125,7 +126,6 @@ define_nodes!(
     CompType,
     Type,
     TypeError,
-    Kind,
     TypeVarBind,
     ForallBinder,
     TypeScheme,

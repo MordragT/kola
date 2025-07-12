@@ -70,6 +70,7 @@ impl Shape {
             AnyName::Effect(name) => self.effects.contains_key(&name),
             AnyName::Type(name) => self.types.contains_key(&name),
             AnyName::Value(name) => self.values.contains_key(&name),
+            _ => false,
         }
     }
 
@@ -112,6 +113,7 @@ impl Shape {
             AnyName::Effect(name) => self.get_effect(name).map(AnySym::Effect),
             AnyName::Type(name) => self.get_type(name).map(AnySym::Type),
             AnyName::Value(name) => self.get_value(name).map(AnySym::Value),
+            _ => None,
         }
     }
 

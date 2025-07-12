@@ -276,9 +276,17 @@ where
         let name = var.get(tree).0;
 
         let kind = if let Some(kind_id) = kind {
-            match kind_id.get(tree) {
-                node::Kind::Record => Kind::Record,
-                node::Kind::Label => Kind::Label,
+            match self.interner[kind_id.get(tree).0].as_str() {
+                "Type" => Kind::Type,
+                "Record" => Kind::Record,
+                "Label" => Kind::Label,
+                "Tag" => Kind::Tag,
+                kind => {
+                    return ControlFlow::Break(Diagnostic::error(
+                        self.span(id),
+                        format!("Unknown kind: {kind}"),
+                    ));
+                }
             }
         } else {
             Kind::Type
@@ -468,7 +476,14 @@ where
                     let var = TypeVar::new(Kind::Type);
                     PolyType {
                         forall: vec![var],
-                        ty: MonoType::list(MonoType::Var(var)),
+                        ty: MonoType::wit(MonoType::Var(var)),
+                    }
+                }
+                BuiltinType::Label => {
+                    let var = TypeVar::new(Kind::Label);
+                    PolyType {
+                        forall: vec![var],
+                        ty: MonoType::wit(MonoType::Var(var)),
                     }
                 }
             }
@@ -652,10 +667,14 @@ where
         ControlFlow::Continue(())
     }
 
-    fn visit_label(&mut self, id: Id<node::Label>, tree: &T) -> ControlFlow<Self::BreakValue> {
+    fn visit_label_or_var(
+        &mut self,
+        id: Id<node::LabelOrVar>,
+        tree: &T,
+    ) -> ControlFlow<Self::BreakValue> {
         let label = match *id.get(tree) {
-            node::Label::Label(id) => LabelOrVar::Label(Label(id.get(tree).0)),
-            node::Label::Var(id) => match self.local_env.get(&id.get(tree).0) {
+            node::LabelOrVar::Label(id) => LabelOrVar::Label(Label(id.get(tree).0)),
+            node::LabelOrVar::Var(id) => match self.local_env.get(&id.get(tree).0) {
                 Some(MonoType::Label(val)) => LabelOrVar::Label(*val),
                 Some(MonoType::Var(var)) => LabelOrVar::Var(*var),
                 Some(_) => {
@@ -699,7 +718,7 @@ where
     ) -> ControlFlow<Self::BreakValue> {
         let node::RecordFieldType { label_or_var, ty } = *id.get(tree);
 
-        self.visit_label(label_or_var, tree)?;
+        self.visit_label_or_var(label_or_var, tree)?;
         let label = self.types.meta(label_or_var).clone();
 
         self.visit_type(ty, tree)?;
@@ -1968,18 +1987,12 @@ where
         id: Id<node::TypeWitnessExpr>,
         tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
-        match *id.get(tree) {
-            node::TypeWitnessExpr::Qualified(qual_id) => {
-                let t = self.types.meta(qual_id).instantiate();
+        let t = match *id.get(tree) {
+            node::TypeWitnessExpr::Qualified(qual_id) => self.types.meta(qual_id).instantiate(),
+            node::TypeWitnessExpr::Label(label_id) => MonoType::label(label_id.get(tree).0),
+        };
 
-                self.insert_type(id, MonoType::type_wit(t));
-            }
-            node::TypeWitnessExpr::Label(label_id) => {
-                let label = Label(label_id.get(tree).0);
-
-                self.insert_type(id, MonoType::label_wit(label))
-            }
-        }
+        self.insert_type(id, MonoType::wit(t));
 
         ControlFlow::Continue(())
     }

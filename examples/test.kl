@@ -74,11 +74,8 @@
 
     #type Test label l = forall record r . { @label : Num | r },
 
-    #insert : with label l . forall a record r . a -> r -> { @l : a | r } = fn a => fn r => { r | +@l = a },
+    export select : forall label l record r a . Label l -> { @l : a | r } -> a = fn field => fn row =>
+        (record_select { field = field, row = row }),
 
-    #insert_num : forall record r . Num -> r -> { num : Num | r } = fn n => fn r => (insert 'num n r),
-
-    row_id : forall label l record r . r = fn l => fn r => r,
-
-    main = (row_id 'num { a = 1, b = 2, c = 3 }),
+    main = (select 'a { a = 1, b = 2, c = 3 }),
 }

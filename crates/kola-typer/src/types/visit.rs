@@ -52,12 +52,8 @@ pub trait TypeVisitor: Sized {
         ControlFlow::Continue(())
     }
 
-    fn visit_type_wit(&mut self, wit: &super::TypeWit) -> ControlFlow<Self::BreakValue> {
+    fn visit_wit(&mut self, wit: &super::Wit) -> ControlFlow<Self::BreakValue> {
         self.visit_mono(&wit.0)
-    }
-
-    fn visit_label_wit(&mut self, wit: &super::LabelWit) -> ControlFlow<Self::BreakValue> {
-        self.visit_label(&wit.0)
     }
 
     fn visit_mono(&mut self, mono: &super::MonoType) -> ControlFlow<Self::BreakValue> {
@@ -68,8 +64,7 @@ pub trait TypeVisitor: Sized {
             super::MonoType::Row(r) => self.visit_row(r),
             super::MonoType::Var(v) => self.visit_var(v),
             super::MonoType::Label(l) => self.visit_label(l),
-            super::MonoType::TypeWit(tw) => self.visit_type_wit(tw),
-            super::MonoType::LabelWit(lw) => self.visit_label_wit(lw),
+            super::MonoType::Wit(w) => self.visit_wit(w),
         }
     }
 }
@@ -129,12 +124,8 @@ pub trait TypeVisitorMut: Sized {
         ControlFlow::Continue(())
     }
 
-    fn visit_type_wit_mut(&mut self, wit: &mut super::TypeWit) -> ControlFlow<Self::BreakValue> {
+    fn visit_wit_mut(&mut self, wit: &mut super::Wit) -> ControlFlow<Self::BreakValue> {
         self.visit_mono_mut(&mut wit.0)
-    }
-
-    fn visit_label_wit_mut(&mut self, wit: &mut super::LabelWit) -> ControlFlow<Self::BreakValue> {
-        self.visit_label_mut(&mut wit.0)
     }
 
     fn visit_mono_mut(&mut self, mono: &mut super::MonoType) -> ControlFlow<Self::BreakValue> {
@@ -145,8 +136,7 @@ pub trait TypeVisitorMut: Sized {
             super::MonoType::Row(r) => self.visit_row_mut(r),
             super::MonoType::Var(v) => self.visit_var_mut(v),
             super::MonoType::Label(l) => self.visit_label_mut(l),
-            super::MonoType::TypeWit(tw) => self.visit_type_wit_mut(tw),
-            super::MonoType::LabelWit(lw) => self.visit_label_wit_mut(lw),
+            super::MonoType::Wit(w) => self.visit_wit_mut(w),
         }
     }
 }
@@ -304,34 +294,18 @@ impl TypeVisitable for super::Label {
     }
 }
 
-impl TypeVisitable for super::TypeWit {
+impl TypeVisitable for super::Wit {
     fn visit_type_by<V>(&self, visitor: &mut V) -> ControlFlow<V::BreakValue>
     where
         V: TypeVisitor,
     {
-        visitor.visit_type_wit(self)
+        visitor.visit_wit(self)
     }
 
     fn visit_type_mut_by<V>(&mut self, visitor: &mut V) -> ControlFlow<V::BreakValue>
     where
         V: TypeVisitorMut,
     {
-        visitor.visit_type_wit_mut(self)
-    }
-}
-
-impl TypeVisitable for super::LabelWit {
-    fn visit_type_by<V>(&self, visitor: &mut V) -> ControlFlow<V::BreakValue>
-    where
-        V: TypeVisitor,
-    {
-        visitor.visit_label_wit(self)
-    }
-
-    fn visit_type_mut_by<V>(&mut self, visitor: &mut V) -> ControlFlow<V::BreakValue>
-    where
-        V: TypeVisitorMut,
-    {
-        visitor.visit_label_wit_mut(self)
+        visitor.visit_wit_mut(self)
     }
 }

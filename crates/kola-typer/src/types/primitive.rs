@@ -57,10 +57,6 @@ impl Typed for PrimitiveType {
                 | TypeClass::Comparable
                 | TypeClass::Equatable
                 | TypeClass::Stringable => Ok(()),
-                _ => Err(TypeError::CannotConstrain {
-                    expected: with,
-                    actual: self.into(),
-                }),
             },
             PrimitiveType::Char => match with {
                 TypeClass::Equatable | TypeClass::Stringable => Ok(()),

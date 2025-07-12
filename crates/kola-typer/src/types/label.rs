@@ -20,13 +20,13 @@ pub struct Label(pub StrKey);
 
 impl Label {
     pub fn to_protocol(&self, interner: &StrInterner) -> TypeProtocol {
-        todo!()
+        TypeProtocol::label(interner[self.0].to_owned())
     }
 }
 
 impl fmt::Display for Label {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "Label {}", self.0)
+        write!(f, "{}", self.0)
     }
 }
 
@@ -48,7 +48,7 @@ impl Typed for Label {
 }
 
 impl Substitutable for Label {
-    fn try_apply(&self, s: &mut Substitution) -> Option<Self> {
+    fn try_apply(&self, _s: &mut Substitution) -> Option<Self> {
         None
     }
 }

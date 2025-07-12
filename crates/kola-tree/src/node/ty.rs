@@ -2,41 +2,17 @@ use derive_more::{Display, From, IntoIterator};
 use enum_as_inner::EnumAsInner;
 use kola_macros::{Inspector, Notate};
 use serde::{Deserialize, Serialize};
-use std::{borrow::Borrow, fmt, ops::Deref};
+use std::{borrow::Borrow, ops::Deref};
 
 use kola_print::prelude::*;
 use kola_utils::interner::StrKey;
 
 use crate::{
     id::Id,
-    node::{EffectName, ModulePath, TypeName, ValueName},
+    node::{EffectName, KindName, ModulePath, TypeName, ValueName},
     print::NodePrinter,
     tree::TreeView,
 };
-
-/*
-type Option = forall a . [ Some : a, None ]
-type OptionResult  = forall a e . [ Option a | +Error : e ]
-type AlwaysSome = forall a . [ Option a | -None ]
-
-type Person = { name : Str }
-type Member = { Person | +id : Num }
-type Id = { Member | -id }
-
-map : forall a b . (a -> b) -> List a -> List b
-
-TODO:
-
-allow Open Variants and Open Records:
-
-< Some : a, None | * >
-{ name : Str, age : Num | * }
-
-as well as (or just allow the latter, as it doesn't need any special handling)
-
-forall a b . < Some : a, None | b >
-forall a . { name : Str, age : Num | b }
-*/
 
 #[derive(
     Debug,
@@ -274,8 +250,7 @@ impl<'a> Notate<'a> for NodePrinter<'a, TypeVar> {
     Deserialize,
 )]
 #[notate(color = "cyan")]
-pub enum Label {
-    // TODO rename to LabelOrVar
+pub enum LabelOrVar {
     Var(Id<TypeVar>),
     Label(Id<ValueName>),
 }
@@ -296,7 +271,7 @@ pub enum Label {
 )]
 #[notate(color = "cyan")]
 pub struct RecordFieldType {
-    pub label_or_var: Id<Label>,
+    pub label_or_var: Id<LabelOrVar>,
     pub ty: Id<Type>,
 }
 
@@ -452,21 +427,6 @@ impl<'a> Notate<'a> for NodePrinter<'a, Type> {
 }
 
 #[derive(
-    Debug, Display, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
-)]
-pub enum Kind {
-    // Type,
-    Record,
-    Label,
-}
-
-impl<'a> Notate<'a> for NodePrinter<'a, Kind> {
-    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
-        self.value.cyan().display_in(arena)
-    }
-}
-
-#[derive(
     Debug,
     Notate,
     Inspector,
@@ -482,7 +442,7 @@ impl<'a> Notate<'a> for NodePrinter<'a, Kind> {
 )]
 #[notate(color = "cyan")]
 pub struct TypeVarBind {
-    pub kind: Option<Id<Kind>>,
+    pub kind: Option<Id<KindName>>,
     pub var: Id<TypeVar>,
 }
 

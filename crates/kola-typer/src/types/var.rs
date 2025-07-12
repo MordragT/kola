@@ -23,7 +23,7 @@ pub struct TypeVar {
 // because TypeVar is inside the TypePhase and therefore to implement Substitutable for TypedNodes
 // this is also required.
 impl Substitutable for TypeVar {
-    fn try_apply(&self, s: &mut Substitution) -> Option<Self> {
+    fn try_apply(&self, _s: &mut Substitution) -> Option<Self> {
         None
     }
 }

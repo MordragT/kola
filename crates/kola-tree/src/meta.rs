@@ -195,10 +195,11 @@ macro_rules! define {
 }
 
 define!(
-    EffectName,
     FunctorName,
     ModuleTypeName,
     ModuleName,
+    KindName,
+    EffectName,
     TypeName,
     ValueName,
     // Patterns
@@ -249,7 +250,7 @@ define!(
     EffectType,
     QualifiedType,
     TypeVar,
-    Label,
+    LabelOrVar,
     RecordFieldType,
     RecordType,
     TagType,
@@ -259,7 +260,6 @@ define!(
     CompType,
     Type,
     TypeError,
-    Kind,
     TypeVarBind,
     ForallBinder,
     TypeScheme,

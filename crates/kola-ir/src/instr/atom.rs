@@ -80,9 +80,9 @@ impl DisplayWithInterner<str> for Tag {
 }
 
 #[derive(Debug, From, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct TypeRep(pub TypeKey);
+pub struct Witness(pub TypeKey);
 
-impl DisplayWithInterner<TypeProtocol> for TypeRep {
+impl DisplayWithInterner<TypeProtocol> for Witness {
     fn fmt(&self, f: &mut fmt::Formatter<'_>, interner: &TypeInterner) -> fmt::Result {
         interner[self.0].to_json().unwrap().fmt(f)
     }
@@ -104,7 +104,7 @@ pub enum Atom {
     Symbol(Symbol),
     Builtin(BuiltinId),
     Tag(Tag),
-    TypeRep(TypeRep),
+    Witness(Witness),
 }
 
 impl<T> From<&T> for Atom
@@ -126,7 +126,7 @@ impl_try_as!(
     Symbol(Symbol),
     Builtin(BuiltinId),
     Tag(Tag),
-    TypeRep(TypeRep)
+    Witness(Witness)
 );
 
 impl<'a> Notate<'a> for IrPrinter<'a, Id<Atom>> {
@@ -141,7 +141,7 @@ impl<'a> Notate<'a> for IrPrinter<'a, Id<Atom>> {
             Atom::Symbol(s) => s.display_in(arena),
             Atom::Builtin(b) => b.display_in(arena),
             Atom::Tag(t) => self.interner.with(&t).display_in(arena),
-            Atom::TypeRep(tr) => tr.0.display_in(arena),
+            Atom::Witness(tr) => tr.0.display_in(arena),
         };
 
         notation

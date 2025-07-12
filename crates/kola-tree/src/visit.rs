@@ -27,10 +27,11 @@ macro_rules! impl_visitable {
 }
 
 impl_visitable!(
-    EffectName,
     FunctorName,
     ModuleTypeName,
     ModuleName,
+    KindName,
+    EffectName,
     TypeName,
     ValueName,
     // Patterns
@@ -88,7 +89,6 @@ impl_visitable!(
     CompType,
     Type,
     TypeError,
-    Kind,
     TypeVarBind,
     TypeScheme,
     // Modules
@@ -120,14 +120,6 @@ impl_visitable!(
 pub trait Visitor<T: TreeView> {
     type BreakValue;
 
-    fn visit_effect_name(
-        &mut self,
-        _id: Id<node::EffectName>,
-        _tree: &T,
-    ) -> ControlFlow<Self::BreakValue> {
-        ControlFlow::Continue(())
-    }
-
     fn visit_functor_name(
         &mut self,
         _id: Id<node::FunctorName>,
@@ -147,6 +139,22 @@ pub trait Visitor<T: TreeView> {
     fn visit_module_name(
         &mut self,
         _id: Id<node::ModuleName>,
+        _tree: &T,
+    ) -> ControlFlow<Self::BreakValue> {
+        ControlFlow::Continue(())
+    }
+
+    fn visit_kind_name(
+        &mut self,
+        _id: Id<node::KindName>,
+        _tree: &T,
+    ) -> ControlFlow<Self::BreakValue> {
+        ControlFlow::Continue(())
+    }
+
+    fn visit_effect_name(
+        &mut self,
+        _id: Id<node::EffectName>,
         _tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
         ControlFlow::Continue(())
@@ -1096,15 +1104,23 @@ pub trait Visitor<T: TreeView> {
         ControlFlow::Continue(())
     }
 
-    fn walk_label(&mut self, id: Id<node::Label>, tree: &T) -> ControlFlow<Self::BreakValue> {
+    fn walk_label_or_var(
+        &mut self,
+        id: Id<node::LabelOrVar>,
+        tree: &T,
+    ) -> ControlFlow<Self::BreakValue> {
         match *id.get(tree) {
-            node::Label::Label(name_id) => self.visit_value_name(name_id, tree),
-            node::Label::Var(var_id) => self.visit_type_var(var_id, tree),
+            node::LabelOrVar::Label(name_id) => self.visit_value_name(name_id, tree),
+            node::LabelOrVar::Var(var_id) => self.visit_type_var(var_id, tree),
         }
     }
 
-    fn visit_label(&mut self, id: Id<node::Label>, tree: &T) -> ControlFlow<Self::BreakValue> {
-        self.walk_label(id, tree)
+    fn visit_label_or_var(
+        &mut self,
+        id: Id<node::LabelOrVar>,
+        tree: &T,
+    ) -> ControlFlow<Self::BreakValue> {
+        self.walk_label_or_var(id, tree)
     }
 
     fn walk_record_field_type(
@@ -1114,7 +1130,7 @@ pub trait Visitor<T: TreeView> {
     ) -> ControlFlow<Self::BreakValue> {
         let node::RecordFieldType { label_or_var, ty } = *id.get(tree);
 
-        self.visit_label(label_or_var, tree)?;
+        self.visit_label_or_var(label_or_var, tree)?;
         self.visit_type(ty, tree)?;
 
         ControlFlow::Continue(())
@@ -1285,10 +1301,6 @@ pub trait Visitor<T: TreeView> {
         self.walk_type(id, tree)
     }
 
-    fn visit_kind(&mut self, _id: Id<node::Kind>, _tree: &T) -> ControlFlow<Self::BreakValue> {
-        ControlFlow::Continue(())
-    }
-
     fn walk_type_var_bind(
         &mut self,
         id: Id<node::TypeVarBind>,
@@ -1297,7 +1309,7 @@ pub trait Visitor<T: TreeView> {
         let node::TypeVarBind { var, kind } = *id.get(tree);
 
         if let Some(kind) = kind {
-            self.visit_kind(kind, tree)?;
+            self.visit_kind_name(kind, tree)?;
         }
 
         self.visit_type_var(var, tree)?;

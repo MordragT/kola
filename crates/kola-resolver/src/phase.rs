@@ -258,10 +258,11 @@ pub struct ResolvePhase;
 impl Phase for ResolvePhase {
     // ===== NAMES =====
     // Names are the source of symbols, not targets of resolution
-    type EffectName = !;
     type FunctorName = !;
     type ModuleTypeName = !;
     type ModuleName = !;
+    type KindName = !;
+    type EffectName = !;
     type TypeName = !;
     type ValueName = !;
 
@@ -329,7 +330,7 @@ impl Phase for ResolvePhase {
 
     type QualifiedType = ResolvedType;
     type TypeVar = TypeSym; // Type variables only occur in forall quantifier definitions
-    type Label = !;
+    type LabelOrVar = !;
     type RecordFieldType = !; // Field names exist in value namespace but no symbols needed here
     type RecordType = !; // Structural type, no symbols
     type TagType = !; // Variant tags exist in value namespace
@@ -339,7 +340,6 @@ impl Phase for ResolvePhase {
     type CompType = !;
     type Type = !;
     type TypeError = !;
-    type Kind = !;
     type TypeVarBind = TypeSym;
     type ForallBinder = !;
     type TypeScheme = !;

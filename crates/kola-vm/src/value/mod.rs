@@ -49,7 +49,7 @@ pub enum Value {
     /// A list of values
     List(List),
     /// A Type representation
-    TypeRep(TypeProtocol),
+    Witness(TypeProtocol),
 }
 
 impl Value {
@@ -126,7 +126,7 @@ impl DisplayWithInterner<str> for Value {
             Value::Variant(v) => v.fmt(f, interner),
             Value::Record(r) => r.fmt(f, interner),
             Value::List(l) => l.fmt(f, interner),
-            Value::TypeRep(proto) => proto.to_json().unwrap().fmt(f),
+            Value::Witness(proto) => proto.to_json().unwrap().fmt(f),
         }
     }
 }

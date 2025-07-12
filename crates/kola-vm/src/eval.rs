@@ -46,7 +46,7 @@ pub fn eval_atom(atom: Atom, env: &Env, context: &MachineContext) -> Result<Valu
         Atom::Symbol(s) => eval_symbol(s, env),
         Atom::Builtin(b) => Ok(Value::Builtin(b)),
         Atom::Tag(t) => Ok(Value::Tag(t)),
-        Atom::TypeRep(tr) => Ok(Value::TypeRep(context.type_interner[tr.0].clone())),
+        Atom::Witness(tr) => Ok(Value::Witness(context.type_interner[tr.0].clone())),
     }
 }
 
@@ -526,6 +526,29 @@ fn eval_builtin(
                 cont,
             });
         }
+        (BuiltinId::RecordSelect, Value::Record(record)) => {
+            let Some(Value::Witness(TypeProtocol::Label(label))) =
+                record.get(context.intern_str("label"))
+            else {
+                return MachineState::Error(
+                    "record_select requires 'field' field with a string".to_owned(),
+                );
+            };
+
+            let Some(Value::Record(record)) = record.get(context.intern_str("record")).cloned()
+            else {
+                return MachineState::Error(
+                    "record_select requires 'row' field with a record".to_owned(),
+                );
+            };
+
+            match record.get(context.intern_str(label)) {
+                Some(value) => value.clone(),
+                None => {
+                    return MachineState::Error(format!("Field '{}' not found in record", label));
+                }
+            }
+        }
         (BuiltinId::RecordRec, Value::Record(record)) => {
             let Some(Value::Record(data)) = record.get(context.intern_str("data")).cloned() else {
                 return MachineState::Error(
@@ -563,9 +586,7 @@ fn eval_builtin(
         // TODO these serde methods do not enforce type annotations
         // TODO from_json would mean that the interner is mutable ?
         (BuiltinId::SerdeFromJson, Value::Record(record)) => {
-            let Some(Value::TypeRep(TypeProtocol::TypeRep(type_proto))) =
-                record.get(context.intern_str("proto"))
-            else {
+            let Some(Value::Witness(wit)) = record.get(context.intern_str("proto")) else {
                 return MachineState::Error(
                     "serde_from_json requires 'proto' field with a TypeRep".to_owned(),
                 );
@@ -577,7 +598,7 @@ fn eval_builtin(
                 );
             };
 
-            match Value::from_json(type_proto, &json_str, &mut context.str_interner) {
+            match Value::from_json(wit, &json_str, &mut context.str_interner) {
                 Ok(value) => Value::variant(Tag(context.intern_str("Ok")), value),
                 Err(err) => {
                     Value::variant(Tag(context.intern_str("Err")), Value::Str(err.to_string()))

@@ -7,6 +7,17 @@ use serde::{
     ser::{SerializeMap, SerializeSeq},
 };
 
+#[derive(
+    Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+)]
+pub enum KindProtocol {
+    #[default]
+    Type,
+    Record,
+    Tag,
+    Label,
+}
+
 pub type TypeInterner = Interner<TypeProtocol>;
 pub type TypeKey = Key<TypeProtocol>;
 
@@ -30,11 +41,12 @@ pub enum TypeProtocol {
     Char,
     Str,
     List(Box<Self>),
-    TypeRep(Box<Self>),
     Record(Vec<(String, Self)>),
     Variant(Vec<(String, Self)>),
     Func(Box<Self>, Box<Self>),
-    Var(u32),
+    Label(String),
+    Var(u32, KindProtocol),
+    Witness(Box<Self>),
 }
 
 impl TypeProtocol {
@@ -46,10 +58,6 @@ impl TypeProtocol {
 
     pub fn list(inner: Self) -> Self {
         TypeProtocol::List(Box::new(inner))
-    }
-
-    pub fn type_rep(inner: Self) -> Self {
-        TypeProtocol::TypeRep(Box::new(inner))
     }
 
     pub fn record(fields: Vec<(String, Self)>) -> Self {
@@ -64,8 +72,16 @@ impl TypeProtocol {
         TypeProtocol::Func(Box::new(input), Box::new(output))
     }
 
-    pub fn var(id: u32) -> Self {
-        TypeProtocol::Var(id)
+    pub fn label(label: impl Into<String>) -> Self {
+        TypeProtocol::Label(label.into())
+    }
+
+    pub fn var(id: u32, kind: KindProtocol) -> Self {
+        TypeProtocol::Var(id, kind)
+    }
+
+    pub fn witness(wit: Self) -> Self {
+        TypeProtocol::Witness(Box::new(wit))
     }
 
     pub fn to_json(&self) -> serde_json::Result<String> {

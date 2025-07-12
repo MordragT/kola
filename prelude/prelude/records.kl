@@ -9,6 +9,9 @@
     # Also I am not able to express label polymorphism in the type system yet.
 
 
+    export select : forall (l : Label) (r : Record) a . Label l -> { @l : a | r } -> a = fn label =>
+        fn record => (record_select { label = label, record = record }),
+
     #export insert : forall a r . Str -> a -> r -> { ? : a | r } = fn key =>
     #    fn value => fn record => { record | +? = value },
 

@@ -29,10 +29,11 @@ macro_rules! define_folder_trait {
 }
 
 define_folder_trait!(
-    EffectName,
     FunctorName,
     ModuleTypeName,
     ModuleName,
+    KindName,
+    EffectName,
     TypeName,
     ValueName,
     // Patterns
@@ -83,7 +84,7 @@ define_folder_trait!(
     EffectType,
     QualifiedType,
     TypeVar,
-    Label,
+    LabelOrVar,
     RecordFieldType,
     RecordType,
     TagType,
@@ -93,7 +94,6 @@ define_folder_trait!(
     CompType,
     Type,
     TypeError,
-    Kind,
     TypeVarBind,
     ForallBinder,
     TypeScheme,

@@ -12,7 +12,7 @@ use crate::{
 };
 
 #[derive(
-    Debug, From, Display, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+    Debug, Display, From, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
 )]
 pub enum LabelOrVar {
     /// A label that is a variable.

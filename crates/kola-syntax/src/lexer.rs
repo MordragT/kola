@@ -235,8 +235,6 @@ where
             "effect" => Token::Atom("effect"),
             "functor" => Token::Atom("functor"),
             "type" => Token::Atom("type"),
-            "record" => Token::Atom("record"),
-            "label" => Token::Atom("label"),
             "forall" => Token::Atom("forall"),
             // Expression keywords
             "fn" => Token::Atom("fn"),

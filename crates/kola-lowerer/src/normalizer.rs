@@ -271,7 +271,7 @@ where
         let ty_proto = ty.to_protocol(self.str_interner);
         let ty_key = self.type_interner.intern(ty_proto);
 
-        let atom = self.builder.add(ir::Atom::TypeRep(ir::TypeRep(ty_key)));
+        let atom = self.builder.add(ir::Atom::Witness(ir::Witness(ty_key)));
         self.emit(atom);
 
         ControlFlow::Continue(())

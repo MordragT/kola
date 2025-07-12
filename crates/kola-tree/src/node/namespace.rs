@@ -15,6 +15,7 @@ pub enum NamespaceKind {
     Functor,
     ModuleType,
     Module,
+    Kind,
     Effect,
     Type,
     Value,
@@ -26,6 +27,7 @@ mod sealed {
     impl Sealed for super::FunctorNamespace {}
     impl Sealed for super::ModuleTypeNamespace {}
     impl Sealed for super::ModuleNamespace {}
+    impl Sealed for super::KindNamespace {}
     impl Sealed for super::EffectNamespace {}
     impl Sealed for super::TypeNamespace {}
     impl Sealed for super::ValueNamespace {}
@@ -65,6 +67,15 @@ impl Namespace for ModuleNamespace {
 #[derive(
     Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
 )]
+pub struct KindNamespace;
+
+impl Namespace for KindNamespace {
+    const KIND: NamespaceKind = NamespaceKind::Kind;
+}
+
+#[derive(
+    Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+)]
 pub struct EffectNamespace;
 
 impl Namespace for EffectNamespace {
@@ -92,6 +103,7 @@ impl Namespace for ValueNamespace {
 pub type FunctorName = Name<FunctorNamespace>;
 pub type ModuleTypeName = Name<ModuleTypeNamespace>;
 pub type ModuleName = Name<ModuleNamespace>;
+pub type KindName = Name<KindNamespace>;
 pub type EffectName = Name<EffectNamespace>;
 pub type TypeName = Name<TypeNamespace>;
 pub type ValueName = Name<ValueNamespace>;
@@ -246,6 +258,7 @@ pub enum AnyName {
     Functor(FunctorName),
     ModuleType(ModuleTypeName),
     Module(ModuleName),
+    Kind(KindName),
     Effect(EffectName),
     Type(TypeName),
     Value(ValueName),
@@ -257,6 +270,7 @@ impl AnyName {
             AnyName::Functor(_) => NamespaceKind::Functor,
             AnyName::ModuleType(_) => NamespaceKind::ModuleType,
             AnyName::Module(_) => NamespaceKind::Module,
+            AnyName::Kind(_) => NamespaceKind::Kind,
             AnyName::Effect(_) => NamespaceKind::Effect,
             AnyName::Type(_) => NamespaceKind::Type,
             AnyName::Value(_) => NamespaceKind::Value,
@@ -268,6 +282,7 @@ impl AnyName {
             AnyName::Functor(name) => name.as_str_key(),
             AnyName::ModuleType(name) => name.as_str_key(),
             AnyName::Module(name) => name.as_str_key(),
+            AnyName::Kind(name) => name.as_str_key(),
             AnyName::Effect(name) => name.as_str_key(),
             AnyName::Type(name) => name.as_str_key(),
             AnyName::Value(name) => name.as_str_key(),

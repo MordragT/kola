@@ -233,8 +233,6 @@ define_token_type!(Kw {
     Functor => "functor",
     Effect => "effect",
     Type => "type",
-    Record => "record",
-    Label => "label",
     Forall => "forall",
     Fn => "fn",
     Do => "do",

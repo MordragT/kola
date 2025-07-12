@@ -6,8 +6,6 @@ use serde::{Deserialize, Serialize};
 
 use super::{MonoType, TypeVar, Typed};
 use crate::{
-    constraints::Constraints,
-    env::TypeClassEnv,
     error::TypeConversionError,
     substitute::{Substitutable, Substitution},
 };

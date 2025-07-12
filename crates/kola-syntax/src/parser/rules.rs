@@ -64,6 +64,10 @@ pub fn module_name_parser<'t>() -> impl KolaParser<'t, Id<node::ModuleName>> + C
     lower_symbol().map(node::ModuleName::new).to_node().boxed()
 }
 
+pub fn kind_name_parser<'t>() -> impl KolaParser<'t, Id<node::KindName>> + Clone {
+    upper_symbol().map(node::KindName::new).to_node().boxed()
+}
+
 pub fn effect_name_parser<'t>() -> impl KolaParser<'t, Id<node::EffectName>> + Clone {
     upper_symbol().map(node::EffectName::new).to_node().boxed()
 }
@@ -1041,11 +1045,11 @@ pub fn type_parser<'t>() -> impl KolaParser<'t, Id<node::Type>> + Clone {
             .boxed();
 
         let label = lower_value_name_parser()
-            .map_to_node(node::Label::Label)
+            .map_to_node(node::LabelOrVar::Label)
             .or(ctrl(CtrlT::AT)
                 .ignore_then(symbol())
                 .map_to_node(node::TypeVar)
-                .map_to_node(node::Label::Var));
+                .map_to_node(node::LabelOrVar::Var));
 
         let field = label
             .then_ignore(ctrl(CtrlT::COLON))
@@ -1191,19 +1195,21 @@ pub fn type_parser<'t>() -> impl KolaParser<'t, Id<node::Type>> + Clone {
 ///             | type_expression
 /// ```
 pub fn type_scheme_parser<'t>() -> impl KolaParser<'t, Id<node::TypeScheme>> + Clone {
-    let var = symbol().map_to_node(node::TypeVar);
+    let var = symbol().map_to_node(node::TypeVar).boxed();
 
-    let kind = choice((
-        kw(KwT::RECORD).to(node::Kind::Record),
-        kw(KwT::LABEL).to(node::Kind::Label),
-    ))
-    .to_node();
+    let kinded = var
+        .clone()
+        .then_ignore(ctrl(CtrlT::COLON))
+        .then(kind_name_parser())
+        .delimited_by(open_delim(OpenT::PAREN), close_delim(CloseT::PAREN))
+        .map_to_node(|(var, kind)| node::TypeVarBind {
+            var,
+            kind: Some(kind),
+        });
 
-    let bind = kind
-        .or_not()
-        .then(var)
-        .map_to_node(|(kind, var)| node::TypeVarBind { kind, var })
-        .boxed();
+    let bind = var
+        .map_to_node(|var| node::TypeVarBind { var, kind: None })
+        .or(kinded);
 
     // hindley milner only allows standard polymorphism (top-level forall)
     // higher-rank polymorphism (nested forall) is undecidable for full type-inference

@@ -280,10 +280,11 @@ macro_rules! impl_meta_substitutable {
 }
 
 impl_meta_substitutable!(
-    EffectName,
     FunctorName,
     ModuleTypeName,
     ModuleName,
+    KindName,
+    EffectName,
     TypeName,
     ValueName,
     // Patterns
@@ -334,7 +335,7 @@ impl_meta_substitutable!(
     EffectType,
     QualifiedType,
     TypeVar,
-    Label,
+    LabelOrVar,
     RecordFieldType,
     RecordType,
     TagType,
@@ -344,7 +345,6 @@ impl_meta_substitutable!(
     CompType,
     Type,
     TypeError,
-    Kind,
     TypeVarBind,
     ForallBinder,
     TypeScheme,

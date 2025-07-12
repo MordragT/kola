@@ -4,7 +4,7 @@ mod atom;
 mod expr;
 mod pattern;
 
-pub use atom::{Atom, Func, Tag, TypeRep};
+pub use atom::{Atom, Func, Tag, Witness};
 use derive_more::From;
 pub use expr::*;
 use kola_utils::impl_try_as;

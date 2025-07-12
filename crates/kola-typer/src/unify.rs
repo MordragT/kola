@@ -112,10 +112,10 @@ impl Unifiable<MonoType> for TypeVar {
     }
 }
 
-impl Unifiable for TypeWit {
+impl Unifiable for Wit {
     fn try_unify(&self, rhs: &Self, s: &mut Substitution) -> Result<(), TypeErrors> {
         let mut unifier = Unifier::new(s);
-        unifier.unify_type_wit(self, rhs);
+        unifier.unify_wit(self, rhs);
         if unifier.errors.has_errors() {
             Err(unifier.errors)
         } else {
@@ -386,13 +386,8 @@ impl<'s> Unifier<'s> {
     }
 
     #[inline]
-    fn unify_type_wit(&mut self, lhs: &TypeWit, rhs: &TypeWit) {
+    fn unify_wit(&mut self, lhs: &Wit, rhs: &Wit) {
         self.unify_mono(&lhs.0, &rhs.0);
-    }
-
-    #[inline]
-    fn unify_label_wit(&mut self, lhs: &LabelWit, rhs: &LabelWit) {
-        self.unify_label(&lhs.0, &rhs.0);
     }
 
     fn unify_mono(&mut self, lhs: &MonoType, rhs: &MonoType) {
@@ -410,8 +405,7 @@ impl<'s> Unifier<'s> {
             (MonoType::Label(l), MonoType::Label(r)) => {
                 self.unify_label(l, r);
             }
-            (MonoType::TypeWit(l), MonoType::TypeWit(r)) => self.unify_type_wit(l, r),
-            (MonoType::LabelWit(l), MonoType::LabelWit(r)) => self.unify_label_wit(l, r),
+            (MonoType::Wit(l), MonoType::Wit(r)) => self.unify_wit(l, r),
             (l, r) => {
                 self.errors.push(TypeError::CannotUnify {
                     expected: l.clone(),
