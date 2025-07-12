@@ -10,8 +10,10 @@ mod module;
 mod mono;
 mod poly;
 mod primitive;
+mod record;
 mod row;
 mod var;
+mod variant;
 mod visit;
 mod wit;
 
@@ -23,8 +25,10 @@ pub use module::*;
 pub use mono::*;
 pub use poly::*;
 pub use primitive::*;
+pub use record::*;
 pub use row::*;
 pub use var::*;
+pub use variant::*;
 pub use visit::*;
 pub use wit::*;
 
@@ -65,18 +69,16 @@ impl fmt::Display for TypeClass {
 pub enum Kind {
     #[default]
     Type,
-    Record,
+    Row,
     Label,
-    Tag,
 }
 
 impl From<KindProtocol> for Kind {
     fn from(kind: KindProtocol) -> Self {
         match kind {
             KindProtocol::Type => Kind::Type,
-            KindProtocol::Record => Kind::Record,
+            KindProtocol::Row => Kind::Row,
             KindProtocol::Label => Kind::Label,
-            KindProtocol::Tag => Kind::Tag,
         }
     }
 }
@@ -85,14 +87,14 @@ impl fmt::Display for Kind {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Kind::Type => write!(f, "type"),
-            Kind::Record => write!(f, "record"),
+            Kind::Row => write!(f, "record"),
             Kind::Label => write!(f, "label"),
-            Kind::Tag => write!(f, "tag"),
         }
     }
 }
 
 pub trait Typed: TypeVisitable {
+    fn kind(&self) -> Kind;
     fn constrain(&self, with: TypeClass, env: &mut TypeClassEnv) -> Result<(), TypeError>;
 
     /// occurs check

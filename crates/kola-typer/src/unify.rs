@@ -64,7 +64,7 @@ impl Unifiable for FuncType {
     }
 }
 
-impl Unifiable for RowType {
+impl Unifiable for Row {
     fn try_unify(&self, rhs: &Self, s: &mut Substitution) -> Result<(), TypeErrors> {
         let mut unifier = Unifier::new(s);
         unifier.unify_row(self, rhs);
@@ -112,7 +112,7 @@ impl Unifiable<MonoType> for TypeVar {
     }
 }
 
-impl Unifiable for Wit {
+impl Unifiable for WitType {
     fn try_unify(&self, rhs: &Self, s: &mut Substitution) -> Result<(), TypeErrors> {
         let mut unifier = Unifier::new(s);
         unifier.unify_wit(self, rhs);
@@ -172,72 +172,22 @@ impl<'s> Unifier<'s> {
 
     #[inline]
     fn unify_comp(&mut self, lhs: &CompType, rhs: &CompType) {
-        // Apply current substitution to resolve any already-bound variables
-        let lhs = lhs.apply_cow(self.substitution);
-        let rhs = rhs.apply_cow(self.substitution);
-
         self.unify_mono(&lhs.ty, &rhs.ty);
         self.unify_row(&lhs.effect, &rhs.effect);
     }
 
     #[inline]
-    fn can_unify_var(&mut self, lhs: &TypeVar, rhs: &TypeVar) -> bool {
-        if lhs != rhs {
-            match (lhs.kind(), rhs.kind()) {
-                (Kind::Type, Kind::Type)
-                | (Kind::Record, Kind::Record)
-                | (Kind::Label, Kind::Label)
-                | (Kind::Tag, Kind::Tag) => true,
-                (Kind::Type, _) => true,
-                (_, Kind::Type) => true,
-
-                _ => false,
-            }
-        } else {
-            true
-        }
-    }
-
-    #[inline]
     fn unify_var(&mut self, lhs: &TypeVar, rhs: &TypeVar) {
-        // Apply current substitution to resolve any already-bound variables
-        let lhs = lhs.apply_cow(self.substitution);
-        let rhs = rhs.apply_cow(self.substitution);
-
-        // in former apply path compression via cache is already implemented
-        // so this should not become essentially an inefficient linked list
-        if lhs != rhs {
-            match (lhs.kind(), rhs.kind()) {
-                (Kind::Type, Kind::Type)
-                | (Kind::Record, Kind::Record)
-                | (Kind::Label, Kind::Label)
-                | (Kind::Tag, Kind::Tag) => {
-                    self.substitution.insert(*lhs, MonoType::Var(*rhs));
-                }
-                (Kind::Type, _) => {
-                    self.substitution.insert(*lhs, MonoType::Var(*rhs));
-                }
-                (_, Kind::Type) => {
-                    self.substitution.insert(*rhs, MonoType::Var(*lhs));
-                }
-
-                _ => {
-                    self.errors.push(TypeError::CannotUnify {
-                        expected: MonoType::Var(*lhs),
-                        actual: MonoType::Var(*rhs),
-                    });
-                }
-            }
-        }
-    }
-
-    #[inline]
-    fn can_unify_label_or_var(&mut self, lhs: &LabelOrVar, rhs: &LabelOrVar) -> bool {
-        match (lhs, rhs) {
-            (LabelOrVar::Label(l), LabelOrVar::Label(r)) => l == r,
-            (LabelOrVar::Var(l), LabelOrVar::Var(r)) => self.can_unify_var(l, r),
-            (LabelOrVar::Label(_), LabelOrVar::Var(_))
-            | (LabelOrVar::Var(_), LabelOrVar::Label(_)) => true,
+        if lhs.kind() != rhs.kind() {
+            // TODO more specific error
+            self.errors.push(TypeError::CannotUnify {
+                expected: MonoType::Var(*lhs),
+                actual: MonoType::Var(*rhs),
+            })
+        } else {
+            // in former apply path compression via cache is already implemented
+            // so this should not become essentially an inefficient linked list
+            self.substitution.insert(*lhs, MonoType::Var(*rhs));
         }
     }
 
@@ -279,23 +229,26 @@ impl<'s> Unifier<'s> {
     // they must have the same property name otherwise they cannot unify.
     //
     // self represents the expected type.
-    fn unify_row(&mut self, lhs: &RowType, rhs: &RowType) {
+    fn unify_row(&mut self, lhs: &Row, rhs: &Row) {
         // Apply current substitution to resolve any already-bound variables
         let lhs = lhs.apply_cow(self.substitution);
         let rhs = rhs.apply_cow(self.substitution);
 
         match (lhs.as_ref(), rhs.as_ref()) {
-            (RowType::Empty, RowType::Empty) => (),
+            (Row::Empty, Row::Empty) => (),
             (
-                RowType::Extension {
+                Row::Extension {
                     head: LabeledType { label: a, ty: t },
-                    tail: MonoType::Var(l),
+                    tail: l,
                 },
-                RowType::Extension {
+                Row::Extension {
                     head: LabeledType { label: b, ty: u },
-                    tail: MonoType::Var(r),
+                    tail: r,
                 },
-            ) if self.can_unify_label_or_var(a, b) && l == r => {
+            ) if let (Row::Var(l), Row::Var(r)) = (&**l, &**r)
+                && a.can_unify(b)
+                && l == r =>
+            {
                 self.unify_label_or_var(a, b);
                 self.branch_errors(
                     |ctx| ctx.unify_mono(t, u),
@@ -308,74 +261,77 @@ impl<'s> Unifier<'s> {
                 );
             }
             (
-                RowType::Extension {
+                Row::Extension {
                     head: LabeledType { label: a, .. },
-                    tail: MonoType::Var(l),
+                    tail: l,
                 },
-                RowType::Extension {
+                Row::Extension {
                     head: LabeledType { label: b, .. },
-                    tail: MonoType::Var(r),
+                    tail: r,
                 },
-            ) if !self.can_unify_label_or_var(a, b) && l == r => {
+            ) if let (Row::Var(l), Row::Var(r)) = (&**l, &**r)
+                && !a.can_unify(b)
+                && l == r =>
+            {
                 self.errors.push(TypeError::CannotUnify {
                     expected: MonoType::from(lhs.into_owned()),
                     actual: MonoType::from(rhs.into_owned()),
                 })
             }
             (
-                RowType::Extension {
+                Row::Extension {
                     head: LabeledType { label: a, ty: t },
                     tail: l,
                 },
-                RowType::Extension {
+                Row::Extension {
                     head: LabeledType { label: b, ty: u },
                     tail: r,
                 },
-            ) if self.can_unify_label_or_var(a, b) => {
+            ) if a.can_unify(b) => {
                 self.unify_label_or_var(a, b);
                 self.unify_mono(t, u);
-                self.unify_mono(l, r);
+                self.unify_row(l, r);
             }
             (
-                RowType::Extension {
+                Row::Extension {
                     head: LabeledType { label: a, ty: t },
                     tail: l,
                 },
-                RowType::Extension {
+                Row::Extension {
                     head: LabeledType { label: b, ty: u },
                     tail: r,
                 },
-            ) if !self.can_unify_label_or_var(a, b) => {
-                let var = TypeVar::new(Kind::Type);
-                let exp = MonoType::from(RowType::Extension {
+            ) if !a.can_unify(b) => {
+                let var = Row::var();
+                let exp = Row::Extension {
                     head: LabeledType {
                         label: a.clone(),
                         ty: t.clone(),
                     },
-                    tail: MonoType::Var(var),
-                });
-                let act = MonoType::from(RowType::Extension {
+                    tail: Box::new(var.clone()),
+                };
+                let act = Row::Extension {
                     head: LabeledType {
                         label: b.clone(),
                         ty: u.clone(),
                     },
-                    tail: MonoType::Var(var),
-                });
-                self.unify_mono(l, &act);
-                self.unify_mono(&exp, r);
+                    tail: Box::new(var),
+                };
+                self.unify_row(l, &act);
+                self.unify_row(&exp, r);
             }
             // If we are expecting {a: u | r} but find {}, label `a` is missing.
             (
-                RowType::Extension {
+                Row::Extension {
                     head: LabeledType { label: a, .. },
                     ..
                 },
-                RowType::Empty,
+                Row::Empty,
             ) => self.errors.push(TypeError::MissingLabel(a.clone())),
             // If we are expecting {} but find {a: u | r}, label `a` is extra.
             (
-                RowType::Empty,
-                RowType::Extension {
+                Row::Empty,
+                Row::Extension {
                     head: LabeledType { label: a, .. },
                     ..
                 },
@@ -398,7 +354,7 @@ impl<'s> Unifier<'s> {
     }
 
     #[inline]
-    fn unify_wit(&mut self, lhs: &Wit, rhs: &Wit) {
+    fn unify_wit(&mut self, lhs: &WitType, rhs: &WitType) {
         self.unify_mono(&lhs.0, &rhs.0);
     }
 

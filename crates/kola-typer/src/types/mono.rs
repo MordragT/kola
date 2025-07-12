@@ -6,8 +6,8 @@ use serde::{Deserialize, Serialize};
 use std::fmt;
 
 use super::{
-    CompType, FuncType, Kind, Label, LabeledType, ListType, PolyType, PrimitiveType, RowType,
-    TypeVar, Typed, Wit,
+    CompType, FuncType, Kind, Label, LabeledType, ListType, PolyType, PrimitiveType, RecordType,
+    Row, TypeVar, Typed, VariantType, WitType,
 };
 use crate::{
     env::TypeClassEnv,
@@ -24,10 +24,12 @@ pub enum MonoType {
     Primitive(PrimitiveType),
     Func(Box<FuncType>),
     List(Box<ListType>),
+    Record(Box<RecordType>),
+    Variant(Box<VariantType>),
     Var(TypeVar),
-    Row(Box<RowType>),
+    Row(Box<Row>),
     Label(Label),
-    Wit(Box<Wit>),
+    Wit(Box<WitType>),
 }
 
 impl MonoType {
@@ -51,16 +53,16 @@ impl MonoType {
         Self::List(Box::new(ListType(el)))
     }
 
-    pub fn row(head: LabeledType, tail: Self) -> Self {
-        Self::Row(Box::new(RowType::Extension { head, tail }))
+    pub fn record(fields: Row) -> Self {
+        Self::Record(Box::new(RecordType(fields)))
     }
 
-    pub fn empty_row() -> Self {
-        Self::Row(Box::new(RowType::Empty))
+    pub fn variant(cases: Row) -> Self {
+        Self::Variant(Box::new(VariantType(cases)))
     }
 
-    pub fn variable(kind: Kind) -> Self {
-        Self::Var(TypeVar::new(kind))
+    pub fn var() -> Self {
+        Self::Var(TypeVar::new(Kind::Type))
     }
 
     pub fn label(label: StrKey) -> Self {
@@ -68,7 +70,7 @@ impl MonoType {
     }
 
     pub fn wit(ty: Self) -> Self {
-        Self::Wit(Box::new(Wit(ty)))
+        Self::Wit(Box::new(WitType(ty)))
     }
 
     pub fn from_protocol(
@@ -88,36 +90,42 @@ impl MonoType {
                 CompType::from_protocol(*ret, bound, interner),
             ),
             TypeProtocol::Record(fields) => {
-                let mut row = Self::empty_row();
+                let mut row = Row::Empty;
                 for (label, ty) in fields.into_iter().rev() {
-                    let labeled = LabeledType::new(
+                    let head = LabeledType::new(
                         Label(interner.intern(label)),
                         Self::from_protocol(ty, bound, interner),
                     );
-                    row = Self::row(labeled, row);
+                    row = Row::Extension {
+                        head,
+                        tail: Box::new(row),
+                    };
                 }
-                row
+                Self::record(row)
             }
             TypeProtocol::Variant(tags) => {
-                let mut row = Self::empty_row();
+                let mut row = Row::Empty;
                 for (label, ty) in tags.into_iter().rev() {
-                    let labeled = LabeledType::new(
+                    let head = LabeledType::new(
                         Label(interner.intern(label)),
                         Self::from_protocol(ty, bound, interner),
                     );
-                    row = Self::row(labeled, row);
+                    row = Row::Extension {
+                        head,
+                        tail: Box::new(row),
+                    };
                 }
-                row
+                Self::variant(row)
             }
             TypeProtocol::Label(label) => Self::label(interner.intern(label)),
             TypeProtocol::Var(id, kind) => {
                 let var = &mut bound[id as usize];
 
+                // TODO this is kind of a hack
                 let var = match (var.kind(), kind) {
                     (Kind::Type, KindProtocol::Type)
-                    | (Kind::Record, KindProtocol::Record)
-                    | (Kind::Label, KindProtocol::Label)
-                    | (Kind::Tag, KindProtocol::Tag) => *var,
+                    | (Kind::Row, KindProtocol::Row)
+                    | (Kind::Label, KindProtocol::Label) => *var,
                     (Kind::Type, _) => {
                         var.set_kind(kind.into());
                         *var
@@ -145,41 +153,12 @@ impl MonoType {
             Self::Primitive(prim) => prim.to_protocol(),
             Self::Func(func) => func.to_protocol(interner),
             Self::List(list) => list.to_protocol(interner),
-            Self::Row(row) => row.to_protocol(interner),
+            Self::Record(record) => record.to_protocol(interner),
+            Self::Variant(variant) => variant.to_protocol(interner),
             Self::Label(label) => label.to_protocol(interner),
             Self::Wit(wit) => wit.to_protocol(interner),
             Self::Var(_) => todo!(),
-        }
-    }
-
-    /// Only works, if the left-hand side is a concrete row type.
-    /// The right-hand side can be a row type or a row variable.
-    pub fn merge_left(&self, other: &Self) -> Result<Self, TypeError> {
-        if let Self::Row(row) = self {
-            row.merge_left(other).map(Into::into)
-        } else {
-            return Err(TypeError::CannotMerge {
-                lhs: self.clone(),
-                rhs: other.clone(),
-            });
-        }
-    }
-
-    /// Only works, if the right-hand side is a concrete row type.
-    /// The left-hand side can be a row type or a row variable.
-    pub fn merge_right(&self, other: &Self) -> Result<Self, TypeError> {
-        other.merge_left(self)
-    }
-
-    /// Only works, if both sides are concrete row types.
-    pub fn merge_deep(&self, other: &Self) -> Result<Self, TypeError> {
-        if let (Self::Row(r1), Self::Row(r2)) = (self, other) {
-            r1.merge_deep(r2).map(Into::into)
-        } else {
-            Err(TypeError::CannotMerge {
-                lhs: self.clone(),
-                rhs: other.clone(),
-            })
+            Self::Row(_) => unimplemented!(),
         }
     }
 }
@@ -197,11 +176,27 @@ impl MonoType {
 }
 
 impl Typed for MonoType {
+    fn kind(&self) -> Kind {
+        match self {
+            Self::Primitive(prim) => prim.kind(),
+            Self::Func(func) => func.kind(),
+            Self::List(list) => list.kind(),
+            Self::Record(record) => record.kind(),
+            Self::Variant(variant) => variant.kind(),
+            Self::Row(row) => row.kind(),
+            Self::Wit(wit) => wit.kind(),
+            Self::Var(var) => var.kind(),
+            Self::Label(label) => label.kind(),
+        }
+    }
+
     fn constrain(&self, with: super::TypeClass, env: &mut TypeClassEnv) -> Result<(), TypeError> {
         match self {
             Self::Primitive(b) => b.constrain(with, env),
             Self::Func(f) => f.constrain(with, env),
             Self::List(l) => l.constrain(with, env),
+            Self::Record(r) => r.constrain(with, env),
+            Self::Variant(v) => v.constrain(with, env),
             Self::Row(r) => r.constrain(with, env),
             Self::Wit(w) => w.constrain(with, env),
             Self::Var(v) => v.constrain(with, env),
@@ -219,6 +214,8 @@ impl Substitutable for MonoType {
             Self::Primitive(_) => None,
             Self::Func(f) => f.try_apply(s).map(Into::into),
             Self::List(l) => l.try_apply(s).map(Into::into),
+            Self::Variant(v) => v.try_apply(s).map(Into::into),
+            Self::Record(r) => r.try_apply(s).map(Into::into),
             Self::Row(r) => r.try_apply(s).map(Into::into),
             Self::Wit(w) => w.try_apply(s).map(Into::into),
             Self::Var(v) => v.try_apply(s),
@@ -235,6 +232,8 @@ impl fmt::Display for MonoType {
             Self::Primitive(b) => b.fmt(f),
             Self::Func(func) => func.fmt(f),
             Self::List(l) => l.fmt(f),
+            Self::Record(r) => r.fmt(f),
+            Self::Variant(v) => v.fmt(f),
             Self::Row(r) => r.fmt(f),
             Self::Var(tv) => tv.fmt(f),
             Self::Label(l) => l.fmt(f),
@@ -267,14 +266,26 @@ impl From<ListType> for MonoType {
     }
 }
 
-impl From<RowType> for MonoType {
-    fn from(value: RowType) -> Self {
+impl From<RecordType> for MonoType {
+    fn from(value: RecordType) -> Self {
+        Self::Record(Box::new(value))
+    }
+}
+
+impl From<VariantType> for MonoType {
+    fn from(value: VariantType) -> Self {
+        Self::Variant(Box::new(value))
+    }
+}
+
+impl From<Row> for MonoType {
+    fn from(value: Row) -> Self {
         Self::Row(Box::new(value))
     }
 }
 
-impl From<Wit> for MonoType {
-    fn from(value: Wit) -> Self {
+impl From<WitType> for MonoType {
+    fn from(value: WitType) -> Self {
         Self::Wit(Box::new(value))
     }
 }

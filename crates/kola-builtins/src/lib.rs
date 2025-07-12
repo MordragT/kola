@@ -168,9 +168,6 @@ macro_rules! define_builtins {
         TypeProtocol::List(Box::new(define_builtins!(@type $inner)))
     };
     (@type $var:literal) => { TypeProtocol::Var($var, KindProtocol::Type) };
-    (@type (Record $var:literal)) => {
-        TypeProtocol::Var($var, KindProtocol::Record)
-    };
     (@type (TypeWit $inner:literal)) => {
         TypeProtocol::Witness(Box::new(TypeProtocol::Var($inner, KindProtocol::Type)))
     };
@@ -231,13 +228,13 @@ define_builtins! {
     num_rec: forall 1 . { "num": Num, "base": 0, "step": ({ "acc": 0, "head": Num } -> 0) } -> 0,
 
     // Builtin Record functions
-    record_select: forall 3 . { "label": (LabelWit 0), "record": (Record 1) } -> 2,
-    record_insert: forall 4 . { "label": (LabelWit 0), "value": 1, "record": (Record 2) } -> (Record 3),
-    record_remove: forall 3 . { "label": (LabelWit 0), "record": (Record 1) } -> (Record 2),
-    record_contains: forall 2 . { "label": (LabelWit 0), "record": (Record 1) } -> Bool,
+    record_select: forall 3 . { "label": (LabelWit 0), "record": 1 } -> 2,
+    record_insert: forall 4 . { "label": (LabelWit 0), "value": 1, "record": 2 } -> 3,
+    record_remove: forall 3 . { "label": (LabelWit 0), "record": 1 } -> 2,
+    record_contains: forall 2 . { "label": (LabelWit 0), "record": 1 } -> Bool,
     record_keys: forall 1 . 0 -> (List Str),
     record_size: forall 1 . 0 -> Num,
-    record_rec: forall 3 . { "record": (Record 0), "base": 1, "step": ({ "acc": 1, "head": { "key": Str, "value": 2 } } -> 1) } -> 1,
+    record_rec: forall 3 . { "record": 0, "base": 1, "step": ({ "acc": 1, "head": { "key": Str, "value": 2 } } -> 1) } -> 1,
 
     // Builtin Serde functions
     serde_from_json: forall 1 . { "proto": (TypeWit 0), "json": Str } -> [ "Ok": 0, "Err": Str ],

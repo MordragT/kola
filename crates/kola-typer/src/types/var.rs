@@ -32,9 +32,8 @@ impl fmt::Display for TypeVar {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self.kind {
             Kind::Type => write!(f, "'t{}", self.id),
-            Kind::Record => write!(f, "'r{}", self.id),
+            Kind::Row => write!(f, "'r{}", self.id),
             Kind::Label => write!(f, "'l{}", self.id),
-            Kind::Tag => write!(f, "'g{}", self.id),
         }
     }
 }
@@ -63,6 +62,12 @@ impl TypeVar {
         self.kind = kind;
     }
 
+    pub fn can_unify(&self, other: &TypeVar) -> bool {
+        // Two TypeVars can unify if they have the same kind
+        // (or if they are equal of course but then they already have the same kind)
+        self.kind == other.kind
+    }
+
     pub fn fresh(&self) -> Self {
         // Generate a new TypeVar with the same kind but a new id
         Self {
@@ -88,6 +93,10 @@ impl Default for TypeVar {
 }
 
 impl Typed for TypeVar {
+    fn kind(&self) -> Kind {
+        self.kind
+    }
+
     fn constrain(&self, with: TypeClass, env: &mut TypeClassEnv) -> Result<(), TypeError> {
         env.entry(*self)
             .and_modify(|constraint| constraint.push(with))

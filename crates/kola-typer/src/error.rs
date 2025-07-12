@@ -19,6 +19,7 @@ pub enum TypeError {
     Unbound(StrKey),
     Occurs(TypeVar),
     NotExistent(TypeVar),
+    ExpectedRecord(MonoType),
     CannotMerge {
         lhs: MonoType,
         rhs: MonoType,
@@ -56,6 +57,9 @@ impl DisplayWithInterner<str> for TypeError {
             TypeError::Unbound(name) => writeln!(f, "Unbound: {}", interner[*name]),
             TypeError::Occurs(var) => writeln!(f, "Occurs: {}", var),
             TypeError::NotExistent(var) => writeln!(f, "Not Existent: {}", var),
+            TypeError::ExpectedRecord(mono) => {
+                writeln!(f, "Expected Record: {}", mono)
+            }
             TypeError::CannotMerge { lhs, rhs } => {
                 writeln!(f, "Cannot Merge: Cannot merge `{}` with `{}`", lhs, rhs)
             }

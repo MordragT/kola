@@ -13,8 +13,7 @@ use serde::{
 pub enum KindProtocol {
     #[default]
     Type,
-    Record,
-    Tag,
+    Row,
     Label,
 }
 

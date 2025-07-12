@@ -4,7 +4,7 @@ use kola_protocol::TypeProtocol;
 use kola_utils::interner::StrInterner;
 use serde::{Deserialize, Serialize};
 
-use super::{MonoType, RowType, TypeVar};
+use super::{MonoType, Row, TypeVar};
 use crate::{
     prelude::{Substitutable, Substitution},
     substitute::merge,
@@ -14,18 +14,18 @@ use crate::{
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct CompType {
     pub ty: MonoType,
-    pub effect: RowType,
+    pub effect: Row,
 }
 
 impl CompType {
     pub fn pure(ty: MonoType) -> Self {
         Self {
             ty,
-            effect: RowType::Empty,
+            effect: Row::Empty,
         }
     }
 
-    pub fn new(ty: MonoType, effect: RowType) -> Self {
+    pub fn new(ty: MonoType, effect: Row) -> Self {
         Self { ty, effect }
     }
 
@@ -35,7 +35,7 @@ impl CompType {
         interner: &mut StrInterner,
     ) -> Self {
         let ty = MonoType::from_protocol(proto, bound, interner);
-        let effect = RowType::Empty;
+        let effect = Row::Empty;
 
         Self { ty, effect }
     }
@@ -52,7 +52,7 @@ impl fmt::Display for CompType {
 
         ty.fmt(f)?;
 
-        if *effect != RowType::Empty {
+        if *effect != Row::Empty {
             write!(f, " ~ {effect}")?;
         }
 

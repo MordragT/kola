@@ -51,7 +51,7 @@ use kola_utils::{as_variant, errors::Errors};
 
 use crate::{
     phase::TypedNodes,
-    types::{Label, LabelOrVar, ListType, MonoType, PrimitiveType, RowType},
+    types::{Label, LabelOrVar, ListType, MonoType, PrimitiveType, Row},
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -536,11 +536,12 @@ impl RequiredSet for ListType {
 ///    because unknown cases/fields may exist
 /// 2. **Exact rows** (no row variable): Require set covering all known cases/fields
 ///    because the set is finite and known
-impl RequiredSet for RowType {
+impl RequiredSet for Row {
     fn required_set(&self) -> CoverSet {
         let row_set = match self {
-            RowType::Empty => RowSet::Empty,
-            RowType::Extension { head, tail } => {
+            Row::Empty => RowSet::Empty,
+            Row::Var(_) => RowSet::Universal,
+            Row::Extension { head, tail } => {
                 let LabelOrVar::Label(label) = head.label else {
                     todo!("Pattern Matching analysis was performed over type function")
                 };

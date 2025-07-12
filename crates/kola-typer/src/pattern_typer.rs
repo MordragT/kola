@@ -5,7 +5,7 @@ use std::ops::ControlFlow;
 use crate::{
     constraints::Constraints,
     env::LocalTypeEnv,
-    types::{Kind, Label, LabeledType, MonoType},
+    types::{Label, LabeledType, MonoType, Row},
 };
 
 pub struct PatternTyper<'a> {
@@ -138,7 +138,7 @@ where
         let elements = &id.get(tree).0;
 
         // Create a fresh type variable for the element type
-        let element_type = MonoType::variable(Kind::Type);
+        let element_type = MonoType::var();
 
         // Constrain the source type to be List(element_type)
         // This implements: ∆;Γ ⊢ [p₁, p₂, ..., pₙ] ⇒ List τ ⊣ Γₙ
@@ -181,34 +181,22 @@ where
     ) -> ControlFlow<Self::BreakValue> {
         let node::RecordPat { fields, polymorph } = id.get(tree);
 
-        // Build the expected record type by processing each field pattern
-        let tail_type = if *polymorph {
-            // For polymorphic records: { ... } creates a row variable
-            MonoType::variable(Kind::Record)
-        } else {
-            // For exact records: no additional fields allowed
-            MonoType::empty_row()
-        };
-
         // Build the record type from right to left (inside-out)
         // This creates: { field₁ : τ₁, field₂ : τ₂, ... | tail }
-        let mut expected_record_type = tail_type;
+
+        // For polymorphic records: { ... } creates a row variable
+        let mut expected = if *polymorph { Row::var() } else { Row::Empty };
 
         // Process fields in reverse to build the row type correctly // TODO probably not necessary ?
         for &field_id in fields.iter().rev() {
             let node::RecordFieldPat { field, pat } = *field_id.get(tree);
             let field_name = field.get(tree).0;
 
-            // Create a fresh type variable for this field
-            let field_type = MonoType::variable(Kind::Type);
-
-            // Create the labeled type for this field
+            let field_type = MonoType::var();
             let labeled_field = LabeledType::new(Label(field_name), field_type.clone());
 
-            // Extend the record type with this field
-            expected_record_type = MonoType::row(labeled_field, expected_record_type);
+            expected = expected.extend(labeled_field);
 
-            // If there's a pattern for this field, type it against the field type
             if let Some(pat_id) = pat {
                 let field_typer = PatternTyper::new(self.env, self.cons, field_type, self.span);
                 field_typer.run::<T, node::Pat>(pat_id, tree);
@@ -224,7 +212,7 @@ where
         // - Exact: { l₁ : p₁, ..., lₙ : pₙ } ⇒ { l₁ : τ₁, ..., lₙ : τₙ }
         // - Polymorphic: { l₁ : p₁, ..., lₙ : pₙ, ... } ⇒ { l₁ : τ₁, ..., lₙ : τₙ | ρ }
         self.cons
-            .constrain_equal(self.source.clone(), expected_record_type, self.span);
+            .constrain_equal(self.source.clone(), MonoType::record(expected), self.span);
 
         ControlFlow::Continue(())
     }
@@ -242,29 +230,23 @@ where
     ) -> ControlFlow<Self::BreakValue> {
         let cases = &id.get(tree).0;
 
-        // Variant patterns are always polymorphic - they create an open variant
-        // with a row variable to allow additional cases
-        let tail_type = MonoType::variable(Kind::Tag);
-
         // Build the expected variant type by processing each case pattern
         // This creates: < case₁ : τ₁, case₂ : τ₂, ... | ρ >
-        let mut expected_variant_type = tail_type;
+
+        // Variant patterns are always polymorphic - they create an open variant
+        // with a row variable to allow additional cases
+        let mut expected = Row::var();
 
         // Process cases in reverse to build the row type correctly (inside-out)
         for &case_id in cases.iter().rev() {
             let node::VariantTagPat { tag, pat } = *case_id.get(tree);
             let tag_name = tag.get(tree).0;
 
-            // Create a fresh type variable for this case
-            let tag_type = MonoType::variable(Kind::Tag);
-
-            // Create the labeled type for this case
+            let tag_type = MonoType::var();
             let labeled_case = LabeledType::new(Label(tag_name), tag_type.clone());
 
-            // Extend the variant type with this case
-            expected_variant_type = MonoType::row(labeled_case, expected_variant_type);
+            expected = expected.extend(labeled_case);
 
-            // If there's a pattern for this case, type it against the case type
             if let Some(pat_id) = pat {
                 let case_typer = PatternTyper::new(self.env, self.cons, tag_type, self.span);
                 case_typer.run::<T, node::Pat>(pat_id, tree);
@@ -276,7 +258,7 @@ where
         // Constrain the source type to match our expected variant type
         // This implements: ∆;Γ ⊢ < l₁ : p₁, l₂ : p₂, ... > ⇒ < l₁ : τ₁, l₂ : τ₂, ... | ρ > ⊣ Γₙ
         self.cons
-            .constrain_equal(self.source.clone(), expected_variant_type, self.span);
+            .constrain_equal(self.source.clone(), MonoType::variant(expected), self.span);
 
         ControlFlow::Continue(())
     }

@@ -5,7 +5,7 @@ use log::trace;
 
 use crate::{
     env::TypeClassEnv,
-    error::TypeErrors,
+    error::{TypeError, TypeErrors},
     substitute::{Substitutable, Substitution},
     types::{MonoType, TypeClass, TypeVar, Typed},
     unify::Unifiable,
@@ -145,9 +145,25 @@ impl Constraints {
 
                     trace!("MERGE LEFT: {} ⊑ {}", lhs, rhs);
 
+                    // TODO somehow return both errors if both are not records
+
+                    let MonoType::Record(lhs) = lhs.as_ref() else {
+                        return Err((
+                            Errors::unit(TypeError::ExpectedRecord(lhs.into_owned())),
+                            span,
+                        ));
+                    };
+
+                    let MonoType::Record(rhs) = rhs.as_ref() else {
+                        return Err((
+                            Errors::unit(TypeError::ExpectedRecord(rhs.into_owned())),
+                            span,
+                        ));
+                    };
+
                     let result_t = lhs.merge_left(&rhs).map_err(|e| (Errors::unit(e), span))?;
 
-                    s.insert(result, result_t);
+                    s.insert(result, MonoType::Record(Box::new(result_t)));
                 }
                 Constraint::Merge {
                     result,
@@ -161,9 +177,25 @@ impl Constraints {
 
                     trace!("MERGE RIGHT: {} ⊒ {}", lhs, rhs);
 
+                    // TODO somehow return both errors if both are not records
+
+                    let MonoType::Record(lhs) = lhs.as_ref() else {
+                        return Err((
+                            Errors::unit(TypeError::ExpectedRecord(lhs.into_owned())),
+                            span,
+                        ));
+                    };
+
+                    let MonoType::Record(rhs) = rhs.as_ref() else {
+                        return Err((
+                            Errors::unit(TypeError::ExpectedRecord(rhs.into_owned())),
+                            span,
+                        ));
+                    };
+
                     let result_t = lhs.merge_right(&rhs).map_err(|e| (Errors::unit(e), span))?;
 
-                    s.insert(result, result_t);
+                    s.insert(result, MonoType::Record(Box::new(result_t)));
                 }
                 Constraint::Merge {
                     result,
@@ -177,9 +209,25 @@ impl Constraints {
 
                     trace!("MERGE DEEP: {} ⊑ {}", lhs, rhs); // better symbol ?
 
+                    // TODO somehow return both errors if both are not records
+
+                    let MonoType::Record(lhs) = lhs.as_ref() else {
+                        return Err((
+                            Errors::unit(TypeError::ExpectedRecord(lhs.into_owned())),
+                            span,
+                        ));
+                    };
+
+                    let MonoType::Record(rhs) = rhs.as_ref() else {
+                        return Err((
+                            Errors::unit(TypeError::ExpectedRecord(rhs.into_owned())),
+                            span,
+                        ));
+                    };
+
                     let result_t = lhs.merge_deep(&rhs).map_err(|e| (Errors::unit(e), span))?;
 
-                    s.insert(result, result_t);
+                    s.insert(result, MonoType::Record(Box::new(result_t)));
                 }
             }
         }

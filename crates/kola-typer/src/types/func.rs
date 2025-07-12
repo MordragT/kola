@@ -3,7 +3,7 @@ use kola_utils::interner::StrInterner;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
-use super::{CompType, MonoType, TypeClass, Typed};
+use super::{CompType, Kind, MonoType, TypeClass, Typed};
 use crate::{
     env::TypeClassEnv,
     error::TypeError,
@@ -38,6 +38,10 @@ impl fmt::Display for FuncType {
 }
 
 impl Typed for FuncType {
+    fn kind(&self) -> Kind {
+        Kind::Type
+    }
+
     fn constrain(&self, with: TypeClass, _env: &mut TypeClassEnv) -> Result<(), TypeError> {
         Err(TypeError::CannotConstrain {
             expected: with,

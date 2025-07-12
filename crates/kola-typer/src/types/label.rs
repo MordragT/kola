@@ -13,7 +13,7 @@ use crate::{
     substitute::{Substitutable, Substitution},
 };
 
-use super::{TypeClass, Typed};
+use super::{Kind, TypeClass, Typed};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct Label(pub StrKey);
@@ -37,6 +37,10 @@ impl DisplayWithInterner<str> for Label {
 }
 
 impl Typed for Label {
+    fn kind(&self) -> Kind {
+        Kind::Label
+    }
+
     fn constrain(&self, with: TypeClass, _env: &mut TypeClassEnv) -> Result<(), TypeError> {
         match with {
             _ => Err(TypeError::CannotConstrain {

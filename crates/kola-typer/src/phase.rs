@@ -62,10 +62,10 @@ impl Phase for TypePhase {
     type Expr = types::MonoType;
 
     // Effects are implemented via row types
-    type QualifiedEffectType = types::RowType;
+    type QualifiedEffectType = types::Row;
     type EffectOpType = types::LabeledType;
-    type EffectRowType = types::RowType;
-    type EffectType = types::RowType;
+    type EffectRowType = types::Row;
+    type EffectType = types::Row;
 
     type QualifiedType = types::PolyType;
     type TypeVar = types::PolyType;
@@ -87,7 +87,7 @@ impl Phase for TypePhase {
     type ValueBind = types::PolyType; // is a MonoType for the typer but a PolyType for the Printer (after generalization)
     type TypeBind = types::PolyType;
     type OpaqueTypeBind = !;
-    type EffectTypeBind = types::RowType;
+    type EffectTypeBind = types::Row;
     type ModuleBind = !;
     type ModuleTypeBind = !;
     type FunctorBind = !;

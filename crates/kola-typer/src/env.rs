@@ -8,7 +8,7 @@ use kola_resolver::{
 };
 use kola_utils::{interner::StrKey, scope::LinearScope};
 
-use crate::types::{ModuleType, MonoType, PolyType, RowType, TypeClass, TypeVar};
+use crate::types::{ModuleType, MonoType, PolyType, Row, TypeClass, TypeVar};
 
 pub type TypeClassEnv = IndexMap<TypeVar, Vec<TypeClass>>;
 
@@ -32,7 +32,7 @@ pub type LocalTypeEnv = LinearScope<StrKey, MonoType>;
 pub struct TypeEnv {
     values: HashMap<ValueSym, (ValueDef, PolyType)>,
     types: HashMap<TypeSym, (TypeDef, PolyType)>,
-    effects: HashMap<EffectSym, (EffectTypeDef, RowType)>,
+    effects: HashMap<EffectSym, (EffectTypeDef, Row)>,
     modules: HashMap<ModuleSym, (ModuleInfo, ModuleType)>,
 }
 impl TypeEnv {
@@ -48,7 +48,7 @@ impl TypeEnv {
         self.types.insert(sym, (def, ty));
     }
 
-    pub fn insert_effect(&mut self, sym: EffectSym, def: EffectTypeDef, ty: RowType) {
+    pub fn insert_effect(&mut self, sym: EffectSym, def: EffectTypeDef, ty: Row) {
         self.effects.insert(sym, (def, ty));
     }
 
@@ -64,7 +64,7 @@ impl TypeEnv {
         self.types.get(&sym).map(|(def, ty)| (*def, ty))
     }
 
-    pub fn get_effect(&self, sym: EffectSym) -> Option<(EffectTypeDef, &RowType)> {
+    pub fn get_effect(&self, sym: EffectSym) -> Option<(EffectTypeDef, &Row)> {
         self.effects.get(&sym).map(|(def, ty)| (*def, ty))
     }
 
@@ -109,7 +109,7 @@ impl Index<TypeSym> for TypeEnv {
 }
 
 impl Index<EffectSym> for TypeEnv {
-    type Output = (EffectTypeDef, RowType);
+    type Output = (EffectTypeDef, Row);
 
     fn index(&self, sym: EffectSym) -> &Self::Output {
         self.effects

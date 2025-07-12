@@ -2,7 +2,7 @@ use kola_protocol::TypeProtocol;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
-use super::{TypeClass, Typed};
+use super::{Kind, TypeClass, Typed};
 use crate::{env::TypeClassEnv, error::TypeError};
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -39,6 +39,10 @@ impl fmt::Display for PrimitiveType {
 }
 
 impl Typed for PrimitiveType {
+    fn kind(&self) -> Kind {
+        Kind::Type
+    }
+
     fn constrain(&self, with: TypeClass, _env: &mut TypeClassEnv) -> Result<(), TypeError> {
         match self {
             PrimitiveType::Unit => Err(TypeError::CannotConstrain {

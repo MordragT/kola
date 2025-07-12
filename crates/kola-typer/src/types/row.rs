@@ -4,7 +4,7 @@ use kola_utils::{interner::StrInterner, interner_ext::DisplayWithInterner};
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
-use super::{Label, MonoType, TypeClass, TypeVar, Typed};
+use super::{Kind, Label, MonoType, TypeClass, TypeVar, Typed};
 use crate::{
     env::TypeClassEnv,
     error::TypeError,
@@ -19,6 +19,24 @@ pub enum LabelOrVar {
     Var(TypeVar),
     /// A label that is a string key.
     Label(Label),
+}
+
+impl LabelOrVar {
+    /// Creates a new `LabelOrVar` variable with a new type variable.
+    #[inline]
+    pub fn var() -> Self {
+        Self::Var(TypeVar::new(Kind::Label))
+    }
+
+    pub fn can_unify(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Self::Var(var), _) | (_, Self::Var(var)) => {
+                debug_assert_eq!(var.kind(), Kind::Label);
+                true
+            }
+            (Self::Label(lhs), Self::Label(rhs)) => lhs == rhs,
+        }
+    }
 }
 
 impl DisplayWithInterner<str> for LabelOrVar {
@@ -61,27 +79,23 @@ impl LabeledType {
     }
 
     pub fn merge_deep(&self, other: &Self) -> Result<Self, TypeError> {
-        let LabelOrVar::Label(lhs) = self.label else {
-            todo!("Label::Var not supported for LabeledType merging");
-        };
-
-        let LabelOrVar::Label(rhs) = other.label else {
-            todo!("Label::Var not supported for LabeledType merging");
-        };
-
-        if lhs != rhs {
-            return Err(TypeError::CannotMergeLabel {
-                label: LabelOrVar::Label(lhs),
-                lhs: self.ty.clone(),
-                rhs: other.ty.clone(),
-            });
+        if let (LabelOrVar::Var(_), LabelOrVar::Var(_)) = (&self.label, &other.label) {
+            todo!("Merging of label variables is not implemented yet");
         }
 
-        let merged_ty = self.ty.merge_deep(&other.ty)?;
-        Ok(Self {
-            label: self.label,
-            ty: merged_ty,
-        })
+        if let (MonoType::Row(l), MonoType::Row(r)) = (&self.ty, &other.ty) {
+            let merged = l.merge_deep(r)?;
+
+            Ok(Self {
+                label: self.label.clone(),
+                ty: MonoType::Row(Box::new(merged)),
+            })
+        } else {
+            Err(TypeError::CannotMerge {
+                lhs: self.ty.clone(),
+                rhs: other.ty.clone(),
+            })
+        }
     }
 }
 
@@ -93,16 +107,11 @@ impl fmt::Display for LabeledType {
 
 impl Substitutable for LabeledType {
     fn try_apply(&self, s: &mut Substitution) -> Option<Self> {
-        // let label = self.label.try_apply(s);
-        // let ty = self.ty.try_apply(s);
+        let label = self.label.try_apply(s);
+        let ty = self.ty.try_apply(s);
 
-        // merge(label, || self.label, ty, || self.ty.clone())
-        //     .map(|(label, ty)| LabeledType { label, ty })
-
-        self.ty.try_apply(s).map(|v| LabeledType {
-            label: self.label.clone(),
-            ty: v,
-        })
+        merge(label, || self.label, ty, || self.ty.clone())
+            .map(|(label, ty)| LabeledType { label, ty })
     }
 }
 
@@ -131,23 +140,31 @@ derive that:
 /// variable*. A row variable is a type variable that
 /// represents an unknown row type.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub enum RowType {
+pub enum Row {
     /// A row that has no properties.
     Empty,
+    /// A row variable for polymorphic rows.
+    Var(TypeVar),
     /// Extension of a row.
     Extension {
         /// The [`Property`] that extends the row type.
         head: LabeledType,
         /// `tail` is the row variable.
-        tail: MonoType,
+        tail: Box<Self>,
     },
 }
 
-impl RowType {
+impl Row {
     /// Creates a new `RowType::Empty`.
     #[inline]
     pub fn empty() -> Self {
         Self::Empty
+    }
+
+    /// Creates a new `RowType::Var` with a new row variable.
+    #[inline]
+    pub fn var() -> Self {
+        Self::Var(TypeVar::new(Kind::Row))
     }
 
     /// Creates a new `RowType::Extension` with the given head and tail.
@@ -155,18 +172,18 @@ impl RowType {
     pub fn unit(head: LabeledType) -> Self {
         Self::Extension {
             head,
-            tail: MonoType::Row(Box::new(RowType::Empty)),
+            tail: Box::new(Row::Empty),
         }
     }
 
     pub fn extend(self, head: LabeledType) -> Self {
-        let tail = MonoType::Row(Box::new(self));
+        let tail = Box::new(self);
 
         Self::Extension { head, tail }
     }
 
-    pub fn to_protocol(&self, interner: &StrInterner) -> TypeProtocol {
-        let mut fields = Vec::new();
+    pub fn to_protocol(&self, interner: &StrInterner) -> Vec<(String, TypeProtocol)> {
+        let mut rows = Vec::new();
         let mut next = self;
 
         while let Self::Extension {
@@ -175,39 +192,44 @@ impl RowType {
         } = next
         {
             let LabelOrVar::Label(label) = label else {
-                panic!("RowType::to_protocol only supports Key labels for now");
+                todo!("RowType::to_protocol only supports Key labels for now");
             };
 
             let ty = ty.to_protocol(interner);
-            fields.push((interner[label.0].to_owned(), ty));
+            rows.push((interner[label.0].to_owned(), ty));
 
-            match tail {
-                MonoType::Row(row) => next = &**row,
-                _ => todo!(),
-            }
+            next = tail;
         }
 
-        TypeProtocol::Record(fields)
+        rows
     }
 
-    pub fn merge_left(&self, other: &MonoType) -> Result<MonoType, TypeError> {
+    /// Only works, if the left-hand side is a concrete row type.
+    /// The right-hand side can be a row type or a row variable.
+    pub fn merge_left(&self, other: &Self) -> Result<Self, TypeError> {
         match (self, other) {
             (Self::Extension { head, tail: l_tail }, r) => {
-                let tail = l_tail.merge_left(r)?;
+                let tail = Box::new(l_tail.merge_left(r)?);
 
                 let next = Self::Extension {
                     head: head.clone(),
                     tail,
                 };
-                Ok(MonoType::Row(Box::new(next)))
+                Ok(next)
             }
-            (Self::Empty, MonoType::Var(var)) => Ok(MonoType::Var(var.clone())),
-            (Self::Empty, MonoType::Row(row)) => Ok(MonoType::Row(row.clone())),
+            (Self::Empty, r) => Ok(r.clone()),
             (lhs, rhs) => Err(TypeError::CannotMerge {
                 lhs: MonoType::Row(Box::new(lhs.clone())),
-                rhs: rhs.clone(),
+                rhs: MonoType::Row(Box::new(rhs.clone())),
             }),
         }
+    }
+
+    /// Only works, if the right-hand side is a concrete row type.
+    /// The left-hand side can be a row type or a row variable.
+    #[inline]
+    pub fn merge_right(&self, other: &Self) -> Result<Self, TypeError> {
+        other.merge_left(self)
     }
 
     /// Below are the rules for deep row merging. In what follows monotypes
@@ -236,18 +258,18 @@ impl RowType {
                     tail: r_tail,
                 },
             ) => {
-                if l_head.label == r_head.label {
+                if l_head.label.can_unify(&r_head.label) {
                     let head = l_head.merge_deep(&r_head)?;
-                    let tail = l_tail.merge_deep(&r_tail)?;
+                    let tail = Box::new(l_tail.merge_deep(&r_tail)?);
 
                     Ok(Self::Extension { head, tail })
                 } else {
                     let head = l_head.clone();
 
-                    let tail = MonoType::Row(Box::new(Self::Extension {
+                    let tail = Box::new(Self::Extension {
                         head: r_head.clone(),
-                        tail: l_tail.merge_deep(r_tail)?,
-                    }));
+                        tail: Box::new(l_tail.merge_deep(r_tail)?),
+                    });
 
                     Ok(Self::Extension { head, tail })
                 }
@@ -255,20 +277,29 @@ impl RowType {
 
             (Self::Empty, r) => Ok(r.clone()),
             (l, Self::Empty) => Ok(l.clone()),
+            _ => Err(TypeError::CannotMerge {
+                lhs: MonoType::Row(Box::new(self.clone())),
+                rhs: MonoType::Row(Box::new(other.clone())),
+            }),
         }
     }
 }
 
-impl fmt::Display for RowType {
+impl fmt::Display for Row {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
             Self::Empty => write!(f, "{{}}"),
+            Self::Var(var) => write!(f, "{var}"),
             Self::Extension { head, tail } => write!(f, "{{{head} | {tail}}}"),
         }
     }
 }
 
-impl Typed for RowType {
+impl Typed for Row {
+    fn kind(&self) -> Kind {
+        Kind::Row
+    }
+
     fn constrain(&self, with: TypeClass, _env: &mut TypeClassEnv) -> Result<(), TypeError> {
         match with {
             _ => Err(TypeError::CannotConstrain {
@@ -279,16 +310,25 @@ impl Typed for RowType {
     }
 }
 
-impl Substitutable for RowType {
+impl Substitutable for Row {
     fn try_apply(&self, s: &mut Substitution) -> Option<Self> {
         match self {
             Self::Empty => None,
+            Self::Var(var) => {
+                debug_assert!(
+                    var.kind() == Kind::Row,
+                    "RowType::Var should be a row variable"
+                );
+                var.try_apply(s).map(|mono| *mono.into_row().unwrap())
+            }
             Self::Extension { head, tail } => {
                 let h = head.try_apply(s);
                 let t = tail.try_apply(s);
 
-                merge(h, || head.clone(), t, || tail.clone())
-                    .map(|(head, tail)| Self::Extension { head, tail })
+                merge(h, || head.clone(), t, || *tail.clone()).map(|(head, tail)| Self::Extension {
+                    head,
+                    tail: Box::new(tail),
+                })
             }
         }
     }
