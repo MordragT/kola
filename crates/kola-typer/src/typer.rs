@@ -277,7 +277,7 @@ where
         let kind = if let Some(kind_id) = kind {
             match self.interner[kind_id.get(tree).0].as_str() {
                 "Type" => Kind::Type,
-                "Record" => Kind::Row,
+                "Row" => Kind::Row,
                 "Label" => Kind::Label,
                 kind => {
                     return ControlFlow::Break(Diagnostic::error(
@@ -291,7 +291,16 @@ where
         };
 
         let var = TypeVar::new(kind);
-        self.local_env.enter(name, MonoType::Var(var));
+
+        // TODO this does make sure that the variables are in the right slots
+        // but maybe we should create an abstraction for this
+        let mono_t = match kind {
+            Kind::Type => MonoType::Var(var),
+            Kind::Row => MonoType::Row(Box::new(Row::Var(var))),
+            Kind::Label => MonoType::Label(LabelOrVar::Var(var)),
+        };
+
+        self.local_env.enter(name, mono_t);
         self.insert_type(id, var);
 
         ControlFlow::Continue(())
@@ -484,7 +493,7 @@ where
 
                     PolyType {
                         forall: vec![var],
-                        ty: MonoType::wit(MonoType::Var(var)),
+                        ty: MonoType::wit(MonoType::label(var)),
                     }
                 }
             }
@@ -603,6 +612,7 @@ where
         let var = forall.remove(0); // Safety: `forall` is guaranteed to have at least one element
 
         let mut substitution = Substitution::unit(var, arg_t);
+
         ty.apply_mut(&mut substitution);
 
         let poly_t = PolyType { forall, ty };
@@ -683,8 +693,7 @@ where
         let label = match *id.get(tree) {
             node::LabelOrVar::Label(id) => LabelOrVar::Label(Label(id.get(tree).0)),
             node::LabelOrVar::Var(id) => match self.local_env.get(&id.get(tree).0) {
-                Some(MonoType::Label(val)) => LabelOrVar::Label(*val),
-                Some(MonoType::Var(var)) => LabelOrVar::Var(*var),
+                Some(MonoType::Label(val)) => *val,
                 Some(_) => {
                     return ControlFlow::Break(Diagnostic::error(
                         self.span(id),
@@ -2006,7 +2015,7 @@ where
             node::TypeWitnessExpr::Qualified(qual_id) => {
                 self.types.meta(qual_id).instantiate(self.cons)
             }
-            node::TypeWitnessExpr::Label(label_id) => MonoType::label(label_id.get(tree).0),
+            node::TypeWitnessExpr::Label(label_id) => MonoType::label(Label(label_id.get(tree).0)),
         };
 
         self.insert_type(id, MonoType::wit(t));

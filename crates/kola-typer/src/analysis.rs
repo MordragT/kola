@@ -51,7 +51,7 @@ use kola_utils::{as_variant, errors::Errors};
 
 use crate::{
     phase::TypedNodes,
-    types::{Label, LabelOrVar, ListType, MonoType, PrimitiveType, Row},
+    types::{Label, LabelOrVar, ListType, MonoType, PrimitiveType, RecordType, Row, VariantType},
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
@@ -427,8 +427,10 @@ pub enum CoverSet {
     Universal,
     /// Matches a finite set of atomic values (literals)
     Atom(AtomSet),
-    /// Matches row types with labeled fields
-    Row(RowSet),
+    /// Matches record types with labeled fields
+    Record(RowSet),
+    /// Matches variant types with tagged constructors
+    Variant(RowSet),
     /// Matches list types with length constraints
     List(ListSet),
     /// Unknown or complex matching behavior
@@ -444,8 +446,12 @@ impl CoverSet {
         as_variant!(self, Self::List)
     }
 
-    pub fn as_row_set(&self) -> Option<&RowSet> {
-        as_variant!(self, Self::Row)
+    pub fn as_record_set(&self) -> Option<&RowSet> {
+        as_variant!(self, Self::Record)
+    }
+
+    pub fn as_variant_set(&self) -> Option<&RowSet> {
+        as_variant!(self, Self::Variant)
     }
 
     pub fn union(self, other: Self) -> Self {
@@ -453,7 +459,8 @@ impl CoverSet {
             (Self::Empty, other) | (other, Self::Empty) => other,
             (Self::Universal, _) | (_, Self::Universal) => Self::Universal,
             (Self::Atom(a), Self::Atom(b)) => Self::Atom(a.union(b)),
-            (Self::Row(a), Self::Row(b)) => Self::Row(a.union(b)),
+            (Self::Record(a), Self::Record(b)) => Self::Record(a.union(b)),
+            (Self::Variant(a), Self::Variant(b)) => Self::Variant(a.union(b)),
             (Self::List(a), Self::List(b)) => Self::List(a.union(b)),
             (_, _) => Self::Opaque,
         }
@@ -465,7 +472,8 @@ impl CoverSet {
             (Self::Empty, _) => false,
             (Self::Universal, _) => true,
             (Self::Atom(a), Self::Atom(b)) => a.is_superset(*b),
-            (Self::Row(a), Self::Row(b)) => a.is_superset(&b),
+            (Self::Record(a), Self::Record(b)) => a.is_superset(&b),
+            (Self::Variant(a), Self::Variant(b)) => a.is_superset(&b),
             (Self::List(a), Self::List(b)) => a.is_superset(b),
             (_, _) => false,
         }
@@ -482,7 +490,8 @@ impl fmt::Display for CoverSet {
             Self::Empty => write!(f, "∅"),
             Self::Universal => write!(f, "∀"),
             Self::Atom(set) => write!(f, "{{{}}}", set),
-            Self::Row(row) => write!(f, "{}", row),
+            Self::Record(row) => write!(f, "Record {}", row),
+            Self::Variant(row) => write!(f, "Variant {}", row),
             Self::List(list) => write!(f, "{}", list),
             Self::Opaque => write!(f, "Opaque"),
         }
@@ -512,21 +521,6 @@ impl RequiredSet for ListType {
     }
 }
 
-/// ## Record Patterns
-///
-/// Records support two kinds of patterns:
-/// - **Exact records**: `{ a, b }` - must have exactly fields `a` and `b`, no more
-/// - **Polymorphic records**: `{ a, b, ... }` - must have at least fields `a` and `b`, may have more
-///
-/// ## Variant System
-///
-/// Variants are built from tag constructors where every uppercase identifier in value
-/// position becomes a tag constructor with type `forall a r . a -> < Tag a | r >`.
-///
-/// We distinguish between:
-/// - **Open variants**: `< Tag1 a | r >` - polymorphic with row variable `r`
-/// - **Closed variants**: `< Some a, None >` - exact set of cases, no row variable
-///
 /// ## Exhaustiveness Strategy
 ///
 /// For exhaustiveness checking, the presence or absence of a row variable determines
@@ -536,34 +530,54 @@ impl RequiredSet for ListType {
 ///    because unknown cases/fields may exist
 /// 2. **Exact rows** (no row variable): Require set covering all known cases/fields
 ///    because the set is finite and known
-impl RequiredSet for Row {
-    fn required_set(&self) -> CoverSet {
-        let row_set = match self {
-            Row::Empty => RowSet::Empty,
-            Row::Var(_) => RowSet::Universal,
-            Row::Extension { head, tail } => {
-                let LabelOrVar::Label(label) = head.label else {
-                    todo!("Pattern Matching analysis was performed over type function")
-                };
+fn required_row_set(row: &Row) -> RowSet {
+    match row {
+        Row::Empty => RowSet::Empty,
+        Row::Var(_) => RowSet::Universal,
+        Row::Extension { head, tail } => {
+            let LabelOrVar::Label(label) = head.label else {
+                todo!("Pattern Matching analysis was performed over unknown label")
+            };
 
-                let head_set = LabelledSet {
-                    label,
-                    set: Box::new(head.ty.required_set()),
-                };
-                let tail_set = match tail.required_set() {
-                    CoverSet::Row(row) => row,
-                    CoverSet::Universal => RowSet::Universal,
-                    _ => panic!("Expected row set for tail"),
-                };
+            let head_set = LabelledSet {
+                label,
+                set: Box::new(head.ty.required_set()),
+            };
+            let tail_set = required_row_set(tail);
 
-                RowSet::Extension {
-                    head: head_set,
-                    tail: Box::new(tail_set),
-                }
+            RowSet::Extension {
+                head: head_set,
+                tail: Box::new(tail_set),
             }
-        };
+        }
+    }
+}
 
-        CoverSet::Row(row_set)
+/// ## Record Patterns
+///
+/// Records support two kinds of patterns:
+/// - **Exact records**: `{ a, b }` - must have exactly fields `a` and `b`, no more
+/// - **Polymorphic records**: `{ a, b, ... }` - must have at least fields `a` and `b`, may have more
+///
+impl RequiredSet for RecordType {
+    fn required_set(&self) -> CoverSet {
+        let row_set = required_row_set(&self.0);
+        CoverSet::Record(row_set)
+    }
+}
+
+/// ## Variant System
+///
+/// Variants are built from tag constructors where every uppercase identifier in value
+/// position becomes a tag constructor with type `forall a r . a -> < Tag a | r >`.
+///
+/// We distinguish between:
+/// - **Open variants**: `< Tag1 a | r >` - polymorphic with row variable `r`
+/// - **Closed variants**: `< Some a, None >` - exact set of cases, no row variable
+impl RequiredSet for VariantType {
+    fn required_set(&self) -> CoverSet {
+        let row_set = required_row_set(&self.0);
+        CoverSet::Variant(row_set)
     }
 }
 
@@ -572,7 +586,8 @@ impl RequiredSet for MonoType {
         match self {
             MonoType::Primitive(primitive) => primitive.required_set(),
             MonoType::List(list) => list.required_set(),
-            MonoType::Row(row) => row.required_set(),
+            MonoType::Record(record) => record.required_set(),
+            MonoType::Variant(variant) => variant.required_set(),
             MonoType::Var(_) => CoverSet::Universal, // Conservative but correct
             MonoType::Func(_) => CoverSet::Opaque,
             _ => CoverSet::Opaque,
@@ -659,7 +674,7 @@ impl ActualSet for Id<node::RecordPat> {
             }
         });
 
-        CoverSet::Row(row_set)
+        CoverSet::Record(row_set)
     }
 }
 
@@ -683,7 +698,7 @@ impl ActualSet for Id<node::VariantPat> {
             }
         });
 
-        CoverSet::Row(row_set)
+        CoverSet::Variant(row_set)
     }
 }
 

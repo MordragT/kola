@@ -1059,7 +1059,7 @@ pub fn type_parser<'t>() -> impl KolaParser<'t, Id<node::Type>> + Clone {
         let record = nested_parser(
             field
                 .separated_by(ctrl(CtrlT::COMMA))
-                .at_least(1)
+                // .at_least(1) // Allow empty records
                 .allow_trailing()
                 .collect()
                 .then(row_var.clone())
@@ -1092,7 +1092,7 @@ pub fn type_parser<'t>() -> impl KolaParser<'t, Id<node::Type>> + Clone {
             none_tag
                 .or(tag)
                 .separated_by(ctrl(CtrlT::COMMA))
-                .at_least(1)
+                // .at_least(1) // Allow empty variants
                 .allow_trailing()
                 .collect()
                 .then(row_var)
@@ -1363,7 +1363,7 @@ mod tests {
         let mut interner = StrInterner::new();
 
         let ParseResult { node, builder, .. } = try_parse_str_with(
-            "case x of 1 => true, _ => false",
+            "case x | 1 => true | _ => false",
             expr_parser(),
             &mut interner,
         );

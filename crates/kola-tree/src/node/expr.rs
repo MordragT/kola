@@ -5,7 +5,7 @@ use kola_print::prelude::*;
 use kola_utils::interner::StrKey;
 use serde::{Deserialize, Serialize};
 
-use super::{ModulePath, Pat, Type, TypeName, ValueName};
+use super::{ModulePath, Pat, Type, ValueName};
 use crate::{
     id::Id,
     node::QualifiedType,

@@ -1013,6 +1013,7 @@ dependencies = [
  "kola-utils",
  "log",
  "serde",
+ "stacker",
  "thiserror",
 ]
 

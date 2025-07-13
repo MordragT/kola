@@ -79,10 +79,15 @@
 
     #main = (select 'a { a = 1, b = 2, c = 3 }),
 
-    export remove : forall (l : Label) (r : Record) a . Label l -> { @l : a | r } -> r =
-        fn label => fn record =>
-            (record_remove { label = label, record = record }),
+    #export remove : forall (l : Label) (r : Row) a . Label l -> { @l : a | r } -> { | r } =
+    #    fn label => fn record =>
+    #        (record_remove { label = label, record = record }),
 
-    main = (remove 'z { a = 1, b = 2, c = 3 }),
+    #main = (remove 'a { a = 1, b = 2, c = 3 }),
 
+    #main = record_remove,
+
+    id : forall a . a -> a = fn x => x,
+
+    main = (id { a = 1, b = 2, c = 3 }),
 }

@@ -595,6 +595,39 @@ fn eval_builtin(
 
             Value::Record(record)
         }
+        (BuiltinId::RecordRename, Value::Record(record)) => {
+            let Some(Value::Witness(TypeProtocol::Label(from))) =
+                record.get(context.intern_str("from"))
+            else {
+                return MachineState::Error(
+                    "record_rename requires 'from' field with a string".to_owned(),
+                );
+            };
+
+            let Some(Value::Witness(TypeProtocol::Label(to))) =
+                record.get(context.intern_str("to"))
+            else {
+                return MachineState::Error(
+                    "record_rename requires 'new_label' field with a string".to_owned(),
+                );
+            };
+
+            let Some(Value::Record(mut record)) = record.get(context.intern_str("record")).cloned()
+            else {
+                return MachineState::Error(
+                    "record_rename requires 'record' field with a record".to_owned(),
+                );
+            };
+
+            // Rename the field in the record
+            if let Some(value) = record.remove(context.intern_str(from)) {
+                record.insert(context.intern_str(to), value);
+            } else {
+                return MachineState::Error(format!("Field '{}' not found in record", from));
+            }
+
+            Value::Record(record)
+        }
         (BuiltinId::RecordContains, Value::Record(record)) => {
             let Some(Value::Witness(TypeProtocol::Label(label))) =
                 record.get(context.intern_str("label"))

@@ -7,10 +7,7 @@ use kola_builtins::{BuiltinEffect, BuiltinType, find_builtin_id};
 use kola_print::prelude::*;
 use kola_span::{Diagnostic, IntoDiagnostic, Loc, Report, SourceId, SourceManager};
 use kola_syntax::prelude::*;
-use kola_tree::{
-    node::{ValueName, Vis},
-    prelude::*,
-};
+use kola_tree::{node::Vis, prelude::*};
 use kola_utils::{interner::StrInterner, io::FileSystem};
 
 use crate::{
@@ -29,7 +26,7 @@ use crate::{
     },
     prelude::Topography,
     scope::{ModuleScope, ModuleScopeStack},
-    symbol::{AnySym, EffectSym, FunctorSym, ModuleSym, ModuleTypeSym, TypeSym, ValueSym},
+    symbol::{EffectSym, FunctorSym, ModuleSym, ModuleTypeSym, TypeSym, ValueSym},
 };
 
 use super::ModuleGraph;

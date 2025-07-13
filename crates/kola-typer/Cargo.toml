@@ -21,3 +21,6 @@ camino.workspace = true
 indexmap.workspace = true
 enumset.workspace = true
 enum-as-inner.workspace = true
+
+# This should be removed as soon as the unfification is rewritten to an iterative algorithm.
+stacker = "0.1"

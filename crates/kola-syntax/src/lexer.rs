@@ -344,7 +344,6 @@ mod test {
         assert_eq!(tokens[10].0, Token::Atom("then"));
         assert_eq!(tokens[11].0, Token::Atom("else"));
         assert_eq!(tokens[12].0, Token::Atom("case"));
-        assert_eq!(tokens[13].0, Token::Atom("of"));
         assert_eq!(tokens[14].0, Token::Atom("and"));
         assert_eq!(tokens[15].0, Token::Atom("or"));
         assert_eq!(tokens[16].0, Token::Atom("xor"));
@@ -480,7 +479,7 @@ mod test {
         assert_eq!(tokens[4].0, Token::Atom("->"));
         assert_eq!(tokens[5].0, Token::Symbol("a"));
 
-        let input = "type Option = forall a . < Some: a, None >";
+        let input = "type Option = forall a . < Some: a, Empty >";
         let tokens = tokenize_str(input);
         assert_eq!(tokens.len(), 13);
         assert_eq!(tokens[0].0, Token::Atom("type"));
@@ -494,7 +493,7 @@ mod test {
         assert_eq!(tokens[8].0, Token::Atom(":"));
         assert_eq!(tokens[9].0, Token::Symbol("a"));
         assert_eq!(tokens[10].0, Token::Atom(","));
-        assert_eq!(tokens[11].0, Token::Symbol("None"));
+        assert_eq!(tokens[11].0, Token::Symbol("Empty"));
         assert_eq!(tokens[12].0, Token::Atom(">"));
     }
 

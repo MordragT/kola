@@ -231,6 +231,7 @@ define_builtins! {
     record_select: forall 3 . { "label": (LabelWit 0), "record": 1 } -> 2,
     record_insert: forall 4 . { "label": (LabelWit 0), "value": 1, "record": 2 } -> 3,
     record_remove: forall 3 . { "label": (LabelWit 0), "record": 1 } -> 2,
+    record_rename: forall 4 . { "from": (LabelWit 0), "to": (LabelWit 1), "record": 2 } -> 3,
     record_contains: forall 2 . { "label": (LabelWit 0), "record": 1 } -> Bool,
     record_keys: forall 1 . 0 -> (List Str),
     record_size: forall 1 . 0 -> Num,

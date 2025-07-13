@@ -1,1 +1,54 @@
-{}
+{
+    type Option = forall a . super::option::Option a,
+
+    export type Table = forall (r : Row) . List { | r },
+
+    export map_rows : forall (r : Row) (s : Row) . Table r -> Table s =
+        super::list::map,
+
+    export filter_rows : forall (r : Row) . (Row -> Bool) -> Table r -> Table r =
+        super::list::filter,
+
+    export select_row : forall (r : Row) a . Num -> Table r -> Option { | r } =
+        super::list::at,
+
+    export prepend_row : forall (r : Row) . { | r } -> Table r -> Table r =
+        fn record => fn table =>
+            (super::list::prepend record table),
+
+    export append_row : forall (r : Row) . Table r -> { | r } -> Table r =
+        fn table => fn record =>
+            (super::list::append table record),
+
+    export select_col : forall (l : Label) (r : Row) a . Label l -> List { @l : a | r } -> List a =
+        fn label => fn table =>
+            (super::list::map
+                (fn record => (super::record::select label record))
+                table),
+
+    export insert_col : forall (l : Label) (r : Row) a . Label l -> ({ | r } -> a) -> Table r -> List { @l : a | r } =
+        fn label => fn f => fn table =>
+            (super::list::map
+                (fn record => (super::record::insert label (f record) record))
+                table),
+
+    export remove_col : forall (l : Label) (r : Row) a . Label l -> List { @l : a | r } -> Table r =
+        fn label => fn table =>
+            (super::list::map
+                (fn record => (super::record::remove label record))
+                table),
+
+    export update_col : forall (l : Label) (r : Row) a b . Label l -> (a -> b) -> List { @l : a | r } -> List { @l : b | r } =
+        fn label => fn f => fn table =>
+            (super::list::map
+                (fn record => (super::record::update label f record))
+                table),
+
+    export rename_col : forall (l1 : Label) (l2 : Label) (r : Row) a . Label l1 -> Label l2 -> List { @l1 : a | r } -> List { @l2 : a | r } =
+        fn label1 => fn label2 => fn table =>
+            (super::list::map
+                (fn record => (super::record::rename label1 label2 record))
+                table),
+
+    # insert_row_at, remove_row_at,
+}

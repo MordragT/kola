@@ -1,4 +1,4 @@
-use derive_more::{Display, From, IntoIterator};
+use derive_more::{From, IntoIterator};
 use enum_as_inner::EnumAsInner;
 use kola_macros::{Inspector, Notate};
 use serde::{Deserialize, Serialize};

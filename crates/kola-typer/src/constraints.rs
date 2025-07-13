@@ -122,7 +122,7 @@ impl Constraints {
                     let from = from.apply(s);
                     let to = to.apply(s);
 
-                    trace!("INSTANTIATE: {} -> {}", from, to);
+                    trace!("INSTANTIATE: {} => {}", from, to);
 
                     // Fresh variables must not have a class
                     // If they have it is a compiler bug and therefore we panic
@@ -155,7 +155,10 @@ impl Constraints {
 
                     trace!("EQUALITY: {} ≈ {}", lhs, rhs);
 
-                    lhs.try_unify(&rhs, s).map_err(|errors| ((errors, span)))?;
+                    // TODO remove this when unification is iterative
+                    stacker::maybe_grow(32 * 1024, 1024 * 1024, || {
+                        lhs.try_unify(&rhs, s).map_err(|errors| ((errors, span)))
+                    })?;
                 }
                 Constraint::Merge {
                     result,

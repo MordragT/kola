@@ -1,13 +1,13 @@
 use derive_more::From;
 use enum_as_inner::EnumAsInner;
 use kola_protocol::TypeProtocol;
-use kola_utils::interner::{StrInterner, StrKey};
+use kola_utils::interner::StrInterner;
 use serde::{Deserialize, Serialize};
 use std::{collections::BTreeMap, fmt};
 
 use super::{
-    CompType, FuncType, Kind, Label, LabeledType, ListType, PolyType, PrimitiveType, RecordType,
-    Row, TypeVar, Typed, VariantType, WitType,
+    CompType, FuncType, Kind, Label, LabelOrVar, LabeledType, ListType, PolyType, PrimitiveType,
+    RecordType, Row, TypeVar, Typed, VariantType, WitType,
 };
 use crate::{
     env::TypeClassEnv,
@@ -29,7 +29,7 @@ pub enum MonoType {
     Wit(Box<WitType>),
     Var(TypeVar),
     Row(Box<Row>),
-    Label(Label),
+    Label(LabelOrVar),
 }
 
 impl MonoType {
@@ -61,8 +61,8 @@ impl MonoType {
         Self::Var(TypeVar::new(Kind::Type))
     }
 
-    pub fn label(label: StrKey) -> Self {
-        Self::Label(Label(label))
+    pub fn label(label: impl Into<LabelOrVar>) -> Self {
+        Self::Label(label.into())
     }
 
     pub fn wit(ty: Self) -> Self {
@@ -107,7 +107,7 @@ impl MonoType {
                 }
                 Self::variant(row)
             }
-            TypeProtocol::Label(label) => Self::label(interner.intern(label)),
+            TypeProtocol::Label(label) => Self::label(Label(interner.intern(label))),
             TypeProtocol::Var(id, kind) => {
                 let kind = Kind::from(kind);
 

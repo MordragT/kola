@@ -1,67 +1,14 @@
-use derive_more::{Display, From};
 use kola_protocol::TypeProtocol;
-use kola_utils::{interner::StrInterner, interner_ext::DisplayWithInterner};
+use kola_utils::interner::StrInterner;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
-use super::{Kind, Label, MonoType, TypeClass, TypeVar, Typed};
+use super::{Kind, LabelOrVar, MonoType, TypeClass, TypeVar, Typed};
 use crate::{
     env::TypeClassEnv,
     error::TypeError,
     substitute::{Substitutable, Substitution, merge},
 };
-
-#[derive(
-    Debug, Display, From, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
-)]
-pub enum LabelOrVar {
-    /// A label that is a variable.
-    Var(TypeVar),
-    /// A label that is a string key.
-    Label(Label),
-}
-
-impl LabelOrVar {
-    /// Creates a new `LabelOrVar` variable with a new type variable.
-    #[inline]
-    pub fn var() -> Self {
-        let var = TypeVar::new(Kind::Label);
-        Self::Var(var)
-    }
-
-    pub fn can_unify(&self, other: &Self) -> bool {
-        match (self, other) {
-            (Self::Var(var), _) | (_, Self::Var(var)) => {
-                debug_assert_eq!(var.kind(), Kind::Label);
-                true
-            }
-            (Self::Label(lhs), Self::Label(rhs)) => lhs == rhs,
-        }
-    }
-}
-
-impl DisplayWithInterner<str> for LabelOrVar {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>, interner: &StrInterner) -> fmt::Result {
-        match self {
-            Self::Var(var) => write!(f, "{var}"),
-            Self::Label(key) => key.fmt(f, interner),
-        }
-    }
-}
-
-impl Substitutable for LabelOrVar {
-    fn try_apply(&self, s: &mut Substitution) -> Option<Self> {
-        match self {
-            Self::Var(var) => var.try_apply(s).map(|mono| {
-                let label = mono
-                    .into_label()
-                    .expect("MonoType should be convertible to Label");
-                Self::Label(label)
-            }),
-            Self::Label(key) => Some(Self::Label(*key)),
-        }
-    }
-}
 
 /// A key-value pair representing a property type in a record.
 #[derive(Debug, Clone, Eq, PartialEq, Hash, Serialize, Deserialize)]

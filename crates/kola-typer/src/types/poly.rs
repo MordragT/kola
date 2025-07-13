@@ -9,6 +9,7 @@ use crate::{
     constraints::Constraints,
     error::{TypeConversionError, TypeError},
     substitute::{Substitutable, Substitution},
+    types::{Kind, LabelOrVar, Row},
 };
 
 /// Polytype
@@ -104,7 +105,13 @@ impl PolyType {
 
                 cons.constrain_inst(from, to);
 
-                (from, MonoType::Var(to))
+                let mono_t = match from.kind() {
+                    Kind::Type => MonoType::Var(to),
+                    Kind::Row => MonoType::Row(Box::new(Row::Var(to))),
+                    Kind::Label => MonoType::Label(LabelOrVar::Var(to)),
+                };
+
+                (from, mono_t)
             })
             .collect();
         let mut substitution = Substitution::new(table);

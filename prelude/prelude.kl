@@ -9,7 +9,7 @@
     export module range = import range,
     export module record = import record,
     export module result = import result,
-    #export module serde = import serde,
+    export module serde = import serde,
     export module str = import str,
     export module table = import table,
     export module tuple = import tuple,
@@ -73,5 +73,23 @@
 
     #main = (range::to_list (range::range 1 10)),
 
-    main = (record::remove 'a { a = 1, b = 2, c = 3 }),
+    #main = (record::remove 'a { a = 1, b = 2, c = 3 }),
+
+    #main = 10,
+
+
+    table1 = (table::prepend_row { a = 1, b = 2 } [
+        { a = 3, b = 4 },
+        { a = 5, b = 6 }
+    ]),
+
+    table2 = (table::insert_col 'c (fn row => row.a + row.b) table1),
+
+    table3 = (table::remove_col 'b table2),
+
+    table4 = (table::rename_col 'c 'b table3),
+
+    colb = (table::select_col 'b table4),
+
+    main = colb,
 }
