@@ -25,7 +25,8 @@ impl LabelOrVar {
     /// Creates a new `LabelOrVar` variable with a new type variable.
     #[inline]
     pub fn var() -> Self {
-        Self::Var(TypeVar::new(Kind::Label))
+        let var = TypeVar::new(Kind::Label);
+        Self::Var(var)
     }
 
     pub fn can_unify(&self, other: &Self) -> bool {
@@ -76,6 +77,13 @@ impl LabeledType {
             label: label.into(),
             ty: ty.into(),
         }
+    }
+
+    pub fn var() -> Self {
+        let label = LabelOrVar::var();
+        let ty = MonoType::var();
+
+        Self { label, ty }
     }
 
     pub fn merge_deep(&self, other: &Self) -> Result<Self, TypeError> {
@@ -164,7 +172,8 @@ impl Row {
     /// Creates a new `RowType::Var` with a new row variable.
     #[inline]
     pub fn var() -> Self {
-        Self::Var(TypeVar::new(Kind::Row))
+        let var = TypeVar::new(Kind::Row);
+        Self::Var(var)
     }
 
     /// Creates a new `RowType::Extension` with the given head and tail.
@@ -173,6 +182,13 @@ impl Row {
         Self::Extension {
             head,
             tail: Box::new(Row::Empty),
+        }
+    }
+
+    pub fn extension(head: LabeledType, tail: Self) -> Self {
+        Self::Extension {
+            head,
+            tail: Box::new(tail),
         }
     }
 
@@ -300,9 +316,9 @@ impl Typed for Row {
         Kind::Row
     }
 
-    fn constrain(&self, with: TypeClass, _env: &mut TypeClassEnv) -> Result<(), TypeError> {
+    fn constrain_class(&self, with: TypeClass, _env: &mut TypeClassEnv) -> Result<(), TypeError> {
         match with {
-            _ => Err(TypeError::CannotConstrain {
+            _ => Err(TypeError::CannotConstrainClass {
                 expected: with,
                 actual: self.clone().into(),
             }),
@@ -314,13 +330,7 @@ impl Substitutable for Row {
     fn try_apply(&self, s: &mut Substitution) -> Option<Self> {
         match self {
             Self::Empty => None,
-            Self::Var(var) => {
-                debug_assert!(
-                    var.kind() == Kind::Row,
-                    "RowType::Var should be a row variable"
-                );
-                var.try_apply(s).map(|mono| *mono.into_row().unwrap())
-            }
+            Self::Var(var) => var.try_apply(s).map(|mono| *mono.into_row().unwrap()),
             Self::Extension { head, tail } => {
                 let h = head.try_apply(s);
                 let t = tail.try_apply(s);

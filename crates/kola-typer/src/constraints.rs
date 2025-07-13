@@ -20,6 +20,10 @@ pub enum MergeKind {
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Constraint {
+    Inst {
+        from: TypeVar, // the variable from the scheme
+        to: TypeVar,   // the fresh variable created
+    },
     Class {
         expected: TypeClass,
         actual: MonoType,
@@ -45,6 +49,11 @@ pub struct Constraints(Vec<Constraint>);
 impl Constraints {
     pub fn new() -> Self {
         Self(Vec::new())
+    }
+
+    pub fn constrain_inst(&mut self, from: TypeVar, to: TypeVar) {
+        let c = Constraint::Inst { from, to };
+        self.0.push(c);
     }
 
     pub fn constrain_class(&mut self, expected: TypeClass, actual: MonoType, span: Loc) {
@@ -104,10 +113,25 @@ impl Constraints {
     pub fn solve(
         self,
         s: &mut Substitution,
-        kind_env: &mut TypeClassEnv,
+        class_env: &mut TypeClassEnv,
     ) -> Result<(), Located<TypeErrors>> {
         for c in self.0 {
             match c {
+                Constraint::Inst { from, to } => {
+                    // Apply current substitutions to the variables
+                    let from = from.apply(s);
+                    let to = to.apply(s);
+
+                    trace!("INSTANTIATE: {} -> {}", from, to);
+
+                    // Fresh variables must not have a class
+                    // If they have it is a compiler bug and therefore we panic
+                    assert!(!class_env.contains_key(&to));
+
+                    if let Some(from_classes) = class_env.get(&from).cloned() {
+                        class_env.insert(to, from_classes);
+                    }
+                }
                 Constraint::Class {
                     expected,
                     actual,
@@ -115,10 +139,10 @@ impl Constraints {
                 } => {
                     let actual = actual.apply_cow(s);
 
-                    trace!("KIND: {} :: {}", actual, expected);
+                    trace!("CLASS: {} :: {}", actual, expected);
 
                     actual
-                        .constrain(expected, kind_env)
+                        .constrain_class(expected, class_env)
                         .map_err(|e| (Errors::unit(e), span))?;
                 }
                 Constraint::Equal {

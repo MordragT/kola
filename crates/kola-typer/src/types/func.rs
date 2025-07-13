@@ -42,8 +42,8 @@ impl Typed for FuncType {
         Kind::Type
     }
 
-    fn constrain(&self, with: TypeClass, _env: &mut TypeClassEnv) -> Result<(), TypeError> {
-        Err(TypeError::CannotConstrain {
+    fn constrain_class(&self, with: TypeClass, _env: &mut TypeClassEnv) -> Result<(), TypeError> {
+        Err(TypeError::CannotConstrainClass {
             expected: with,
             actual: self.clone().into(),
         })

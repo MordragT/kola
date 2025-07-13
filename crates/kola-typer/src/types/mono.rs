@@ -1,9 +1,9 @@
 use derive_more::From;
 use enum_as_inner::EnumAsInner;
-use kola_protocol::{KindProtocol, TypeProtocol};
+use kola_protocol::TypeProtocol;
 use kola_utils::interner::{StrInterner, StrKey};
 use serde::{Deserialize, Serialize};
-use std::fmt;
+use std::{collections::BTreeMap, fmt};
 
 use super::{
     CompType, FuncType, Kind, Label, LabeledType, ListType, PolyType, PrimitiveType, RecordType,
@@ -26,10 +26,10 @@ pub enum MonoType {
     List(Box<ListType>),
     Record(Box<RecordType>),
     Variant(Box<VariantType>),
+    Wit(Box<WitType>),
     Var(TypeVar),
     Row(Box<Row>),
     Label(Label),
-    Wit(Box<WitType>),
 }
 
 impl MonoType {
@@ -41,12 +41,8 @@ impl MonoType {
 }
 
 impl MonoType {
-    pub fn func(arg: Self, ret: CompType) -> Self {
-        Self::Func(Box::new(FuncType::new(arg, ret)))
-    }
-
-    pub fn pure_func(arg: Self, ret: Self) -> Self {
-        Self::Func(Box::new(FuncType::new(arg, CompType::pure(ret))))
+    pub fn func(arg: Self, ret: impl Into<CompType>) -> Self {
+        Self::Func(Box::new(FuncType::new(arg, ret.into())))
     }
 
     pub fn list(el: Self) -> Self {
@@ -75,31 +71,28 @@ impl MonoType {
 
     pub fn from_protocol(
         proto: TypeProtocol,
-        bound: &mut Vec<TypeVar>,
+        bound: &mut BTreeMap<u32, TypeVar>,
         interner: &mut StrInterner,
-    ) -> Self {
+    ) -> Result<Self, TypeError> {
         let this = match proto {
             TypeProtocol::Unit => Self::UNIT,
             TypeProtocol::Bool => Self::BOOL,
             TypeProtocol::Num => Self::NUM,
             TypeProtocol::Char => Self::CHAR,
             TypeProtocol::Str => Self::STR,
-            TypeProtocol::List(el) => Self::list(Self::from_protocol(*el, bound, interner)),
+            TypeProtocol::List(el) => Self::list(Self::from_protocol(*el, bound, interner)?),
             TypeProtocol::Func(arg, ret) => Self::func(
-                Self::from_protocol(*arg, bound, interner),
-                CompType::from_protocol(*ret, bound, interner),
+                Self::from_protocol(*arg, bound, interner)?,
+                CompType::from_protocol(*ret, bound, interner)?,
             ),
             TypeProtocol::Record(fields) => {
                 let mut row = Row::Empty;
                 for (label, ty) in fields.into_iter().rev() {
                     let head = LabeledType::new(
                         Label(interner.intern(label)),
-                        Self::from_protocol(ty, bound, interner),
+                        Self::from_protocol(ty, bound, interner)?,
                     );
-                    row = Row::Extension {
-                        head,
-                        tail: Box::new(row),
-                    };
+                    row = Row::extension(head, row);
                 }
                 Self::record(row)
             }
@@ -108,44 +101,34 @@ impl MonoType {
                 for (label, ty) in tags.into_iter().rev() {
                     let head = LabeledType::new(
                         Label(interner.intern(label)),
-                        Self::from_protocol(ty, bound, interner),
+                        Self::from_protocol(ty, bound, interner)?,
                     );
-                    row = Row::Extension {
-                        head,
-                        tail: Box::new(row),
-                    };
+                    row = Row::extension(head, row);
                 }
                 Self::variant(row)
             }
             TypeProtocol::Label(label) => Self::label(interner.intern(label)),
             TypeProtocol::Var(id, kind) => {
-                let var = &mut bound[id as usize];
+                let kind = Kind::from(kind);
 
-                // TODO this is kind of a hack
-                let var = match (var.kind(), kind) {
-                    (Kind::Type, KindProtocol::Type)
-                    | (Kind::Row, KindProtocol::Row)
-                    | (Kind::Label, KindProtocol::Label) => *var,
-                    (Kind::Type, _) => {
-                        var.set_kind(kind.into());
-                        *var
-                    }
-                    _ => panic!(
-                        "Cannot convert type var with kind {:?} to kind {:?}",
-                        var.kind(),
-                        kind
-                    ),
+                let var = if let Some(var) = bound.get(&id) {
+                    var.check_kind(kind)?;
+                    *var
+                } else {
+                    let var = TypeVar::new(kind);
+                    bound.insert(id, var);
+                    var
                 };
 
                 MonoType::Var(var)
             }
             TypeProtocol::Witness(proto) => {
-                let ty = Self::from_protocol(*proto, bound, interner);
+                let ty = Self::from_protocol(*proto, bound, interner)?;
                 Self::wit(ty)
             }
         };
 
-        this
+        Ok(this)
     }
 
     pub fn to_protocol(&self, interner: &StrInterner) -> TypeProtocol {
@@ -178,29 +161,33 @@ impl MonoType {
 impl Typed for MonoType {
     fn kind(&self) -> Kind {
         match self {
-            Self::Primitive(prim) => prim.kind(),
-            Self::Func(func) => func.kind(),
-            Self::List(list) => list.kind(),
-            Self::Record(record) => record.kind(),
-            Self::Variant(variant) => variant.kind(),
-            Self::Row(row) => row.kind(),
-            Self::Wit(wit) => wit.kind(),
-            Self::Var(var) => var.kind(),
-            Self::Label(label) => label.kind(),
+            Self::Primitive(b) => b.kind(),
+            Self::Func(f) => f.kind(),
+            Self::List(l) => l.kind(),
+            Self::Record(r) => r.kind(),
+            Self::Variant(v) => v.kind(),
+            Self::Row(r) => r.kind(),
+            Self::Wit(w) => w.kind(),
+            Self::Var(v) => v.kind(),
+            Self::Label(l) => l.kind(),
         }
     }
 
-    fn constrain(&self, with: super::TypeClass, env: &mut TypeClassEnv) -> Result<(), TypeError> {
+    fn constrain_class(
+        &self,
+        with: super::TypeClass,
+        env: &mut TypeClassEnv,
+    ) -> Result<(), TypeError> {
         match self {
-            Self::Primitive(b) => b.constrain(with, env),
-            Self::Func(f) => f.constrain(with, env),
-            Self::List(l) => l.constrain(with, env),
-            Self::Record(r) => r.constrain(with, env),
-            Self::Variant(v) => v.constrain(with, env),
-            Self::Row(r) => r.constrain(with, env),
-            Self::Wit(w) => w.constrain(with, env),
-            Self::Var(v) => v.constrain(with, env),
-            _ => Err(TypeError::CannotConstrain {
+            Self::Primitive(b) => b.constrain_class(with, env),
+            Self::Func(f) => f.constrain_class(with, env),
+            Self::List(l) => l.constrain_class(with, env),
+            Self::Record(r) => r.constrain_class(with, env),
+            Self::Variant(v) => v.constrain_class(with, env),
+            Self::Row(r) => r.constrain_class(with, env),
+            Self::Wit(w) => w.constrain_class(with, env),
+            Self::Var(v) => v.constrain_class(with, env),
+            Self::Label(_) => Err(TypeError::CannotConstrainClass {
                 expected: with,
                 actual: self.clone().into(),
             }),
@@ -219,7 +206,7 @@ impl Substitutable for MonoType {
             Self::Row(r) => r.try_apply(s).map(Into::into),
             Self::Wit(w) => w.try_apply(s).map(Into::into),
             Self::Var(v) => v.try_apply(s),
-            _ => None,
+            Self::Label(_) => None,
         }
     }
 }

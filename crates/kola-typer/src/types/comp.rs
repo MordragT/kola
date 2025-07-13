@@ -1,4 +1,7 @@
-use std::fmt::{self};
+use std::{
+    collections::BTreeMap,
+    fmt::{self},
+};
 
 use kola_protocol::TypeProtocol;
 use kola_utils::interner::StrInterner;
@@ -6,8 +9,8 @@ use serde::{Deserialize, Serialize};
 
 use super::{MonoType, Row, TypeVar};
 use crate::{
-    prelude::{Substitutable, Substitution},
-    substitute::merge,
+    error::TypeError,
+    substitute::{Substitutable, Substitution, merge},
 };
 
 /// Computation type
@@ -31,13 +34,13 @@ impl CompType {
 
     pub fn from_protocol(
         proto: TypeProtocol,
-        bound: &mut Vec<TypeVar>,
+        bound: &mut BTreeMap<u32, TypeVar>,
         interner: &mut StrInterner,
-    ) -> Self {
-        let ty = MonoType::from_protocol(proto, bound, interner);
+    ) -> Result<Self, TypeError> {
+        let ty = MonoType::from_protocol(proto, bound, interner)?;
         let effect = Row::Empty;
 
-        Self { ty, effect }
+        Ok(Self { ty, effect })
     }
 
     // TODO also consider effects
@@ -67,5 +70,11 @@ impl Substitutable for CompType {
 
         merge(ty, || self.ty.clone(), effect, || self.effect.clone())
             .map(|(ty, effect)| CompType { ty, effect })
+    }
+}
+
+impl From<MonoType> for CompType {
+    fn from(ty: MonoType) -> Self {
+        Self::pure(ty)
     }
 }

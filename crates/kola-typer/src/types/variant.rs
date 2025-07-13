@@ -33,10 +33,10 @@ impl Typed for VariantType {
         Kind::Type
     }
 
-    fn constrain(&self, with: TypeClass, _env: &mut TypeClassEnv) -> Result<(), TypeError> {
+    fn constrain_class(&self, with: TypeClass, _env: &mut TypeClassEnv) -> Result<(), TypeError> {
         match with {
             TypeClass::Equatable => Ok(()),
-            _ => Err(TypeError::CannotConstrain {
+            _ => Err(TypeError::CannotConstrainClass {
                 expected: with,
                 actual: self.clone().into(),
             }),

@@ -41,9 +41,9 @@ impl Typed for Label {
         Kind::Label
     }
 
-    fn constrain(&self, with: TypeClass, _env: &mut TypeClassEnv) -> Result<(), TypeError> {
+    fn constrain_class(&self, with: TypeClass, _env: &mut TypeClassEnv) -> Result<(), TypeError> {
         match with {
-            _ => Err(TypeError::CannotConstrain {
+            _ => Err(TypeError::CannotConstrainClass {
                 expected: with,
                 actual: self.clone().into(),
             }),

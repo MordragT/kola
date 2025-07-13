@@ -2,7 +2,7 @@ use kola_span::IntoDiagnostic;
 use kola_utils::{errors::Errors, interner::StrKey, interner_ext::DisplayWithInterner};
 use thiserror::Error;
 
-use crate::types::{LabelOrVar, MonoType, PolyType, TypeClass, TypeVar};
+use crate::types::{Kind, LabelOrVar, MonoType, PolyType, TypeClass, TypeVar};
 
 #[derive(Debug, Clone, Error)]
 pub enum TypeConversionError {
@@ -39,9 +39,17 @@ pub enum TypeError {
         actual: MonoType,
         cause: TypeErrors,
     },
-    CannotConstrain {
+    CannotConstrainClass {
         expected: TypeClass,
         actual: MonoType,
+    },
+    CannotConstrainKind {
+        expected: Kind,
+        actual: MonoType,
+    },
+    KindMismatch {
+        expected: Kind,
+        actual: Kind,
     },
     ExtraLabel(LabelOrVar),
     MissingLabel(LabelOrVar),
@@ -84,8 +92,14 @@ impl DisplayWithInterner<str> for TypeError {
                 )?;
                 cause.fmt(f, interner)
             }
-            TypeError::CannotConstrain { expected, actual } => {
-                writeln!(f, "Cannot Constrain: {:?} {}", expected, actual)
+            TypeError::CannotConstrainClass { expected, actual } => {
+                writeln!(f, "Cannot Constrain: {} {}", expected, actual)
+            }
+            TypeError::CannotConstrainKind { expected, actual } => {
+                writeln!(f, "Cannot Constrain: {} {}", expected, actual)
+            }
+            TypeError::KindMismatch { expected, actual } => {
+                writeln!(f, "Kind Mismatch: Expected {} but got {}", expected, actual)
             }
             TypeError::ExtraLabel(label) => {
                 writeln!(f, "Extra Label: ")?;

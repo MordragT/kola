@@ -99,7 +99,7 @@ pub fn type_check(
     print_options: PrintOptions,
 ) -> TypeCheckOutput {
     let mut global_env = TypeEnv::new();
-    let mut kind_env = TypeClassEnv::new();
+    let mut class_env = TypeClassEnv::new();
     let mut type_annotations = TypeAnnotations::new();
 
     for &module_sym in module_order {
@@ -136,7 +136,7 @@ pub fn type_check(
                 break;
             };
 
-            if let Err((errs, loc)) = constraints.solve(&mut subs, &mut kind_env) {
+            if let Err((errs, loc)) = constraints.solve(&mut subs, &mut class_env) {
                 let diag = str_interner.with(&errs).into_diagnostic(loc);
                 report.add_diagnostic(diag);
                 break;
@@ -173,7 +173,7 @@ pub fn type_check(
                 break;
             };
 
-            if let Err((errs, loc)) = constraints.solve(&mut subs, &mut kind_env) {
+            if let Err((errs, loc)) = constraints.solve(&mut subs, &mut class_env) {
                 let diag = str_interner.with(&errs).into_diagnostic(loc);
                 report.add_diagnostic(diag);
                 break;
@@ -212,7 +212,7 @@ pub fn type_check(
                 break;
             };
 
-            if let Err((errs, loc)) = constraints.solve(&mut subs, &mut kind_env) {
+            if let Err((errs, loc)) = constraints.solve(&mut subs, &mut class_env) {
                 let diag = str_interner.with(&errs).into_diagnostic(loc);
                 report.add_diagnostic(diag);
                 break;

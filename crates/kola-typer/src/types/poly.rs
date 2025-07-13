@@ -1,4 +1,4 @@
-use std::fmt;
+use std::{collections::BTreeMap, fmt};
 
 use kola_protocol::TypeSchemeProtocol;
 use kola_utils::interner::StrInterner;
@@ -6,7 +6,8 @@ use serde::{Deserialize, Serialize};
 
 use super::{MonoType, TypeVar, Typed};
 use crate::{
-    error::TypeConversionError,
+    constraints::Constraints,
+    error::{TypeConversionError, TypeError},
     substitute::{Substitutable, Substitution},
 };
 
@@ -32,15 +33,22 @@ impl PolyType {
         }
     }
 
-    pub fn from_proto(proto: TypeSchemeProtocol, interner: &mut StrInterner) -> Self {
+    pub fn from_protocol(
+        proto: TypeSchemeProtocol,
+        interner: &mut StrInterner,
+    ) -> Result<Self, TypeError> {
         let TypeSchemeProtocol { forall, ty } = proto;
 
-        let mut forall = (0..forall).map(|_| TypeVar::default()).collect::<Vec<_>>();
+        let mut bound = BTreeMap::new();
 
         // Convert types using simple array indexing
-        let ty = MonoType::from_protocol(ty, &mut forall, interner);
+        let ty = MonoType::from_protocol(ty, &mut bound, interner)?;
 
-        Self { forall, ty }
+        assert_eq!(forall as usize, bound.len());
+
+        let forall = bound.into_values().collect();
+
+        Ok(Self { forall, ty })
     }
 
     pub fn bound_vars(&self) -> &Vec<TypeVar> {
@@ -84,21 +92,19 @@ impl PolyType {
 
     /// The procedure inst(σ) specializes the polytype σ by copying the term
     /// and replacing the bound type variables consistently by new monotype variables.
-    pub fn instantiate(&self) -> MonoType {
+    pub fn instantiate(&self, cons: &mut Constraints) -> MonoType {
         let mut ty = self.ty.clone();
 
         let table = self
             .forall
             .iter()
             .copied()
-            .map(|var| {
-                let fresh = var.fresh();
+            .map(|from| {
+                let to = from.fresh();
 
-                // TODO we need to somehow constrain that the fresh variable gets the type classes of the original variable
-                // At the moment though type classes can not be defined for PolyTypes,
-                // the only way is that a mono type gets generalized to a poly type and the variables were constrained before
+                cons.constrain_inst(from, to);
 
-                (var, MonoType::Var(fresh))
+                (from, MonoType::Var(to))
             })
             .collect();
         let mut substitution = Substitution::new(table);

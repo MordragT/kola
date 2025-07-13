@@ -52,9 +52,9 @@ where
     let (mut types, _) = typer.run(&tree, &mut Report::new()).unwrap();
 
     let mut subs = Substitution::empty();
-    let mut kind_env = TypeClassEnv::new();
+    let mut class_env = TypeClassEnv::new();
 
-    cons.solve(&mut subs, &mut kind_env)?;
+    cons.solve(&mut subs, &mut class_env)?;
     types.apply_mut(&mut subs);
 
     Ok(types)

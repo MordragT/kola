@@ -43,15 +43,15 @@ impl Typed for PrimitiveType {
         Kind::Type
     }
 
-    fn constrain(&self, with: TypeClass, _env: &mut TypeClassEnv) -> Result<(), TypeError> {
+    fn constrain_class(&self, with: TypeClass, _env: &mut TypeClassEnv) -> Result<(), TypeError> {
         match self {
-            PrimitiveType::Unit => Err(TypeError::CannotConstrain {
+            PrimitiveType::Unit => Err(TypeError::CannotConstrainClass {
                 expected: with,
                 actual: self.into(),
             }),
             PrimitiveType::Bool => match with {
                 TypeClass::Equatable | TypeClass::Stringable => Ok(()),
-                _ => Err(TypeError::CannotConstrain {
+                _ => Err(TypeError::CannotConstrainClass {
                     expected: with,
                     actual: self.into(),
                 }),
@@ -64,14 +64,14 @@ impl Typed for PrimitiveType {
             },
             PrimitiveType::Char => match with {
                 TypeClass::Equatable | TypeClass::Stringable => Ok(()),
-                _ => Err(TypeError::CannotConstrain {
+                _ => Err(TypeError::CannotConstrainClass {
                     expected: with,
                     actual: self.into(),
                 }),
             },
             PrimitiveType::Str => match with {
                 TypeClass::Addable | TypeClass::Equatable | TypeClass::Stringable => Ok(()),
-                _ => Err(TypeError::CannotConstrain {
+                _ => Err(TypeError::CannotConstrainClass {
                     expected: with,
                     actual: self.into(),
                 }),

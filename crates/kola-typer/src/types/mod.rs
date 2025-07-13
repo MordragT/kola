@@ -1,3 +1,4 @@
+use derive_more::Display;
 use kola_protocol::KindProtocol;
 use serde::{Deserialize, Serialize};
 use std::{fmt, ops::ControlFlow};
@@ -64,7 +65,18 @@ impl fmt::Display for TypeClass {
 /// Every type in the system has a kind, which is a classification of the type.
 /// Used for kind preserving unification (see Extensible Records with Scoped Labels)
 #[derive(
-    Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+    Debug,
+    Display,
+    Default,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
 )]
 pub enum Kind {
     #[default]
@@ -83,19 +95,22 @@ impl From<KindProtocol> for Kind {
     }
 }
 
-impl fmt::Display for Kind {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Kind::Type => write!(f, "type"),
-            Kind::Row => write!(f, "record"),
-            Kind::Label => write!(f, "label"),
-        }
-    }
-}
-
 pub trait Typed: TypeVisitable {
     fn kind(&self) -> Kind;
-    fn constrain(&self, with: TypeClass, env: &mut TypeClassEnv) -> Result<(), TypeError>;
+    fn constrain_class(&self, with: TypeClass, env: &mut TypeClassEnv) -> Result<(), TypeError>;
+
+    fn check_kind(&self, with: Kind) -> Result<(), TypeError> {
+        let kind = self.kind();
+
+        if with == kind {
+            Ok(())
+        } else {
+            Err(TypeError::KindMismatch {
+                expected: with,
+                actual: kind,
+            })
+        }
+    }
 
     /// occurs check
     fn contains(&self, var: &TypeVar) -> bool {

@@ -56,12 +56,6 @@ impl TypeVar {
         self.kind
     }
 
-    /// Set the kind of the TypeVar
-    /// DANGER: This should only be used when you know what you're doing,
-    pub fn set_kind(&mut self, kind: Kind) {
-        self.kind = kind;
-    }
-
     pub fn can_unify(&self, other: &TypeVar) -> bool {
         // Two TypeVars can unify if they have the same kind
         // (or if they are equal of course but then they already have the same kind)
@@ -97,7 +91,7 @@ impl Typed for TypeVar {
         self.kind
     }
 
-    fn constrain(&self, with: TypeClass, env: &mut TypeClassEnv) -> Result<(), TypeError> {
+    fn constrain_class(&self, with: TypeClass, env: &mut TypeClassEnv) -> Result<(), TypeError> {
         env.entry(*self)
             .and_modify(|constraint| constraint.push(with))
             .or_insert_with(|| vec![with]);
