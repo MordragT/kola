@@ -31,6 +31,8 @@ impl<'a> Decorator<'a> for ResolutionDecorator<'a> {
             Meta::QualifiedEffectType(resolved) => resolved.red().display_in(arena),
             Meta::EffectTypeBind(effect_sym) => effect_sym.red().display_in(arena),
 
+            Meta::FunctorArgs(_) => return notation,
+
             Meta::Module(module_sym)
             | Meta::ModulePath(ResolvedModule(module_sym))
             | Meta::ModuleImport(module_sym)

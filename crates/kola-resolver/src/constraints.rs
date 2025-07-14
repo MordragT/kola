@@ -4,10 +4,7 @@ use kola_collections::HashMap;
 use kola_span::Loc;
 use kola_tree::{
     id::Id,
-    node::{
-        self, EffectName, FunctorName, ModuleName, ModuleNamespace, ModuleTypeName, TypeName,
-        ValueName,
-    },
+    node::{self, EffectName, FunctorName, ModuleName, ModuleTypeName, TypeName, ValueName},
 };
 
 use crate::symbol::{

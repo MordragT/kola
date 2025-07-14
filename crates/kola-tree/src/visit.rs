@@ -1428,6 +1428,26 @@ pub trait Visitor<T: TreeView> {
         self.walk_module_import(id, tree)
     }
 
+    fn walk_functor_args(
+        &mut self,
+        id: Id<node::FunctorArgs>,
+        tree: &T,
+    ) -> ControlFlow<Self::BreakValue> {
+        for arg in id.get(tree) {
+            self.visit_module_path(*arg, tree)?;
+        }
+
+        ControlFlow::Continue(())
+    }
+
+    fn visit_functor_args(
+        &mut self,
+        id: Id<node::FunctorArgs>,
+        tree: &T,
+    ) -> ControlFlow<Self::BreakValue> {
+        self.walk_functor_args(id, tree)
+    }
+
     fn walk_functor_app(
         &mut self,
         id: Id<node::FunctorApp>,
@@ -1435,11 +1455,12 @@ pub trait Visitor<T: TreeView> {
     ) -> ControlFlow<Self::BreakValue> {
         let node::FunctorApp { func, args } = id.get(tree);
 
-        self.visit_functor_name(*func, tree)?;
+        // if let Some(path) = path {
+        //     self.visit_module_path(*path, tree)?;
+        // }
 
-        for arg in args {
-            self.visit_module_path(*arg, tree)?;
-        }
+        self.visit_functor_name(*func, tree)?;
+        self.visit_functor_args(*args, tree)?;
 
         ControlFlow::Continue(())
     }

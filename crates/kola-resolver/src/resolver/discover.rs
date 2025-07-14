@@ -387,20 +387,15 @@ where
         ControlFlow::Continue(())
     }
 
-    fn visit_functor_app(
+    fn visit_functor_args(
         &mut self,
-        id: Id<node::FunctorApp>,
+        id: Id<node::FunctorArgs>,
         tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
-        let node::FunctorApp { func, args } = tree.node(id);
+        let args = id.get(tree);
 
-        let name = *func.get(tree);
-        let loc = self.span(id);
+        let mut arg_syms = Vec::with_capacity(args.0.len());
 
-        let bind = self.current_module_bind_sym.take().unwrap();
-        self.stack.resolved_mut().insert_meta(id, bind);
-
-        let mut arg_syms = Vec::with_capacity(args.len());
         for arg_id in args {
             let arg_sym = ModuleSym::new();
             self.current_module_bind_sym = Some(arg_sym);
@@ -408,6 +403,30 @@ where
             self.visit_module_path(*arg_id, tree)?;
             arg_syms.push(arg_sym);
         }
+        self.insert_symbol(id, arg_syms);
+
+        ControlFlow::Continue(())
+    }
+
+    fn visit_functor_app(
+        &mut self,
+        id: Id<node::FunctorApp>,
+        tree: &T,
+    ) -> ControlFlow<Self::BreakValue> {
+        let node::FunctorApp { func, args } = *tree.node(id);
+
+        let name = *func.get(tree);
+        let loc = self.span(id);
+
+        let bind = self.current_module_bind_sym.take().unwrap();
+        self.stack.resolved_mut().insert_meta(id, bind);
+
+        // if let Some(path) = path {
+        //     self.visit_module_path(path, tree)?;
+        // }
+
+        self.visit_functor_args(args, tree)?;
+        let arg_syms = self.stack.resolved().meta(args).clone();
 
         let constraint = ModuleBindConst::functor(id, bind, loc, name, arg_syms);
         self.stack.cons_mut().insert_module_bind(bind, constraint);

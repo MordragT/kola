@@ -112,6 +112,7 @@ define_folder_trait!(
     Module,
     ModulePath,
     ModuleImport,
+    FunctorArgs,
     FunctorApp,
     ModuleExpr,
     ValueSpec,

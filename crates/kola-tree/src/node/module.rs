@@ -418,12 +418,32 @@ impl ModulePath {
 pub struct ModuleImport(pub Id<ModuleName>);
 
 #[derive(
+    Debug,
+    Notate,
+    Inspector,
+    From,
+    IntoIterator,
+    Clone,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
+)]
+#[notate(color = "green")]
+#[into_iterator(owned, ref)]
+pub struct FunctorArgs(pub Vec<Id<ModulePath>>);
+
+#[derive(
     Debug, Notate, Inspector, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
 )]
 #[notate(color = "green")]
 pub struct FunctorApp {
+    // pub path: Option<Id<ModulePath>>,
     pub func: Id<FunctorName>,
-    pub args: Vec<Id<ModulePath>>,
+    pub args: Id<FunctorArgs>,
 }
 
 // TODO should I only allow ModuleTypes to be bound or should I change this to a ModuleSigBind ?

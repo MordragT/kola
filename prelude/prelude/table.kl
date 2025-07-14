@@ -57,7 +57,7 @@
     },
 
     module functor join (t : TableShape) => {
-        export join = fn label => fn left => fn right =>
+        export join = fn label => fn left : (List t::Row) => fn right : (List t::Row) =>
             left |> (super::list::flat_map (fn lrow =>
                 let lkey = (super::record::select label lrow) in
                     right

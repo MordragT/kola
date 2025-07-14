@@ -278,6 +278,7 @@ define!(
     Module,
     ModulePath,
     ModuleImport,
+    FunctorArgs,
     FunctorApp,
     ModuleExpr,
     ValueSpec,

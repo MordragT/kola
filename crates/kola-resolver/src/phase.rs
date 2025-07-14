@@ -315,6 +315,7 @@ impl Phase for ResolvePhase {
     type Module = ModuleSym; // Creates symbol for the module definition
     type ModulePath = ResolvedModule; // Resolves to the referenced module symbol
     type ModuleImport = ModuleSym; // Creates symbol for the imported module binding
+    type FunctorArgs = Vec<ModuleSym>;
     type FunctorApp = ModuleSym;
     type ModuleExpr = !; // Future: First-class modules could get ModuleSym
 

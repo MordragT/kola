@@ -78,6 +78,13 @@
     #main = 10,
 
 
+
+
+    module table_shape = {
+        type Row = { a : Num, b : Num },
+    },
+    #module join_table = (table::join table_shape),
+
     table1 = (table::prepend_row { a = 1, b = 2 } [
         { a = 3, b = 4 },
         { a = 5, b = 6 }
@@ -89,6 +96,13 @@
 
     table4 = (table::rename_col 'c 'b table3),
 
+    #table5 = (join_table::join 'a table1 table4),
+
+    main = table4,
+
+
+
+
     colb = (table::select_col 'b table4),
 
     rec1 = { a = 1, b = 2, c = 3 },
@@ -96,6 +110,4 @@
     rec2 = { a = 4, d = 5 },
 
     #main = (record::merge_left rec1 rec2),
-
-    main = table4,
 }

@@ -363,6 +363,7 @@ impl_meta_substitutable!(
     Module,
     ModulePath,
     ModuleImport,
+    FunctorArgs,
     FunctorApp,
     ModuleExpr,
     ValueSpec,

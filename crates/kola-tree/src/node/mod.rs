@@ -144,6 +144,7 @@ define_nodes!(
     Module,
     ModulePath,
     ModuleImport,
+    FunctorArgs,
     FunctorApp,
     ModuleExpr,
     ValueSpec,

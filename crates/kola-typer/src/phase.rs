@@ -98,6 +98,7 @@ impl Phase for TypePhase {
     type Module = !;
     type ModulePath = !;
     type ModuleImport = !;
+    type FunctorArgs = !;
     type FunctorApp = !;
     type ModuleExpr = !;
 

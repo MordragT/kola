@@ -2,8 +2,8 @@ use derive_more::From;
 use enum_as_inner::EnumAsInner;
 use kola_collections::HashMap;
 use kola_tree::node::{
-    EffectNamespace, FunctorNamespace, ModuleNamespace, ModuleTypeNamespace, Namespace,
-    NamespaceKind, TypeNamespace, ValueNamespace,
+    EffectNamespace, FunctorNamespace, ModuleNamespace, ModuleTypeNamespace, NamespaceKind,
+    TypeNamespace, ValueNamespace,
 };
 use kola_utils::define_unique_leveled_id;
 use std::{
@@ -593,6 +593,7 @@ impl_meta_substitute!(
     Module,
     ModulePath,
     ModuleImport,
+    FunctorArgs,
     FunctorApp,
     ModuleExpr,
     ValueSpec,
