@@ -1,19 +1,16 @@
 // use std::ops::Index;
 
-use std::fmt;
+use std::{collections::HashMap, fmt};
 
 use kola_builtins::{BuiltinEffect, BuiltinId, BuiltinType};
 use kola_tree::{
     meta::{MetaMap, Phase},
-    node::{
-        EffectNamespace, ModuleNamespace, ModuleTypeNamespace, TypeNamespace, ValueName,
-        ValueNamespace,
-    },
+    node::ValueName,
 };
 use kola_utils::as_variant;
 
 use crate::symbol::{
-    EffectSym, FunctorSym, ModuleSym, ModuleTypeSym, Substitute, TypeSym, ValueSym,
+    AnySym, EffectSym, FunctorSym, ModuleSym, ModuleTypeSym, Substitute, TypeSym, ValueSym,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -41,27 +38,18 @@ impl fmt::Display for ResolvedValue {
     }
 }
 
-impl Substitute<ValueNamespace> for ResolvedValue {
-    fn try_substitute(&self, from: ValueSym, to: ValueSym) -> Option<Self>
+impl Substitute for ResolvedValue {
+    fn try_subst(&self, s: &HashMap<AnySym, AnySym>) -> Option<Self>
     where
         Self: Sized,
     {
         if let Self::Reference(sym) = self
-            && *sym == from
+            && let Some(to) = sym.try_subst(s)
         {
             Some(Self::Reference(to))
         } else {
             None
         }
-    }
-}
-
-impl Substitute<ModuleNamespace> for ResolvedValue {
-    fn try_substitute(&self, _from: ModuleSym, _to: ModuleSym) -> Option<Self>
-    where
-        Self: Sized,
-    {
-        None
     }
 }
 
@@ -96,27 +84,18 @@ impl fmt::Display for ResolvedTypeWitness {
     }
 }
 
-impl Substitute<TypeNamespace> for ResolvedTypeWitness {
-    fn try_substitute(&self, from: TypeSym, to: TypeSym) -> Option<Self>
+impl Substitute for ResolvedTypeWitness {
+    fn try_subst(&self, s: &HashMap<AnySym, AnySym>) -> Option<Self>
     where
         Self: Sized,
     {
         if let Self::Reference(sym) = self
-            && *sym == from
+            && let Some(to) = sym.try_subst(s)
         {
             Some(Self::Reference(to))
         } else {
             None
         }
-    }
-}
-
-impl Substitute<ModuleNamespace> for ResolvedTypeWitness {
-    fn try_substitute(&self, _from: ModuleSym, _to: ModuleSym) -> Option<Self>
-    where
-        Self: Sized,
-    {
-        None
     }
 }
 
@@ -145,27 +124,18 @@ impl fmt::Display for ResolvedType {
     }
 }
 
-impl Substitute<TypeNamespace> for ResolvedType {
-    fn try_substitute(&self, from: TypeSym, to: TypeSym) -> Option<Self>
+impl Substitute for ResolvedType {
+    fn try_subst(&self, s: &HashMap<AnySym, AnySym>) -> Option<Self>
     where
         Self: Sized,
     {
         if let Self::Reference(sym) = self
-            && *sym == from
+            && let Some(to) = sym.try_subst(s)
         {
             Some(Self::Reference(to))
         } else {
             None
         }
-    }
-}
-
-impl Substitute<ModuleNamespace> for ResolvedType {
-    fn try_substitute(&self, _from: ModuleSym, _to: ModuleSym) -> Option<Self>
-    where
-        Self: Sized,
-    {
-        None
     }
 }
 
@@ -194,13 +164,13 @@ impl fmt::Display for ResolvedEffect {
     }
 }
 
-impl Substitute<EffectNamespace> for ResolvedEffect {
-    fn try_substitute(&self, from: EffectSym, to: EffectSym) -> Option<Self>
+impl Substitute for ResolvedEffect {
+    fn try_subst(&self, s: &HashMap<AnySym, AnySym>) -> Option<Self>
     where
         Self: Sized,
     {
         if let Self::Reference(sym) = self
-            && *sym == from
+            && let Some(to) = sym.try_subst(s)
         {
             Some(Self::Reference(to))
         } else {
@@ -209,45 +179,27 @@ impl Substitute<EffectNamespace> for ResolvedEffect {
     }
 }
 
-impl Substitute<ModuleNamespace> for ResolvedEffect {
-    fn try_substitute(&self, _from: ModuleSym, _to: ModuleSym) -> Option<Self>
-    where
-        Self: Sized,
-    {
-        None
-    }
-}
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ResolvedModule(pub ModuleSym);
 
-impl Substitute<ModuleNamespace> for ResolvedModule {
-    fn try_substitute(&self, from: ModuleSym, to: ModuleSym) -> Option<Self>
+impl Substitute for ResolvedModule {
+    fn try_subst(&self, s: &HashMap<AnySym, AnySym>) -> Option<Self>
     where
         Self: Sized,
     {
-        if self.0 == from { Some(Self(to)) } else { None }
+        self.0.try_subst(s).map(Self)
     }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ResolvedModuleType(pub ModuleTypeSym);
 
-impl Substitute<ModuleTypeNamespace> for ResolvedModuleType {
-    fn try_substitute(&self, from: ModuleTypeSym, to: ModuleTypeSym) -> Option<Self>
+impl Substitute for ResolvedModuleType {
+    fn try_subst(&self, s: &HashMap<AnySym, AnySym>) -> Option<Self>
     where
         Self: Sized,
     {
-        if self.0 == from { Some(Self(to)) } else { None }
-    }
-}
-
-impl Substitute<ModuleNamespace> for ResolvedModuleType {
-    fn try_substitute(&self, _from: ModuleSym, _to: ModuleSym) -> Option<Self>
-    where
-        Self: Sized,
-    {
-        None
+        self.0.try_subst(s).map(Self)
     }
 }
 
@@ -353,6 +305,7 @@ impl Phase for ResolvePhase {
     type EffectTypeBind = EffectSym;
     type ModuleBind = ModuleSym; // Creates symbol for the module alias
     type ModuleTypeBind = ModuleTypeSym; // Module type bindings - future feature
+    type FunctorParam = !;
     type FunctorBind = FunctorSym; // Creates symbol for the functor binding
     type Bind = !; // Generic bind wrapper - symbols handled by specific binds
 
@@ -370,7 +323,6 @@ impl Phase for ResolvePhase {
     // Module signatures and specs - future feature for module system
     // These define names in their respective namespaces but don't need resolver symbols yet
     type ValueSpec = !; // Future: Could get ValueSym for signature checking
-    type OpaqueTypeKind = !; // Future: Type kind specifications
     type OpaqueTypeSpec = !; // Future: Opaque type specifications
     type ModuleSpec = !; // Future: Module signature specifications
     type Spec = !; // Future: Generic specification wrapper

@@ -235,6 +235,8 @@ define_builtins! {
     record_contains: forall 2 . { "label": (LabelWit 0), "record": 1 } -> Bool,
     record_keys: forall 1 . 0 -> (List Str),
     record_size: forall 1 . 0 -> Num,
+    record_merge_left: forall 3 . { "left": 0, "right": 1 } -> 2,
+    record_merge_right: forall 3 . { "left": 0, "right": 1 } -> 2,
     record_rec: forall 3 . { "record": 0, "base": 1, "step": ({ "acc": 1, "head": { "key": Str, "value": 2 } } -> 1) } -> 1,
 
     // Builtin Serde functions

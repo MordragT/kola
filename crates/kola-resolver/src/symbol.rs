@@ -1,4 +1,5 @@
 use derive_more::From;
+use enum_as_inner::EnumAsInner;
 use kola_collections::HashMap;
 use kola_tree::node::{
     EffectNamespace, FunctorNamespace, ModuleNamespace, ModuleTypeNamespace, Namespace,
@@ -98,7 +99,7 @@ impl fmt::Display for ValueSym {
     }
 }
 
-#[derive(Debug, From, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+#[derive(Debug, EnumAsInner, From, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum AnySym {
     Functor(FunctorSym),
     ModuleType(ModuleTypeSym),
@@ -160,132 +161,296 @@ impl fmt::Display for AnySym {
     }
 }
 
-pub trait Substitute<N: Namespace> {
-    fn try_substitute(&self, from: Sym<N>, to: Sym<N>) -> Option<Self>
+pub fn merge2<A, B, DA, DB>(
+    a: Option<A>,
+    default_a: DA,
+    b: Option<B>,
+    default_b: DB,
+) -> Option<(A, B)>
+where
+    DA: FnOnce() -> A,
+    DB: FnOnce() -> B,
+{
+    match (a, b) {
+        (Some(a), Some(b)) => Some((a, b)),
+        (Some(a), None) => Some((a, default_b())),
+        (None, Some(b)) => Some((default_a(), b)),
+        (None, None) => None,
+    }
+}
+
+pub fn merge3<A, B, C, DA, DB, DC>(
+    a: Option<A>,
+    default_a: DA,
+    b: Option<B>,
+    default_b: DB,
+    c: Option<C>,
+    default_c: DC,
+) -> Option<(A, B, C)>
+where
+    DA: Fn() -> A,
+    DB: Fn() -> B,
+    DC: Fn() -> C,
+{
+    merge2(a, &default_a, b, &default_b).and_then(|(a, b)| {
+        merge2(Some((a, b)), || (default_a(), default_b()), c, default_c)
+            .map(|((a, b), c)| (a, b, c))
+    })
+}
+
+pub fn merge4<A, B, C, D, DA, DB, DC, DD>(
+    a: Option<A>,
+    default_a: DA,
+    b: Option<B>,
+    default_b: DB,
+    c: Option<C>,
+    default_c: DC,
+    d: Option<D>,
+    default_d: DD,
+) -> Option<(A, B, C, D)>
+where
+    DA: Fn() -> A,
+    DB: Fn() -> B,
+    DC: Fn() -> C,
+    DD: Fn() -> D,
+{
+    merge3(a, &default_a, b, &default_b, c, &default_c).and_then(|(a, b, c)| {
+        merge2(
+            Some((a, b, c)),
+            || (default_a(), default_b(), default_c()),
+            d,
+            default_d,
+        )
+        .map(|((a, b, c), d)| (a, b, c, d))
+    })
+}
+
+pub fn merge5<A, B, C, D, E, DA, DB, DC, DD, DE>(
+    a: Option<A>,
+    default_a: DA,
+    b: Option<B>,
+    default_b: DB,
+    c: Option<C>,
+    default_c: DC,
+    d: Option<D>,
+    default_d: DD,
+    e: Option<E>,
+    default_e: DE,
+) -> Option<(A, B, C, D, E)>
+where
+    DA: Fn() -> A,
+    DB: Fn() -> B,
+    DC: Fn() -> C,
+    DD: Fn() -> D,
+    DE: Fn() -> E,
+{
+    merge4(a, &default_a, b, &default_b, c, &default_c, d, &default_d).and_then(|(a, b, c, d)| {
+        merge2(
+            Some((a, b, c, d)),
+            || (default_a(), default_b(), default_c(), default_d()),
+            e,
+            default_e,
+        )
+        .map(|((a, b, c, d), e)| (a, b, c, d, e))
+    })
+}
+
+pub fn merge6<A, B, C, D, E, F, DA, DB, DC, DD, DE, DF>(
+    a: Option<A>,
+    default_a: DA,
+    b: Option<B>,
+    default_b: DB,
+    c: Option<C>,
+    default_c: DC,
+    d: Option<D>,
+    default_d: DD,
+    e: Option<E>,
+    default_e: DE,
+    f: Option<F>,
+    default_f: DF,
+) -> Option<(A, B, C, D, E, F)>
+where
+    DA: Fn() -> A,
+    DB: Fn() -> B,
+    DC: Fn() -> C,
+    DD: Fn() -> D,
+    DE: Fn() -> E,
+    DF: Fn() -> F,
+{
+    merge5(
+        a, &default_a, b, &default_b, c, &default_c, d, &default_d, e, &default_e,
+    )
+    .and_then(|(a, b, c, d, e)| {
+        merge2(
+            Some((a, b, c, d, e)),
+            || {
+                (
+                    default_a(),
+                    default_b(),
+                    default_c(),
+                    default_d(),
+                    default_e(),
+                )
+            },
+            f,
+            default_f,
+        )
+        .map(|((a, b, c, d, e), f)| (a, b, c, d, e, f))
+    })
+}
+
+pub trait Substitute {
+    fn try_subst(&self, s: &HashMap<AnySym, AnySym>) -> Option<Self>
     where
         Self: Sized;
 
     #[inline]
-    fn substitute_cow(&self, from: Sym<N>, to: Sym<N>) -> Cow<'_, Self>
+    fn subst_cow(&self, s: &HashMap<AnySym, AnySym>) -> Cow<'_, Self>
     where
         Self: Clone,
     {
-        match self.try_substitute(from, to) {
+        match self.try_subst(s) {
             Some(new_self) => Cow::Owned(new_self),
             None => Cow::Borrowed(self),
         }
     }
 
     #[inline]
-    fn substitute_mut(&mut self, from: Sym<N>, to: Sym<N>)
+    fn subst_mut(&mut self, s: &HashMap<AnySym, AnySym>)
     where
         Self: Sized,
     {
-        if let Some(new_self) = self.try_substitute(from, to) {
+        if let Some(new_self) = self.try_subst(s) {
             *self = new_self;
         }
     }
 
     #[inline]
-    fn substitute(mut self, from: Sym<N>, to: Sym<N>) -> Self
+    fn subst(mut self, s: &HashMap<AnySym, AnySym>) -> Self
     where
         Self: Sized,
     {
-        self.substitute_mut(from, to);
+        self.subst_mut(s);
         self
     }
 }
 
-impl<N: Namespace> Substitute<N> for Sym<N> {
-    fn try_substitute(&self, from: Sym<N>, to: Sym<N>) -> Option<Self> {
-        if self == &from { Some(to) } else { None }
+impl Substitute for FunctorSym {
+    fn try_subst(&self, s: &HashMap<AnySym, AnySym>) -> Option<Self> {
+        let from = AnySym::Functor(*self);
+        if let Some(to) = s.get(&from) {
+            let to = to.into_functor().unwrap();
+            Some(to)
+        } else {
+            None
+        }
+    }
+}
+
+impl Substitute for ModuleTypeSym {
+    fn try_subst(&self, s: &HashMap<AnySym, AnySym>) -> Option<Self> {
+        let from = AnySym::ModuleType(*self);
+        if let Some(to) = s.get(&from) {
+            let to = to.into_module_type().unwrap();
+            Some(to)
+        } else {
+            None
+        }
+    }
+}
+
+impl Substitute for ModuleSym {
+    fn try_subst(&self, s: &HashMap<AnySym, AnySym>) -> Option<Self> {
+        let from = AnySym::Module(*self);
+        if let Some(to) = s.get(&from) {
+            let to = to.into_module().unwrap();
+            Some(to)
+        } else {
+            None
+        }
+    }
+}
+
+impl Substitute for EffectSym {
+    fn try_subst(&self, s: &HashMap<AnySym, AnySym>) -> Option<Self> {
+        let from = AnySym::Effect(*self);
+        if let Some(to) = s.get(&from) {
+            let to = to.into_effect().unwrap();
+            Some(to)
+        } else {
+            None
+        }
+    }
+}
+
+impl Substitute for TypeSym {
+    fn try_subst(&self, s: &HashMap<AnySym, AnySym>) -> Option<Self> {
+        let from = AnySym::Type(*self);
+        if let Some(to) = s.get(&from) {
+            let to = to.into_type().unwrap();
+            Some(to)
+        } else {
+            None
+        }
+    }
+}
+
+impl Substitute for ValueSym {
+    fn try_subst(&self, s: &HashMap<AnySym, AnySym>) -> Option<Self> {
+        let from = AnySym::Value(*self);
+        if let Some(to) = s.get(&from) {
+            let to = to.into_value().unwrap();
+            Some(to)
+        } else {
+            None
+        }
     }
 }
 
 // TODO kind of tedious to implement this for all symbols, but it's necessary for module sym substitution.
 // For now just implement it for module namespace, if we need this for other namespaces create a macro.
 
-impl Substitute<ModuleNamespace> for AnySym {
-    fn try_substitute(&self, from: ModuleSym, to: ModuleSym) -> Option<Self> {
-        match self {
-            Self::Functor(symbol) => symbol.try_substitute(from, to).map(Self::Functor),
-            Self::ModuleType(symbol) => symbol.try_substitute(from, to).map(Self::ModuleType),
-            Self::Module(symbol) => symbol.try_substitute(from, to).map(Self::Module),
-            Self::Effect(symbol) => symbol.try_substitute(from, to).map(Self::Effect),
-            Self::Type(symbol) => symbol.try_substitute(from, to).map(Self::Type),
-            Self::Value(symbol) => symbol.try_substitute(from, to).map(Self::Value),
-        }
+impl Substitute for AnySym {
+    fn try_subst(&self, s: &HashMap<AnySym, AnySym>) -> Option<Self> {
+        s.get(self).copied()
     }
 }
-
-impl Substitute<ModuleNamespace> for FunctorSym {
-    fn try_substitute(&self, _from: ModuleSym, _to: ModuleSym) -> Option<Self> {
+impl Substitute for ! {
+    fn try_subst(&self, _s: &HashMap<AnySym, AnySym>) -> Option<Self> {
         None
     }
 }
 
-impl Substitute<ModuleNamespace> for ModuleTypeSym {
-    fn try_substitute(&self, _from: ModuleSym, _to: ModuleSym) -> Option<Self> {
-        None
-    }
-}
-
-impl Substitute<ModuleNamespace> for EffectSym {
-    fn try_substitute(&self, _from: ModuleSym, _to: ModuleSym) -> Option<Self> {
-        None
-    }
-}
-
-impl Substitute<ModuleNamespace> for TypeSym {
-    fn try_substitute(&self, _from: ModuleSym, _to: ModuleSym) -> Option<Self> {
-        None
-    }
-}
-
-impl Substitute<ModuleNamespace> for ValueSym {
-    fn try_substitute(&self, _from: ModuleSym, _to: ModuleSym) -> Option<Self> {
-        None
-    }
-}
-
-impl<N: Namespace> Substitute<N> for ! {
-    fn try_substitute(&self, _from: Sym<N>, _to: Sym<N>) -> Option<Self> {
-        None
-    }
-}
-
-impl<T, N> Substitute<N> for Option<T>
+impl<T> Substitute for Option<T>
 where
-    T: Substitute<N>,
-    N: Namespace,
+    T: Substitute,
 {
-    fn try_substitute(&self, from: Sym<N>, to: Sym<N>) -> Option<Self> {
+    fn try_subst(&self, s: &HashMap<AnySym, AnySym>) -> Option<Self> {
         match self {
-            Some(value) => value.try_substitute(from, to).map(Some),
+            Some(value) => value.try_subst(s).map(Some),
             None => Some(None),
         }
     }
 
-    fn substitute_mut(&mut self, from: Sym<N>, to: Sym<N>) {
+    fn subst_mut(&mut self, s: &HashMap<AnySym, AnySym>) {
         if let Some(value) = self {
-            value.substitute_mut(from, to);
+            value.subst_mut(s);
         }
     }
 }
 
-impl<T, N> Substitute<N> for Vec<T>
+impl<T> Substitute for Vec<T>
 where
-    T: Substitute<N> + Clone,
-    N: Namespace,
+    T: Substitute + Clone,
 {
-    fn try_substitute(&self, from: Sym<N>, to: Sym<N>) -> Option<Self>
+    fn try_subst(&self, s: &HashMap<AnySym, AnySym>) -> Option<Self>
     where
         Self: Sized,
     {
         let mut result = None;
 
         for (i, el) in self.iter().enumerate() {
-            if let Some(el) = el.try_substitute(from, to) {
+            if let Some(el) = el.try_subst(s) {
                 result.get_or_insert_with(|| self.clone())[i] = el;
             }
         }
@@ -293,24 +458,23 @@ where
         result
     }
 
-    fn substitute_mut(&mut self, from: Sym<N>, to: Sym<N>) {
+    fn subst_mut(&mut self, s: &HashMap<AnySym, AnySym>) {
         for el in self.iter_mut() {
-            el.substitute_mut(from, to);
+            el.subst_mut(s);
         }
     }
 }
 
-impl<K, V, N> Substitute<N> for HashMap<K, V>
+impl<K, V> Substitute for HashMap<K, V>
 where
     K: Eq + Hash + Clone,
-    V: Substitute<N> + Clone,
-    N: Namespace,
+    V: Substitute + Clone,
 {
-    fn try_substitute(&self, from: Sym<N>, to: Sym<N>) -> Option<Self> {
+    fn try_subst(&self, s: &HashMap<AnySym, AnySym>) -> Option<Self> {
         let mut result = None;
 
         for (key, value) in self {
-            if let Some(value) = value.try_substitute(from, to) {
+            if let Some(value) = value.try_subst(s) {
                 result
                     .get_or_insert_with(|| self.clone())
                     .insert(key.clone(), value);
@@ -320,85 +484,28 @@ where
         result
     }
 
-    fn substitute_mut(&mut self, from: Sym<N>, to: Sym<N>) {
+    fn subst_mut(&mut self, s: &HashMap<AnySym, AnySym>) {
         for value in self.values_mut() {
-            value.substitute_mut(from, to);
+            value.subst_mut(s);
         }
     }
 }
 
 macro_rules! impl_meta_substitute {
     ($($variant:ident),* $(,)?) => {
-        impl<P> Substitute<FunctorNamespace> for kola_tree::meta::Meta<P>
+        impl<P> Substitute for kola_tree::meta::Meta<P>
         where
         P: kola_tree::meta::Phase<
-            $($variant: Substitute<FunctorNamespace>),*
+            $($variant: Substitute),*
         >,
         {
-            fn try_substitute(&self, from: FunctorSym, to: FunctorSym) -> Option<Self> {
+            fn try_subst(&self, s: &HashMap<AnySym, AnySym>) -> Option<Self> {
                 match self {
-                    $(Self::$variant(t) => t.try_substitute(from, to).map(Self::$variant)),*
+                    $(Self::$variant(t) => t.try_subst(s).map(Self::$variant)),*
                 }
             }
 
         }
-
-        impl<P> Substitute<ModuleTypeNamespace> for kola_tree::meta::Meta<P>
-        where
-        P: kola_tree::meta::Phase<
-            $($variant: Substitute<ModuleTypeNamespace>),*
-        >,
-        {
-            fn try_substitute(&self, from: ModuleTypeSym, to: ModuleTypeSym) -> Option<Self> {
-                match self {
-                    $(Self::$variant(t) => t.try_substitute(from, to).map(Self::$variant)),*
-                }
-            }
-
-        }
-
-        impl<P> Substitute<ModuleNamespace> for kola_tree::meta::Meta<P>
-        where
-        P: kola_tree::meta::Phase<
-            $($variant: Substitute<ModuleNamespace>),*
-        >,
-        {
-            fn try_substitute(&self, from: ModuleSym, to: ModuleSym) -> Option<Self> {
-                match self {
-                    $(Self::$variant(t) => t.try_substitute(from, to).map(Self::$variant)),*
-                }
-            }
-
-        }
-
-        impl<P> Substitute<TypeNamespace> for kola_tree::meta::Meta<P>
-        where
-        P: kola_tree::meta::Phase<
-            $($variant: Substitute<TypeNamespace>),*
-        >,
-        {
-            fn try_substitute(&self, from: TypeSym, to: TypeSym) -> Option<Self> {
-                match self {
-                    $(Self::$variant(t) => t.try_substitute(from, to).map(Self::$variant)),*
-                }
-            }
-
-        }
-
-        impl<P> Substitute<ValueNamespace> for kola_tree::meta::Meta<P>
-        where
-        P: kola_tree::meta::Phase<
-            $($variant: Substitute<ValueNamespace>),*
-        >,
-        {
-            fn try_substitute(&self, from: ValueSym, to: ValueSym) -> Option<Self> {
-                match self {
-                    $(Self::$variant(t) => t.try_substitute(from, to).map(Self::$variant)),*
-                }
-            }
-
-        }
-
     };
 }
 
@@ -479,6 +586,7 @@ impl_meta_substitute!(
     EffectTypeBind,
     ModuleBind,
     ModuleTypeBind,
+    FunctorParam,
     FunctorBind,
     Bind,
     ModuleError,
@@ -488,7 +596,6 @@ impl_meta_substitute!(
     FunctorApp,
     ModuleExpr,
     ValueSpec,
-    OpaqueTypeKind,
     OpaqueTypeSpec,
     ModuleSpec,
     Spec,

@@ -90,6 +90,7 @@ impl Phase for TypePhase {
     type EffectTypeBind = types::Row;
     type ModuleBind = !;
     type ModuleTypeBind = !;
+    type FunctorParam = !;
     type FunctorBind = !;
     type Bind = !;
 
@@ -101,7 +102,6 @@ impl Phase for TypePhase {
     type ModuleExpr = !;
 
     type ValueSpec = !;
-    type OpaqueTypeKind = !;
     type OpaqueTypeSpec = !;
     type ModuleSpec = !;
     type Spec = !;

@@ -10,7 +10,9 @@ use kola_tree::{
     },
 };
 
-use crate::symbol::{EffectSym, ModuleSym, ModuleTypeSym, Substitute, TypeSym, ValueSym};
+use crate::symbol::{
+    AnySym, EffectSym, ModuleSym, ModuleTypeSym, Substitute, TypeSym, ValueSym, merge2,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum ModuleBindConst {
@@ -19,7 +21,7 @@ pub enum ModuleBindConst {
         bind: ModuleSym,
         loc: Loc,
         functor: FunctorName,
-        arg: ModuleSym,
+        args: Vec<ModuleSym>,
     },
     Path {
         id: Id<node::ModulePath>,
@@ -35,14 +37,14 @@ impl ModuleBindConst {
         bind: ModuleSym,
         loc: Loc,
         functor: FunctorName,
-        arg: ModuleSym,
+        args: Vec<ModuleSym>,
     ) -> Self {
         Self::Functor {
             id,
             bind,
             loc,
             functor,
-            arg,
+            args,
         }
     }
 
@@ -75,26 +77,21 @@ impl ModuleBindConst {
     }
 }
 
-impl Substitute<ModuleNamespace> for ModuleBindConst {
-    fn try_substitute(&self, from: ModuleSym, to: ModuleSym) -> Option<Self> {
+impl Substitute for ModuleBindConst {
+    fn try_subst(&self, s: &HashMap<AnySym, AnySym>) -> Option<Self> {
         match self {
             Self::Functor {
                 id,
                 bind,
                 loc,
                 functor,
-                arg,
+                args,
             } => {
-                if *bind == from {
-                    // TODO if bind is equal to from then arg cannot be equal to from
-                    // therefore no need to check arg, still this doesn't look that great
-                    Some(Self::functor(*id, to, *loc, *functor, *arg))
-                } else if *arg == from {
-                    // Same as above
-                    Some(Self::functor(*id, *bind, *loc, *functor, to))
-                } else {
-                    None
-                }
+                let bind_opt = bind.try_subst(s);
+                let args_opt = args.try_subst(s);
+
+                merge2(bind_opt, || bind.clone(), args_opt, || args.clone())
+                    .map(|(bind, args)| Self::functor(*id, bind, *loc, *functor, args))
             }
             Self::Path {
                 id,
@@ -102,8 +99,8 @@ impl Substitute<ModuleNamespace> for ModuleBindConst {
                 loc,
                 path,
             } => {
-                if *bind == from {
-                    Some(Self::path(*id, to, *loc, path.clone()))
+                if let Some(bind) = bind.try_subst(s) {
+                    Some(Self::path(*id, bind, *loc, path.clone()))
                 } else {
                     None
                 }
@@ -111,20 +108,14 @@ impl Substitute<ModuleNamespace> for ModuleBindConst {
         }
     }
 
-    fn substitute_mut(&mut self, from: ModuleSym, to: ModuleSym) {
+    fn subst_mut(&mut self, s: &HashMap<AnySym, AnySym>) {
         match self {
-            Self::Functor { bind, arg, .. } => {
-                if *bind == from {
-                    *bind = to;
-                }
-                if *arg == from {
-                    *arg = to;
-                }
+            Self::Functor { bind, args, .. } => {
+                bind.subst_mut(s);
+                args.subst_mut(s);
             }
             Self::Path { bind, .. } => {
-                if *bind == from {
-                    *bind = to;
-                }
+                bind.subst_mut(s);
             }
         }
     }
@@ -158,19 +149,17 @@ impl ModuleConst {
     }
 }
 
-impl Substitute<ModuleNamespace> for ModuleConst {
-    fn try_substitute(&self, from: ModuleSym, to: ModuleSym) -> Option<Self> {
-        if self.source == from {
-            Some(Self::new(self.path.clone(), self.id, to, self.loc))
+impl Substitute for ModuleConst {
+    fn try_subst(&self, s: &HashMap<AnySym, AnySym>) -> Option<Self> {
+        if let Some(source) = self.source.try_subst(s) {
+            Some(Self::new(self.path.clone(), self.id, source, self.loc))
         } else {
             None
         }
     }
 
-    fn substitute_mut(&mut self, from: ModuleSym, to: ModuleSym) {
-        if self.source == from {
-            self.source = to;
-        }
+    fn subst_mut(&mut self, s: &HashMap<AnySym, AnySym>) {
+        self.source.subst_mut(s);
     }
 }
 
@@ -463,30 +452,24 @@ impl Index<ModuleSym> for Constraints {
     }
 }
 
-impl Substitute<ModuleNamespace> for Constraints {
-    fn try_substitute(&self, from: ModuleSym, to: ModuleSym) -> Option<Self> {
-        let mut result = None;
-
-        if self.module_binds.contains_key(&from) {
-            let new_constraints = result.get_or_insert_with(|| self.clone());
-            let constraint = new_constraints.module_binds.remove(&from).unwrap(); // Safe to unwrap since we checked above
-            new_constraints.insert_module_bind(to, constraint);
-        }
-
-        if let Some(modules) = self.modules.try_substitute(from, to) {
-            result.get_or_insert_with(|| self.clone()).modules = modules;
-        }
-
-        result
+impl Substitute for Constraints {
+    fn try_subst(&self, _s: &HashMap<AnySym, AnySym>) -> Option<Self> {
+        unimplemented!()
     }
 
-    fn substitute_mut(&mut self, from: ModuleSym, to: ModuleSym) {
-        if let Some(constraint) = self.module_binds.remove(&from) {
-            self.insert_module_bind(to, constraint);
-        }
+    fn subst_mut(&mut self, s: &HashMap<AnySym, AnySym>) {
+        // TODO this doesn't implement substitution for all fields, because currently module symbols are the only ones
+        // that are substituted anyway.
 
-        for module_ref in &mut self.modules {
-            module_ref.substitute_mut(from, to);
+        let mut module_binds = HashMap::new();
+        for (mut sym, mut constraint) in self.module_binds.drain() {
+            sym.subst_mut(s);
+            constraint.subst_mut(s);
+
+            module_binds.insert(sym, constraint);
         }
+        self.module_binds = module_binds;
+
+        self.modules.subst_mut(s);
     }
 }

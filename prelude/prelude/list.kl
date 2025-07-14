@@ -104,4 +104,11 @@
     ### Derived Utilities
     #############################################
 
+
+    export flat_map : forall a b . (a -> List b) -> List a -> List b = fn f => fn list =>
+        (fold_right
+            (fn x => fn acc => (concat (f x) acc))
+                [] list)
+
+    # flatten
 }

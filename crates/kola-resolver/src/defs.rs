@@ -13,6 +13,7 @@ use kola_tree::{
 
 use crate::symbol::{
     AnySym, EffectSym, FunctorSym, ModuleSym, ModuleTypeSym, Substitute, Sym, TypeSym, ValueSym,
+    merge6,
 };
 
 pub struct Def<T> {
@@ -223,27 +224,240 @@ impl<N: Namespace, T> Index<Sym<N>> for Defs<N, T> {
     }
 }
 
-impl<N: Namespace, T> Substitute<N> for Defs<N, T> {
-    fn try_substitute(&self, from: Sym<N>, to: Sym<N>) -> Option<Self>
+// impl<N: Namespace, T> Substitute for Defs<N, T>
+// where
+//     AnySym: From<Sym<N>>,{
+//     fn try_subst(&self, s: &HashMap<AnySym, AnySym>) -> Option<Self>
+//     where
+//         Self: Sized,
+//     {
+
+//         if let Some(def) = self.0.get(&from) {
+//             let mut new_defs = self.clone();
+//             new_defs.0.remove(&from);
+//             new_defs.0.insert(to, *def);
+//             Some(new_defs)
+//         } else {
+//             None
+//         }
+//     }
+
+//     fn subst_mut(&mut self, from: Sym<N>, to: Sym<N>)
+//     where
+//         Self: Sized,
+//     {
+//         if let Some(def) = self.0.remove(&from) {
+//             self.0.insert(to, def);
+//         }
+//     }
+// }
+
+impl Substitute for Defs<FunctorNamespace, node::FunctorBind> {
+    fn try_subst(&self, s: &HashMap<AnySym, AnySym>) -> Option<Self>
     where
         Self: Sized,
     {
-        if let Some(def) = self.0.get(&from) {
-            let mut new_defs = self.clone();
-            new_defs.0.remove(&from);
-            new_defs.0.insert(to, *def);
-            Some(new_defs)
-        } else {
-            None
+        let mut result = None;
+
+        for (from, to) in s {
+            if let &AnySym::Functor(from) = from
+                && let &AnySym::Functor(to) = to
+                && let Some(value) = self.get(from)
+            {
+                result.get_or_insert_with(|| self.clone()).0.remove(&from);
+                result.as_mut().unwrap().insert(to, value);
+            }
         }
+
+        result
     }
 
-    fn substitute_mut(&mut self, from: Sym<N>, to: Sym<N>)
+    fn subst_mut(&mut self, s: &HashMap<AnySym, AnySym>)
     where
         Self: Sized,
     {
-        if let Some(def) = self.0.remove(&from) {
-            self.0.insert(to, def);
+        for (from, to) in s {
+            if let AnySym::Functor(from) = from
+                && let AnySym::Functor(to) = to
+                && let Some(value) = self.0.remove(from)
+            {
+                self.0.insert(*to, value);
+            }
+        }
+    }
+}
+
+impl Substitute for Defs<ModuleTypeNamespace, node::ModuleTypeBind> {
+    fn try_subst(&self, s: &HashMap<AnySym, AnySym>) -> Option<Self>
+    where
+        Self: Sized,
+    {
+        let mut result = None;
+
+        for (from, to) in s {
+            if let &AnySym::ModuleType(from) = from
+                && let &AnySym::ModuleType(to) = to
+                && let Some(value) = self.get(from)
+            {
+                result.get_or_insert_with(|| self.clone()).0.remove(&from);
+                result.as_mut().unwrap().insert(to, value);
+            }
+        }
+
+        result
+    }
+
+    fn subst_mut(&mut self, s: &HashMap<AnySym, AnySym>)
+    where
+        Self: Sized,
+    {
+        for (from, to) in s {
+            if let AnySym::ModuleType(from) = from
+                && let AnySym::ModuleType(to) = to
+                && let Some(value) = self.0.remove(from)
+            {
+                self.0.insert(*to, value);
+            }
+        }
+    }
+}
+
+impl Substitute for Defs<ModuleNamespace, node::ModuleBind> {
+    fn try_subst(&self, s: &HashMap<AnySym, AnySym>) -> Option<Self>
+    where
+        Self: Sized,
+    {
+        let mut result = None;
+
+        for (from, to) in s {
+            if let &AnySym::Module(from) = from
+                && let &AnySym::Module(to) = to
+                && let Some(value) = self.get(from)
+            {
+                result.get_or_insert_with(|| self.clone()).0.remove(&from);
+                result.as_mut().unwrap().insert(to, value);
+            }
+        }
+
+        result
+    }
+
+    fn subst_mut(&mut self, s: &HashMap<AnySym, AnySym>)
+    where
+        Self: Sized,
+    {
+        for (from, to) in s {
+            if let AnySym::Module(from) = from
+                && let AnySym::Module(to) = to
+                && let Some(value) = self.0.remove(from)
+            {
+                self.0.insert(*to, value);
+            }
+        }
+    }
+}
+
+impl Substitute for Defs<EffectNamespace, node::EffectTypeBind> {
+    fn try_subst(&self, s: &HashMap<AnySym, AnySym>) -> Option<Self>
+    where
+        Self: Sized,
+    {
+        let mut result = None;
+
+        for (from, to) in s {
+            if let &AnySym::Effect(from) = from
+                && let &AnySym::Effect(to) = to
+                && let Some(value) = self.get(from)
+            {
+                result.get_or_insert_with(|| self.clone()).0.remove(&from);
+                result.as_mut().unwrap().insert(to, value);
+            }
+        }
+
+        result
+    }
+
+    fn subst_mut(&mut self, s: &HashMap<AnySym, AnySym>)
+    where
+        Self: Sized,
+    {
+        for (from, to) in s {
+            if let AnySym::Effect(from) = from
+                && let AnySym::Effect(to) = to
+                && let Some(value) = self.0.remove(from)
+            {
+                self.0.insert(*to, value);
+            }
+        }
+    }
+}
+
+impl Substitute for Defs<TypeNamespace, node::TypeBind> {
+    fn try_subst(&self, s: &HashMap<AnySym, AnySym>) -> Option<Self>
+    where
+        Self: Sized,
+    {
+        let mut result = None;
+
+        for (from, to) in s {
+            if let &AnySym::Type(from) = from
+                && let &AnySym::Type(to) = to
+                && let Some(value) = self.get(from)
+            {
+                result.get_or_insert_with(|| self.clone()).0.remove(&from);
+                result.as_mut().unwrap().insert(to, value);
+            }
+        }
+
+        result
+    }
+
+    fn subst_mut(&mut self, s: &HashMap<AnySym, AnySym>)
+    where
+        Self: Sized,
+    {
+        for (from, to) in s {
+            if let AnySym::Type(from) = from
+                && let AnySym::Type(to) = to
+                && let Some(value) = self.0.remove(from)
+            {
+                self.0.insert(*to, value);
+            }
+        }
+    }
+}
+
+impl Substitute for Defs<ValueNamespace, node::ValueBind> {
+    fn try_subst(&self, s: &HashMap<AnySym, AnySym>) -> Option<Self>
+    where
+        Self: Sized,
+    {
+        let mut result = None;
+
+        for (from, to) in s {
+            if let &AnySym::Value(from) = from
+                && let &AnySym::Value(to) = to
+                && let Some(value) = self.get(from)
+            {
+                result.get_or_insert_with(|| self.clone()).0.remove(&from);
+                result.as_mut().unwrap().insert(to, value);
+            }
+        }
+
+        result
+    }
+
+    fn subst_mut(&mut self, s: &HashMap<AnySym, AnySym>)
+    where
+        Self: Sized,
+    {
+        for (from, to) in s {
+            if let AnySym::Value(from) = from
+                && let AnySym::Value(to) = to
+                && let Some(value) = self.0.remove(from)
+            {
+                self.0.insert(*to, value);
+            }
         }
     }
 }
@@ -415,140 +629,53 @@ impl Index<ValueSym> for Definitions {
     }
 }
 
-impl Substitute<FunctorNamespace> for Definitions {
-    fn try_substitute(&self, from: FunctorSym, to: FunctorSym) -> Option<Self>
+impl Substitute for Definitions {
+    fn try_subst(&self, s: &HashMap<AnySym, AnySym>) -> Option<Self>
     where
         Self: Sized,
     {
-        if let Some(functors) = self.functors.try_substitute(from, to) {
-            Some(Self {
+        let functors = self.functors.try_subst(s);
+        let module_types = self.module_types.try_subst(s);
+        let modules = self.modules.try_subst(s);
+        let effects = self.effects.try_subst(s);
+        let types = self.types.try_subst(s);
+        let values = self.values.try_subst(s);
+
+        merge6(
+            functors,
+            || self.functors.clone(),
+            module_types,
+            || self.module_types.clone(),
+            modules,
+            || self.modules.clone(),
+            effects,
+            || self.effects.clone(),
+            types,
+            || self.types.clone(),
+            values,
+            || self.values.clone(),
+        )
+        .map(
+            |(functors, module_types, modules, effects, types, values)| Self {
                 functors,
-                ..self.clone()
-            })
-        } else {
-            None
-        }
-    }
-
-    fn substitute_mut(&mut self, from: FunctorSym, to: FunctorSym)
-    where
-        Self: Sized,
-    {
-        self.functors.substitute_mut(from, to);
-    }
-}
-
-impl Substitute<ModuleTypeNamespace> for Definitions {
-    fn try_substitute(&self, from: ModuleTypeSym, to: ModuleTypeSym) -> Option<Self>
-    where
-        Self: Sized,
-    {
-        if let Some(module_types) = self.module_types.try_substitute(from, to) {
-            Some(Self {
                 module_types,
-                ..self.clone()
-            })
-        } else {
-            None
-        }
-    }
-
-    fn substitute_mut(&mut self, from: ModuleTypeSym, to: ModuleTypeSym)
-    where
-        Self: Sized,
-    {
-        self.module_types.substitute_mut(from, to);
-    }
-}
-
-impl Substitute<ModuleNamespace> for Definitions {
-    fn try_substitute(&self, from: ModuleSym, to: ModuleSym) -> Option<Self>
-    where
-        Self: Sized,
-    {
-        if let Some(modules) = self.modules.try_substitute(from, to) {
-            Some(Self {
                 modules,
-                ..self.clone()
-            })
-        } else {
-            None
-        }
-    }
-
-    fn substitute_mut(&mut self, from: ModuleSym, to: ModuleSym)
-    where
-        Self: Sized,
-    {
-        self.modules.substitute_mut(from, to);
-    }
-}
-
-impl Substitute<EffectNamespace> for Definitions {
-    fn try_substitute(&self, from: EffectSym, to: EffectSym) -> Option<Self>
-    where
-        Self: Sized,
-    {
-        if let Some(effects) = self.effects.try_substitute(from, to) {
-            Some(Self {
                 effects,
-                ..self.clone()
-            })
-        } else {
-            None
-        }
-    }
-
-    fn substitute_mut(&mut self, from: EffectSym, to: EffectSym)
-    where
-        Self: Sized,
-    {
-        self.effects.substitute_mut(from, to);
-    }
-}
-
-impl Substitute<TypeNamespace> for Definitions {
-    fn try_substitute(&self, from: TypeSym, to: TypeSym) -> Option<Self>
-    where
-        Self: Sized,
-    {
-        if let Some(types) = self.types.try_substitute(from, to) {
-            Some(Self {
                 types,
-                ..self.clone()
-            })
-        } else {
-            None
-        }
-    }
-
-    fn substitute_mut(&mut self, from: TypeSym, to: TypeSym)
-    where
-        Self: Sized,
-    {
-        self.types.substitute_mut(from, to);
-    }
-}
-
-impl Substitute<ValueNamespace> for Definitions {
-    fn try_substitute(&self, from: ValueSym, to: ValueSym) -> Option<Self>
-    where
-        Self: Sized,
-    {
-        if let Some(values) = self.values.try_substitute(from, to) {
-            Some(Self {
                 values,
-                ..self.clone()
-            })
-        } else {
-            None
-        }
+            },
+        )
     }
 
-    fn substitute_mut(&mut self, from: ValueSym, to: ValueSym)
+    fn subst_mut(&mut self, s: &HashMap<AnySym, AnySym>)
     where
         Self: Sized,
     {
-        self.values.substitute_mut(from, to);
+        self.functors.subst_mut(s);
+        self.module_types.subst_mut(s);
+        self.modules.subst_mut(s);
+        self.effects.subst_mut(s);
+        self.types.subst_mut(s);
+        self.values.subst_mut(s);
     }
 }

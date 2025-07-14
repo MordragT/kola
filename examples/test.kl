@@ -87,7 +87,39 @@
 
     #main = record_remove,
 
-    id : forall a . a -> a = fn x => x,
+    #id : forall a . a -> a = fn x => x,
 
-    main = (id { a = 1, b = 2, c = 3 }),
+    #main = (id { a = 1, b = 2, c = 3 }),
+
+
+
+    #export module c = {
+    #    module b = super::a::b,
+    #    export pi = b::pi,
+    #},
+
+    #export module a = {
+    #    export module b = {
+    #        export pi = 3.14,
+    #    },
+    #},
+
+    export module rand_a = {
+        export rand = fn x => x + 1,
+    },
+
+    export module rand_b = {
+        export rand = fn x => x * 2,
+    },
+
+    export module input = {
+        export module a = super::rand_a,
+        export module b = super::rand_b,
+    },
+
+    module rand_ab = {
+       export rand = fn x => (super::input::a::rand (super::input::b::rand x)),
+    },
+
+    main = let x = 10 in (rand_ab::rand x),
 }

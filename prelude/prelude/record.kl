@@ -34,4 +34,11 @@
     export size : forall r . r -> Num =
         fn record => (record_size record),
 
+    #export merge_left : forall (r1 : Row) (r2 : Row) a . { | r1 } -> { | r2 } -> { | r1 | r2 } =
+    #    fn left => fn right =>
+    #        (record_merge_left { left = left, right = right }),
+
+    #export merge_right : forall (r1 : Row) (r2 : Row) a . { | r1 } -> { | r2 } -> { | r2 | r1 } =
+    #    fn left => fn right =>
+    #        (record_merge_right { left = left, right = right }),
 }

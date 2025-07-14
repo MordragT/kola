@@ -1,7 +1,7 @@
 use std::ops::Index;
 
 use crate::symbol::{
-    AnySym, EffectSym, FunctorSym, ModuleSym, ModuleTypeSym, Substitute, TypeSym, ValueSym,
+    AnySym, EffectSym, FunctorSym, ModuleSym, ModuleTypeSym, Substitute, TypeSym, ValueSym, merge6,
 };
 use kola_collections::HashMap;
 use kola_tree::node::{
@@ -216,140 +216,53 @@ impl Index<ValueName> for Shape {
     }
 }
 
-impl Substitute<FunctorNamespace> for Shape {
-    fn try_substitute(&self, from: FunctorSym, to: FunctorSym) -> Option<Self>
+impl Substitute for Shape {
+    fn try_subst(&self, s: &HashMap<AnySym, AnySym>) -> Option<Self>
     where
         Self: Sized,
     {
-        if let Some(functors) = self.functors.try_substitute(from, to) {
-            Some(Self {
+        let functors = self.functors.try_subst(s);
+        let module_types = self.module_types.try_subst(s);
+        let modules = self.modules.try_subst(s);
+        let effects = self.effects.try_subst(s);
+        let types = self.types.try_subst(s);
+        let values = self.values.try_subst(s);
+
+        merge6(
+            functors,
+            || self.functors.clone(),
+            module_types,
+            || self.module_types.clone(),
+            modules,
+            || self.modules.clone(),
+            effects,
+            || self.effects.clone(),
+            types,
+            || self.types.clone(),
+            values,
+            || self.values.clone(),
+        )
+        .map(
+            |(functors, module_types, modules, effects, types, values)| Self {
                 functors,
-                ..self.clone()
-            })
-        } else {
-            None
-        }
-    }
-
-    fn substitute_mut(&mut self, from: FunctorSym, to: FunctorSym)
-    where
-        Self: Sized,
-    {
-        self.functors.substitute_mut(from, to);
-    }
-}
-
-impl Substitute<ModuleTypeNamespace> for Shape {
-    fn try_substitute(&self, from: ModuleTypeSym, to: ModuleTypeSym) -> Option<Self>
-    where
-        Self: Sized,
-    {
-        if let Some(module_types) = self.module_types.try_substitute(from, to) {
-            Some(Self {
                 module_types,
-                ..self.clone()
-            })
-        } else {
-            None
-        }
-    }
-
-    fn substitute_mut(&mut self, from: ModuleTypeSym, to: ModuleTypeSym)
-    where
-        Self: Sized,
-    {
-        self.module_types.substitute_mut(from, to);
-    }
-}
-
-impl Substitute<ModuleNamespace> for Shape {
-    fn try_substitute(&self, from: ModuleSym, to: ModuleSym) -> Option<Self>
-    where
-        Self: Sized,
-    {
-        if let Some(modules) = self.modules.try_substitute(from, to) {
-            Some(Self {
                 modules,
-                ..self.clone()
-            })
-        } else {
-            None
-        }
-    }
-
-    fn substitute_mut(&mut self, from: ModuleSym, to: ModuleSym)
-    where
-        Self: Sized,
-    {
-        self.modules.substitute_mut(from, to);
-    }
-}
-
-impl Substitute<EffectNamespace> for Shape {
-    fn try_substitute(&self, from: EffectSym, to: EffectSym) -> Option<Self>
-    where
-        Self: Sized,
-    {
-        if let Some(effects) = self.effects.try_substitute(from, to) {
-            Some(Self {
                 effects,
-                ..self.clone()
-            })
-        } else {
-            None
-        }
-    }
-
-    fn substitute_mut(&mut self, from: EffectSym, to: EffectSym)
-    where
-        Self: Sized,
-    {
-        self.effects.substitute_mut(from, to);
-    }
-}
-
-impl Substitute<TypeNamespace> for Shape {
-    fn try_substitute(&self, from: TypeSym, to: TypeSym) -> Option<Self>
-    where
-        Self: Sized,
-    {
-        if let Some(types) = self.types.try_substitute(from, to) {
-            Some(Self {
                 types,
-                ..self.clone()
-            })
-        } else {
-            None
-        }
-    }
-
-    fn substitute_mut(&mut self, from: TypeSym, to: TypeSym)
-    where
-        Self: Sized,
-    {
-        self.types.substitute_mut(from, to);
-    }
-}
-
-impl Substitute<ValueNamespace> for Shape {
-    fn try_substitute(&self, from: ValueSym, to: ValueSym) -> Option<Self>
-    where
-        Self: Sized,
-    {
-        if let Some(values) = self.values.try_substitute(from, to) {
-            Some(Self {
                 values,
-                ..self.clone()
-            })
-        } else {
-            None
-        }
+            },
+        )
     }
 
-    fn substitute_mut(&mut self, from: ValueSym, to: ValueSym)
+    fn subst_mut(&mut self, s: &HashMap<AnySym, AnySym>)
     where
         Self: Sized,
     {
-        self.values.substitute_mut(from, to);
+        self.functors.subst_mut(s);
+        self.module_types.subst_mut(s);
+        self.modules.subst_mut(s);
+        self.effects.subst_mut(s);
+        self.types.subst_mut(s);
+        self.values.subst_mut(s);
     }
 }

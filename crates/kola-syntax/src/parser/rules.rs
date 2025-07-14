@@ -88,42 +88,45 @@ pub fn module_parser<'t>() -> impl KolaParser<'t, Id<node::Module>> + Clone {
     let module_type = module_type_parser();
 
     recursive(|module| {
-        let module_expr = recursive(|module_expr| {
-            let module_import = kw(KwT::IMPORT)
-                .ignore_then(module_name_parser())
-                .map_to_node(node::ModuleImport)
-                .to_module_expr()
-                .labelled("ModuleImport")
-                .as_context()
-                .boxed();
-
-            let module_path = module_name_parser()
-                .separated_by(ctrl(CtrlT::DOUBLE_COLON))
-                .collect()
-                .map_to_node(node::ModulePath)
-                .to_module_expr()
-                .labelled("ModulePath")
-                .as_context()
-                .boxed();
-
-            let functor_app = nested_parser(
-                functor_name_parser()
-                    .then(module_expr.clone())
-                    .map_to_node(|(func, arg)| node::FunctorApp { func, arg })
-                    .to_module_expr(),
-                Delim::Paren,
-                |_span| node::ModuleError,
-            )
+        let module_import = kw(KwT::IMPORT)
+            .ignore_then(module_name_parser())
+            .map_to_node(node::ModuleImport)
+            .to_module_expr()
+            .labelled("ModuleImport")
+            .as_context()
             .boxed();
 
-            choice((
-                functor_app,
-                module.clone().to_module_expr(),
-                module_import,
-                module_path,
-            ))
-            .boxed()
-        });
+        let module_path = module_name_parser()
+            .separated_by(ctrl(CtrlT::DOUBLE_COLON))
+            .collect()
+            .map_to_node(node::ModulePath)
+            .labelled("ModulePath")
+            .as_context()
+            .boxed();
+
+        let functor_app = nested_parser(
+            functor_name_parser()
+                .then(
+                    module_path
+                        .clone()
+                        .separated_by(ctrl(CtrlT::COMMA))
+                        .at_least(1)
+                        .collect(),
+                )
+                .map_to_node(|(func, args)| node::FunctorApp { func, args })
+                .to_module_expr(),
+            Delim::Paren,
+            |_span| node::ModuleError,
+        )
+        .boxed();
+
+        let module_expr = choice((
+            functor_app,
+            module.clone().to_module_expr(),
+            module_import,
+            module_path.to_module_expr(),
+        ))
+        .boxed();
 
         let vis = kw(KwT::EXPORT)
             .to(node::Vis::Export)
@@ -197,20 +200,24 @@ pub fn module_parser<'t>() -> impl KolaParser<'t, Id<node::Module>> + Clone {
         .map_to_node(|(vis, name, ty)| node::ModuleTypeBind { vis, name, ty })
         .to_bind();
 
+        let functor_param = module_name_parser()
+            .then_ignore(ctrl(CtrlT::COLON))
+            .then(module_type)
+            .map_to_node(|(name, ty)| node::FunctorParam { name, ty })
+            .delimited_by(open_delim(OpenT::PAREN), close_delim(CloseT::PAREN));
+
         let functor_bind = group((
             vis,
             kw(KwT::MODULE)
                 .ignore_then(kw(KwT::FUNCTOR))
                 .ignore_then(functor_name_parser()),
-            module_name_parser(),
-            ctrl(CtrlT::COLON).ignore_then(module_type),
+            functor_param.repeated().at_least(1).collect(),
             ctrl(CtrlT::DOUBLE_ARROW).ignore_then(module.clone()),
         ))
-        .map_to_node(|(vis, name, param, param_ty, body)| node::FunctorBind {
+        .map_to_node(|(vis, name, params, body)| node::FunctorBind {
             vis,
             name,
-            param,
-            param_ty,
+            params,
             body,
         })
         .to_bind()
@@ -245,9 +252,10 @@ pub fn module_type_parser<'t>() -> impl KolaParser<'t, Id<node::ModuleType>> + C
             .map_to_node(|(name, ty)| node::ValueSpec { name, ty })
             .to_spec();
 
-        let type_bind = type_bind_parser().to_spec();
-
-        // TODO opaque type spec
+        let type_spec = kw(KwT::TYPE)
+            .ignore_then(type_name_parser())
+            .map_to_node(|name| node::OpaqueTypeSpec { name })
+            .to_spec();
 
         let module_spec = kw(KwT::MODULE)
             .ignore_then(module_name_parser())
@@ -256,7 +264,7 @@ pub fn module_type_parser<'t>() -> impl KolaParser<'t, Id<node::ModuleType>> + C
             .map_to_node(|(name, ty)| node::ModuleSpec { name, ty })
             .to_spec();
 
-        let spec = choice((value_spec, type_bind, module_spec)).boxed();
+        let spec = choice((value_spec, type_spec, module_spec)).boxed();
 
         let concrete = spec
             .separated_by(ctrl(CtrlT::COMMA))
@@ -1981,11 +1989,8 @@ mod tests {
     fn module_type() {
         let mut interner = StrInterner::new();
 
-        let ParseResult { node, builder, .. } = try_parse_str_with(
-            "{ x : Num, type T = Str }",
-            module_type_parser(),
-            &mut interner,
-        );
+        let ParseResult { node, builder, .. } =
+            try_parse_str_with("{ x : Num, type T }", module_type_parser(), &mut interner);
 
         let inspector = NodeInspector::new(node, &builder, &interner);
         inspector
@@ -2007,18 +2012,9 @@ mod tests {
         inspector
             .to_concrete()
             .inner_at(1)
-            .to_type_bind()
+            .to_opaque_type()
             .name()
             .has_name("T");
-        inspector
-            .to_concrete()
-            .inner_at(1)
-            .to_type_bind()
-            .ty_scheme()
-            .ty()
-            .to_qualified()
-            .ty()
-            .has_name("Str");
     }
 
     #[test]

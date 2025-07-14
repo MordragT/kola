@@ -17,3 +17,4 @@ camino.workspace = true
 log.workspace = true
 owo-colors.workspace = true
 derive_more.workspace = true
+enum-as-inner.workspace = true

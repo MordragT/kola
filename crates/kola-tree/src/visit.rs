@@ -108,7 +108,6 @@ impl_visitable!(
     FunctorApp,
     ModuleExpr,
     ValueSpec,
-    OpaqueTypeKind,
     OpaqueTypeSpec,
     ModuleSpec,
     Spec,
@@ -1434,10 +1433,13 @@ pub trait Visitor<T: TreeView> {
         id: Id<node::FunctorApp>,
         tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
-        let node::FunctorApp { func, arg } = *id.get(tree);
+        let node::FunctorApp { func, args } = id.get(tree);
 
-        self.visit_functor_name(func, tree)?;
-        self.visit_module_expr(arg, tree)?;
+        self.visit_functor_name(*func, tree)?;
+
+        for arg in args {
+            self.visit_module_path(*arg, tree)?;
+        }
 
         ControlFlow::Continue(())
     }
@@ -1539,13 +1541,8 @@ pub trait Visitor<T: TreeView> {
         id: Id<node::OpaqueTypeBind>,
         tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
-        let node::OpaqueTypeBind {
-            vis,
-            name,
-            ty_scheme,
-        } = *id.get(tree);
+        let node::OpaqueTypeBind { name, ty_scheme } = *id.get(tree);
 
-        self.visit_vis(vis, tree)?;
         self.visit_type_name(name, tree)?;
         self.visit_type_scheme(ty_scheme, tree)?;
 
@@ -1634,6 +1631,27 @@ pub trait Visitor<T: TreeView> {
         self.walk_module_type_bind(id, tree)
     }
 
+    fn walk_functor_param(
+        &mut self,
+        id: Id<node::FunctorParam>,
+        tree: &T,
+    ) -> ControlFlow<Self::BreakValue> {
+        let node::FunctorParam { name, ty } = *id.get(tree);
+
+        self.visit_module_name(name, tree)?;
+        self.visit_module_type(ty, tree)?;
+
+        ControlFlow::Continue(())
+    }
+
+    fn visit_functor_param(
+        &mut self,
+        id: Id<node::FunctorParam>,
+        tree: &T,
+    ) -> ControlFlow<Self::BreakValue> {
+        self.walk_functor_param(id, tree)
+    }
+
     fn walk_functor_bind(
         &mut self,
         id: Id<node::FunctorBind>,
@@ -1642,16 +1660,18 @@ pub trait Visitor<T: TreeView> {
         let node::FunctorBind {
             vis,
             name,
-            param,
-            param_ty,
+            params,
             body,
-        } = *id.get(tree);
+        } = id.get(tree);
 
-        self.visit_vis(vis, tree)?;
-        self.visit_functor_name(name, tree)?;
-        self.visit_module_name(param, tree)?;
-        self.visit_module_type(param_ty, tree)?;
-        self.visit_module(body, tree)?;
+        self.visit_vis(*vis, tree)?;
+        self.visit_functor_name(*name, tree)?;
+
+        for param in params {
+            self.visit_functor_param(*param, tree)?;
+        }
+
+        self.visit_module(*body, tree)?;
 
         ControlFlow::Continue(())
     }
@@ -1703,23 +1723,14 @@ pub trait Visitor<T: TreeView> {
         self.walk_value_spec(id, tree)
     }
 
-    fn visit_opaque_type_kind(
-        &mut self,
-        _id: Id<node::OpaqueTypeKind>,
-        _tree: &T,
-    ) -> ControlFlow<Self::BreakValue> {
-        ControlFlow::Continue(())
-    }
-
     fn walk_opaque_type_spec(
         &mut self,
         id: Id<node::OpaqueTypeSpec>,
         tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
-        let node::OpaqueTypeSpec { name, kind } = *id.get(tree);
+        let node::OpaqueTypeSpec { name } = *id.get(tree);
 
         self.visit_type_name(name, tree)?;
-        self.visit_opaque_type_kind(kind, tree)?;
 
         ControlFlow::Continue(())
     }
@@ -1758,7 +1769,6 @@ pub trait Visitor<T: TreeView> {
 
         match *id.get(tree) {
             Value(id) => self.visit_value_spec(id, tree),
-            TypeBind(id) => self.visit_type_bind(id, tree),
             OpaqueType(id) => self.visit_opaque_type_spec(id, tree),
             Module(id) => self.visit_module_spec(id, tree),
         }

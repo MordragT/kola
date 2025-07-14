@@ -5,7 +5,7 @@
         compare : forall a . a -> a -> Ordering,
     },
 
-    export module functor max ord : Ord => {
+    export module functor max (ord : Ord) => {
         export max = fn x => fn y =>
             let ordering = (ord::compare x y) in # TODO remove need for let bind because of case
                 case ordering

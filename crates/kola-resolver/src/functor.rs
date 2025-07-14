@@ -1,27 +1,35 @@
+use std::collections::HashMap;
+
 use crate::{
     scope::ModuleScope,
-    symbol::{ModuleSym, Substitute},
+    symbol::{AnySym, ModuleSym, Substitute},
 };
 
 #[derive(Debug, Clone)]
 pub struct Functor {
-    pub param: ModuleSym,
+    pub params: Vec<ModuleSym>,
     pub body: ModuleScope,
 }
 
 impl Functor {
-    pub fn new(param: ModuleSym, body: ModuleScope) -> Self {
-        Self { param, body }
+    pub fn new(params: Vec<ModuleSym>, body: ModuleScope) -> Self {
+        Self { params, body }
     }
 
     // TODO maybe just implement Substitute for ModuleScope ?
-    pub fn apply(self, arg: ModuleSym) -> ModuleScope {
-        let Self { param, mut body } = self;
+    pub fn apply(self, args: Vec<ModuleSym>) -> ModuleScope {
+        let Self { params, mut body } = self;
 
-        body.shape.substitute_mut(param, arg);
-        body.defs.substitute_mut(param, arg);
-        body.cons.substitute_mut(param, arg);
-        body.resolved.substitute_mut(param, arg);
+        let subst = params
+            .into_iter()
+            .map(AnySym::Module)
+            .zip(args.into_iter().map(AnySym::Module))
+            .collect::<HashMap<_, _>>();
+
+        body.shape.subst_mut(&subst);
+        body.defs.subst_mut(&subst);
+        body.cons.subst_mut(&subst);
+        body.resolved.subst_mut(&subst);
 
         body
     }

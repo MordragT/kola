@@ -1,3 +1,34 @@
+/**
+Let’s define:
+
+- **Modules**: Each module is a node in a dependency graph.
+- **Visiting State**: Each module can be in one of three states:
+  - **Unvisited**: Not yet started.
+  - **Visiting**: Currently being resolved (on the call stack).
+  - **Visited**: Fully resolved.
+
+### Algorithm Steps
+
+1. **Start** at the root module.
+2. For each submodule or inline module definition:
+   - If the module is **Unvisited**, begin resolving it (mark as Visiting).
+   - If the module is **Visiting**, report a cycle error and abort.
+   - If the module is **Visited**, do nothing (already resolved).
+3. **When resolving a module**:
+   - For each reference to another module (e.g., `super::a`):
+     - If the referenced module is **Unvisited**, recursively resolve it first.
+     - If the referenced module is **Visiting**, report a cycle error.
+     - If the referenced module is **Visited**, continue.
+   - Once all dependencies are resolved, mark the current module as **Visited**.
+
+---
+
+## When Does This Algorithm Reject Sibling/Cousin References?
+
+- **It only rejects a reference if it would create a cycle in the current call stack.**
+- **Sibling/cousin references are accepted as long as they do not create a cycle.**
+- **Mutual recursion is not allowed**: If two modules reference each other (directly or indirectly), a cycle is detected.
+*/
 use camino::Utf8Path;
 use log::trace;
 use owo_colors::OwoColorize;
@@ -281,13 +312,12 @@ where
         let node::FunctorBind {
             vis,
             name,
-            param,
-            param_ty,
+            params,
             body,
-        } = *tree.node(id);
+        } = tree.node(id);
 
-        let name = *tree.node(name);
-        let vis = *tree.node(vis);
+        let name = *name.get(tree);
+        let vis = *vis.get(tree);
 
         let loc = self.span(id);
 
@@ -301,29 +331,40 @@ where
             self.report.add_diagnostic(e.into());
         }
 
-        // First, visit the parameter type annotation. This will add a ModuleTypeRef to refs (if not present yet),
-        // which will be resolved in the module_ty resolution phase.
-        // It has to be visited before the body, because types are defined in the parent scope not in the body scope.
-        self.visit_module_type(param_ty, tree)?;
+        for param in params {
+            let node::FunctorParam { ty, .. } = *tree.node(*param);
+
+            // First, visit the parameter type annotation. This will add a ModuleTypeRef to refs (if not present yet),
+            // which will be resolved in the module_ty resolution phase.
+            // It has to be visited before the body, because types are defined in the parent scope not in the body scope.
+            self.visit_module_type(ty, tree)?;
+        }
 
         // Create a new scope for the functor body with a new ModuleSym.
         let body_sym = ModuleSym::new();
         self.stack
-            .start(ModuleInfo::new(body, body_sym, self.source_id, loc));
+            .start(ModuleInfo::new(*body, body_sym, self.source_id, loc));
 
-        // Create a new unique ModuleSym for the functor's parameter (e.g., 'x' in 'functor f x : S => ...').
-        // This is the 'virtual' module that exists inside the functor's scope.
-        let param_sym = ModuleSym::new();
-        let param_loc = self.span(param);
-        let param_name = *param.get(tree);
+        let mut param_syms = Vec::with_capacity(params.len());
+        for param in params {
+            // Create a new unique ModuleSym for the functor's parameter (e.g., 'x' in 'functor f x : S => ...').
+            // This is the 'virtual' module that exists inside the functor's scope.
+            let param_sym = ModuleSym::new();
+            let param_loc = self.span(*param);
+            let param_name = *param.get(tree).name.get(tree);
 
-        // Insert the parameter module into the scope of the functor
-        if let Err(e) =
-            self.stack
-                .insert_module(param_name, param_sym, Def::unbound(param_loc, Vis::Export))
-        // TODO here we set Vis to export but ideally the functor should not "bleed" the parameter scope
-        {
-            self.report.add_diagnostic(e.into());
+            // Insert the parameter module into the scope of the functor
+            if let Err(e) = self.stack.insert_module(
+                param_name,
+                param_sym,
+                Def::unbound(param_loc, Vis::Export),
+            )
+            // TODO here we set Vis to export but ideally the functor should not "bleed" the parameter scope
+            {
+                self.report.add_diagnostic(e.into());
+            }
+
+            param_syms.push(param_sym);
         }
 
         // No need to add dependency information here, because due to the walk_module call later,
@@ -335,11 +376,11 @@ where
 
         // Now we can visit the functor body.
         // Note that this uses walk, because the stack is already set up for the functor body.
-        self.walk_module(body, tree)?;
+        self.walk_module(*body, tree)?;
 
         // Pop the ModuleScope from the stack and create a new Definition for the functor bind
         let body = self.stack.finish();
-        let functor = Functor::new(param_sym, body);
+        let functor = Functor::new(param_syms, body);
 
         self.functors.insert(sym, functor);
 
@@ -351,39 +392,24 @@ where
         id: Id<node::FunctorApp>,
         tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
-        let node::FunctorApp { func, arg } = *tree.node(id);
+        let node::FunctorApp { func, args } = tree.node(id);
 
         let name = *func.get(tree);
         let loc = self.span(id);
 
-        let arg_sym = ModuleSym::new();
-        let bind = self.current_module_bind_sym.replace(arg_sym).unwrap();
+        let bind = self.current_module_bind_sym.take().unwrap();
         self.stack.resolved_mut().insert_meta(id, bind);
 
-        let node::ModuleExpr::Path(arg_id) = *tree.node(arg) else {
-            // TODO for functor arguments other than module paths, the current module resolution implementation is insufficient
-            // Most importantly scoping is not implemented correctly e.g.:
-            //
-            // module a = ...,
-            // module b = ...,
-            // module functor f x : ... => ...
-            // module c = (f { module a = a, module b = b }) // This will not work, because the anonymous module has its own module scope
-            //                                                  and doesn't inherit from its parent module
-            //
-            // Maybe for inline modules in general, scoping should be less strict and allow transparent use of parent bindings.
-            self.report.add_diagnostic(
-                Diagnostic::error(
-                    loc,
-                    "Functor application argument must currently be a module path",
-                )
-                .with_help("Use a module path to apply a functor."),
-            );
-            return ControlFlow::Continue(());
-        };
+        let mut arg_syms = Vec::with_capacity(args.len());
+        for arg_id in args {
+            let arg_sym = ModuleSym::new();
+            self.current_module_bind_sym = Some(arg_sym);
 
-        self.visit_module_path(arg_id, tree)?;
+            self.visit_module_path(*arg_id, tree)?;
+            arg_syms.push(arg_sym);
+        }
 
-        let constraint = ModuleBindConst::functor(id, bind, loc, name, arg_sym);
+        let constraint = ModuleBindConst::functor(id, bind, loc, name, arg_syms);
         self.stack.cons_mut().insert_module_bind(bind, constraint);
 
         ControlFlow::Continue(())

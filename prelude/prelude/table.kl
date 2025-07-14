@@ -3,10 +3,10 @@
 
     export type Table = forall (r : Row) . List { | r },
 
-    export map_rows : forall (r : Row) (s : Row) . Table r -> Table s =
+    export map_rows : forall (r : Row) (s : Row) . ({ | r } -> { | s }) -> Table r -> Table s =
         super::list::map,
 
-    export filter_rows : forall (r : Row) . (Row -> Bool) -> Table r -> Table r =
+    export filter_rows : forall (r : Row) . ({ | r } -> Bool) -> Table r -> Table r =
         super::list::filter,
 
     export select_row : forall (r : Row) a . Num -> Table r -> Option { | r } =
@@ -51,4 +51,19 @@
                 table),
 
     # insert_row_at, remove_row_at,
+
+    module type TableShape = {
+        type Row,
+    },
+
+    module functor join (t : TableShape) => {
+        export join = fn label => fn left => fn right =>
+            left |> (super::list::flat_map (fn lrow =>
+                let lkey = (super::record::select label lrow) in
+                    right
+                        |> (super::list::filter (fn rrow =>
+                            (super::record::select label rrow) == lkey))
+                        |> (super::list::map (fn rrow =>
+                            lrow & rrow)))),
+    }
 }

@@ -186,7 +186,8 @@ pub struct TypeBind {
 )]
 #[notate(color = "green")]
 pub struct OpaqueTypeBind {
-    pub vis: Id<Vis>,
+    // Opaque types are always public,
+    // because opaque private types do not make sense
     pub name: Id<TypeName>,
     pub ty_scheme: Id<TypeScheme>,
 }
@@ -271,11 +272,19 @@ impl ModuleBind {
     Deserialize,
 )]
 #[notate(color = "green")]
+pub struct FunctorParam {
+    pub name: Id<ModuleName>,
+    pub ty: Id<ModuleType>,
+}
+
+#[derive(
+    Debug, Notate, Inspector, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+)]
+#[notate(color = "green")]
 pub struct FunctorBind {
     pub vis: Id<Vis>,
     pub name: Id<FunctorName>,
-    pub param: Id<ModuleName>,
-    pub param_ty: Id<ModuleType>, // should I necessitate type annotations here ? and restriction to ModuleType good ?
+    pub params: Vec<Id<FunctorParam>>,
     pub body: Id<Module>,
 }
 
@@ -283,22 +292,22 @@ impl FunctorBind {
     pub fn new_in(
         vis: Vis,
         name: FunctorName,
-        param: ModuleName,
-        param_ty: ModuleType,
+        params: impl IntoIterator<Item = FunctorParam>,
         body: Module,
         builder: &mut TreeBuilder,
     ) -> Id<Self> {
         let vis = builder.insert(vis);
         let name = builder.insert(name);
-        let param = builder.insert(param);
-        let param_ty = builder.insert(param_ty);
+        let params = params
+            .into_iter()
+            .map(|param| builder.insert(param))
+            .collect();
         let body = builder.insert(body);
 
         builder.insert(Self {
             vis,
             name,
-            param,
-            param_ty,
+            params,
             body,
         })
     }
@@ -409,23 +418,12 @@ impl ModulePath {
 pub struct ModuleImport(pub Id<ModuleName>);
 
 #[derive(
-    Debug,
-    Notate,
-    Inspector,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    Hash,
-    Serialize,
-    Deserialize,
+    Debug, Notate, Inspector, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
 )]
 #[notate(color = "green")]
 pub struct FunctorApp {
     pub func: Id<FunctorName>,
-    pub arg: Id<ModuleExpr>,
+    pub args: Vec<Id<ModulePath>>,
 }
 
 // TODO should I only allow ModuleTypes to be bound or should I change this to a ModuleSigBind ?
@@ -534,7 +532,6 @@ pub struct ConcreteModuleType(pub Vec<Id<Spec>>);
 )]
 pub enum Spec {
     Value(Id<ValueSpec>),
-    TypeBind(Id<TypeBind>),
     OpaqueType(Id<OpaqueTypeSpec>),
     Module(Id<ModuleSpec>),
 }
@@ -543,7 +540,6 @@ impl<'a> Notate<'a> for NodePrinter<'a, Spec> {
     fn notate(&self, arena: &'a Bump) -> Notation<'a> {
         match *self.value {
             Spec::Value(v) => self.to(v).notate(arena),
-            Spec::TypeBind(t) => self.to(t).notate(arena),
             Spec::OpaqueType(o) => self.to(o).notate(arena),
             Spec::Module(m) => self.to(m).notate(arena),
         }
@@ -589,23 +585,6 @@ pub struct ValueSpec {
 #[notate(color = "green")]
 pub struct OpaqueTypeSpec {
     pub name: Id<TypeName>,
-    pub kind: Id<OpaqueTypeKind>,
-}
-
-// * -> * = arity of 2
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
-pub struct OpaqueTypeKind {
-    pub arity: usize,
-}
-
-impl<'a> Notate<'a> for NodePrinter<'a, OpaqueTypeKind> {
-    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
-        let head = "OpaqueTypeKind".green().display_in(arena);
-
-        let arity = format!("arity = {}", self.value.arity).display_in(arena);
-
-        head.then(arena.just(' ').then(arity, arena), arena)
-    }
 }
 
 // module M : { ... }

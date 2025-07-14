@@ -176,11 +176,11 @@ pub fn resolve_module_bind(
             bind,
             loc,
             functor,
-            arg,
+            args,
         } => {
             visit[bind] = VisitState::Visiting;
 
-            let scope = &scopes[&scope_sym];
+            let scope = scopes[&scope_sym].clone(); // TODO avoid clone here
 
             let Some(functor_sym) = scope.shape.get_functor(functor) else {
                 report.add_diagnostic(
@@ -210,43 +210,66 @@ pub fn resolve_module_bind(
 
             let functor = functors[&functor_sym].clone();
 
-            if visit[arg] == VisitState::Visiting {
-                report.add_diagnostic(Diagnostic::error(loc, "Module cycle detected").with_notes(
-                    ["While trying to resolve a module path inside a functor application".into()],
-                ));
-                visit[arg] = VisitState::Visited;
-                // TODO should also visit[bind] = VisitState::Visited; ?
+            if functor.params.len() != args.len() {
+                report.add_diagnostic(
+                    Diagnostic::error(loc, "Functor application has wrong number of arguments")
+                        .with_help(format!(
+                            "Expected {} arguments, but got {}.",
+                            functor.params.len(),
+                            args.len()
+                        ))
+                        .with_trace([(
+                            "While trying to resolve a functor application".into(),
+                            loc,
+                        )]),
+                );
+                visit[bind] = VisitState::Visited;
                 return;
             }
 
-            if visit[arg] == VisitState::Unvisited {
-                if scopes.contains_key(&arg) {
-                    resolve_module_scope(
-                        arg,
-                        functors,
-                        report,
-                        module_graph,
-                        visit,
-                        scopes,
-                        interner,
+            for &arg in &args {
+                if visit[arg] == VisitState::Visiting {
+                    report.add_diagnostic(
+                        Diagnostic::error(loc, "Module cycle detected").with_notes([
+                            "While trying to resolve a module path inside a functor application"
+                                .into(),
+                        ]),
                     );
-                } else if let Some(constraint) = scope.cons.get_module_bind(arg).cloned() {
-                    resolve_module_bind(
-                        constraint,
-                        scope.info.sym,
-                        functors,
-                        report,
-                        module_graph,
-                        visit,
-                        scopes,
-                        interner,
-                    );
-                } else {
-                    unreachable!()
+                    visit[arg] = VisitState::Visited;
+                    // TODO should also visit[bind] = VisitState::Visited; ?
+                    return;
+                }
+
+                if visit[arg] == VisitState::Unvisited {
+                    if scopes.contains_key(&arg) {
+                        // HMM this should never really happen, because only module paths are args
+                        resolve_module_scope(
+                            arg,
+                            functors,
+                            report,
+                            module_graph,
+                            visit,
+                            scopes,
+                            interner,
+                        );
+                    } else if let Some(constraint) = scope.cons.get_module_bind(arg).cloned() {
+                        resolve_module_bind(
+                            constraint,
+                            scope.info.sym,
+                            functors,
+                            report,
+                            module_graph,
+                            visit,
+                            scopes,
+                            interner,
+                        );
+                    } else {
+                        unreachable!()
+                    }
                 }
             }
 
-            let mut scope = functor.apply(arg);
+            let mut scope = functor.apply(args);
             scope.info.sym = bind;
             let id = scope.info.id;
             scope.resolved.insert_meta(id, bind);

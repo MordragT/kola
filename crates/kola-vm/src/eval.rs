@@ -659,6 +659,44 @@ fn eval_builtin(
             // Return the number of fields in the record
             Value::Num(record.len() as f64)
         }
+        (BuiltinId::RecordMergeLeft, Value::Record(record)) => {
+            let Some(Value::Record(left)) = record.get(context.intern_str("left")).cloned() else {
+                return MachineState::Error(
+                    "record_merge_left requires 'left' field with a record".to_owned(),
+                );
+            };
+
+            let Some(Value::Record(right)) = record.get(context.intern_str("right")).cloned()
+            else {
+                return MachineState::Error(
+                    "record_merge_left requires 'right' field with a record".to_owned(),
+                );
+            };
+
+            // Merge the two records, with left taking precedence
+            let merged = left.merge_left(right);
+
+            Value::Record(merged)
+        }
+        (BuiltinId::RecordMergeRight, Value::Record(record)) => {
+            let Some(Value::Record(left)) = record.get(context.intern_str("left")).cloned() else {
+                return MachineState::Error(
+                    "record_merge_left requires 'left' field with a record".to_owned(),
+                );
+            };
+
+            let Some(Value::Record(right)) = record.get(context.intern_str("right")).cloned()
+            else {
+                return MachineState::Error(
+                    "record_merge_left requires 'right' field with a record".to_owned(),
+                );
+            };
+
+            // Merge the two records, with right taking precedence
+            let merged = left.merge_right(right);
+
+            Value::Record(merged)
+        }
         (BuiltinId::RecordRec, Value::Record(record)) => {
             let Some(Value::Record(record)) = record.get(context.intern_str("record")).cloned()
             else {

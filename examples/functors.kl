@@ -4,116 +4,47 @@
     },
 
     export module rand_a = {
-        rand = fn x => x + 1,
+        export rand = fn x => x + 1,
     },
 
     export module rand_b = {
-        rand = fn x => x * 2,
+        export rand = fn x => x * 2,
     },
 
-    module functor combined_rand ab : { module a : Randomize, module b : Randomize } => {
-        rand = fn x => (ab::a::rand (ab::b::rand x)),
-    },
-
-    # For this to work I will need proper lexical scoping of inline modules
-    #module input = {
-    #    export module a = rand_a, # Note here not super::rand_a but just rand_a
-    #    export module b = rand_b,
+    #module functor combined_rand (ab : { module a : Randomize, module b : Randomize }) => {
+    #    rand = fn x => (ab::a::rand (ab::b::rand x)),
     #},
-    module input = {
-        export module a = {
-            rand = fn x => x + 1,
-        }, #m14
-        export module b = {
-            rand = fn x => x * 2,
-        }, #m17
-    }, # m13
-    module rand_ab = (combined_rand input), # m20
 
-    # Due to current limitations inline modules cannot be used as functor arguments
-    #module rand_ab = (combined_rand { module a = rand_a, module b = rand_b }),
+    #export module input = {
+    #    export module a = super::rand_a,
+    #    export module b = super::rand_b,
+    #},
+    #export module rand_ab = (combined_rand input), # m20
+    #main = let x = 10 in (rand_ab::rand x),
 
+
+    module functor combined_rand (a : Randomize) (b : Randomize) => {
+        export rand = fn x => (a::rand (b::rand x)),
+    },
+
+    export module rand_ab = (combined_rand rand_a, rand_b),
     main = let x = 10 in (rand_ab::rand x),
 
 
-    module type Iterable = {
-        map : forall a b . (a -> b) -> List a -> List b,
-    },
 
-        module type CaddyInputs = {
-        domain : Str,
-        root : Str,
-    },
 
-    module my_inputs = {
-        #export to_json = super::serde::to_json,
-        export domain = "example.com",
-        export root = "/var/www/html",
-    },
+    #module input = {
+    #    export module a = {
+    #        rand = fn x => x + 1,
+    #    }, #m14
+    #    export module b = {
+    #        rand = fn x => x * 2,
+    #    }, #m17
+    #}, # m13
+    #module rand_ab = (combined_rand input), # m20
 
-    module functor caddy_config inputs : CaddyInputs => {
-        # Helper for the route block
-        route = {
-            h_handle = [
-                {
-                    browse = {},
-                    handler = "file_server",
-                    root = inputs::root,
-                }
-            ],
-            match = [
-                {
-                    host = [ inputs::domain ],
-                }
-            ],
-        },
+    # Due to current limitations inline modules cannot be used as functor arguments
+    #module rand_ab = (combined_rand { module a = rand_a, module b = rand_b }),
+    #main = let x = 10 in (rand_ab::rand x),
 
-        # Helper for the tls policy block
-        tls_policy = {
-            subjects = [ inputs::domain ],
-            issuers = [
-                {
-                    m_module = "acme",
-                    challenges = {
-                        dns = {
-                            provider = {
-                                name = "dnspod",
-                                auth_token = "id,token",
-                            }
-                        }
-                    }
-                }
-            ]
-        },
-
-        # The full config
-        export config = {
-            admin = {
-                disabled = true,
-            },
-            apps = {
-                http = {
-                    servers = {
-                        static = {
-                            automatic_https = {
-                                disable_redirects = true,
-                            },
-                            idle_timeout = 30000000000,
-                            listen = [ ":3443" ],
-                            max_header_bytes = 10240,
-                            read_header_timeout = 10000000000,
-                            routes = [ route ],
-                        }
-                    }
-                },
-                tls = {
-                    automation = {
-                        policies = [ tls_policy ],
-                    }
-                }
-            }
-        },
-
-        #export to_json = (inputs::to_json config),
-    },
 }

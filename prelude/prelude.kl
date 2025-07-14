@@ -91,5 +91,11 @@
 
     colb = (table::select_col 'b table4),
 
-    main = colb,
+    rec1 = { a = 1, b = 2, c = 3 },
+
+    rec2 = { a = 4, d = 5 },
+
+    #main = (record::merge_left rec1 rec2),
+
+    main = table4,
 }
