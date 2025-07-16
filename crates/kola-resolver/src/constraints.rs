@@ -8,7 +8,7 @@ use kola_tree::{
 };
 
 use crate::symbol::{
-    AnySym, EffectSym, ModuleSym, ModuleTypeSym, Substitute, TypeSym, ValueSym, merge2,
+    AnySym, EffectSym, ModuleSym, ModuleTypeSym, Substitute, TypeSym, ValueSym, merge3,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -16,6 +16,7 @@ pub enum ModuleBindConst {
     Functor {
         id: Id<node::FunctorApp>,
         bind: ModuleSym,
+        path: Option<ModuleSym>,
         loc: Loc,
         functor: FunctorName,
         args: Vec<ModuleSym>,
@@ -32,6 +33,7 @@ impl ModuleBindConst {
     pub fn functor(
         id: Id<node::FunctorApp>,
         bind: ModuleSym,
+        path: Option<ModuleSym>,
         loc: Loc,
         functor: FunctorName,
         args: Vec<ModuleSym>,
@@ -39,6 +41,7 @@ impl ModuleBindConst {
         Self::Functor {
             id,
             bind,
+            path,
             loc,
             functor,
             args,
@@ -80,15 +83,24 @@ impl Substitute for ModuleBindConst {
             Self::Functor {
                 id,
                 bind,
+                path,
                 loc,
                 functor,
                 args,
             } => {
                 let bind_opt = bind.try_subst(s);
+                let path_opt = path.try_subst(s);
                 let args_opt = args.try_subst(s);
 
-                merge2(bind_opt, || bind.clone(), args_opt, || args.clone())
-                    .map(|(bind, args)| Self::functor(*id, bind, *loc, *functor, args))
+                merge3(
+                    bind_opt,
+                    || *bind,
+                    path_opt,
+                    || *path,
+                    args_opt,
+                    || args.clone(),
+                )
+                .map(|(bind, path, args)| Self::functor(*id, bind, path, *loc, *functor, args))
             }
             Self::Path {
                 id,

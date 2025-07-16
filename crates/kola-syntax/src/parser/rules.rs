@@ -111,49 +111,49 @@ pub fn module_parser<'t>() -> impl KolaParser<'t, Id<node::Module>> + Clone {
             .collect()
             .map_to_node(node::FunctorArgs);
 
-        let functor_app = nested_parser(
-            functor_name_parser()
-                .then(functor_args)
-                .map_to_node(|(func, args)| node::FunctorApp { func, args })
-                .to_module_expr(),
-            Delim::Paren,
-            |_span| node::ModuleError,
-        )
-        .boxed();
-
         // let functor_app = nested_parser(
-        //     lower_symbol()
-        //         .spanned()
-        //         .separated_by(ctrl(CtrlT::DOUBLE_COLON))
-        //         .at_least(1)
-        //         .collect::<Vec<_>>()
+        //     functor_name_parser()
         //         .then(functor_args)
-        //         .map_with(|(mut path, args), e| {
-        //             let tree: &mut State = e.state();
-
-        //             let (func_name, loc) = path.pop().unwrap();
-        //             let func = tree.insert(node::FunctorName::new(func_name), loc);
-
-        //             let path = if !path.is_empty() {
-        //                 let module_loc = Loc::covering_located(&path).unwrap(); // Safety: Path is not empty
-        //                 let module_path = path
-        //                     .into_iter()
-        //                     .map(|(name, span)| tree.insert(node::ModuleName::new(name), span))
-        //                     .collect::<Vec<_>>();
-
-        //                 Some(tree.insert(node::ModulePath(module_path), module_loc))
-        //             } else {
-        //                 None
-        //             };
-
-        //             node::FunctorApp { path, func, args }
-        //         })
-        //         .to_node()
+        //         .map_to_node(|(func, args)| node::FunctorApp { func, args })
         //         .to_module_expr(),
         //     Delim::Paren,
         //     |_span| node::ModuleError,
         // )
         // .boxed();
+
+        let functor_app = nested_parser(
+            lower_symbol()
+                .spanned()
+                .separated_by(ctrl(CtrlT::DOUBLE_COLON))
+                .at_least(1)
+                .collect::<Vec<_>>()
+                .then(functor_args)
+                .map_with(|(mut path, args), e| {
+                    let tree: &mut State = e.state();
+
+                    let (func_name, loc) = path.pop().unwrap();
+                    let func = tree.insert(node::FunctorName::new(func_name), loc);
+
+                    let path = if !path.is_empty() {
+                        let module_loc = Loc::covering_located(&path).unwrap(); // Safety: Path is not empty
+                        let module_path = path
+                            .into_iter()
+                            .map(|(name, span)| tree.insert(node::ModuleName::new(name), span))
+                            .collect::<Vec<_>>();
+
+                        Some(tree.insert(node::ModulePath(module_path), module_loc))
+                    } else {
+                        None
+                    };
+
+                    node::FunctorApp { path, func, args }
+                })
+                .to_node()
+                .to_module_expr(),
+            Delim::Paren,
+            |_span| node::ModuleError,
+        )
+        .boxed();
 
         let module_expr = choice((
             functor_app,

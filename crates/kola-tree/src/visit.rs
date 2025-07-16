@@ -1453,11 +1453,11 @@ pub trait Visitor<T: TreeView> {
         id: Id<node::FunctorApp>,
         tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
-        let node::FunctorApp { func, args } = id.get(tree);
+        let node::FunctorApp { path, func, args } = id.get(tree);
 
-        // if let Some(path) = path {
-        //     self.visit_module_path(*path, tree)?;
-        // }
+        if let Some(path) = path {
+            self.visit_module_path(*path, tree)?;
+        }
 
         self.visit_functor_name(*func, tree)?;
         self.visit_functor_args(*args, tree)?;

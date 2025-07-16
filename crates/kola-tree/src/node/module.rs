@@ -441,7 +441,7 @@ pub struct FunctorArgs(pub Vec<Id<ModulePath>>);
 )]
 #[notate(color = "green")]
 pub struct FunctorApp {
-    // pub path: Option<Id<ModulePath>>,
+    pub path: Option<Id<ModulePath>>,
     pub func: Id<FunctorName>,
     pub args: Id<FunctorArgs>,
 }

@@ -413,7 +413,7 @@ where
         id: Id<node::FunctorApp>,
         tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
-        let node::FunctorApp { func, args } = *tree.node(id);
+        let node::FunctorApp { path, func, args } = *tree.node(id);
 
         let name = *func.get(tree);
         let loc = self.span(id);
@@ -421,14 +421,21 @@ where
         let bind = self.current_module_bind_sym.take().unwrap();
         self.stack.resolved_mut().insert_meta(id, bind);
 
-        // if let Some(path) = path {
-        //     self.visit_module_path(path, tree)?;
-        // }
+        let path = if let Some(path) = path {
+            let bind = ModuleSym::new();
+            self.current_module_bind_sym = Some(bind);
+
+            self.visit_module_path(path, tree)?;
+
+            Some(bind)
+        } else {
+            None
+        };
 
         self.visit_functor_args(args, tree)?;
         let arg_syms = self.stack.resolved().meta(args).clone();
 
-        let constraint = ModuleBindConst::functor(id, bind, loc, name, arg_syms);
+        let constraint = ModuleBindConst::functor(id, bind, path, loc, name, arg_syms);
         self.stack.cons_mut().insert_module_bind(bind, constraint);
 
         ControlFlow::Continue(())

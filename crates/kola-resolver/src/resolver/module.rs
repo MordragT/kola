@@ -113,7 +113,14 @@ pub fn resolve_modules(
     for sym in scopes.keys().copied().collect::<Vec<_>>() {
         let module_refs = scopes[&sym].cons.modules().to_vec();
         for module_ref in module_refs {
-            resolve_module_ref(sym, &module_ref, report, module_graph, &mut scopes);
+            resolve_module_ref(
+                sym,
+                &module_ref,
+                report,
+                module_graph,
+                &mut scopes,
+                interner,
+            );
         }
     }
 
@@ -129,7 +136,7 @@ pub fn resolve_module_scope(
     module_graph: &mut ModuleGraph,
     visit: &mut VisitMap<ModuleSym>,
     scopes: &mut ModuleScopes,
-    interner: &StrInterner,
+    interner: &mut StrInterner,
 ) {
     visit[scope] = VisitState::Visiting;
 
@@ -168,21 +175,61 @@ pub fn resolve_module_bind(
     module_graph: &mut ModuleGraph,
     visit: &mut VisitMap<ModuleSym>,
     scopes: &mut ModuleScopes,
-    interner: &StrInterner,
+    interner: &mut StrInterner,
 ) {
     match constraint {
         ModuleBindConst::Functor {
             id: _,
             bind,
+            path,
             loc,
             functor,
             args,
         } => {
             visit[bind] = VisitState::Visiting;
 
-            let scope = scopes[&scope_sym].clone(); // TODO avoid clone here
+            if let Some(path) = path {
+                match visit[path] {
+                    VisitState::Visited => (),
+                    VisitState::Visiting => unreachable!(),
+                    VisitState::Unvisited => {
+                        if scopes.contains_key(&path) {
+                            resolve_module_scope(
+                                path,
+                                functors,
+                                report,
+                                module_graph,
+                                visit,
+                                scopes,
+                                interner,
+                            );
+                        } else if let Some(constraint) =
+                            scopes[&scope_sym].cons.get_module_bind(path).cloned()
+                        {
+                            resolve_module_bind(
+                                constraint,
+                                scope_sym,
+                                functors,
+                                report,
+                                module_graph,
+                                visit,
+                                scopes,
+                                interner,
+                            );
+                        } else {
+                            unreachable!()
+                        }
+                    }
+                }
+            }
 
-            let Some(functor_sym) = scope.shape.get_functor(functor) else {
+            let func_scope = if let Some(path) = path {
+                &scopes[&path]
+            } else {
+                &scopes[&scope_sym]
+            };
+
+            let Some(functor_sym) = func_scope.shape.get_functor(functor) else {
                 report.add_diagnostic(
                     Diagnostic::error(loc, "Functor not found").with_trace([(
                         "While trying to resolve a functor application".into(),
@@ -193,9 +240,9 @@ pub fn resolve_module_bind(
                 return;
             };
 
-            let def = scope.defs[functor_sym];
+            let def = func_scope.defs[functor_sym];
 
-            if def.vis != Vis::Export && scope.info.sym != scope_sym {
+            if def.vis != Vis::Export && func_scope.info.sym != scope_sym {
                 report.add_diagnostic(
                     Diagnostic::error(def.loc, "Functor not exported")
                         .with_help("Only exported functors can be used in functor applications.")
@@ -243,19 +290,22 @@ pub fn resolve_module_bind(
                 if visit[arg] == VisitState::Unvisited {
                     if scopes.contains_key(&arg) {
                         // HMM this should never really happen, because only module paths are args
-                        resolve_module_scope(
-                            arg,
-                            functors,
-                            report,
-                            module_graph,
-                            visit,
-                            scopes,
-                            interner,
-                        );
-                    } else if let Some(constraint) = scope.cons.get_module_bind(arg).cloned() {
+                        // resolve_module_scope(
+                        //     arg,
+                        //     functors,
+                        //     report,
+                        //     module_graph,
+                        //     visit,
+                        //     scopes,
+                        //     interner,
+                        // );
+                        unreachable!()
+                    } else if let Some(constraint) =
+                        scopes[&scope_sym].cons.get_module_bind(arg).cloned()
+                    {
                         resolve_module_bind(
                             constraint,
-                            scope.info.sym,
+                            scope_sym,
                             functors,
                             report,
                             module_graph,
@@ -269,14 +319,60 @@ pub fn resolve_module_bind(
                 }
             }
 
-            let mut scope = functor.apply(args);
-            scope.info.sym = bind;
-            let id = scope.info.id;
-            scope.resolved.insert_meta(id, bind);
-            // TODO unsure if maybe also other info fields need updating.
+            let mut scope = functor.apply(bind, args);
 
             visit[bind] = VisitState::Visited;
-            module_graph.add_dependency(scope_sym, bind);
+
+            // When applying a functor, we treat the application as a new module bind.
+            // If the functor is defined in another module (`path` is Some), we add a dependency
+            // from the functor's defining module (`path`) to the new bind. Otherwise, we add a dependency
+            // from the current scope (`scope_sym`).
+            //
+            // NOTE: We use the `info.sym` of the functor's defining scope as the parent symbol for the new bind.
+            // This is a workaround due to the current design, where functor applications create new module symbols
+            // that do not inherit the parent relationship in the module graph by default.
+            //
+            // This approach works with the current resolution algorithm, but it is somewhat fragile:
+            // - The internal symbol (`info.sym`) of copied scopes is not updated, which may be surprising.
+            // - Parent/child relationships are not always explicit in the module graph for functor applications.
+            // - Future changes to module resolution, functor instantiation, or scope traversal may require
+            //   a more robust solution.
+            //
+            // If you are refactoring or extending the module/functor system, consider:
+            // - Explicitly updating parent/child relationships in the module graph for all module binds.
+            // - Ensuring that copied scopes for functor applications have their `info.sym` updated to match the new bind.
+            // - Documenting or distinguishing between "definition" and "instantiation" symbols for functor applications.
+            //
+            // For now, this logic is sufficient, but be aware of these limitations and revisit if the module system grows more complex.
+            let parent = if let Some(path) = path {
+                module_graph.add_dependency(path, bind);
+
+                scopes[&path].info.sym
+            } else {
+                module_graph.add_dependency(scope_sym, bind);
+                scope_sym
+            };
+
+            {
+                let mut dependents = module_graph.dependents_of(parent);
+
+                if let Some(parent) = dbg!(dependents.next()) {
+                    let parent_info = dbg!(&scopes[parent].info);
+
+                    if let Err(e) = scope.insert_module(
+                        ModuleName::new(interner.intern("super")),
+                        parent_info.sym,
+                        ModuleDef::unbound(parent_info.loc, Vis::Export),
+                    ) {
+                        report.add_diagnostic(e.into());
+                    }
+
+                    if !dependents.next().is_none() {
+                        panic!("Multiple parent modules found for module: {:?}", scope.info);
+                    }
+                }
+            }
+
             scopes.insert(bind, scope);
 
             // Do a resolve of the now applied functor scope.
@@ -395,6 +491,7 @@ pub fn resolve_module_ref(
     report: &mut Report,
     module_graph: &mut ModuleGraph,
     scopes: &mut ModuleScopes,
+    interner: &mut StrInterner,
 ) {
     let ModuleConst {
         path,
@@ -412,6 +509,8 @@ pub fn resolve_module_ref(
 
     while let Some((name, rest)) = path.split_first() {
         let Some(sym) = scope.shape.get_module(*name) else {
+            dbg!(&interner[name.0]);
+
             report.add_diagnostic(
                 Diagnostic::error(scope.info.loc, "Module not found")
                     .with_trace([("Within this module path".into(), *loc)]),
