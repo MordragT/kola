@@ -24,6 +24,7 @@ pub enum Query4<'a, T, U, V, W> {
     V3(Id<W>, &'a W),
 }
 
+// TODO remove mutable methods from trait and only implement them for `TreeBuilder`
 pub trait TreeView {
     fn get(&self, idx: usize) -> &Node;
 

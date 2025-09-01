@@ -1,0 +1,4 @@
+{
+    main = let person = { name = "Peter" } in
+       { perso | +age = 32 },
+}

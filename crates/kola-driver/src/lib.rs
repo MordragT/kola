@@ -10,6 +10,7 @@ use kola_span::{Issue, Report, SourceManager};
 use kola_syntax::{
     lexer::{LexInput, tokenize},
     parser::{ParseInput, ParseOutput, parse},
+    token::TokenPrinter,
 };
 use kola_tree::{
     print::{Decorators, TreePrinter},
@@ -60,6 +61,10 @@ impl Driver {
             report.eprint(&source_manager)?;
             return Ok(None);
         };
+        if print {
+            let printer = TokenPrinter(&tokens, self.print_options);
+            printer.print(self.print_options, &self.arena);
+        }
 
         let ParseOutput {
             tokens: _,

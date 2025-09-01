@@ -1,0 +1,5 @@
+{
+    export a = b + 1,
+    export b = c + 1,
+    export c = a + 1,
+}

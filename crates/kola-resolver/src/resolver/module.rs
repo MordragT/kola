@@ -191,7 +191,7 @@ pub fn resolve_module_bind(
             if let Some(path) = path {
                 match visit[path] {
                     VisitState::Visited => (),
-                    VisitState::Visiting => unreachable!(),
+                    VisitState::Visiting => unreachable!(), // Is this true ?
                     VisitState::Unvisited => {
                         if scopes.contains_key(&path) {
                             resolve_module_scope(

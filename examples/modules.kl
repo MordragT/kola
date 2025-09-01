@@ -1,9 +1,9 @@
 {
-    export module a = import a,
+    export module z = import a,
 
     module b = {
-        export a_in_b_fn = super::a::a_fn,
+        export a_in_b_fn = super::z::a_fn,
     },
 
-    main = (a::a_fn 10),
+    main = (b::a_in_b_fn 5),
 }

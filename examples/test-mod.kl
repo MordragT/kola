@@ -1,0 +1,7 @@
+{
+    module a = {
+        module b = import c,
+    },
+
+    main = 10,
+}

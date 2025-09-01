@@ -1,0 +1,13 @@
+{
+    #main = let r = { addr = { host = "tom", port = 8080 } } in
+    #case r
+    #| { addr: { host, port } } => addr,
+
+
+    type Result = < Ok : Str, Err : Str >,
+
+    main = let x = (Ok "test") in
+    case x
+    | < Ok : ok, Err : err > => err
+    | _ => "other",
+}

@@ -40,3 +40,6 @@
         let final_calc = ((formula::formula result2) 50) in     # 3750
         final_calc + 1000,                                      # 4750
 }
+
+
+void*

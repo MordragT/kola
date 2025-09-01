@@ -1,5 +1,8 @@
 #!/usr/bin/env -S nix shell nixpkgs#nushell nixpkgs#just --command 'just --justfile'
 
+doc package:
+    RUSTDOCFLAGS="-Zunstable-options --show-type-layout" cargo doc --package {{ package }} --open -Zunstable-options
+
 nvim:
     nvim -u .nvim/init.lua
 

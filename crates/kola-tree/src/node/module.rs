@@ -29,7 +29,7 @@ use serde::{Deserialize, Serialize};
 
 use kola_print::prelude::*;
 
-use super::{Expr, ModuleName, TypeScheme};
+use super::{Expr, ModuleName, QualifiedType, TypeScheme};
 use crate::{
     id::Id,
     node::{EffectName, EffectRowType, FunctorName, ModuleTypeName, TypeName, ValueName},
@@ -149,6 +149,26 @@ impl ValueBind {
     }
 }
 
+// #[derive(
+//     Debug,
+//     Notate,
+//     Inspector,
+//     Clone,
+//     Copy,
+//     PartialEq,
+//     Eq,
+//     PartialOrd,
+//     Ord,
+//     Hash,
+//     Serialize,
+//     Deserialize,
+// )]
+// #[notate(color = "green")]
+// pub struct TypeAlias {
+//     pub name: Id<TypeName>,
+//     pub ty: Id<QualifiedType>,
+// }
+
 #[derive(
     Debug,
     Notate,
@@ -212,6 +232,26 @@ pub struct EffectTypeBind {
     pub name: Id<EffectName>,
     pub ty: Id<EffectRowType>,
 }
+
+// #[derive(
+//     Debug,
+//     Notate,
+//     Inspector,
+//     Clone,
+//     Copy,
+//     PartialEq,
+//     Eq,
+//     PartialOrd,
+//     Ord,
+//     Hash,
+//     Serialize,
+//     Deserialize,
+// )]
+// #[notate(color = "green")]
+// pub struct ModuleAlias {
+//     pub name: Id<ModuleName>,
+//     pub ty: Id<ModulePath>,
+// }
 
 #[derive(
     Debug,

@@ -1,0 +1,22 @@
+  {
+    # Structural type alias and a concrete value
+    export type Person = { name : Str, age : Num },
+    peter = { name = "Peter", age : Num = 32 },
+
+    # Select, update, restrict, extend
+    john        = { peter | name = "John" },     # update
+    justAge     = { peter | -name },             # restrict
+    streetPete  = { peter | +street = "..." },   # extend
+    n           = peter.age,                     # select
+
+    # Destructuring via pattern matching
+    nameOf = fn p =>
+      case p
+      | { name, ... } => name,
+
+    # Row-polymorphic accessor: needs a 'name' field, ignores the rest
+    getName : forall (r : Row) . { name : Str | r } -> Str
+            = fn r => r.name,
+
+    main = (nameOf peter),
+  }

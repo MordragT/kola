@@ -1,0 +1,7 @@
+{
+    f = fn x => (do rec x),
+
+
+    main = let a = (f 10) in handle a
+        | rec x => (f x),
+}

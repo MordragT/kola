@@ -1,0 +1,27 @@
+{
+  module type ServiceInput = {
+    image : Str, tag : Str, replicas : Num,
+  },
+
+  module functor service (i : ServiceInput) => {
+    export image = i::image,
+    export tag   = i::tag,
+    export replicas = i::replicas,
+    export full_image = image #+ ":" + tag,
+  },
+
+  module functor scale (i : ServiceInput) => {
+    export image = i::image,
+    export tag   = i::tag,
+    export replicas = 2 * i::replicas,
+  },
+
+  module base = { export image = "ghcr.io/acme/api", export tag = "v1", export replicas = 1 },
+
+  module dev  = (service base),
+
+  module prod_input = (scale base),
+  module prod = (service prod_input),
+
+  main = 10,
+}

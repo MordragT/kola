@@ -1,0 +1,8 @@
+{
+    main = let xs = [1, 2, 3, 4] in
+        (list_rec {
+            list = xs,
+            base = 0,
+            step = fn pair => (io_debug pair.head + pair.acc),
+        })
+}

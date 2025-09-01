@@ -9,45 +9,6 @@ use crate::{
     token::{CloseT, CtrlT, Delim, KwT, LiteralT, OpT, OpenT},
 };
 
-/*
-%token symbol bool str num char
-%% /* LL(1) */
-LiteralExpr := bool
-    | str
-    | num
-    | char
-ListExpr := '[' (Expr (',' Expr)*)? ']' // TODO trailing comma
-
-Property := Symbol '=' Expr
-Instantiate := '=' Expr (',' Property)* // TODO trailing comma
-Extend := '+' Symbol = Expr
-Restrict := '-' Symbol
-Update := Symbol = Expr
-RecordOp = '|' (Extend | Restrict | Update)+
-RecordExpr = '{' Symbol (Instantiate | RecordOp) '}' // TODO empty record
-
-LetExpr := 'let' Symbol '=' Expr 'in' Expr
-IfExpr := 'if' Expr 'then' Expr 'else' Expr
-
-PropertyPat := Symbol ':' Pat
-Pat := '_'
-    | '{' PropertyPat (',' PropertyPat)* '}' // TODO empty RecordPat
-    | LiteralExpr
-    | Symbol
-Branch := Pat '=>' Expr
-CaseExpr := 'case' Symbol 'of' Branch (',' Branch)*
-
-FuncExpr := '\' Symbol '=>' Expr // TODO Symbol should be pattern
-
-Callable := Symbol
-    | FuncExpr
-    | CallExpr
-CallExpr := '(' Callable Expr ')'
-*/
-
-// TODO case expr also end in a ',' which is ambiguos to binds being separated by ','
-// Therefore replace the "case x of 10 => ..., 5 => ...," with something different.
-
 pub fn functor_name_parser<'t>() -> impl KolaParser<'t, Id<node::FunctorName>> + Clone {
     // TODO SCREAMING_CASE ?
     lower_symbol().map(node::FunctorName::new).to_node().boxed()
