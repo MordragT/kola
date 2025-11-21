@@ -3,11 +3,14 @@
 # Kola - Konfiguration Language
 
  [![NixOS][nixos-badge]][nixos-url]
+ [![Docs][docs.rs-badge]][docs.rs-url]
  [![Website][website-badge]][website-url]
  ![License][license]
 
 [website-badge]: https://img.shields.io/website?url=https%3A%2F%2Fmordragt.github.io%2Fkola&style=for-the-badge
 [website-url]: https://mordragt.github.io/kola
+[docs.rs-badge]: https://img.shields.io/badge/docs.rs-kola-4d76ae?style=for-the-badge
+[docs.rs-url]: https://mordragt.github.io/kola/kola
 [nixos-badge]: https://img.shields.io/badge/Flakes-Nix-informational.svg?logo=nixos&style=for-the-badge
 [nixos-url]: https://nixos.org
 [license]: https://img.shields.io/github/license/mordragt/kola?style=for-the-badge
