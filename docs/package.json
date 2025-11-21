@@ -1,0 +1,13 @@
+{
+  "name": "kola-docs",
+  "version": "0.1.0",
+  "license": "MIT",
+  "devDependencies": {
+    "vitepress": "2.0.0-alpha.14"
+  },
+  "scripts": {
+    "dev": "vitepress dev",
+    "build": "vitepress build",
+    "preview": "vitepress preview"
+  }
+}

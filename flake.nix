@@ -69,6 +69,9 @@
             cargo-expand
             wasm-tools
             python3
+            # docs
+            pnpm
+            nodejs
           ];
 
           # Specify the rust-src path (many editors rely on this)

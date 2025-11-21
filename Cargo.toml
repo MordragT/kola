@@ -21,7 +21,7 @@ kola-utils = { path = "crates/kola-utils" }
 kola-vm = { path = "crates/kola-vm" }
 
 camino = "1.1"
-chumsky = { version = "0.10", features = [
+chumsky = { version = "0.11", features = [
     # "label",
     "nightly",
     "unstable",

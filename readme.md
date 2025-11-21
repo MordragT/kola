@@ -1,212 +1,40 @@
+<div align=center>
+
 # Kola - Konfiguration Language
 
-## Overview
+ [![NixOS][nixos-badge]][nixos-url]
+ [![Website][website-badge]][website-url]
+ ![License][license]
 
-- Row Polymorphism
-- Let Polymorphism
-- Strict Evaluation
-- Static Type-System with Inference
+[website-badge]: https://img.shields.io/website?url=https%3A%2F%2Fmordragt.github.io%2Fkola&style=for-the-badge
+[website-url]: https://mordragt.github.io/kola
+[nixos-badge]: https://img.shields.io/badge/Flakes-Nix-informational.svg?logo=nixos&style=for-the-badge
+[nixos-url]: https://nixos.org
+[license]: https://img.shields.io/github/license/mordragt/kola?style=for-the-badge
 
-### Abstract complex configurations
+Structurally and statically typed configuration language.
 
-- Using Row Polymorphism many problems can
-    be generically solved
+</div>
 
-### Visible Side-Effects of "Platform"
+## About
 
-- Platforms are plugins given to the Compiler,
-    which define Functionality with Side-Effects
+Kola is a statically and structurally typed configuration language based on the simply-typed lambda calculus (STLC). It preserves the termination guarantees of STLC, ensuring that all programs are guaranteed to terminate and are not Turing complete.
 
-- Invoking these will give a special effect propagated
-- TODO only allow in application code ??
-- TODO does separation of library and application code make sense ?
+Kola extends this foundation with row polymorphism, full type inference, algebraic effects, and functors. This combination enables expressive configuration patterns such as templating and parameterization, while providing strong static checks and composability.
 
-- Useful for interaction with 'effectful' configurations like getting Secrets or generating files for build systems
+The effect system is designed to offer principled and precise control over side effects, making it possible to implement features like plugins (planned) that handle effects in a modular way. Kola aims to provide a robust foundation for configuration tasks, balancing safety, expressiveness, and predictability.
 
-- when only plain data formats are used, then information is lost
-- by using platforms a tight integration can be achieved
-  - TODO is this desirable ?
+## Installation
 
-### Mixins like KCL ?
+Kola is currently still in development and thus is only available via Cargo or Nix.
+You can use Cargo to install Kola by cloning this repository and running `cargo install --path .`.
 
-- instead of recursive records like in Nickel maybe some sort of
-- Record Constructor which can derive fields from other fields.
-- but instead of a function which is opaque
-- this record constructor allows to override configurations,
-- while being confident that the changes propagate
-- or maybe ocaml like objects:
+## Usage
 
-```
-let isIp = \ip: Str => ...
-
-let Machine = schema { ip: Str } => {
-  ip,
-  cmd = "ssh -p 8070 user@" + ip
-} where ip |> isIp
-
-schema Machine =
-  
-
-schema Machine { ip : Str }
-  where ip |> isIp,
-  with cmd = "ssh -p 8070 user@" + ip,
-in
-  ...
-
-```
-
-### Separation of Concerns
-
-- For e.g. Test's one might want to imiate effectful operations (Mocking)
-- Algebraic Effects with their custom handlers
-  can promote code reuse
-
-### Configuration Drift
-
-- One source of truth to not have to change every component
-
-### Static Checks for Partial Functions
-
-https://en.wikipedia.org/wiki/Normal_form_(abstract_rewriting)
-
-- generating configuration should always terminate
-- but allowing recursion makes it possible for programmers to implement new generic functionalities (especially in library code)
-
-TODO: Ist das machbar ?
-
-Simply Typed Lambda Calculus: Not Turing Complete
-
-Let-Polymorphism: Intuitively I don't think introduces Turing Completness but I have to check
-
-Row-Polymorphism: Same as Let-Polymorphism
-
-Algebraic Effects: Does introduce Turing Completness:
-
-```
-effect next(n) : Num -> Num
-
-let fib(n) = next(n -1) + next(n - 2) in
-
-# TODO assuming that the defined handler does not propagate effects
-handle fib(5) with {
-  next(n) => if n <= 1 resume(n) else resume(fib(n))
-}
-```
-
-But we can statically check if effects occur therefore we can identify more easily where potential problems may occur
-
-### Verify Types
-
-- Static Typesystem to identify errors early on
-
-### Runtime Validation using generated Assertions on Records
-
-- Syntactic sugar for better error messages
-
-```
-{ a @is_above(6) }
-```
-
-## ToDo's
-
-### Parser & Lexer
-
-- [x] LiteralExpr (`true`)
-- [x] IdentExpr (`a`)
-- [x] ListExpr (`[a, 2, c]`)
-- [x] RecordExpr (`{ a = 10, b = b }`)
-  - [ ] Optional Types (`{ a : Num = b }`)
-- [x] RecordSelectExpr (`a.b.c`)
-- [x] RecordExtendExpr (`{ r | +b = 20 }`)
-  - [ ] Optional Types (`{ r : Person | +age : Num = 25 }`)
-- [x] RecordRestrictExpr (`{ r | -c }`)
-  - [ ] Optional Types (`{ r : Person | -age }`)
-- [x] RecordUpdateExpr (`{ r | a = 5 }`)
-  - [ ] Optional Types
-- [x] UnaryExpr (`!true`, `-a`)
-- [x] BinaryExpr (`a + b`)
-  - [ ] ListOp (undecided Syntax `a :: []`, `[a] ++ [b]`)
-- [x] LetExpr (`let x = 10 in ...`)
-  - [ ] Patterns (`let { a } = { a = 10 } in ...`)
-  - [ ] Optional Types
-  - [ ] Syntactic Sugar in Top Level?? (`x = 10` == `let x = 10 in`)
-- [x] IfExpr (`if true then ... else ...`)
-- [x] CaseExpr (`case x of { a: { b } } => ..., _ => ...`)
-- [x] FuncExpr (`\a => \b => a + b`)
-  - [ ] Optional Types
-- [x] CallExpr (`(f (g a))`)
-  - [ ] Pipes (`a |> g |> f`)
-  - [ ] Syntactic Sugar (`(f a b) with f -> 'a -> 'b`)
-- [ ] TypeAlias (`Person : { name : Str, age : Num }`)
-  - [ ] Open Records (`Aged : { * | age : Num }`)
-  - [ ] Parametric Polymorphism (`Node a : { inner : a, span : Span }`)
-- [ ] TypeAliasOp?? (`Member : { Person | +id : Num | -age }`)
-- [ ] EffectDecl (`io ~ { read_file : Str -> Str }`, `print ~ Str -> {}`)
-  - [ ] ComposeEffects?? (`buf_io ~ { io | +buf_read : Str -> Str }`)
-  - [ ] Polymorphic Effects?? (`map a b 'e : (a -> b ~ 'e) -> (List a) -> (List b) ~ 'e`)
-- [ ] FuncEffectSignature
-  - (`let read_something : Num -> Num ~ { read_a : io.read_file, read_b : io.read_file } = ... in ...`)
-- [ ] Invoke Effects (just like function ?? or with do ??)
-- [ ] Effect Handler
-  - (`do read_something(10) with read_a f => ..., read_b f => ..., return r => ...`)
-  - (`handle read_something with ...`)
-  - [ ] Optional Mark Effects as absent if handled (`a -> b ~ { io | +e : .. } becomes a -> b ~ { io }`)
-
-### Type Inference
-
-- [x] LiteralExpr (`true`)
-- [x] IdentExpr (`a`)
-- [ ] ListExpr (`[a, 2, c]`)
-- [ ] RecordExpr (`{ a = 10, b = b }`)
-- [ ] RecordSelectExpr (`a.b.c`)
-- [ ] RecordExtendExpr (`{ r | +b = 20 }`)
-- [ ] RecordRestrictExpr (`{ r | -c }`)
-- [ ] RecordUpdateExpr (`{ r | a = 5 }`)
-- [x] UnaryExpr (`!true`, `-a`)
-- [x] BinaryExpr (`a + b`)
-- [x] LetExpr (`let x = 10 in ...`)
-- [x] IfExpr (`if true then ... else ...`)
-- [ ] CaseExpr (`case x of { a: { b } } => ..., _ => ...`)
-- [x] FuncExpr (`\a => \b => a + b`)
-- [x] CallExpr (`(f (g a))`)
-
-
-## Roadmap
-
-### Create DevOps Example to better investigate challenges with configurations and evaluate existing solutions
-
-- [ ] todos webservice with Database, Backend, Frontend
-- [ ] define functional tests: Unit, Integration, (system)
-- [ ] implement devops pipeline
-
-### Implement ir Lowering and Interpreter
-
-- A-Normal Form terms
-- CEK-style abstract machine
-CEK machine operates on configurations which are triples of the
-form hC | E | Ki.
-• The control C is the expression currently being evaluated.
-• The environment E binds the free variables.
-• The continuation K instructs the machine what to do once it is
-done evaluating the current term in the C component (Liberating Effects...)
-https://en.wikipedia.org/wiki/CEK_Machine
-
-
-### Implement Row Polymorphism and Optional Type Definitions
-
-### Implement Merge Operations for Records
-
-### Other
-
-- [ ] Algebraic Effects
-- [ ] Recursion
-- [ ] Module System
-- [ ] Variants (Sum Types)
-- [ ] Intrinsic Effects
-  - Divergence?? (partial function may not terminate)
-  - Total
-  - Exception?
-  - Console?
+- `kola parse <path>`: checks the provided file and returns the generated ast.
+- `kola analyze <path>`: type checks and recursively discovers imports and returns a dependency-resolved ast.
+- `kola compile <path>`: type checks and compiles the provided file, returning the resulting intermediate representation.
+- `kola run <path>`: type checks, compiles, and runs the provided file, returning the resulting value.
 
 ## References
 
