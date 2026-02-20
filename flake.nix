@@ -30,15 +30,16 @@
             targets.wasm32-wasip1.latest.rust-std
             targets.wasm32-wasip2.latest.rust-std
           ];
-
+        
         platform = pkgs.makeRustPlatform {
           # Use nightly rustc and cargo provided by fenix for building
-          inherit (toolchain) cargo rustc;
+          cargo = toolchain;
+          rustc = toolchain;
         };
       in rec
       {
         # Executed by `nix build`
-        packages.default = self.packages."${system}".kola;
+        packages.default = self.packages.${system}.kola;
 
         packages.kola = platform.buildRustPackage {
           pname = "kola";
@@ -61,6 +62,7 @@
         # Used by `nix develop`
         devShells.default = pkgs.mkShell {
           buildInputs = with pkgs; [
+            self.packages.${system}.kola-ls
             toolchain
             clippy
             rustfmt

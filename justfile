@@ -8,7 +8,7 @@ nvim:
 
 install-zed-ext:
     #!/usr/bin/env nu
-    const ext_dir = [ $nu.home-path .local share zed extensions installed kola-zed-ext] | path join
+    const ext_dir = [ $nu.home-dir .local share zed extensions installed kola-zed-ext] | path join
 
     cargo build -p kola-zed-ext --target=wasm32-wasip1 --release
 

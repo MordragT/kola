@@ -1,5 +1,5 @@
 name = "Kola"
-grammar = "kola"
+# grammar = "kola"
 path_suffixes = ["kl"]
 line_comments = ["# "]
 block_comment = ["#[ ", " ]#"]
