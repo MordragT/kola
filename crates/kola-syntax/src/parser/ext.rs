@@ -6,6 +6,61 @@ use kola_tree::prelude::*;
 use super::{Extra, ParseInput, State};
 use crate::loc::LocPhase;
 
+/// A wrapper for parsers that HAVE side-effects (like semantic tokens).
+/// This type does NOT implement Parser, forcing the user to acknowledge the
+/// side-effect by calling `to`, `ignore_then`, or `then_ignore`.
+#[must_use = "Captured parsers must be consumed to ensure side-effects run"]
+pub struct Captured<'t, T, P> {
+    parser: P,
+    _phantom: std::marker::PhantomData<&'t T>,
+}
+
+impl<'t, T, P> Captured<'t, T, P>
+where
+    P: Parser<'t, ParseInput<'t>, T, Extra<'t>>,
+{
+    pub fn new(parser: P) -> Self {
+        Self {
+            parser,
+            _phantom: std::marker::PhantomData,
+        }
+    }
+
+    pub fn into_inner(self) -> P {
+        self.parser
+    }
+
+    /// Replace the output with a fixed value, ensuring the side effect runs.
+    /// By using `map`, we ensure the optimizer cannot skip the underlying parser.
+    pub fn to<U: Clone + 't>(self, value: U) -> impl Parser<'t, ParseInput<'t>, U, Extra<'t>> {
+        self.parser.map(move |_| value.clone())
+    }
+
+    /// Like Parser::ignore_then, but ensures this captured parser's side effect runs.
+    pub fn ignore_then<U, P2>(self, other: P2) -> impl Parser<'t, ParseInput<'t>, U, Extra<'t>>
+    where
+        P2: Parser<'t, ParseInput<'t>, U, Extra<'t>>,
+    {
+        // Using .then() and .map() forces the optimizer to run the first parser
+        // to produce the first element of the tuple.
+        self.parser.then(other).map(|(_, u)| u)
+    }
+
+    /// Like Parser::then_ignore, but ensures this captured parser's side effect runs.
+    pub fn then_ignore<U, P2>(self, other: P2) -> impl Parser<'t, ParseInput<'t>, T, Extra<'t>>
+    where
+        P2: Parser<'t, ParseInput<'t>, U, Extra<'t>>,
+    {
+        // Using .then() and .map() forces the optimizer to run both parsers.
+        self.parser.then(other).map(|(t, _)| t)
+    }
+
+    /// Ignore the output, but ensure the side effect runs.
+    pub fn ignored(self) -> impl Parser<'t, ParseInput<'t>, (), Extra<'t>> {
+        self.parser.map(|_| ())
+    }
+}
+
 pub trait KolaParser<'t, T>: Parser<'t, ParseInput<'t>, T, Extra<'t>> + Sized {
     #[inline]
     fn spanned(self) -> impl Parser<'t, ParseInput<'t>, (T, Loc), Extra<'t>> {

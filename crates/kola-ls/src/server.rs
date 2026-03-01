@@ -10,7 +10,7 @@ use kola_utils::interner::{PathInterner, StrInterner};
 use tokio::sync::RwLock;
 
 use kola_span::{Report, Source};
-use tower_lsp_server::{Client, LanguageServer, UriExt, jsonrpc, lsp_types::*};
+use tower_lsp_server::{Client, LanguageServer, jsonrpc, ls_types::*};
 
 use crate::token::{LEGEND, to_lsp_tokens};
 
@@ -136,7 +136,7 @@ impl Server {
         let source = self.sources.get(&path)?;
         let output = self.outputs.get(&path)?;
 
-        let data = to_lsp_tokens(&output.tokens, &*source);
+        let data = to_lsp_tokens(&self.client, &output.tokens, &*source);
 
         Some(SemanticTokensResult::Tokens(SemanticTokens {
             result_id: None,
@@ -154,7 +154,7 @@ impl Server {
         let source = self.sources.get(&path)?;
         let output = self.outputs.get(&path)?;
 
-        let data = to_lsp_tokens(&output.tokens, &*source);
+        let data = to_lsp_tokens(&self.client, &output.tokens, &*source);
 
         Some(SemanticTokensRangeResult::Tokens(SemanticTokens {
             result_id: None,

@@ -305,15 +305,37 @@ impl<'t> From<LiteralT<'t>> for Literal {
     }
 }
 
+#[derive(
+    Debug, Display, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+)]
+pub enum Symbol {
+    Functor,
+    ModuleType,
+    Module,
+    Kind,
+    Effect,
+    Type,
+    TypeVar,
+    Value,
+    Tag,
+    Unknown,
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub enum SemanticToken {
-    Symbol,
+    Symbol(Symbol),
     Literal(Literal),
     Kw(Kw),
     Op(Op),
     Ctrl(Ctrl),
     Open(Delim),
     Close(Delim),
+}
+
+impl From<Symbol> for SemanticToken {
+    fn from(value: Symbol) -> Self {
+        Self::Symbol(value)
+    }
 }
 
 impl<'t> From<OpenT<'t>> for SemanticToken {
@@ -357,7 +379,7 @@ impl<'t> From<LiteralT<'t>> for SemanticToken {
 impl<'t> fmt::Display for SemanticToken {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         match self {
-            Self::Symbol => write!(f, "Symbol"),
+            Self::Symbol(s) => write!(f, "{s}"),
             Self::Literal(l) => write!(f, "{l}"),
             Self::Kw(kw) => write!(f, "{kw}"),
             Self::Op(op) => write!(f, "{op}"),

@@ -6,43 +6,64 @@ use kola_tree::{node::ValueName, prelude::*};
 use super::{KolaParser, State, primitives::*};
 use crate::{
     loc::LocPhase,
-    token::{CloseT, CtrlT, Delim, KwT, LiteralT, OpT, OpenT},
+    token::{CloseT, CtrlT, Delim, KwT, LiteralT, OpT, OpenT, Symbol},
 };
 
 pub fn functor_name_parser<'t>() -> impl KolaParser<'t, Id<node::FunctorName>> + Clone {
     // TODO SCREAMING_CASE ?
-    lower_symbol().map(node::FunctorName::new).to_node().boxed()
+    lower_symbol(Symbol::Functor)
+        .map(node::FunctorName::new)
+        .to_node()
+        .boxed()
 }
 
 pub fn module_type_name_parser<'t>() -> impl KolaParser<'t, Id<node::ModuleTypeName>> + Clone {
-    upper_symbol()
+    upper_symbol(Symbol::ModuleType)
         .map(node::ModuleTypeName::new)
         .to_node()
         .boxed()
 }
 
 pub fn module_name_parser<'t>() -> impl KolaParser<'t, Id<node::ModuleName>> + Clone {
-    lower_symbol().map(node::ModuleName::new).to_node().boxed()
+    lower_symbol(Symbol::Module)
+        .map(node::ModuleName::new)
+        .to_node()
+        .boxed()
 }
 
 pub fn kind_name_parser<'t>() -> impl KolaParser<'t, Id<node::KindName>> + Clone {
-    upper_symbol().map(node::KindName::new).to_node().boxed()
+    upper_symbol(Symbol::Kind)
+        .map(node::KindName::new)
+        .to_node()
+        .boxed()
 }
 
 pub fn effect_name_parser<'t>() -> impl KolaParser<'t, Id<node::EffectName>> + Clone {
-    upper_symbol().map(node::EffectName::new).to_node().boxed()
+    upper_symbol(Symbol::Effect)
+        .map(node::EffectName::new)
+        .to_node()
+        .boxed()
 }
 
 pub fn type_name_parser<'t>() -> impl KolaParser<'t, Id<node::TypeName>> + Clone {
-    symbol().map(node::TypeName::new).to_node().boxed()
+    symbol(Symbol::Type)
+        .map(node::TypeName::new)
+        .to_node()
+        .boxed()
 }
 
-pub fn lower_value_name_parser<'t>() -> impl KolaParser<'t, Id<node::ValueName>> + Clone {
-    lower_symbol().map(node::ValueName::new).to_node().boxed()
+pub fn value_name_parser<'t>() -> impl KolaParser<'t, Id<node::ValueName>> + Clone {
+    lower_symbol(Symbol::Value)
+        .map(node::ValueName::new)
+        .to_node()
+        .boxed()
 }
 
-pub fn upper_value_name_parser<'t>() -> impl KolaParser<'t, Id<node::ValueName>> + Clone {
-    upper_symbol().map(node::ValueName::new).to_node().boxed()
+pub fn tag_name_parser<'t>() -> impl KolaParser<'t, Id<node::ValueName>> + Clone {
+    upper_symbol(Symbol::Tag)
+        .map(node::ValueName::new)
+        .to_node()
+        .boxed()
 }
 
 pub fn module_parser<'t>() -> impl KolaParser<'t, Id<node::Module>> + Clone {
@@ -58,7 +79,7 @@ pub fn module_parser<'t>() -> impl KolaParser<'t, Id<node::Module>> + Clone {
             .boxed();
 
         let module_path = module_name_parser()
-            .separated_by(ctrl(CtrlT::DOUBLE_COLON))
+            .separated_by(ctrl(CtrlT::DOUBLE_COLON).into_inner())
             .collect()
             .map_to_node(node::ModulePath)
             .labelled("ModulePath")
@@ -67,7 +88,7 @@ pub fn module_parser<'t>() -> impl KolaParser<'t, Id<node::Module>> + Clone {
 
         let functor_args = module_path
             .clone()
-            .separated_by(ctrl(CtrlT::COMMA))
+            .separated_by(ctrl(CtrlT::COMMA).into_inner())
             .at_least(1)
             .collect()
             .map_to_node(node::FunctorArgs);
@@ -83,9 +104,9 @@ pub fn module_parser<'t>() -> impl KolaParser<'t, Id<node::Module>> + Clone {
         // .boxed();
 
         let functor_app = nested_parser(
-            lower_symbol()
+            lower_symbol(Symbol::Unknown) // TODO last element is technically not a module but a functor
                 .spanned()
-                .separated_by(ctrl(CtrlT::DOUBLE_COLON))
+                .separated_by(ctrl(CtrlT::DOUBLE_COLON).into_inner())
                 .at_least(1)
                 .collect::<Vec<_>>()
                 .then(functor_args)
@@ -132,7 +153,7 @@ pub fn module_parser<'t>() -> impl KolaParser<'t, Id<node::Module>> + Clone {
 
         let value_bind = group((
             vis.clone(),
-            lower_value_name_parser(),
+            value_name_parser(),
             ctrl(CtrlT::COLON)
                 .ignore_then(type_scheme_parser())
                 .or_not(),
@@ -150,23 +171,23 @@ pub fn module_parser<'t>() -> impl KolaParser<'t, Id<node::Module>> + Clone {
 
         // TODO opaque type bind
 
-        let effect_op = lower_value_name_parser()
-            .then_ignore(ctrl(CtrlT::COLON))
-            .then(type_parser())
+        let effect_op = value_name_parser()
+            .then(ctrl(CtrlT::COLON).ignore_then(type_parser()))
             .map_to_node(|(name, ty)| node::EffectOpType { name, ty });
 
         let effect_row = effect_op
-            .separated_by(ctrl(CtrlT::COMMA))
+            .separated_by(ctrl(CtrlT::COMMA).into_inner())
             .allow_trailing()
             .collect()
-            .delimited_by(open_delim(OpenT::BRACE), close_delim(CloseT::BRACE))
+            .delimited_by(
+                open_delim(OpenT::BRACE).into_inner(),
+                close_delim(CloseT::BRACE).into_inner(),
+            )
             .map_to_node(node::EffectRowType);
 
         let effect_type_bind = group((
             vis.clone(),
-            kw(KwT::EFFECT)
-                .ignore_then(kw(KwT::TYPE))
-                .ignore_then(effect_name_parser()),
+            kw(KwT::EFFECT).ignore_then(kw(KwT::TYPE).ignore_then(effect_name_parser())),
             op(OpT::ASSIGN).ignore_then(effect_row),
         ))
         .map_to_node(|(vis, name, ty)| node::EffectTypeBind { vis, name, ty })
@@ -188,25 +209,23 @@ pub fn module_parser<'t>() -> impl KolaParser<'t, Id<node::Module>> + Clone {
 
         let module_type_bind = group((
             vis.clone(),
-            kw(KwT::MODULE)
-                .ignore_then(kw(KwT::TYPE))
-                .ignore_then(module_type_name_parser()),
+            kw(KwT::MODULE).ignore_then(kw(KwT::TYPE).ignore_then(module_type_name_parser())),
             op(OpT::ASSIGN).ignore_then(module_type.clone()),
         ))
         .map_to_node(|(vis, name, ty)| node::ModuleTypeBind { vis, name, ty })
         .to_bind();
 
         let functor_param = module_name_parser()
-            .then_ignore(ctrl(CtrlT::COLON))
-            .then(module_type)
+            .then(ctrl(CtrlT::COLON).ignore_then(module_type))
             .map_to_node(|(name, ty)| node::FunctorParam { name, ty })
-            .delimited_by(open_delim(OpenT::PAREN), close_delim(CloseT::PAREN));
+            .delimited_by(
+                open_delim(OpenT::PAREN).into_inner(),
+                close_delim(CloseT::PAREN).into_inner(),
+            );
 
         let functor_bind = group((
             vis,
-            kw(KwT::MODULE)
-                .ignore_then(kw(KwT::FUNCTOR))
-                .ignore_then(functor_name_parser()),
+            kw(KwT::MODULE).ignore_then(kw(KwT::FUNCTOR).ignore_then(functor_name_parser())),
             functor_param.repeated().at_least(1).collect(),
             ctrl(CtrlT::DOUBLE_ARROW).ignore_then(module.clone()),
         ))
@@ -231,20 +250,22 @@ pub fn module_parser<'t>() -> impl KolaParser<'t, Id<node::Module>> + Clone {
         ))
         .boxed();
 
-        bind.separated_by(ctrl(CtrlT::COMMA))
+        bind.separated_by(ctrl(CtrlT::COMMA).into_inner())
             .allow_trailing()
             .collect()
             .map_to_node(node::Module)
-            .delimited_by(open_delim(OpenT::BRACE), close_delim(CloseT::BRACE))
+            .delimited_by(
+                open_delim(OpenT::BRACE).into_inner(),
+                close_delim(CloseT::BRACE).into_inner(),
+            )
             .boxed()
     })
 }
 
 pub fn module_type_parser<'t>() -> impl KolaParser<'t, Id<node::ModuleType>> + Clone {
     recursive(|module_type| {
-        let value_spec = lower_value_name_parser()
-            .then_ignore(ctrl(CtrlT::COLON))
-            .then(type_scheme_parser())
+        let value_spec = value_name_parser()
+            .then(ctrl(CtrlT::COLON).ignore_then(type_scheme_parser()))
             .map_to_node(|(name, ty)| node::ValueSpec { name, ty })
             .to_spec();
 
@@ -255,23 +276,26 @@ pub fn module_type_parser<'t>() -> impl KolaParser<'t, Id<node::ModuleType>> + C
 
         let module_spec = kw(KwT::MODULE)
             .ignore_then(module_name_parser())
-            .then_ignore(ctrl(CtrlT::COLON))
-            .then(module_type)
+            .then(ctrl(CtrlT::COLON).ignore_then(module_type))
             .map_to_node(|(name, ty)| node::ModuleSpec { name, ty })
             .to_spec();
 
         let spec = choice((value_spec, type_spec, module_spec)).boxed();
 
         let concrete = spec
-            .separated_by(ctrl(CtrlT::COMMA))
+            .separated_by(ctrl(CtrlT::COMMA).into_inner())
             .allow_trailing()
             .collect()
             .map_to_node(node::ConcreteModuleType)
-            .delimited_by(open_delim(OpenT::BRACE), close_delim(CloseT::BRACE))
+            .delimited_by(
+                open_delim(OpenT::BRACE).into_inner(),
+                close_delim(CloseT::BRACE).into_inner(),
+            )
             .to_module_type();
 
         let qualified = module_name_parser()
-            .then_ignore(ctrl(CtrlT::DOUBLE_COLON))
+            // TODO: this ignores the double colon for semantic tokens
+            .then_ignore(ctrl(CtrlT::DOUBLE_COLON).into_inner())
             .repeated()
             .at_least(1)
             .collect()
@@ -336,15 +360,15 @@ pub fn literal_parser<'t>() -> impl KolaParser<'t, node::LiteralExpr> + Sized {
 /// ```
 pub fn pat_parser<'t>() -> impl KolaParser<'t, Id<node::Pat>> + Clone {
     recursive(|pat| {
-        let bind = lower_value_name_parser()
-            .map_to_node(node::BindPat)
-            .to_pat();
+        let bind = value_name_parser().map_to_node(node::BindPat).to_pat();
         let wildcard = ctrl(CtrlT::UNDERSCORE).to(node::AnyPat).to_node().to_pat();
         let literal = literal_parser()
             .map_to_node(node::LiteralPat::from)
             .to_pat();
 
-        let spread = ctrl(CtrlT::TRIPLE_DOT).ignore_then(lower_value_name_parser().or_not());
+        let spread = ctrl(CtrlT::TRIPLE_DOT)
+            .ignore_then(value_name_parser().or_not())
+            .boxed();
 
         // List element pattern: either a pattern or a spread
         let list_element = pat
@@ -355,7 +379,7 @@ pub fn pat_parser<'t>() -> impl KolaParser<'t, Id<node::Pat>> + Clone {
 
         let list = nested_parser(
             list_element
-                .separated_by(ctrl(CtrlT::COMMA))
+                .separated_by(ctrl(CtrlT::COMMA).into_inner())
                 .allow_trailing()
                 .collect()
                 .map_to_node(node::ListPat)
@@ -365,15 +389,20 @@ pub fn pat_parser<'t>() -> impl KolaParser<'t, Id<node::Pat>> + Clone {
         );
 
         // Record field pattern
-        let field = lower_value_name_parser()
+        let field = value_name_parser()
             .then(ctrl(CtrlT::COLON).ignore_then(pat.clone()).or_not())
             .map_to_node(|(field, pat)| node::RecordFieldPat { field, pat });
 
         let record = nested_parser(
             field
-                .separated_by(ctrl(CtrlT::COMMA))
+                .separated_by(ctrl(CtrlT::COMMA).into_inner())
                 .collect()
-                .then(ctrl(CtrlT::COMMA).then(ctrl(CtrlT::TRIPLE_DOT)).or_not())
+                .then(
+                    ctrl(CtrlT::COMMA)
+                        .into_inner()
+                        .then(ctrl(CtrlT::TRIPLE_DOT).into_inner())
+                        .or_not(),
+                )
                 .map_to_node(|(fields, spread)| node::RecordPat {
                     fields,
                     polymorph: spread.is_some(),
@@ -385,6 +414,7 @@ pub fn pat_parser<'t>() -> impl KolaParser<'t, Id<node::Pat>> + Clone {
 
         // Variant case pattern
         let none_case = kw(KwT::NONE)
+            .into_inner()
             .map_with(|_, e| {
                 let span = e.span();
                 let tree: &mut State = e.state();
@@ -396,14 +426,14 @@ pub fn pat_parser<'t>() -> impl KolaParser<'t, Id<node::Pat>> + Clone {
             })
             .to_node();
 
-        let case = upper_value_name_parser()
+        let case = tag_name_parser()
             .then(ctrl(CtrlT::COLON).ignore_then(pat.clone()).or_not())
             .map_to_node(|(tag, pat)| node::VariantTagPat { tag, pat });
 
         let variant = nested_parser(
             none_case
                 .or(case)
-                .separated_by(ctrl(CtrlT::COMMA))
+                .separated_by(ctrl(CtrlT::COMMA).into_inner())
                 .allow_trailing()
                 .collect()
                 .map_to_node(node::VariantPat)
@@ -420,6 +450,7 @@ pub fn pat_parser<'t>() -> impl KolaParser<'t, Id<node::Pat>> + Clone {
 pub fn expr_parser<'t>() -> impl KolaParser<'t, Id<node::Expr>> + Clone {
     recursive(|expr| {
         let none = kw(KwT::NONE)
+            .into_inner()
             .map_with(|_, e| {
                 let span = e.span();
                 let tree: &mut State = e.state();
@@ -437,7 +468,7 @@ pub fn expr_parser<'t>() -> impl KolaParser<'t, Id<node::Expr>> + Clone {
             .as_context()
             .boxed();
 
-        let tag = upper_value_name_parser()
+        let tag = tag_name_parser()
             .map_to_node(node::TagExpr)
             .to_expr()
             .labelled("TagExpr")
@@ -446,9 +477,9 @@ pub fn expr_parser<'t>() -> impl KolaParser<'t, Id<node::Expr>> + Clone {
 
         let type_wit = ctrl(CtrlT::AT)
             .ignore_then(
-                symbol()
+                symbol(Symbol::Unknown) // TODO  last element is technically not a module but a type
                     .spanned()
-                    .separated_by(ctrl(CtrlT::DOUBLE_COLON))
+                    .separated_by(ctrl(CtrlT::DOUBLE_COLON).into_inner())
                     .at_least(1)
                     .collect::<Vec<_>>(),
             )
@@ -475,7 +506,7 @@ pub fn expr_parser<'t>() -> impl KolaParser<'t, Id<node::Expr>> + Clone {
             .to_node()
             .map_to_node(node::TypeWitnessExpr::Qualified)
             .or(ctrl(CtrlT::TICK)
-                .ignore_then(lower_value_name_parser())
+                .ignore_then(value_name_parser())
                 .map_to_node(node::TypeWitnessExpr::Label))
             .to_expr()
             .labelled("TagWitnessExpr")
@@ -484,13 +515,13 @@ pub fn expr_parser<'t>() -> impl KolaParser<'t, Id<node::Expr>> + Clone {
 
         // Qualified expression (module::record.field) for variable and module access
         let qualified = group((
-            lower_symbol().spanned(),
+            lower_symbol(Symbol::Module).spanned(),
             ctrl(CtrlT::DOUBLE_COLON)
-                .ignore_then(lower_symbol().spanned())
+                .ignore_then(lower_symbol(Symbol::Unknown).spanned()) // TODO: last element is technically not a module but a value
                 .repeated()
                 .collect::<Vec<_>>(),
             ctrl(CtrlT::DOT)
-                .ignore_then(lower_value_name_parser())
+                .ignore_then(value_name_parser())
                 .repeated()
                 .at_least(1)
                 .collect()
@@ -544,7 +575,7 @@ pub fn expr_parser<'t>() -> impl KolaParser<'t, Id<node::Expr>> + Clone {
 
         let list = nested_parser(
             expr.clone()
-                .separated_by(ctrl(CtrlT::COMMA))
+                .separated_by(ctrl(CtrlT::COMMA).into_inner())
                 .allow_trailing()
                 .collect()
                 .map_to_node(node::ListExpr)
@@ -558,7 +589,7 @@ pub fn expr_parser<'t>() -> impl KolaParser<'t, Id<node::Expr>> + Clone {
         // record operations
 
         let field = group((
-            lower_value_name_parser(),
+            value_name_parser(),
             ctrl(CtrlT::COLON).ignore_then(type_parser()).or_not(),
             op(OpT::ASSIGN).ignore_then(expr.clone()),
         ))
@@ -566,7 +597,7 @@ pub fn expr_parser<'t>() -> impl KolaParser<'t, Id<node::Expr>> + Clone {
         .to_node();
 
         let instantiate = field
-            .separated_by(ctrl(CtrlT::COMMA))
+            .separated_by(ctrl(CtrlT::COMMA).into_inner())
             .allow_trailing()
             .collect()
             .map_to_node(node::RecordExpr)
@@ -584,8 +615,8 @@ pub fn expr_parser<'t>() -> impl KolaParser<'t, Id<node::Expr>> + Clone {
             ),
         }
 
-        let field_path = lower_value_name_parser()
-            .separated_by(ctrl(CtrlT::DOT))
+        let field_path = value_name_parser()
+            .separated_by(ctrl(CtrlT::DOT).into_inner())
             .collect()
             .map_to_node(node::FieldPath)
             .boxed();
@@ -683,7 +714,7 @@ pub fn expr_parser<'t>() -> impl KolaParser<'t, Id<node::Expr>> + Clone {
 
         // TODO allow type annotation
         let let_ = group((
-            kw(KwT::LET).ignore_then(lower_value_name_parser()),
+            kw(KwT::LET).ignore_then(value_name_parser()),
             ctrl(CtrlT::COLON).ignore_then(type_parser()).or_not(),
             op(OpT::ASSIGN).ignore_then(expr.clone()),
             kw(KwT::IN).ignore_then(expr.clone()),
@@ -715,8 +746,7 @@ pub fn expr_parser<'t>() -> impl KolaParser<'t, Id<node::Expr>> + Clone {
         .boxed();
 
         let branch = pat_parser()
-            .then_ignore(ctrl(CtrlT::DOUBLE_ARROW))
-            .then(expr.clone())
+            .then(ctrl(CtrlT::DOUBLE_ARROW).ignore_then(expr.clone()))
             .map(|(pat, body)| node::CaseBranch { pat, body })
             .to_node();
 
@@ -736,8 +766,8 @@ pub fn expr_parser<'t>() -> impl KolaParser<'t, Id<node::Expr>> + Clone {
             .boxed();
 
         let clause = group((
-            lower_value_name_parser(),
-            lower_value_name_parser(),
+            value_name_parser(),
+            value_name_parser(),
             ctrl(CtrlT::DOUBLE_ARROW).ignore_then(expr.clone()),
         ))
         .map_to_node(|(op, param, body)| node::HandlerClause { op, param, body });
@@ -758,7 +788,7 @@ pub fn expr_parser<'t>() -> impl KolaParser<'t, Id<node::Expr>> + Clone {
             .boxed();
 
         let do_expr = kw(KwT::DO)
-            .ignore_then(lower_value_name_parser())
+            .ignore_then(value_name_parser())
             .then(expr.clone())
             .map_to_node(|(op, arg)| node::DoExpr { op, arg })
             .to_expr()
@@ -767,7 +797,7 @@ pub fn expr_parser<'t>() -> impl KolaParser<'t, Id<node::Expr>> + Clone {
             .boxed();
 
         let func = group((
-            kw(KwT::FN).ignore_then(lower_value_name_parser()),
+            kw(KwT::FN).ignore_then(value_name_parser()),
             ctrl(CtrlT::COLON).ignore_then(type_parser()).or_not(),
             ctrl(CtrlT::DOUBLE_ARROW).ignore_then(expr.clone()),
         ))
@@ -966,22 +996,25 @@ pub fn expr_parser<'t>() -> impl KolaParser<'t, Id<node::Expr>> + Clone {
 
         // Pipe forward (|>) - left associative, lower precedence
         // a |> f |> g should parse as g(f(a))
-        let pipe_forward = pipe_backward.clone().foldl_with(
-            ctrl(CtrlT::PIPE_FORWARD)
-                .ignore_then(pipe_backward)
-                .repeated(),
-            |lhs, rhs, e| {
-                let span = e.span();
-                let tree: &mut State = e.state();
-                tree.insert_as::<node::Expr, _>(
-                    node::CallExpr {
-                        func: rhs,
-                        arg: lhs,
-                    },
-                    span,
-                )
-            },
-        );
+        let pipe_forward = pipe_backward
+            .clone()
+            .foldl_with(
+                ctrl(CtrlT::PIPE_FORWARD)
+                    .ignore_then(pipe_backward)
+                    .repeated(),
+                |lhs, rhs, e| {
+                    let span = e.span();
+                    let tree: &mut State = e.state();
+                    tree.insert_as::<node::Expr, _>(
+                        node::CallExpr {
+                            func: rhs,
+                            arg: lhs,
+                        },
+                        span,
+                    )
+                },
+            )
+            .boxed();
 
         pipe_forward
     })
@@ -1014,9 +1047,9 @@ pub fn expr_parser<'t>() -> impl KolaParser<'t, Id<node::Expr>> + Clone {
 pub fn type_parser<'t>() -> impl KolaParser<'t, Id<node::Type>> + Clone {
     recursive(|ty| {
         // TODO this also includes type variables which is a bit surprising
-        let qual_ty = symbol()
+        let qual_ty = symbol(Symbol::Unknown) // TODO: last element is technically not a module but a type
             .spanned()
-            .separated_by(ctrl(CtrlT::DOUBLE_COLON))
+            .separated_by(ctrl(CtrlT::DOUBLE_COLON).into_inner())
             .at_least(1)
             .collect::<Vec<_>>()
             .map_with(|mut path, e| {
@@ -1048,21 +1081,20 @@ pub fn type_parser<'t>() -> impl KolaParser<'t, Id<node::Type>> + Clone {
             .or_not()
             .boxed();
 
-        let label = lower_value_name_parser()
+        let label = value_name_parser()
             .map_to_node(node::LabelOrVar::Label)
             .or(ctrl(CtrlT::AT)
-                .ignore_then(symbol())
+                .ignore_then(symbol(Symbol::TypeVar))
                 .map_to_node(node::TypeVar)
                 .map_to_node(node::LabelOrVar::Var));
 
         let field = label
-            .then_ignore(ctrl(CtrlT::COLON))
-            .then(ty.clone())
+            .then(ctrl(CtrlT::COLON).ignore_then(ty.clone()))
             .map_to_node(|(label_or_var, ty)| node::RecordFieldType { label_or_var, ty });
 
         let record = nested_parser(
             field
-                .separated_by(ctrl(CtrlT::COMMA))
+                .separated_by(ctrl(CtrlT::COMMA).into_inner())
                 // .at_least(1) // Allow empty records
                 .allow_trailing()
                 .collect()
@@ -1074,6 +1106,7 @@ pub fn type_parser<'t>() -> impl KolaParser<'t, Id<node::Type>> + Clone {
         );
 
         let none_tag = kw(KwT::NONE)
+            .into_inner()
             .map_with(|_, e| {
                 let span = e.span();
                 let tree: &mut State = e.state();
@@ -1088,14 +1121,14 @@ pub fn type_parser<'t>() -> impl KolaParser<'t, Id<node::Type>> + Clone {
             })
             .to_node();
 
-        let tag = upper_value_name_parser()
+        let tag = tag_name_parser()
             .then(ctrl(CtrlT::COLON).ignore_then(ty.clone()).or_not())
             .map_to_node(|(name, ty)| node::TagType { name, ty });
 
         let variant = nested_parser(
             none_tag
                 .or(tag)
-                .separated_by(ctrl(CtrlT::COMMA))
+                .separated_by(ctrl(CtrlT::COMMA).into_inner())
                 // .at_least(1) // Allow empty variants
                 .allow_trailing()
                 .collect()
@@ -1123,22 +1156,24 @@ pub fn type_parser<'t>() -> impl KolaParser<'t, Id<node::Type>> + Clone {
             })
             .boxed();
 
-        let effect_op = lower_value_name_parser()
-            .then_ignore(ctrl(CtrlT::COLON))
-            .then(ty.clone())
+        let effect_op = value_name_parser()
+            .then(ctrl(CtrlT::COLON).ignore_then(ty.clone()))
             .map_to_node(|(name, ty)| node::EffectOpType { name, ty });
 
         let effect_row = effect_op
-            .separated_by(ctrl(CtrlT::COMMA))
+            .separated_by(ctrl(CtrlT::COMMA).into_inner())
             .allow_trailing()
             .collect()
-            .delimited_by(open_delim(OpenT::BRACE), close_delim(CloseT::BRACE))
+            .delimited_by(
+                open_delim(OpenT::BRACE).into_inner(),
+                close_delim(CloseT::BRACE).into_inner(),
+            )
             .map_to_node(node::EffectRowType)
             .map_to_node(node::EffectType::Row);
 
-        let qual_effect = symbol()
+        let qual_effect = symbol(Symbol::Unknown) // TODO: last element is technically not a module but a effect
             .spanned()
-            .separated_by(ctrl(CtrlT::DOUBLE_COLON))
+            .separated_by(ctrl(CtrlT::DOUBLE_COLON).into_inner())
             .at_least(1)
             .collect::<Vec<_>>()
             .map_with(|mut path, e| {
@@ -1199,13 +1234,15 @@ pub fn type_parser<'t>() -> impl KolaParser<'t, Id<node::Type>> + Clone {
 ///             | type_expression
 /// ```
 pub fn type_scheme_parser<'t>() -> impl KolaParser<'t, Id<node::TypeScheme>> + Clone {
-    let var = symbol().map_to_node(node::TypeVar).boxed();
+    let var = symbol(Symbol::TypeVar).map_to_node(node::TypeVar).boxed();
 
     let kinded = var
         .clone()
-        .then_ignore(ctrl(CtrlT::COLON))
-        .then(kind_name_parser())
-        .delimited_by(open_delim(OpenT::PAREN), close_delim(CloseT::PAREN))
+        .then(ctrl(CtrlT::COLON).ignore_then(kind_name_parser()))
+        .delimited_by(
+            open_delim(OpenT::PAREN).into_inner(),
+            close_delim(CloseT::PAREN).into_inner(),
+        )
         .map_to_node(|(var, kind)| node::TypeVarBind {
             var,
             kind: Some(kind),
@@ -1219,7 +1256,8 @@ pub fn type_scheme_parser<'t>() -> impl KolaParser<'t, Id<node::TypeScheme>> + C
     // higher-rank polymorphism (nested forall) is undecidable for full type-inference
     let forall = kw(KwT::FORALL)
         .ignore_then(bind.repeated().at_least(1).collect())
-        .then_ignore(ctrl(CtrlT::DOT))
+        // TODO: this ignores the dot for semantic tokens
+        .then_ignore(ctrl(CtrlT::DOT).into_inner())
         .map_to_node(node::ForallBinder);
 
     forall
@@ -1287,7 +1325,10 @@ where
     U: MetaCast<LocPhase, Meta = Loc> + 't,
 {
     parser
-        .delimited_by(open_delim(open), close_delim(close))
+        .delimited_by(
+            open_delim(open).into_inner(),
+            close_delim(close).into_inner(),
+        )
         .recover_with(via_parser(
             nested_delimiters(
                 open.0,
