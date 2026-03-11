@@ -1,3 +1,7 @@
+#![feature(const_trait_impl)]
+#![feature(array_try_from_fn)]
+#![feature(fn_traits)]
+
 //! Source positions and related helper functions.
 //!
 //! Important concepts in this module include:
@@ -9,6 +13,11 @@ mod diag;
 mod loc;
 mod source;
 mod span;
+
+pub mod combinator;
+pub mod input;
+pub mod parser;
+pub mod primitive;
 
 pub use diag::{Diagnostic, IntoDiagnostic, IntoIssue, Issue, Report, Severity};
 pub use loc::{Loc, Located};
