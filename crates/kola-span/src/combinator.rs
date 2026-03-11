@@ -1,6 +1,6 @@
 use std::{array, marker::PhantomData};
 
-use crate::{Diagnostic, Loc, input::Input, parser::Parser};
+use crate::{Diagnostic, Loc, Report, input::Input, parser::Parser};
 
 pub const trait Combinator<I: Input, O>: Sized + Parser<I, O> {
     fn map<F, O1>(self, f: F) -> Map<Self, F, O>
@@ -183,6 +183,16 @@ pub const trait Combinator<I: Input, O>: Sized + Parser<I, O> {
         Spanned { parser: self }
     }
 
+    fn recover_with<R>(self, recovery: R) -> RecoverWith<Self, R>
+    where
+        R: Parser<I, O>,
+    {
+        RecoverWith {
+            parser: self,
+            recovery,
+        }
+    }
+
     // fn context(self, message: &'static str) -> Context<Self> {
     //     Context {
     //         parser: self,
@@ -211,8 +221,8 @@ where
     F: Fn(O) -> O1,
 {
     #[inline]
-    fn parse(&self, input: &mut I) -> Result<O1, Vec<Diagnostic>> {
-        self.parser.parse(input).map(|ok| (self.f)(ok))
+    fn parse(&self, input: &mut I, report: &mut Report) -> Result<O1, Vec<Diagnostic>> {
+        self.parser.parse(input, report).map(|ok| (self.f)(ok))
     }
 }
 
@@ -229,8 +239,10 @@ where
     F: Fn(O, &mut I) -> O1,
 {
     #[inline]
-    fn parse(&self, input: &mut I) -> Result<O1, Vec<Diagnostic>> {
-        self.parser.parse(input).map(|ok| (self.f)(ok, input))
+    fn parse(&self, input: &mut I, report: &mut Report) -> Result<O1, Vec<Diagnostic>> {
+        self.parser
+            .parse(input, report)
+            .map(|ok| (self.f)(ok, input))
     }
 }
 
@@ -247,8 +259,8 @@ where
     T: Clone,
 {
     #[inline]
-    fn parse(&self, input: &mut I) -> Result<T, Vec<Diagnostic>> {
-        self.parser.parse(input).map(|_| self.value.clone())
+    fn parse(&self, input: &mut I, report: &mut Report) -> Result<T, Vec<Diagnostic>> {
+        self.parser.parse(input, report).map(|_| self.value.clone())
     }
 }
 
@@ -264,9 +276,9 @@ where
     P2: Parser<I, O1>,
 {
     #[inline]
-    fn parse(&self, input: &mut I) -> Result<(O, O1), Vec<Diagnostic>> {
-        let o = self.first.parse(input)?;
-        let o1 = self.second.parse(input)?;
+    fn parse(&self, input: &mut I, report: &mut Report) -> Result<(O, O1), Vec<Diagnostic>> {
+        let o = self.first.parse(input, report)?;
+        let o1 = self.second.parse(input, report)?;
         Ok((o, o1))
     }
 }
@@ -284,9 +296,9 @@ where
     P2: Parser<I, O1>,
 {
     #[inline]
-    fn parse(&self, input: &mut I) -> Result<O1, Vec<Diagnostic>> {
-        self.first.parse(input)?;
-        self.second.parse(input)
+    fn parse(&self, input: &mut I, report: &mut Report) -> Result<O1, Vec<Diagnostic>> {
+        self.first.parse(input, report)?;
+        self.second.parse(input, report)
     }
 }
 
@@ -303,9 +315,9 @@ where
     P2: Parser<I, O1>,
 {
     #[inline]
-    fn parse(&self, input: &mut I) -> Result<O, Vec<Diagnostic>> {
-        let o = self.first.parse(input)?;
-        self.second.parse(input)?;
+    fn parse(&self, input: &mut I, report: &mut Report) -> Result<O, Vec<Diagnostic>> {
+        let o = self.first.parse(input, report)?;
+        self.second.parse(input, report)?;
         Ok(o)
     }
 }
@@ -323,13 +335,13 @@ where
     P2: Parser<I, O>,
 {
     #[inline]
-    fn parse(&self, input: &mut I) -> Result<O, Vec<Diagnostic>> {
+    fn parse(&self, input: &mut I, report: &mut Report) -> Result<O, Vec<Diagnostic>> {
         let checkpoint = input.checkpoint();
-        match self.first.parse(input) {
+        match self.first.parse(input, report) {
             Ok(o) => Ok(o),
             Err(_) => {
                 input.reset(checkpoint);
-                self.second.parse(input)
+                self.second.parse(input, report)
             }
         }
     }
@@ -345,9 +357,9 @@ where
     P: Parser<I, O>,
 {
     #[inline]
-    fn parse(&self, input: &mut I) -> Result<Option<O>, Vec<Diagnostic>> {
+    fn parse(&self, input: &mut I, report: &mut Report) -> Result<Option<O>, Vec<Diagnostic>> {
         let checkpoint = input.checkpoint();
-        match self.parser.parse(input) {
+        match self.parser.parse(input, report) {
             Ok(o) => Ok(Some(o)),
             Err(_) => {
                 input.reset(checkpoint);
@@ -367,9 +379,9 @@ where
     P: Parser<I, O>,
 {
     #[inline]
-    fn parse(&self, input: &mut I) -> Result<[O; N], Vec<Diagnostic>> {
+    fn parse(&self, input: &mut I, report: &mut Report) -> Result<[O; N], Vec<Diagnostic>> {
         let checkpoint = input.checkpoint();
-        array::try_from_fn(|_| self.parser.parse(input)).map_err(|e| {
+        array::try_from_fn(|_| self.parser.parse(input, report)).map_err(|e| {
             input.reset(checkpoint);
             e
         })
@@ -407,7 +419,7 @@ where
     C: FromIterator<O>,
     P: Parser<I, O>,
 {
-    fn parse(&self, input: &mut I) -> Result<C, Vec<Diagnostic>> {
+    fn parse(&self, input: &mut I, report: &mut Report) -> Result<C, Vec<Diagnostic>> {
         let mut count = 0usize;
 
         let items: C = std::iter::from_fn(|| {
@@ -415,7 +427,7 @@ where
                 return None;
             }
             let checkpoint = input.checkpoint();
-            match self.parser.parse(input) {
+            match self.parser.parse(input, report) {
                 Ok(item) => {
                     count += 1;
                     Some(item)
@@ -454,9 +466,9 @@ where
     C: IntoIterator,
     F: Fn(O, C::Item) -> O,
 {
-    fn parse(&self, input: &mut I) -> Result<O, Vec<Diagnostic>> {
-        let init = self.left.parse(input)?;
-        let items = self.right.parse(input)?;
+    fn parse(&self, input: &mut I, report: &mut Report) -> Result<O, Vec<Diagnostic>> {
+        let init = self.left.parse(input, report)?;
+        let items = self.right.parse(input, report)?;
         Ok(items.into_iter().fold(init, &self.f))
     }
 }
@@ -476,9 +488,9 @@ where
     C: IntoIterator,
     F: Fn(O, C::Item, &mut I) -> O,
 {
-    fn parse(&self, input: &mut I) -> Result<O, Vec<Diagnostic>> {
-        let init = self.left.parse(input)?;
-        let items = self.right.parse(input)?;
+    fn parse(&self, input: &mut I, report: &mut Report) -> Result<O, Vec<Diagnostic>> {
+        let init = self.left.parse(input, report)?;
+        let items = self.right.parse(input, report)?;
         Ok(items
             .into_iter()
             .fold(init, |acc, item| (self.f)(acc, item, input)))
@@ -501,9 +513,9 @@ where
     C::IntoIter: DoubleEndedIterator,
     F: Fn(O, C::Item) -> O,
 {
-    fn parse(&self, input: &mut I) -> Result<O, Vec<Diagnostic>> {
-        let items = self.left.parse(input)?;
-        let init = self.right.parse(input)?;
+    fn parse(&self, input: &mut I, report: &mut Report) -> Result<O, Vec<Diagnostic>> {
+        let items = self.left.parse(input, report)?;
+        let init = self.right.parse(input, report)?;
         Ok(items.into_iter().rfold(init, &self.f))
     }
 }
@@ -524,9 +536,9 @@ where
     C::IntoIter: DoubleEndedIterator,
     F: Fn(O, C::Item, &mut I) -> O,
 {
-    fn parse(&self, input: &mut I) -> Result<O, Vec<Diagnostic>> {
-        let items = self.left.parse(input)?;
-        let init = self.right.parse(input)?;
+    fn parse(&self, input: &mut I, report: &mut Report) -> Result<O, Vec<Diagnostic>> {
+        let items = self.left.parse(input, report)?;
+        let init = self.right.parse(input, report)?;
         Ok(items
             .into_iter()
             .rfold(init, |acc, item| (self.f)(acc, item, input)))
@@ -578,14 +590,14 @@ where
     S: Parser<I, OS>,
     C: Default + Extend<O>,
 {
-    fn parse(&self, input: &mut I) -> Result<C, Vec<Diagnostic>> {
+    fn parse(&self, input: &mut I, report: &mut Report) -> Result<C, Vec<Diagnostic>> {
         let mut items = C::default();
 
         // Handle optional leading separator
         let mut leading_sep_present = false;
         if self.allow_leading {
             let checkpoint = input.checkpoint();
-            if self.sep.parse(input).is_ok() {
+            if self.sep.parse(input, report).is_ok() {
                 leading_sep_present = true;
             } else {
                 input.reset(checkpoint);
@@ -594,7 +606,7 @@ where
 
         // Try the first item — zero items is valid when min == 0.
         let first_checkpoint = input.checkpoint();
-        let mut count = match self.parser.parse(input) {
+        let mut count = match self.parser.parse(input, report) {
             Ok(o) => {
                 items.extend(std::iter::once(o));
                 1
@@ -623,14 +635,14 @@ where
 
             let sep_checkpoint = input.checkpoint();
 
-            match self.sep.parse(input) {
+            match self.sep.parse(input, report) {
                 Err(_) => {
                     // No separator found — we're done cleanly.
                     input.reset(sep_checkpoint);
                     break;
                 }
                 Ok(_) => {
-                    match self.parser.parse(input) {
+                    match self.parser.parse(input, report) {
                         Ok(o) => {
                             items.extend(std::iter::once(o));
                             count += 1;
@@ -675,10 +687,10 @@ where
     P2: Parser<I, O2>,
 {
     #[inline]
-    fn parse(&self, input: &mut I) -> Result<O, Vec<Diagnostic>> {
-        self.open.parse(input)?;
-        let result = self.parser.parse(input);
-        self.close.parse(input)?;
+    fn parse(&self, input: &mut I, report: &mut Report) -> Result<O, Vec<Diagnostic>> {
+        self.open.parse(input, report)?;
+        let result = self.parser.parse(input, report);
+        self.close.parse(input, report)?;
         result
     }
 }
@@ -693,9 +705,34 @@ where
     P: Parser<I, O>,
 {
     #[inline]
-    fn parse(&self, input: &mut I) -> Result<(O, Loc), Vec<Diagnostic>> {
+    fn parse(&self, input: &mut I, report: &mut Report) -> Result<(O, Loc), Vec<Diagnostic>> {
         let start = input.loc();
-        self.parser.parse(input).map(|o| (o, start))
+        self.parser.parse(input, report).map(|o| (o, start))
+    }
+}
+
+pub struct RecoverWith<P, R> {
+    parser: P,
+    recovery: R,
+}
+
+impl<I, O, P, R> Parser<I, O> for RecoverWith<P, R>
+where
+    I: Input,
+    P: Parser<I, O>,
+    R: Parser<I, O>,
+{
+    #[inline]
+    fn parse(&self, input: &mut I, report: &mut Report) -> Result<O, Vec<Diagnostic>> {
+        let checkpoint = input.checkpoint();
+        match self.parser.parse(input, report) {
+            Ok(o) => Ok(o),
+            Err(e) => {
+                input.reset(checkpoint);
+                report.extend_diagnostics(e);
+                self.recovery.parse(input, report)
+            }
+        }
     }
 }
 
@@ -710,8 +747,8 @@ where
 //     P: Parser<I, O>,
 // {
 //     #[inline]
-//     fn parse(&self, input: &mut I) -> Result<O, Vec<Diagnostic>> {
-//         self.parser.parse(input).map_err(|mut e| {
+//     fn parse(&self, input: &mut I, report: &mut Report) -> Result<O, Vec<Diagnostic>> {
+//         self.parser.parse(input, report).map_err(|mut e| {
 //             // TODO this isn't really right I want context information probably in all errors
 //             // so maybe use diagnostics.notes ?? but then maybe I can add multiple helpers here
 //             // to help create better Diagnostics

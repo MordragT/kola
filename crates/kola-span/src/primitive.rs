@@ -1,10 +1,10 @@
-use crate::{Diagnostic, Loc, input::Input, parser::Parser};
+use crate::{Diagnostic, Loc, Report, input::Input, parser::Parser};
 
 pub struct Any {}
 
 impl<I: Input> Parser<I, Loc> for Any {
     #[inline]
-    fn parse(&self, input: &mut I) -> Result<Loc, Vec<Diagnostic>> {
+    fn parse(&self, input: &mut I, _report: &mut Report) -> Result<Loc, Vec<Diagnostic>> {
         match input.peek() {
             Some(_) => {
                 let loc = input.loc();
@@ -29,7 +29,7 @@ pub struct Just<I: Input> {
 
 impl<I: Input> Parser<I, Loc> for Just<I> {
     #[inline]
-    fn parse(&self, input: &mut I) -> Result<Loc, Vec<Diagnostic>> {
+    fn parse(&self, input: &mut I, _report: &mut Report) -> Result<Loc, Vec<Diagnostic>> {
         let loc = input.loc();
         match input.peek() {
             Some(t) if t == self.expected => {
@@ -71,16 +71,16 @@ macro_rules! impl_choice_tuple {
             $($X: Parser<I, O>,)*
         {
             #[allow(non_snake_case)]
-            fn parse(&self, input: &mut I) -> Result<O, Vec<Diagnostic>> {
+            fn parse(&self, input: &mut I, report: &mut Report) -> Result<O, Vec<Diagnostic>> {
                 let (ref $Head, $(ref $X,)*) = self.parsers;
                 let checkpoint = input.checkpoint();
                 let mut errors = Vec::new();
-                match $Head.parse(input) {
+                match $Head.parse(input, report) {
                     Ok(o) => return Ok(o),
                     Err(mut e) => { input.reset(checkpoint); errors.append(&mut e); }
                 }
                 $(
-                    match $X.parse(input) {
+                    match $X.parse(input, report) {
                         Ok(o) => return Ok(o),
                         Err(mut e) => { input.reset(checkpoint); errors.append(&mut e); }
                     }
@@ -107,15 +107,15 @@ macro_rules! impl_group_tuple {
             $($X: Parser<I, $XO>,)*
         {
             #[allow(non_snake_case)]
-            fn parse(&self, input: &mut I) -> Result<($HO, $($XO,)*), Vec<Diagnostic>> {
+            fn parse(&self, input: &mut I, report: &mut Report) -> Result<($HO, $($XO,)*), Vec<Diagnostic>> {
                 let (ref $Head, $(ref $X,)*) = self.parser;
                 let checkpoint = input.checkpoint();
-                let $HO = match $Head.parse(input) {
+                let $HO = match $Head.parse(input, report) {
                     Ok(o) => o,
                     Err(e) => { input.reset(checkpoint); return Err(e); }
                 };
                 $(
-                    let $XO = match $X.parse(input) {
+                    let $XO = match $X.parse(input, report) {
                         Ok(o) => o,
                         Err(e) => { input.reset(checkpoint); return Err(e); }
                     };

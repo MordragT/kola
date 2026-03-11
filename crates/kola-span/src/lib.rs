@@ -1,6 +1,5 @@
 #![feature(const_trait_impl)]
 #![feature(array_try_from_fn)]
-#![feature(fn_traits)]
 
 //! Source positions and related helper functions.
 //!
