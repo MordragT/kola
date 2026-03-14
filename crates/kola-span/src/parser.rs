@@ -14,6 +14,22 @@ where
     }
 }
 
+pub trait IterParser<I: Input, O>: Sized {
+    type State: Default;
+
+    /// Drive one step of the iteration.
+    /// Returns:
+    ///   Ok(Some(item)) - parsed an item, continue
+    ///   Ok(None)       - done, stop iteration
+    ///   Err(diag)      - fatal error
+    fn drive(
+        &self,
+        state: &mut Self::State,
+        input: &mut I,
+        report: &mut Report,
+    ) -> Result<Option<O>, Vec<Diagnostic>>;
+}
+
 pub trait FixpointParser<I: Input, O> {
     type Parser: Parser<I, O>;
     const PARSER: Self::Parser;

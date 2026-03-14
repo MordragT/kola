@@ -1,6 +1,10 @@
 use std::{array, marker::PhantomData};
 
-use crate::{Diagnostic, Loc, Report, input::Input, parser::Parser};
+use crate::{
+    Diagnostic, Loc, Report,
+    input::Input,
+    parser::{IterParser, Parser},
+};
 
 pub const trait Combinator<I: Input, O>: Sized + Parser<I, O> {
     fn map<F, O1>(self, f: F) -> Map<Self, F, O>
@@ -93,76 +97,29 @@ pub const trait Combinator<I: Input, O>: Sized + Parser<I, O> {
         }
     }
 
-    fn foldl<P, F, C>(self, other: P, f: F) -> Foldl<Self, P, F, C>
+    fn foldl<IP, F, O1>(self, other: IP, f: F) -> Foldl<Self, IP, F, O1>
     where
-        P: Parser<I, C>,
-        C: IntoIterator,
-        F: Fn(O, C::Item) -> O,
+        IP: IterParser<I, O1>,
+        F: Fn(O, O1) -> O,
     {
         Foldl {
             _marker: PhantomData,
-            left: self,
-            right: other,
+            init: self,
+            iter: other,
             f,
         }
     }
 
-    fn foldl_with<P, F, C>(self, other: P, f: F) -> FoldlWith<Self, P, F, C>
+    fn foldl_with<IP, F, O1>(self, other: IP, f: F) -> FoldlWith<Self, IP, F, O1>
     where
-        P: Parser<I, C>,
-        C: IntoIterator,
-        F: Fn(O, C::Item, &mut I) -> O,
+        IP: IterParser<I, O1>,
+        F: Fn(O, O1, &mut I) -> O,
     {
         FoldlWith {
             _marker: PhantomData,
-            left: self,
-            right: other,
+            init: self,
+            iter: other,
             f,
-        }
-    }
-
-    fn foldr<P1, F, O1>(self, other: P1, f: F) -> Foldr<Self, P1, F, O>
-    where
-        P1: Parser<I, O1>,
-        O: IntoIterator,
-        O::IntoIter: DoubleEndedIterator,
-        F: Fn(O::Item, O1) -> O1,
-    {
-        Foldr {
-            _marker: PhantomData,
-            left: self,
-            right: other,
-            f,
-        }
-    }
-
-    fn foldr_with<P1, F, O1>(self, other: P1, f: F) -> FoldrWith<Self, P1, F, O>
-    where
-        P1: Parser<I, O1>,
-        O: IntoIterator,
-        O::IntoIter: DoubleEndedIterator,
-        F: Fn(O::Item, O1, &mut I) -> O1,
-    {
-        FoldrWith {
-            _marker: PhantomData,
-            left: self,
-            right: other,
-            f,
-        }
-    }
-
-    fn separated_by<S, OS>(self, sep: S) -> SeparatedBy<Self, S, OS, O>
-    where
-        S: Parser<I, OS>,
-    {
-        SeparatedBy {
-            _marker: PhantomData,
-            parser: self,
-            sep,
-            allow_leading: false,
-            allow_trailing: false,
-            min: 0,
-            max: None,
         }
     }
 
@@ -183,11 +140,11 @@ pub const trait Combinator<I: Input, O>: Sized + Parser<I, O> {
         Spanned { parser: self }
     }
 
-    fn recover_with<R>(self, recovery: R) -> RecoverWith<Self, R>
+    fn recover<R>(self, recovery: R) -> Recover<Self, R>
     where
         R: Parser<I, O>,
     {
-        RecoverWith {
+        Recover {
             parser: self,
             recovery,
         }
@@ -369,6 +326,7 @@ where
     }
 }
 
+// TODO rename to Many and create as a primitive ?
 pub struct Repeat<const N: usize, P> {
     parser: P,
 }
@@ -388,287 +346,61 @@ where
     }
 }
 
-pub struct Repeated<P, O> {
-    _marker: PhantomData<O>,
-    parser: P,
-    min: usize,
-    max: Option<usize>,
-}
-
-impl<P, O> Repeated<P, O> {
-    pub const fn at_least(mut self, min: usize) -> Self {
-        self.min = min;
-        self
-    }
-
-    pub const fn at_most(mut self, max: usize) -> Self {
-        self.max = Some(max);
-        self
-    }
-
-    pub const fn exactly(mut self, n: usize) -> Self {
-        self.min = n;
-        self.max = Some(n);
-        self
-    }
-}
-
-impl<I, O, C, P> Parser<I, C> for Repeated<P, O>
-where
-    I: Input,
-    C: FromIterator<O>,
-    P: Parser<I, O>,
-{
-    fn parse(&self, input: &mut I, report: &mut Report) -> Result<C, Vec<Diagnostic>> {
-        let mut count = 0usize;
-
-        let items: C = std::iter::from_fn(|| {
-            if self.max.is_some_and(|max| count >= max) {
-                return None;
-            }
-            let checkpoint = input.checkpoint();
-            match self.parser.parse(input, report) {
-                Ok(item) => {
-                    count += 1;
-                    Some(item)
-                }
-                Err(_) => {
-                    input.reset(checkpoint);
-                    None
-                }
-            }
-        })
-        .collect();
-
-        if count >= self.min {
-            Ok(items)
-        } else {
-            Err(vec![Diagnostic::error(
-                input.loc(),
-                format!("expected at least {} items", self.min),
-            )])
-        }
-    }
-}
-
-pub struct Foldl<P1, P2, F, C> {
-    _marker: PhantomData<C>,
-    left: P1,
-    right: P2,
+pub struct Foldl<P, IP, F, O1> {
+    _marker: PhantomData<O1>,
+    init: P,
+    iter: IP,
     f: F,
 }
 
-impl<I, O, C, P1, P2, F> Parser<I, O> for Foldl<P1, P2, F, C>
-where
-    I: Input,
-    P1: Parser<I, O>,
-    P2: Parser<I, C>,
-    C: IntoIterator,
-    F: Fn(O, C::Item) -> O,
-{
-    fn parse(&self, input: &mut I, report: &mut Report) -> Result<O, Vec<Diagnostic>> {
-        let init = self.left.parse(input, report)?;
-        let items = self.right.parse(input, report)?;
-        Ok(items.into_iter().fold(init, &self.f))
-    }
-}
-
-pub struct FoldlWith<P1, P2, F, C> {
-    _marker: PhantomData<C>,
-    left: P1,
-    right: P2,
-    f: F,
-}
-
-impl<I, O, C, P1, P2, F> Parser<I, O> for FoldlWith<P1, P2, F, C>
-where
-    I: Input,
-    P1: Parser<I, O>,
-    P2: Parser<I, C>,
-    C: IntoIterator,
-    F: Fn(O, C::Item, &mut I) -> O,
-{
-    fn parse(&self, input: &mut I, report: &mut Report) -> Result<O, Vec<Diagnostic>> {
-        let init = self.left.parse(input, report)?;
-        let items = self.right.parse(input, report)?;
-        Ok(items
-            .into_iter()
-            .fold(init, |acc, item| (self.f)(acc, item, input)))
-    }
-}
-
-pub struct Foldr<P1, P2, F, C> {
-    _marker: PhantomData<C>,
-    left: P1,
-    right: P2,
-    f: F,
-}
-
-impl<I, O, C, P1, P2, F> Parser<I, O> for Foldr<P1, P2, F, C>
-where
-    I: Input,
-    P1: Parser<I, C>,
-    P2: Parser<I, O>,
-    C: IntoIterator,
-    C::IntoIter: DoubleEndedIterator,
-    F: Fn(O, C::Item) -> O,
-{
-    fn parse(&self, input: &mut I, report: &mut Report) -> Result<O, Vec<Diagnostic>> {
-        let items = self.left.parse(input, report)?;
-        let init = self.right.parse(input, report)?;
-        Ok(items.into_iter().rfold(init, &self.f))
-    }
-}
-
-pub struct FoldrWith<P1, P2, F, C> {
-    _marker: PhantomData<C>,
-    left: P1,
-    right: P2,
-    f: F,
-}
-
-impl<I, O, C, P1, P2, F> Parser<I, O> for FoldrWith<P1, P2, F, C>
-where
-    I: Input,
-    P1: Parser<I, C>,
-    P2: Parser<I, O>,
-    C: IntoIterator,
-    C::IntoIter: DoubleEndedIterator,
-    F: Fn(O, C::Item, &mut I) -> O,
-{
-    fn parse(&self, input: &mut I, report: &mut Report) -> Result<O, Vec<Diagnostic>> {
-        let items = self.left.parse(input, report)?;
-        let init = self.right.parse(input, report)?;
-        Ok(items
-            .into_iter()
-            .rfold(init, |acc, item| (self.f)(acc, item, input)))
-    }
-}
-
-pub struct SeparatedBy<P, S, OS, O> {
-    _marker: PhantomData<(OS, O)>,
-    parser: P,
-    sep: S,
-    allow_leading: bool,
-    allow_trailing: bool,
-    min: usize,
-    max: Option<usize>,
-}
-
-impl<P, S, OS, O> SeparatedBy<P, S, OS, O> {
-    pub const fn allow_leading(mut self) -> Self {
-        self.allow_leading = true;
-        self
-    }
-
-    pub const fn allow_trailing(mut self) -> Self {
-        self.allow_trailing = true;
-        self
-    }
-
-    pub const fn at_least(mut self, min: usize) -> Self {
-        self.min = min;
-        self
-    }
-
-    pub const fn at_most(mut self, max: usize) -> Self {
-        self.max = Some(max);
-        self
-    }
-
-    pub const fn exactly(mut self, n: usize) -> Self {
-        self.min = n;
-        self.max = Some(n);
-        self
-    }
-}
-
-impl<I, O, OS, C, P, S> Parser<I, C> for SeparatedBy<P, S, OS, O>
+impl<I, O, O1, P, IP, F> Parser<I, O> for Foldl<P, IP, F, O1>
 where
     I: Input,
     P: Parser<I, O>,
-    S: Parser<I, OS>,
-    C: Default + Extend<O>,
+    IP: IterParser<I, O1>,
+    F: Fn(O, O1) -> O,
 {
-    fn parse(&self, input: &mut I, report: &mut Report) -> Result<C, Vec<Diagnostic>> {
-        let mut items = C::default();
+    fn parse(&self, input: &mut I, report: &mut Report) -> Result<O, Vec<Diagnostic>> {
+        let mut acc = self.init.parse(input, report)?;
+        let mut state = IP::State::default();
 
-        // Handle optional leading separator
-        let mut leading_sep_present = false;
-        if self.allow_leading {
-            let checkpoint = input.checkpoint();
-            if self.sep.parse(input, report).is_ok() {
-                leading_sep_present = true;
-            } else {
-                input.reset(checkpoint);
-            }
-        }
-
-        // Try the first item — zero items is valid when min == 0.
-        let first_checkpoint = input.checkpoint();
-        let mut count = match self.parser.parse(input, report) {
-            Ok(o) => {
-                items.extend(std::iter::once(o));
-                1
-            }
-            Err(e) => {
-                input.reset(first_checkpoint);
-                // If we consumed a leading separator but can't parse an item, that's an error
-                if leading_sep_present {
-                    return Err(e);
-                }
-                if self.min > 0 {
-                    return Err(e);
-                }
-                return Ok(items);
-            }
-        };
-
-        // Repeatedly try: sep then item.
         loop {
-            // Check max limit before trying separator
-            if let Some(max) = self.max {
-                if count >= max {
-                    break;
-                }
-            }
-
-            let sep_checkpoint = input.checkpoint();
-
-            match self.sep.parse(input, report) {
-                Err(_) => {
-                    // No separator found — we're done cleanly.
-                    input.reset(sep_checkpoint);
-                    break;
-                }
-                Ok(_) => {
-                    match self.parser.parse(input, report) {
-                        Ok(o) => {
-                            items.extend(std::iter::once(o));
-                            count += 1;
-                        }
-                        Err(_) if self.allow_trailing => {
-                            // Trailing separator is allowed — consume it and stop.
-                            break;
-                        }
-                        Err(_) => {
-                            // No trailing allowed — put the separator back and stop.
-                            input.reset(sep_checkpoint);
-                            break;
-                        }
-                    }
-                }
+            match self.iter.drive(&mut state, input, report)? {
+                Some(item) => acc = (self.f)(acc, item),
+                None => break,
             }
         }
 
-        if count < self.min {
-            return Err(vec![Diagnostic::error(
-                input.loc(),
-                format!("expected at least {} items but found {}", self.min, count),
-            )]);
+        Ok(acc)
+    }
+}
+
+pub struct FoldlWith<P, IP, F, O1> {
+    _marker: PhantomData<O1>,
+    init: P,
+    iter: IP,
+    f: F,
+}
+
+impl<I, O, O1, P, IP, F> Parser<I, O> for FoldlWith<P, IP, F, O1>
+where
+    I: Input,
+    P: Parser<I, O>,
+    IP: IterParser<I, O1>,
+    F: Fn(O, O1, &mut I) -> O,
+{
+    fn parse(&self, input: &mut I, report: &mut Report) -> Result<O, Vec<Diagnostic>> {
+        let mut acc = self.init.parse(input, report)?;
+        let mut state = IP::State::default();
+
+        loop {
+            match self.iter.drive(&mut state, input, report)? {
+                Some(item) => acc = (self.f)(acc, item, input),
+                None => break,
+            }
         }
 
-        Ok(items)
+        Ok(acc)
     }
 }
 
@@ -711,12 +443,12 @@ where
     }
 }
 
-pub struct RecoverWith<P, R> {
+pub struct Recover<P, R> {
     parser: P,
     recovery: R,
 }
 
-impl<I, O, P, R> Parser<I, O> for RecoverWith<P, R>
+impl<I, O, P, R> Parser<I, O> for Recover<P, R>
 where
     I: Input,
     P: Parser<I, O>,
@@ -757,3 +489,290 @@ where
 //         })
 //     }
 // }
+
+pub const trait IterCombinator<I: Input, O>: IterParser<I, O> {
+    fn collect<C>(self) -> Collect<Self, O, C> {
+        Collect {
+            _marker: PhantomData,
+            iter: self,
+        }
+    }
+
+    fn separated_by<S, OS>(self, sep: S) -> SeparatedBy<Self, S, OS, O>
+    where
+        S: Parser<I, OS>,
+    {
+        SeparatedBy {
+            _marker: PhantomData,
+            iter: self,
+            sep,
+            allow_leading: false,
+            allow_trailing: false,
+        }
+    }
+
+    fn foldr<P1, F, O1>(self, other: P1, f: F) -> Foldr<P1, Self, F, O>
+    where
+        P1: Parser<I, O1>,
+        F: Fn(O, O1) -> O1,
+    {
+        Foldr {
+            _marker: PhantomData,
+            iter: self,
+            init: other,
+            f,
+        }
+    }
+
+    fn foldr_with<P1, F, O1>(self, other: P1, f: F) -> FoldrWith<P1, Self, F, O>
+    where
+        P1: Parser<I, O1>,
+        F: Fn(O, O1, &mut I) -> O1,
+    {
+        FoldrWith {
+            _marker: PhantomData,
+            iter: self,
+            init: other,
+            f,
+        }
+    }
+
+    // count, collect
+}
+
+impl<I, O, IP> const IterCombinator<I, O> for IP
+where
+    I: Input,
+    IP: IterParser<I, O>,
+{
+}
+
+pub struct Collect<IP, O, C> {
+    _marker: PhantomData<(O, C)>,
+    iter: IP,
+}
+
+impl<I, O, C, IP> Parser<I, C> for Collect<IP, O, C>
+where
+    I: Input,
+    IP: IterParser<I, O>,
+    C: Default + Extend<O>,
+{
+    fn parse(&self, input: &mut I, report: &mut Report) -> Result<C, Vec<Diagnostic>> {
+        let mut state = IP::State::default();
+        let mut items = C::default();
+
+        loop {
+            match self.iter.drive(&mut state, input, report)? {
+                Some(o) => items.extend(std::iter::once(o)),
+                None => break,
+            }
+        }
+
+        Ok(items)
+    }
+}
+
+pub struct Repeated<P, O> {
+    _marker: PhantomData<O>,
+    parser: P,
+    min: usize,
+    max: Option<usize>,
+}
+
+impl<P, O> Repeated<P, O> {
+    pub const fn at_least(mut self, min: usize) -> Self {
+        self.min = min;
+        self
+    }
+
+    pub const fn at_most(mut self, max: usize) -> Self {
+        self.max = Some(max);
+        self
+    }
+
+    pub const fn exactly(mut self, n: usize) -> Self {
+        self.min = n;
+        self.max = Some(n);
+        self
+    }
+}
+
+impl<I, O, P> IterParser<I, O> for Repeated<P, O>
+where
+    I: Input,
+    P: Parser<I, O>,
+{
+    type State = usize;
+
+    fn drive(
+        &self,
+        state: &mut usize,
+        input: &mut I,
+        report: &mut Report,
+    ) -> Result<Option<O>, Vec<Diagnostic>> {
+        if self.max.is_some_and(|max| *state >= max) {
+            return Ok(None);
+        }
+        let checkpoint = input.checkpoint();
+        match self.parser.parse(input, report) {
+            Ok(o) => {
+                *state += 1;
+                Ok(Some(o))
+            }
+            Err(e) => {
+                input.reset(checkpoint);
+                if *state < self.min { Err(e) } else { Ok(None) }
+            }
+        }
+    }
+}
+
+pub struct SeparatedBy<IC, S, OS, O> {
+    _marker: PhantomData<(OS, O)>,
+    iter: IC,
+    sep: S,
+    allow_leading: bool,
+    allow_trailing: bool,
+}
+
+impl<P, S, OS, O> SeparatedBy<P, S, OS, O> {
+    pub const fn allow_leading(mut self) -> Self {
+        self.allow_leading = true;
+        self
+    }
+
+    pub const fn allow_trailing(mut self) -> Self {
+        self.allow_trailing = true;
+        self
+    }
+}
+pub struct SeparatedByState<S> {
+    inner: S,
+    first: bool,
+}
+
+impl<S: Default> Default for SeparatedByState<S> {
+    fn default() -> Self {
+        Self {
+            inner: S::default(),
+            first: true,
+        }
+    }
+}
+
+impl<I, O, OS, IP, S> IterParser<I, O> for SeparatedBy<IP, S, OS, O>
+where
+    I: Input,
+    IP: IterParser<I, O>,
+    S: Parser<I, OS>,
+{
+    type State = SeparatedByState<IP::State>;
+
+    fn drive(
+        &self,
+        state: &mut Self::State,
+        input: &mut I,
+        report: &mut Report,
+    ) -> Result<Option<O>, Vec<Diagnostic>> {
+        // Handle separator (skip on first item)
+        if !state.first {
+            let checkpoint = input.checkpoint();
+            match self.sep.parse(input, report) {
+                Ok(_) => {}
+                Err(_) => {
+                    input.reset(checkpoint);
+                    return Ok(None); // No separator = done, cleanly
+                }
+            }
+        } else {
+            // Handle optional leading separator
+            if self.allow_leading {
+                let checkpoint = input.checkpoint();
+                if self.sep.parse(input, report).is_err() {
+                    input.reset(checkpoint);
+                }
+            }
+        }
+
+        state.first = false;
+
+        // Try next item
+        let checkpoint = input.checkpoint();
+        match self.iter.drive(&mut state.inner, input, report)? {
+            Some(o) => Ok(Some(o)),
+            None => {
+                // No item after separator
+                if self.allow_trailing {
+                    Ok(None)
+                } else {
+                    input.reset(checkpoint);
+                    Ok(None)
+                }
+            }
+        }
+    }
+}
+
+pub struct Foldr<P, IP, F, O1> {
+    _marker: PhantomData<O1>,
+    init: P,
+    iter: IP,
+    f: F,
+}
+
+impl<I, O, O1, P, IP, F> Parser<I, O> for Foldr<P, IP, F, O1>
+where
+    I: Input,
+    P: Parser<I, O>,
+    IP: IterParser<I, O1>,
+    F: Fn(O, O1) -> O,
+{
+    fn parse(&self, input: &mut I, report: &mut Report) -> Result<O, Vec<Diagnostic>> {
+        let mut state = IP::State::default();
+        let mut items = Vec::new();
+
+        loop {
+            match self.iter.drive(&mut state, input, report)? {
+                Some(item) => items.push(item),
+                None => break,
+            }
+        }
+
+        let init = self.init.parse(input, report)?;
+        Ok(items.into_iter().rfold(init, &self.f))
+    }
+}
+
+// FoldrWith: same but closure gets &mut I
+pub struct FoldrWith<P, IP, F, O1> {
+    _marker: PhantomData<O1>,
+    init: P,
+    iter: IP,
+    f: F,
+}
+
+impl<I, O, O1, P, IP, F> Parser<I, O> for FoldrWith<P, IP, F, O1>
+where
+    I: Input,
+    P: Parser<I, O>,
+    IP: IterParser<I, O1>,
+    F: Fn(O, O1, &mut I) -> O,
+{
+    fn parse(&self, input: &mut I, report: &mut Report) -> Result<O, Vec<Diagnostic>> {
+        let mut state = IP::State::default();
+        let mut items = Vec::new();
+
+        loop {
+            match self.iter.drive(&mut state, input, report)? {
+                Some(item) => items.push(item),
+                None => break,
+            }
+        }
+
+        let init = self.init.parse(input, report)?;
+        Ok(items
+            .into_iter()
+            .rfold(init, |acc, item| (self.f)(acc, item, input)))
+    }
+}
