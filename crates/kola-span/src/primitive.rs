@@ -4,17 +4,14 @@ pub struct Any {}
 
 impl<I: Input> Parser<I, Loc> for Any {
     #[inline]
-    fn parse(&self, input: &mut I, _report: &mut Report) -> Result<Loc, Vec<Diagnostic>> {
+    fn parse(&self, input: &mut I, _report: &mut Report) -> Result<Loc, Diagnostic> {
         match input.peek() {
             Some(_) => {
                 let loc = input.loc();
                 input.advance();
                 Ok(loc)
             }
-            None => Err(vec![Diagnostic::error(
-                input.loc(),
-                "unexpected end of input",
-            )]),
+            None => Err(Diagnostic::error(input.loc(), "unexpected end of input")),
         }
     }
 }
@@ -29,18 +26,18 @@ pub struct Just<I: Input> {
 
 impl<I: Input> Parser<I, Loc> for Just<I> {
     #[inline]
-    fn parse(&self, input: &mut I, _report: &mut Report) -> Result<Loc, Vec<Diagnostic>> {
+    fn parse(&self, input: &mut I, _report: &mut Report) -> Result<Loc, Diagnostic> {
         let loc = input.loc();
         match input.peek() {
             Some(t) if t == self.expected => {
                 input.advance();
                 Ok(loc)
             }
-            Some(_) => Err(vec![Diagnostic::error(
+            Some(_) => Err(Diagnostic::error(
                 loc,
                 format!("unexpected token, expected {:?}", self.expected),
-            )]),
-            None => Err(vec![Diagnostic::error(loc, "unexpected end of input")]),
+            )),
+            None => Err(Diagnostic::error(loc, "unexpected end of input")),
         }
     }
 }
@@ -71,21 +68,21 @@ macro_rules! impl_choice_tuple {
             $($X: Parser<I, O>,)*
         {
             #[allow(non_snake_case)]
-            fn parse(&self, input: &mut I, report: &mut Report) -> Result<O, Vec<Diagnostic>> {
+            fn parse(&self, input: &mut I, report: &mut Report) -> Result<O, Diagnostic> {
                 let (ref $Head, $(ref $X,)*) = self.parsers;
                 let checkpoint = input.checkpoint();
-                let mut errors = Vec::new();
+                let mut error = $crate::Diagnostic::error(input.loc(), "Error in choice combinator");
                 match $Head.parse(input, report) {
                     Ok(o) => return Ok(o),
-                    Err(mut e) => { input.reset(checkpoint); errors.append(&mut e); }
+                    Err(e) => { input.reset(checkpoint); error.set_trace_element(e.message, e.loc); }
                 }
                 $(
                     match $X.parse(input, report) {
                         Ok(o) => return Ok(o),
-                        Err(mut e) => { input.reset(checkpoint); errors.append(&mut e); }
+                        Err(e) => { input.reset(checkpoint);  error.set_trace_element(e.message, e.loc); }
                     }
                 )*
-                Err(errors)
+                Err(error)
             }
         }
     };
@@ -107,7 +104,7 @@ macro_rules! impl_group_tuple {
             $($X: Parser<I, $XO>,)*
         {
             #[allow(non_snake_case)]
-            fn parse(&self, input: &mut I, report: &mut Report) -> Result<($HO, $($XO,)*), Vec<Diagnostic>> {
+            fn parse(&self, input: &mut I, report: &mut Report) -> Result<($HO, $($XO,)*), Diagnostic> {
                 let (ref $Head, $(ref $X,)*) = self.parser;
                 let checkpoint = input.checkpoint();
                 let $HO = match $Head.parse(input, report) {

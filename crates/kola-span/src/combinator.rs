@@ -178,7 +178,7 @@ where
     F: Fn(O) -> O1,
 {
     #[inline]
-    fn parse(&self, input: &mut I, report: &mut Report) -> Result<O1, Vec<Diagnostic>> {
+    fn parse(&self, input: &mut I, report: &mut Report) -> Result<O1, Diagnostic> {
         self.parser.parse(input, report).map(|ok| (self.f)(ok))
     }
 }
@@ -196,7 +196,7 @@ where
     F: Fn(O, &mut I) -> O1,
 {
     #[inline]
-    fn parse(&self, input: &mut I, report: &mut Report) -> Result<O1, Vec<Diagnostic>> {
+    fn parse(&self, input: &mut I, report: &mut Report) -> Result<O1, Diagnostic> {
         self.parser
             .parse(input, report)
             .map(|ok| (self.f)(ok, input))
@@ -216,7 +216,7 @@ where
     T: Clone,
 {
     #[inline]
-    fn parse(&self, input: &mut I, report: &mut Report) -> Result<T, Vec<Diagnostic>> {
+    fn parse(&self, input: &mut I, report: &mut Report) -> Result<T, Diagnostic> {
         self.parser.parse(input, report).map(|_| self.value.clone())
     }
 }
@@ -233,7 +233,7 @@ where
     P2: Parser<I, O1>,
 {
     #[inline]
-    fn parse(&self, input: &mut I, report: &mut Report) -> Result<(O, O1), Vec<Diagnostic>> {
+    fn parse(&self, input: &mut I, report: &mut Report) -> Result<(O, O1), Diagnostic> {
         let o = self.first.parse(input, report)?;
         let o1 = self.second.parse(input, report)?;
         Ok((o, o1))
@@ -253,7 +253,7 @@ where
     P2: Parser<I, O1>,
 {
     #[inline]
-    fn parse(&self, input: &mut I, report: &mut Report) -> Result<O1, Vec<Diagnostic>> {
+    fn parse(&self, input: &mut I, report: &mut Report) -> Result<O1, Diagnostic> {
         self.first.parse(input, report)?;
         self.second.parse(input, report)
     }
@@ -272,7 +272,7 @@ where
     P2: Parser<I, O1>,
 {
     #[inline]
-    fn parse(&self, input: &mut I, report: &mut Report) -> Result<O, Vec<Diagnostic>> {
+    fn parse(&self, input: &mut I, report: &mut Report) -> Result<O, Diagnostic> {
         let o = self.first.parse(input, report)?;
         self.second.parse(input, report)?;
         Ok(o)
@@ -292,7 +292,7 @@ where
     P2: Parser<I, O>,
 {
     #[inline]
-    fn parse(&self, input: &mut I, report: &mut Report) -> Result<O, Vec<Diagnostic>> {
+    fn parse(&self, input: &mut I, report: &mut Report) -> Result<O, Diagnostic> {
         let checkpoint = input.checkpoint();
         match self.first.parse(input, report) {
             Ok(o) => Ok(o),
@@ -314,7 +314,7 @@ where
     P: Parser<I, O>,
 {
     #[inline]
-    fn parse(&self, input: &mut I, report: &mut Report) -> Result<Option<O>, Vec<Diagnostic>> {
+    fn parse(&self, input: &mut I, report: &mut Report) -> Result<Option<O>, Diagnostic> {
         let checkpoint = input.checkpoint();
         match self.parser.parse(input, report) {
             Ok(o) => Ok(Some(o)),
@@ -337,7 +337,7 @@ where
     P: Parser<I, O>,
 {
     #[inline]
-    fn parse(&self, input: &mut I, report: &mut Report) -> Result<[O; N], Vec<Diagnostic>> {
+    fn parse(&self, input: &mut I, report: &mut Report) -> Result<[O; N], Diagnostic> {
         let checkpoint = input.checkpoint();
         array::try_from_fn(|_| self.parser.parse(input, report)).map_err(|e| {
             input.reset(checkpoint);
@@ -360,7 +360,7 @@ where
     IP: IterParser<I, O1>,
     F: Fn(O, O1) -> O,
 {
-    fn parse(&self, input: &mut I, report: &mut Report) -> Result<O, Vec<Diagnostic>> {
+    fn parse(&self, input: &mut I, report: &mut Report) -> Result<O, Diagnostic> {
         let mut acc = self.init.parse(input, report)?;
         let mut state = IP::State::default();
 
@@ -389,7 +389,7 @@ where
     IP: IterParser<I, O1>,
     F: Fn(O, O1, &mut I) -> O,
 {
-    fn parse(&self, input: &mut I, report: &mut Report) -> Result<O, Vec<Diagnostic>> {
+    fn parse(&self, input: &mut I, report: &mut Report) -> Result<O, Diagnostic> {
         let mut acc = self.init.parse(input, report)?;
         let mut state = IP::State::default();
 
@@ -419,7 +419,7 @@ where
     P2: Parser<I, O2>,
 {
     #[inline]
-    fn parse(&self, input: &mut I, report: &mut Report) -> Result<O, Vec<Diagnostic>> {
+    fn parse(&self, input: &mut I, report: &mut Report) -> Result<O, Diagnostic> {
         self.open.parse(input, report)?;
         let result = self.parser.parse(input, report);
         self.close.parse(input, report)?;
@@ -437,7 +437,7 @@ where
     P: Parser<I, O>,
 {
     #[inline]
-    fn parse(&self, input: &mut I, report: &mut Report) -> Result<(O, Loc), Vec<Diagnostic>> {
+    fn parse(&self, input: &mut I, report: &mut Report) -> Result<(O, Loc), Diagnostic> {
         let start = input.loc();
         self.parser.parse(input, report).map(|o| (o, start))
     }
@@ -455,13 +455,13 @@ where
     R: Parser<I, O>,
 {
     #[inline]
-    fn parse(&self, input: &mut I, report: &mut Report) -> Result<O, Vec<Diagnostic>> {
+    fn parse(&self, input: &mut I, report: &mut Report) -> Result<O, Diagnostic> {
         let checkpoint = input.checkpoint();
         match self.parser.parse(input, report) {
             Ok(o) => Ok(o),
             Err(e) => {
                 input.reset(checkpoint);
-                report.extend_diagnostics(e);
+                report.add_diagnostic(e);
                 self.recovery.parse(input, report)
             }
         }
@@ -479,7 +479,7 @@ where
 //     P: Parser<I, O>,
 // {
 //     #[inline]
-//     fn parse(&self, input: &mut I, report: &mut Report) -> Result<O, Vec<Diagnostic>> {
+//     fn parse(&self, input: &mut I, report: &mut Report) -> Result<O, Diagnostic> {
 //         self.parser.parse(input, report).map_err(|mut e| {
 //             // TODO this isn't really right I want context information probably in all errors
 //             // so maybe use diagnostics.notes ?? but then maybe I can add multiple helpers here
@@ -558,7 +558,7 @@ where
     IP: IterParser<I, O>,
     C: Default + Extend<O>,
 {
-    fn parse(&self, input: &mut I, report: &mut Report) -> Result<C, Vec<Diagnostic>> {
+    fn parse(&self, input: &mut I, report: &mut Report) -> Result<C, Diagnostic> {
         let mut state = IP::State::default();
         let mut items = C::default();
 
@@ -610,7 +610,7 @@ where
         state: &mut usize,
         input: &mut I,
         report: &mut Report,
-    ) -> Result<Option<O>, Vec<Diagnostic>> {
+    ) -> Result<Option<O>, Diagnostic> {
         if self.max.is_some_and(|max| *state >= max) {
             return Ok(None);
         }
@@ -674,7 +674,7 @@ where
         state: &mut Self::State,
         input: &mut I,
         report: &mut Report,
-    ) -> Result<Option<O>, Vec<Diagnostic>> {
+    ) -> Result<Option<O>, Diagnostic> {
         // Handle separator (skip on first item)
         if !state.first {
             let checkpoint = input.checkpoint();
@@ -728,7 +728,7 @@ where
     IP: IterParser<I, O1>,
     F: Fn(O, O1) -> O,
 {
-    fn parse(&self, input: &mut I, report: &mut Report) -> Result<O, Vec<Diagnostic>> {
+    fn parse(&self, input: &mut I, report: &mut Report) -> Result<O, Diagnostic> {
         let mut state = IP::State::default();
         let mut items = Vec::new();
 
@@ -759,7 +759,7 @@ where
     IP: IterParser<I, O1>,
     F: Fn(O, O1, &mut I) -> O,
 {
-    fn parse(&self, input: &mut I, report: &mut Report) -> Result<O, Vec<Diagnostic>> {
+    fn parse(&self, input: &mut I, report: &mut Report) -> Result<O, Diagnostic> {
         let mut state = IP::State::default();
         let mut items = Vec::new();
 

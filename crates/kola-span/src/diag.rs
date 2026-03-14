@@ -319,6 +319,26 @@ impl Diagnostic {
         self
     }
 
+    /// Adds a single trace element to the diagnostic and returns self for method chaining.
+    ///
+    /// # Arguments
+    /// * `label` - The trace label
+    /// * `loc` - The source location associated with the trace
+    pub fn with_trace_element(mut self, label: impl Into<String>, loc: Loc) -> Self {
+        self.trace.push((label.into(), loc));
+        self
+    }
+
+    /// Adds a single trace element to the diagnostic and returns a mutable reference for further modification.
+    ///
+    /// # Arguments
+    /// * `label` - The trace label
+    /// * `loc` - The source location associated with the trace
+    pub fn set_trace_element(&mut self, label: impl Into<String>, loc: Loc) -> &mut Self {
+        self.trace.push((label.into(), loc));
+        self
+    }
+
     /// Adds notes to the diagnostic and returns self for method chaining.
     ///
     /// # Arguments
