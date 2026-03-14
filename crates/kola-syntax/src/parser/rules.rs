@@ -1439,23 +1439,22 @@ mod tests {
 
         // Test comprehensive pattern matching with all pattern types
         let test_case = r#"
-            case data of
-            () => "unit",
-            true => "bool true",
-            42 => "number",
-            'x' => "char",
-            "hello" => "string",
-            x => "bind pattern",
-            _ => "wildcard",
-            [a, b, ...rest] => "list with spread",
-            [head, ...] => "list anonymous spread",
-            [] => "empty list",
-            { name, age: years, ... } => "record with spread",
-            { x, y } => "simple record",
-            {} => "empty record",
-            < Some : value > => "variant some",
-            < None > => "variant none",
-            < Ok : result, Err : error > => "multiple variants"
+            case data
+            | () => "unit"
+            | true => "bool true"
+            | 42 => "number"
+            | "hello" => "string"
+            | x => "bind pattern"
+            | _ => "wildcard"
+            | [a, b, ...rest] => "list with spread"
+            | [head, ...] => "list anonymous spread"
+            | [] => "empty list"
+            | { name, age: years, ... } => "record with spread"
+            | { x, y } => "simple record"
+            | {} => "empty record"
+            | < Some : value > => "variant some"
+            | < None > => "variant none"
+            | < Ok : result, Err : error > => "multiple variants"
         "#;
 
         let ParseResult { node, builder, .. } =
@@ -1464,7 +1463,7 @@ mod tests {
         let inspector = NodeInspector::new(node, &builder, &interner);
         let case = inspector.to_case();
         case.source().to_qualified().source().has_name("data");
-        case.has_branches_count(16);
+        case.has_branches_count(15);
 
         // Test literal patterns
         case.branches_at(0)
@@ -1494,34 +1493,26 @@ mod tests {
         case.branches_at(3)
             .pat()
             .to_literal()
-            .assert_eq(&node::LiteralPat::Char('x'));
-        case.branches_at(3)
-            .body()
-            .to_literal()
-            .assert_eq(&node::LiteralExpr::Str(interner["char"]));
-        case.branches_at(4)
-            .pat()
-            .to_literal()
             .assert_eq(&node::LiteralPat::Str(interner["hello"]));
-        case.branches_at(4)
+        case.branches_at(3)
             .body()
             .to_literal()
             .assert_eq(&node::LiteralExpr::Str(interner["string"]));
 
         // Test bind and wildcard patterns
-        case.branches_at(5).pat().to_bind().inner().has_name("x");
-        case.branches_at(5)
+        case.branches_at(4).pat().to_bind().inner().has_name("x");
+        case.branches_at(4)
             .body()
             .to_literal()
             .assert_eq(&node::LiteralExpr::Str(interner["bind pattern"]));
-        case.branches_at(6).pat().to_any();
-        case.branches_at(6)
+        case.branches_at(5).pat().to_any();
+        case.branches_at(5)
             .body()
             .to_literal()
             .assert_eq(&node::LiteralExpr::Str(interner["wildcard"]));
 
         // Test list patterns
-        case.branches_at(7)
+        case.branches_at(6)
             .pat()
             .to_list()
             .has_inner_count(3)
@@ -1530,7 +1521,7 @@ mod tests {
             .to_bind()
             .inner()
             .has_name("a");
-        case.branches_at(7)
+        case.branches_at(6)
             .pat()
             .to_list()
             .inner_at(1)
@@ -1538,18 +1529,18 @@ mod tests {
             .to_bind()
             .inner()
             .has_name("b");
-        case.branches_at(7)
+        case.branches_at(6)
             .pat()
             .to_list()
             .inner_at(2)
             .to_some_spread()
             .has_name("rest");
-        case.branches_at(7)
+        case.branches_at(6)
             .body()
             .to_literal()
             .assert_eq(&node::LiteralExpr::Str(interner["list with spread"]));
 
-        case.branches_at(8)
+        case.branches_at(7)
             .pat()
             .to_list()
             .has_inner_count(2)
@@ -1558,42 +1549,42 @@ mod tests {
             .to_bind()
             .inner()
             .has_name("head");
-        case.branches_at(8)
+        case.branches_at(7)
             .pat()
             .to_list()
             .inner_at(1)
             .is_none_spread();
-        case.branches_at(8)
+        case.branches_at(7)
             .body()
             .to_literal()
             .assert_eq(&node::LiteralExpr::Str(interner["list anonymous spread"]));
 
-        case.branches_at(9).pat().to_list().has_inner_count(0);
-        case.branches_at(9)
+        case.branches_at(8).pat().to_list().has_inner_count(0);
+        case.branches_at(8)
             .body()
             .to_literal()
             .assert_eq(&node::LiteralExpr::Str(interner["empty list"]));
 
         // Test record patterns
-        case.branches_at(10)
+        case.branches_at(9)
             .pat()
             .to_record()
             .has_fields_count(2)
             .fields_at(0)
             .field()
             .has_name("name");
-        case.branches_at(10)
+        case.branches_at(9)
             .pat()
             .to_record()
             .fields_at(0)
             .has_none_pat();
-        case.branches_at(10)
+        case.branches_at(9)
             .pat()
             .to_record()
             .fields_at(1)
             .field()
             .has_name("age");
-        case.branches_at(10)
+        case.branches_at(9)
             .pat()
             .to_record()
             .fields_at(1)
@@ -1601,45 +1592,45 @@ mod tests {
             .to_bind()
             .inner()
             .has_name("years");
-        assert!(case.branches_at(10).pat().to_record().get().polymorph);
-        case.branches_at(10)
+        assert!(case.branches_at(9).pat().to_record().get().polymorph);
+        case.branches_at(9)
             .body()
             .to_literal()
             .assert_eq(&node::LiteralExpr::Str(interner["record with spread"]));
 
-        case.branches_at(11)
+        case.branches_at(10)
             .pat()
             .to_record()
             .has_fields_count(2)
             .fields_at(0)
             .field()
             .has_name("x");
-        case.branches_at(11)
+        case.branches_at(10)
             .pat()
             .to_record()
             .fields_at(1)
             .field()
             .has_name("y");
-        case.branches_at(11)
+        case.branches_at(10)
             .body()
             .to_literal()
             .assert_eq(&node::LiteralExpr::Str(interner["simple record"]));
 
-        case.branches_at(12).pat().to_record().has_fields_count(0);
-        case.branches_at(12)
+        case.branches_at(11).pat().to_record().has_fields_count(0);
+        case.branches_at(11)
             .body()
             .to_literal()
             .assert_eq(&node::LiteralExpr::Str(interner["empty record"]));
 
         // Test variant patterns
-        case.branches_at(13)
+        case.branches_at(12)
             .pat()
             .to_variant()
             .has_inner_count(1)
             .inner_at(0)
             .tag()
             .has_name("Some");
-        case.branches_at(13)
+        case.branches_at(12)
             .pat()
             .to_variant()
             .inner_at(0)
@@ -1647,36 +1638,36 @@ mod tests {
             .to_bind()
             .inner()
             .has_name("value");
-        case.branches_at(13)
+        case.branches_at(12)
             .body()
             .to_literal()
             .assert_eq(&node::LiteralExpr::Str(interner["variant some"]));
 
-        case.branches_at(14)
+        case.branches_at(13)
             .pat()
             .to_variant()
             .has_inner_count(1)
             .inner_at(0)
             .tag()
             .has_name("None");
-        case.branches_at(14)
+        case.branches_at(13)
             .pat()
             .to_variant()
             .inner_at(0)
             .has_none_pat();
-        case.branches_at(14)
+        case.branches_at(13)
             .body()
             .to_literal()
             .assert_eq(&node::LiteralExpr::Str(interner["variant none"]));
 
-        case.branches_at(15)
+        case.branches_at(14)
             .pat()
             .to_variant()
             .has_inner_count(2)
             .inner_at(0)
             .tag()
             .has_name("Ok");
-        case.branches_at(15)
+        case.branches_at(14)
             .pat()
             .to_variant()
             .inner_at(0)
@@ -1684,13 +1675,13 @@ mod tests {
             .to_bind()
             .inner()
             .has_name("result");
-        case.branches_at(15)
+        case.branches_at(14)
             .pat()
             .to_variant()
             .inner_at(1)
             .tag()
             .has_name("Err");
-        case.branches_at(15)
+        case.branches_at(14)
             .pat()
             .to_variant()
             .inner_at(1)
@@ -1698,7 +1689,7 @@ mod tests {
             .to_bind()
             .inner()
             .has_name("error");
-        case.branches_at(15)
+        case.branches_at(14)
             .body()
             .to_literal()
             .assert_eq(&node::LiteralExpr::Str(interner["multiple variants"]));
@@ -2154,5 +2145,38 @@ mod tests {
             .value()
             .to_literal()
             .assert_eq(&node::LiteralExpr::Num(10.0));
+    }
+
+    #[test]
+    fn comments_are_transparent_to_parser() {
+        let mut interner = StrInterner::new();
+
+        let ParseResult { node, builder, .. } = try_parse_str_with(
+            r#"{
+                # A regular comment
+                x = 10,
+                ## A doc comment
+                y = 20
+            }"#,
+            module_parser(),
+            &mut interner,
+        );
+
+        let inspector = NodeInspector::new(node, &builder, &interner);
+        inspector.has_inner_count(2);
+        inspector.inner_at(0).to_value().name().has_name("x");
+        inspector
+            .inner_at(0)
+            .to_value()
+            .value()
+            .to_literal()
+            .assert_eq(&node::LiteralExpr::Num(10.0));
+        inspector.inner_at(1).to_value().name().has_name("y");
+        inspector
+            .inner_at(1)
+            .to_value()
+            .value()
+            .to_literal()
+            .assert_eq(&node::LiteralExpr::Num(20.0));
     }
 }

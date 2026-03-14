@@ -86,7 +86,7 @@ pub fn literal<'t>() -> impl KolaParser<'t, LiteralT<'t>> + Clone {
 }
 
 pub fn symbol<'t>(st: Symbol) -> impl KolaParser<'t, StrKey> + Clone {
-    select! { Token::Symbol(s) => s }.map_with(move |s, e| {
+    select! { Token::LowerSymbol(s) | Token::UpperSymbol(s) => s }.map_with(move |s, e| {
         let span = e.span();
         let state: &mut State = e.state();
 
@@ -96,7 +96,7 @@ pub fn symbol<'t>(st: Symbol) -> impl KolaParser<'t, StrKey> + Clone {
 }
 
 pub fn lower_symbol<'t>(st: Symbol) -> impl KolaParser<'t, StrKey> + Clone {
-    select! { Token::Symbol(s) if s.starts_with(char::is_lowercase) => s }.map_with(move |s, e| {
+    select! { Token::LowerSymbol(s) => s }.map_with(move |s, e| {
         let span = e.span();
         let state: &mut State = e.state();
 
@@ -106,7 +106,7 @@ pub fn lower_symbol<'t>(st: Symbol) -> impl KolaParser<'t, StrKey> + Clone {
 }
 
 pub fn upper_symbol<'t>(st: Symbol) -> impl KolaParser<'t, StrKey> + Clone {
-    select! { Token::Symbol(s) if s.starts_with(char::is_uppercase) => s }.map_with(move |s, e| {
+    select! { Token::UpperSymbol(s) => s }.map_with(move |s, e| {
         let span = e.span();
         let state: &mut State = e.state();
 

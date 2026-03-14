@@ -1,72 +1,8 @@
-use chumsky::{input::StrInput, prelude::*};
+use unscanny::Scanner;
 
-use kola_span::{Diagnostic, Loc, Report, SourceId};
+use kola_span::{Diagnostic, Loc, Report, SourceId, Span};
 
-use crate::token::{LiteralT, Token, Tokens};
-
-pub type Error<'t> = Rich<'t, char, Loc>;
-pub type Extra<'t> = extra::Err<Error<'t>>;
-
-// pub struct LexerInput<'t> {
-//     pub key: PathKey,
-//     pub cache: &'t SourceCache,
-// }
-
-// impl<'t> Input<'t> for LexerInput<'t> {
-//     type Span = Loc;
-//     type Token = char;
-//     type MaybeToken = char;
-//     type Cursor = usize;
-//     type Cache = (&'t str, PathKey);
-
-//     fn begin(self) -> (Self::Cursor, Self::Cache) {
-//         let Self { key, cache } = self;
-//         (0, (cache[key].text(), key))
-//     }
-
-//     fn cursor_location(cursor: &Self::Cursor) -> usize {
-//         *cursor
-//     }
-
-//     unsafe fn next_maybe(
-//         cache: &mut Self::Cache,
-//         cursor: &mut Self::Cursor,
-//     ) -> Option<Self::MaybeToken> {
-//         unsafe { <&'t str as Input>::next_maybe(&mut cache.0, cursor) }
-//     }
-
-//     unsafe fn span(cache: &mut Self::Cache, range: Range<&Self::Cursor>) -> Self::Span {
-//         Loc::from_range(cache.1, *range.start..*range.end)
-//     }
-// }
-
-// impl<'t> ValueInput<'t> for LexerInput<'t> {
-//     unsafe fn next(cache: &mut Self::Cache, cursor: &mut Self::Cursor) -> Option<Self::Token> {
-//         unsafe { Self::next_maybe(cache, cursor) }
-//     }
-// }
-
-// impl<'t> ExactSizeInput<'t> for LexerInput<'t> {
-//     unsafe fn span_from(cache: &mut Self::Cache, range: RangeFrom<&Self::Cursor>) -> Self::Span {
-//         Loc::from_range(cache.1, *range.start..cache.0.len())
-//     }
-// }
-
-// impl<'t> SliceInput<'t> for LexerInput<'t> {
-//     type Slice = &'t str;
-
-//     fn full_slice(cache: &mut Self::Cache) -> Self::Slice {
-//         cache.0
-//     }
-
-//     unsafe fn slice(cache: &mut Self::Cache, range: Range<&Self::Cursor>) -> Self::Slice {
-//         unsafe { <&'t str as SliceInput>::slice(&mut cache.0, range) }
-//     }
-
-//     unsafe fn slice_from(cache: &mut Self::Cache, from: RangeFrom<&Self::Cursor>) -> Self::Slice {
-//         unsafe { <&'t str as SliceInput>::slice_from(&mut cache.0, from) }
-//     }
-// }
+use crate::token::{CommentT, LiteralT, Token, Tokens};
 
 pub struct LexInput<'t> {
     pub source: SourceId,
@@ -82,22 +18,33 @@ impl<'t> LexInput<'t> {
 pub fn tokenize<'t>(input: LexInput<'t>, report: &mut Report) -> Option<Tokens<'t>> {
     let LexInput { source, text } = input;
 
-    let input = text.with_context::<Loc>(source);
+    let mut tokens = Vec::new();
+    let mut errors = Vec::new();
 
-    let lexer = lexer();
-    let (tokens, errors) = lexer.parse(input).into_output_errors();
-    report.extend_diagnostics(errors.into_iter().map(Diagnostic::from));
+    lex(source, text, &mut tokens, &mut errors);
 
-    tokens
+    report.extend_diagnostics(errors);
+
+    if tokens.is_empty() && !report.is_empty() {
+        None
+    } else {
+        Some(tokens)
+    }
 }
 
-pub fn try_tokenize(input: LexInput<'_>) -> Result<Tokens<'_>, Vec<Error<'_>>> {
+pub fn try_tokenize(input: LexInput<'_>) -> Result<Tokens<'_>, Vec<Diagnostic>> {
     let LexInput { source, text } = input;
 
-    let input = text.with_context::<Loc>(source);
+    let mut tokens = Vec::new();
+    let mut errors = Vec::new();
 
-    let lexer = lexer();
-    lexer.parse(input).into_result()
+    lex(source, text, &mut tokens, &mut errors);
+
+    if errors.is_empty() {
+        Ok(tokens)
+    } else {
+        Err(errors)
+    }
 }
 
 /*
@@ -122,148 +69,289 @@ pub fn try_tokenize(input: LexInput<'_>) -> Result<Tokens<'_>, Vec<Error<'_>>> {
  * unexpected runtime behavior or parse failures!
  */
 
-pub fn lexer<'t, I>() -> impl Parser<'t, I, Tokens<'t>, Extra<'t>>
-where
-    I: StrInput<'t, Token = char, Slice = &'t str, Span = Loc>,
-{
-    // Define a common escape sequence parser
-    let escape = just('\\').ignore_then(
-        just('\\')
-            .or(just('/'))
-            .or(just('"'))
-            .or(just('\''))
-            .or(just('b').to('\x08'))
-            .or(just('f').to('\x0C'))
-            .or(just('n').to('\n'))
-            .or(just('r').to('\r'))
-            .or(just('t').to('\t')),
-    );
+fn lex<'t>(source: SourceId, text: &'t str, tokens: &mut Tokens<'t>, errors: &mut Vec<Diagnostic>) {
+    let mut s = Scanner::new(text);
 
-    // Combined literal parser
-    let literal = choice((
-        // Number literals
-        text::int(10)
-            .then(just('.').then(text::digits(10)).or_not())
-            .to_slice()
-            .from_str()
-            .unwrapped()
-            .map(LiteralT::Num),
-        // String literals
-        just('"')
-            .ignore_then(
-                any()
-                    .filter(|c| *c != '\\' && *c != '"')
-                    .or(escape)
-                    .repeated()
-                    .to_slice(),
-            )
-            .then_ignore(just('"'))
-            .map(LiteralT::Str),
+    while !s.done() {
+        s.eat_whitespace();
+        if s.done() {
+            break;
+        }
+
+        let start = s.cursor();
+
+        match s.peek() {
+            Some('#') => lex_comment(&mut s, source, tokens),
+            Some('"') => lex_string(&mut s, source, text, tokens, errors),
+            Some(c) if c.is_ascii_digit() => lex_number(&mut s, source, text, tokens),
+            Some(c) if is_ident_start(c) => lex_word(&mut s, source, text, tokens),
+            Some(_) => lex_punct(&mut s, source, tokens, errors),
+            None => break,
+        }
+
+        // Safety valve: if we didn't advance, skip one character to avoid infinite loops
+        if s.cursor() == start {
+            let c = s.eat().unwrap();
+            let loc = Loc::new(source, Span::new(start, s.cursor()));
+            errors.push(Diagnostic::error(
+                loc,
+                format!("unexpected character '{c}'"),
+            ));
+        }
+    }
+}
+
+fn lex_comment<'t>(s: &mut Scanner<'t>, source: SourceId, tokens: &mut Tokens<'t>) {
+    let start = s.cursor();
+
+    // Eat the first '#'
+    s.eat();
+
+    // Check for doc comment (#|)
+    let is_doc = s.eat_if('|');
+
+    // Eat until end of line
+    s.eat_until('\n');
+    let end = s.cursor();
+
+    // The content starts after '#' or '#|'
+    let content_start = if is_doc { start + 2 } else { start + 1 };
+    let content = &s.string()[content_start..end];
+
+    let loc = Loc::new(source, Span::new(start, end));
+    let comment = if is_doc {
+        CommentT::Doc(content)
+    } else {
+        CommentT::Line(content)
+    };
+    tokens.push((Token::Comment(comment), loc));
+}
+
+fn lex_string<'t>(
+    s: &mut Scanner<'t>,
+    source: SourceId,
+    text: &'t str,
+    tokens: &mut Tokens<'t>,
+    errors: &mut Vec<Diagnostic>,
+) {
+    let start = s.cursor();
+
+    // Eat the opening quote
+    s.eat();
+
+    loop {
+        match s.peek() {
+            Some('"') => {
+                s.eat();
+                break;
+            }
+            Some('\\') => {
+                // Skip escape sequence (backslash + next char)
+                s.eat();
+                s.eat();
+            }
+            Some(_) => {
+                s.eat();
+            }
+            None => {
+                let loc = Loc::new(source, Span::new(start, s.cursor()));
+                errors.push(Diagnostic::error(loc, "unterminated string literal"));
+                return;
+            }
+        }
+    }
+
+    let end = s.cursor();
+    // Inner content without quotes
+    let inner = &text[start + 1..end - 1];
+    let loc = Loc::new(source, Span::new(start, end));
+    tokens.push((Token::Literal(LiteralT::Str(inner)), loc));
+}
+
+fn lex_number<'t>(s: &mut Scanner<'t>, source: SourceId, text: &'t str, tokens: &mut Tokens<'t>) {
+    let start = s.cursor();
+
+    s.eat_while(|c: char| c.is_ascii_digit());
+
+    // Check for decimal part
+    if s.peek() == Some('.') {
+        // Only consume the dot if followed by a digit (avoid `42.method`)
+        if s.scout(1).is_some_and(|c| c.is_ascii_digit()) {
+            s.eat(); // the '.'
+            s.eat_while(|c: char| c.is_ascii_digit());
+        }
+    }
+
+    let end = s.cursor();
+    let slice = &text[start..end];
+    let n: f64 = slice.parse().unwrap();
+    let loc = Loc::new(source, Span::new(start, end));
+    tokens.push((Token::Literal(LiteralT::Num(n)), loc));
+}
+
+fn is_ident_start(c: char) -> bool {
+    c.is_ascii_alphabetic() || c == '_'
+}
+
+fn is_ident_continue(c: char) -> bool {
+    c.is_ascii_alphanumeric() || c == '_'
+}
+
+fn lex_word<'t>(s: &mut Scanner<'t>, source: SourceId, text: &'t str, tokens: &mut Tokens<'t>) {
+    let start = s.cursor();
+    s.eat_while(is_ident_continue);
+    let end = s.cursor();
+    let word = &text[start..end];
+    let loc = Loc::new(source, Span::new(start, end));
+
+    let token = match word {
+        // Keywords
+        "None" => Token::Atom("None"),
+        "module" => Token::Atom("module"),
+        "import" => Token::Atom("import"),
+        "export" => Token::Atom("export"),
+        "functor" => Token::Atom("functor"),
+        "effect" => Token::Atom("effect"),
+        "type" => Token::Atom("type"),
+        "forall" => Token::Atom("forall"),
+        "fn" => Token::Atom("fn"),
+        "do" => Token::Atom("do"),
+        "let" => Token::Atom("let"),
+        "in" => Token::Atom("in"),
+        "if" => Token::Atom("if"),
+        "then" => Token::Atom("then"),
+        "else" => Token::Atom("else"),
+        "case" => Token::Atom("case"),
+        "handle" => Token::Atom("handle"),
         // Boolean literals
-        just("true").to(LiteralT::Bool(true)),
-        just("false").to(LiteralT::Bool(false)),
-        just("()").to(LiteralT::Unit),
-    ))
-    .map(Token::Literal)
-    .boxed();
+        "true" => Token::Literal(LiteralT::Bool(true)),
+        "false" => Token::Literal(LiteralT::Bool(false)),
+        // Lone underscore is an atom (wildcard pattern)
+        "_" => Token::Atom("_"),
+        // Identifiers — differentiate upper vs lower by first char
+        _ => {
+            let first = word.chars().next().unwrap();
+            if first.is_ascii_uppercase() {
+                Token::UpperSymbol(word)
+            } else {
+                Token::LowerSymbol(word)
+            }
+        }
+    };
 
-    // Single-character tokens
-    let punct = choice((
-        // Operators
-        just('=').to(Token::Atom("=")),
-        just('+').to(Token::Atom("+")),
-        just('-').to(Token::Atom("-")),
-        just('*').to(Token::Atom("*")),
-        just('/').to(Token::Atom("/")),
-        just('%').to(Token::Atom("%")),
-        just('!').to(Token::Atom("!")),
-        just('&').to(Token::Atom("&")),
-        // Control tokens
-        just('.').to(Token::Atom(".")),
-        just(':').to(Token::Atom(":")),
-        just(',').to(Token::Atom(",")),
-        just('\'').to(Token::Atom("'")),
-        just('~').to(Token::Atom("~")),
-        just('@').to(Token::Atom("@")),
-        just('|').to(Token::Atom("|")),
-        just('\\').to(Token::Atom("\\")),
-        just('_').to(Token::Atom("_")),
-        // Delimiters
-        just('(').to(Token::Atom("(")),
-        just('[').to(Token::Atom("[")),
-        just('{').to(Token::Atom("{")),
-        just(')').to(Token::Atom(")")),
-        just(']').to(Token::Atom("]")),
-        just('}').to(Token::Atom("}")),
-        // Shared
-        just('<').to(Token::Atom("<")),
-        just('>').to(Token::Atom(">")),
-    ))
-    .boxed();
+    tokens.push((token, loc));
+}
 
-    // Two-character tokens
-    let joint = choice((
-        just("...").to(Token::Atom("...")),
-        just("+=").to(Token::Atom("+=")),
-        just("-=").to(Token::Atom("-=")),
-        just("*=").to(Token::Atom("*=")),
-        just("/=").to(Token::Atom("/=")),
-        just("%=").to(Token::Atom("%=")),
-        just("<=").to(Token::Atom("<=")),
-        just(">=").to(Token::Atom(">=")),
-        just("==").to(Token::Atom("==")),
-        just("!=").to(Token::Atom("!=")),
-        just("->").to(Token::Atom("->")),
-        just("=>").to(Token::Atom("=>")),
-        just("::").to(Token::Atom("::")),
-        just("|>").to(Token::Atom("|>")),
-        just("<|").to(Token::Atom("<|")),
-        just("&&").to(Token::Atom("&&")),
-        just("||").to(Token::Atom("||")),
-        just("++").to(Token::Atom("++")),
-    ))
-    .boxed();
+fn lex_punct<'t>(
+    s: &mut Scanner<'t>,
+    source: SourceId,
+    tokens: &mut Tokens<'t>,
+    errors: &mut Vec<Diagnostic>,
+) {
+    let start = s.cursor();
+    let c = s.eat().unwrap();
 
-    // Combined word and symbol handling
-    let ident = text::ident()
-        .map(|s| match s {
-            "None" => Token::Atom("None"),
-            // Type and module keywords
-            "module" => Token::Atom("module"),
-            "import" => Token::Atom("import"),
-            "export" => Token::Atom("export"),
-            "effect" => Token::Atom("effect"),
-            "functor" => Token::Atom("functor"),
-            "type" => Token::Atom("type"),
-            "forall" => Token::Atom("forall"),
-            // Expression keywords
-            "fn" => Token::Atom("fn"),
-            "do" => Token::Atom("do"),
-            "let" => Token::Atom("let"),
-            "in" => Token::Atom("in"),
-            "if" => Token::Atom("if"),
-            "then" => Token::Atom("then"),
-            "else" => Token::Atom("else"),
-            "case" => Token::Atom("case"),
-            "handle" => Token::Atom("handle"),
-            // If not a keyword, treat as a symbol
-            _ => Token::Symbol(s),
-        })
-        .boxed();
+    // Try to extend into multi-character tokens
+    let atom: Option<&'static str> = match c {
+        '(' => {
+            // Check for unit literal "()"
+            if s.eat_if(')') {
+                let loc = Loc::new(source, Span::new(start, s.cursor()));
+                tokens.push((Token::Literal(LiteralT::Unit), loc));
+                return;
+            }
+            Some("(")
+        }
+        ')' => Some(")"),
+        '[' => Some("["),
+        ']' => Some("]"),
+        '{' => Some("{"),
+        '}' => Some("}"),
+        ',' => Some(","),
+        '\'' => Some("'"),
+        '~' => Some("~"),
+        '@' => Some("@"),
+        '\\' => Some("\\"),
+        '_' => Some("_"),
 
-    let token = choice((literal, joint, punct, ident)).boxed();
+        '+' => Some(if s.eat_if('=') {
+            "+="
+        } else if s.eat_if('+') {
+            "++"
+        } else {
+            "+"
+        }),
 
-    let comment = just('#')
-        .then(any().and_is(just('\n').not()).repeated())
-        .padded();
+        '-' => Some(if s.eat_if('=') {
+            "-="
+        } else if s.eat_if('>') {
+            "->"
+        } else {
+            "-"
+        }),
 
-    token
-        .map_with(|t, e| (t, e.span()))
-        .padded_by(comment.repeated())
-        .padded() // If we encounter an error, skip and attempt to lex the next character as a token instead
-        .recover_with(skip_then_retry_until(any().ignored(), end()))
-        .repeated()
-        .collect()
+        '*' => Some(if s.eat_if('=') { "*=" } else { "*" }),
+        '/' => Some(if s.eat_if('=') { "/=" } else { "/" }),
+        '%' => Some(if s.eat_if('=') { "%=" } else { "%" }),
+
+        '=' => Some(if s.eat_if('=') {
+            "=="
+        } else if s.eat_if('>') {
+            "=>"
+        } else {
+            "="
+        }),
+
+        '!' => Some(if s.eat_if('=') { "!=" } else { "!" }),
+        '&' => Some(if s.eat_if('&') { "&&" } else { "&" }),
+
+        '|' => Some(if s.eat_if('|') {
+            "||"
+        } else if s.eat_if('>') {
+            "|>"
+        } else {
+            "|"
+        }),
+
+        '<' => Some(if s.eat_if('=') {
+            "<="
+        } else if s.eat_if('|') {
+            "<|"
+        } else {
+            "<"
+        }),
+
+        '>' => Some(if s.eat_if('=') { ">=" } else { ">" }),
+
+        ':' => Some(if s.eat_if(':') { "::" } else { ":" }),
+
+        '.' => Some(if s.eat_if('.') {
+            if s.eat_if('.') {
+                "..."
+            } else {
+                // Two dots is not a valid token — emit the first dot,
+                // let the second dot be picked up next iteration
+                s.jump(start + 1);
+                "."
+            }
+        } else {
+            "."
+        }),
+
+        _ => {
+            let loc = Loc::new(source, Span::new(start, s.cursor()));
+            errors.push(Diagnostic::error(
+                loc,
+                format!("unexpected character '{c}'"),
+            ));
+            None
+        }
+    };
+
+    if let Some(atom) = atom {
+        let loc = Loc::new(source, Span::new(start, s.cursor()));
+        tokens.push((Token::Atom(atom), loc));
+    }
 }
 
 #[cfg(test)]
@@ -275,7 +363,7 @@ mod test {
     use super::tokenize;
     use crate::{
         lexer::LexInput,
-        token::{LiteralT, Token},
+        token::{CommentT, LiteralT, Token},
     };
 
     fn tokenize_str(text: &str) -> Vec<Located<Token<'_>>> {
@@ -306,29 +394,57 @@ mod test {
     #[test]
     fn test_comments() {
         let tokens = tokenize_str("# This is a comment\n# And another one");
-        assert!(tokens.is_empty());
+        assert_eq!(tokens.len(), 2);
+        assert_eq!(
+            tokens[0].0,
+            Token::Comment(CommentT::Line(" This is a comment"))
+        );
+        assert_eq!(
+            tokens[1].0,
+            Token::Comment(CommentT::Line(" And another one"))
+        );
 
         let tokens = tokenize_str("# Comment\nlet");
-        assert_eq!(tokens.len(), 1);
-        assert_eq!(tokens[0].0, Token::Atom("let"));
+        assert_eq!(tokens.len(), 2);
+        assert_eq!(tokens[0].0, Token::Comment(CommentT::Line(" Comment")));
+        assert_eq!(tokens[1].0, Token::Atom("let"));
     }
 
     #[test]
-    fn test_symbols() {
+    fn test_doc_comments() {
+        let tokens = tokenize_str("#| This is a doc comment");
+        assert_eq!(tokens.len(), 1);
+        assert_eq!(
+            tokens[0].0,
+            Token::Comment(CommentT::Doc(" This is a doc comment"))
+        );
+    }
+
+    #[test]
+    fn test_lower_symbols() {
         let tokens = tokenize_str("x y z abc_123 camelCase snake_case");
         assert_eq!(tokens.len(), 6);
-        assert_eq!(tokens[0].0, Token::Symbol("x"));
-        assert_eq!(tokens[1].0, Token::Symbol("y"));
-        assert_eq!(tokens[2].0, Token::Symbol("z"));
-        assert_eq!(tokens[3].0, Token::Symbol("abc_123"));
-        assert_eq!(tokens[4].0, Token::Symbol("camelCase"));
-        assert_eq!(tokens[5].0, Token::Symbol("snake_case"));
+        assert_eq!(tokens[0].0, Token::LowerSymbol("x"));
+        assert_eq!(tokens[1].0, Token::LowerSymbol("y"));
+        assert_eq!(tokens[2].0, Token::LowerSymbol("z"));
+        assert_eq!(tokens[3].0, Token::LowerSymbol("abc_123"));
+        assert_eq!(tokens[4].0, Token::LowerSymbol("camelCase"));
+        assert_eq!(tokens[5].0, Token::LowerSymbol("snake_case"));
+    }
+
+    #[test]
+    fn test_upper_symbols() {
+        let tokens = tokenize_str("Option Some Empty MyType");
+        assert_eq!(tokens.len(), 4);
+        assert_eq!(tokens[0].0, Token::UpperSymbol("Option"));
+        assert_eq!(tokens[1].0, Token::UpperSymbol("Some"));
+        assert_eq!(tokens[2].0, Token::UpperSymbol("Empty"));
+        assert_eq!(tokens[3].0, Token::UpperSymbol("MyType"));
     }
 
     #[test]
     fn test_keywords() {
-        let input =
-            "module import export functor type forall fn let in if then else case of and or xor";
+        let input = "module import export functor type forall fn let in if then else case handle effect do None";
         let tokens = tokenize_str(input);
         assert_eq!(tokens.len(), 17);
         assert_eq!(tokens[0].0, Token::Atom("module"));
@@ -344,9 +460,20 @@ mod test {
         assert_eq!(tokens[10].0, Token::Atom("then"));
         assert_eq!(tokens[11].0, Token::Atom("else"));
         assert_eq!(tokens[12].0, Token::Atom("case"));
-        assert_eq!(tokens[14].0, Token::Atom("and"));
-        assert_eq!(tokens[15].0, Token::Atom("or"));
-        assert_eq!(tokens[16].0, Token::Atom("xor"));
+        assert_eq!(tokens[13].0, Token::Atom("handle"));
+        assert_eq!(tokens[14].0, Token::Atom("effect"));
+        assert_eq!(tokens[15].0, Token::Atom("do"));
+        assert_eq!(tokens[16].0, Token::Atom("None"));
+    }
+
+    #[test]
+    fn test_keyword_prefixed_idents() {
+        let tokens = tokenize_str("letter inform donut types");
+        assert_eq!(tokens.len(), 4);
+        assert_eq!(tokens[0].0, Token::LowerSymbol("letter"));
+        assert_eq!(tokens[1].0, Token::LowerSymbol("inform"));
+        assert_eq!(tokens[2].0, Token::LowerSymbol("donut"));
+        assert_eq!(tokens[3].0, Token::LowerSymbol("types"));
     }
 
     #[test]
@@ -375,6 +502,13 @@ mod test {
         assert_eq!(tokens[1].0, Token::Literal(LiteralT::Str("world")));
         assert_eq!(tokens[2].0, Token::Literal(LiteralT::Str("\\\"quoted\\\"")));
         assert_eq!(tokens[3].0, Token::Literal(LiteralT::Str("\\n\\t")));
+    }
+
+    #[test]
+    fn test_unit_literal() {
+        let tokens = tokenize_str("()");
+        assert_eq!(tokens.len(), 1);
+        assert_eq!(tokens[0].0, Token::Literal(LiteralT::Unit));
     }
 
     #[test]
@@ -414,8 +548,8 @@ mod test {
 
     #[test]
     fn test_two_char_operators() {
-        let tokens = tokenize_str("+= -= *= /= %= <= >= == != -> => ::");
-        assert_eq!(tokens.len(), 12);
+        let tokens = tokenize_str("+= -= *= /= %= <= >= == != -> => :: |> <| && || ++");
+        assert_eq!(tokens.len(), 17);
         assert_eq!(tokens[0].0, Token::Atom("+="));
         assert_eq!(tokens[1].0, Token::Atom("-="));
         assert_eq!(tokens[2].0, Token::Atom("*="));
@@ -428,6 +562,18 @@ mod test {
         assert_eq!(tokens[9].0, Token::Atom("->"));
         assert_eq!(tokens[10].0, Token::Atom("=>"));
         assert_eq!(tokens[11].0, Token::Atom("::"));
+        assert_eq!(tokens[12].0, Token::Atom("|>"));
+        assert_eq!(tokens[13].0, Token::Atom("<|"));
+        assert_eq!(tokens[14].0, Token::Atom("&&"));
+        assert_eq!(tokens[15].0, Token::Atom("||"));
+        assert_eq!(tokens[16].0, Token::Atom("++"));
+    }
+
+    #[test]
+    fn test_triple_dot() {
+        let tokens = tokenize_str("...");
+        assert_eq!(tokens.len(), 1);
+        assert_eq!(tokens[0].0, Token::Atom("..."));
     }
 
     #[test]
@@ -436,11 +582,11 @@ mod test {
         let tokens = tokenize_str(input);
         assert_eq!(tokens.len(), 8);
         assert_eq!(tokens[0].0, Token::Atom("let"));
-        assert_eq!(tokens[1].0, Token::Symbol("x"));
+        assert_eq!(tokens[1].0, Token::LowerSymbol("x"));
         assert_eq!(tokens[2].0, Token::Atom("="));
         assert_eq!(tokens[3].0, Token::Literal(LiteralT::Num(42.0)));
         assert_eq!(tokens[4].0, Token::Atom("in"));
-        assert_eq!(tokens[5].0, Token::Symbol("x"));
+        assert_eq!(tokens[5].0, Token::LowerSymbol("x"));
         assert_eq!(tokens[6].0, Token::Atom("+"));
         assert_eq!(tokens[7].0, Token::Literal(LiteralT::Num(10.0)));
 
@@ -448,9 +594,9 @@ mod test {
         let tokens = tokenize_str(input);
         assert_eq!(tokens.len(), 6);
         assert_eq!(tokens[0].0, Token::Atom("fn"));
-        assert_eq!(tokens[1].0, Token::Symbol("x"));
+        assert_eq!(tokens[1].0, Token::LowerSymbol("x"));
         assert_eq!(tokens[2].0, Token::Atom("=>"));
-        assert_eq!(tokens[3].0, Token::Symbol("x"));
+        assert_eq!(tokens[3].0, Token::LowerSymbol("x"));
         assert_eq!(tokens[4].0, Token::Atom("*"));
         assert_eq!(tokens[5].0, Token::Literal(LiteralT::Num(2.0)));
 
@@ -458,9 +604,9 @@ mod test {
         let tokens = tokenize_str(input);
         assert_eq!(tokens.len(), 8);
         assert_eq!(tokens[0].0, Token::Atom("if"));
-        assert_eq!(tokens[1].0, Token::Symbol("a"));
+        assert_eq!(tokens[1].0, Token::LowerSymbol("a"));
         assert_eq!(tokens[2].0, Token::Atom("=="));
-        assert_eq!(tokens[3].0, Token::Symbol("b"));
+        assert_eq!(tokens[3].0, Token::LowerSymbol("b"));
         assert_eq!(tokens[4].0, Token::Atom("then"));
         assert_eq!(tokens[5].0, Token::Literal(LiteralT::Str("equal")));
         assert_eq!(tokens[6].0, Token::Atom("else"));
@@ -473,27 +619,27 @@ mod test {
         let tokens = tokenize_str(input);
         assert_eq!(tokens.len(), 6);
         assert_eq!(tokens[0].0, Token::Atom("forall"));
-        assert_eq!(tokens[1].0, Token::Symbol("a"));
+        assert_eq!(tokens[1].0, Token::LowerSymbol("a"));
         assert_eq!(tokens[2].0, Token::Atom("."));
-        assert_eq!(tokens[3].0, Token::Symbol("a"));
+        assert_eq!(tokens[3].0, Token::LowerSymbol("a"));
         assert_eq!(tokens[4].0, Token::Atom("->"));
-        assert_eq!(tokens[5].0, Token::Symbol("a"));
+        assert_eq!(tokens[5].0, Token::LowerSymbol("a"));
 
         let input = "type Option = forall a . < Some: a, Empty >";
         let tokens = tokenize_str(input);
         assert_eq!(tokens.len(), 13);
         assert_eq!(tokens[0].0, Token::Atom("type"));
-        assert_eq!(tokens[1].0, Token::Symbol("Option"));
+        assert_eq!(tokens[1].0, Token::UpperSymbol("Option"));
         assert_eq!(tokens[2].0, Token::Atom("="));
         assert_eq!(tokens[3].0, Token::Atom("forall"));
-        assert_eq!(tokens[4].0, Token::Symbol("a"));
+        assert_eq!(tokens[4].0, Token::LowerSymbol("a"));
         assert_eq!(tokens[5].0, Token::Atom("."));
         assert_eq!(tokens[6].0, Token::Atom("<"));
-        assert_eq!(tokens[7].0, Token::Symbol("Some"));
+        assert_eq!(tokens[7].0, Token::UpperSymbol("Some"));
         assert_eq!(tokens[8].0, Token::Atom(":"));
-        assert_eq!(tokens[9].0, Token::Symbol("a"));
+        assert_eq!(tokens[9].0, Token::LowerSymbol("a"));
         assert_eq!(tokens[10].0, Token::Atom(","));
-        assert_eq!(tokens[11].0, Token::Symbol("Empty"));
+        assert_eq!(tokens[11].0, Token::UpperSymbol("Empty"));
         assert_eq!(tokens[12].0, Token::Atom(">"));
     }
 
@@ -505,12 +651,12 @@ mod test {
 
         let input = LexInput {
             source,
-            text: "let x = @ 42",
+            text: "let x = ` 42",
         };
 
         // Invalid tokens should be skipped and lexing should continue
         let tokens = tokenize(input, &mut report);
-        assert!(report.diagnostics.len() == 1); // Should have one error for the @
+        assert!(report.diagnostics.len() == 1);
         assert!(tokens.is_some());
         let tokens = tokens.unwrap();
         assert_eq!(tokens.len(), 4); // let, x, =, 42
@@ -526,39 +672,4 @@ mod test {
         assert_eq!(tokens[2].1.span, Span::new(6, 7)); // "="
         assert_eq!(tokens[3].1.span, Span::new(8, 10)); // "42"
     }
-
-    // #[test]
-    // fn test_mixed_code() {
-    //     let input = r#"
-    //         module Stack = {
-    //             type Stack = forall a . { items: [a] }
-
-    //             # Create a new stack
-    //             let new = { items = [] }
-
-    //             # Push to stack
-    //             let push = fn stack => fn x =>
-    //                 { stack | items = [x, ...stack.items] }
-
-    //             # Pop from stack - returns the value and new stack
-    //             let pop = fn stack =>
-    //                 if stack.items == [] then
-    //                     None
-    //                 else
-    //                     Some({ value = stack.items[0],
-    //                           stack = { stack | items = stack.items[1:] } })
-    //         }
-    //     "#;
-
-    //     let tokens = tokenize_str(input);
-    //     assert!(tokens.len() > 20, "Should have tokenized complex code");
-
-    //     // Spot check a few tokens
-    //     let has_module = tokens.iter().any(|(t, _)| *t == Token::Atom("module"));
-    //     let has_stack = tokens.iter().any(|(t, _)| *t == Token::Symbol("Stack"));
-    //     let has_type = tokens.iter().any(|(t, _)| *t == Token::Atom("type"));
-    //     let has_some = tokens.iter().any(|(t, _)| *t == Token::Symbol("Some"));
-
-    //     assert!(has_module && has_stack && has_type && has_some);
-    // }
 }

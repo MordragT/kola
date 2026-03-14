@@ -19,8 +19,10 @@ impl<'a> Notate<'a> for TokenPrinter<'a> {
 
                 let kind = match token {
                     Token::Atom(_) => "atom".red().display_in(arena),
-                    Token::Symbol(_) => "symbol".blue().display_in(arena),
+                    Token::UpperSymbol(_) => "upper symbol".blue().display_in(arena),
+                    Token::LowerSymbol(_) => "lower symbol".cyan().display_in(arena),
                     Token::Literal(_) => "literal".green().display_in(arena),
+                    Token::Comment(_) => "comment".yellow().display_in(arena),
                 };
                 let span = span.display_in(arena);
 
@@ -75,6 +77,12 @@ pub enum LiteralT<'t> {
     Str(&'t str),
 }
 
+#[derive(Debug, Display, Clone, Copy, PartialEq)]
+pub enum CommentT<'t> {
+    Line(&'t str),
+    Doc(&'t str),
+}
+
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct TokenCache<'t> {
     cache: HashMap<SourceId, Tokens<'t>>,
@@ -114,9 +122,13 @@ pub enum Token<'t> {
     #[display("{_0}")]
     Atom(&'static str),
     #[display("{_0}")]
-    Symbol(&'t str),
+    UpperSymbol(&'t str),
+    #[display("{_0}")]
+    LowerSymbol(&'t str),
     #[display("{_0}")]
     Literal(LiteralT<'t>),
+    #[display("{_0}")]
+    Comment(CommentT<'t>),
 }
 
 #[derive(Clone, Copy, Debug, PartialEq)]

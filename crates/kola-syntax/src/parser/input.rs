@@ -13,6 +13,14 @@ pub struct ParseInput<'t> {
 
 impl<'t> ParseInput<'t> {
     pub fn new(source: SourceId, tokens: Tokens<'t>, len: usize) -> Self {
+        // TODO: Once doc comments are integrated into the AST, stop filtering
+        // CommentT::Doc here and instead handle them in the parser rules so
+        // they can be attached to declarations (let, type, module, etc.).
+        let tokens = tokens
+            .into_iter()
+            .filter(|(tok, _)| !matches!(tok, Token::Comment(_)))
+            .collect();
+
         Self {
             source,
             tokens,
