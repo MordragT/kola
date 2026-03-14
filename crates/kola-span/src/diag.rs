@@ -334,7 +334,7 @@ impl Diagnostic {
     /// # Arguments
     /// * `label` - The trace label
     /// * `loc` - The source location associated with the trace
-    pub fn set_trace_element(&mut self, label: impl Into<String>, loc: Loc) -> &mut Self {
+    pub fn add_trace_element(&mut self, label: impl Into<String>, loc: Loc) -> &mut Self {
         self.trace.push((label.into(), loc));
         self
     }
@@ -354,6 +354,24 @@ impl Diagnostic {
     /// * `notes` - Collection of notes to set
     pub fn set_notes(&mut self, notes: impl IntoIterator<Item = String>) -> &mut Self {
         self.notes = notes.into_iter().collect();
+        self
+    }
+
+    /// Adds a single note to the diagnostic and returns self for method chaining.
+    ///
+    /// # Arguments
+    /// * `note` - The note to add
+    pub fn with_note(mut self, note: impl Into<String>) -> Self {
+        self.notes.push(note.into());
+        self
+    }
+
+    /// Adds a single note to the diagnostic and returns a mutable reference for further modification.
+    ///
+    /// # Arguments
+    /// * `note` - The note to add
+    pub fn add_note(&mut self, note: impl Into<String>) -> &mut Self {
+        self.notes.push(note.into());
         self
     }
 

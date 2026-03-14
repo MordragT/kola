@@ -150,12 +150,13 @@ pub const trait Combinator<I: Input, O>: Sized + Parser<I, O> {
         }
     }
 
-    // fn context(self, message: &'static str) -> Context<Self> {
-    //     Context {
-    //         parser: self,
-    //         message,
-    //     }
-    // }
+    fn with_help(self, help: &'static str) -> WithHelp<Self> {
+        WithHelp { parser: self, help }
+    }
+
+    fn with_note(self, note: &'static str) -> WithNote<Self> {
+        WithNote { parser: self, note }
+    }
 }
 
 impl<I, O, P> const Combinator<I, O> for P
@@ -468,27 +469,41 @@ where
     }
 }
 
-// pub struct Context<P> {
-//     parser: P,
-//     message: &'static str,
-// }
+pub struct WithHelp<P> {
+    parser: P,
+    help: &'static str,
+}
 
-// impl<I, O, P> Parser<I, O> for Context<P>
-// where
-//     I: Input,
-//     P: Parser<I, O>,
-// {
-//     #[inline]
-//     fn parse(&self, input: &mut I, report: &mut Report) -> Result<O, Diagnostic> {
-//         self.parser.parse(input, report).map_err(|mut e| {
-//             // TODO this isn't really right I want context information probably in all errors
-//             // so maybe use diagnostics.notes ?? but then maybe I can add multiple helpers here
-//             // to help create better Diagnostics
-//             e.insert(0, Diagnostic::error(input.loc(), self.message.to_owned()));
-//             e
-//         })
-//     }
-// }
+impl<I, O, P> Parser<I, O> for WithHelp<P>
+where
+    I: Input,
+    P: Parser<I, O>,
+{
+    #[inline]
+    fn parse(&self, input: &mut I, report: &mut Report) -> Result<O, Diagnostic> {
+        self.parser
+            .parse(input, report)
+            .map_err(|e| e.with_help(self.help))
+    }
+}
+
+pub struct WithNote<P> {
+    parser: P,
+    note: &'static str,
+}
+
+impl<I, O, P> Parser<I, O> for WithNote<P>
+where
+    I: Input,
+    P: Parser<I, O>,
+{
+    #[inline]
+    fn parse(&self, input: &mut I, report: &mut Report) -> Result<O, Diagnostic> {
+        self.parser
+            .parse(input, report)
+            .map_err(|e| e.with_note(self.note))
+    }
+}
 
 pub const trait IterCombinator<I: Input, O>: IterParser<I, O> {
     fn collect<C>(self) -> Collect<Self, O, C> {

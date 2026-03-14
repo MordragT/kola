@@ -74,12 +74,12 @@ macro_rules! impl_choice_tuple {
                 let mut error = $crate::Diagnostic::error(input.loc(), "Error in choice combinator");
                 match $Head.parse(input, report) {
                     Ok(o) => return Ok(o),
-                    Err(e) => { input.reset(checkpoint); error.set_trace_element(e.message, e.loc); }
+                    Err(e) => { input.reset(checkpoint); error.add_trace_element(e.message, e.loc); }
                 }
                 $(
                     match $X.parse(input, report) {
                         Ok(o) => return Ok(o),
-                        Err(e) => { input.reset(checkpoint);  error.set_trace_element(e.message, e.loc); }
+                        Err(e) => { input.reset(checkpoint);  error.add_trace_element(e.message, e.loc); }
                     }
                 )*
                 Err(error)
