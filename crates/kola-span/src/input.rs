@@ -36,12 +36,82 @@ pub trait Input {
     fn reset(&mut self, checkpoint: usize);
 
     /// Get the location of the current token.
+    #[inline]
     fn loc(&self) -> Loc {
         Loc::new(self.source_id(), self.span())
     }
 
     /// Get the location of the previous token.
+    #[inline]
     fn prev_loc(&self) -> Loc {
         Loc::new(self.source_id(), self.prev_span())
+    }
+}
+
+pub struct SimpleInput<T, S> {
+    pub source_id: SourceId,
+    pub tokens: Vec<(T, Span)>,
+    pub cursor: usize,
+    pub state: S,
+}
+
+impl<T, S> Input for SimpleInput<T, S>
+where
+    T: Clone + fmt::Debug + PartialEq,
+{
+    type Token = T;
+    type State = S;
+
+    #[inline]
+    fn source_id(&self) -> SourceId {
+        self.source_id
+    }
+
+    #[inline]
+    fn state(&mut self) -> &mut Self::State {
+        &mut self.state
+    }
+
+    #[inline]
+    fn peek(&self) -> Option<Self::Token> {
+        self.tokens.get(self.cursor).map(|(t, _)| t.clone())
+    }
+
+    #[inline]
+    fn advance(&mut self) -> Option<Self::Token> {
+        let token = self.peek()?;
+        self.cursor += 1;
+        Some(token)
+    }
+
+    #[inline]
+    fn is_empty(&self) -> bool {
+        self.cursor >= self.tokens.len()
+    }
+
+    #[inline]
+    fn span(&self) -> Span {
+        self.tokens
+            .get(self.cursor)
+            .map(|(_, span)| *span)
+            .unwrap_or_else(|| Span::new(0, 0))
+    }
+
+    #[inline]
+    fn prev_span(&self) -> Span {
+        self.tokens
+            .get(self.cursor - 1)
+            .map(|(_, span)| *span)
+            .unwrap_or_else(|| Span::new(0, 0))
+    }
+
+    #[inline]
+    fn checkpoint(&self) -> usize {
+        self.cursor
+    }
+
+    #[inline]
+    fn reset(&mut self, checkpoint: usize) {
+        self.cursor = checkpoint;
     }
 }
