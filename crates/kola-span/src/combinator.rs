@@ -981,9 +981,10 @@ where
         input: &mut I,
         report: &mut Report,
     ) -> Result<Option<O>, Diagnostic> {
+        let checkpoint = input.checkpoint();
+
         // Handle separator (skip on first item)
         if !state.first {
-            let checkpoint = input.checkpoint();
             match self.sep.parse(input, report) {
                 Ok(_) => {}
                 Err(_) => {
@@ -994,7 +995,6 @@ where
         } else {
             // Handle optional leading separator
             if self.allow_leading {
-                let checkpoint = input.checkpoint();
                 if self.sep.parse(input, report).is_err() {
                     input.reset(checkpoint);
                 }
@@ -1004,7 +1004,6 @@ where
         state.first = false;
 
         // Try next item
-        let checkpoint = input.checkpoint();
         match self.iter.drive(&mut state.inner, input, report)? {
             Some(o) => Ok(Some(o)),
             None => {

@@ -147,27 +147,6 @@ impl IntoIterator for Loc {
     }
 }
 
-impl chumsky::span::Span for Loc {
-    type Context = PathKey;
-    type Offset = usize;
-
-    fn new(context: Self::Context, range: Range<Self::Offset>) -> Self {
-        Loc::new(context, range.into())
-    }
-
-    fn context(&self) -> Self::Context {
-        self.path
-    }
-
-    fn start(&self) -> Self::Offset {
-        self.span.start
-    }
-
-    fn end(&self) -> Self::Offset {
-        self.span.end
-    }
-}
-
 impl ariadne::Span for Loc {
     type SourceId = SourceId;
 

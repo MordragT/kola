@@ -152,30 +152,6 @@ impl IntoIterator for Span {
     }
 }
 
-impl chumsky::span::Span for Span {
-    type Context = ();
-    type Offset = usize;
-
-    fn new(_context: Self::Context, range: Range<Self::Offset>) -> Self {
-        Self {
-            start: range.start,
-            end: range.end,
-        }
-    }
-
-    fn context(&self) -> Self::Context {
-        ()
-    }
-
-    fn start(&self) -> Self::Offset {
-        self.start
-    }
-
-    fn end(&self) -> Self::Offset {
-        self.end
-    }
-}
-
 impl From<Range<usize>> for Span {
     fn from(value: Range<usize>) -> Self {
         Span::new(value.start, value.end)

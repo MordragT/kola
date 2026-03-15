@@ -1,8 +1,8 @@
+use kola_span::Loc;
 use kola_span::combinator::{Combinator, IterCombinator};
 use kola_span::input::Input;
 use kola_span::parser::Parser;
 use kola_span::primitive::{Lazy, OpaqueFn, choice, group, lazy};
-use kola_span::{Diagnostic, Loc, Report};
 use kola_tree::{node::ValueName, prelude::*};
 
 use super::ParseInput;

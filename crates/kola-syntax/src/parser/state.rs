@@ -70,24 +70,3 @@ impl<'t> Borrow<TreeBuilder> for State<'t> {
         &self.builder
     }
 }
-
-// TODO: Remove once chumsky is fully dropped
-// impl<'t, I> chumsky::inspector::Inspector<'t, I> for State<'t>
-// where
-//     I: chumsky::prelude::Input<'t>,
-// {
-//     type Checkpoint = ();
-//     #[inline(always)]
-//     fn on_token(&mut self, _token: &<I as chumsky::prelude::Input<'t>>::Token) {}
-//
-//     #[inline(always)]
-//     fn on_save<'parse>(&self, _cursor: &chumsky::input::Cursor<'t, 'parse, I>) -> Self::Checkpoint {
-//     }
-//
-//     #[inline(always)]
-//     fn on_rewind<'parse>(
-//         &mut self,
-//         _marker: &chumsky::input::Checkpoint<'t, 'parse, I, Self::Checkpoint>,
-//     ) {
-//     }
-// }

@@ -9,7 +9,6 @@ kola-utils.workspace = true
 kola-print.workspace = true
 kola-span.workspace = true
 thiserror.workspace = true
-chumsky.workspace = true
 unscanny.workspace = true
 derive_more.workspace = true
 paste.workspace = true

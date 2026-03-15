@@ -1,5 +1,4 @@
 use camino::Utf8Path;
-use chumsky::error::Rich;
 use derive_more::Display;
 use kola_utils::interner_ext::{DisplayWithInterner, WithInterner};
 use owo_colors::{OwoColorize, Style};
@@ -413,30 +412,6 @@ impl Diagnostic {
     /// Prints the diagnostic to the standard error output.
     pub fn eprint(self, cache: &SourceManager) -> io::Result<()> {
         self.write(io::stderr(), cache)
-    }
-}
-
-/// Converts a Chumsky parser error into a source diagnostic.
-impl<'t, T> From<Rich<'t, T, Loc>> for Diagnostic
-where
-    T: fmt::Display,
-{
-    fn from(e: Rich<'t, T, Loc>) -> Self {
-        let message = e.to_string();
-        let loc = *e.span();
-        let trace = e
-            .contexts()
-            .map(|(label, span)| (label.to_string(), *span))
-            .collect();
-
-        Self {
-            message,
-            help: None,
-            severity: Severity::Error,
-            loc,
-            trace,
-            notes: Vec::new(),
-        }
     }
 }
 
