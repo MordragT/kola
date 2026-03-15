@@ -1,18 +1,13 @@
 use std::borrow::{Borrow, Cow};
 
-use chumsky::{inspector::Inspector, prelude::*};
-
 use kola_span::Loc;
 use kola_tree::prelude::*;
 use kola_utils::interner::{StrInterner, StrKey};
 
 use crate::{
     loc::{LocPhase, Locations},
-    token::{SemanticToken, SemanticTokens, Token},
+    token::{SemanticToken, SemanticTokens},
 };
-
-pub type Error<'t> = Rich<'t, Token<'t>, Loc>;
-pub type Extra<'t> = extra::Full<Error<'t>, State<'t>, ()>;
 
 #[derive(Debug)]
 pub struct State<'t> {
@@ -76,22 +71,23 @@ impl<'t> Borrow<TreeBuilder> for State<'t> {
     }
 }
 
-impl<'t, I> Inspector<'t, I> for State<'t>
-where
-    I: Input<'t>,
-{
-    type Checkpoint = ();
-    #[inline(always)]
-    fn on_token(&mut self, _token: &<I as Input<'t>>::Token) {}
-
-    #[inline(always)]
-    fn on_save<'parse>(&self, _cursor: &chumsky::input::Cursor<'t, 'parse, I>) -> Self::Checkpoint {
-    }
-
-    #[inline(always)]
-    fn on_rewind<'parse>(
-        &mut self,
-        _marker: &chumsky::input::Checkpoint<'t, 'parse, I, Self::Checkpoint>,
-    ) {
-    }
-}
+// TODO: Remove once chumsky is fully dropped
+// impl<'t, I> chumsky::inspector::Inspector<'t, I> for State<'t>
+// where
+//     I: chumsky::prelude::Input<'t>,
+// {
+//     type Checkpoint = ();
+//     #[inline(always)]
+//     fn on_token(&mut self, _token: &<I as chumsky::prelude::Input<'t>>::Token) {}
+//
+//     #[inline(always)]
+//     fn on_save<'parse>(&self, _cursor: &chumsky::input::Cursor<'t, 'parse, I>) -> Self::Checkpoint {
+//     }
+//
+//     #[inline(always)]
+//     fn on_rewind<'parse>(
+//         &mut self,
+//         _marker: &chumsky::input::Checkpoint<'t, 'parse, I, Self::Checkpoint>,
+//     ) {
+//     }
+// }

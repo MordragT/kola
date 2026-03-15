@@ -1,5 +1,52 @@
-use crate::{Diagnostic, Loc, Report, input::Input, parser::Parser};
+use crate::{Diagnostic, Loc, Report, combinator::Combinator, input::Input, parser::Parser};
 
+pub const trait Lazy<I: Input, O> {
+    type Combinator: Combinator<I, O>;
+    const COMBINATOR: Self::Combinator;
+}
+
+pub struct OpaqueFn<I, O> {
+    f: fn(&mut I, &mut Report) -> Result<O, Diagnostic>,
+}
+
+impl<I, O> Clone for OpaqueFn<I, O> {
+    fn clone(&self) -> Self {
+        Self { f: self.f }
+    }
+}
+
+impl<I, O> Copy for OpaqueFn<I, O> {}
+
+pub const fn lazy<I, O, R>() -> OpaqueFn<I, O>
+where
+    I: Input,
+    R: Lazy<I, O>,
+{
+    #[inline(never)]
+    fn trampoline<I, O, R>(input: &mut I, report: &mut Report) -> Result<O, Diagnostic>
+    where
+        I: Input,
+        R: Lazy<I, O>,
+    {
+        R::COMBINATOR.parse(input, report)
+    }
+
+    OpaqueFn {
+        f: trampoline::<I, O, R>,
+    }
+}
+
+impl<I, O> Parser<I, O> for OpaqueFn<I, O>
+where
+    I: Input,
+{
+    #[inline]
+    fn parse(&self, input: &mut I, report: &mut Report) -> Result<O, Diagnostic> {
+        (self.f)(input, report)
+    }
+}
+
+#[derive(Clone, Copy)]
 pub struct Any {}
 
 impl<I: Input> Parser<I, Loc> for Any {
@@ -24,6 +71,21 @@ pub struct Just<I: Input> {
     expected: I::Token,
 }
 
+impl<I: Input> Clone for Just<I> {
+    fn clone(&self) -> Self {
+        Self {
+            expected: self.expected.clone(),
+        }
+    }
+}
+
+impl<I> Copy for Just<I>
+where
+    I: Input,
+    I::Token: Copy,
+{
+}
+
 impl<I: Input> Parser<I, Loc> for Just<I> {
     #[inline]
     fn parse(&self, input: &mut I, _report: &mut Report) -> Result<Loc, Diagnostic> {
@@ -46,10 +108,12 @@ pub const fn just<I: Input>(expected: I::Token) -> Just<I> {
     Just { expected }
 }
 
+#[derive(Clone, Copy)]
 pub struct Choice<T> {
     parsers: T,
 }
 
+#[derive(Clone, Copy)]
 pub struct Group<T> {
     parser: T,
 }
@@ -88,7 +152,9 @@ macro_rules! impl_choice_tuple {
     };
 }
 
-impl_choice_tuple!(P1, P2, P3, P4, P5, P6, P7, P8, P9, P10, P11, P12);
+impl_choice_tuple!(
+    P1, P2, P3, P4, P5, P6, P7, P8, P9, P10, P11, P12, P13, P14, P15, P16
+);
 
 macro_rules! impl_group_tuple {
     () => {};
@@ -136,6 +202,10 @@ impl_group_tuple!(
     (P10, O10),
     (P11, O11),
     (P12, O12),
+    (P13, O13),
+    (P14, O14),
+    (P15, O15),
+    (P16, O16)
 );
 
 pub const fn choice<T>(parsers: T) -> Choice<T> {
@@ -144,4 +214,37 @@ pub const fn choice<T>(parsers: T) -> Choice<T> {
 
 pub const fn group<T>(parser: T) -> Group<T> {
     Group { parser }
+}
+
+#[derive(Clone, Copy)]
+pub struct Select<F>(pub F);
+
+impl<I, O, F> Parser<I, O> for Select<F>
+where
+    I: Input,
+    F: Fn(I::Token) -> Option<O>,
+{
+    fn parse(&self, input: &mut I, _report: &mut Report) -> Result<O, Diagnostic> {
+        let loc = input.loc();
+        match input.peek() {
+            Some(token) => match (self.0)(token) {
+                Some(output) => {
+                    input.advance();
+                    Ok(output)
+                }
+                None => Err(Diagnostic::error(loc, "unexpected token")),
+            },
+            None => Err(Diagnostic::error(loc, "unexpected end of input")),
+        }
+    }
+}
+
+#[macro_export]
+macro_rules! select {
+    ($($pat:pat $(if $guard:expr)? => $expr:expr),+ $(,)?) => {
+        Select(|token| match token {
+            $($pat $(if $guard)? => Some($expr),)+
+            _ => None,
+        })
+    };
 }

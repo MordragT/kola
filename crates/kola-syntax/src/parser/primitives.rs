@@ -1,116 +1,109 @@
-use chumsky::prelude::*;
+use kola_span::combinator::Combinator;
+use kola_span::input::Input;
+use kola_span::primitive::just;
+use kola_span::select;
 
-use kola_utils::interner::StrKey;
-
-use super::{KolaParser, State, ext::Captured};
+use super::ParseInput;
+use super::state::State;
 use crate::token::{
     CloseT, Ctrl, CtrlT, Kw, KwT, LiteralT, Op, OpT, OpenT, SemanticToken, Symbol, Token,
 };
+use kola_span::primitive::Select;
+use kola_utils::interner::StrKey;
 
-pub fn op<'t>(op: OpT<'t>) -> Captured<'t, Op, impl KolaParser<'t, Op> + Clone> {
-    let parser = just(op.0).to(Op::from(op)).map_with(|op, e| {
-        let span = e.span();
-        let state: &mut State = e.state();
-
-        state.insert_token(op, span);
-        op
-    });
-
-    Captured::new(parser)
+pub const fn op<'t>(op: OpT<'t>) -> impl const Combinator<ParseInput<'t>, Op> + Clone {
+    just(op.0)
+        .to(Op::from(op))
+        .map_with(move |op, _loc, input: &mut ParseInput<'t>| {
+            let loc = input.prev_loc();
+            let state: &mut State = input.state();
+            state.insert_token(op, loc);
+            op
+        })
 }
 
-pub fn ctrl<'t>(ctrl: CtrlT<'t>) -> Captured<'t, Ctrl, impl KolaParser<'t, Ctrl> + Clone> {
-    let parser = just(ctrl.0).to(Ctrl::from(ctrl)).map_with(|ctrl, e| {
-        let span = e.span();
-        let state: &mut State = e.state();
-
-        state.insert_token(ctrl, span);
-        ctrl
-    });
-
-    Captured::new(parser)
+pub const fn ctrl<'t>(ctrl: CtrlT<'t>) -> impl const Combinator<ParseInput<'t>, Ctrl> + Clone {
+    just(ctrl.0)
+        .to(Ctrl::from(ctrl))
+        .map_with(move |ctrl, _loc, input: &mut ParseInput<'t>| {
+            let loc = input.prev_loc();
+            let state: &mut State = input.state();
+            state.insert_token(ctrl, loc);
+            ctrl
+        })
 }
 
-pub fn kw<'t>(kw: KwT<'t>) -> Captured<'t, Kw, impl KolaParser<'t, Kw> + Clone> {
-    let parser = just(kw.0).to(Kw::from(kw)).map_with(|kw, e| {
-        let span = e.span();
-        let state: &mut State = e.state();
-
-        state.insert_token(kw, span);
-        kw
-    });
-
-    Captured::new(parser)
+pub const fn kw<'t>(kw: KwT<'t>) -> impl const Combinator<ParseInput<'t>, Kw> + Clone {
+    just(kw.0)
+        .to(Kw::from(kw))
+        .map_with(move |kw, _loc, input: &mut ParseInput<'t>| {
+            let loc = input.prev_loc();
+            let state: &mut State = input.state();
+            state.insert_token(kw, loc);
+            kw
+        })
 }
 
-pub fn open_delim<'t>(
+pub const fn open_delim<'t>(
     delim: OpenT<'t>,
-) -> Captured<'t, SemanticToken, impl KolaParser<'t, SemanticToken> + Clone> {
-    let parser = just(delim.0)
-        .to(SemanticToken::from(delim))
-        .map_with(|delim, e| {
-            let span = e.span();
-            let state: &mut State = e.state();
-
-            state.insert_token(delim, span);
+) -> impl const Combinator<ParseInput<'t>, SemanticToken> + Clone {
+    just(delim.0).to(SemanticToken::from(delim)).map_with(
+        move |delim, _loc, input: &mut ParseInput<'t>| {
+            let loc = input.prev_loc();
+            let state: &mut State = input.state();
+            state.insert_token(delim, loc);
             delim
-        });
-
-    Captured::new(parser)
+        },
+    )
 }
 
-pub fn close_delim<'t>(
+pub const fn close_delim<'t>(
     delim: CloseT<'t>,
-) -> Captured<'t, SemanticToken, impl KolaParser<'t, SemanticToken> + Clone> {
-    let parser = just(delim.0)
-        .to(SemanticToken::from(delim))
-        .map_with(|delim, e| {
-            let span = e.span();
-            let state: &mut State = e.state();
-
-            state.insert_token(delim, span);
+) -> impl const Combinator<ParseInput<'t>, SemanticToken> + Clone {
+    just(delim.0).to(SemanticToken::from(delim)).map_with(
+        move |delim, _loc, input: &mut ParseInput<'t>| {
+            let loc = input.prev_loc();
+            let state: &mut State = input.state();
+            state.insert_token(delim, loc);
             delim
-        });
-
-    Captured::new(parser)
+        },
+    )
 }
 
-pub fn literal<'t>() -> impl KolaParser<'t, LiteralT<'t>> + Clone {
-    select! { Token::Literal(l) => l }.map_with(|lit, e| {
-        let span = e.span();
-        let state: &mut State = e.state();
-
-        state.insert_token(lit, span);
+pub const fn literal<'t>() -> impl const Combinator<ParseInput<'t>, LiteralT<'t>> + Clone {
+    select!(Token::Literal(l) => l).map_with(|lit, _loc, input: &mut ParseInput<'t>| {
+        let loc = input.prev_loc();
+        let state: &mut State = input.state();
+        state.insert_token(lit, loc);
         lit
     })
 }
 
-pub fn symbol<'t>(st: Symbol) -> impl KolaParser<'t, StrKey> + Clone {
-    select! { Token::LowerSymbol(s) | Token::UpperSymbol(s) => s }.map_with(move |s, e| {
-        let span = e.span();
-        let state: &mut State = e.state();
+pub const fn symbol<'t>(st: Symbol) -> impl const Combinator<ParseInput<'t>, StrKey> + Clone {
+    select!(Token::LowerSymbol(s) => s, Token::UpperSymbol(s) => s).map_with(
+        move |s, _loc, input: &mut ParseInput<'t>| {
+            let loc = input.prev_loc();
+            let state: &mut State = input.state();
+            state.insert_token(SemanticToken::Symbol(st), loc);
+            state.intern(s)
+        },
+    )
+}
 
-        state.insert_token(SemanticToken::Symbol(st), span);
+pub const fn lower_symbol<'t>(st: Symbol) -> impl const Combinator<ParseInput<'t>, StrKey> + Clone {
+    select!(Token::LowerSymbol(s) => s).map_with(move |s, _loc, input: &mut ParseInput<'t>| {
+        let loc = input.prev_loc();
+        let state: &mut State = input.state();
+        state.insert_token(SemanticToken::Symbol(st), loc);
         state.intern(s)
     })
 }
 
-pub fn lower_symbol<'t>(st: Symbol) -> impl KolaParser<'t, StrKey> + Clone {
-    select! { Token::LowerSymbol(s) => s }.map_with(move |s, e| {
-        let span = e.span();
-        let state: &mut State = e.state();
-
-        state.insert_token(SemanticToken::Symbol(st), span);
-        state.intern(s)
-    })
-}
-
-pub fn upper_symbol<'t>(st: Symbol) -> impl KolaParser<'t, StrKey> + Clone {
-    select! { Token::UpperSymbol(s) => s }.map_with(move |s, e| {
-        let span = e.span();
-        let state: &mut State = e.state();
-
-        state.insert_token(SemanticToken::Symbol(st), span);
+pub const fn upper_symbol<'t>(st: Symbol) -> impl const Combinator<ParseInput<'t>, StrKey> + Clone {
+    select!(Token::UpperSymbol(s) => s).map_with(move |s, _loc, input: &mut ParseInput<'t>| {
+        let loc = input.prev_loc();
+        let state: &mut State = input.state();
+        state.insert_token(SemanticToken::Symbol(st), loc);
         state.intern(s)
     })
 }

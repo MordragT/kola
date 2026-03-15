@@ -1,19 +1,17 @@
 pub mod primitives;
 pub mod rules;
 
-pub use ext::KolaParser;
-pub use input::ParseInput;
-pub use state::{Error, Extra, State};
+pub use ext::KolaCombinator;
+pub use input::{ParseInput, make_input};
+pub use state::State;
 
-mod ext;
+pub mod ext;
 mod input;
-mod state;
+pub mod state;
 
-use chumsky::prelude::*;
-
-use kola_span::{Diagnostic, Report};
+use kola_span::parser::Parser;
+use kola_span::{Diagnostic, Report, primitive::Lazy};
 use kola_tree::prelude::*;
-use kola_utils::interner::StrInterner;
 
 use crate::{loc::Locations, token::SemanticTokens};
 
@@ -23,34 +21,37 @@ pub struct ParseOutput {
     pub spans: Locations,
 }
 
-pub fn parse<'t>(
-    input: ParseInput<'t>,
-    interner: &'t mut StrInterner,
-    report: &'t mut Report,
-) -> ParseOutput {
-    let parser = rules::module_parser();
+pub fn parse<'t>(input: ParseInput<'t>, report: &mut Report) -> ParseOutput {
+    let parser = rules::ModuleCombinator::COMBINATOR;
 
-    let mut state = State::new(interner);
+    let mut input = input;
 
-    let (root, errors) = parser
-        .parse_with_state(input, &mut state)
-        .into_output_errors();
+    let result = parser.parse(&mut input, report);
 
     let State {
         tokens,
         builder,
         spans,
         ..
-    } = state;
+    } = input.state;
 
-    report.extend_diagnostics(errors.into_iter().map(Diagnostic::from));
-
-    let tree = root.map(|root| builder.finish(root));
-
-    ParseOutput {
-        tokens,
-        tree,
-        spans,
+    match result {
+        Ok(root) => {
+            let tree = Some(builder.finish(root));
+            ParseOutput {
+                tokens,
+                tree,
+                spans,
+            }
+        }
+        Err(diag) => {
+            report.add_diagnostic(diag);
+            ParseOutput {
+                tokens,
+                tree: None,
+                spans,
+            }
+        }
     }
 }
 
@@ -64,21 +65,21 @@ pub struct ParseResult<T> {
 pub fn try_parse_with<'t, T, P>(
     input: ParseInput<'t>,
     parser: P,
-    interner: &'t mut StrInterner,
-) -> Result<ParseResult<T>, Vec<Error<'t>>>
+) -> Result<ParseResult<T>, Diagnostic>
 where
-    P: KolaParser<'t, T>,
+    P: Parser<ParseInput<'t>, T>,
 {
-    let mut state = State::new(interner);
+    let mut input = input;
+    let mut report = Report::new();
 
-    let node = parser.parse_with_state(input, &mut state).into_result()?;
+    let node = parser.parse(&mut input, &mut report)?;
 
     let State {
         tokens,
         builder,
         spans,
         ..
-    } = state;
+    } = input.state;
 
     Ok(ParseResult {
         node,

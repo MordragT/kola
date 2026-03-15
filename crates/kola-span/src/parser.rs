@@ -4,13 +4,13 @@ pub trait Parser<I: Input, O>: Sized {
     fn parse(&self, input: &mut I, report: &mut Report) -> Result<O, Diagnostic>;
 }
 
-impl<I, O, F> Parser<I, O> for F
+impl<I, O, P> Parser<I, O> for &P
 where
     I: Input,
-    F: Fn(&mut I, &mut Report) -> Result<O, Diagnostic>,
+    P: Parser<I, O>,
 {
     fn parse(&self, input: &mut I, report: &mut Report) -> Result<O, Diagnostic> {
-        self(input, report)
+        (**self).parse(input, report)
     }
 }
 
@@ -30,7 +30,19 @@ pub trait IterParser<I: Input, O>: Sized {
     ) -> Result<Option<O>, Diagnostic>;
 }
 
-pub trait FixpointParser<I: Input, O> {
-    type Parser: Parser<I, O>;
-    const PARSER: Self::Parser;
+impl<I, O, P> IterParser<I, O> for &P
+where
+    I: Input,
+    P: IterParser<I, O>,
+{
+    type State = P::State;
+
+    fn drive(
+        &self,
+        state: &mut Self::State,
+        input: &mut I,
+        report: &mut Report,
+    ) -> Result<Option<O>, Diagnostic> {
+        (**self).drive(state, input, report)
+    }
 }

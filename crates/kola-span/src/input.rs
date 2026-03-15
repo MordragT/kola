@@ -48,6 +48,7 @@ pub trait Input {
     }
 }
 
+#[derive(Debug, Clone)]
 pub struct SimpleInput<T, S> {
     pub source_id: SourceId,
     pub tokens: Vec<(T, Span)>,

@@ -1,72 +1,29 @@
-use std::ops::Range;
+use kola_span::{SourceId, Span, input::SimpleInput};
 
-use chumsky::{input::ValueInput, prelude::*};
-use kola_span::{Loc, SourceId, Span};
-
+use super::State;
 use crate::token::{Token, Tokens};
 
-pub struct ParseInput<'t> {
-    pub source: SourceId,
-    pub tokens: Tokens<'t>,
-    pub eoi: Span,
-}
+pub type ParseInput<'t> = SimpleInput<Token<'t>, State<'t>>;
 
-impl<'t> ParseInput<'t> {
-    pub fn new(source: SourceId, tokens: Tokens<'t>, len: usize) -> Self {
-        // TODO: Once doc comments are integrated into the AST, stop filtering
-        // CommentT::Doc here and instead handle them in the parser rules so
-        // they can be attached to declarations (let, type, module, etc.).
-        let tokens = tokens
-            .into_iter()
-            .filter(|(tok, _)| !matches!(tok, Token::Comment(_)))
-            .collect();
+pub fn make_input<'t>(
+    source: SourceId,
+    tokens: Tokens<'t>,
+    len: usize,
+    state: State<'t>,
+) -> ParseInput<'t> {
+    // TODO: Once doc comments are integrated into the AST, stop filtering
+    // CommentT::Doc here and instead handle them in the parser rules so
+    // they can be attached to declarations (let, type, module, etc.).
+    let tokens: Vec<(Token<'t>, Span)> = tokens
+        .into_iter()
+        .filter(|(tok, _)| !matches!(tok, Token::Comment(_)))
+        .map(|(tok, loc)| (tok, loc.span))
+        .collect();
 
-        Self {
-            source,
-            tokens,
-            eoi: Span::new(len, len),
-        }
-    }
-}
-
-impl<'t> Input<'t> for ParseInput<'t> {
-    type Span = Loc;
-    type Token = Token<'t>;
-    type MaybeToken = Token<'t>;
-    type Cursor = usize;
-    type Cache = ParseInput<'t>;
-
-    fn begin(self) -> (Self::Cursor, Self::Cache) {
-        (0, self)
-    }
-
-    fn cursor_location(cursor: &Self::Cursor) -> usize {
-        *cursor
-    }
-
-    unsafe fn next_maybe(
-        cache: &mut Self::Cache,
-        cursor: &mut Self::Cursor,
-    ) -> Option<Self::MaybeToken> {
-        if let Some(tok) = cache.tokens.get(*cursor) {
-            *cursor += 1;
-            Some(tok.0)
-        } else {
-            None
-        }
-    }
-
-    unsafe fn span(cache: &mut Self::Cache, range: Range<&Self::Cursor>) -> Self::Span {
-        if let Some((_token, loc)) = cache.tokens.get(*range.start).copied() {
-            loc
-        } else {
-            Loc::new(cache.source, cache.eoi)
-        }
-    }
-}
-
-impl<'t> ValueInput<'t> for ParseInput<'t> {
-    unsafe fn next(cache: &mut Self::Cache, cursor: &mut Self::Cursor) -> Option<Self::Token> {
-        unsafe { Self::next_maybe(cache, cursor) }
+    SimpleInput {
+        source_id: source,
+        tokens,
+        cursor: 0,
+        state,
     }
 }

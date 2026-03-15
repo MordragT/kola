@@ -69,7 +69,8 @@ Essentially all the leaf nodes of the SyntaxTree should be incorporated.
 Actually it might be possible to use newtype structs over leave nodes.
 */
 
-#[derive(Debug, Display, Clone, Copy, PartialEq)]
+#[derive(Debug, Display, Clone, Copy)]
+#[derive_const(PartialEq)]
 pub enum LiteralT<'t> {
     Unit,
     Num(f64),
@@ -77,7 +78,8 @@ pub enum LiteralT<'t> {
     Str(&'t str),
 }
 
-#[derive(Debug, Display, Clone, Copy, PartialEq)]
+#[derive(Debug, Display, Clone, Copy)]
+#[derive_const(PartialEq)]
 pub enum CommentT<'t> {
     Line(&'t str),
     Doc(&'t str),
@@ -117,7 +119,8 @@ impl<'t> Index<SourceId> for TokenCache<'t> {
 pub type Tokens<'t> = Vec<Located<Token<'t>>>;
 pub type TokenSlice<'t> = &'t [Located<Token<'t>>];
 
-#[derive(Debug, Display, Clone, Copy, PartialEq)]
+#[derive(Debug, Display, Clone, Copy)]
+#[derive_const(PartialEq)]
 pub enum Token<'t> {
     #[display("{_0}")]
     Atom(&'static str),
@@ -131,7 +134,8 @@ pub enum Token<'t> {
     Comment(CommentT<'t>),
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug)]
+#[derive_const(PartialEq)]
 #[non_exhaustive]
 pub struct OpenT<'t>(pub Token<'t>);
 
@@ -142,7 +146,8 @@ impl<'t> OpenT<'t> {
     pub const ANGLE: Self = Self(Token::Atom("<"));
 }
 
-#[derive(Clone, Copy, Debug, PartialEq)]
+#[derive(Clone, Copy, Debug)]
+#[derive_const(PartialEq)]
 #[non_exhaustive]
 pub struct CloseT<'t>(pub Token<'t>);
 
@@ -163,7 +168,8 @@ macro_rules! define_token_type {
     ) => {
         paste!{
             // Define the wrapper struct (OpT, KwT, CtrlT, etc.)
-            #[derive(Clone, Copy, Debug, PartialEq)]
+            #[derive(Clone, Copy, Debug)]
+            #[derive_const(PartialEq)]
             #[non_exhaustive]
             pub struct [<$name T>]<'t>(pub Token<'t>);
 
@@ -181,7 +187,7 @@ macro_rules! define_token_type {
             }
 
             // Implement conversion from wrapper to semantic type
-            impl<'t> From<[<$name T>]<'t>> for $name {
+            impl<'t> const From<[<$name T>]<'t>> for $name {
                 fn from(value: [<$name T>]<'t>) -> Self {
                     match value {
                         $(v if v == [<$name T>]::[<$variant:snake:upper>] => $name::$variant,)*
@@ -191,14 +197,14 @@ macro_rules! define_token_type {
             }
 
             // Implement conversion from semantic type to SemanticToken
-            impl<'t> From<$name> for SemanticToken {
+            impl<'t> const From<$name> for SemanticToken {
                 fn from(value: $name) -> Self {
                     Self::$name(value)
                 }
             }
 
             // Implement conversion from wrapper to SemanticToken
-            impl<'t> From<[<$name T>]<'t>> for SemanticToken {
+            impl<'t> const From<[<$name T>]<'t>> for SemanticToken {
                 fn from(value: [<$name T>]<'t>) -> Self {
                     Self::$name(value.into())
                 }
@@ -306,7 +312,7 @@ pub enum Literal {
     Str,
 }
 
-impl<'t> From<LiteralT<'t>> for Literal {
+impl<'t> const From<LiteralT<'t>> for Literal {
     fn from(value: LiteralT<'t>) -> Self {
         match value {
             LiteralT::Unit => Literal::Unit,
@@ -344,13 +350,13 @@ pub enum SemanticToken {
     Close(Delim),
 }
 
-impl From<Symbol> for SemanticToken {
+impl const From<Symbol> for SemanticToken {
     fn from(value: Symbol) -> Self {
         Self::Symbol(value)
     }
 }
 
-impl<'t> From<OpenT<'t>> for SemanticToken {
+impl<'t> const From<OpenT<'t>> for SemanticToken {
     fn from(value: OpenT<'t>) -> Self {
         if value == OpenT::PAREN {
             SemanticToken::Open(Delim::Paren)
@@ -366,7 +372,7 @@ impl<'t> From<OpenT<'t>> for SemanticToken {
     }
 }
 
-impl<'t> From<CloseT<'t>> for SemanticToken {
+impl<'t> const From<CloseT<'t>> for SemanticToken {
     fn from(value: CloseT<'t>) -> Self {
         if value == CloseT::PAREN {
             SemanticToken::Close(Delim::Paren)
@@ -382,9 +388,9 @@ impl<'t> From<CloseT<'t>> for SemanticToken {
     }
 }
 
-impl<'t> From<LiteralT<'t>> for SemanticToken {
+impl<'t> const From<LiteralT<'t>> for SemanticToken {
     fn from(value: LiteralT<'t>) -> Self {
-        Self::Literal(value.into())
+        Self::Literal(Literal::from(value))
     }
 }
 
