@@ -428,14 +428,10 @@ impl<'t> Lazy<ParseInput<'t>, Id<node::Pat>> for PatCombinator {
     };
 }
 
-pub const fn expr_parser<'t>() -> OpaqueFn<ParseInput<'t>, Id<node::Expr>> {
-    lazy::<ParseInput<'t>, Id<node::Expr>, ExprCombinator>()
-}
-
 #[derive(Debug, Clone, Copy)]
-pub struct ExprCombinator;
+pub struct ExprAtomCombinator;
 
-impl<'t> Lazy<ParseInput<'t>, Id<node::Expr>> for ExprCombinator {
+impl<'t> Lazy<ParseInput<'t>, Id<node::Expr>> for ExprAtomCombinator {
     type Combinator = impl const KolaCombinator<'t, Id<node::Expr>>;
     const COMBINATOR: Self::Combinator = {
         let expr = expr_parser();
@@ -735,7 +731,7 @@ impl<'t> Lazy<ParseInput<'t>, Id<node::Expr>> for ExprCombinator {
         )
         .with_note("ParenExpr");
 
-        let atom = choice((
+        choice((
             literal,
             list,
             record_expr,
@@ -750,16 +746,21 @@ impl<'t> Lazy<ParseInput<'t>, Id<node::Expr>> for ExprCombinator {
             none,
             tag,
             type_wit,
-        ));
+        ))
+    };
+}
 
-        // --- Operator precedence chain ---
-        // Each level is factored into its own const fn so the compiler sees a
-        // small opaque type instead of the full nested combinator tree.
-        //
-        // Each binary level takes two copies of its operand parser: one for
-        // the initial (LHS) parse and one for the RHS inside the repeated
-        // operator. We call the previous level's const fn twice at each call
-        // site to produce two fresh values (no Clone needed).
+pub const fn expr_parser<'t>() -> OpaqueFn<ParseInput<'t>, Id<node::Expr>> {
+    lazy::<ParseInput<'t>, Id<node::Expr>, ExprCombinator>()
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct ExprCombinator;
+
+impl<'t> Lazy<ParseInput<'t>, Id<node::Expr>> for ExprCombinator {
+    type Combinator = impl const KolaCombinator<'t, Id<node::Expr>>;
+    const COMBINATOR: Self::Combinator = {
+        let atom = lazy::<ParseInput<'t>, Id<node::Expr>, ExprAtomCombinator>();
 
         const fn unary_parser<'t>(
             atom: impl const KolaCombinator<'t, Id<node::Expr>>,
@@ -1068,7 +1069,7 @@ impl<'t> Lazy<ParseInput<'t>, Id<node::Type>> for TypeCombinator {
         let atom = choice((qual_ty, record, variant, nested_parser(ty, Delim::Paren)));
 
         let appl = atom.foldl_with(
-            ty.repeated(),
+            atom.repeated(),
             |constructor, arg, span, input: &mut ParseInput<'t>| {
                 let tree: &mut State = input.state();
                 tree.insert_as::<node::Type, _>(node::TypeApplication { constructor, arg }, span)
@@ -1203,13 +1204,13 @@ const fn qualified_parser<'t>() -> impl const KolaCombinator<'t, Id<node::Expr>>
 
                 let path_loc = Loc::covering_located(&path).unwrap();
 
-                let path = path
+                let module_path = path
                     .into_iter()
                     .map(|(key, span)| tree.insert(node::ModuleName::new(key), span))
                     .collect();
-                let path = tree.insert(node::ModulePath(path), path_loc);
+                let module_path = tree.insert(node::ModulePath(module_path), path_loc);
 
-                Some(path)
+                Some(module_path)
             };
 
             let source = tree.insert(node::ValueName::new(source.0), source.1);
@@ -1319,8 +1320,8 @@ pub const fn type_bind_parser<'t>() -> impl const KolaCombinator<'t, Id<node::Ty
 mod tests {
     use camino::Utf8PathBuf;
 
+    use kola_span::SourceId;
     use kola_span::parser::Parser;
-    use kola_span::{SourceId, primitive::Lazy};
     use kola_tree::{inspector::NodeInspector, prelude::*};
     use kola_utils::interner::{PathInterner, StrInterner};
 
@@ -1330,7 +1331,7 @@ mod tests {
     };
     use crate::{
         lexer::{LexInput, try_tokenize},
-        parser::{ParseInput, ParseResult, State, make_input, try_parse_with},
+        parser::{ParseInput, ParseResult, try_parse_with},
     };
 
     fn mocked_source() -> SourceId {
@@ -1346,8 +1347,7 @@ mod tests {
         let source = mocked_source();
         let input = LexInput { source, text };
         let tokens = try_tokenize(input).unwrap();
-        let state = State::new(interner);
-        let input = make_input(source, tokens, text.len(), state);
+        let input = ParseInput::new(source, tokens, interner);
 
         try_parse_with(input, parser).unwrap()
     }
@@ -1429,6 +1429,8 @@ mod tests {
 
         let ParseResult { node, builder, .. } =
             try_parse_str_with(test_case, expr_parser(), &mut interner);
+
+        dbg!(&builder);
 
         let inspector = NodeInspector::new(node, &builder, &interner);
         let case = inspector.to_case();

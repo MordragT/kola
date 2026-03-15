@@ -113,8 +113,7 @@ impl Server {
         };
 
         let output = parse(
-            ParseInput::new(source_id, tokens, source.len()),
-            &mut interner,
+            ParseInput::new(source_id, tokens, &mut interner),
             &mut report,
         );
 

@@ -2,7 +2,7 @@ pub mod primitives;
 pub mod rules;
 
 pub use ext::KolaCombinator;
-pub use input::{ParseInput, make_input};
+pub use input::ParseInput;
 pub use state::State;
 
 pub mod ext;

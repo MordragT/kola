@@ -71,8 +71,7 @@ impl Driver {
             tree,
             spans: _,
         } = parse(
-            ParseInput::new(source_id, tokens, source.len()),
-            &mut self.str_interner,
+            ParseInput::new(source_id, tokens, &mut self.str_interner),
             &mut report,
         );
 

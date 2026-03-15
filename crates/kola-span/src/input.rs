@@ -100,6 +100,9 @@ where
 
     #[inline]
     fn prev_span(&self) -> Span {
+        if self.cursor == 0 {
+            return Span::new(0, 0);
+        }
         self.tokens
             .get(self.cursor - 1)
             .map(|(_, span)| *span)

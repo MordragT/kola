@@ -107,8 +107,8 @@ pub fn discover(
         TokenPrinter(&tokens, print_options).render(print_options, arena)
     );
 
-    let input = ParseInput::new(source_id, tokens, source.len());
-    let ParseOutput { tree, spans, .. } = parse(input, interner, report);
+    let input = ParseInput::new(source_id, tokens, interner);
+    let ParseOutput { tree, spans, .. } = parse(input, report);
 
     let Some(tree) = tree else {
         return Ok(DiscoverOutput {
@@ -618,9 +618,9 @@ where
             TokenPrinter(&tokens, self.print_options).render(self.print_options, &self.arena)
         );
 
-        let input = ParseInput::new(source_id, tokens, source.len());
+        let input = ParseInput::new(source_id, tokens, &mut self.interner);
 
-        let ParseOutput { tree, spans, .. } = parse(input, &mut self.interner, &mut self.report);
+        let ParseOutput { tree, spans, .. } = parse(input, &mut self.report);
 
         let Some(tree) = tree else {
             return ControlFlow::Continue(());
