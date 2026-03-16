@@ -683,6 +683,7 @@ where
     }
 }
 
+#[derive(Clone, Copy)]
 pub struct Rewind<P> {
     parser: P,
 }

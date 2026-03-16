@@ -285,7 +285,6 @@ impl<'t> Lazy<ParseInput<'t>, Id<node::ModuleType>> for ModuleTypeCombinator {
             .to_module_type();
 
         let qualified = module_name_parser()
-            // TODO: this ignores the double colon for semantic tokens
             .then_ignore(ctrl(CtrlT::DOUBLE_COLON))
             .repeated()
             .at_least(1)
@@ -1130,54 +1129,32 @@ const fn field_path_parser<'t>() -> impl const KolaCombinator<'t, Id<node::Field
 
 /// Parser for qualified expressions: `module::record.field`
 const fn qualified_parser<'t>() -> impl const KolaCombinator<'t, Id<node::Expr>> {
-    group((
-        lower_symbol(Symbol::Module).spanned(),
-        ctrl(CtrlT::DOUBLE_COLON)
-            .ignore_then(lower_symbol(Symbol::Unknown).spanned()) // TODO: last element is technically not a module but a value
-            .repeated()
-            .collect::<Vec<_>>(),
-        ctrl(CtrlT::DOT)
-            .ignore_then(value_name_parser())
-            .repeated()
-            .at_least(1)
-            .collect()
-            .map_to_node(node::FieldPath)
-            .or_not(),
-    ))
-    .map_with(
-        |(mut source, mut path, field_path), _loc, input: &mut ParseInput<'t>| {
-            let tree: &mut State = input.state();
+    let module_path = module_name_parser()
+        .then_ignore(ctrl(CtrlT::DOUBLE_COLON).rewind())
+        .then_ignore(ctrl(CtrlT::DOUBLE_COLON))
+        .repeated()
+        .at_least(1)
+        .collect::<Vec<_>>()
+        .map_to_node(node::ModulePath)
+        .or_not();
 
-            let module_path = if path.is_empty() {
-                None
-            } else {
-                let new_source = path.pop().unwrap();
-                path.insert(0, source);
-                source = new_source;
+    let field_path = ctrl(CtrlT::DOT)
+        .ignore_then(value_name_parser())
+        .repeated()
+        .at_least(1)
+        .collect()
+        .map_to_node(node::FieldPath)
+        .or_not();
 
-                let path_loc = Loc::covering_located(&path).unwrap();
-
-                let module_path = path
-                    .into_iter()
-                    .map(|(key, span)| tree.insert(node::ModuleName::new(key), span))
-                    .collect();
-                let module_path = tree.insert(node::ModulePath(module_path), path_loc);
-
-                Some(module_path)
-            };
-
-            let source = tree.insert(node::ValueName::new(source.0), source.1);
-
-            node::QualifiedExpr {
-                module_path,
-                source,
-                field_path,
-            }
-        },
-    )
-    .to_node()
-    .to_expr()
-    .with_note("QualifiedExpr")
+    group((module_path, value_name_parser(), field_path))
+        .map(|(module_path, source, field_path)| node::QualifiedExpr {
+            module_path,
+            source,
+            field_path,
+        })
+        .to_node()
+        .to_expr()
+        .with_note("QualifiedExpr")
 }
 
 const fn spread_parser<'t>() -> impl const KolaCombinator<'t, Option<Id<node::ValueName>>> {
@@ -1240,7 +1217,6 @@ pub const fn type_scheme_parser<'t>() -> impl const KolaCombinator<'t, Id<node::
     // higher-rank polymorphism (nested forall) is undecidable for full type-inference
     let forall = kw(KwT::FORALL)
         .ignore_then(type_var_bind().repeated().at_least(1).collect())
-        // TODO: this ignores the dot for semantic tokens
         .then_ignore(ctrl(CtrlT::DOT))
         .map_to_node(node::ForallBinder);
 
