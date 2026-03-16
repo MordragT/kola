@@ -117,36 +117,20 @@ impl<'t> Lazy<ParseInput<'t>, Id<node::Module>> for ModuleCombinator {
             .collect()
             .map_to_node(node::FunctorArgs);
 
+        let module_path = module_name_parser()
+            .then_ignore(ctrl(CtrlT::DOUBLE_COLON).rewind())
+            .then_ignore(ctrl(CtrlT::DOUBLE_COLON))
+            .repeated()
+            .at_least(1)
+            .collect::<Vec<_>>()
+            .map_to_node(node::ModulePath)
+            .or_not();
+
         let functor_app = nested_parser(
-            lower_symbol(Symbol::Unknown) // TODO last element is technically not a module but a functor
-                .spanned()
-                .repeated()
-                .at_least(1)
-                .separated_by(ctrl(CtrlT::DOUBLE_COLON))
-                .collect::<Vec<_>>()
+            module_path
+                .then(functor_name_parser())
                 .then(functor_args)
-                .map_with(
-                    |(mut path, args): (Vec<_>, _), _loc, input: &mut ParseInput<'t>| {
-                        let tree: &mut State = input.state();
-
-                        let (func_name, loc) = path.pop().unwrap();
-                        let func = tree.insert(node::FunctorName::new(func_name), loc);
-
-                        let path = if !path.is_empty() {
-                            let module_loc = Loc::covering_located(&path).unwrap(); // Safety: Path is not empty
-                            let module_path = path
-                                .into_iter()
-                                .map(|(name, span)| tree.insert(node::ModuleName::new(name), span))
-                                .collect::<Vec<_>>();
-
-                            Some(tree.insert(node::ModulePath(module_path), module_loc))
-                        } else {
-                            None
-                        };
-
-                        node::FunctorApp { path, func, args }
-                    },
-                )
+                .map(|((path, func), args)| node::FunctorApp { path, func, args })
                 .to_node()
                 .to_module_expr(),
             Delim::Paren,
@@ -551,35 +535,18 @@ impl<'t> Lazy<ParseInput<'t>, Id<node::Expr>> for ExprAtomCombinator {
             .to_expr()
             .with_note("TagExpr");
 
+        let module_path = module_name_parser()
+            .then_ignore(ctrl(CtrlT::DOUBLE_COLON).rewind())
+            .then_ignore(ctrl(CtrlT::DOUBLE_COLON))
+            .repeated()
+            .at_least(1)
+            .collect::<Vec<_>>()
+            .map_to_node(node::ModulePath)
+            .or_not();
+
         let type_wit = ctrl(CtrlT::AT)
-            .ignore_then(
-                symbol(Symbol::Unknown)
-                    .spanned()
-                    .repeated()
-                    .at_least(1)
-                    .separated_by(ctrl(CtrlT::DOUBLE_COLON))
-                    .collect::<Vec<_>>(),
-            )
-            .map_with(|mut path, _loc, input: &mut ParseInput<'t>| {
-                let tree: &mut State = input.state();
-
-                let (ty_name, ty_loc) = path.pop().unwrap();
-                let ty = tree.insert(node::TypeName::new(ty_name), ty_loc);
-
-                let path = if !path.is_empty() {
-                    let module_loc = Loc::covering_located(&path).unwrap();
-                    let module_path = path
-                        .into_iter()
-                        .map(|(name, span)| tree.insert(node::ModuleName::new(name), span))
-                        .collect::<Vec<_>>();
-
-                    Some(tree.insert(node::ModulePath(module_path), module_loc))
-                } else {
-                    None
-                };
-
-                node::QualifiedType { path, ty }
-            })
+            .ignore_then(module_path.then(type_name_parser()))
+            .map(|(path, ty)| node::QualifiedType { path, ty })
             .to_node()
             .map_to_node(node::TypeWitnessExpr::Qualified)
             .or(ctrl(CtrlT::TICK)
@@ -981,33 +948,19 @@ impl<'t> Lazy<ParseInput<'t>, Id<node::Type>> for TypeCombinator {
     const COMBINATOR: Self::Combinator = {
         let ty = type_parser();
 
-        // TODO this also includes type variables which is a bit surprising
-        let qual_ty = symbol(Symbol::Unknown) // TODO: last element is technically not a module but a type
-            .spanned()
+        let module_path = module_name_parser()
+            .then_ignore(ctrl(CtrlT::DOUBLE_COLON).rewind())
+            .then_ignore(ctrl(CtrlT::DOUBLE_COLON))
             .repeated()
             .at_least(1)
-            .separated_by(ctrl(CtrlT::DOUBLE_COLON))
             .collect::<Vec<_>>()
-            .map_with(|mut path, _loc, input: &mut ParseInput<'t>| {
-                let tree: &mut State = input.state();
+            .map_to_node(node::ModulePath)
+            .or_not();
 
-                let (ty_name, ty_loc) = path.pop().unwrap();
-                let ty = tree.insert(node::TypeName::new(ty_name), ty_loc);
-
-                let path = if !path.is_empty() {
-                    let module_loc = Loc::covering_located(&path).unwrap(); // Safety: Path is not empty
-                    let module_path = path
-                        .into_iter()
-                        .map(|(name, span)| tree.insert(node::ModuleName::new(name), span))
-                        .collect::<Vec<_>>();
-
-                    Some(tree.insert(node::ModulePath(module_path), module_loc))
-                } else {
-                    None
-                };
-
-                node::QualifiedType { path, ty }
-            })
+        // TODO this also includes type variables which is a bit surprising
+        let qual_ty = module_path
+            .then(type_name_parser())
+            .map(|(path, ty)| node::QualifiedType { path, ty })
             .to_node()
             .to_type();
 

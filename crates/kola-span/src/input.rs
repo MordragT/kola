@@ -4,14 +4,10 @@ use crate::{Loc, SourceId, Span};
 
 pub trait Input {
     type Token: Clone + fmt::Debug + PartialEq;
-
-    type State;
+    type Checkpoint: Copy;
 
     /// Get the source ID of the input.
     fn source_id(&self) -> SourceId;
-
-    /// Get the current state of the parser.
-    fn state(&mut self) -> &mut Self::State;
 
     /// The token at the current position, without advancing.
     fn peek(&self) -> Option<Self::Token>;
@@ -30,10 +26,10 @@ pub trait Input {
 
     /// Save position. Does NOT save State — state mutations in failed branches
     /// are permanent
-    fn checkpoint(&self) -> usize;
+    fn checkpoint(&self) -> Self::Checkpoint;
 
     /// Reset to a previously saved position. Does NOT reset State.
-    fn reset(&mut self, checkpoint: usize);
+    fn reset(&mut self, checkpoint: Self::Checkpoint);
 
     /// Get the location of the current token.
     #[inline]
@@ -49,28 +45,22 @@ pub trait Input {
 }
 
 #[derive(Debug, Clone)]
-pub struct SimpleInput<T, S> {
+pub struct SimpleInput<T> {
     pub source_id: SourceId,
     pub tokens: Vec<(T, Span)>,
     pub cursor: usize,
-    pub state: S,
 }
 
-impl<T, S> Input for SimpleInput<T, S>
+impl<T> Input for SimpleInput<T>
 where
     T: Clone + fmt::Debug + PartialEq,
 {
     type Token = T;
-    type State = S;
+    type Checkpoint = usize;
 
     #[inline]
     fn source_id(&self) -> SourceId {
         self.source_id
-    }
-
-    #[inline]
-    fn state(&mut self) -> &mut Self::State {
-        &mut self.state
     }
 
     #[inline]

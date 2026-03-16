@@ -64,9 +64,3 @@ impl<'t> State<'t> {
         self.tokens.push((token.into(), span))
     }
 }
-
-impl<'t> Borrow<TreeBuilder> for State<'t> {
-    fn borrow(&self) -> &TreeBuilder {
-        &self.builder
-    }
-}

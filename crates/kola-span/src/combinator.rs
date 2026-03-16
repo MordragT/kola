@@ -150,6 +150,10 @@ pub const trait Combinator<I: Input, O>: Parser<I, O> + Copy {
         }
     }
 
+    fn rewind(self) -> Rewind<Self> {
+        Rewind { parser: self }
+    }
+
     fn with_help(self, help: &'static str) -> WithHelp<Self> {
         WithHelp { parser: self, help }
     }
@@ -157,15 +161,6 @@ pub const trait Combinator<I: Input, O>: Parser<I, O> + Copy {
     fn with_note(self, note: &'static str) -> WithNote<Self> {
         WithNote { parser: self, note }
     }
-
-    // fn boxed<F>(self) -> Boxed<F>
-    // where
-    //     F: Fn(&mut I, &mut Report) -> Result<O, Diagnostic> + 'static,
-    // {
-    //     Boxed {
-    //         f: move |input, report| self.parse(input, report),
-    //     }
-    // }
 }
 
 impl<I, O, P> const Combinator<I, O> for P
@@ -688,6 +683,20 @@ where
     }
 }
 
+pub struct Rewind<P> {
+    parser: P,
+}
+
+impl<I: Input, O, P: Parser<I, O>> Parser<I, O> for Rewind<P> {
+    fn parse(&self, input: &mut I, report: &mut Report) -> Result<O, Diagnostic> {
+        let checkpoint = input.checkpoint();
+        let result = self.parser.parse(input, report);
+        // Always reset the input, whether it succeeded or failed!
+        input.reset(checkpoint);
+        result
+    }
+}
+
 #[derive(Clone, Copy)]
 pub struct WithHelp<P> {
     parser: P,
@@ -704,22 +713,6 @@ where
         self.parser
             .parse(input, report)
             .map_err(|e| e.with_help(self.help))
-    }
-}
-
-#[derive(Clone, Copy)]
-pub struct Boxed<F> {
-    f: F,
-}
-
-impl<I, O, F> Parser<I, O> for Boxed<F>
-where
-    I: Input,
-    F: Fn(&mut I, &mut Report) -> Result<O, Diagnostic>,
-{
-    #[inline]
-    fn parse(&self, input: &mut I, report: &mut Report) -> Result<O, Diagnostic> {
-        (self.f)(input, report)
     }
 }
 
@@ -788,8 +781,7 @@ pub const trait IterCombinator<I: Input, O>: IterParser<I, O> + Copy {
             f,
         }
     }
-
-    // count, collect
+    // count
 }
 
 impl<I, O, IP> const IterCombinator<I, O> for IP
@@ -802,6 +794,22 @@ where
 pub struct Collect<IP, O, C> {
     _marker: PhantomData<(O, C)>,
     iter: IP,
+}
+
+impl<IP, O, C> Collect<IP, O, C> {
+    pub fn split_head(self) -> SplitHead<IP, O, C> {
+        SplitHead {
+            _marker: PhantomData,
+            iter: self.iter,
+        }
+    }
+
+    pub fn split_tail(self) -> SplitTail<IP, O, C> {
+        SplitTail {
+            _marker: PhantomData,
+            iter: self.iter,
+        }
+    }
 }
 
 impl<IP, O, C> Clone for Collect<IP, O, C>
@@ -836,6 +844,114 @@ where
         }
 
         Ok(items)
+    }
+}
+
+pub struct SplitHead<IP, O, C> {
+    _marker: PhantomData<(O, C)>,
+    iter: IP,
+}
+
+impl<IP, O, C> Clone for SplitHead<IP, O, C>
+where
+    IP: Clone,
+{
+    fn clone(&self) -> Self {
+        Self {
+            _marker: PhantomData,
+            iter: self.iter.clone(),
+        }
+    }
+}
+
+impl<IP, O, C> Copy for SplitHead<IP, O, C> where IP: Copy {}
+
+impl<I, IP, O, C> Parser<I, (O, C)> for SplitHead<IP, O, C>
+where
+    I: Input,
+    IP: IterParser<I, O>,
+    C: Default + Extend<O>,
+{
+    fn parse(&self, input: &mut I, report: &mut Report) -> Result<(O, C), Diagnostic> {
+        let mut state = IP::State::default();
+
+        let checkpoint = input.checkpoint();
+        let loc = input.loc();
+
+        // Parse head item
+        let head = match self.iter.drive(&mut state, input, report)? {
+            Some(o) => o,
+            None => {
+                input.reset(checkpoint);
+                return Err(Diagnostic::error(loc, "expected at least one item"));
+            }
+        };
+
+        // Parse tail items
+        let mut tail = C::default();
+        loop {
+            match self.iter.drive(&mut state, input, report)? {
+                Some(o) => tail.extend(std::iter::once(o)),
+                None => break,
+            }
+        }
+
+        Ok((head, tail))
+    }
+}
+
+pub struct SplitTail<IP, O, C> {
+    _marker: PhantomData<(O, C)>,
+    iter: IP,
+}
+
+impl<IP, O, C> Clone for SplitTail<IP, O, C>
+where
+    IP: Clone,
+{
+    fn clone(&self) -> Self {
+        Self {
+            _marker: PhantomData,
+            iter: self.iter.clone(),
+        }
+    }
+}
+
+impl<IP, O, C> Copy for SplitTail<IP, O, C> where IP: Copy {}
+
+impl<I, IP, O, C> Parser<I, (C, O)> for SplitTail<IP, O, C>
+where
+    I: Input,
+    IP: IterParser<I, O>,
+    C: Default + Extend<O>,
+{
+    fn parse(&self, input: &mut I, report: &mut Report) -> Result<(C, O), Diagnostic> {
+        let mut state = IP::State::default();
+        let mut head = C::default();
+
+        // 1. Parse the first item. If None, we fail immediately.
+        let mut prev = match self.iter.drive(&mut state, input, report)? {
+            Some(o) => o,
+            None => return Err(Diagnostic::error(input.loc(), "expected at least one item")),
+        };
+
+        // 2. Loop lazily
+        loop {
+            match self.iter.drive(&mut state, input, report)? {
+                Some(next) => {
+                    // Because 'next' exists, 'prev' is NOT the tail.
+                    // Push 'prev' into the collection and rotate.
+                    head.extend(std::iter::once(prev));
+                    prev = next;
+                }
+                None => {
+                    // 'prev' is the final item! We break.
+                    break;
+                }
+            }
+        }
+
+        Ok((head, prev))
     }
 }
 

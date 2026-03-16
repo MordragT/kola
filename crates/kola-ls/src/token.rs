@@ -47,9 +47,9 @@ impl SemanticTokenKind {
             | SemanticToken::Symbol(Symbol::Effect)
             | SemanticToken::Symbol(Symbol::Type) => Some(Self::Type),
             SemanticToken::Symbol(Symbol::TypeVar) => Some(Self::TypeParameter),
-            SemanticToken::Symbol(Symbol::Value)
-            | SemanticToken::Symbol(Symbol::Tag)
-            | SemanticToken::Symbol(Symbol::Unknown) => Some(Self::Var),
+            SemanticToken::Symbol(Symbol::Value) | SemanticToken::Symbol(Symbol::Tag) => {
+                Some(Self::Var)
+            }
             SemanticToken::Literal(Literal::Str) => Some(Self::Str),
             SemanticToken::Literal(Literal::Num)
             | SemanticToken::Literal(Literal::Bool)

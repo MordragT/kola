@@ -30,20 +30,20 @@ impl<'t> ParseInput<'t> {
             state: State::new(interner),
         }
     }
+
+    // TODO migrate away from this by just putting the elements of state directly in here
+    pub fn state(&mut self) -> &mut State<'t> {
+        &mut self.state
+    }
 }
 
 impl<'t> Input for ParseInput<'t> {
     type Token = Token<'t>;
-    type State = State<'t>;
+    type Checkpoint = usize;
 
     #[inline]
     fn source_id(&self) -> SourceId {
         self.source_id
-    }
-
-    #[inline]
-    fn state(&mut self) -> &mut Self::State {
-        &mut self.state
     }
 
     #[inline]

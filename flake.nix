@@ -30,7 +30,7 @@
             targets.wasm32-wasip1.latest.rust-std
             targets.wasm32-wasip2.latest.rust-std
           ];
-        
+
         platform = pkgs.makeRustPlatform {
           # Use nightly rustc and cargo provided by fenix for building
           cargo = toolchain;
@@ -68,6 +68,7 @@
             rustfmt
             pkg-config
             lldb
+            cargo-show-asm
             cargo-expand
             wasm-tools
             python3
