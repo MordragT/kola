@@ -725,189 +725,142 @@ pub struct ExprCombinator;
 impl<'t> Lazy<ParseInput<'t>, Id<node::Expr>> for ExprCombinator {
     type Combinator = impl const KolaCombinator<'t, Id<node::Expr>>;
     const COMBINATOR: Self::Combinator = {
+        use kola_span::pratt::PrattNil;
+
         let atom = lazy::<ParseInput<'t>, Id<node::Expr>, ExprAtomCombinator>();
 
-        const fn unary_parser<'t>(
-            atom: impl const KolaCombinator<'t, Id<node::Expr>>,
-        ) -> impl const KolaCombinator<'t, Id<node::Expr>> {
-            let unary_op = op(OpT::SUB)
-                .to(node::UnaryOp::Neg)
-                .or(op(OpT::NOT).to(node::UnaryOp::Not))
-                .to_node();
-            unary_op
-                .repeated()
-                .foldr_with(atom, |op, target, span, input: &mut ParseInput<'t>| {
-                    let tree: &mut State = input.state();
-                    tree.insert_as::<node::Expr, _>(
-                        node::UnaryExpr {
-                            op,
-                            operand: target,
-                        },
-                        span,
-                    )
-                })
-        }
-
-        const fn product_parser<'t>(
-            next_level: impl const KolaCombinator<'t, Id<node::Expr>>,
-        ) -> impl const KolaCombinator<'t, Id<node::Expr>> {
-            let product_op = choice((
-                op(OpT::MUL).to(node::BinaryOp::Mul),
-                op(OpT::DIV).to(node::BinaryOp::Div),
-                op(OpT::REM).to(node::BinaryOp::Rem),
-            ))
-            .to_node();
-            next_level.foldl_with(
-                product_op.then(next_level).repeated(),
-                |lhs, (op, rhs), span, input: &mut ParseInput<'t>| {
-                    let tree: &mut State = input.state();
-                    tree.insert_as::<node::Expr, _>(node::BinaryExpr { op, lhs, rhs }, span)
-                },
-            )
-        }
-
-        const fn sum_parser<'t>(
-            next_level: impl const KolaCombinator<'t, Id<node::Expr>>,
-        ) -> impl const KolaCombinator<'t, Id<node::Expr>> {
-            let sum_op = op(OpT::ADD)
-                .to(node::BinaryOp::Add)
-                .or(op(OpT::SUB).to(node::BinaryOp::Sub))
-                .to_node();
-            next_level.foldl_with(
-                sum_op.then(next_level).repeated(),
-                |lhs, (op, rhs), span, input: &mut ParseInput<'t>| {
-                    let tree: &mut State = input.state();
-                    tree.insert_as::<node::Expr, _>(node::BinaryExpr { op, lhs, rhs }, span)
-                },
-            )
-        }
-
-        const fn concat_parser<'t>(
-            next_level: impl const KolaCombinator<'t, Id<node::Expr>>,
-        ) -> impl const KolaCombinator<'t, Id<node::Expr>> {
-            next_level.foldl_with(
-                op(OpT::CONCAT)
-                    .to(node::BinaryOp::Concat)
-                    .to_node()
-                    .then(next_level)
-                    .repeated(),
-                |lhs, (op, rhs), span, input: &mut ParseInput<'t>| {
-                    let tree: &mut State = input.state();
-                    tree.insert_as::<node::Expr, _>(node::BinaryExpr { op, lhs, rhs }, span)
-                },
-            )
-        }
-
-        const fn merge_parser<'t>(
-            next_level: impl const KolaCombinator<'t, Id<node::Expr>>,
-        ) -> impl const KolaCombinator<'t, Id<node::Expr>> {
-            next_level.foldl_with(
-                op(OpT::MERGE).ignore_then(next_level).repeated(),
-                |lhs, rhs, span, input: &mut ParseInput<'t>| {
-                    let tree: &mut State = input.state();
-                    tree.insert_as::<node::Expr, _>(node::RecordMergeExpr { lhs, rhs }, span)
-                },
-            )
-        }
-
-        const fn comparison_parser<'t>(
-            next_level: impl const KolaCombinator<'t, Id<node::Expr>>,
-        ) -> impl const KolaCombinator<'t, Id<node::Expr>> {
-            let comparison_op = choice((
-                op(OpT::LESS).to(node::BinaryOp::Less),
-                op(OpT::LESS_EQ).to(node::BinaryOp::LessEq),
-                op(OpT::GREATER).to(node::BinaryOp::Greater),
-                op(OpT::GREATER_EQ).to(node::BinaryOp::GreaterEq),
-                op(OpT::EQ).to(node::BinaryOp::Eq),
-                op(OpT::NOT_EQ).to(node::BinaryOp::NotEq),
-            ))
-            .to_node();
-            next_level.foldl_with(
-                comparison_op.then(next_level).repeated(),
-                |lhs, (op, rhs), span, input: &mut ParseInput<'t>| {
-                    let tree: &mut State = input.state();
-                    tree.insert_as::<node::Expr, _>(node::BinaryExpr { op, lhs, rhs }, span)
-                },
-            )
-        }
-
-        const fn logical_parser<'t>(
-            next_level: impl const KolaCombinator<'t, Id<node::Expr>>,
-        ) -> impl const KolaCombinator<'t, Id<node::Expr>> {
-            let logical_op = choice((
-                op(OpT::AND).to(node::BinaryOp::And),
-                op(OpT::OR).to(node::BinaryOp::Or),
-            ))
-            .to_node();
-            next_level.foldl_with(
-                logical_op.then(next_level).repeated(),
-                |lhs, (op, rhs), span, input: &mut ParseInput<'t>| {
-                    let tree: &mut State = input.state();
-                    tree.insert_as::<node::Expr, _>(node::BinaryExpr { op, lhs, rhs }, span)
-                },
-            )
-        }
-
-        const fn pipe_backward_parser<'t>(
-            next_level: impl const KolaCombinator<'t, Id<node::Expr>>,
-        ) -> impl const KolaCombinator<'t, Id<node::Expr>> {
-            // Pipe backward (<|) - right associative, higher precedence
-            // f <| g <| x should parse as f(g(x))
-            next_level
-                .spanned()
-                .then(
-                    ctrl(CtrlT::PIPE_BACKWARD)
-                        .ignore_then(next_level.spanned())
-                        .repeated()
-                        .collect::<Vec<_>>(),
-                )
-                .map_with(
-                    |(first, mut rest): ((_, _), Vec<_>), _loc, input: &mut ParseInput<'t>| {
-                        let tree: &mut State = input.state();
-
-                        // The first element is actually the last, therefore we need to do some swapping
-                        rest.insert(0, first);
-                        let first = rest.pop().unwrap().0; // Safety: rest is not empty
-
-                        // Right-fold the rest to handle right associativity
-                        rest.into_iter().rfold(first, |acc, (func, span)| {
-                            tree.insert_as::<node::Expr, _>(node::CallExpr { func, arg: acc }, span)
-                        })
-                    },
-                )
-        }
-
-        const fn pipe_forward_parser<'t>(
-            next_level: impl const KolaCombinator<'t, Id<node::Expr>>,
-        ) -> impl const KolaCombinator<'t, Id<node::Expr>> {
+        let ops = PrattNil
             // Pipe forward (|>) - left associative, lower precedence
-            // a |> f |> g should parse as g(f(a))
-            next_level.foldl_with(
-                ctrl(CtrlT::PIPE_FORWARD).ignore_then(next_level).repeated(),
-                |lhs, rhs, span, input: &mut ParseInput<'t>| {
+            // Level 10
+            .infix(
+                ctrl(CtrlT::PIPE_FORWARD),
+                10,
+                11,
+                |lhs, _op, rhs, loc: kola_span::Loc, input: &mut ParseInput<'t>| {
                     let tree: &mut State = input.state();
                     tree.insert_as::<node::Expr, _>(
                         node::CallExpr {
                             func: rhs,
                             arg: lhs,
                         },
-                        span,
+                        loc,
                     )
                 },
             )
-        }
+            // Pipe backward (<|) - right associative, higher precedence
+            // Level 20
+            .infix(
+                ctrl(CtrlT::PIPE_BACKWARD),
+                20,
+                20,
+                |func, _op, arg, loc: kola_span::Loc, input: &mut ParseInput<'t>| {
+                    let tree: &mut State = input.state();
+                    tree.insert_as::<node::Expr, _>(node::CallExpr { func, arg }, loc)
+                },
+            )
+            // Logical (||, &&) - left associative
+            // Level 30
+            .infix(
+                choice((
+                    op(OpT::AND).to(node::BinaryOp::And),
+                    op(OpT::OR).to(node::BinaryOp::Or),
+                ))
+                .to_node(),
+                30,
+                31,
+                |lhs, op, rhs, loc: kola_span::Loc, input: &mut ParseInput<'t>| {
+                    let tree: &mut State = input.state();
+                    tree.insert_as::<node::Expr, _>(node::BinaryExpr { op, lhs, rhs }, loc)
+                },
+            )
+            // Comparison (<, <=, >, >=, ==, !=) - left associative
+            // Level 40
+            .infix(
+                choice((
+                    op(OpT::LESS).to(node::BinaryOp::Less),
+                    op(OpT::LESS_EQ).to(node::BinaryOp::LessEq),
+                    op(OpT::GREATER).to(node::BinaryOp::Greater),
+                    op(OpT::GREATER_EQ).to(node::BinaryOp::GreaterEq),
+                    op(OpT::EQ).to(node::BinaryOp::Eq),
+                    op(OpT::NOT_EQ).to(node::BinaryOp::NotEq),
+                ))
+                .to_node(),
+                40,
+                41,
+                |lhs, op, rhs, loc: kola_span::Loc, input: &mut ParseInput<'t>| {
+                    let tree: &mut State = input.state();
+                    tree.insert_as::<node::Expr, _>(node::BinaryExpr { op, lhs, rhs }, loc)
+                },
+            )
+            // Merge - left associative
+            // Level 50
+            .infix(
+                op(OpT::MERGE),
+                50,
+                51,
+                |lhs, _op, rhs, loc: kola_span::Loc, input: &mut ParseInput<'t>| {
+                    let tree: &mut State = input.state();
+                    tree.insert_as::<node::Expr, _>(node::RecordMergeExpr { lhs, rhs }, loc)
+                },
+            )
+            // Concat - left associative
+            // Level 60
+            .infix(
+                op(OpT::CONCAT).to(node::BinaryOp::Concat).to_node(),
+                60,
+                61,
+                |lhs, op, rhs, loc: kola_span::Loc, input: &mut ParseInput<'t>| {
+                    let tree: &mut State = input.state();
+                    tree.insert_as::<node::Expr, _>(node::BinaryExpr { op, lhs, rhs }, loc)
+                },
+            )
+            // Sum (+, -) - left associative
+            // Level 70
+            .infix(
+                choice((
+                    op(OpT::ADD).to(node::BinaryOp::Add),
+                    op(OpT::SUB).to(node::BinaryOp::Sub),
+                ))
+                .to_node(),
+                70,
+                71,
+                |lhs, op, rhs, loc: kola_span::Loc, input: &mut ParseInput<'t>| {
+                    let tree: &mut State = input.state();
+                    tree.insert_as::<node::Expr, _>(node::BinaryExpr { op, lhs, rhs }, loc)
+                },
+            )
+            // Product (*, /, %) - left associative
+            // Level 80
+            .infix(
+                choice((
+                    op(OpT::MUL).to(node::BinaryOp::Mul),
+                    op(OpT::DIV).to(node::BinaryOp::Div),
+                    op(OpT::REM).to(node::BinaryOp::Rem),
+                ))
+                .to_node(),
+                80,
+                81,
+                |lhs, op, rhs, loc: kola_span::Loc, input: &mut ParseInput<'t>| {
+                    let tree: &mut State = input.state();
+                    tree.insert_as::<node::Expr, _>(node::BinaryExpr { op, lhs, rhs }, loc)
+                },
+            )
+            // Unary (-, !) - right associative
+            // Level 90
+            .prefix(
+                choice((
+                    op(OpT::SUB).to(node::UnaryOp::Neg),
+                    op(OpT::NOT).to(node::UnaryOp::Not),
+                ))
+                .to_node(),
+                90,
+                |op, operand, loc: kola_span::Loc, input: &mut ParseInput<'t>| {
+                    let tree: &mut State = input.state();
+                    tree.insert_as::<node::Expr, _>(node::UnaryExpr { op, operand }, loc)
+                },
+            );
 
-        // Chain: atom -> unary -> product -> sum -> concat -> merge
-        //     -> comparison -> logical -> pipe_backward -> pipe_forward
-        let unary = unary_parser(atom);
-        let product = product_parser(unary);
-        let sum = sum_parser(product);
-        let concat = concat_parser(sum);
-        let merge = merge_parser(concat);
-        let comparison = comparison_parser(merge);
-        let logical = logical_parser(comparison);
-        let pipe_b = pipe_backward_parser(logical);
-        pipe_forward_parser(pipe_b)
+        atom.pratt(ops)
     };
 }
 

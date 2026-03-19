@@ -4,6 +4,7 @@ use crate::{
     Diagnostic, Loc, Report,
     input::Input,
     parser::{IterParser, Parser},
+    pratt::{Pratt, pratt},
 };
 
 pub const trait Combinator<I: Input, O>: Parser<I, O> + Copy {
@@ -136,7 +137,9 @@ pub const trait Combinator<I: Input, O>: Parser<I, O> + Copy {
         }
     }
 
-    // prefix, postfix, infix_left, infix_right, prefix_with, postfix_with, infix_left_with, infix_right_with
+    fn pratt<Ops>(self, ops: Ops) -> Pratt<Self, Ops, O> {
+        pratt(self, ops)
+    }
 
     fn spanned(self) -> Spanned<Self> {
         Spanned { parser: self }

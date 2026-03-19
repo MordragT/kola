@@ -1,41 +1,47 @@
 use std::marker::PhantomData;
 
-use crate::{Diagnostic, Report, input::Input, parser::Parser};
+use crate::{Diagnostic, Loc, Report, input::Input, parser::Parser};
 
 /// Result of attempting to match an operator in the Pratt parser.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum OpMatch<O> {
-    /// The operator matched and a new left-hand side was produced.
-    Matched(O),
+    /// The operator matched and a new left-hand side was produced, along with its location.
+    Matched(O, Loc),
     /// The operator did not match (either precedence was too low or parser failed),
     /// returning the original left-hand side unchanged.
-    Unmatched(O),
+    Unmatched(O, Loc),
 }
 
 /// Helper trait to expose `parse_bp` generically to the operator implementations.
 pub trait PrattParser<I: Input, O>: Parser<I, O> {
-    fn parse_bp(&self, input: &mut I, report: &mut Report, min_bp: u8) -> Result<O, Diagnostic>;
+    fn parse_bp(
+        &self,
+        input: &mut I,
+        report: &mut Report,
+        min_bp: u8,
+    ) -> Result<(O, Loc), Diagnostic>;
 }
 
 /// Trait representing a collection of operators (prefix, infix, postfix)
 /// checked sequentially during the Pratt loop at runtime.
-pub trait PrattOps<I: Input, O, P> {
+pub trait PrattOps<I: Input, O> {
     /// Attempt to parse a prefix operator and return the parsed value.
-    fn parse_prefix(
+    fn parse_prefix<P: PrattParser<I, O>>(
         &self,
         pratt: &P,
         input: &mut I,
         report: &mut Report,
-    ) -> Result<Option<O>, Diagnostic>;
+    ) -> Result<Option<(O, Loc)>, Diagnostic>;
 
     /// Attempt to parse an infix or postfix operator.
-    fn parse_infix(
+    fn parse_infix<P: PrattParser<I, O>>(
         &self,
         pratt: &P,
         input: &mut I,
         report: &mut Report,
         min_bp: u8,
         lhs: O,
+        lhs_loc: Loc,
     ) -> Result<OpMatch<O>, Diagnostic>;
 }
 
@@ -62,24 +68,37 @@ impl<I, O, Atom, Ops> PrattParser<I, O> for Pratt<Atom, Ops, O>
 where
     I: Input,
     Atom: Parser<I, O>,
-    Ops: PrattOps<I, O, Self>,
+    Ops: PrattOps<I, O>,
 {
-    fn parse_bp(&self, input: &mut I, report: &mut Report, min_bp: u8) -> Result<O, Diagnostic> {
+    fn parse_bp(
+        &self,
+        input: &mut I,
+        report: &mut Report,
+        min_bp: u8,
+    ) -> Result<(O, Loc), Diagnostic> {
         // 1. Parse prefix or atom
-        let mut lhs = if let Some(prefix_expr) = self.ops.parse_prefix(self, input, report)? {
-            prefix_expr
-        } else {
-            self.atom.parse(input, report)?
-        };
+        let (mut lhs, mut lhs_loc) =
+            if let Some(prefix_expr) = self.ops.parse_prefix(self, input, report)? {
+                prefix_expr
+            } else {
+                let start_loc = input.loc();
+                let atom = self.atom.parse(input, report)?;
+                let end_loc = input.prev_loc();
+                (atom, start_loc.union(end_loc))
+            };
 
         // 2. Loop for infix / postfix operators
         loop {
-            match self.ops.parse_infix(self, input, report, min_bp, lhs)? {
-                OpMatch::Matched(new_lhs) => {
+            match self
+                .ops
+                .parse_infix(self, input, report, min_bp, lhs, lhs_loc)?
+            {
+                OpMatch::Matched(new_lhs, new_loc) => {
                     lhs = new_lhs;
+                    lhs_loc = new_loc;
                 }
-                OpMatch::Unmatched(original_lhs) => {
-                    return Ok(original_lhs);
+                OpMatch::Unmatched(original_lhs, original_loc) => {
+                    return Ok((original_lhs, original_loc));
                 }
             }
         }
@@ -90,10 +109,10 @@ impl<I, O, Atom, Ops> Parser<I, O> for Pratt<Atom, Ops, O>
 where
     I: Input,
     Atom: Parser<I, O>,
-    Ops: PrattOps<I, O, Self>,
+    Ops: PrattOps<I, O>,
 {
     fn parse(&self, input: &mut I, report: &mut Report) -> Result<O, Diagnostic> {
-        self.parse_bp(input, report, 0)
+        self.parse_bp(input, report, 0).map(|(o, _)| o)
     }
 }
 
@@ -140,25 +159,26 @@ impl PrattNil {
     }
 }
 
-impl<I: Input, O, P> PrattOps<I, O, P> for PrattNil {
-    fn parse_prefix(
+impl<I: Input, O> PrattOps<I, O> for PrattNil {
+    fn parse_prefix<P: PrattParser<I, O>>(
         &self,
         _pratt: &P,
         _input: &mut I,
         _report: &mut Report,
-    ) -> Result<Option<O>, Diagnostic> {
+    ) -> Result<Option<(O, Loc)>, Diagnostic> {
         Ok(None)
     }
 
-    fn parse_infix(
+    fn parse_infix<P: PrattParser<I, O>>(
         &self,
         _pratt: &P,
         _input: &mut I,
         _report: &mut Report,
         _min_bp: u8,
         lhs: O,
+        lhs_loc: Loc,
     ) -> Result<OpMatch<O>, Diagnostic> {
-        Ok(OpMatch::Unmatched(lhs))
+        Ok(OpMatch::Unmatched(lhs, lhs_loc))
     }
 }
 
@@ -208,37 +228,41 @@ impl<Tail, Head> PrattCons<Tail, Head> {
     }
 }
 
-impl<I, O, P, Tail, Head> PrattOps<I, O, P> for PrattCons<Tail, Head>
+impl<I, O, Tail, Head> PrattOps<I, O> for PrattCons<Tail, Head>
 where
     I: Input,
-    Tail: PrattOps<I, O, P>,
-    Head: PrattOps<I, O, P>,
+    Tail: PrattOps<I, O>,
+    Head: PrattOps<I, O>,
 {
-    fn parse_prefix(
+    fn parse_prefix<P: PrattParser<I, O>>(
         &self,
         pratt: &P,
         input: &mut I,
         report: &mut Report,
-    ) -> Result<Option<O>, Diagnostic> {
+    ) -> Result<Option<(O, Loc)>, Diagnostic> {
         if let Some(res) = self.head.parse_prefix(pratt, input, report)? {
             return Ok(Some(res));
         }
         self.tail.parse_prefix(pratt, input, report)
     }
 
-    fn parse_infix(
+    fn parse_infix<P: PrattParser<I, O>>(
         &self,
         pratt: &P,
         input: &mut I,
         report: &mut Report,
         min_bp: u8,
         lhs: O,
+        lhs_loc: Loc,
     ) -> Result<OpMatch<O>, Diagnostic> {
-        match self.head.parse_infix(pratt, input, report, min_bp, lhs)? {
-            OpMatch::Matched(new_lhs) => Ok(OpMatch::Matched(new_lhs)),
-            OpMatch::Unmatched(original_lhs) => {
+        match self
+            .head
+            .parse_infix(pratt, input, report, min_bp, lhs, lhs_loc)?
+        {
+            OpMatch::Matched(new_lhs, new_loc) => Ok(OpMatch::Matched(new_lhs, new_loc)),
+            OpMatch::Unmatched(original_lhs, original_loc) => {
                 self.tail
-                    .parse_infix(pratt, input, report, min_bp, original_lhs)
+                    .parse_infix(pratt, input, report, min_bp, original_lhs, original_loc)
             }
         }
     }
@@ -264,24 +288,25 @@ impl<OpParser, F, Op> PrefixOp<OpParser, F, Op> {
     }
 }
 
-impl<I, O, P, Op, OpParser, F> PrattOps<I, O, P> for PrefixOp<OpParser, F, Op>
+impl<I, O, Op, OpParser, F> PrattOps<I, O> for PrefixOp<OpParser, F, Op>
 where
     I: Input,
     OpParser: Parser<I, Op>,
-    P: PrattParser<I, O>,
-    F: Fn(Op, O) -> O,
+    F: Fn(Op, O, Loc, &mut I) -> O,
 {
-    fn parse_prefix(
+    fn parse_prefix<P: PrattParser<I, O>>(
         &self,
         pratt: &P,
         input: &mut I,
         report: &mut Report,
-    ) -> Result<Option<O>, Diagnostic> {
+    ) -> Result<Option<(O, Loc)>, Diagnostic> {
         let checkpoint = input.checkpoint();
+        let start_loc = input.loc();
         match self.op_parser.parse(input, report) {
             Ok(op) => {
-                let rhs = pratt.parse_bp(input, report, self.r_bp)?;
-                Ok(Some((self.f)(op, rhs)))
+                let (rhs, rhs_loc) = pratt.parse_bp(input, report, self.r_bp)?;
+                let full_loc = start_loc.union(rhs_loc);
+                Ok(Some(((self.f)(op, rhs, full_loc, input), full_loc)))
             }
             Err(_) => {
                 input.reset(checkpoint);
@@ -290,15 +315,16 @@ where
         }
     }
 
-    fn parse_infix(
+    fn parse_infix<P: PrattParser<I, O>>(
         &self,
         _pratt: &P,
         _input: &mut I,
         _report: &mut Report,
         _min_bp: u8,
         lhs: O,
+        lhs_loc: Loc,
     ) -> Result<OpMatch<O>, Diagnostic> {
-        Ok(OpMatch::Unmatched(lhs))
+        Ok(OpMatch::Unmatched(lhs, lhs_loc))
     }
 }
 
@@ -324,43 +350,47 @@ impl<OpParser, F, Op> InfixOp<OpParser, F, Op> {
     }
 }
 
-impl<I, O, P, Op, OpParser, F> PrattOps<I, O, P> for InfixOp<OpParser, F, Op>
+impl<I, O, Op, OpParser, F> PrattOps<I, O> for InfixOp<OpParser, F, Op>
 where
     I: Input,
     OpParser: Parser<I, Op>,
-    P: PrattParser<I, O>,
-    F: Fn(O, Op, O) -> O,
+    F: Fn(O, Op, O, Loc, &mut I) -> O,
 {
-    fn parse_prefix(
+    fn parse_prefix<P: PrattParser<I, O>>(
         &self,
         _pratt: &P,
         _input: &mut I,
         _report: &mut Report,
-    ) -> Result<Option<O>, Diagnostic> {
+    ) -> Result<Option<(O, Loc)>, Diagnostic> {
         Ok(None)
     }
 
-    fn parse_infix(
+    fn parse_infix<P: PrattParser<I, O>>(
         &self,
         pratt: &P,
         input: &mut I,
         report: &mut Report,
         min_bp: u8,
         lhs: O,
+        lhs_loc: Loc,
     ) -> Result<OpMatch<O>, Diagnostic> {
         if self.l_bp < min_bp {
-            return Ok(OpMatch::Unmatched(lhs));
+            return Ok(OpMatch::Unmatched(lhs, lhs_loc));
         }
 
         let checkpoint = input.checkpoint();
         match self.op_parser.parse(input, report) {
             Ok(op) => {
-                let rhs = pratt.parse_bp(input, report, self.r_bp)?;
-                Ok(OpMatch::Matched((self.f)(lhs, op, rhs)))
+                let (rhs, rhs_loc) = pratt.parse_bp(input, report, self.r_bp)?;
+                let full_loc = lhs_loc.union(rhs_loc);
+                Ok(OpMatch::Matched(
+                    (self.f)(lhs, op, rhs, full_loc, input),
+                    full_loc,
+                ))
             }
             Err(_) => {
                 input.reset(checkpoint);
-                Ok(OpMatch::Unmatched(lhs))
+                Ok(OpMatch::Unmatched(lhs, lhs_loc))
             }
         }
     }
@@ -386,40 +416,47 @@ impl<OpParser, F, Op> PostfixOp<OpParser, F, Op> {
     }
 }
 
-impl<I, O, P, Op, OpParser, F> PrattOps<I, O, P> for PostfixOp<OpParser, F, Op>
+impl<I, O, Op, OpParser, F> PrattOps<I, O> for PostfixOp<OpParser, F, Op>
 where
     I: Input,
     OpParser: Parser<I, Op>,
-    P: PrattParser<I, O>,
-    F: Fn(O, Op) -> O,
+    F: Fn(O, Op, Loc, &mut I) -> O,
 {
-    fn parse_prefix(
+    fn parse_prefix<P: PrattParser<I, O>>(
         &self,
         _pratt: &P,
         _input: &mut I,
         _report: &mut Report,
-    ) -> Result<Option<O>, Diagnostic> {
+    ) -> Result<Option<(O, Loc)>, Diagnostic> {
         Ok(None)
     }
 
-    fn parse_infix(
+    fn parse_infix<P: PrattParser<I, O>>(
         &self,
         _pratt: &P,
         input: &mut I,
         report: &mut Report,
         min_bp: u8,
         lhs: O,
+        lhs_loc: Loc,
     ) -> Result<OpMatch<O>, Diagnostic> {
         if self.l_bp < min_bp {
-            return Ok(OpMatch::Unmatched(lhs));
+            return Ok(OpMatch::Unmatched(lhs, lhs_loc));
         }
 
         let checkpoint = input.checkpoint();
         match self.op_parser.parse(input, report) {
-            Ok(op) => Ok(OpMatch::Matched((self.f)(lhs, op))),
+            Ok(op) => {
+                let end_loc = input.prev_loc();
+                let full_loc = lhs_loc.union(end_loc);
+                Ok(OpMatch::Matched(
+                    (self.f)(lhs, op, full_loc, input),
+                    full_loc,
+                ))
+            }
             Err(_) => {
                 input.reset(checkpoint);
-                Ok(OpMatch::Unmatched(lhs))
+                Ok(OpMatch::Unmatched(lhs, lhs_loc))
             }
         }
     }
