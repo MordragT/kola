@@ -1,4 +1,3 @@
-use kola_span::Loc;
 use kola_span::combinator::{Combinator, IterCombinator};
 use kola_span::input::Input;
 use kola_span::parser::Parser;
@@ -1041,32 +1040,9 @@ impl<'t> Lazy<ParseInput<'t>, Id<node::Type>> for TypeCombinator {
             .map_to_node(node::EffectRowType)
             .map_to_node(node::EffectType::Row);
 
-        let qual_effect = symbol(Symbol::Unknown) // TODO: last element is technically not a module but a effect
-            .spanned()
-            .repeated()
-            .at_least(1)
-            .separated_by(ctrl(CtrlT::DOUBLE_COLON))
-            .collect::<Vec<_>>()
-            .map_with(|mut path, _loc, input: &mut ParseInput<'t>| {
-                let tree: &mut State = input.state();
-
-                let (eff_name, ty_loc) = path.pop().unwrap();
-                let ty = tree.insert(node::EffectName::new(eff_name), ty_loc);
-
-                let path = if !path.is_empty() {
-                    let module_loc = Loc::covering_located(&path).unwrap(); // Safety: Path is not empty
-                    let module_path = path
-                        .into_iter()
-                        .map(|(name, span)| tree.insert(node::ModuleName::new(name), span))
-                        .collect::<Vec<_>>();
-
-                    Some(tree.insert(node::ModulePath(module_path), module_loc))
-                } else {
-                    None
-                };
-
-                node::QualifiedEffectType { path, ty }
-            })
+        let qual_effect = module_path
+            .then(effect_name_parser())
+            .map(|(path, ty)| node::QualifiedEffectType { path, ty })
             .to_node()
             .map_to_node(node::EffectType::Qualified);
 

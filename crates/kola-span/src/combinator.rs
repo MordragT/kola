@@ -136,6 +136,8 @@ pub const trait Combinator<I: Input, O>: Parser<I, O> + Copy {
         }
     }
 
+    // prefix, postfix, infix_left, infix_right, prefix_with, postfix_with, infix_left_with, infix_right_with
+
     fn spanned(self) -> Spanned<Self> {
         Spanned { parser: self }
     }

@@ -16,6 +16,7 @@ mod span;
 pub mod combinator;
 pub mod input;
 pub mod parser;
+pub mod pratt;
 pub mod primitive;
 
 pub use diag::{Diagnostic, IntoDiagnostic, IntoIssue, Issue, Report, Severity};
