@@ -1,8 +1,14 @@
 use kola_span::{SourceId, Span, input::Input};
 use kola_utils::interner::StrInterner;
 
-use super::State;
+use super::{State, state::StateCheckpoint};
 use crate::token::{Token, Tokens};
+
+#[derive(Debug, Clone, Copy)]
+pub struct ParseCheckpoint {
+    pub cursor: usize,
+    pub state: StateCheckpoint,
+}
 
 #[derive(Debug)]
 pub struct ParseInput<'t> {
@@ -39,7 +45,7 @@ impl<'t> ParseInput<'t> {
 
 impl<'t> Input for ParseInput<'t> {
     type Token = Token<'t>;
-    type Checkpoint = usize;
+    type Checkpoint = ParseCheckpoint;
 
     #[inline]
     fn source_id(&self) -> SourceId {
@@ -83,12 +89,16 @@ impl<'t> Input for ParseInput<'t> {
     }
 
     #[inline]
-    fn checkpoint(&self) -> usize {
-        self.cursor
+    fn checkpoint(&self) -> ParseCheckpoint {
+        ParseCheckpoint {
+            cursor: self.cursor,
+            state: self.state.checkpoint(),
+        }
     }
 
     #[inline]
-    fn reset(&mut self, checkpoint: usize) {
-        self.cursor = checkpoint;
+    fn reset(&mut self, checkpoint: ParseCheckpoint) {
+        self.cursor = checkpoint.cursor;
+        self.state.reset(checkpoint.state);
     }
 }

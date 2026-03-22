@@ -147,6 +147,10 @@ impl TreeBuilder {
         Self::default()
     }
 
+    pub fn truncate(&mut self, len: usize) {
+        self.nodes.truncate(len);
+    }
+
     pub fn finish(self, root: Id<Module>) -> Tree {
         let Self { nodes } = self;
 

@@ -166,6 +166,15 @@ pub const trait Combinator<I: Input, O>: Parser<I, O> + Copy {
     fn with_note(self, note: &'static str) -> WithNote<Self> {
         WithNote { parser: self, note }
     }
+
+    /// Skip tokens until `predicate` returns true (predicate matches the upcoming token).
+    /// The matching token is NOT consumed. Returns the `Loc` spanning the skipped region.
+    fn skip_until<F>(self, predicate: F) -> SkipUntil<F>
+    where
+        F: Fn(&I::Token) -> bool,
+    {
+        SkipUntil { predicate }
+    }
 }
 
 impl<I, O, P> const Combinator<I, O> for P
@@ -738,6 +747,100 @@ where
         self.parser
             .parse(input, report)
             .map_err(|e| e.with_note(self.note))
+    }
+}
+
+#[derive(Clone, Copy)]
+pub struct SkipUntil<F> {
+    predicate: F,
+}
+
+impl<I, F> Parser<I, Loc> for SkipUntil<F>
+where
+    I: Input,
+    F: Fn(&I::Token) -> bool,
+{
+    fn parse(&self, input: &mut I, _report: &mut Report) -> Result<Loc, Diagnostic> {
+        let start = input.loc();
+        loop {
+            match input.peek() {
+                Some(tok) => {
+                    if (self.predicate)(&tok) {
+                        // Do not consume the matching token; stop here.
+                        break;
+                    } else {
+                        input.advance();
+                    }
+                }
+                None => break,
+            }
+        }
+        let loc = start.union(input.prev_loc());
+        Ok(loc)
+    }
+}
+
+#[derive(Clone, Copy)]
+pub struct SkipDelimiters<T, const N: usize> {
+    /// Index into `pairs` designating the primary target pair.
+    /// Must be < N for the target to be valid. If out of range, parsing will
+    /// gracefully recover by scanning until EOF (no special target).
+    target_index: usize,
+    pairs: [(T, T); N],
+}
+
+/// Convenience constructor: pass a target index (must be < N) and an array of pairs to track.
+pub const fn skip_delimiters<T, const N: usize>(
+    target_index: usize,
+    pairs: [(T, T); N],
+) -> SkipDelimiters<T, N>
+where
+    T: Copy + PartialEq,
+{
+    // Assert at construction time that the target index is valid.
+    // In const contexts this becomes a compile-time error if misused.
+    assert!(target_index < N);
+    SkipDelimiters {
+        target_index,
+        pairs,
+    }
+}
+
+impl<I, T, const N: usize> Parser<I, Loc> for SkipDelimiters<T, N>
+where
+    I: Input<Token = T>,
+    T: Copy + PartialEq,
+{
+    fn parse(&self, input: &mut I, _report: &mut Report) -> Result<Loc, Diagnostic> {
+        let start = input.loc();
+        let mut stack: Vec<usize> = Vec::new();
+
+        'outer: while let Some(tok) = input.advance() {
+            // If we see the target close at base depth, we've already consumed it; stop.
+            if tok == self.pairs[self.target_index].1 && stack.is_empty() {
+                break;
+            }
+
+            for (idx, (open, close)) in self.pairs.iter().enumerate() {
+                if tok == *open {
+                    stack.push(idx);
+                    break;
+                } else if tok == *close {
+                    if stack.last().copied() == Some(idx) {
+                        stack.pop();
+                        // If we just popped the final opener and it belonged to the target pair,
+                        // then we've consumed the matching close for the target and should stop.
+                        if idx == self.target_index && stack.is_empty() {
+                            break 'outer;
+                        }
+                    }
+                    break;
+                }
+            }
+        }
+
+        let loc = start.union(input.prev_loc());
+        Ok(loc)
     }
 }
 

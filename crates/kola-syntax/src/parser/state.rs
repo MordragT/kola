@@ -1,4 +1,4 @@
-use std::borrow::{Borrow, Cow};
+use std::borrow::Cow;
 
 use kola_span::Loc;
 use kola_tree::prelude::*;
@@ -8,6 +8,13 @@ use crate::{
     loc::{LocPhase, Locations},
     token::{SemanticToken, SemanticTokens},
 };
+
+#[derive(Debug, Clone, Copy)]
+pub struct StateCheckpoint {
+    pub tokens_len: usize,
+    pub nodes_len: usize,
+    pub spans_len: usize,
+}
 
 #[derive(Debug)]
 pub struct State<'t> {
@@ -62,5 +69,21 @@ impl<'t> State<'t> {
 
     pub fn insert_token(&mut self, token: impl Into<SemanticToken>, span: Loc) {
         self.tokens.push((token.into(), span))
+    }
+
+    #[inline]
+    pub fn checkpoint(&self) -> StateCheckpoint {
+        StateCheckpoint {
+            tokens_len: self.tokens.len(),
+            nodes_len: self.builder.count(),
+            spans_len: self.spans.len(),
+        }
+    }
+
+    #[inline]
+    pub fn reset(&mut self, checkpoint: StateCheckpoint) {
+        self.tokens.truncate(checkpoint.tokens_len);
+        self.builder.truncate(checkpoint.nodes_len);
+        self.spans.truncate(checkpoint.spans_len);
     }
 }
