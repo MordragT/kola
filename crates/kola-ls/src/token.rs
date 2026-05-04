@@ -1,9 +1,6 @@
 use kola_span::{Located, Source};
 use kola_syntax::token::{Ctrl, Literal, SemanticToken, Symbol};
-use tower_lsp_server::{
-    Client,
-    ls_types::{MessageType, SemanticToken as LspToken, SemanticTokenType as LspTokenType},
-};
+use tower_lsp_server::ls_types::{SemanticToken as LspToken, SemanticTokenType as LspTokenType};
 
 pub const LEGEND: &[LspTokenType] = &[
     LspTokenType::KEYWORD,
@@ -72,11 +69,7 @@ impl SemanticTokenKind {
     }
 }
 
-pub fn to_lsp_tokens(
-    client: &Client,
-    tokens: &[Located<SemanticToken>],
-    source: &Source,
-) -> Vec<LspToken> {
+pub fn to_lsp_tokens(tokens: &[Located<SemanticToken>], source: &Source) -> Vec<LspToken> {
     dbg!(tokens);
 
     let mut tokens = tokens
@@ -128,13 +121,6 @@ pub fn to_lsp_tokens(
 
         prev_line = line_number as u32;
         prev_col = utf16_col;
-    }
-
-    if result.len() < len {
-        client.log_message(
-            MessageType::WARNING,
-            format!("Expected {} tokens, got {}", len, result.len()),
-        );
     }
 
     result

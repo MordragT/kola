@@ -5,9 +5,7 @@ use crate::symbol::{
 };
 use kola_collections::HashMap;
 use kola_tree::node::{
-    AnyName, EffectName, EffectNamespace, FunctorName, FunctorNamespace, ModuleName,
-    ModuleNamespace, ModuleTypeName, ModuleTypeNamespace, TypeName, TypeNamespace, ValueName,
-    ValueNamespace,
+    AnyName, EffectName, FunctorName, ModuleName, ModuleTypeName, TypeName, ValueName,
 };
 
 // TODO this is more of a symbol table than a shape, consider renaming

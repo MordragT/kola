@@ -29,7 +29,7 @@ use serde::{Deserialize, Serialize};
 
 use kola_print::prelude::*;
 
-use super::{Expr, ModuleName, QualifiedType, TypeScheme};
+use super::{Expr, ModuleName, TypeScheme};
 use crate::{
     id::Id,
     node::{EffectName, EffectRowType, FunctorName, ModuleTypeName, TypeName, ValueName},

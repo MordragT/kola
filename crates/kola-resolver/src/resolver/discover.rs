@@ -36,7 +36,7 @@ use std::{collections::HashMap, io, ops::ControlFlow};
 
 use kola_builtins::{BuiltinEffect, BuiltinType, find_builtin_id};
 use kola_print::prelude::*;
-use kola_span::{Diagnostic, IntoDiagnostic, Loc, Report, SourceId, SourceManager};
+use kola_span::{IntoDiagnostic, Loc, Report, SourceId, SourceManager};
 use kola_syntax::prelude::*;
 use kola_tree::{node::Vis, prelude::*};
 use kola_utils::{interner::StrInterner, io::FileSystem};

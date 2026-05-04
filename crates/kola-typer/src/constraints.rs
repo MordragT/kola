@@ -157,7 +157,7 @@ impl Constraints {
 
                     // TODO remove this when unification is iterative
                     stacker::maybe_grow(32 * 1024, 1024 * 1024, || {
-                        lhs.try_unify(&rhs, s).map_err(|errors| ((errors, span)))
+                        lhs.try_unify(&rhs, s).map_err(|errors| (errors, span))
                     })?;
                 }
                 Constraint::Merge {
@@ -172,20 +172,19 @@ impl Constraints {
 
                     trace!("MERGE LEFT: {} ⊑ {}", lhs, rhs);
 
-                    // TODO somehow return both errors if both are not records
+                    let (MonoType::Record(lhs), MonoType::Record(rhs)) =
+                        (lhs.as_ref(), rhs.as_ref())
+                    else {
+                        let mut errs = Errors::new();
 
-                    let MonoType::Record(lhs) = lhs.as_ref() else {
-                        return Err((
-                            Errors::unit(TypeError::ExpectedRecord(lhs.into_owned())),
-                            span,
-                        ));
-                    };
+                        if !lhs.is_record() {
+                            errs.push(TypeError::ExpectedRecord(lhs.into_owned()));
+                        }
 
-                    let MonoType::Record(rhs) = rhs.as_ref() else {
-                        return Err((
-                            Errors::unit(TypeError::ExpectedRecord(rhs.into_owned())),
-                            span,
-                        ));
+                        if !rhs.is_record() {
+                            errs.push(TypeError::ExpectedRecord(rhs.into_owned()));
+                        }
+                        return Err((errs, span));
                     };
 
                     let result_t = lhs.merge_left(&rhs).map_err(|e| (Errors::unit(e), span))?;
@@ -204,20 +203,19 @@ impl Constraints {
 
                     trace!("MERGE RIGHT: {} ⊒ {}", lhs, rhs);
 
-                    // TODO somehow return both errors if both are not records
+                    let (MonoType::Record(lhs), MonoType::Record(rhs)) =
+                        (lhs.as_ref(), rhs.as_ref())
+                    else {
+                        let mut errs = Errors::new();
 
-                    let MonoType::Record(lhs) = lhs.as_ref() else {
-                        return Err((
-                            Errors::unit(TypeError::ExpectedRecord(lhs.into_owned())),
-                            span,
-                        ));
-                    };
+                        if !lhs.is_record() {
+                            errs.push(TypeError::ExpectedRecord(lhs.into_owned()));
+                        }
 
-                    let MonoType::Record(rhs) = rhs.as_ref() else {
-                        return Err((
-                            Errors::unit(TypeError::ExpectedRecord(rhs.into_owned())),
-                            span,
-                        ));
+                        if !rhs.is_record() {
+                            errs.push(TypeError::ExpectedRecord(rhs.into_owned()));
+                        }
+                        return Err((errs, span));
                     };
 
                     let result_t = lhs.merge_right(&rhs).map_err(|e| (Errors::unit(e), span))?;
@@ -236,20 +234,19 @@ impl Constraints {
 
                     trace!("MERGE DEEP: {} ⊑ {}", lhs, rhs); // better symbol ?
 
-                    // TODO somehow return both errors if both are not records
+                    let (MonoType::Record(lhs), MonoType::Record(rhs)) =
+                        (lhs.as_ref(), rhs.as_ref())
+                    else {
+                        let mut errs = Errors::new();
 
-                    let MonoType::Record(lhs) = lhs.as_ref() else {
-                        return Err((
-                            Errors::unit(TypeError::ExpectedRecord(lhs.into_owned())),
-                            span,
-                        ));
-                    };
+                        if !lhs.is_record() {
+                            errs.push(TypeError::ExpectedRecord(lhs.into_owned()));
+                        }
 
-                    let MonoType::Record(rhs) = rhs.as_ref() else {
-                        return Err((
-                            Errors::unit(TypeError::ExpectedRecord(rhs.into_owned())),
-                            span,
-                        ));
+                        if !rhs.is_record() {
+                            errs.push(TypeError::ExpectedRecord(rhs.into_owned()));
+                        }
+                        return Err((errs, span));
                     };
 
                     let result_t = lhs.merge_deep(&rhs).map_err(|e| (Errors::unit(e), span))?;

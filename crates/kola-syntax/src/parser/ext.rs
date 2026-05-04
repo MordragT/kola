@@ -1,6 +1,5 @@
 use kola_span::Loc;
 use kola_span::combinator::Combinator;
-use kola_span::input::Input;
 use kola_tree::prelude::*;
 
 use super::ParseInput;

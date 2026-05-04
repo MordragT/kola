@@ -12,7 +12,7 @@ pub fn generate_inspector_impl(input: &DeriveInput) -> syn::Result<TokenStream> 
     let name = &input.ident;
 
     let methods = match &input.data {
-        Data::Struct(data_struct) => generate_struct_methods(name, data_struct)?,
+        Data::Struct(data_struct) => generate_struct_methods(data_struct)?,
         Data::Enum(data_enum) => generate_enum_methods(name, data_enum)?,
         Data::Union(_) => {
             return Err(syn::Error::new_spanned(
@@ -29,10 +29,7 @@ pub fn generate_inspector_impl(input: &DeriveInput) -> syn::Result<TokenStream> 
     }.into())
 }
 
-fn generate_struct_methods(
-    struct_name: &Ident,
-    data_struct: &DataStruct,
-) -> syn::Result<Vec<proc_macro2::TokenStream>> {
+fn generate_struct_methods(data_struct: &DataStruct) -> syn::Result<Vec<proc_macro2::TokenStream>> {
     match &data_struct.fields {
         Fields::Named(fields_named) => generate_named_field_methods(fields_named),
         Fields::Unnamed(fields_unnamed) => generate_unnamed_field_methods(fields_unnamed),
@@ -388,14 +385,4 @@ fn to_snake_case(s: &str) -> String {
     }
 
     result
-}
-
-fn to_singular(s: &str) -> String {
-    // Simple pluralization rules - could be enhanced
-    match s {
-        s if s.ends_with("ies") => s[..s.len() - 3].to_string() + "y",
-        s if s.ends_with("es") => s[..s.len() - 2].to_string(),
-        s if s.ends_with("s") => s[..s.len() - 1].to_string(),
-        s => s.to_string(),
-    }
 }

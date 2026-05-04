@@ -135,7 +135,20 @@ impl Server {
         let source = self.sources.get(&path)?;
         let output = self.outputs.get(&path)?;
 
-        let data = to_lsp_tokens(&self.client, &output.tokens, &*source);
+        let data = to_lsp_tokens(&output.tokens, &*source);
+
+        if data.len() < output.tokens.len() {
+            self.client
+                .log_message(
+                    MessageType::WARNING,
+                    format!(
+                        "Expected {} tokens, got {}",
+                        output.tokens.len(),
+                        data.len()
+                    ),
+                )
+                .await;
+        }
 
         Some(SemanticTokensResult::Tokens(SemanticTokens {
             result_id: None,
@@ -146,14 +159,27 @@ impl Server {
     pub async fn on_semantic_tokens_range(
         &self,
         uri: Uri,
-        range: Range,
+        _range: Range,
     ) -> Option<SemanticTokensRangeResult> {
         let path = Self::uri_to_path(&uri)?;
 
         let source = self.sources.get(&path)?;
         let output = self.outputs.get(&path)?;
 
-        let data = to_lsp_tokens(&self.client, &output.tokens, &*source);
+        let data = to_lsp_tokens(&output.tokens, &*source);
+
+        if data.len() < output.tokens.len() {
+            self.client
+                .log_message(
+                    MessageType::WARNING,
+                    format!(
+                        "Expected {} tokens, got {}",
+                        output.tokens.len(),
+                        data.len()
+                    ),
+                )
+                .await;
+        }
 
         Some(SemanticTokensRangeResult::Tokens(SemanticTokens {
             result_id: None,
@@ -163,7 +189,7 @@ impl Server {
 }
 
 impl LanguageServer for Server {
-    async fn initialize(&self, params: InitializeParams) -> jsonrpc::Result<InitializeResult> {
+    async fn initialize(&self, _params: InitializeParams) -> jsonrpc::Result<InitializeResult> {
         Ok(InitializeResult {
             server_info: None,
             offset_encoding: None,

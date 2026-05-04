@@ -15,9 +15,7 @@
 
 #![feature(never_type)]
 #![feature(exhaustive_patterns)]
-#![feature(path_add_extension)]
 #![feature(box_into_inner)]
-#![feature(let_chains)]
 #![feature(if_let_guard)]
 
 //! Algorithm W with addition in Polymoprhic Type System for Extensible Records

@@ -1,4 +1,3 @@
-use kola_utils::interner::PathKey;
 use std::{fmt, ops::Range};
 
 use crate::{Span, source::SourceId};

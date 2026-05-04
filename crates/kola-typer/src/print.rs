@@ -62,7 +62,7 @@ impl<'a> Decorator<'a> for TypeDecorator<'a> {
 
             // Types
             Meta::TypeVarBind(kv) => kv.green().display_in(arena),
-            Meta::ForallBinder(vars) => return notation,
+            Meta::ForallBinder(_vars) => return notation,
             Meta::LabelOrVar(l) => l.green().display_in(arena),
             Meta::RecordFieldType(lt) | Meta::TagType(lt) => lt.green().display_in(arena),
             Meta::RecordType(t) | Meta::VariantType(t) | Meta::FuncType(t) => {
