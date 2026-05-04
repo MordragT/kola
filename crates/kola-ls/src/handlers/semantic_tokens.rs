@@ -1,20 +1,22 @@
 use kola_span::{Located, Source};
 use kola_syntax::token::{Ctrl, Literal, SemanticToken, Symbol};
-use tower_lsp_server::ls_types::{SemanticToken as LspToken, SemanticTokenType as LspTokenType};
+use tower_lsp_server::ls_types as ls;
 
-pub const LEGEND: &[LspTokenType] = &[
-    LspTokenType::KEYWORD,
-    LspTokenType::STRING,
-    LspTokenType::NUMBER,
-    LspTokenType::OPERATOR,
-    LspTokenType::VARIABLE,
-    LspTokenType::MACRO,
-    LspTokenType::NAMESPACE,
-    LspTokenType::DECORATOR,
-    LspTokenType::FUNCTION,
-    LspTokenType::INTERFACE,
-    LspTokenType::TYPE,
-    LspTokenType::TYPE_PARAMETER,
+use crate::{server::Server, utils};
+
+pub const LEGEND: &[ls::SemanticTokenType] = &[
+    ls::SemanticTokenType::KEYWORD,
+    ls::SemanticTokenType::STRING,
+    ls::SemanticTokenType::NUMBER,
+    ls::SemanticTokenType::OPERATOR,
+    ls::SemanticTokenType::VARIABLE,
+    ls::SemanticTokenType::MACRO,
+    ls::SemanticTokenType::NAMESPACE,
+    ls::SemanticTokenType::DECORATOR,
+    ls::SemanticTokenType::FUNCTION,
+    ls::SemanticTokenType::INTERFACE,
+    ls::SemanticTokenType::TYPE,
+    ls::SemanticTokenType::TYPE_PARAMETER,
 ];
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -69,9 +71,7 @@ impl SemanticTokenKind {
     }
 }
 
-pub fn to_lsp_tokens(tokens: &[Located<SemanticToken>], source: &Source) -> Vec<LspToken> {
-    dbg!(tokens);
-
+fn to_lsp_tokens(tokens: &[Located<SemanticToken>], source: &Source) -> Vec<ls::SemanticToken> {
     let mut tokens = tokens
         .into_iter()
         .filter_map(SemanticTokenKind::from_located_token)
@@ -111,7 +111,7 @@ pub fn to_lsp_tokens(tokens: &[Located<SemanticToken>], source: &Source) -> Vec<
         let token_text = &source.text()[loc.span.start..loc.span.end];
         let length = token_text.encode_utf16().count() as u32;
 
-        result.push(LspToken {
+        result.push(ls::SemanticToken {
             delta_line,
             delta_start,
             length,
@@ -124,4 +124,67 @@ pub fn to_lsp_tokens(tokens: &[Located<SemanticToken>], source: &Source) -> Vec<
     }
 
     result
+}
+
+pub async fn on_semantic_tokens_full(
+    server: &Server,
+    params: ls::SemanticTokensParams,
+) -> Option<ls::SemanticTokensResult> {
+    let path = utils::uri_to_path(&params.text_document.uri)?;
+
+    let source = server.sources.get(&path)?;
+    let output = server.outputs.get(&path)?;
+
+    let data = to_lsp_tokens(&output.tokens, &*source);
+
+    if data.len() < output.tokens.len() {
+        let msg = format!(
+            "Expected {} tokens, got {}",
+            output.tokens.len(),
+            data.len()
+        );
+        server
+            .client
+            .log_message(ls::MessageType::WARNING, msg)
+            .await;
+    }
+
+    Some(ls::SemanticTokensResult::Tokens(ls::SemanticTokens {
+        result_id: None,
+        data,
+    }))
+}
+
+pub async fn on_semantic_tokens_range(
+    server: &Server,
+    params: ls::SemanticTokensRangeParams,
+) -> Option<ls::SemanticTokensRangeResult> {
+    let ls::SemanticTokensRangeParams {
+        text_document: ls::TextDocumentIdentifier { uri },
+        ..
+    } = params;
+
+    let path = utils::uri_to_path(&uri)?;
+
+    let source = server.sources.get(&path)?;
+    let output = server.outputs.get(&path)?;
+
+    let data = to_lsp_tokens(&output.tokens, &*source);
+
+    if data.len() < output.tokens.len() {
+        let msg = format!(
+            "Expected {} tokens, got {}",
+            output.tokens.len(),
+            data.len()
+        );
+        server
+            .client
+            .log_message(ls::MessageType::WARNING, msg)
+            .await;
+    }
+
+    Some(ls::SemanticTokensRangeResult::Tokens(ls::SemanticTokens {
+        result_id: None,
+        data,
+    }))
 }
