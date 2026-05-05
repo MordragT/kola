@@ -120,36 +120,6 @@ impl PolyType {
 
         ty
     }
-
-    // /// Two `PolyType`s are considered equivalent,
-    // /// if they differ only in the names of their type variables.
-    // pub fn alpha_equivalent(&self, other: &Self) -> bool {
-    //     if self.forall.len() != other.forall.len() {
-    //         return false;
-    //     }
-
-    //     // TODO maybe check for structural equality of the types
-
-    //     let mut sub_self = HashMap::new();
-    //     let mut sub_other = HashMap::new();
-
-    //     for (l, r) in self.forall.iter().zip(&other.forall) {
-    //         let fresh = MonoType::variable();
-    //         sub_self.insert(*l, fresh.clone());
-    //         sub_other.insert(*r, fresh);
-    //     }
-
-    //     let mut lhs = self.ty.clone();
-    //     lhs.apply_mut(&mut Substitution::new(sub_self));
-
-    //     let mut rhs = other.ty.clone();
-    //     rhs.apply_mut(&mut Substitution::new(sub_other));
-
-    //     // lhs == rhs
-
-    //     // Structural alpha equivalence for RowTypes is not just a simple equality check.
-    //     todo!()
-    // }
 }
 
 impl From<MonoType> for PolyType {
@@ -176,32 +146,6 @@ impl fmt::Display for PolyType {
     }
 }
 
-// TODO this comment is garbage??, remove it also maybe change the implementation
-// I still just apply so that type annotations are a bit more useful
-
-/// Substitution of Polytypes in Constraint-Based Type Inference
-///
-/// This handles substitution for polytypes in a constraint-based system where
-/// generalization occurs during inference and final substitution is deferred.
-///
-/// ## The Problem
-///
-/// When generalization occurs during inference, polytypes may contain free variables
-/// that need later substitution:
-///
-/// ```
-/// // During inference with outer scope containing T1:
-/// let x = expr_of_type(T1 -> T2) in body
-///
-/// // Generalization produces:
-/// PolyType { vars: [T2], ty: T1 -> T2 }
-/// //                        ^^     ^^
-/// //                     free   bound
-///
-/// // After constraint solving (T1 = Int):
-/// PolyType { vars: [T2], ty: Int -> T2 }
-/// ```
-///
 /// ## Substitution Strategy
 ///
 /// 1. Apply substitution to the inner monotype
@@ -211,7 +155,7 @@ impl Substitutable for PolyType {
     fn try_apply(&self, s: &mut Substitution) -> Option<Self> {
         self.ty.try_apply(s).map(|ty| {
             // Remove quantified variables that have been resolved by substitution
-
+            // TODO: is this really necessary ?
             let forall = self
                 .forall
                 .iter()

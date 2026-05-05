@@ -92,6 +92,7 @@ impl_visitable!(
     TypeVarBind,
     TypeScheme,
     // Modules
+    BindError,
     Vis,
     ValueBind,
     TypeBind,
@@ -1705,6 +1706,14 @@ pub trait Visitor<T: TreeView> {
         self.walk_functor_bind(id, tree)
     }
 
+    fn visit_bind_error(
+        &mut self,
+        _id: Id<node::BindError>,
+        _tree: &T,
+    ) -> ControlFlow<Self::BreakValue> {
+        ControlFlow::Continue(())
+    }
+
     fn walk_bind(&mut self, id: Id<node::Bind>, tree: &T) -> ControlFlow<Self::BreakValue> {
         use node::Bind::*;
 
@@ -1716,6 +1725,7 @@ pub trait Visitor<T: TreeView> {
             Module(id) => self.visit_module_bind(id, tree),
             ModuleType(id) => self.visit_module_type_bind(id, tree),
             Functor(id) => self.visit_functor_bind(id, tree),
+            Error(id) => self.visit_bind_error(id, tree),
         }
     }
 

@@ -166,15 +166,6 @@ pub const trait Combinator<I: Input, O>: Parser<I, O> + Copy {
     fn with_note(self, note: &'static str) -> WithNote<Self> {
         WithNote { parser: self, note }
     }
-
-    /// Skip tokens until `predicate` returns true (predicate matches the upcoming token).
-    /// The matching token is NOT consumed. Returns the `Loc` spanning the skipped region.
-    fn skip_until<F>(self, predicate: F) -> SkipUntil<F>
-    where
-        F: Fn(&I::Token) -> bool,
-    {
-        SkipUntil { predicate }
-    }
 }
 
 impl<I, O, P> const Combinator<I, O> for P
@@ -750,12 +741,39 @@ where
     }
 }
 
-#[derive(Clone, Copy)]
-pub struct SkipUntil<F> {
+pub struct SkipUntil<I, F> {
+    _marker: PhantomData<I>,
     predicate: F,
 }
 
-impl<I, F> Parser<I, Loc> for SkipUntil<F>
+impl<I, F> Clone for SkipUntil<I, F>
+where
+    F: Clone,
+{
+    fn clone(&self) -> Self {
+        Self {
+            _marker: PhantomData,
+            predicate: self.predicate.clone(),
+        }
+    }
+}
+
+impl<I, F> Copy for SkipUntil<I, F> where F: Copy {}
+
+/// Skip tokens until `predicate` returns true (predicate matches the upcoming token).
+/// The matching token is NOT consumed. Returns the `Loc` spanning the skipped region.
+pub const fn skip_until<I, F>(predicate: F) -> SkipUntil<I, F>
+where
+    I: Input,
+    F: Fn(&I::Token) -> bool,
+{
+    SkipUntil {
+        _marker: PhantomData,
+        predicate,
+    }
+}
+
+impl<I, F> Parser<I, Loc> for SkipUntil<I, F>
 where
     I: Input,
     F: Fn(&I::Token) -> bool,
@@ -780,22 +798,45 @@ where
     }
 }
 
-#[derive(Clone, Copy)]
-pub struct SkipDelimiters<T, const N: usize> {
+pub struct SkipDelimiters<I, const N: usize>
+where
+    I: Input,
+{
     /// Index into `pairs` designating the primary target pair.
     /// Must be < N for the target to be valid. If out of range, parsing will
     /// gracefully recover by scanning until EOF (no special target).
     target_index: usize,
-    pairs: [(T, T); N],
+    pairs: [(I::Token, I::Token); N],
+}
+
+impl<I, const N: usize> Clone for SkipDelimiters<I, N>
+where
+    I: Input,
+    I::Token: Clone,
+{
+    fn clone(&self) -> Self {
+        Self {
+            target_index: self.target_index,
+            pairs: self.pairs.clone(),
+        }
+    }
+}
+
+impl<I, const N: usize> Copy for SkipDelimiters<I, N>
+where
+    I: Input,
+    I::Token: Copy,
+{
 }
 
 /// Convenience constructor: pass a target index (must be < N) and an array of pairs to track.
-pub const fn skip_delimiters<T, const N: usize>(
+pub const fn skip_delimiters<I, const N: usize>(
     target_index: usize,
-    pairs: [(T, T); N],
-) -> SkipDelimiters<T, N>
+    pairs: [(I::Token, I::Token); N],
+) -> SkipDelimiters<I, N>
 where
-    T: Copy + PartialEq,
+    I: Input,
+    I::Token: Copy + PartialEq,
 {
     // Assert at construction time that the target index is valid.
     // In const contexts this becomes a compile-time error if misused.
@@ -806,10 +847,10 @@ where
     }
 }
 
-impl<I, T, const N: usize> Parser<I, Loc> for SkipDelimiters<T, N>
+impl<I, const N: usize> Parser<I, Loc> for SkipDelimiters<I, N>
 where
-    I: Input<Token = T>,
-    T: Copy + PartialEq,
+    I: Input,
+    I::Token: Copy + PartialEq,
 {
     fn parse(&self, input: &mut I, _report: &mut Report) -> Result<Loc, Diagnostic> {
         let start = input.loc();

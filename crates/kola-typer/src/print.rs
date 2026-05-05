@@ -46,11 +46,11 @@ impl<'a> Decorator<'a> for TypeDecorator<'a> {
             | Meta::LambdaExpr(t)
             | Meta::TagExpr(t)
             | Meta::TypeWitnessExpr(t)
-            | Meta::Expr(t)
-            | Meta::HandlerClause(t) => t.green().display_in(arena),
+            | Meta::Expr(t) => t.green().display_in(arena),
             Meta::HandleExpr(ct) | Meta::DoExpr(ct) | Meta::CallExpr(ct) => {
                 ct.green().display_in(arena)
             }
+            Meta::HandlerClause(lt) => lt.green().display_in(arena),
             Meta::RecordField(lt) => lt.green().display_in(arena),
 
             // Effects

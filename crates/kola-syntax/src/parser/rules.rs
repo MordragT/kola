@@ -1,4 +1,5 @@
-use kola_span::combinator::{Combinator, IterCombinator};
+use kola_span::Loc;
+use kola_span::combinator::{Combinator, IterCombinator, skip_delimiters, skip_until};
 use kola_span::input::Input;
 use kola_span::parser::Parser;
 use kola_span::primitive::{Lazy, OpaqueFn, choice, group, lazy};
@@ -7,7 +8,8 @@ use kola_tree::{node::ValueName, prelude::*};
 use super::ParseInput;
 use super::ext::KolaCombinator;
 use super::state::State;
-use crate::token::{CloseT, CtrlT, Delim, KwT, LiteralT, OpT, OpenT, Symbol};
+use crate::loc::LocPhase;
+use crate::token::{CloseT, CtrlT, Delim, KwT, LiteralT, OpT, OpenT, Symbol, Token};
 
 use super::primitives::*;
 
@@ -67,28 +69,42 @@ pub const fn tag_name_parser<'t>() -> impl const KolaCombinator<'t, Id<node::Val
 // Nested delimiters (error recovery)
 // ---------------------------------------------------------------------------
 
-pub const fn nested_parser<'t, T>(
+const DELIM_PAIRS: [(Token, Token); 4] = [
+    (OpenT::PAREN.0, CloseT::PAREN.0),
+    (OpenT::BRACKET.0, CloseT::BRACKET.0),
+    (OpenT::BRACE.0, CloseT::BRACE.0),
+    (OpenT::ANGLE.0, CloseT::ANGLE.0),
+];
+
+pub const fn nested_parser<'t, T, U>(
     parser: impl Parser<ParseInput<'t>, Id<T>> + Copy,
     delim: Delim,
-) -> impl const KolaCombinator<'t, Id<T>> {
-    let (open, close) = match delim {
-        Delim::Paren => (OpenT::PAREN, CloseT::PAREN),
-        Delim::Bracket => (OpenT::BRACKET, CloseT::BRACKET),
-        Delim::Brace => (OpenT::BRACE, CloseT::BRACE),
-        Delim::Angle => (OpenT::ANGLE, CloseT::ANGLE),
+    fallback: U,
+) -> impl const KolaCombinator<'t, Id<T>>
+where
+    Node: From<T> + From<U>,
+    U: Copy + MetaCast<LocPhase, Meta = Loc> + 't,
+    T: From<Id<U>> + MetaCast<LocPhase, Meta = Loc> + 't,
+{
+    let index = match delim {
+        Delim::Paren => 0,
+        Delim::Bracket => 1,
+        Delim::Brace => 2,
+        Delim::Angle => 3,
     };
 
-    nested_in_parser(open, close, parser)
-}
-
-pub const fn nested_in_parser<'t, T>(
-    open: OpenT<'t>,
-    close: CloseT<'t>,
-    parser: impl Parser<ParseInput<'t>, Id<T>> + Copy,
-) -> impl const KolaCombinator<'t, Id<T>> {
-    // Happy path only for now; recovery is TODO
-    // TODO: re-add error recovery using skip_nested_delimiters + recover combinator
-    parser.delimited_by(open_delim(open), close_delim(close))
+    parser
+        .recover(
+            skip_delimiters(index, DELIM_PAIRS)
+                .to(fallback)
+                .to_node()
+                .map(T::from)
+                .to_node(),
+        )
+        .delimited_by(
+            open_delim(OpenT(DELIM_PAIRS[index].0)),
+            close_delim(CloseT(DELIM_PAIRS[index].1)),
+        )
 }
 
 pub const fn module_parser<'t>() -> OpaqueFn<ParseInput<'t>, Id<node::Module>> {
@@ -133,6 +149,7 @@ impl<'t> Lazy<ParseInput<'t>, Id<node::Module>> for ModuleCombinator {
                 .to_node()
                 .to_module_expr(),
             Delim::Paren,
+            node::ModuleError,
         );
 
         let module_expr = choice((
@@ -234,6 +251,12 @@ impl<'t> Lazy<ParseInput<'t>, Id<node::Module>> for ModuleCombinator {
             type_bind,
             value_bind,
         ));
+        // .recover(
+        //     skip_until(|t| matches!(t, Token::Atom(",")) || matches!(t, Token::Atom("}")))
+        //         .to(node::BindError)
+        //         .to_node()
+        //         .to_bind(),
+        // );
 
         bind.repeated()
             .separated_by(ctrl(CtrlT::COMMA))
@@ -356,6 +379,7 @@ impl<'t> Lazy<ParseInput<'t>, Id<node::Pat>> for PatCombinator {
                 .map_to_node(node::ListPat)
                 .to_pat(),
             Delim::Bracket,
+            node::PatError,
         );
 
         // Record field pattern
@@ -375,6 +399,7 @@ impl<'t> Lazy<ParseInput<'t>, Id<node::Pat>> for PatCombinator {
                 })
                 .to_pat(),
             Delim::Brace,
+            node::PatError,
         );
 
         // Variant case pattern
@@ -404,6 +429,7 @@ impl<'t> Lazy<ParseInput<'t>, Id<node::Pat>> for PatCombinator {
                 .map_to_node(node::VariantPat)
                 .to_pat(),
             Delim::Angle,
+            node::PatError,
         );
 
         choice((bind, wildcard, literal, list, record, variant))
@@ -566,6 +592,7 @@ impl<'t> Lazy<ParseInput<'t>, Id<node::Expr>> for ExprAtomCombinator {
                 .map_to_node(node::ListExpr)
                 .to_expr(),
             Delim::Bracket,
+            node::ExprError,
         )
         .with_note("ListExpr");
 
@@ -585,8 +612,8 @@ impl<'t> Lazy<ParseInput<'t>, Id<node::Expr>> for ExprAtomCombinator {
             .map_to_node(node::RecordExpr)
             .to_expr();
 
-        let record_expr =
-            nested_parser(record_op.or(instantiate), Delim::Brace).with_note("RecordExpr");
+        let record_expr = nested_parser(record_op.or(instantiate), Delim::Brace, node::ExprError)
+            .with_note("RecordExpr");
 
         let let_ = group((
             kw(KwT::LET).ignore_then(value_name_parser()),
@@ -634,6 +661,31 @@ impl<'t> Lazy<ParseInput<'t>, Id<node::Expr>> for ExprAtomCombinator {
             .to_expr()
             .with_note("CaseExpr");
 
+        let do_expr = kw(KwT::DO)
+            .ignore_then(value_name_parser())
+            .then(expr)
+            .map_to_node(|(op, arg)| node::DoExpr { op, arg })
+            .to_expr()
+            .with_note("DoExpr");
+
+        let handle_call_expr = nested_parser(
+            expr.repeated().at_least(2).collect::<Vec<_>>().map_with(
+                |exprs, span, input: &mut ParseInput<'t>| {
+                    let tree: &mut State = input.state();
+
+                    let mut iter = exprs.into_iter();
+                    let first = iter.next().unwrap();
+
+                    iter.fold(first, |func, arg| {
+                        tree.insert_as::<node::Expr, _>(node::CallExpr { func, arg }, span)
+                    })
+                },
+            ),
+            Delim::Paren,
+            node::ExprError,
+        )
+        .with_note("CallExpr");
+
         let clause = group((
             value_name_parser(),
             value_name_parser(),
@@ -648,18 +700,11 @@ impl<'t> Lazy<ParseInput<'t>, Id<node::Expr>> for ExprAtomCombinator {
             .collect();
 
         let handle = kw(KwT::HANDLE)
-            .ignore_then(qualified_parser())
+            .ignore_then(do_expr.or(handle_call_expr))
             .then(clauses)
             .map_to_node(|(source, clauses)| node::HandleExpr { source, clauses })
             .to_expr()
             .with_note("HandleExpr");
-
-        let do_expr = kw(KwT::DO)
-            .ignore_then(value_name_parser())
-            .then(expr)
-            .map_to_node(|(op, arg)| node::DoExpr { op, arg })
-            .to_expr()
-            .with_note("DoExpr");
 
         let func = group((
             kw(KwT::FN).ignore_then(value_name_parser()),
@@ -693,6 +738,7 @@ impl<'t> Lazy<ParseInput<'t>, Id<node::Expr>> for ExprAtomCombinator {
                 },
             ),
             Delim::Paren,
+            node::ExprError,
         )
         .with_note("ParenExpr");
 
@@ -936,6 +982,7 @@ impl<'t> Lazy<ParseInput<'t>, Id<node::Type>> for TypeCombinator {
                 .map_to_node(|(fields, extension)| node::RecordType { fields, extension })
                 .to_type(),
             Delim::Brace,
+            node::TypeError,
         );
 
         let none_tag = kw(KwT::NONE)
@@ -968,9 +1015,15 @@ impl<'t> Lazy<ParseInput<'t>, Id<node::Type>> for TypeCombinator {
                 .map_to_node(|(tags, extension)| node::VariantType { tags, extension })
                 .to_type(),
             Delim::Angle,
+            node::TypeError,
         );
 
-        let atom = choice((qual_ty, record, variant, nested_parser(ty, Delim::Paren)));
+        let atom = choice((
+            qual_ty,
+            record,
+            variant,
+            nested_parser(ty, Delim::Paren, node::TypeError),
+        ));
 
         let appl = atom.foldl_with(
             atom.repeated(),

@@ -45,6 +45,7 @@ where
         &module_type_env,
         &global_type_env,
         &resolved,
+        &[],
         &mut cons,
         &mut interner,
     );

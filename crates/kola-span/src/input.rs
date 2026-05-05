@@ -24,11 +24,10 @@ pub trait Input {
     /// Get the span of the previous token.
     fn prev_span(&self) -> Span;
 
-    /// Save position. Does NOT save State — state mutations in failed branches
-    /// are permanent
+    /// Save position.
     fn checkpoint(&self) -> Self::Checkpoint;
 
-    /// Reset to a previously saved position. Does NOT reset State.
+    /// Reset to a previously saved position.
     fn reset(&mut self, checkpoint: Self::Checkpoint);
 
     /// Get the location of the current token.

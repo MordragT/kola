@@ -579,6 +579,7 @@ impl_meta_substitute!(
     ForallBinder,
     TypeScheme,
     // Modules
+    BindError,
     Vis,
     ValueBind,
     TypeBind,

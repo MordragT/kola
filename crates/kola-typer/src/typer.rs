@@ -1,7 +1,10 @@
 use std::{ops::ControlFlow, rc::Rc};
 
 use kola_builtins::{Builtin, BuiltinEffect, BuiltinType};
-use kola_resolver::phase::{ResolvedModule, ResolvedNodes};
+use kola_resolver::{
+    phase::{ResolvedModule, ResolvedNodes},
+    symbol::ValueSym,
+};
 use kola_span::{Diagnostic, IntoDiagnostic, Loc, Report};
 use kola_syntax::prelude::*;
 use kola_tree::{node::Vis, prelude::*};
@@ -31,10 +34,12 @@ pub struct Typer<'a, N> {
     spans: Rc<Locations>,
     types: TypedNodes,
     cases: Vec<Id<node::CaseExpr>>, // TODO maybe proper wrapper
+    effects_stack: Vec<Row>,
     local_env: LocalTypeEnv,
     module_env: &'a TypeEnv,
     global_env: &'a TypeEnv,
     resolved: &'a ResolvedNodes,
+    entry_points: &'a [ValueSym],
     cons: &'a mut Constraints,
     interner: &'a mut StrInterner,
 }
@@ -46,6 +51,7 @@ impl<'a, N> Typer<'a, N> {
         module_env: &'a TypeEnv,
         global_env: &'a TypeEnv,
         resolved: &'a ResolvedNodes,
+        entry_points: &'a [ValueSym],
         cons: &'a mut Constraints,
         interner: &'a mut StrInterner,
     ) -> Self {
@@ -54,10 +60,12 @@ impl<'a, N> Typer<'a, N> {
             spans,
             types: TypedNodes::new(),
             cases: Vec::new(),
+            effects_stack: Vec::new(),
             local_env: LocalTypeEnv::new(),
             module_env,
             global_env,
             resolved,
+            entry_points,
             cons,
             interner,
         }
@@ -881,6 +889,13 @@ where
             ty_scheme, value, ..
         } = *id.get(tree);
 
+        // TODO: instead of these entrypoint hacks it would be nicer if main would just be an own node maybe ?
+        let is_entrypoint = self.entry_points.contains(self.resolved.meta(id));
+
+        if is_entrypoint {
+            self.effects_stack.push(Row::var());
+        }
+
         let span = self.span(id);
 
         let depth = self.local_env.depth();
@@ -891,7 +906,7 @@ where
         }
 
         self.visit_expr(value, tree)?;
-        let value_t = self.types.meta(value).clone();
+        let mut value_t = self.types.meta(value).clone();
 
         if let Some(ty_scheme) = ty_scheme {
             let expected_t = self.types.meta(ty_scheme).instantiate(self.cons);
@@ -900,6 +915,12 @@ where
 
         // Restore depth so that type variables from ty_scheme are not left in scope
         self.local_env.restore_depth(depth);
+
+        if is_entrypoint {
+            let effect_t = self.effects_stack.pop().expect("Effects stack underflow");
+            let comp_t = CompType::new(value_t, effect_t);
+            value_t = MonoType::func(MonoType::UNIT, comp_t);
+        }
 
         self.insert_type(id, PolyType::from_mono(value_t)); // Use fake PolyType to aid printer
 
@@ -1893,12 +1914,15 @@ where
 
         let name = param.get(tree).0.clone();
 
+        self.effects_stack.push(Row::var());
         self.local_env.enter(name, param_t.clone());
         self.visit_expr(body, tree)?;
         self.local_env.exit(&name);
+        let effects = self.effects_stack.pop().unwrap();
 
         let body_t = self.types.meta(body).clone();
-        let lambda_t = MonoType::func(param_t, body_t); // TODO this should definitely not be a pure func
+        let comp_t = CompType::new(body_t, effects);
+        let lambda_t = MonoType::func(param_t, comp_t);
 
         self.insert_type(id, lambda_t);
         ControlFlow::Continue(())
@@ -1928,14 +1952,10 @@ where
         let node::CallExpr { func, arg } = id.get(tree);
 
         let func_t = self.types.meta(*func).clone();
-        let arg_t = self.types.meta(*arg).clone(); // TODO this could be a CompType in the future
+        let arg_t = self.types.meta(*arg).clone();
 
-        // TODO If the argument was a CompType, we could just push its effect into the result type's effect row.
-        // Not completelty sure if it would be correct though e.g:
-        //
-        // a = (f do effect "arg") # argument is a do notation and of CompType, but should its effect
-        // propagate to the binding "a" and error out, or be propagated to the call here?
-        let result_t = CompType::new(MonoType::var(), Row::Empty);
+        let effect_t = self.effects_stack.last().cloned().unwrap_or(Row::Empty);
+        let result_t = CompType::new(MonoType::var(), effect_t);
 
         self.cons
             .constrain_equal(func_t, MonoType::func(arg_t, result_t.clone()), span);
@@ -1944,31 +1964,69 @@ where
         ControlFlow::Continue(())
     }
 
+    fn visit_handler_clause(
+        &mut self,
+        id: Id<node::HandlerClause>,
+        tree: &T,
+    ) -> ControlFlow<Self::BreakValue> {
+        let node::HandlerClause { op, param, body } = id.get(tree);
+
+        let label = Label(op.get(tree).0);
+        let param_t = MonoType::var();
+        let name = param.get(tree).0.clone();
+
+        self.local_env.enter(name, param_t.clone());
+        self.visit_expr(*body, tree)?;
+        self.local_env.exit(&name);
+
+        let body_t = self.types.meta(*body).clone();
+        let clause_t = MonoType::func(param_t, CompType::pure(body_t)); // TODO this restricts handlers to be pure, maybe too strict
+        let labeled_t = LabeledType::new(label, clause_t);
+        self.insert_type(id, labeled_t);
+
+        ControlFlow::Continue(())
+    }
+
     fn visit_handle_expr(
         &mut self,
         id: Id<node::HandleExpr>,
         tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
+        let span = self.span(id);
+
         let node::HandleExpr { source, clauses } = id.get(tree);
 
+        self.effects_stack.push(Row::var());
         self.visit_expr(*source, tree)?;
+        let source_effect = self.effects_stack.pop().unwrap();
         let source_t = self.types.meta(*source).clone();
 
-        for &_clause in clauses {
-            // TODO: Handle clause typing
-            // self.visit_handler_clause(clause, tree)?;
+        // Residual: what's left after handling, propagates to outer scope
+        let residual_effect = self.effects_stack.last().cloned().unwrap_or(Row::Empty);
+
+        for &clause_id in clauses {
+            self.visit_handler_clause(clause_id, tree)?;
+            let head = self.types.meta(clause_id).clone();
+
+            self.cons.constrain_equal(
+                MonoType::Row(Box::new(source_effect.clone())),
+                MonoType::Row(Box::new(Row::Extension {
+                    head,
+                    tail: Box::new(residual_effect.clone()),
+                })),
+                span,
+            );
         }
 
-        let result_t = CompType::new(
-            source_t,
-            Row::Empty, // TODO: Should be the union of all clause result types
-        );
+        let result_t = CompType::new(source_t, residual_effect);
 
         self.insert_type(id, result_t);
         ControlFlow::Continue(())
     }
 
     fn visit_do_expr(&mut self, id: Id<node::DoExpr>, tree: &T) -> ControlFlow<Self::BreakValue> {
+        let span = self.span(id);
+
         let node::DoExpr { op, arg } = *id.get(tree);
 
         let name = op.get(tree).0;
@@ -1979,13 +2037,22 @@ where
         let result_t = MonoType::var();
 
         let op_t = MonoType::func(arg_t, CompType::pure(result_t.clone()));
+        let op_labeled_t = LabeledType::new(Label(name), op_t);
 
-        // TODO is this sufficient, I want to have a structural approach to effect rows
-        // so in the best case I woudlnt want to lookup the effect operation by name.
+        // Guard: must be in a computation scope
+        let Some(ambient) = self.effects_stack.last_mut() else {
+            return ControlFlow::Break(Diagnostic::error(
+                span,
+                "Effect operation cannot appear outside a function body or handler",
+            ));
+        };
 
-        let effect_row = Row::unit(LabeledType::new(Label(name), op_t));
+        // Extend the ambient row with this effect label
+        let current = std::mem::replace(ambient, Row::Empty);
+        *ambient = current.extend(op_labeled_t.clone());
 
-        let result_comp = CompType::new(result_t, effect_row);
+        // This is just for debugging, the effect is already present in the ambient row
+        let result_comp = CompType::new(result_t, Row::unit(op_labeled_t));
 
         self.insert_type(id, result_comp);
         ControlFlow::Continue(())

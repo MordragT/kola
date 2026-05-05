@@ -130,6 +130,7 @@ define_nodes!(
     ForallBinder,
     TypeScheme,
     // Modules
+    BindError,
     Vis,
     ValueBind,
     TypeBind,

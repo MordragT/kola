@@ -298,6 +298,7 @@ impl Phase for ResolvePhase {
 
     // ===== BINDINGS =====
     // Top-level binding constructs - create symbols for what they bind
+    type BindError = !;
     type Vis = !; // Visibility modifiers don't need symbols
     type ValueBind = ValueSym; // Creates symbol for the bound value
     type TypeBind = TypeSym; // Creates symbol for the bound type

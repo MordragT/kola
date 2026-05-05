@@ -164,6 +164,7 @@ impl Driver {
         let type_check_output = type_check(
             &forest,
             &topography,
+            &entry_points,
             &module_scopes,
             &module_order,
             &effect_orders,

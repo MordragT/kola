@@ -9,6 +9,12 @@ use std::{
 
 use crate::{Loc, Located, SourceManager};
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct ReportCheckpoint {
+    pub issues: usize,
+    pub diagnostics: usize,
+}
+
 /// Represents a report containing multiple issues and diagnostics.
 #[derive(Debug, Clone, Default)]
 pub struct Report {
@@ -23,6 +29,20 @@ impl Report {
             issues: Vec::new(),
             diagnostics: Vec::new(),
         }
+    }
+
+    /// Creates a checkpoint of the current state of the report, allowing you to reset to this point later.
+    pub fn checkpoint(&self) -> ReportCheckpoint {
+        ReportCheckpoint {
+            issues: self.issues.len(),
+            diagnostics: self.diagnostics.len(),
+        }
+    }
+
+    /// Resets the report to a previous checkpoint, removing any issues or diagnostics added after the checkpoint.
+    pub fn reset(&mut self, checkpoint: ReportCheckpoint) {
+        self.issues.truncate(checkpoint.issues);
+        self.diagnostics.truncate(checkpoint.diagnostics);
     }
 
     /// Adds an issue to the report.

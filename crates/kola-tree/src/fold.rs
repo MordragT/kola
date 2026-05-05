@@ -98,6 +98,7 @@ define_folder_trait!(
     ForallBinder,
     TypeScheme,
     // Modules
+    BindError,
     Vis,
     ValueBind,
     TypeBind,

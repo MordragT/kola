@@ -264,6 +264,7 @@ define!(
     ForallBinder,
     TypeScheme,
     // Modules
+    BindError,
     Vis,
     ValueBind,
     TypeBind,

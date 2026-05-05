@@ -38,6 +38,18 @@ use crate::{
 };
 
 #[derive(
+    Debug, Notate, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+)]
+#[notate(color = "red")]
+pub struct BindError;
+
+impl BindError {
+    pub fn new_in(builder: &mut TreeBuilder) -> Id<Self> {
+        builder.insert(Self)
+    }
+}
+
+#[derive(
     Debug,
     EnumAsInner,
     Inspector,
@@ -60,6 +72,7 @@ pub enum Bind {
     Module(Id<ModuleBind>),
     ModuleType(Id<ModuleTypeBind>),
     Functor(Id<FunctorBind>),
+    Error(Id<BindError>),
 }
 
 impl<'a> Notate<'a> for NodePrinter<'a, Bind> {
@@ -72,6 +85,7 @@ impl<'a> Notate<'a> for NodePrinter<'a, Bind> {
             Bind::Module(m) => self.to(m).notate(arena),
             Bind::ModuleType(mt) => self.to(mt).notate(arena),
             Bind::Functor(f) => self.to(f).notate(arena),
+            Bind::Error(e) => self.to(e).notate(arena),
         }
     }
 }

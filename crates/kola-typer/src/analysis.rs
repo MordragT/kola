@@ -748,11 +748,10 @@ impl<'a, T: TreeView> ExhaustChecker<'a, T> {
 
         let required_set = source_type.required_set();
 
-        // TODO the equality check is required for something like:
+        // the equality check is required for something like:
         // nameOf = fn p =>
         //   case p
         //   | { name, ... } => name,
-        // maybe investigate why is_superset isn't suficient here
         if actual_set == required_set || actual_set.is_superset(&required_set) {
             Ok(())
         } else {

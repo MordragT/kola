@@ -42,7 +42,7 @@ use kola_resolver::{
     print::ResolutionDecorator,
     resolver::{EffectOrders, TypeOrders, ValueOrders},
     scope::ModuleScopes,
-    symbol::ModuleSym,
+    symbol::{ModuleSym, ValueSym},
 };
 use kola_span::{IntoDiagnostic, Report};
 use kola_tree::{
@@ -87,6 +87,7 @@ pub struct TypeCheckOutput {
 pub fn type_check(
     forest: &Forest,
     topography: &Topography,
+    entry_points: &[ValueSym],
     module_scopes: &ModuleScopes,
     module_order: &[ModuleSym],
     effect_orders: &EffectOrders,
@@ -127,6 +128,7 @@ pub fn type_check(
                 &module_env,
                 &global_env,
                 &module_scope.resolved,
+                entry_points,
                 &mut constraints,
                 str_interner,
             );
@@ -164,6 +166,7 @@ pub fn type_check(
                 &module_env,
                 &global_env,
                 &module_scope.resolved,
+                entry_points,
                 &mut constraints,
                 str_interner,
             );
@@ -203,6 +206,7 @@ pub fn type_check(
                 &module_env,
                 &global_env,
                 &module_scope.resolved,
+                entry_points,
                 &mut constraints,
                 str_interner,
             );

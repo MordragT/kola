@@ -493,6 +493,8 @@ impl CekMachine {
             // TODO: For continuation parameters, bind them here:
             // handler_env.bind(continuation_param, captured_continuation);
 
+            // TODO: should cont actually be: forward.append(&mut cont) here ??
+
             // Continue with the handler body (M in the rule) and remaining continuation (κ)
             MachineState::Standard(StandardConfig {
                 control: context.ir.instr(body),

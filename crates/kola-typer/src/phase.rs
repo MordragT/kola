@@ -52,13 +52,12 @@ impl Phase for TypePhase {
     type IfExpr = types::MonoType;
     type LambdaExpr = types::MonoType;
     type CallExpr = types::CompType;
-    type HandlerClause = types::MonoType;
+    type HandlerClause = types::LabeledType;
     type HandleExpr = types::CompType;
     type DoExpr = types::CompType;
     type TagExpr = types::MonoType;
     type TypeWitnessExpr = types::MonoType;
     type ExprError = !;
-    // TODO this is MonoType for now but this should change when CompTypes are properly handled
     type Expr = types::MonoType;
 
     // Effects are implemented via row types
@@ -83,6 +82,7 @@ impl Phase for TypePhase {
     type ForallBinder = Vec<types::TypeVar>;
     type TypeScheme = types::PolyType;
 
+    type BindError = !;
     type Vis = !;
     type ValueBind = types::PolyType; // is a MonoType for the typer but a PolyType for the Printer (after generalization)
     type TypeBind = types::PolyType;
