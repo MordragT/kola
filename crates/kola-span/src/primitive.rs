@@ -1,21 +1,32 @@
-use crate::{Diagnostic, Loc, Report, combinator::Combinator, input::Input, parser::Parser};
+use crate::{
+    Failure, Loc, Miss, Report,
+    combinator::Combinator,
+    input::Input,
+    parser::{ParseResult, Parser},
+};
 
 pub const trait Lazy<I: Input, O> {
     type Combinator: Combinator<I, O>;
     const COMBINATOR: Self::Combinator;
 }
 
-pub struct OpaqueFn<I, O> {
-    f: fn(&mut I, &mut Report) -> Result<O, Diagnostic>,
+pub struct OpaqueFn<I, O>
+where
+    I: Input,
+{
+    f: fn(&mut I, &mut Report) -> ParseResult<O, I::Token>,
 }
 
-impl<I, O> Clone for OpaqueFn<I, O> {
+impl<I, O> Clone for OpaqueFn<I, O>
+where
+    I: Input,
+{
     fn clone(&self) -> Self {
         Self { f: self.f }
     }
 }
 
-impl<I, O> Copy for OpaqueFn<I, O> {}
+impl<I: Input, O> Copy for OpaqueFn<I, O> {}
 
 pub const fn lazy<I, O, R>() -> OpaqueFn<I, O>
 where
@@ -23,7 +34,7 @@ where
     R: Lazy<I, O>,
 {
     #[inline(never)]
-    fn trampoline<I, O, R>(input: &mut I, report: &mut Report) -> Result<O, Diagnostic>
+    fn trampoline<I, O, R>(input: &mut I, report: &mut Report) -> ParseResult<O, I::Token>
     where
         I: Input,
         R: Lazy<I, O>,
@@ -41,7 +52,7 @@ where
     I: Input,
 {
     #[inline]
-    fn parse(&self, input: &mut I, report: &mut Report) -> Result<O, Diagnostic> {
+    fn parse(&self, input: &mut I, report: &mut Report) -> ParseResult<O, I::Token> {
         (self.f)(input, report)
     }
 }
@@ -51,14 +62,14 @@ pub struct Any {}
 
 impl<I: Input> Parser<I, Loc> for Any {
     #[inline]
-    fn parse(&self, input: &mut I, _report: &mut Report) -> Result<Loc, Diagnostic> {
+    fn parse(&self, input: &mut I, _report: &mut Report) -> ParseResult<Loc, I::Token> {
         match input.peek() {
             Some(_) => {
                 let loc = input.loc();
                 input.advance();
                 Ok(loc)
             }
-            None => Err(Diagnostic::error(input.loc(), "unexpected end of input")),
+            None => Err(Failure::eof(input.loc(), [])), // TODO: better report any
         }
     }
 }
@@ -88,18 +99,15 @@ where
 
 impl<I: Input> Parser<I, Loc> for Just<I> {
     #[inline]
-    fn parse(&self, input: &mut I, _report: &mut Report) -> Result<Loc, Diagnostic> {
+    fn parse(&self, input: &mut I, _report: &mut Report) -> ParseResult<Loc, I::Token> {
         let loc = input.loc();
         match input.peek() {
             Some(t) if t == self.expected => {
                 input.advance();
                 Ok(loc)
             }
-            Some(_) => Err(Diagnostic::error(
-                loc,
-                format!("unexpected token, expected {:?}", self.expected),
-            )),
-            None => Err(Diagnostic::error(loc, "unexpected end of input")),
+            Some(found) => Err(Failure::miss(loc, [self.expected], found)),
+            None => Err(Failure::eof(loc, [self.expected])),
         }
     }
 }
@@ -132,21 +140,29 @@ macro_rules! impl_choice_tuple {
             $($X: Parser<I, O>,)*
         {
             #[allow(non_snake_case)]
-            fn parse(&self, input: &mut I, report: &mut Report) -> Result<O, Diagnostic> {
+            fn parse(&self, input: &mut I, report: &mut Report) -> ParseResult<O, I::Token>{
                 let (ref $Head, $(ref $X,)*) = self.parsers;
                 let checkpoint = input.checkpoint();
-                let mut error = $crate::Diagnostic::error(input.loc(), "Error in choice combinator");
-                match $Head.parse(input, report) {
+
+                let miss = match $Head.parse(input, report) {
                     Ok(o) => return Ok(o),
-                    Err(e) => { input.reset(checkpoint); error.add_trace_element(e.message, e.loc); }
-                }
-                $(
-                    match $X.parse(input, report) {
-                        Ok(o) => return Ok(o),
-                        Err(e) => { input.reset(checkpoint);  error.add_trace_element(e.message, e.loc); }
+                    Err(Failure::Raise(e)) => return Err(Failure::Raise(e)),
+                    Err(Failure::Miss(expected)) => {
+                        input.reset(checkpoint);
+                        expected
                     }
+                };
+                $(
+                    let miss = match $X.parse(input, report) {
+                        Ok(o) => return Ok(o),
+                        Err(Failure::Raise(e)) => return Err(Failure::Raise(e)),
+                        Err(Failure::Miss(expected)) => {
+                            input.reset(checkpoint);
+                            miss.merge(expected)
+                        }
+                    };
                 )*
-                Err(error)
+                Err(Failure::Miss(miss))
             }
         }
     };
@@ -170,17 +186,26 @@ macro_rules! impl_group_tuple {
             $($X: Parser<I, $XO>,)*
         {
             #[allow(non_snake_case)]
-            fn parse(&self, input: &mut I, report: &mut Report) -> Result<($HO, $($XO,)*), Diagnostic> {
+            fn parse(&self, input: &mut I, report: &mut Report) -> ParseResult<($HO, $($XO,)*), I::Token>{
                 let (ref $Head, $(ref $X,)*) = self.parser;
                 let checkpoint = input.checkpoint();
+
                 let $HO = match $Head.parse(input, report) {
                     Ok(o) => o,
-                    Err(e) => { input.reset(checkpoint); return Err(e); }
+                    Err(Failure::Raise(e)) => return Err(Failure::Raise(e)),
+                    Err(Failure::Miss(miss)) => {
+                        input.reset(checkpoint);
+                        return Err(Failure::Miss(miss));
+                    }
                 };
                 $(
                     let $XO = match $X.parse(input, report) {
                         Ok(o) => o,
-                        Err(e) => { input.reset(checkpoint); return Err(e); }
+                        Err(Failure::Raise(e)) => return Err(Failure::Raise(e)),
+                        Err(Failure::Miss(miss)) => {
+                            input.reset(checkpoint);
+                            return Err(Failure::Miss(miss));
+                        }
                     };
                 )*
                 Ok(($HO, $($XO,)*))
@@ -224,7 +249,7 @@ where
     I: Input,
     F: Fn(I::Token) -> Option<O>,
 {
-    fn parse(&self, input: &mut I, _report: &mut Report) -> Result<O, Diagnostic> {
+    fn parse(&self, input: &mut I, _report: &mut Report) -> ParseResult<O, I::Token> {
         let loc = input.loc();
         match input.peek() {
             Some(token) => match (self.0)(token) {
@@ -232,9 +257,9 @@ where
                     input.advance();
                     Ok(output)
                 }
-                None => Err(Diagnostic::error(loc, "unexpected token")),
+                None => Err(Failure::Miss(Miss::eof(loc, []))), // no token consumed, no specific expectation
             },
-            None => Err(Diagnostic::error(loc, "unexpected end of input")),
+            None => Err(Failure::Miss(Miss::eof(loc, []))),
         }
     }
 }

@@ -1,8 +1,11 @@
 use kola_span::Loc;
-use kola_span::combinator::{Combinator, IterCombinator, skip_delimiters, skip_until};
 use kola_span::input::Input;
 use kola_span::parser::Parser;
 use kola_span::primitive::{Lazy, OpaqueFn, choice, group, lazy};
+use kola_span::{
+    combinator::{Combinator, IterCombinator},
+    skip::{skip_delimiters, skip_until},
+};
 use kola_tree::{node::ValueName, prelude::*};
 
 use super::ParseInput;
@@ -94,17 +97,14 @@ where
     };
 
     parser
-        .recover(
-            skip_delimiters(index, DELIM_PAIRS)
-                .to(fallback)
-                .to_node()
-                .map(T::from)
-                .to_node(),
-        )
         .delimited_by(
             open_delim(OpenT(DELIM_PAIRS[index].0)),
             close_delim(CloseT(DELIM_PAIRS[index].1)),
         )
+        .or_report(skip_delimiters(index, DELIM_PAIRS), move |loc, input| {
+            let tree: &mut State = input.state();
+            tree.insert_as::<T, _>(fallback, loc)
+        })
 }
 
 pub const fn module_parser<'t>() -> OpaqueFn<ParseInput<'t>, Id<node::Module>> {
@@ -126,9 +126,8 @@ impl<'t> Lazy<ParseInput<'t>, Id<node::Module>> for ModuleCombinator {
             .with_note("ModuleImport");
 
         let functor_args = module_path_parser()
-            .repeated()
-            .at_least(1)
             .separated_by(ctrl(CtrlT::COMMA))
+            .at_least(1)
             .collect()
             .map_to_node(node::FunctorArgs);
 
@@ -184,7 +183,6 @@ impl<'t> Lazy<ParseInput<'t>, Id<node::Module>> for ModuleCombinator {
             .map_to_node(|(name, ty)| node::EffectOpType { name, ty });
 
         let effect_row = effect_op
-            .repeated()
             .separated_by(ctrl(CtrlT::COMMA))
             .allow_trailing()
             .collect()
@@ -251,15 +249,8 @@ impl<'t> Lazy<ParseInput<'t>, Id<node::Module>> for ModuleCombinator {
             type_bind,
             value_bind,
         ));
-        // .recover(
-        //     skip_until(|t| matches!(t, Token::Atom(",")) || matches!(t, Token::Atom("}")))
-        //         .to(node::BindError)
-        //         .to_node()
-        //         .to_bind(),
-        // );
 
-        bind.repeated()
-            .separated_by(ctrl(CtrlT::COMMA))
+        bind.separated_by(ctrl(CtrlT::COMMA))
             .allow_trailing()
             .collect()
             .map_to_node(node::Module)
@@ -298,7 +289,6 @@ impl<'t> Lazy<ParseInput<'t>, Id<node::ModuleType>> for ModuleTypeCombinator {
         let spec = choice((value_spec, type_spec, module_spec));
 
         let concrete = spec
-            .repeated()
             .separated_by(ctrl(CtrlT::COMMA))
             .allow_trailing()
             .collect()
@@ -372,7 +362,6 @@ impl<'t> Lazy<ParseInput<'t>, Id<node::Pat>> for PatCombinator {
 
         let list = nested_parser(
             list_element
-                .repeated()
                 .separated_by(ctrl(CtrlT::COMMA))
                 .allow_trailing()
                 .collect()
@@ -389,7 +378,6 @@ impl<'t> Lazy<ParseInput<'t>, Id<node::Pat>> for PatCombinator {
 
         let record = nested_parser(
             field
-                .repeated()
                 .separated_by(ctrl(CtrlT::COMMA))
                 .collect()
                 .then(ctrl(CtrlT::COMMA).then(ctrl(CtrlT::TRIPLE_DOT)).or_not())
@@ -422,7 +410,6 @@ impl<'t> Lazy<ParseInput<'t>, Id<node::Pat>> for PatCombinator {
         let variant = nested_parser(
             none_case
                 .or(case)
-                .repeated()
                 .separated_by(ctrl(CtrlT::COMMA))
                 .allow_trailing()
                 .collect()
@@ -585,8 +572,7 @@ impl<'t> Lazy<ParseInput<'t>, Id<node::Expr>> for ExprAtomCombinator {
             .with_note("LiteralExpr");
 
         let list = nested_parser(
-            expr.repeated()
-                .separated_by(ctrl(CtrlT::COMMA))
+            expr.separated_by(ctrl(CtrlT::COMMA))
                 .allow_trailing()
                 .collect()
                 .map_to_node(node::ListExpr)
@@ -605,7 +591,6 @@ impl<'t> Lazy<ParseInput<'t>, Id<node::Expr>> for ExprAtomCombinator {
         .to_node();
 
         let instantiate = field
-            .repeated()
             .separated_by(ctrl(CtrlT::COMMA))
             .allow_trailing()
             .collect()
@@ -974,7 +959,6 @@ impl<'t> Lazy<ParseInput<'t>, Id<node::Type>> for TypeCombinator {
 
         let record = nested_parser(
             field
-                .repeated()
                 .separated_by(ctrl(CtrlT::COMMA))
                 .allow_trailing()
                 .collect()
@@ -1007,7 +991,6 @@ impl<'t> Lazy<ParseInput<'t>, Id<node::Type>> for TypeCombinator {
         let variant = nested_parser(
             none_tag
                 .or(tag)
-                .repeated()
                 .separated_by(ctrl(CtrlT::COMMA))
                 .allow_trailing()
                 .collect()
@@ -1038,7 +1021,6 @@ impl<'t> Lazy<ParseInput<'t>, Id<node::Type>> for TypeCombinator {
             .map_to_node(|(name, ty)| node::EffectOpType { name, ty });
 
         let effect_row = effect_op
-            .repeated()
             .separated_by(ctrl(CtrlT::COMMA))
             .allow_trailing()
             .collect()
@@ -1095,7 +1077,6 @@ const fn vis_parser<'t>() -> impl const KolaCombinator<'t, Id<node::Vis>> {
 
 const fn module_path_parser<'t>() -> impl const KolaCombinator<'t, Id<node::ModulePath>> {
     module_name_parser()
-        .repeated()
         .separated_by(ctrl(CtrlT::DOUBLE_COLON))
         .collect()
         .map_to_node(node::ModulePath)
@@ -1103,7 +1084,6 @@ const fn module_path_parser<'t>() -> impl const KolaCombinator<'t, Id<node::Modu
 
 const fn field_path_parser<'t>() -> impl const KolaCombinator<'t, Id<node::FieldPath>> {
     value_name_parser()
-        .repeated()
         .separated_by(ctrl(CtrlT::DOT))
         .collect()
         .map_to_node(node::FieldPath)

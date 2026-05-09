@@ -3,6 +3,7 @@ pub mod rules;
 
 pub use ext::KolaCombinator;
 pub use input::ParseInput;
+use kola_span::Failure;
 pub use state::State;
 
 pub mod ext;
@@ -44,8 +45,8 @@ pub fn parse<'t>(input: ParseInput<'t>, report: &mut Report) -> ParseOutput {
                 spans,
             }
         }
-        Err(diag) => {
-            report.add_diagnostic(diag);
+        Err(e) => {
+            report.add_diagnostic(e.throw());
             ParseOutput {
                 tokens,
                 tree: None,
@@ -72,7 +73,9 @@ where
     let mut input = input;
     let mut report = Report::new();
 
-    let node = parser.parse(&mut input, &mut report)?;
+    let node = parser
+        .parse(&mut input, &mut report)
+        .map_err(Failure::throw)?;
 
     let State {
         tokens,

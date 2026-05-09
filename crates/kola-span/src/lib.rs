@@ -18,8 +18,9 @@ pub mod input;
 pub mod parser;
 pub mod pratt;
 pub mod primitive;
+pub mod skip;
 
-pub use diag::{Diagnostic, IntoDiagnostic, IntoIssue, Issue, Report, Severity};
+pub use diag::{Diagnostic, Failure, IntoDiagnostic, IntoIssue, Issue, Miss, Report, Severity};
 pub use loc::{Loc, Located};
 pub use source::{Source, SourceId, SourceManager};
 pub use span::{Span, Spanned};

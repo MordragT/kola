@@ -3,7 +3,7 @@ use std::fmt;
 use crate::{Loc, SourceId, Span};
 
 pub trait Input {
-    type Token: Clone + fmt::Debug + PartialEq;
+    type Token: Copy + fmt::Display + PartialEq;
     type Checkpoint: Copy;
 
     /// Get the source ID of the input.
@@ -52,7 +52,7 @@ pub struct SimpleInput<T> {
 
 impl<T> Input for SimpleInput<T>
 where
-    T: Clone + fmt::Debug + PartialEq,
+    T: Copy + fmt::Display + PartialEq,
 {
     type Token = T;
     type Checkpoint = usize;

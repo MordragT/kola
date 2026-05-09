@@ -1,7 +1,9 @@
-use crate::{Diagnostic, Report, input::Input};
+use crate::{Diagnostic, Failure, Report, input::Input};
+
+pub type ParseResult<O, T> = Result<O, Failure<T>>;
 
 pub trait Parser<I: Input, O>: Sized {
-    fn parse(&self, input: &mut I, report: &mut Report) -> Result<O, Diagnostic>;
+    fn parse(&self, input: &mut I, report: &mut Report) -> ParseResult<O, I::Token>;
 }
 
 impl<I, O, P> Parser<I, O> for &P
@@ -9,7 +11,7 @@ where
     I: Input,
     P: Parser<I, O>,
 {
-    fn parse(&self, input: &mut I, report: &mut Report) -> Result<O, Diagnostic> {
+    fn parse(&self, input: &mut I, report: &mut Report) -> ParseResult<O, I::Token> {
         (**self).parse(input, report)
     }
 }
