@@ -97,14 +97,18 @@ where
     };
 
     parser
+        .throw()
         .delimited_by(
             open_delim(OpenT(DELIM_PAIRS[index].0)),
             close_delim(CloseT(DELIM_PAIRS[index].1)),
         )
-        .or_report(skip_delimiters(index, DELIM_PAIRS), move |loc, input| {
-            let tree: &mut State = input.state();
-            tree.insert_as::<T, _>(fallback, loc)
-        })
+        .catch(
+            skip_delimiters(index, DELIM_PAIRS),
+            move |loc, _report, input| {
+                let tree: &mut State = input.state();
+                tree.insert_as::<T, _>(fallback, loc)
+            },
+        )
 }
 
 pub const fn module_parser<'t>() -> OpaqueFn<ParseInput<'t>, Id<node::Module>> {

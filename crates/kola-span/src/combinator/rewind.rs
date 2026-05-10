@@ -1,7 +1,7 @@
 use crate::{
     Report,
     input::Input,
-    parser::{ParseResult, Parser},
+    parser::{Failure, Parser},
 };
 
 #[derive(Clone, Copy)]
@@ -10,7 +10,7 @@ pub struct Rewind<P> {
 }
 
 impl<I: Input, O, P: Parser<I, O>> Parser<I, O> for Rewind<P> {
-    fn parse(&self, input: &mut I, report: &mut Report) -> ParseResult<O, I::Token> {
+    fn parse(&self, input: &mut I, report: &mut Report) -> Result<O, Failure> {
         let checkpoint = input.checkpoint();
         let result = self.parser.parse(input, report);
         // Always reset the input, whether it succeeded or failed!

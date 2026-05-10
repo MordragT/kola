@@ -1,9 +1,9 @@
 use std::marker::PhantomData;
 
 use crate::{
-    Failure, Loc, Report,
+    Loc, Report,
     input::Input,
-    parser::{ParseResult, Parser},
+    parser::{Failure, Parser},
     skip::Skip,
 };
 
@@ -41,14 +41,35 @@ where
     P2: Parser<I, O>,
 {
     #[inline]
-    fn parse(&self, input: &mut I, report: &mut Report) -> ParseResult<O, I::Token> {
-        let checkpoint = input.checkpoint();
-        match self.first.parse(input, report) {
-            Ok(o) => Ok(o),
-            Err(Failure::Raise(e)) => Err(Failure::Raise(e)),
-            Err(Failure::Miss(_)) => {
-                input.reset(checkpoint);
-                self.second.parse(input, report)
+    fn parse(&self, input: &mut I, report: &mut Report) -> Result<O, Failure> {
+        let input_cp = input.checkpoint();
+        let report_cp = report.checkpoint();
+
+        let e1 = match self.first.parse(input, report) {
+            Ok(o) => return Ok(o),
+            Err(e) => e,
+        };
+
+        input.reset(input_cp);
+
+        let e2 = match self.second.parse(input, report) {
+            Ok(o) => {
+                report.reset(report_cp);
+                return Ok(o);
+            }
+            Err(e) => e,
+        };
+
+        match (e1, e2) {
+            (Failure::Abort(d1), Failure::Abort(d2)) => {
+                Err(d1.with_trace_element(d2.loc, d2.to_string()).into())
+            }
+            (Failure::Abort(d), Failure::Emit(cp)) | (Failure::Emit(cp), Failure::Abort(d)) => {
+                report.add_diagnostic(d);
+                Err(Failure::Emit(report_cp.min(cp)))
+            }
+            (Failure::Emit(cp1), Failure::Emit(cp2)) => {
+                Err(Failure::Emit(report_cp.min(cp1).min(cp2)))
             }
         }
     }
@@ -65,13 +86,15 @@ where
     P: Parser<I, O>,
 {
     #[inline]
-    fn parse(&self, input: &mut I, report: &mut Report) -> ParseResult<Option<O>, I::Token> {
-        let checkpoint = input.checkpoint();
+    fn parse(&self, input: &mut I, report: &mut Report) -> Result<Option<O>, Failure> {
+        let input_cp = input.checkpoint();
+        let report_cp = report.checkpoint();
+
         match self.parser.parse(input, report) {
             Ok(o) => Ok(Some(o)),
-            Err(Failure::Raise(e)) => Err(Failure::Raise(e)),
-            Err(Failure::Miss(_)) => {
-                input.reset(checkpoint);
+            Err(_) => {
+                input.reset(input_cp);
+                report.reset(report_cp);
                 Ok(None)
             }
         }
@@ -93,40 +116,13 @@ where
     F: Fn(Loc, &mut I) -> O,
 {
     #[inline]
-    fn parse(&self, input: &mut I, report: &mut Report) -> ParseResult<O, I::Token> {
+    fn parse(&self, input: &mut I, report: &mut Report) -> Result<O, Failure> {
+        let report_cp = report.checkpoint();
+
         match self.parser.parse(input, report) {
             Ok(o) => Ok(o),
-            Err(Failure::Raise(e)) => Err(Failure::Raise(e)),
-            Err(Failure::Miss(_)) => {
-                let loc = self.skipper.skip(input);
-                let output = (self.fallback)(loc, input);
-                Ok(output)
-            }
-        }
-    }
-}
-
-#[derive(Clone, Copy)]
-pub struct OrReport<P, S, F> {
-    pub(super) parser: P,
-    pub(super) skipper: S,
-    pub(super) fallback: F,
-}
-
-impl<I, O, F, P, S> Parser<I, O> for OrReport<P, S, F>
-where
-    I: Input,
-    P: Parser<I, O>,
-    S: Skip<I>,
-    F: Fn(Loc, &mut I) -> O,
-{
-    #[inline]
-    fn parse(&self, input: &mut I, report: &mut Report) -> ParseResult<O, I::Token> {
-        match self.parser.parse(input, report) {
-            Ok(o) => Ok(o),
-            Err(Failure::Miss(miss)) => Err(Failure::Miss(miss)),
-            Err(Failure::Raise(e)) => {
-                report.add_diagnostic(e);
+            Err(_) => {
+                report.reset(report_cp);
                 let loc = self.skipper.skip(input);
                 let output = (self.fallback)(loc, input);
                 Ok(output)

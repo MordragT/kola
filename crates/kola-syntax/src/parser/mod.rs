@@ -3,7 +3,6 @@ pub mod rules;
 
 pub use ext::KolaCombinator;
 pub use input::ParseInput;
-use kola_span::Failure;
 pub use state::State;
 
 pub mod ext;
@@ -26,6 +25,7 @@ pub fn parse<'t>(input: ParseInput<'t>, report: &mut Report) -> ParseOutput {
     let parser = rules::ModuleCombinator::COMBINATOR;
 
     let mut input = input;
+    let report_cp = report.checkpoint();
 
     let result = parser.parse(&mut input, report);
 
@@ -46,7 +46,8 @@ pub fn parse<'t>(input: ParseInput<'t>, report: &mut Report) -> ParseOutput {
             }
         }
         Err(e) => {
-            report.add_diagnostic(e.throw());
+            let diag = e.extract(report, report_cp);
+            report.add_diagnostic(diag);
             ParseOutput {
                 tokens,
                 tree: None,
@@ -72,10 +73,11 @@ where
 {
     let mut input = input;
     let mut report = Report::new();
+    let report_cp = report.checkpoint();
 
     let node = parser
         .parse(&mut input, &mut report)
-        .map_err(Failure::throw)?;
+        .map_err(|e| e.extract(&mut report, report_cp))?;
 
     let State {
         tokens,

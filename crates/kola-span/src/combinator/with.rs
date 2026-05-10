@@ -1,7 +1,7 @@
 use crate::{
-    Failure, Report,
+    Report,
     input::Input,
-    parser::{ParseResult, Parser},
+    parser::{Failure, Parser},
 };
 
 #[derive(Clone, Copy)]
@@ -16,11 +16,11 @@ where
     P: Parser<I, O>,
 {
     #[inline]
-    fn parse(&self, input: &mut I, report: &mut Report) -> ParseResult<O, I::Token> {
+    fn parse(&self, input: &mut I, report: &mut Report) -> Result<O, Failure> {
         match self.parser.parse(input, report) {
             Ok(ok) => Ok(ok),
-            Err(Failure::Miss(miss)) => Err(Failure::Miss(miss)),
-            Err(Failure::Raise(e)) => Err(Failure::Raise(e.with_help(self.help))),
+            Err(Failure::Abort(diag)) => Err(Failure::Abort(diag.with_help(self.help))),
+            Err(Failure::Emit(_)) => todo!(), // flatten report and add with_note then add back to report ?
         }
     }
 }
@@ -37,11 +37,11 @@ where
     P: Parser<I, O>,
 {
     #[inline]
-    fn parse(&self, input: &mut I, report: &mut Report) -> ParseResult<O, I::Token> {
+    fn parse(&self, input: &mut I, report: &mut Report) -> Result<O, Failure> {
         match self.parser.parse(input, report) {
             Ok(ok) => Ok(ok),
-            Err(Failure::Miss(miss)) => Err(Failure::Miss(miss)),
-            Err(Failure::Raise(e)) => Err(Failure::Raise(e.with_note(self.note))),
+            Err(Failure::Abort(diag)) => Err(Failure::Abort(diag.with_note(self.note))),
+            Err(Failure::Emit(_)) => todo!(), // flatten report and add with_note then add back to report ?
         }
     }
 }

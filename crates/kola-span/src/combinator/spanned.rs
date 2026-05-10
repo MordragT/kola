@@ -1,7 +1,7 @@
 use crate::{
     Loc, Report,
     input::Input,
-    parser::{ParseResult, Parser},
+    parser::{Failure, Parser},
 };
 
 #[derive(Clone, Copy)]
@@ -15,7 +15,7 @@ where
     P: Parser<I, O>,
 {
     #[inline]
-    fn parse(&self, input: &mut I, report: &mut Report) -> ParseResult<(O, Loc), I::Token> {
+    fn parse(&self, input: &mut I, report: &mut Report) -> Result<(O, Loc), Failure> {
         let start = input.loc();
         let result = self.parser.parse(input, report)?;
         let loc = start.union(input.prev_loc());

@@ -1,7 +1,7 @@
 use std::marker::PhantomData;
 
 use crate::{
-    Diagnostic, Failure, Report,
+    Diagnostic, Report,
     input::Input,
     parser::{IterParser, Parser},
 };
@@ -63,23 +63,27 @@ where
         if self.max.is_some_and(|max| *state >= max) {
             return Ok(None);
         }
-        let checkpoint = input.checkpoint();
-        match self.parser.parse(input, report) {
+
+        let input_cp = input.checkpoint();
+        let report_cp = report.checkpoint();
+
+        let e = match self.parser.parse(input, report) {
             Ok(o) => {
                 *state += 1;
-                Ok(Some(o))
+                return Ok(Some(o));
             }
-            Err(Failure::Raise(e)) => Err(e),
-            Err(Failure::Miss(miss)) => {
-                input.reset(checkpoint);
-                if *state < self.min {
-                    Err(miss
-                        .throw()
-                        .with_help(format!("Expected at least {} items", self.min)))
-                } else {
-                    Ok(None)
-                }
-            }
+            Err(e) => e,
+        };
+
+        input.reset(input_cp);
+
+        if *state < self.min {
+            Err(e
+                .extract(report, report_cp)
+                .with_help(format!("expected at least {} items", self.min)))
+        } else {
+            report.reset(report_cp);
+            Ok(None)
         }
     }
 }

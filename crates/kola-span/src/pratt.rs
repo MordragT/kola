@@ -3,7 +3,7 @@ use std::marker::PhantomData;
 use crate::{
     Loc, Report,
     input::Input,
-    parser::{ParseResult, Parser},
+    parser::{Failure, Parser},
 };
 
 /// Result of attempting to match an operator in the Pratt parser.
@@ -18,12 +18,8 @@ pub enum OpMatch<O> {
 
 /// Helper trait to expose `parse_bp` generically to the operator implementations.
 pub trait PrattParser<I: Input, O>: Parser<I, O> {
-    fn parse_bp(
-        &self,
-        input: &mut I,
-        report: &mut Report,
-        min_bp: u8,
-    ) -> ParseResult<(O, Loc), I::Token>;
+    fn parse_bp(&self, input: &mut I, report: &mut Report, min_bp: u8)
+    -> Result<(O, Loc), Failure>;
 }
 
 /// Trait representing a collection of operators (prefix, infix, postfix)
@@ -35,7 +31,7 @@ pub trait PrattOps<I: Input, O> {
         pratt: &P,
         input: &mut I,
         report: &mut Report,
-    ) -> ParseResult<Option<(O, Loc)>, I::Token>;
+    ) -> Result<Option<(O, Loc)>, Failure>;
 
     /// Attempt to parse an infix or postfix operator.
     fn parse_infix<P: PrattParser<I, O>>(
@@ -46,7 +42,7 @@ pub trait PrattOps<I: Input, O> {
         min_bp: u8,
         lhs: O,
         lhs_loc: Loc,
-    ) -> ParseResult<OpMatch<O>, I::Token>;
+    ) -> Result<OpMatch<O>, Failure>;
 }
 
 /// A Pratt (Top-Down Operator Precedence) parser combinator.
@@ -79,7 +75,7 @@ where
         input: &mut I,
         report: &mut Report,
         min_bp: u8,
-    ) -> ParseResult<(O, Loc), I::Token> {
+    ) -> Result<(O, Loc), Failure> {
         // 1. Parse prefix or atom
         let (mut lhs, mut lhs_loc) =
             if let Some(prefix_expr) = self.ops.parse_prefix(self, input, report)? {
@@ -115,7 +111,7 @@ where
     Atom: Parser<I, O>,
     Ops: PrattOps<I, O>,
 {
-    fn parse(&self, input: &mut I, report: &mut Report) -> ParseResult<O, I::Token> {
+    fn parse(&self, input: &mut I, report: &mut Report) -> Result<O, Failure> {
         self.parse_bp(input, report, 0).map(|(o, _)| o)
     }
 }
@@ -169,7 +165,7 @@ impl<I: Input, O> PrattOps<I, O> for PrattNil {
         _pratt: &P,
         _input: &mut I,
         _report: &mut Report,
-    ) -> ParseResult<Option<(O, Loc)>, I::Token> {
+    ) -> Result<Option<(O, Loc)>, Failure> {
         Ok(None)
     }
 
@@ -181,7 +177,7 @@ impl<I: Input, O> PrattOps<I, O> for PrattNil {
         _min_bp: u8,
         lhs: O,
         lhs_loc: Loc,
-    ) -> ParseResult<OpMatch<O>, I::Token> {
+    ) -> Result<OpMatch<O>, Failure> {
         Ok(OpMatch::Unmatched(lhs, lhs_loc))
     }
 }
@@ -243,7 +239,7 @@ where
         pratt: &P,
         input: &mut I,
         report: &mut Report,
-    ) -> ParseResult<Option<(O, Loc)>, I::Token> {
+    ) -> Result<Option<(O, Loc)>, Failure> {
         if let Some(res) = self.head.parse_prefix(pratt, input, report)? {
             return Ok(Some(res));
         }
@@ -258,7 +254,7 @@ where
         min_bp: u8,
         lhs: O,
         lhs_loc: Loc,
-    ) -> ParseResult<OpMatch<O>, I::Token> {
+    ) -> Result<OpMatch<O>, Failure> {
         match self
             .head
             .parse_infix(pratt, input, report, min_bp, lhs, lhs_loc)?
@@ -303,7 +299,7 @@ where
         pratt: &P,
         input: &mut I,
         report: &mut Report,
-    ) -> ParseResult<Option<(O, Loc)>, I::Token> {
+    ) -> Result<Option<(O, Loc)>, Failure> {
         let checkpoint = input.checkpoint();
         let start_loc = input.loc();
         match self.op_parser.parse(input, report) {
@@ -327,7 +323,7 @@ where
         _min_bp: u8,
         lhs: O,
         lhs_loc: Loc,
-    ) -> ParseResult<OpMatch<O>, I::Token> {
+    ) -> Result<OpMatch<O>, Failure> {
         Ok(OpMatch::Unmatched(lhs, lhs_loc))
     }
 }
@@ -365,7 +361,7 @@ where
         _pratt: &P,
         _input: &mut I,
         _report: &mut Report,
-    ) -> ParseResult<Option<(O, Loc)>, I::Token> {
+    ) -> Result<Option<(O, Loc)>, Failure> {
         Ok(None)
     }
 
@@ -377,7 +373,7 @@ where
         min_bp: u8,
         lhs: O,
         lhs_loc: Loc,
-    ) -> ParseResult<OpMatch<O>, I::Token> {
+    ) -> Result<OpMatch<O>, Failure> {
         if self.l_bp < min_bp {
             return Ok(OpMatch::Unmatched(lhs, lhs_loc));
         }
@@ -431,7 +427,7 @@ where
         _pratt: &P,
         _input: &mut I,
         _report: &mut Report,
-    ) -> ParseResult<Option<(O, Loc)>, I::Token> {
+    ) -> Result<Option<(O, Loc)>, Failure> {
         Ok(None)
     }
 
@@ -443,7 +439,7 @@ where
         min_bp: u8,
         lhs: O,
         lhs_loc: Loc,
-    ) -> ParseResult<OpMatch<O>, I::Token> {
+    ) -> Result<OpMatch<O>, Failure> {
         if self.l_bp < min_bp {
             return Ok(OpMatch::Unmatched(lhs, lhs_loc));
         }

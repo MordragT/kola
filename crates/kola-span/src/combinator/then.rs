@@ -1,9 +1,9 @@
 use std::marker::PhantomData;
 
 use crate::{
-    Failure, Report,
+    Report,
     input::Input,
-    parser::{ParseResult, Parser},
+    parser::{Failure, Parser},
 };
 
 #[derive(Clone, Copy)]
@@ -19,17 +19,9 @@ where
     P2: Parser<I, O1>,
 {
     #[inline]
-    fn parse(&self, input: &mut I, report: &mut Report) -> ParseResult<(O, O1), I::Token> {
-        let checkpoint = input.checkpoint();
+    fn parse(&self, input: &mut I, report: &mut Report) -> Result<(O, O1), Failure> {
         let o = self.first.parse(input, report)?;
-        let o1 = match self.second.parse(input, report) {
-            Ok(o1) => o1,
-            Err(Failure::Raise(e)) => return Err(Failure::Raise(e)),
-            Err(Failure::Miss(miss)) => {
-                input.reset(checkpoint);
-                return Err(Failure::Miss(miss));
-            }
-        };
+        let o1 = self.second.parse(input, report)?;
         Ok((o, o1))
     }
 }
@@ -68,17 +60,9 @@ where
     P2: Parser<I, O1>,
 {
     #[inline]
-    fn parse(&self, input: &mut I, report: &mut Report) -> ParseResult<O1, I::Token> {
-        let checkpoint = input.checkpoint();
+    fn parse(&self, input: &mut I, report: &mut Report) -> Result<O1, Failure> {
         self.first.parse(input, report)?;
-        match self.second.parse(input, report) {
-            Ok(o1) => Ok(o1),
-            Err(Failure::Raise(e)) => Err(Failure::Raise(e)),
-            Err(Failure::Miss(miss)) => {
-                input.reset(checkpoint);
-                Err(Failure::Miss(miss))
-            }
-        }
+        self.second.parse(input, report)
     }
 }
 
@@ -116,13 +100,9 @@ where
     P2: Parser<I, O1>,
 {
     #[inline]
-    fn parse(&self, input: &mut I, report: &mut Report) -> ParseResult<O, I::Token> {
-        let checkpoint = input.checkpoint();
+    fn parse(&self, input: &mut I, report: &mut Report) -> Result<O, Failure> {
         let o = self.first.parse(input, report)?;
-        if let Err(Failure::Miss(miss)) = self.second.parse(input, report) {
-            input.reset(checkpoint);
-            return Err(Failure::Miss(miss));
-        }
+        self.second.parse(input, report)?;
         Ok(o)
     }
 }

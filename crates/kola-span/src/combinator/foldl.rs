@@ -1,9 +1,9 @@
 use std::marker::PhantomData;
 
 use crate::{
-    Failure, Loc, Report,
+    Loc, Report,
     input::Input,
-    parser::{IterParser, ParseResult, Parser},
+    parser::{Failure, IterParser, Parser},
 };
 
 pub struct Foldl<P, IP, F, O1> {
@@ -44,7 +44,7 @@ where
     IP: IterParser<I, O1>,
     F: Fn(O, O1) -> O,
 {
-    fn parse(&self, input: &mut I, report: &mut Report) -> ParseResult<O, I::Token> {
+    fn parse(&self, input: &mut I, report: &mut Report) -> Result<O, Failure> {
         let mut acc = self.init.parse(input, report)?;
         let mut state = IP::State::default();
 
@@ -52,7 +52,7 @@ where
             match self
                 .iter
                 .drive(&mut state, input, report)
-                .map_err(Failure::Raise)?
+                .map_err(Failure::Abort)?
             {
                 Some(item) => acc = (self.f)(acc, item),
                 None => break,
@@ -101,7 +101,7 @@ where
     IP: IterParser<I, O1>,
     F: Fn(O, O1, Loc, &mut I) -> O,
 {
-    fn parse(&self, input: &mut I, report: &mut Report) -> ParseResult<O, I::Token> {
+    fn parse(&self, input: &mut I, report: &mut Report) -> Result<O, Failure> {
         let start = input.loc();
         let mut acc = self.init.parse(input, report)?;
         let mut state = IP::State::default();
@@ -110,7 +110,7 @@ where
             match self
                 .iter
                 .drive(&mut state, input, report)
-                .map_err(Failure::Raise)?
+                .map_err(Failure::Abort)?
             {
                 Some(item) => {
                     let loc = start.union(input.prev_loc());

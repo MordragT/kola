@@ -1,9 +1,9 @@
 use std::marker::PhantomData;
 
 use crate::{
-    Failure, Report,
+    Report,
     input::Input,
-    parser::{IterParser, ParseResult, Parser},
+    parser::{Failure, IterParser, Parser},
 };
 
 use super::{SplitHead, SplitTail};
@@ -49,7 +49,7 @@ where
     IP: IterParser<I, O>,
     C: Default + Extend<O>,
 {
-    fn parse(&self, input: &mut I, report: &mut Report) -> ParseResult<C, I::Token> {
+    fn parse(&self, input: &mut I, report: &mut Report) -> Result<C, Failure> {
         let mut state = IP::State::default();
         let mut items = C::default();
 
@@ -57,7 +57,7 @@ where
             match self
                 .iter
                 .drive(&mut state, input, report)
-                .map_err(Failure::Raise)?
+                .map_err(Failure::Abort)?
             {
                 Some(o) => items.extend(std::iter::once(o)),
                 None => break,

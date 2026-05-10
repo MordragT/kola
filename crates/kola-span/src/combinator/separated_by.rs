@@ -1,7 +1,7 @@
 use std::marker::PhantomData;
 
 use crate::{
-    Diagnostic, Failure, Report,
+    Diagnostic, Report,
     input::Input,
     parser::{IterParser, Parser},
 };
@@ -93,7 +93,7 @@ where
 
     fn drive(
         &self,
-        state: &mut Self::State,
+        state: &mut SeparatedByState,
         input: &mut I,
         report: &mut Report,
     ) -> Result<Option<O>, Diagnostic> {
@@ -101,12 +101,14 @@ where
             return Ok(None);
         }
 
-        let checkpoint = input.checkpoint();
+        let input_cp = input.checkpoint();
+        let report_cp = report.checkpoint();
 
         // Leading separator: speculative, fully rolled back on failure
         if state.first {
             if self.allow_leading && self.sep.parse(input, report).is_err() {
-                input.reset(checkpoint);
+                input.reset(input_cp);
+                report.reset(report_cp);
             }
 
             state.first = false;
@@ -114,22 +116,23 @@ where
             // Non-first: require separator
             match self.sep.parse(input, report) {
                 Ok(_) => {} // committed past the separator
-                Err(Failure::Raise(e)) => return Err(e),
-                Err(Failure::Miss(miss)) => {
-                    input.reset(checkpoint);
+                Err(e) => {
+                    input.reset(input_cp);
 
                     return if state.count < self.min {
-                        Err(miss
-                            .throw()
+                        Err(e
+                            .extract(report, report_cp)
                             .with_help(format!("Expected at least {} items", self.min)))
                     } else {
+                        report.reset(report_cp);
                         Ok(None)
                     };
                 }
             }
         }
 
-        let checkpoint = input.checkpoint();
+        let input_cp = input.checkpoint();
+        let report_cp = report.checkpoint();
 
         // Sep consumed (or first item) — now try the item
         match self.parser.parse(input, report) {
@@ -137,22 +140,22 @@ where
                 state.count += 1;
                 Ok(Some(o))
             }
-            Err(Failure::Raise(e)) => Err(e),
-            Err(Failure::Miss(miss)) => {
+            Err(e) => {
                 if self.allow_trailing {
                     // Trailing sep — roll back sep+item attempt
-                    input.reset(checkpoint);
+                    input.reset(input_cp);
 
                     if state.count < self.min {
-                        Err(miss
-                            .throw()
+                        Err(e
+                            .extract(report, report_cp)
                             .with_help(format!("Expected at least {} items", self.min)))
                     } else {
+                        report.reset(report_cp);
                         Ok(None)
                     }
                 } else {
                     // Sep consumed but no item = fatal
-                    Err(miss.throw())
+                    Err(e.extract(report, report_cp).with_help(format!("todo")))
                 }
             }
         }

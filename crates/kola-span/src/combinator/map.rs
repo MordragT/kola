@@ -3,7 +3,7 @@ use std::marker::PhantomData;
 use crate::{
     Loc, Report,
     input::Input,
-    parser::{ParseResult, Parser},
+    parser::{Failure, Parser},
 };
 
 pub struct Map<P, F, O> {
@@ -40,7 +40,7 @@ where
     F: Fn(O) -> O1,
 {
     #[inline]
-    fn parse(&self, input: &mut I, report: &mut Report) -> ParseResult<O1, I::Token> {
+    fn parse(&self, input: &mut I, report: &mut Report) -> Result<O1, Failure> {
         self.parser.parse(input, report).map(|ok| (self.f)(ok))
     }
 }
@@ -79,7 +79,7 @@ where
     F: Fn(O, Loc, &mut I) -> O1,
 {
     #[inline]
-    fn parse(&self, input: &mut I, report: &mut Report) -> ParseResult<O1, I::Token> {
+    fn parse(&self, input: &mut I, report: &mut Report) -> Result<O1, Failure> {
         let start = input.loc();
         let result = self.parser.parse(input, report)?;
         let loc = start.union(input.prev_loc());

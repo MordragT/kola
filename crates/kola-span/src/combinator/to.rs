@@ -3,7 +3,7 @@ use std::marker::PhantomData;
 use crate::{
     Report,
     input::Input,
-    parser::{ParseResult, Parser},
+    parser::{Failure, Parser},
 };
 
 pub struct To<O, P, T> {
@@ -40,7 +40,7 @@ where
     T: Clone,
 {
     #[inline]
-    fn parse(&self, input: &mut I, report: &mut Report) -> ParseResult<T, I::Token> {
+    fn parse(&self, input: &mut I, report: &mut Report) -> Result<T, Failure> {
         self.parser.parse(input, report).map(|_| self.value.clone())
     }
 }

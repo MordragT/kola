@@ -1,9 +1,9 @@
 use std::marker::PhantomData;
 
 use crate::{
-    Failure, Report,
+    Report,
     input::Input,
-    parser::{ParseResult, Parser},
+    parser::{Failure, Parser},
 };
 
 pub struct DelimitedBy<P, P1, P2, O1, O2> {
@@ -45,18 +45,10 @@ where
     P2: Parser<I, O2>,
 {
     #[inline]
-    fn parse(&self, input: &mut I, report: &mut Report) -> ParseResult<O, I::Token> {
-        let checkpoint = input.checkpoint();
-        match self.open.parse(input, report) {
-            Ok(_) => {}
-            Err(Failure::Raise(e)) => return Err(Failure::Raise(e)),
-            Err(Failure::Miss(e)) => {
-                input.reset(checkpoint);
-                return Err(Failure::Miss(e));
-            }
-        }
-        let result = self.parser.parse(input, report).map_err(Failure::promote)?;
-        self.close.parse(input, report).map_err(Failure::promote)?;
-        Ok(result)
+    fn parse(&self, input: &mut I, report: &mut Report) -> Result<O, Failure> {
+        self.open.parse(input, report)?;
+        let result = self.parser.parse(input, report);
+        self.close.parse(input, report)?;
+        result
     }
 }

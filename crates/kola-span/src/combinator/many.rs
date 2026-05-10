@@ -3,7 +3,7 @@ use std::array;
 use crate::{
     Report,
     input::Input,
-    parser::{ParseResult, Parser},
+    parser::{Failure, Parser},
 };
 
 #[derive(Clone, Copy)]
@@ -17,13 +17,7 @@ where
     P: Parser<I, O>,
 {
     #[inline]
-    fn parse(&self, input: &mut I, report: &mut Report) -> ParseResult<[O; N], I::Token> {
-        let checkpoint = input.checkpoint();
-        array::try_from_fn(|_| self.parser.parse(input, report)).inspect_err(|e| {
-            if e.is_miss() {
-                input.reset(checkpoint);
-            }
-        })
-        // TODO: probably only the first error is okay to be miss
+    fn parse(&self, input: &mut I, report: &mut Report) -> Result<[O; N], Failure> {
+        array::try_from_fn(|_| self.parser.parse(input, report))
     }
 }

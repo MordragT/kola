@@ -1,9 +1,9 @@
 use std::marker::PhantomData;
 
 use crate::{
-    Failure, Report,
+    Diagnostic, Report,
     input::Input,
-    parser::{IterParser, ParseResult, Parser},
+    parser::{Failure, IterParser, Parser},
 };
 
 pub struct SplitHead<IP, O, C> {
@@ -31,7 +31,7 @@ where
     IP: IterParser<I, O>,
     C: Default + Extend<O>,
 {
-    fn parse(&self, input: &mut I, report: &mut Report) -> ParseResult<(O, C), I::Token> {
+    fn parse(&self, input: &mut I, report: &mut Report) -> Result<(O, C), Failure> {
         let mut state = IP::State::default();
 
         let checkpoint = input.checkpoint();
@@ -41,12 +41,12 @@ where
         let head = match self
             .iter
             .drive(&mut state, input, report)
-            .map_err(Failure::Raise)?
+            .map_err(Failure::Abort)?
         {
             Some(o) => o,
             None => {
                 input.reset(checkpoint);
-                return Err(Failure::eof(loc, "Expected at least one item"));
+                return Err(Diagnostic::error(loc, "Expected at least one item").into());
             }
         };
 
@@ -56,7 +56,7 @@ where
             match self
                 .iter
                 .drive(&mut state, input, report)
-                .map_err(Failure::Raise)?
+                .map_err(Failure::Abort)?
             {
                 Some(o) => tail.extend(std::iter::once(o)),
                 None => break,
@@ -92,7 +92,7 @@ where
     IP: IterParser<I, O>,
     C: Default + Extend<O>,
 {
-    fn parse(&self, input: &mut I, report: &mut Report) -> ParseResult<(C, O), I::Token> {
+    fn parse(&self, input: &mut I, report: &mut Report) -> Result<(C, O), Failure> {
         let mut state = IP::State::default();
         let mut head = C::default();
 
@@ -100,10 +100,10 @@ where
         let mut prev = match self
             .iter
             .drive(&mut state, input, report)
-            .map_err(Failure::Raise)?
+            .map_err(Failure::Abort)?
         {
             Some(o) => o,
-            None => return Err(Failure::eof(input.loc(), "Expected at least one item")),
+            None => return Err(Diagnostic::error(input.loc(), "Expected at least one item").into()),
         };
 
         // 2. Loop lazily
@@ -111,7 +111,7 @@ where
             match self
                 .iter
                 .drive(&mut state, input, report)
-                .map_err(Failure::Raise)?
+                .map_err(Failure::Abort)?
             {
                 Some(next) => {
                     // Because 'next' exists, 'prev' is NOT the tail.

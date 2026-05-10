@@ -1,7 +1,7 @@
 use std::marker::PhantomData;
 
 use crate::{
-    Loc,
+    Loc, Report,
     input::Input,
     parser::{IterParser, Parser},
     pratt::{Pratt, pratt},
@@ -21,6 +21,7 @@ mod separated_by;
 mod spanned;
 mod split;
 mod then;
+mod throw;
 mod to;
 mod with;
 
@@ -30,13 +31,14 @@ pub use foldl::{Foldl, FoldlWith};
 pub use foldr::{Foldr, FoldrWith};
 pub use many::Many;
 pub use map::{Map, MapWith};
-pub use or::{Or, OrElse, OrNot, OrReport};
+pub use or::{Or, OrElse, OrNot};
 pub use repeated::Repeated;
 pub use rewind::Rewind;
 pub use separated_by::SeparatedBy;
 pub use spanned::Spanned;
 pub use split::{SplitHead, SplitTail};
 pub use then::{IgnoreThen, Then, ThenIgnore};
+pub use throw::{Catch, Throw};
 pub use to::To;
 pub use with::{WithHelp, WithNote};
 
@@ -130,18 +132,6 @@ pub const trait Combinator<I: Input, O>: Parser<I, O> + Copy {
         }
     }
 
-    fn or_report<S, F>(self, skipper: S, fallback: F) -> OrReport<Self, S, F>
-    where
-        S: Skip<I>,
-        F: Fn(Loc, &mut I) -> O,
-    {
-        OrReport {
-            parser: self,
-            skipper,
-            fallback,
-        }
-    }
-
     fn many<const N: usize>(self) -> Many<N, Self> {
         Many { parser: self }
     }
@@ -219,6 +209,22 @@ pub const trait Combinator<I: Input, O>: Parser<I, O> + Copy {
 
     fn rewind(self) -> Rewind<Self> {
         Rewind { parser: self }
+    }
+
+    fn throw(self) -> Throw<Self> {
+        Throw { parser: self }
+    }
+
+    fn catch<S, F>(self, skipper: S, fallback: F) -> Catch<Self, S, F>
+    where
+        S: Skip<I>,
+        F: Fn(Loc, Report, &mut I) -> O,
+    {
+        Catch {
+            parser: self,
+            skipper,
+            fallback,
+        }
     }
 
     fn with_help(self, help: &'static str) -> WithHelp<Self> {
