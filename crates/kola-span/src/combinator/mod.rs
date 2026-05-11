@@ -24,7 +24,6 @@ mod split;
 mod then;
 mod throw;
 mod to;
-mod with;
 
 pub use catch::Catch;
 pub use collect::Collect;
@@ -42,7 +41,6 @@ pub use split::{SplitHead, SplitTail};
 pub use then::{IgnoreThen, Then, ThenIgnore};
 pub use throw::Throw;
 pub use to::To;
-pub use with::{WithHelp, WithNote};
 
 pub const trait Combinator<I: Input, O: Debug>: Parser<I, O> + Copy {
     fn map<F, O1>(self, f: F) -> Map<Self, F, O>
@@ -224,6 +222,7 @@ pub const trait Combinator<I: Input, O: Debug>: Parser<I, O> + Copy {
         Throw {
             parser: self,
             reason,
+            note: None,
         }
     }
 
@@ -237,14 +236,6 @@ pub const trait Combinator<I: Input, O: Debug>: Parser<I, O> + Copy {
             skipper,
             fallback,
         }
-    }
-
-    fn with_help(self, help: &'static str) -> WithHelp<Self> {
-        WithHelp { parser: self, help }
-    }
-
-    fn with_note(self, note: &'static str) -> WithNote<Self> {
-        WithNote { parser: self, note }
     }
 }
 

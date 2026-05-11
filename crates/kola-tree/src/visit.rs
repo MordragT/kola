@@ -108,6 +108,7 @@ impl_visitable!(
     ModuleImport,
     FunctorApp,
     ModuleExpr,
+    SpecError,
     ValueSpec,
     OpaqueTypeSpec,
     ModuleSpec,
@@ -1733,6 +1734,14 @@ pub trait Visitor<T: TreeView> {
         self.walk_bind(id, tree)
     }
 
+    fn visit_spec_error(
+        &mut self,
+        _id: Id<node::SpecError>,
+        _tree: &T,
+    ) -> ControlFlow<Self::BreakValue> {
+        ControlFlow::Continue(())
+    }
+
     fn walk_value_spec(
         &mut self,
         id: Id<node::ValueSpec>,
@@ -1802,6 +1811,7 @@ pub trait Visitor<T: TreeView> {
             Value(id) => self.visit_value_spec(id, tree),
             OpaqueType(id) => self.visit_opaque_type_spec(id, tree),
             Module(id) => self.visit_module_spec(id, tree),
+            Error(id) => self.visit_spec_error(id, tree),
         }
     }
 

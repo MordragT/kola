@@ -70,6 +70,7 @@ impl Driver {
             tokens: _,
             tree,
             spans: _,
+            recovered,
         } = parse(
             ParseInput::new(source_id, tokens, &mut self.str_interner),
             &mut report,
@@ -85,6 +86,14 @@ impl Driver {
 
         if !report.is_empty() {
             report.eprint(&source_manager)?;
+        }
+
+        if !recovered.is_empty() {
+            eprintln!(
+                "{} issues recovered during parsing.",
+                "Warning:".bold().yellow(),
+            );
+            recovered.eprint(&source_manager)?;
         }
 
         Ok(tree)

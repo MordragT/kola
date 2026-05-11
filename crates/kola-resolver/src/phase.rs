@@ -324,6 +324,7 @@ impl Phase for ResolvePhase {
     // ===== SPECIFICATIONS =====
     // Module signatures and specs - future feature for module system
     // These define names in their respective namespaces but don't need resolver symbols yet
+    type SpecError = !;
     type ValueSpec = !; // Future: Could get ValueSym for signature checking
     type OpaqueTypeSpec = !; // Future: Opaque type specifications
     type ModuleSpec = !; // Future: Module signature specifications

@@ -39,17 +39,17 @@ impl Report {
         }
     }
 
-    /// Resets the report to a previous checkpoint, removing any issues or diagnostics added after the checkpoint.
-    pub fn reset(&mut self, checkpoint: ReportCheckpoint) {
-        self.issues.truncate(checkpoint.issues);
-        self.diagnostics.truncate(checkpoint.diagnostics);
-    }
-
     /// Removes diagnostics and issues in the range [from, to), keeping everything before `from`
     /// and everything from `to` onwards.
     pub fn drain(&mut self, from: ReportCheckpoint, to: ReportCheckpoint) {
         self.issues.drain(from.issues..to.issues);
         self.diagnostics.drain(from.diagnostics..to.diagnostics);
+    }
+
+    /// Resets the report to a previous checkpoint, removing any issues or diagnostics added after the checkpoint.
+    pub fn reset(&mut self, checkpoint: ReportCheckpoint) {
+        self.issues.truncate(checkpoint.issues);
+        self.diagnostics.truncate(checkpoint.diagnostics);
     }
 
     /// Splits the report at the given checkpoint, returning a new report containing the issues and diagnostics added after the checkpoint.
@@ -60,6 +60,12 @@ impl Report {
             issues,
             diagnostics,
         }
+    }
+
+    /// Appends another report to this report, consuming the other report in the process.
+    pub fn append(&mut self, mut other: Self) {
+        self.issues.append(&mut other.issues);
+        self.diagnostics.append(&mut other.diagnostics);
     }
 
     /// Flattens the report into a single diagnostic, combining all issues and diagnostics into one.

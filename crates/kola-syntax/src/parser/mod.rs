@@ -21,6 +21,7 @@ pub struct ParseOutput {
     pub tokens: SemanticTokens,
     pub tree: Option<Tree>,
     pub spans: Locations,
+    pub recovered: Report,
 }
 
 pub fn parse<'t>(input: ParseInput<'t>, report: &mut Report) -> ParseOutput {
@@ -35,6 +36,7 @@ pub fn parse<'t>(input: ParseInput<'t>, report: &mut Report) -> ParseOutput {
         tokens,
         builder,
         spans,
+        recovered,
         ..
     } = input.state;
 
@@ -45,6 +47,7 @@ pub fn parse<'t>(input: ParseInput<'t>, report: &mut Report) -> ParseOutput {
                 tokens,
                 tree,
                 spans,
+                recovered,
             }
         }
         Err(e) => {
@@ -54,6 +57,7 @@ pub fn parse<'t>(input: ParseInput<'t>, report: &mut Report) -> ParseOutput {
                 tokens,
                 tree: None,
                 spans,
+                recovered,
             }
         }
     }
@@ -64,6 +68,7 @@ pub struct ParseResult<T> {
     pub tokens: SemanticTokens,
     pub builder: TreeBuilder,
     pub spans: Locations,
+    pub recovered: Report,
 }
 
 pub fn try_parse_with<'t, T, P>(
@@ -86,6 +91,7 @@ where
         tokens,
         builder,
         spans,
+        recovered,
         ..
     } = input.state;
 
@@ -94,5 +100,6 @@ where
         tokens,
         builder,
         spans,
+        recovered,
     })
 }

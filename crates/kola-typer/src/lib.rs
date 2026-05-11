@@ -15,8 +15,6 @@
 
 #![feature(never_type)]
 #![feature(exhaustive_patterns)]
-#![feature(box_into_inner)]
-#![feature(if_let_guard)]
 
 //! Algorithm W with addition in Polymoprhic Type System for Extensible Records
 //! https://github.com/miguel-nascimento/algorithm-j-rs/

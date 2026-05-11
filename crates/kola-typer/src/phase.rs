@@ -102,6 +102,7 @@ impl Phase for TypePhase {
     type FunctorApp = !;
     type ModuleExpr = !;
 
+    type SpecError = !;
     type ValueSpec = !;
     type OpaqueTypeSpec = !;
     type ModuleSpec = !;

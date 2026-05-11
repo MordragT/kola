@@ -116,6 +116,7 @@ define_folder_trait!(
     FunctorArgs,
     FunctorApp,
     ModuleExpr,
+    SpecError,
     ValueSpec,
     OpaqueTypeSpec,
     ModuleSpec,

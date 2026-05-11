@@ -597,6 +597,7 @@ impl_meta_substitute!(
     FunctorArgs,
     FunctorApp,
     ModuleExpr,
+    SpecError,
     ValueSpec,
     OpaqueTypeSpec,
     ModuleSpec,

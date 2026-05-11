@@ -608,6 +608,7 @@ pub enum Spec {
     Value(Id<ValueSpec>),
     OpaqueType(Id<OpaqueTypeSpec>),
     Module(Id<ModuleSpec>),
+    Error(Id<SpecError>),
 }
 
 impl<'a> Notate<'a> for NodePrinter<'a, Spec> {
@@ -616,9 +617,16 @@ impl<'a> Notate<'a> for NodePrinter<'a, Spec> {
             Spec::Value(v) => self.to(v).notate(arena),
             Spec::OpaqueType(o) => self.to(o).notate(arena),
             Spec::Module(m) => self.to(m).notate(arena),
+            Spec::Error(e) => self.to(e).notate(arena),
         }
     }
 }
+
+#[derive(
+    Debug, Notate, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+)]
+#[notate(color = "red")]
+pub struct SpecError;
 
 // f : Num -> Num
 #[derive(

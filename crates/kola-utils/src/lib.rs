@@ -1,6 +1,3 @@
-#![feature(variant_count)]
-#![feature(negative_impls)]
-
 pub mod convert;
 pub mod dependency;
 pub mod errors;

@@ -10,9 +10,15 @@ use crate::{
 pub struct Throw<P> {
     pub(super) parser: P,
     pub(super) reason: &'static str,
+    pub(super) note: Option<&'static str>,
 }
 
-// TODO: with_help, with_note etc. instead of the with combinators ?
+impl<P> Throw<P> {
+    pub const fn with_note(mut self, note: &'static str) -> Self {
+        self.note = Some(note);
+        self
+    }
+}
 
 impl<I, O, P> Parser<I, O> for Throw<P>
 where
@@ -30,7 +36,10 @@ where
         match e {
             Failure::Abort(diag) => {
                 let report_cp = report.checkpoint();
-                report.add_diagnostic(diag.with_help(self.reason));
+                report.add_diagnostic(
+                    diag.with_help(self.reason)
+                        .with_notes(self.note.map(|n| n.to_owned())),
+                );
 
                 Err(Failure::Throw(report_cp))
             }

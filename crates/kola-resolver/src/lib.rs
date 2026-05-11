@@ -77,7 +77,6 @@
 
 #![feature(never_type)]
 #![feature(exhaustive_patterns)]
-#![feature(iter_intersperse)]
 
 pub mod constraints;
 pub mod defs;

@@ -282,6 +282,7 @@ define!(
     FunctorArgs,
     FunctorApp,
     ModuleExpr,
+    SpecError,
     ValueSpec,
     OpaqueTypeSpec,
     ModuleSpec,

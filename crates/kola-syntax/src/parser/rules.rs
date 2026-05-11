@@ -103,9 +103,10 @@ where
         )
         .catch(
             skip_delimiters(index, DELIM_PAIRS),
-            move |loc, _report, input| {
-                let tree: &mut State = input.state();
-                tree.insert_as::<T, _>(fallback, loc)
+            move |loc, report, input| {
+                let state: &mut State = input.state();
+                state.recovered.append(report);
+                state.insert_as::<T, _>(fallback, loc)
             },
         )
 }
@@ -123,10 +124,13 @@ impl<'t> Lazy<ParseInput<'t>, Id<node::Module>> for ModuleCombinator {
         let module = module_parser();
 
         let module_import = kw(KwT::IMPORT)
-            .ignore_then(module_name_parser().throw("Expected module name after 'import'"))
+            .ignore_then(
+                module_name_parser()
+                    .throw("Expected module name after 'import'")
+                    .with_note("ModuleImport"),
+            )
             .map_to_node(node::ModuleImport)
-            .to_module_expr()
-            .with_note("ModuleImport");
+            .to_module_expr();
 
         let functor_args = module_path_parser()
             .separated_by(ctrl(CtrlT::COMMA))
@@ -248,8 +252,7 @@ impl<'t> Lazy<ParseInput<'t>, Id<node::Module>> for ModuleCombinator {
             params,
             body,
         })
-        .to_bind()
-        .with_note("Functor");
+        .to_bind();
 
         let bind = choice((
             functor_bind,
@@ -264,9 +267,10 @@ impl<'t> Lazy<ParseInput<'t>, Id<node::Module>> for ModuleCombinator {
             .allow_trailing()
             .catch(
                 skip_until(|t| *t == CtrlT::COMMA.0),
-                |loc, _report, input| {
-                    let tree: &mut State = input.state();
-                    tree.insert_as::<node::Bind, _>(node::BindError, loc)
+                |loc, report, input| {
+                    let state: &mut State = input.state();
+                    state.recovered.append(report);
+                    state.insert_as::<node::Bind, _>(node::BindError, loc)
                 },
             )
             .collect()
@@ -288,17 +292,20 @@ impl<'t> Lazy<ParseInput<'t>, Id<node::ModuleType>> for ModuleTypeCombinator {
         let module_type = module_type_parser();
 
         let value_spec = value_name_parser()
-            .then(ctrl(CtrlT::COLON).ignore_then(type_scheme_parser()))
+            .then(
+                ctrl(CtrlT::COLON)
+                    .ignore_then(type_scheme_parser().throw("Expected type annotation after ':'")),
+            )
             .map_to_node(|(name, ty)| node::ValueSpec { name, ty })
             .to_spec();
 
         let type_spec = kw(KwT::TYPE)
-            .ignore_then(type_name_parser())
+            .ignore_then(type_name_parser().throw("Expected type name after 'type'"))
             .map_to_node(|name| node::OpaqueTypeSpec { name })
             .to_spec();
 
         let module_spec = kw(KwT::MODULE)
-            .ignore_then(module_name_parser())
+            .ignore_then(module_name_parser().throw("Expected module name after 'module'"))
             .then(ctrl(CtrlT::COLON).ignore_then(module_type))
             .map_to_node(|(name, ty)| node::ModuleSpec { name, ty })
             .to_spec();
@@ -308,6 +315,14 @@ impl<'t> Lazy<ParseInput<'t>, Id<node::ModuleType>> for ModuleTypeCombinator {
         let concrete = spec
             .separated_by(ctrl(CtrlT::COMMA))
             .allow_trailing()
+            .catch(
+                skip_until(|t| *t == CtrlT::COMMA.0),
+                |loc, report, input| {
+                    let state: &mut State = input.state();
+                    state.recovered.append(report);
+                    state.insert_as::<node::Spec, _>(node::SpecError, loc)
+                },
+            )
             .collect()
             .map_to_node(node::ConcreteModuleType)
             .delimited_by(open_delim(OpenT::BRACE), close_delim(CloseT::BRACE))
@@ -382,6 +397,7 @@ impl<'t> Lazy<ParseInput<'t>, Id<node::Pat>> for PatCombinator {
                 .separated_by(ctrl(CtrlT::COMMA))
                 .allow_trailing()
                 .collect()
+                .throw("Expected pattern or spread in list pattern")
                 .map_to_node(node::ListPat)
                 .to_pat(),
             Delim::Bracket,
@@ -397,6 +413,7 @@ impl<'t> Lazy<ParseInput<'t>, Id<node::Pat>> for PatCombinator {
             field
                 .separated_by(ctrl(CtrlT::COMMA))
                 .collect()
+                .throw("Expected field pattern in record pattern")
                 .then(ctrl(CtrlT::COMMA).then(ctrl(CtrlT::TRIPLE_DOT)).or_not())
                 .map_to_node(|(fields, spread)| node::RecordPat {
                     fields,
@@ -421,7 +438,11 @@ impl<'t> Lazy<ParseInput<'t>, Id<node::Pat>> for PatCombinator {
             .to_node();
 
         let case = tag_name_parser()
-            .then(ctrl(CtrlT::COLON).ignore_then(pat).or_not())
+            .then(
+                ctrl(CtrlT::COLON)
+                    .ignore_then(pat.throw("Expected pattern after tag"))
+                    .or_not(),
+            )
             .map_to_node(|(tag, pat)| node::VariantTagPat { tag, pat });
 
         let variant = nested_parser(
@@ -430,6 +451,7 @@ impl<'t> Lazy<ParseInput<'t>, Id<node::Pat>> for PatCombinator {
                 .separated_by(ctrl(CtrlT::COMMA))
                 .allow_trailing()
                 .collect()
+                .throw("Expected variant case pattern")
                 .map_to_node(node::VariantPat)
                 .to_pat(),
             Delim::Angle,
@@ -556,13 +578,9 @@ impl<'t> Lazy<ParseInput<'t>, Id<node::Expr>> for ExprAtomCombinator {
                 node::CallExpr { func: tag, arg }
             })
             .to_node()
-            .to_expr()
-            .with_note("NoneExpr");
+            .to_expr();
 
-        let tag = tag_name_parser()
-            .map_to_node(node::TagExpr)
-            .to_expr()
-            .with_note("TagExpr");
+        let tag = tag_name_parser().map_to_node(node::TagExpr).to_expr();
 
         let module_path = module_name_parser()
             .then_ignore(ctrl(CtrlT::DOUBLE_COLON).rewind())
@@ -574,31 +592,31 @@ impl<'t> Lazy<ParseInput<'t>, Id<node::Expr>> for ExprAtomCombinator {
             .or_not();
 
         let type_wit = ctrl(CtrlT::AT)
-            .ignore_then(module_path.then(type_name_parser()))
+            .ignore_then(
+                module_path
+                    .then(type_name_parser())
+                    .throw("Expected type name after '@'"),
+            )
             .map(|(path, ty)| node::QualifiedType { path, ty })
             .to_node()
             .map_to_node(node::TypeWitnessExpr::Qualified)
             .or(ctrl(CtrlT::TICK)
                 .ignore_then(value_name_parser())
                 .map_to_node(node::TypeWitnessExpr::Label))
-            .to_expr()
-            .with_note("TagWitnessExpr");
+            .to_expr();
 
-        let literal = literal_parser()
-            .to_node()
-            .to_expr()
-            .with_note("LiteralExpr");
+        let literal = literal_parser().to_node().to_expr();
 
         let list = nested_parser(
             expr.separated_by(ctrl(CtrlT::COMMA))
                 .allow_trailing()
                 .collect()
+                .throw("Expected expression in list literal")
                 .map_to_node(node::ListExpr)
                 .to_expr(),
             Delim::Bracket,
             node::ExprError,
-        )
-        .with_note("ListExpr");
+        );
 
         let field = group((
             value_name_parser(),
@@ -615,14 +633,22 @@ impl<'t> Lazy<ParseInput<'t>, Id<node::Expr>> for ExprAtomCombinator {
             .map_to_node(node::RecordExpr)
             .to_expr();
 
-        let record_expr = nested_parser(record_op.or(instantiate), Delim::Brace, node::ExprError)
-            .with_note("RecordExpr");
+        let record_expr = nested_parser(
+            record_op
+                .or(instantiate)
+                .throw("Expected record expression"),
+            Delim::Brace,
+            node::ExprError,
+        );
 
         let let_ = group((
-            kw(KwT::LET).ignore_then(value_name_parser()),
-            ctrl(CtrlT::COLON).ignore_then(type_parser()).or_not(),
-            op(OpT::ASSIGN).ignore_then(expr),
-            kw(KwT::IN).ignore_then(expr),
+            kw(KwT::LET)
+                .ignore_then(value_name_parser().throw("Expected variable name after 'let'")),
+            ctrl(CtrlT::COLON)
+                .ignore_then(type_parser().throw("Expected type after ':'"))
+                .or_not(),
+            op(OpT::ASSIGN).ignore_then(expr.throw("Expected expression after '='")),
+            kw(KwT::IN).ignore_then(expr.throw("Expected expression after 'in'")),
         ))
         .map_to_node(|(name, value_type, value, body)| node::LetExpr {
             name,
@@ -630,21 +656,19 @@ impl<'t> Lazy<ParseInput<'t>, Id<node::Expr>> for ExprAtomCombinator {
             value,
             body,
         })
-        .to_expr()
-        .with_note("LetExpr");
+        .to_expr();
 
         let if_ = group((
-            kw(KwT::IF).ignore_then(expr),
-            kw(KwT::THEN).ignore_then(expr),
-            kw(KwT::ELSE).ignore_then(expr),
+            kw(KwT::IF).ignore_then(expr.throw("Expected condition after 'if'")),
+            kw(KwT::THEN).ignore_then(expr.throw("Expected expression after 'then'")),
+            kw(KwT::ELSE).ignore_then(expr.throw("Expected expression after 'else'")),
         ))
         .map_to_node(|(pred, then, or_else)| node::IfExpr {
             pred,
             then,
             or_else,
         })
-        .to_expr()
-        .with_note("IfExpr");
+        .to_expr();
 
         let branch = pat_parser()
             .then(ctrl(CtrlT::DOUBLE_ARROW).ignore_then(expr))
@@ -658,22 +682,22 @@ impl<'t> Lazy<ParseInput<'t>, Id<node::Expr>> for ExprAtomCombinator {
             .collect();
 
         let case = kw(KwT::CASE)
-            .ignore_then(qualified_parser())
-            .then(branches)
+            .ignore_then(qualified_parser().throw("Expected qualified name after 'case'"))
+            .then(branches.throw("Expected case branches after 'case'"))
             .map_to_node(|(source, branches)| node::CaseExpr { source, branches })
-            .to_expr()
-            .with_note("CaseExpr");
+            .to_expr();
 
         let do_expr = kw(KwT::DO)
-            .ignore_then(value_name_parser())
-            .then(expr)
+            .ignore_then(value_name_parser().throw("Expected operation name after 'do'"))
+            .then(expr.throw("Expected argument expression after operation name"))
             .map_to_node(|(op, arg)| node::DoExpr { op, arg })
-            .to_expr()
-            .with_note("DoExpr");
+            .to_expr();
 
         let handle_call_expr = nested_parser(
-            expr.repeated().at_least(2).collect::<Vec<_>>().map_with(
-                |exprs, span, input: &mut ParseInput<'t>| {
+            expr.repeated()
+                .at_least(2)
+                .collect::<Vec<_>>()
+                .map_with(|exprs, span, input: &mut ParseInput<'t>| {
                     let tree: &mut State = input.state();
 
                     let mut iter = exprs.into_iter();
@@ -682,12 +706,11 @@ impl<'t> Lazy<ParseInput<'t>, Id<node::Expr>> for ExprAtomCombinator {
                     iter.fold(first, |func, arg| {
                         tree.insert_as::<node::Expr, _>(node::CallExpr { func, arg }, span)
                     })
-                },
-            ),
+                })
+                .throw("Expected a call expression"),
             Delim::Paren,
             node::ExprError,
-        )
-        .with_note("CallExpr");
+        );
 
         let clause = group((
             value_name_parser(),
@@ -703,24 +726,29 @@ impl<'t> Lazy<ParseInput<'t>, Id<node::Expr>> for ExprAtomCombinator {
             .collect();
 
         let handle = kw(KwT::HANDLE)
-            .ignore_then(do_expr.or(handle_call_expr))
-            .then(clauses)
+            .ignore_then(
+                do_expr
+                    .or(handle_call_expr)
+                    .throw("Expected a 'do' expression or a call expression after 'handle'"),
+            )
+            .then(clauses.throw("Expected handler clauses after 'handle <expr>'"))
             .map_to_node(|(source, clauses)| node::HandleExpr { source, clauses })
-            .to_expr()
-            .with_note("HandleExpr");
+            .to_expr();
 
         let func = group((
-            kw(KwT::FN).ignore_then(value_name_parser()),
-            ctrl(CtrlT::COLON).ignore_then(type_parser()).or_not(),
-            ctrl(CtrlT::DOUBLE_ARROW).ignore_then(expr),
+            kw(KwT::FN)
+                .ignore_then(value_name_parser().throw("Expected parameter name after 'fn'")),
+            ctrl(CtrlT::COLON)
+                .ignore_then(type_parser().throw("Expected parameter type after ':'"))
+                .or_not(),
+            ctrl(CtrlT::DOUBLE_ARROW).ignore_then(expr.throw("Expected function body after '=>'")),
         ))
         .map_to_node(|(param, param_type, body)| node::LambdaExpr {
             param,
             param_type,
             body,
         })
-        .to_expr()
-        .with_note("FuncExpr");
+        .to_expr();
 
         let paren_expr = nested_parser(
             expr.repeated().at_least(1).collect::<Vec<_>>().map_with(
@@ -742,8 +770,7 @@ impl<'t> Lazy<ParseInput<'t>, Id<node::Expr>> for ExprAtomCombinator {
             ),
             Delim::Paren,
             node::ExprError,
-        )
-        .with_note("ParenExpr");
+        );
 
         choice((
             literal,
@@ -980,6 +1007,7 @@ impl<'t> Lazy<ParseInput<'t>, Id<node::Type>> for TypeCombinator {
                 .separated_by(ctrl(CtrlT::COMMA))
                 .allow_trailing()
                 .collect()
+                .throw("Expected field in record type")
                 .then(row_var_parser())
                 .map_to_node(|(fields, extension)| node::RecordType { fields, extension })
                 .to_type(),
@@ -1003,7 +1031,11 @@ impl<'t> Lazy<ParseInput<'t>, Id<node::Type>> for TypeCombinator {
             .to_node();
 
         let tag = tag_name_parser()
-            .then(ctrl(CtrlT::COLON).ignore_then(ty).or_not())
+            .then(
+                ctrl(CtrlT::COLON)
+                    .ignore_then(ty.throw("Expected type annotation after ':'"))
+                    .or_not(),
+            )
             .map_to_node(|(name, ty)| node::TagType { name, ty });
 
         let variant = nested_parser(
@@ -1012,6 +1044,7 @@ impl<'t> Lazy<ParseInput<'t>, Id<node::Type>> for TypeCombinator {
                 .separated_by(ctrl(CtrlT::COMMA))
                 .allow_trailing()
                 .collect()
+                .throw("Expected tag in variant type")
                 .then(row_var_parser())
                 .map_to_node(|(tags, extension)| node::VariantType { tags, extension })
                 .to_type(),
@@ -1035,7 +1068,7 @@ impl<'t> Lazy<ParseInput<'t>, Id<node::Type>> for TypeCombinator {
         );
 
         let effect_op = value_name_parser()
-            .then(ctrl(CtrlT::COLON).ignore_then(ty))
+            .then(ctrl(CtrlT::COLON).ignore_then(ty.throw("Expected type annotation after ':'")))
             .map_to_node(|(name, ty)| node::EffectOpType { name, ty });
 
         let effect_row = effect_op
@@ -1134,7 +1167,6 @@ const fn qualified_parser<'t>() -> impl const KolaCombinator<'t, Id<node::Expr>>
         })
         .to_node()
         .to_expr()
-        .with_note("QualifiedExpr")
 }
 
 const fn spread_parser<'t>() -> impl const KolaCombinator<'t, Option<Id<node::ValueName>>> {
@@ -1182,7 +1214,10 @@ pub const fn type_scheme_parser<'t>() -> impl const KolaCombinator<'t, Id<node::
 
         let kinded = symbol(Symbol::TypeVar)
             .map_to_node(node::TypeVar)
-            .then(ctrl(CtrlT::COLON).ignore_then(kind_name_parser()))
+            .then(
+                ctrl(CtrlT::COLON)
+                    .ignore_then(kind_name_parser().throw("Expected kind annotation after ':'")),
+            )
             .delimited_by(open_delim(OpenT::PAREN), close_delim(CloseT::PAREN))
             .map_to_node(|(var, kind)| node::TypeVarBind {
                 var,
@@ -1196,7 +1231,13 @@ pub const fn type_scheme_parser<'t>() -> impl const KolaCombinator<'t, Id<node::
     // hindley milner only allows standard polymorphism (top-level forall)
     // higher-rank polymorphism (nested forall) is undecidable for full type-inference
     let forall = kw(KwT::FORALL)
-        .ignore_then(type_var_bind().repeated().at_least(1).collect())
+        .ignore_then(
+            type_var_bind()
+                .repeated()
+                .at_least(1)
+                .collect()
+                .throw("Expected at least one type variable after 'forall'"),
+        )
         .then_ignore(ctrl(CtrlT::DOT))
         .map_to_node(node::ForallBinder);
 

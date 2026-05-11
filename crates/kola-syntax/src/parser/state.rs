@@ -1,6 +1,6 @@
 use std::borrow::Cow;
 
-use kola_span::Loc;
+use kola_span::{Loc, Report, ReportCheckpoint};
 use kola_tree::prelude::*;
 use kola_utils::interner::{StrInterner, StrKey};
 
@@ -14,6 +14,7 @@ pub struct StateCheckpoint {
     pub tokens_len: usize,
     pub nodes_len: usize,
     pub spans_len: usize,
+    pub recovered: ReportCheckpoint,
 }
 
 #[derive(Debug)]
@@ -22,6 +23,7 @@ pub struct State<'t> {
     pub builder: TreeBuilder,
     pub spans: Locations,
     pub interner: &'t mut StrInterner,
+    pub recovered: Report,
 }
 
 impl<'t> State<'t> {
@@ -31,6 +33,7 @@ impl<'t> State<'t> {
             builder: TreeBuilder::default(),
             spans: Locations::default(),
             interner,
+            recovered: Report::new(),
         }
     }
 
@@ -77,6 +80,7 @@ impl<'t> State<'t> {
             tokens_len: self.tokens.len(),
             nodes_len: self.builder.count(),
             spans_len: self.spans.len(),
+            recovered: self.recovered.checkpoint(),
         }
     }
 
@@ -85,5 +89,6 @@ impl<'t> State<'t> {
         self.tokens.truncate(checkpoint.tokens_len);
         self.builder.truncate(checkpoint.nodes_len);
         self.spans.truncate(checkpoint.spans_len);
+        self.recovered.reset(checkpoint.recovered);
     }
 }

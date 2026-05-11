@@ -148,6 +148,7 @@ define_nodes!(
     FunctorArgs,
     FunctorApp,
     ModuleExpr,
+    SpecError,
     ValueSpec,
     OpaqueTypeSpec,
     ModuleSpec,
