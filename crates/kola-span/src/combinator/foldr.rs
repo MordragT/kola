@@ -1,4 +1,4 @@
-use std::marker::PhantomData;
+use std::{fmt::Debug, marker::PhantomData};
 
 use crate::{
     Loc, Report,
@@ -40,6 +40,7 @@ where
 impl<I, O, O1, P, IP, F> Parser<I, O> for Foldr<P, IP, F, O1>
 where
     I: Input,
+    O: Debug,
     P: Parser<I, O>,
     IP: IterParser<I, O1>,
     F: Fn(O, O1) -> O,
@@ -49,11 +50,7 @@ where
         let mut items = Vec::new();
 
         loop {
-            match self
-                .iter
-                .drive(&mut state, input, report)
-                .map_err(Failure::Abort)?
-            {
+            match self.iter.drive(&mut state, input, report)? {
                 Some(item) => items.push(item),
                 None => break,
             }
@@ -99,6 +96,7 @@ where
 impl<I, O, O1, P, IP, F> Parser<I, O> for FoldrWith<P, IP, F, O1>
 where
     I: Input,
+    O: Debug,
     P: Parser<I, O>,
     IP: IterParser<I, O1>,
     F: Fn(O1, O, Loc, &mut I) -> O,
@@ -109,11 +107,7 @@ where
         let mut items = Vec::new();
 
         loop {
-            match self
-                .iter
-                .drive(&mut state, input, report)
-                .map_err(Failure::Abort)?
-            {
+            match self.iter.drive(&mut state, input, report)? {
                 Some(item) => items.push(item),
                 None => break,
             }

@@ -1,6 +1,8 @@
 pub mod primitives;
 pub mod rules;
 
+use std::fmt::Debug;
+
 pub use ext::KolaCombinator;
 pub use input::ParseInput;
 pub use state::State;
@@ -69,6 +71,7 @@ pub fn try_parse_with<'t, T, P>(
     parser: P,
 ) -> Result<ParseResult<T>, Diagnostic>
 where
+    T: Debug,
     P: Parser<ParseInput<'t>, T>,
 {
     let mut input = input;

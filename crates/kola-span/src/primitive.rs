@@ -1,3 +1,5 @@
+use std::fmt::Debug;
+
 use crate::{
     Diagnostic, Loc, Report,
     combinator::Combinator,
@@ -5,7 +7,7 @@ use crate::{
     parser::{Failure, Parser},
 };
 
-pub const trait Lazy<I: Input, O> {
+pub const trait Lazy<I: Input, O: Debug> {
     type Combinator: Combinator<I, O>;
     const COMBINATOR: Self::Combinator;
 }
@@ -25,12 +27,14 @@ impl<I, O> Copy for OpaqueFn<I, O> {}
 pub const fn lazy<I, O, R>() -> OpaqueFn<I, O>
 where
     I: Input,
+    O: Debug,
     R: Lazy<I, O>,
 {
     #[inline(never)]
     fn trampoline<I, O, R>(input: &mut I, report: &mut Report) -> Result<O, Failure>
     where
         I: Input,
+        O: Debug,
         R: Lazy<I, O>,
     {
         R::COMBINATOR.parse(input, report)
@@ -43,6 +47,7 @@ where
 
 impl<I, O> Parser<I, O> for OpaqueFn<I, O>
 where
+    O: Debug,
     I: Input,
 {
     #[inline]
@@ -141,6 +146,7 @@ macro_rules! impl_choice_tuple {
         impl<I, O, $Head, $($X),*> Parser<I, O> for Choice<($Head, $($X,)*)>
         where
             I: Input,
+            O: Debug,
             $Head: Parser<I, O>,
             $($X: Parser<I, O>,)*
         {
@@ -148,19 +154,19 @@ macro_rules! impl_choice_tuple {
             fn parse(&self, input: &mut I, report: &mut Report) -> Result<O, Failure> {
                 let (ref $Head, $(ref $X,)*) = self.parsers;
                 let input_cp = input.checkpoint();
-                let mut report_cp = report.checkpoint();
-                let mut emitted = false;
+                let report_cp = report.checkpoint();
 
                 match $Head.parse(input, report) {
                     Ok(o) =>  {
                         report.reset(report_cp);
                         return Ok(o);
                     }
-                    Err(Failure::Emit(cp)) => {
-                        input.reset(input_cp);
-                        report_cp = report_cp.min(cp);
-                        emitted = true;
-                    },
+                    Err(Failure::Throw(cp)) => {
+                        // Branch committed via `throw` - drain the speculative diagnostics from other
+                        // branches before propagating, so the report only contains the committed error.
+                        report.drain(report_cp, cp);
+                        return Err(Failure::Throw(report_cp))
+                    }
                     Err(Failure::Abort(diag)) => {
                         input.reset(input_cp);
                         report.add_diagnostic(diag);
@@ -172,11 +178,12 @@ macro_rules! impl_choice_tuple {
                             report.reset(report_cp);
                             return Ok(o);
                         }
-                        Err(Failure::Emit(cp)) => {
-                            input.reset(input_cp);
-                            report_cp = report_cp.min(cp);
-                            emitted = true;
-                        },
+                        Err(Failure::Throw(cp)) => {
+                            // Branch committed via `throw` - drain the speculative diagnostics from other
+                            // branches before propagating, so the report only contains the committed error.
+                            report.drain(report_cp, cp);
+                            return Err(Failure::Throw(report_cp))
+                        }
                         Err(Failure::Abort(diag)) => {
                             input.reset(input_cp);
                             report.add_diagnostic(diag);
@@ -184,16 +191,12 @@ macro_rules! impl_choice_tuple {
                     }
                 )*
 
-                if emitted {
-                    Err(Failure::Emit(report_cp))
-                } else {
-                    let diag = report
-                        .split_reset(report_cp)
-                        .flatten()
-                        .expect("report should have atleast one diagnostic");
+                let diag = report
+                    .split_reset(report_cp)
+                    .flatten()
+                    .expect("report should have atleast one diagnostic");
 
-                    Err(Failure::Abort(diag))
-                }
+                Err(Failure::Abort(diag))
             }
         }
     };
@@ -213,6 +216,8 @@ macro_rules! impl_group_tuple {
         impl<I, $Head, $HO, $($X, $XO),*> Parser<I, ($HO, $($XO,)*)> for Group<($Head, $($X,)*)>
         where
             I: Input,
+            $HO: Debug,
+            $($XO: Debug,)*
             $Head: Parser<I, $HO>,
             $($X: Parser<I, $XO>,)*
         {
@@ -242,11 +247,11 @@ impl_group_tuple!(
     (P9, O9),
     (P10, O10),
     (P11, O11),
-    (P12, O12),
-    (P13, O13),
-    (P14, O14),
-    (P15, O15),
-    (P16, O16)
+    (P12, O12), // tuple debug only implemented up to 12
+                // (P13, O13),
+                // (P14, O14),
+                // (P15, O15),
+                // (P16, O16)
 );
 
 pub const fn choice<T>(parsers: T) -> Choice<T> {
@@ -263,6 +268,7 @@ pub struct Select<F>(pub F);
 impl<I, O, F> Parser<I, O> for Select<F>
 where
     I: Input,
+    O: Debug,
     F: Fn(I::Token) -> Option<O>,
 {
     fn parse(&self, input: &mut I, _report: &mut Report) -> Result<O, Failure> {

@@ -1,3 +1,5 @@
+use std::fmt::Debug;
+
 use kola_span::Loc;
 use kola_span::combinator::Combinator;
 use kola_tree::prelude::*;
@@ -6,7 +8,7 @@ use super::ParseInput;
 use super::state::State;
 use crate::loc::LocPhase;
 
-pub const trait KolaCombinator<'t, T>: const Combinator<ParseInput<'t>, T> {
+pub const trait KolaCombinator<'t, T: Debug>: const Combinator<ParseInput<'t>, T> {
     fn to_node(self) -> impl const Combinator<ParseInput<'t>, Id<T>>
     where
         Node: From<T>,
@@ -20,6 +22,7 @@ pub const trait KolaCombinator<'t, T>: const Combinator<ParseInput<'t>, T> {
 
     fn map_to_node<F, U>(self, f: F) -> impl const Combinator<ParseInput<'t>, Id<U>>
     where
+        U: Debug,
         F: Fn(T) -> U + Copy,
         U: MetaCast<LocPhase, Meta = Loc>,
         Node: From<U>,
@@ -77,4 +80,9 @@ pub const trait KolaCombinator<'t, T>: const Combinator<ParseInput<'t>, T> {
     }
 }
 
-impl<'t, T, P> const KolaCombinator<'t, T> for P where P: const Combinator<ParseInput<'t>, T> {}
+impl<'t, T, P> const KolaCombinator<'t, T> for P
+where
+    T: Debug,
+    P: const Combinator<ParseInput<'t>, T>,
+{
+}

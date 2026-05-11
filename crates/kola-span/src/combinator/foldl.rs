@@ -1,4 +1,4 @@
-use std::marker::PhantomData;
+use std::{fmt::Debug, marker::PhantomData};
 
 use crate::{
     Loc, Report,
@@ -40,6 +40,7 @@ where
 impl<I, O, O1, P, IP, F> Parser<I, O> for Foldl<P, IP, F, O1>
 where
     I: Input,
+    O: Debug,
     P: Parser<I, O>,
     IP: IterParser<I, O1>,
     F: Fn(O, O1) -> O,
@@ -49,11 +50,7 @@ where
         let mut state = IP::State::default();
 
         loop {
-            match self
-                .iter
-                .drive(&mut state, input, report)
-                .map_err(Failure::Abort)?
-            {
+            match self.iter.drive(&mut state, input, report)? {
                 Some(item) => acc = (self.f)(acc, item),
                 None => break,
             }
@@ -97,6 +94,7 @@ where
 impl<I, O, O1, P, IP, F> Parser<I, O> for FoldlWith<P, IP, F, O1>
 where
     I: Input,
+    O: Debug,
     P: Parser<I, O>,
     IP: IterParser<I, O1>,
     F: Fn(O, O1, Loc, &mut I) -> O,
@@ -107,11 +105,7 @@ where
         let mut state = IP::State::default();
 
         loop {
-            match self
-                .iter
-                .drive(&mut state, input, report)
-                .map_err(Failure::Abort)?
-            {
+            match self.iter.drive(&mut state, input, report)? {
                 Some(item) => {
                     let loc = start.union(input.prev_loc());
                     acc = (self.f)(acc, item, loc, input);

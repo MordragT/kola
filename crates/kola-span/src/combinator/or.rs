@@ -1,4 +1,4 @@
-use std::marker::PhantomData;
+use std::{fmt::Debug, marker::PhantomData};
 
 use crate::{
     Loc, Report,
@@ -37,6 +37,7 @@ where
 impl<I, O, P1, P2> Parser<I, O> for Or<P1, P2, O>
 where
     I: Input,
+    O: Debug,
     P1: Parser<I, O>,
     P2: Parser<I, O>,
 {
@@ -47,7 +48,8 @@ where
 
         let e1 = match self.first.parse(input, report) {
             Ok(o) => return Ok(o),
-            Err(e) => e,
+            Err(Failure::Throw(cp)) => return Err(Failure::Throw(cp)),
+            Err(Failure::Abort(e1)) => e1,
         };
 
         input.reset(input_cp);
@@ -57,21 +59,11 @@ where
                 report.reset(report_cp);
                 return Ok(o);
             }
-            Err(e) => e,
+            Err(Failure::Throw(cp)) => return Err(Failure::Throw(cp)),
+            Err(Failure::Abort(e2)) => e2,
         };
 
-        match (e1, e2) {
-            (Failure::Abort(d1), Failure::Abort(d2)) => {
-                Err(d1.with_trace_element(d2.loc, d2.to_string()).into())
-            }
-            (Failure::Abort(d), Failure::Emit(cp)) | (Failure::Emit(cp), Failure::Abort(d)) => {
-                report.add_diagnostic(d);
-                Err(Failure::Emit(report_cp.min(cp)))
-            }
-            (Failure::Emit(cp1), Failure::Emit(cp2)) => {
-                Err(Failure::Emit(report_cp.min(cp1).min(cp2)))
-            }
-        }
+        Err(e1.with_trace_element(e2.loc, e2.to_string()).into())
     }
 }
 
@@ -83,6 +75,7 @@ pub struct OrNot<P> {
 impl<I, O, P> Parser<I, Option<O>> for OrNot<P>
 where
     I: Input,
+    O: Debug,
     P: Parser<I, O>,
 {
     #[inline]
@@ -92,7 +85,8 @@ where
 
         match self.parser.parse(input, report) {
             Ok(o) => Ok(Some(o)),
-            Err(_) => {
+            Err(Failure::Throw(cp)) => Err(Failure::Throw(cp)),
+            Err(Failure::Abort(_)) => {
                 input.reset(input_cp);
                 report.reset(report_cp);
                 Ok(None)
@@ -111,6 +105,7 @@ pub struct OrElse<P, S, F> {
 impl<I, O, F, P, S> Parser<I, O> for OrElse<P, S, F>
 where
     I: Input,
+    O: Debug,
     P: Parser<I, O>,
     S: Skip<I>,
     F: Fn(Loc, &mut I) -> O,
@@ -121,7 +116,8 @@ where
 
         match self.parser.parse(input, report) {
             Ok(o) => Ok(o),
-            Err(_) => {
+            Err(Failure::Throw(cp)) => Err(Failure::Throw(cp)),
+            Err(Failure::Abort(_)) => {
                 report.reset(report_cp);
                 let loc = self.skipper.skip(input);
                 let output = (self.fallback)(loc, input);

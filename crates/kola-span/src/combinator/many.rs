@@ -1,4 +1,4 @@
-use std::array;
+use std::{array, fmt::Debug};
 
 use crate::{
     Report,
@@ -14,6 +14,7 @@ pub struct Many<const N: usize, P> {
 impl<I, O, P, const N: usize> Parser<I, [O; N]> for Many<N, P>
 where
     I: Input,
+    O: Debug,
     P: Parser<I, O>,
 {
     #[inline]

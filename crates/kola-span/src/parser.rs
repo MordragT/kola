@@ -1,12 +1,13 @@
+use std::fmt::Debug;
+
 use crate::{Diagnostic, Report, diag::ReportCheckpoint, input::Input};
 
 /// The outcome of a failed parse attempt.
 ///
-/// Both variants cause the parser to backtrack. The difference is whether
-/// the failure has been explicitly thrown:
+/// Abort causes the parser to backtrack. Throw short circuits.
 ///
 /// - [`Failure::Abort`] — the default failure kind. Never touches the [`Report`].
-/// - [`Failure::Emit`] — produced by the [`throw`] combinator. The diagnostic
+/// - [`Failure::Throw`] — produced by the [`throw`] combinator. The diagnostic
 ///   has been added to the [`Report`] and can be retrieved by an enclosing [`catch`].
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub enum Failure {
@@ -15,7 +16,7 @@ pub enum Failure {
     /// The diagnostic has already been added to the [`Report`] at the carried
     /// index. An enclosing [`catch`] will drain the report from that point
     /// and pass the diagnostics to its fallback.
-    Emit(ReportCheckpoint),
+    Throw(ReportCheckpoint),
 
     /// The default failure — the parser did not match the current input.
     ///
@@ -30,7 +31,7 @@ impl Failure {
                 report.reset(report_cp);
                 diag
             }
-            Self::Emit(cp) => {
+            Self::Throw(cp) => {
                 debug_assert!(
                     cp >= report_cp,
                     "Emit checkpoint predates report checkpoint"
@@ -52,17 +53,18 @@ impl From<Diagnostic> for Failure {
 
 impl From<ReportCheckpoint> for Failure {
     fn from(cp: ReportCheckpoint) -> Self {
-        Failure::Emit(cp)
+        Failure::Throw(cp)
     }
 }
 
-pub trait Parser<I: Input, O>: Sized {
+pub trait Parser<I: Input, O: Debug>: Sized {
     fn parse(&self, input: &mut I, report: &mut Report) -> Result<O, Failure>;
 }
 
 impl<I, O, P> Parser<I, O> for &P
 where
     I: Input,
+    O: Debug,
     P: Parser<I, O>,
 {
     fn parse(&self, input: &mut I, report: &mut Report) -> Result<O, Failure> {
@@ -83,7 +85,7 @@ pub trait IterParser<I: Input, O>: Sized {
         state: &mut Self::State,
         input: &mut I,
         report: &mut Report,
-    ) -> Result<Option<O>, Diagnostic>;
+    ) -> Result<Option<O>, Failure>;
 }
 
 impl<I, O, P> IterParser<I, O> for &P
@@ -98,7 +100,7 @@ where
         state: &mut Self::State,
         input: &mut I,
         report: &mut Report,
-    ) -> Result<Option<O>, Diagnostic> {
+    ) -> Result<Option<O>, Failure> {
         (**self).drive(state, input, report)
     }
 }

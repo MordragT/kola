@@ -1,9 +1,9 @@
-use std::marker::PhantomData;
+use std::{fmt::Debug, marker::PhantomData};
 
 use crate::{
-    Diagnostic, Report,
+    Report,
     input::Input,
-    parser::{IterParser, Parser},
+    parser::{Failure, IterParser, Parser},
 };
 
 pub struct SeparatedBy<P, S, OS, O> {
@@ -86,6 +86,8 @@ impl Default for SeparatedByState {
 impl<I, O, OS, P, S> IterParser<I, O> for SeparatedBy<P, S, OS, O>
 where
     I: Input,
+    O: Debug,
+    OS: Debug,
     P: Parser<I, O>,
     S: Parser<I, OS>,
 {
@@ -96,7 +98,7 @@ where
         state: &mut SeparatedByState,
         input: &mut I,
         report: &mut Report,
-    ) -> Result<Option<O>, Diagnostic> {
+    ) -> Result<Option<O>, Failure> {
         if self.max.is_some_and(|max| state.count >= max) {
             return Ok(None);
         }
@@ -116,13 +118,14 @@ where
             // Non-first: require separator
             match self.sep.parse(input, report) {
                 Ok(_) => {} // committed past the separator
-                Err(e) => {
+                Err(Failure::Throw(cp)) => return Err(Failure::Throw(cp)),
+                Err(Failure::Abort(e)) => {
                     input.reset(input_cp);
 
                     return if state.count < self.min {
                         Err(e
-                            .extract(report, report_cp)
-                            .with_help(format!("Expected at least {} items", self.min)))
+                            .with_help(format!("Expected at least {} items", self.min))
+                            .into())
                     } else {
                         report.reset(report_cp);
                         Ok(None)
@@ -140,22 +143,23 @@ where
                 state.count += 1;
                 Ok(Some(o))
             }
-            Err(e) => {
+            Err(Failure::Throw(cp)) => return Err(Failure::Throw(cp)),
+            Err(Failure::Abort(e)) => {
                 if self.allow_trailing {
                     // Trailing sep — roll back sep+item attempt
                     input.reset(input_cp);
 
                     if state.count < self.min {
                         Err(e
-                            .extract(report, report_cp)
-                            .with_help(format!("Expected at least {} items", self.min)))
+                            .with_help(format!("Expected at least {} items", self.min))
+                            .into())
                     } else {
                         report.reset(report_cp);
                         Ok(None)
                     }
                 } else {
                     // Sep consumed but no item = fatal
-                    Err(e.extract(report, report_cp).with_help(format!("todo")))
+                    Err(e.with_help(format!("todo")).into())
                 }
             }
         }

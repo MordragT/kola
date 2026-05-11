@@ -1,4 +1,4 @@
-use std::marker::PhantomData;
+use std::{fmt::Debug, marker::PhantomData};
 
 use crate::{
     Loc, Report,
@@ -36,6 +36,8 @@ where
 impl<I, O, O1, P, F> Parser<I, O1> for Map<P, F, O>
 where
     I: Input,
+    O: Debug,
+    O1: Debug,
     P: Parser<I, O>,
     F: Fn(O) -> O1,
 {
@@ -75,6 +77,8 @@ where
 impl<I, O, O1, P, F> Parser<I, O1> for MapWith<P, F, O>
 where
     I: Input,
+    O: Debug,
+    O1: Debug,
     P: Parser<I, O>,
     F: Fn(O, Loc, &mut I) -> O1,
 {

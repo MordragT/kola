@@ -1,3 +1,5 @@
+use std::fmt::Debug;
+
 use crate::{
     Loc, Report,
     input::Input,
@@ -12,6 +14,7 @@ pub struct Spanned<P> {
 impl<I, O, P> Parser<I, (O, Loc)> for Spanned<P>
 where
     I: Input,
+    O: Debug,
     P: Parser<I, O>,
 {
     #[inline]

@@ -1,3 +1,5 @@
+use std::fmt::Debug;
+
 use crate::{
     Report,
     input::Input,
@@ -13,6 +15,7 @@ pub struct WithHelp<P> {
 impl<I, O, P> Parser<I, O> for WithHelp<P>
 where
     I: Input,
+    O: Debug,
     P: Parser<I, O>,
 {
     #[inline]
@@ -20,7 +23,7 @@ where
         match self.parser.parse(input, report) {
             Ok(ok) => Ok(ok),
             Err(Failure::Abort(diag)) => Err(Failure::Abort(diag.with_help(self.help))),
-            Err(Failure::Emit(_)) => todo!(), // flatten report and add with_note then add back to report ?
+            Err(Failure::Throw(_)) => todo!(), // flatten report and add with_note then add back to report ?
         }
     }
 }
@@ -34,6 +37,7 @@ pub struct WithNote<P> {
 impl<I, O, P> Parser<I, O> for WithNote<P>
 where
     I: Input,
+    O: Debug,
     P: Parser<I, O>,
 {
     #[inline]
@@ -41,7 +45,7 @@ where
         match self.parser.parse(input, report) {
             Ok(ok) => Ok(ok),
             Err(Failure::Abort(diag)) => Err(Failure::Abort(diag.with_note(self.note))),
-            Err(Failure::Emit(_)) => todo!(), // flatten report and add with_note then add back to report ?
+            Err(Failure::Throw(_)) => todo!(), // flatten report and add with_note then add back to report ?
         }
     }
 }

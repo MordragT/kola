@@ -1,4 +1,4 @@
-use std::marker::PhantomData;
+use std::{fmt::Debug, marker::PhantomData};
 
 use crate::{
     Report,
@@ -40,6 +40,9 @@ where
 impl<I, O, O1, O2, P, P1, P2> Parser<I, O> for DelimitedBy<P, P1, P2, O1, O2>
 where
     I: Input,
+    O: Debug,
+    O1: Debug,
+    O2: Debug,
     P: Parser<I, O>,
     P1: Parser<I, O1>,
     P2: Parser<I, O2>,
@@ -47,8 +50,8 @@ where
     #[inline]
     fn parse(&self, input: &mut I, report: &mut Report) -> Result<O, Failure> {
         self.open.parse(input, report)?;
-        let result = self.parser.parse(input, report);
+        let o = self.parser.parse(input, report)?;
         self.close.parse(input, report)?;
-        result
+        Ok(o)
     }
 }

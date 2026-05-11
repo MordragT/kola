@@ -1,4 +1,4 @@
-use std::marker::PhantomData;
+use std::{fmt::Debug, marker::PhantomData};
 
 use crate::{
     Loc, Report,
@@ -17,14 +17,14 @@ pub enum OpMatch<O> {
 }
 
 /// Helper trait to expose `parse_bp` generically to the operator implementations.
-pub trait PrattParser<I: Input, O>: Parser<I, O> {
+pub trait PrattParser<I: Input, O: Debug>: Parser<I, O> {
     fn parse_bp(&self, input: &mut I, report: &mut Report, min_bp: u8)
     -> Result<(O, Loc), Failure>;
 }
 
 /// Trait representing a collection of operators (prefix, infix, postfix)
 /// checked sequentially during the Pratt loop at runtime.
-pub trait PrattOps<I: Input, O> {
+pub trait PrattOps<I: Input, O: Debug> {
     /// Attempt to parse a prefix operator and return the parsed value.
     fn parse_prefix<P: PrattParser<I, O>>(
         &self,
@@ -67,6 +67,7 @@ pub const fn pratt<Atom, Ops, O>(atom: Atom, ops: Ops) -> Pratt<Atom, Ops, O> {
 impl<I, O, Atom, Ops> PrattParser<I, O> for Pratt<Atom, Ops, O>
 where
     I: Input,
+    O: Debug,
     Atom: Parser<I, O>,
     Ops: PrattOps<I, O>,
 {
@@ -108,6 +109,7 @@ where
 impl<I, O, Atom, Ops> Parser<I, O> for Pratt<Atom, Ops, O>
 where
     I: Input,
+    O: Debug,
     Atom: Parser<I, O>,
     Ops: PrattOps<I, O>,
 {
@@ -159,7 +161,7 @@ impl PrattNil {
     }
 }
 
-impl<I: Input, O> PrattOps<I, O> for PrattNil {
+impl<I: Input, O: Debug> PrattOps<I, O> for PrattNil {
     fn parse_prefix<P: PrattParser<I, O>>(
         &self,
         _pratt: &P,
@@ -231,6 +233,7 @@ impl<Tail, Head> PrattCons<Tail, Head> {
 impl<I, O, Tail, Head> PrattOps<I, O> for PrattCons<Tail, Head>
 where
     I: Input,
+    O: Debug,
     Tail: PrattOps<I, O>,
     Head: PrattOps<I, O>,
 {
@@ -291,6 +294,8 @@ impl<OpParser, F, Op> PrefixOp<OpParser, F, Op> {
 impl<I, O, Op, OpParser, F> PrattOps<I, O> for PrefixOp<OpParser, F, Op>
 where
     I: Input,
+    O: Debug,
+    Op: Debug,
     OpParser: Parser<I, Op>,
     F: Fn(Op, O, Loc, &mut I) -> O,
 {
@@ -353,6 +358,8 @@ impl<OpParser, F, Op> InfixOp<OpParser, F, Op> {
 impl<I, O, Op, OpParser, F> PrattOps<I, O> for InfixOp<OpParser, F, Op>
 where
     I: Input,
+    O: Debug,
+    Op: Debug,
     OpParser: Parser<I, Op>,
     F: Fn(O, Op, O, Loc, &mut I) -> O,
 {
@@ -419,6 +426,8 @@ impl<OpParser, F, Op> PostfixOp<OpParser, F, Op> {
 impl<I, O, Op, OpParser, F> PrattOps<I, O> for PostfixOp<OpParser, F, Op>
 where
     I: Input,
+    O: Debug,
+    Op: Debug,
     OpParser: Parser<I, Op>,
     F: Fn(O, Op, Loc, &mut I) -> O,
 {

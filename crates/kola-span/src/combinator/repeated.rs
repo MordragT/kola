@@ -1,9 +1,9 @@
-use std::marker::PhantomData;
+use std::{fmt::Debug, marker::PhantomData};
 
 use crate::{
-    Diagnostic, Report,
+    Report,
     input::Input,
-    parser::{IterParser, Parser},
+    parser::{Failure, IterParser, Parser},
 };
 
 pub struct Repeated<P, O> {
@@ -50,6 +50,7 @@ impl<P, O> Repeated<P, O> {
 impl<I, O, P> IterParser<I, O> for Repeated<P, O>
 where
     I: Input,
+    O: Debug,
     P: Parser<I, O>,
 {
     type State = usize;
@@ -59,7 +60,7 @@ where
         state: &mut usize,
         input: &mut I,
         report: &mut Report,
-    ) -> Result<Option<O>, Diagnostic> {
+    ) -> Result<Option<O>, Failure> {
         if self.max.is_some_and(|max| *state >= max) {
             return Ok(None);
         }
@@ -72,15 +73,16 @@ where
                 *state += 1;
                 return Ok(Some(o));
             }
-            Err(e) => e,
+            Err(Failure::Throw(e)) => return Err(Failure::Throw(e)),
+            Err(Failure::Abort(e)) => e,
         };
 
         input.reset(input_cp);
 
         if *state < self.min {
             Err(e
-                .extract(report, report_cp)
-                .with_help(format!("expected at least {} items", self.min)))
+                .with_help(format!("expected at least {} items", self.min))
+                .into())
         } else {
             report.reset(report_cp);
             Ok(None)

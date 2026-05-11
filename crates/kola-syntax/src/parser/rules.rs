@@ -97,7 +97,6 @@ where
     };
 
     parser
-        .throw()
         .delimited_by(
             open_delim(OpenT(DELIM_PAIRS[index].0)),
             close_delim(CloseT(DELIM_PAIRS[index].1)),
@@ -124,7 +123,7 @@ impl<'t> Lazy<ParseInput<'t>, Id<node::Module>> for ModuleCombinator {
         let module = module_parser();
 
         let module_import = kw(KwT::IMPORT)
-            .ignore_then(module_name_parser())
+            .ignore_then(module_name_parser().throw("Expected module name after 'import'"))
             .map_to_node(node::ModuleImport)
             .to_module_expr()
             .with_note("ModuleImport");
@@ -166,9 +165,9 @@ impl<'t> Lazy<ParseInput<'t>, Id<node::Module>> for ModuleCombinator {
             vis_parser(),
             value_name_parser(),
             ctrl(CtrlT::COLON)
-                .ignore_then(type_scheme_parser())
+                .ignore_then(type_scheme_parser().throw("Expected type annotation after ':'"))
                 .or_not(),
-            op(OpT::ASSIGN).ignore_then(expr_parser()),
+            op(OpT::ASSIGN).ignore_then(expr_parser().throw("Expected expression after '='")),
         ))
         .map_to_node(|(vis, name, ty_scheme, value)| node::ValueBind {
             vis,
@@ -195,8 +194,10 @@ impl<'t> Lazy<ParseInput<'t>, Id<node::Module>> for ModuleCombinator {
 
         let effect_type_bind = group((
             vis_parser(),
-            kw(KwT::EFFECT).ignore_then(kw(KwT::TYPE).ignore_then(effect_name_parser())),
-            op(OpT::ASSIGN).ignore_then(effect_row),
+            kw(KwT::EFFECT).ignore_then(kw(KwT::TYPE).ignore_then(
+                effect_name_parser().throw("Expected effect name after 'effect type'"),
+            )),
+            op(OpT::ASSIGN).ignore_then(effect_row.throw("Expected effect row after '='")),
         ))
         .map_to_node(|(vis, name, ty)| node::EffectTypeBind { vis, name, ty })
         .to_bind();
@@ -205,9 +206,9 @@ impl<'t> Lazy<ParseInput<'t>, Id<node::Module>> for ModuleCombinator {
             vis_parser(),
             kw(KwT::MODULE).ignore_then(module_name_parser()),
             ctrl(CtrlT::COLON)
-                .ignore_then(module_type_parser())
+                .ignore_then(module_type_parser().throw("Expected module type after ':'"))
                 .or_not(),
-            op(OpT::ASSIGN).ignore_then(module_expr),
+            op(OpT::ASSIGN).ignore_then(module_expr.throw("Expected module expression after '='")),
         ))
         .map_to_node(|(vis, name, ty, value)| node::ModuleBind {
             vis,
@@ -219,8 +220,11 @@ impl<'t> Lazy<ParseInput<'t>, Id<node::Module>> for ModuleCombinator {
 
         let module_type_bind = group((
             vis_parser(),
-            kw(KwT::MODULE).ignore_then(kw(KwT::TYPE).ignore_then(module_type_name_parser())),
-            op(OpT::ASSIGN).ignore_then(module_type_parser()),
+            kw(KwT::MODULE).ignore_then(kw(KwT::TYPE).ignore_then(
+                module_type_name_parser().throw("Expected module type name after 'module type'"),
+            )),
+            op(OpT::ASSIGN)
+                .ignore_then(module_type_parser().throw("Expected module type after '='")),
         ))
         .map_to_node(|(vis, name, ty)| node::ModuleTypeBind { vis, name, ty })
         .to_bind();
@@ -232,9 +236,11 @@ impl<'t> Lazy<ParseInput<'t>, Id<node::Module>> for ModuleCombinator {
 
         let functor_bind = group((
             vis_parser(),
-            kw(KwT::MODULE).ignore_then(kw(KwT::FUNCTOR).ignore_then(functor_name_parser())),
+            kw(KwT::MODULE).ignore_then(kw(KwT::FUNCTOR).ignore_then(
+                functor_name_parser().throw("Expected functor name after 'module functor'"),
+            )),
             functor_param.repeated().at_least(1).collect(),
-            ctrl(CtrlT::DOUBLE_ARROW).ignore_then(module),
+            ctrl(CtrlT::DOUBLE_ARROW).ignore_then(module.throw("Expected functor body after '=>'")),
         ))
         .map_to_node(|(vis, name, params, body)| node::FunctorBind {
             vis,
@@ -256,6 +262,13 @@ impl<'t> Lazy<ParseInput<'t>, Id<node::Module>> for ModuleCombinator {
 
         bind.separated_by(ctrl(CtrlT::COMMA))
             .allow_trailing()
+            .catch(
+                skip_until(|t| *t == CtrlT::COMMA.0),
+                |loc, _report, input| {
+                    let tree: &mut State = input.state();
+                    tree.insert_as::<node::Bind, _>(node::BindError, loc)
+                },
+            )
             .collect()
             .map_to_node(node::Module)
             .delimited_by(open_delim(OpenT::BRACE), close_delim(CloseT::BRACE))
@@ -435,6 +448,7 @@ impl<'t> Lazy<ParseInput<'t>, Id<node::Expr>> for ExprAtomCombinator {
     const COMBINATOR: Self::Combinator = {
         let expr = expr_parser();
 
+        #[derive(Debug)]
         enum RecordOp {
             Extend(Id<node::FieldPath>, Option<Id<node::Type>>, Id<node::Expr>),
             Restrict(Id<node::FieldPath>, Option<Id<node::Type>>),
@@ -1213,6 +1227,8 @@ pub const fn type_bind_parser<'t>() -> impl const KolaCombinator<'t, Id<node::Ty
 
 #[cfg(test)]
 mod tests {
+    use std::fmt::Debug;
+
     use camino::Utf8PathBuf;
 
     use kola_span::SourceId;
@@ -1234,11 +1250,15 @@ mod tests {
         interner.intern(Utf8PathBuf::from("test"))
     }
 
-    fn try_parse_str_with<'t, T>(
+    fn try_parse_str_with<'t, T, P>(
         text: &'t str,
-        parser: impl Parser<ParseInput<'t>, T>,
+        parser: P,
         interner: &'t mut StrInterner,
-    ) -> ParseResult<T> {
+    ) -> ParseResult<T>
+    where
+        T: Debug,
+        P: Parser<ParseInput<'t>, T>,
+    {
         let source = mocked_source();
         let input = LexInput { source, text };
         let tokens = try_tokenize(input).unwrap();
@@ -1324,8 +1344,6 @@ mod tests {
 
         let ParseResult { node, builder, .. } =
             try_parse_str_with(test_case, expr_parser(), &mut interner);
-
-        dbg!(&builder);
 
         let inspector = NodeInspector::new(node, &builder, &interner);
         let case = inspector.to_case();

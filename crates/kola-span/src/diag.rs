@@ -45,6 +45,13 @@ impl Report {
         self.diagnostics.truncate(checkpoint.diagnostics);
     }
 
+    /// Removes diagnostics and issues in the range [from, to), keeping everything before `from`
+    /// and everything from `to` onwards.
+    pub fn drain(&mut self, from: ReportCheckpoint, to: ReportCheckpoint) {
+        self.issues.drain(from.issues..to.issues);
+        self.diagnostics.drain(from.diagnostics..to.diagnostics);
+    }
+
     /// Splits the report at the given checkpoint, returning a new report containing the issues and diagnostics added after the checkpoint.
     pub fn split_reset(&mut self, checkpoint: ReportCheckpoint) -> Self {
         let issues = self.issues.split_off(checkpoint.issues);

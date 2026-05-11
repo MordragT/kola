@@ -1,4 +1,4 @@
-use std::marker::PhantomData;
+use std::{fmt::Debug, marker::PhantomData};
 
 use crate::{
     Report,
@@ -36,8 +36,9 @@ where
 impl<I, O, P, T> Parser<I, T> for To<O, P, T>
 where
     I: Input,
+    O: Debug,
     P: Parser<I, O>,
-    T: Clone,
+    T: Debug + Clone,
 {
     #[inline]
     fn parse(&self, input: &mut I, report: &mut Report) -> Result<T, Failure> {

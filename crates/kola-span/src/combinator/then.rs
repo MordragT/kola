@@ -1,4 +1,4 @@
-use std::marker::PhantomData;
+use std::{fmt::Debug, marker::PhantomData};
 
 use crate::{
     Report,
@@ -15,6 +15,8 @@ pub struct Then<P1, P2> {
 impl<I, O, O1, P1, P2> Parser<I, (O, O1)> for Then<P1, P2>
 where
     I: Input,
+    O: Debug,
+    O1: Debug,
     P1: Parser<I, O>,
     P2: Parser<I, O1>,
 {
@@ -56,6 +58,8 @@ where
 impl<I, O, O1, P1, P2> Parser<I, O1> for IgnoreThen<P1, P2, O>
 where
     I: Input,
+    O: Debug,
+    O1: Debug,
     P1: Parser<I, O>,
     P2: Parser<I, O1>,
 {
@@ -96,6 +100,8 @@ where
 impl<I, O, O1, P1, P2> Parser<I, O> for ThenIgnore<P1, P2, O1>
 where
     I: Input,
+    O: Debug,
+    O1: Debug,
     P1: Parser<I, O>,
     P2: Parser<I, O1>,
 {
