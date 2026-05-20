@@ -55,10 +55,7 @@ impl<'a> Decorator<'a> for TypeDecorator<'a> {
 
             // Effects
             Meta::EffectOpType(lt) => lt.green().display_in(arena),
-            Meta::QualifiedEffectType(rt)
-            | Meta::EffectRowType(rt)
-            | Meta::EffectType(rt)
-            | Meta::EffectTypeBind(rt) => rt.green().display_in(arena),
+            Meta::EffectType(rt) => rt.green().display_in(arena),
 
             // Types
             Meta::TypeVarBind(kv) => kv.green().display_in(arena),

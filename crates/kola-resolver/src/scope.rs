@@ -1,17 +1,15 @@
 use indexmap::IndexMap;
-use kola_tree::node::{EffectName, FunctorName, ModuleName, ModuleTypeName, TypeName, ValueName};
+use kola_tree::node::{FunctorName, ModuleName, ModuleTypeName, TypeName, ValueName};
 use kola_utils::scope::LinearScope;
 
 use crate::{
     constraints::Constraints,
-    defs::{
-        AnyDef, Definitions, EffectTypeDef, FunctorDef, ModuleDef, ModuleTypeDef, TypeDef, ValueDef,
-    },
+    defs::{AnyDef, Definitions, FunctorDef, ModuleDef, ModuleTypeDef, TypeDef, ValueDef},
     error::NameCollision,
-    info::{EffectGraph, ModuleInfo, ModuleTypeGraph, TypeGraph, ValueGraph},
+    info::{ModuleInfo, ModuleTypeGraph, TypeGraph, ValueGraph},
     phase::ResolvedNodes,
     shape::Shape,
-    symbol::{EffectSym, FunctorSym, ModuleSym, ModuleTypeSym, TypeSym, ValueSym},
+    symbol::{FunctorSym, ModuleSym, ModuleTypeSym, TypeSym, ValueSym},
 };
 
 pub type ModuleScopes = IndexMap<ModuleSym, ModuleScope>;
@@ -30,7 +28,6 @@ pub struct ModuleScope {
     pub value_graph: ValueGraph,
     pub type_scope: TypeScope,
     pub type_graph: TypeGraph,
-    pub effect_graph: EffectGraph,
     pub module_type_graph: ModuleTypeGraph,
 }
 
@@ -46,7 +43,6 @@ impl ModuleScope {
             value_graph: ValueGraph::new(),
             type_scope: TypeScope::new(),
             type_graph: TypeGraph::new(),
-            effect_graph: EffectGraph::new(),
             module_type_graph: ModuleTypeGraph::new(),
         }
     }
@@ -93,21 +89,6 @@ impl ModuleScope {
 
         self.shape.insert_module(name, sym);
         self.defs.insert_module(sym, def);
-        Ok(())
-    }
-
-    pub fn insert_effect(
-        &mut self,
-        name: EffectName,
-        sym: EffectSym,
-        def: EffectTypeDef,
-    ) -> Result<(), NameCollision> {
-        if let Some(bind) = self.shape.get(name).and_then(|sym| self.defs.get(sym)) {
-            return Err(name_collision(def.into(), bind));
-        }
-
-        self.shape.insert_effect(name, sym);
-        self.defs.insert_effect(sym, def);
         Ok(())
     }
 
@@ -167,7 +148,6 @@ const fn name_collision(this: AnyDef, other: AnyDef) -> NameCollision {
             NameCollision::module_type_bind(this.loc, other.location(), help)
         }
         AnyDef::Module(this) => NameCollision::module_bind(this.loc, other.location(), help),
-        AnyDef::Effect(this) => NameCollision::effect_type_bind(this.loc, other.location(), help),
         AnyDef::Value(this) => NameCollision::value_bind(this.loc, other.location(), help),
         AnyDef::Type(this) => NameCollision::type_bind(this.loc, other.location(), help),
     }
@@ -222,15 +202,6 @@ impl ModuleScopeStack {
         def: ModuleDef,
     ) -> Result<(), NameCollision> {
         self.todo.last_mut().unwrap().insert_module(name, sym, def)
-    }
-
-    pub fn insert_effect(
-        &mut self,
-        name: EffectName,
-        sym: EffectSym,
-        def: EffectTypeDef,
-    ) -> Result<(), NameCollision> {
-        self.todo.last_mut().unwrap().insert_effect(name, sym, def)
     }
 
     pub fn insert_type(
@@ -418,26 +389,6 @@ impl ModuleScopeStack {
     #[inline]
     pub fn type_graph_mut(&mut self) -> &mut TypeGraph {
         self.try_type_graph_mut().unwrap()
-    }
-
-    #[inline]
-    pub fn try_effect_graph(&self) -> Option<&EffectGraph> {
-        self.todo.last().map(|scope| &scope.effect_graph)
-    }
-
-    #[inline]
-    pub fn effect_graph(&self) -> &EffectGraph {
-        self.try_effect_graph().unwrap()
-    }
-
-    #[inline]
-    pub fn try_effect_graph_mut(&mut self) -> Option<&mut EffectGraph> {
-        self.todo.last_mut().map(|scope| &mut scope.effect_graph)
-    }
-
-    #[inline]
-    pub fn effect_graph_mut(&mut self) -> &mut EffectGraph {
-        self.try_effect_graph_mut().unwrap()
     }
 
     #[inline]

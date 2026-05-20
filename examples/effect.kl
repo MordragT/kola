@@ -1,10 +1,12 @@
 {
-    f = fn x => (do rec x),
-
-    test = if ,
+    f : forall a b  . a -> b ~ { rec : a -> b } = fn x => (do rec x),
 
     main = handle (f 10)
         | rec x => (f x),
+
+    # f = fn x => (do rec x),
+
+
 
 
     #main = let a = (f 10) in handle a

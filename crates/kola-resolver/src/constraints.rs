@@ -4,12 +4,10 @@ use kola_collections::HashMap;
 use kola_span::Loc;
 use kola_tree::{
     id::Id,
-    node::{self, EffectName, FunctorName, ModuleName, ModuleTypeName, TypeName, ValueName},
+    node::{self, FunctorName, ModuleName, ModuleTypeName, TypeName, ValueName},
 };
 
-use crate::symbol::{
-    AnySym, EffectSym, ModuleSym, ModuleTypeSym, Substitute, TypeSym, ValueSym, merge3,
-};
+use crate::symbol::{AnySym, ModuleSym, ModuleTypeSym, Substitute, TypeSym, ValueSym, merge3};
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum ModuleBindConst {
@@ -249,50 +247,6 @@ impl TypeConst {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct EffectBindConst {
-    /// The name of the effect reference.
-    pub name: EffectName,
-    /// The identifier of the effect path that references some other effect bind.
-    pub id: Id<node::QualifiedEffectType>,
-    /// The symbol of the effect bind, this reference occured inside.
-    pub source: EffectSym,
-    /// The location of the effect reference in the source code.
-    pub loc: Loc,
-}
-
-impl EffectBindConst {
-    pub fn new(
-        name: node::EffectName,
-        id: Id<node::QualifiedEffectType>,
-        source: EffectSym,
-        loc: Loc,
-    ) -> Self {
-        Self {
-            name,
-            id,
-            source,
-            loc,
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct EffectConst {
-    /// The name of the effect reference.
-    pub name: EffectName,
-    /// The identifier of the effect path that references some other effect bind.
-    pub id: Id<node::QualifiedEffectType>,
-    /// The location of the effect reference in the source code.
-    pub loc: Loc,
-}
-
-impl EffectConst {
-    pub fn new(name: EffectName, id: Id<node::QualifiedEffectType>, loc: Loc) -> Self {
-        Self { name, id, loc }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ModuleTypeBindConst {
     /// The name of the module type reference.
     pub name: ModuleTypeName,
@@ -342,8 +296,6 @@ pub struct Constraints {
     module_types: Vec<ModuleTypeConst>,
     module_binds: HashMap<ModuleSym, ModuleBindConst>,
     modules: Vec<ModuleConst>,
-    effect_binds: Vec<EffectBindConst>,
-    effects: Vec<EffectConst>,
     type_binds: Vec<TypeBindConst>,
     types: Vec<TypeConst>,
     values: Vec<ValueConst>,
@@ -373,16 +325,6 @@ impl Constraints {
     #[inline]
     pub fn insert_module(&mut self, module_ref: ModuleConst) {
         self.modules.push(module_ref);
-    }
-
-    #[inline]
-    pub fn insert_effect_bind(&mut self, effect_ref: EffectBindConst) {
-        self.effect_binds.push(effect_ref);
-    }
-
-    #[inline]
-    pub fn insert_effect(&mut self, effect_ref: EffectConst) {
-        self.effects.push(effect_ref);
     }
 
     #[inline]
@@ -423,16 +365,6 @@ impl Constraints {
     #[inline]
     pub fn modules(&self) -> &[ModuleConst] {
         &self.modules
-    }
-
-    #[inline]
-    pub fn effect_binds(&self) -> &[EffectBindConst] {
-        &self.effect_binds
-    }
-
-    #[inline]
-    pub fn effects(&self) -> &[EffectConst] {
-        &self.effects
     }
 
     #[inline]

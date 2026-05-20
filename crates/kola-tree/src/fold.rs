@@ -33,7 +33,6 @@ define_folder_trait!(
     ModuleTypeName,
     ModuleName,
     KindName,
-    EffectName,
     TypeName,
     ValueName,
     // Patterns
@@ -78,9 +77,7 @@ define_folder_trait!(
     ExprError,
     Expr,
     // Types
-    QualifiedEffectType,
     EffectOpType,
-    EffectRowType,
     EffectType,
     QualifiedType,
     TypeVar,
@@ -103,7 +100,6 @@ define_folder_trait!(
     ValueBind,
     TypeBind,
     OpaqueTypeBind,
-    EffectTypeBind,
     ModuleBind,
     ModuleTypeBind,
     FunctorParam,

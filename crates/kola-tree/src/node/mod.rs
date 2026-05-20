@@ -65,7 +65,6 @@ define_nodes!(
     ModuleTypeName,
     ModuleName,
     KindName,
-    EffectName,
     TypeName,
     ValueName,
     // Patterns
@@ -110,9 +109,7 @@ define_nodes!(
     ExprError,
     Expr,
     // Types
-    QualifiedEffectType,
     EffectOpType,
-    EffectRowType,
     EffectType,
     QualifiedType,
     TypeVar,
@@ -135,7 +132,6 @@ define_nodes!(
     ValueBind,
     TypeBind,
     OpaqueTypeBind,
-    EffectTypeBind,
     ModuleBind,
     ModuleTypeBind,
     FunctorParam,

@@ -31,7 +31,6 @@ impl_visitable!(
     ModuleTypeName,
     ModuleName,
     KindName,
-    EffectName,
     TypeName,
     ValueName,
     // Patterns
@@ -74,9 +73,7 @@ impl_visitable!(
     ExprError,
     Expr,
     // Types
-    QualifiedEffectType,
     EffectOpType,
-    EffectRowType,
     EffectType,
     QualifiedType,
     TypeVar,
@@ -97,7 +94,6 @@ impl_visitable!(
     ValueBind,
     TypeBind,
     OpaqueTypeBind,
-    EffectTypeBind,
     ModuleBind,
     ModuleTypeBind,
     FunctorBind,
@@ -148,14 +144,6 @@ pub trait Visitor<T: TreeView> {
     fn visit_kind_name(
         &mut self,
         _id: Id<node::KindName>,
-        _tree: &T,
-    ) -> ControlFlow<Self::BreakValue> {
-        ControlFlow::Continue(())
-    }
-
-    fn visit_effect_name(
-        &mut self,
-        _id: Id<node::EffectName>,
         _tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
         ControlFlow::Continue(())
@@ -946,30 +934,6 @@ pub trait Visitor<T: TreeView> {
         self.walk_expr(id, tree)
     }
 
-    fn walk_qualified_effect_type(
-        &mut self,
-        id: Id<node::QualifiedEffectType>,
-        tree: &T,
-    ) -> ControlFlow<Self::BreakValue> {
-        let node::QualifiedEffectType { path, ty } = *id.get(tree);
-
-        if let Some(path) = path {
-            self.visit_module_path(path, tree)?;
-        }
-
-        self.visit_effect_name(ty, tree)?;
-
-        ControlFlow::Continue(())
-    }
-
-    fn visit_qualified_effect_type(
-        &mut self,
-        id: Id<node::QualifiedEffectType>,
-        tree: &T,
-    ) -> ControlFlow<Self::BreakValue> {
-        self.walk_qualified_effect_type(id, tree)
-    }
-
     fn walk_effect_op_type(
         &mut self,
         id: Id<node::EffectOpType>,
@@ -991,9 +955,9 @@ pub trait Visitor<T: TreeView> {
         self.walk_effect_op_type(id, tree)
     }
 
-    fn walk_effect_row_type(
+    fn walk_effect_type(
         &mut self,
-        id: Id<node::EffectRowType>,
+        id: Id<node::EffectType>,
         tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
         for op in id.get(tree) {
@@ -1001,68 +965,6 @@ pub trait Visitor<T: TreeView> {
         }
 
         ControlFlow::Continue(())
-    }
-
-    fn visit_effect_row_type(
-        &mut self,
-        id: Id<node::EffectRowType>,
-        tree: &T,
-    ) -> ControlFlow<Self::BreakValue> {
-        self.walk_effect_row_type(id, tree)
-    }
-
-    // fn walk_effect_op_type_scheme(
-    //     &mut self,
-    //     id: Id<node::EffectOpTypeScheme>,
-    //     tree: &T,
-    // ) -> ControlFlow<Self::BreakValue> {
-    //     let node::EffectOpTypeScheme { name, ty_scheme } = *id.get(tree);
-
-    //     self.visit_value_name(name, tree)?;
-    //     self.visit_type_scheme(ty_scheme, tree)?;
-
-    //     ControlFlow::Continue(())
-    // }
-
-    // fn visit_effect_op_type_scheme(
-    //     &mut self,
-    //     id: Id<node::EffectOpTypeScheme>,
-    //     tree: &T,
-    // ) -> ControlFlow<Self::BreakValue> {
-    //     self.walk_effect_op_type_scheme(id, tree)
-    // }
-
-    // fn walk_effect_row_type_scheme(
-    //     &mut self,
-    //     id: Id<node::EffectRowTypeScheme>,
-    //     tree: &T,
-    // ) -> ControlFlow<Self::BreakValue> {
-    //     for op in id.get(tree) {
-    //         self.visit_effect_op_type_scheme(*op, tree)?;
-    //     }
-
-    //     ControlFlow::Continue(())
-    // }
-
-    // fn visit_effect_row_type_scheme(
-    //     &mut self,
-    //     id: Id<node::EffectRowTypeScheme>,
-    //     tree: &T,
-    // ) -> ControlFlow<Self::BreakValue> {
-    //     self.walk_effect_row_type_scheme(id, tree)
-    // }
-
-    fn walk_effect_type(
-        &mut self,
-        id: Id<node::EffectType>,
-        tree: &T,
-    ) -> ControlFlow<Self::BreakValue> {
-        match id.get(tree) {
-            node::EffectType::Qualified(qual_id) => {
-                self.visit_qualified_effect_type(*qual_id, tree)
-            }
-            node::EffectType::Row(row_id) => self.visit_effect_row_type(*row_id, tree),
-        }
     }
 
     fn visit_effect_type(
@@ -1580,28 +1482,6 @@ pub trait Visitor<T: TreeView> {
         self.walk_opaque_type_bind(id, tree)
     }
 
-    fn walk_effect_type_bind(
-        &mut self,
-        id: Id<node::EffectTypeBind>,
-        tree: &T,
-    ) -> ControlFlow<Self::BreakValue> {
-        let node::EffectTypeBind { vis, name, ty } = *id.get(tree);
-
-        self.visit_vis(vis, tree)?;
-        self.visit_effect_name(name, tree)?;
-        self.visit_effect_row_type(ty, tree)?;
-
-        ControlFlow::Continue(())
-    }
-
-    fn visit_effect_type_bind(
-        &mut self,
-        id: Id<node::EffectTypeBind>,
-        tree: &T,
-    ) -> ControlFlow<Self::BreakValue> {
-        self.walk_effect_type_bind(id, tree)
-    }
-
     fn walk_module_bind(
         &mut self,
         id: Id<node::ModuleBind>,
@@ -1722,7 +1602,6 @@ pub trait Visitor<T: TreeView> {
             Value(id) => self.visit_value_bind(id, tree),
             Type(id) => self.visit_type_bind(id, tree),
             OpaqueType(id) => self.visit_opaque_type_bind(id, tree),
-            EffectType(id) => self.visit_effect_type_bind(id, tree),
             Module(id) => self.visit_module_bind(id, tree),
             ModuleType(id) => self.visit_module_type_bind(id, tree),
             Functor(id) => self.visit_functor_bind(id, tree),

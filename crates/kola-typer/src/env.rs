@@ -2,13 +2,13 @@ use std::{collections::HashMap, ops::Index};
 
 use indexmap::IndexMap;
 use kola_resolver::{
-    defs::{EffectTypeDef, TypeDef, ValueDef},
+    defs::{TypeDef, ValueDef},
     info::ModuleInfo,
-    symbol::{EffectSym, ModuleSym, TypeSym, ValueSym},
+    symbol::{ModuleSym, TypeSym, ValueSym},
 };
 use kola_utils::{interner::StrKey, scope::LinearScope};
 
-use crate::types::{ModuleType, MonoType, PolyType, Row, TypeClass, TypeVar};
+use crate::types::{ModuleType, MonoType, PolyType, TypeClass, TypeVar};
 
 pub type TypeClassEnv = IndexMap<TypeVar, Vec<TypeClass>>;
 
@@ -32,7 +32,6 @@ pub type LocalTypeEnv = LinearScope<StrKey, MonoType>;
 pub struct TypeEnv {
     values: HashMap<ValueSym, (ValueDef, PolyType)>,
     types: HashMap<TypeSym, (TypeDef, PolyType)>,
-    effects: HashMap<EffectSym, (EffectTypeDef, Row)>,
     modules: HashMap<ModuleSym, (ModuleInfo, ModuleType)>,
 }
 impl TypeEnv {
@@ -48,10 +47,6 @@ impl TypeEnv {
         self.types.insert(sym, (def, ty));
     }
 
-    pub fn insert_effect(&mut self, sym: EffectSym, def: EffectTypeDef, ty: Row) {
-        self.effects.insert(sym, (def, ty));
-    }
-
     pub fn insert_module(&mut self, sym: ModuleSym, info: ModuleInfo, ty: ModuleType) {
         self.modules.insert(sym, (info, ty));
     }
@@ -64,10 +59,6 @@ impl TypeEnv {
         self.types.get(&sym).map(|(def, ty)| (*def, ty))
     }
 
-    pub fn get_effect(&self, sym: EffectSym) -> Option<(EffectTypeDef, &Row)> {
-        self.effects.get(&sym).map(|(def, ty)| (*def, ty))
-    }
-
     pub fn get_module(&self, sym: ModuleSym) -> Option<(ModuleInfo, &ModuleType)> {
         self.modules.get(&sym).map(|(info, ty)| (*info, ty))
     }
@@ -78,9 +69,6 @@ impl TypeEnv {
         }
         for (sym, (def, ty)) in other.types {
             self.types.insert(sym, (def, ty));
-        }
-        for (sym, (def, ty)) in other.effects {
-            self.effects.insert(sym, (def, ty));
         }
         for (sym, (info, ty)) in other.modules {
             self.modules.insert(sym, (info, ty));
@@ -105,16 +93,6 @@ impl Index<TypeSym> for TypeEnv {
         self.types
             .get(&sym)
             .expect("TypeSym not found in TypeEnvironment")
-    }
-}
-
-impl Index<EffectSym> for TypeEnv {
-    type Output = (EffectTypeDef, Row);
-
-    fn index(&self, sym: EffectSym) -> &Self::Output {
-        self.effects
-            .get(&sym)
-            .expect("EffectSym not found in TypeEnvironment")
     }
 }
 

@@ -2,8 +2,8 @@ use derive_more::From;
 use enum_as_inner::EnumAsInner;
 use kola_collections::HashMap;
 use kola_tree::node::{
-    EffectNamespace, FunctorNamespace, ModuleNamespace, ModuleTypeNamespace, NamespaceKind,
-    TypeNamespace, ValueNamespace,
+    FunctorNamespace, ModuleNamespace, ModuleTypeNamespace, NamespaceKind, TypeNamespace,
+    ValueNamespace,
 };
 use kola_utils::define_unique_leveled_id;
 use std::{
@@ -59,7 +59,6 @@ impl<T: ?Sized> Default for Sym<T> {
 pub type FunctorSym = Sym<FunctorNamespace>;
 pub type ModuleTypeSym = Sym<ModuleTypeNamespace>;
 pub type ModuleSym = Sym<ModuleNamespace>;
-pub type EffectSym = Sym<EffectNamespace>;
 pub type TypeSym = Sym<TypeNamespace>;
 pub type ValueSym = Sym<ValueNamespace>;
 
@@ -81,12 +80,6 @@ impl fmt::Display for ModuleSym {
     }
 }
 
-impl fmt::Display for EffectSym {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "e{}", self.id())
-    }
-}
-
 impl fmt::Display for TypeSym {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "t{}", self.id())
@@ -104,7 +97,6 @@ pub enum AnySym {
     Functor(FunctorSym),
     ModuleType(ModuleTypeSym),
     Module(ModuleSym),
-    Effect(EffectSym),
     Type(TypeSym),
     Value(ValueSym),
 }
@@ -115,7 +107,6 @@ impl AnySym {
             Self::Functor(symbol) => symbol.id(),
             Self::ModuleType(symbol) => symbol.id(),
             Self::Module(symbol) => symbol.id(),
-            Self::Effect(symbol) => symbol.id(),
             Self::Type(symbol) => symbol.id(),
             Self::Value(symbol) => symbol.id(),
         }
@@ -130,7 +121,6 @@ impl AnySym {
             Self::Functor(symbol) => symbol.level(),
             Self::ModuleType(symbol) => symbol.level(),
             Self::Module(symbol) => symbol.level(),
-            Self::Effect(symbol) => symbol.level(),
             Self::Type(symbol) => symbol.level(),
             Self::Value(symbol) => symbol.level(),
         }
@@ -141,7 +131,6 @@ impl AnySym {
             Self::Functor(_) => NamespaceKind::Functor,
             Self::ModuleType(_) => NamespaceKind::ModuleType,
             Self::Module(_) => NamespaceKind::Module,
-            Self::Effect(_) => NamespaceKind::Effect,
             Self::Type(_) => NamespaceKind::Type,
             Self::Value(_) => NamespaceKind::Value,
         }
@@ -154,7 +143,6 @@ impl fmt::Display for AnySym {
             Self::Functor(symbol) => write!(f, "{}", symbol),
             Self::ModuleType(symbol) => write!(f, "{}", symbol),
             Self::Module(symbol) => write!(f, "{}", symbol),
-            Self::Effect(symbol) => write!(f, "{}", symbol),
             Self::Type(symbol) => write!(f, "{}", symbol),
             Self::Value(symbol) => write!(f, "{}", symbol),
         }
@@ -371,18 +359,6 @@ impl Substitute for ModuleSym {
     }
 }
 
-impl Substitute for EffectSym {
-    fn try_subst(&self, s: &HashMap<AnySym, AnySym>) -> Option<Self> {
-        let from = AnySym::Effect(*self);
-        if let Some(to) = s.get(&from) {
-            let to = to.into_effect().unwrap();
-            Some(to)
-        } else {
-            None
-        }
-    }
-}
-
 impl Substitute for TypeSym {
     fn try_subst(&self, s: &HashMap<AnySym, AnySym>) -> Option<Self> {
         let from = AnySym::Type(*self);
@@ -514,7 +490,6 @@ impl_meta_substitute!(
     ModuleTypeName,
     ModuleName,
     KindName,
-    EffectName,
     TypeName,
     ValueName,
     // Patterns
@@ -559,9 +534,7 @@ impl_meta_substitute!(
     ExprError,
     Expr,
     // Types
-    QualifiedEffectType,
     EffectOpType,
-    EffectRowType,
     EffectType,
     QualifiedType,
     TypeVar,
@@ -584,7 +557,6 @@ impl_meta_substitute!(
     ValueBind,
     TypeBind,
     OpaqueTypeBind,
-    EffectTypeBind,
     ModuleBind,
     ModuleTypeBind,
     FunctorParam,

@@ -199,7 +199,6 @@ define!(
     ModuleTypeName,
     ModuleName,
     KindName,
-    EffectName,
     TypeName,
     ValueName,
     // Patterns
@@ -244,9 +243,7 @@ define!(
     ExprError,
     Expr,
     // Types
-    QualifiedEffectType,
     EffectOpType,
-    EffectRowType,
     EffectType,
     QualifiedType,
     TypeVar,
@@ -269,7 +266,6 @@ define!(
     ValueBind,
     TypeBind,
     OpaqueTypeBind,
-    EffectTypeBind,
     ModuleBind,
     ModuleTypeBind,
     FunctorParam,

@@ -28,9 +28,6 @@ impl<'a> Decorator<'a> for ResolutionDecorator<'a> {
             | Meta::TypeBind(type_sym)
             | Meta::OpaqueTypeBind(type_sym) => type_sym.red().display_in(arena),
 
-            Meta::QualifiedEffectType(resolved) => resolved.red().display_in(arena),
-            Meta::EffectTypeBind(effect_sym) => effect_sym.red().display_in(arena),
-
             Meta::FunctorArgs(_) => return notation,
 
             Meta::Module(module_sym)

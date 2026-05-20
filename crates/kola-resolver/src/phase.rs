@@ -2,16 +2,14 @@
 
 use std::{collections::HashMap, fmt};
 
-use kola_builtins::{BuiltinEffect, BuiltinId, BuiltinType};
+use kola_builtins::{BuiltinId, BuiltinType};
 use kola_tree::{
     meta::{MetaMap, Phase},
     node::ValueName,
 };
 use kola_utils::as_variant;
 
-use crate::symbol::{
-    AnySym, EffectSym, FunctorSym, ModuleSym, ModuleTypeSym, Substitute, TypeSym, ValueSym,
-};
+use crate::symbol::{AnySym, FunctorSym, ModuleSym, ModuleTypeSym, Substitute, TypeSym, ValueSym};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum ResolvedValue {
@@ -140,46 +138,6 @@ impl Substitute for ResolvedType {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum ResolvedEffect {
-    Reference(EffectSym),
-    Builtin(BuiltinEffect),
-}
-
-impl ResolvedEffect {
-    pub fn into_builtin(self) -> Option<BuiltinEffect> {
-        as_variant!(self, Self::Builtin)
-    }
-
-    pub fn into_reference(self) -> Option<EffectSym> {
-        as_variant!(self, Self::Reference)
-    }
-}
-
-impl fmt::Display for ResolvedEffect {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            ResolvedEffect::Reference(sym) => sym.fmt(f),
-            ResolvedEffect::Builtin(ty) => ty.fmt(f),
-        }
-    }
-}
-
-impl Substitute for ResolvedEffect {
-    fn try_subst(&self, s: &HashMap<AnySym, AnySym>) -> Option<Self>
-    where
-        Self: Sized,
-    {
-        if let Self::Reference(sym) = self
-            && let Some(to) = sym.try_subst(s)
-        {
-            Some(Self::Reference(to))
-        } else {
-            None
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ResolvedModule(pub ModuleSym);
 
 impl Substitute for ResolvedModule {
@@ -214,7 +172,6 @@ impl Phase for ResolvePhase {
     type ModuleTypeName = !;
     type ModuleName = !;
     type KindName = !;
-    type EffectName = !;
     type TypeName = !;
     type ValueName = !;
 
@@ -275,9 +232,7 @@ impl Phase for ResolvePhase {
     // ===== TYPES =====
     // Type expressions are not needed for the untyped lowerer phase
     // Future: When adding typed IR, these could get ModuleSym for qualified types
-    type QualifiedEffectType = ResolvedEffect;
     type EffectOpType = !;
-    type EffectRowType = !;
     type EffectType = !;
 
     type QualifiedType = ResolvedType;
@@ -303,7 +258,6 @@ impl Phase for ResolvePhase {
     type ValueBind = ValueSym; // Creates symbol for the bound value
     type TypeBind = TypeSym; // Creates symbol for the bound type
     type OpaqueTypeBind = TypeSym; // Creates symbol for the opaque type
-    type EffectTypeBind = EffectSym;
     type ModuleBind = ModuleSym; // Creates symbol for the module alias
     type ModuleTypeBind = ModuleTypeSym; // Module type bindings - future feature
     type FunctorParam = !;

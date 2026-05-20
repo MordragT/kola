@@ -46,12 +46,6 @@ pub const fn kind_name_parser<'t>() -> impl const KolaCombinator<'t, Id<node::Ki
         .to_node()
 }
 
-pub const fn effect_name_parser<'t>() -> impl const KolaCombinator<'t, Id<node::EffectName>> {
-    upper_symbol(Symbol::Effect)
-        .map(node::EffectName::new)
-        .to_node()
-}
-
 pub const fn type_name_parser<'t>() -> impl const KolaCombinator<'t, Id<node::TypeName>> {
     symbol(Symbol::Type).map(node::TypeName::new).to_node()
 }
@@ -183,29 +177,6 @@ impl<'t> Lazy<ParseInput<'t>, Id<node::Module>> for ModuleCombinator {
 
         let type_bind = type_bind_parser().to_bind();
 
-        // TODO opaque type bind
-
-        let effect_op = value_name_parser()
-            .then(ctrl(CtrlT::COLON).ignore_then(type_parser()))
-            .map_to_node(|(name, ty)| node::EffectOpType { name, ty });
-
-        let effect_row = effect_op
-            .separated_by(ctrl(CtrlT::COMMA))
-            .allow_trailing()
-            .collect()
-            .delimited_by(open_delim(OpenT::BRACE), close_delim(CloseT::BRACE))
-            .map_to_node(node::EffectRowType);
-
-        let effect_type_bind = group((
-            vis_parser(),
-            kw(KwT::EFFECT).ignore_then(kw(KwT::TYPE).ignore_then(
-                effect_name_parser().throw("Expected effect name after 'effect type'"),
-            )),
-            op(OpT::ASSIGN).ignore_then(effect_row.throw("Expected effect row after '='")),
-        ))
-        .map_to_node(|(vis, name, ty)| node::EffectTypeBind { vis, name, ty })
-        .to_bind();
-
         let module_bind = group((
             vis_parser(),
             kw(KwT::MODULE).ignore_then(module_name_parser()),
@@ -258,7 +229,6 @@ impl<'t> Lazy<ParseInput<'t>, Id<node::Module>> for ModuleCombinator {
             functor_bind,
             module_type_bind,
             module_bind,
-            effect_type_bind,
             type_bind,
             value_bind,
         ));
@@ -1071,26 +1041,15 @@ impl<'t> Lazy<ParseInput<'t>, Id<node::Type>> for TypeCombinator {
             .then(ctrl(CtrlT::COLON).ignore_then(ty.throw("Expected type annotation after ':'")))
             .map_to_node(|(name, ty)| node::EffectOpType { name, ty });
 
-        let effect_row = effect_op
+        let effect = effect_op
             .separated_by(ctrl(CtrlT::COMMA))
             .allow_trailing()
             .collect()
             .delimited_by(open_delim(OpenT::BRACE), close_delim(CloseT::BRACE))
-            .map_to_node(node::EffectRowType)
-            .map_to_node(node::EffectType::Row);
-
-        let qual_effect = module_path
-            .then(effect_name_parser())
-            .map(|(path, ty)| node::QualifiedEffectType { path, ty })
-            .to_node()
-            .map_to_node(node::EffectType::Qualified);
+            .map_to_node(node::EffectType);
 
         let computation = ty
-            .then(
-                ctrl(CtrlT::TILDE)
-                    .ignore_then(effect_row.or(qual_effect))
-                    .or_not(),
-            )
+            .then(ctrl(CtrlT::TILDE).ignore_then(effect).or_not())
             .map_to_node(|(ty, effect)| node::CompType { ty, effect });
 
         let func = appl.foldl_with(

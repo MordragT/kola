@@ -1,9 +1,9 @@
 use kola_collections::HashMap;
 use kola_resolver::{
     shape::Shape,
-    symbol::{EffectSym, ModuleSym, TypeSym, ValueSym},
+    symbol::{ModuleSym, TypeSym, ValueSym},
 };
-use kola_tree::node::{EffectName, ModuleName, TypeName, ValueName};
+use kola_tree::node::{ModuleName, TypeName, ValueName};
 use kola_utils::interner::StrKey;
 
 /// TODO this paragraph is completely outdated,
@@ -24,8 +24,6 @@ use kola_utils::interner::StrKey;
 pub struct ModuleType {
     /// Nested module interfaces exported by this module
     pub modules: HashMap<ModuleName, ModuleSym>,
-    /// Effect types exported by this module
-    pub effects: HashMap<EffectName, EffectSym>,
     /// Type definitions exported by this module
     pub types: HashMap<TypeName, TypeSym>,
     /// Value bindings exported by this module
@@ -36,7 +34,6 @@ impl ModuleType {
     pub fn new() -> Self {
         Self {
             modules: HashMap::new(),
-            effects: HashMap::new(),
             types: HashMap::new(),
             values: HashMap::new(),
         }
@@ -44,10 +41,6 @@ impl ModuleType {
 
     pub fn insert_module(&mut self, name: ModuleName, sym: ModuleSym) {
         self.modules.insert(name, sym);
-    }
-
-    pub fn insert_effect(&mut self, name: EffectName, sym: EffectSym) {
-        self.effects.insert(name, sym);
     }
 
     pub fn insert_type(&mut self, name: TypeName, sym: TypeSym) {
@@ -60,10 +53,6 @@ impl ModuleType {
 
     pub fn get_module(&self, name: StrKey) -> Option<ModuleSym> {
         self.modules.get(&name).copied()
-    }
-
-    pub fn get_effect(&self, name: StrKey) -> Option<EffectSym> {
-        self.effects.get(&name).copied()
     }
 
     pub fn get_type(&self, name: StrKey) -> Option<TypeSym> {
@@ -79,11 +68,10 @@ impl ModuleType {
 // but are included in the shape.
 impl From<Shape> for ModuleType {
     fn from(shape: Shape) -> Self {
-        let (_functors, _module_types, modules, effects, types, values) = shape.into_raw();
+        let (_functors, _module_types, modules, types, values) = shape.into_raw();
 
         Self {
             modules,
-            effects,
             types,
             values,
         }

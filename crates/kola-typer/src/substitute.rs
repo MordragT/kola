@@ -135,6 +135,26 @@ impl Substitutable for ! {
     }
 }
 
+impl<T, U> Substitutable for (T, U)
+where
+    T: Substitutable + Clone,
+    U: Substitutable + Clone,
+{
+    fn try_apply(&self, s: &mut Substitution) -> Option<Self> {
+        let mut result = None;
+
+        if let Some(t) = self.0.try_apply(s) {
+            result.get_or_insert_with(|| self.clone()).0 = t;
+        }
+
+        if let Some(u) = self.1.try_apply(s) {
+            result.get_or_insert_with(|| self.clone()).1 = u;
+        }
+
+        result
+    }
+}
+
 impl<T> Substitutable for Option<T>
 where
     T: Substitutable + Clone,
@@ -284,7 +304,6 @@ impl_meta_substitutable!(
     ModuleTypeName,
     ModuleName,
     KindName,
-    EffectName,
     TypeName,
     ValueName,
     // Patterns
@@ -329,9 +348,7 @@ impl_meta_substitutable!(
     ExprError,
     Expr,
     // Types
-    QualifiedEffectType,
     EffectOpType,
-    EffectRowType,
     EffectType,
     QualifiedType,
     TypeVar,
@@ -354,7 +371,6 @@ impl_meta_substitutable!(
     ValueBind,
     TypeBind,
     OpaqueTypeBind,
-    EffectTypeBind,
     ModuleBind,
     ModuleTypeBind,
     FunctorParam,

@@ -65,5 +65,5 @@
                             (super::record::select label rrow) == lkey))
                         |> (super::list::map (fn rrow =>
                             lrow & rrow)))),
-    }
+    },
 }

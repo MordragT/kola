@@ -9,30 +9,10 @@ use kola_utils::interner::StrKey;
 
 use crate::{
     id::Id,
-    node::{EffectName, KindName, ModulePath, TypeName, ValueName},
+    node::{KindName, ModulePath, TypeName, ValueName},
     print::NodePrinter,
     tree::TreeView,
 };
-
-#[derive(
-    Debug,
-    Notate,
-    Inspector,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    Hash,
-    Serialize,
-    Deserialize,
-)]
-#[notate(color = "cyan")]
-pub struct QualifiedEffectType {
-    pub path: Option<Id<ModulePath>>,
-    pub ty: Id<EffectName>,
-}
 
 #[derive(
     Debug,
@@ -71,65 +51,7 @@ pub struct EffectOpType {
 )]
 #[notate(color = "green")]
 #[into_iterator(owned, ref)]
-pub struct EffectRowType(pub Vec<Id<EffectOpType>>);
-
-// #[derive(
-//     Debug,
-//     Notate,
-//     Inspector,
-//     Clone,
-//     Copy,
-//     PartialEq,
-//     Eq,
-//     PartialOrd,
-//     Ord,
-//     Hash,
-//     Serialize,
-//     Deserialize,
-// )]
-// #[notate(color = "green")]
-// pub struct EffectOpTypeScheme {
-//     pub name: Id<ValueName>,
-//     pub ty_scheme: Id<TypeScheme>,
-// }
-
-// #[derive(
-//     Debug,
-//     Notate,
-//     Inspector,
-//     From,
-//     IntoIterator,
-//     Clone,
-//     PartialEq,
-//     Eq,
-//     PartialOrd,
-//     Ord,
-//     Hash,
-//     Serialize,
-//     Deserialize,
-// )]
-// #[notate(color = "green")]
-// #[into_iterator(owned, ref)]
-// pub struct EffectRowTypeScheme(pub Vec<Id<EffectOpTypeScheme>>);
-
-#[derive(
-    Debug, Inspector, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
-)]
-pub enum EffectType {
-    // ~ Io (reference to bound effect type)
-    Qualified(Id<QualifiedEffectType>),
-    // ~ { print : Str -> Unit }
-    Row(Id<EffectRowType>),
-}
-
-impl<'a> Notate<'a> for NodePrinter<'a, EffectType> {
-    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
-        match *self.value {
-            EffectType::Qualified(q) => self.to(q).notate(arena),
-            EffectType::Row(r) => self.to(r).notate(arena),
-        }
-    }
-}
+pub struct EffectType(pub Vec<Id<EffectOpType>>);
 
 #[derive(
     Debug,

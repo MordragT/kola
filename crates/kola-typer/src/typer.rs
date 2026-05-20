@@ -1,6 +1,6 @@
 use std::{ops::ControlFlow, rc::Rc};
 
-use kola_builtins::{Builtin, BuiltinEffect, BuiltinType};
+use kola_builtins::{Builtin, BuiltinType};
 use kola_resolver::{
     phase::{ResolvedModule, ResolvedNodes},
     symbol::ValueSym,
@@ -117,28 +117,14 @@ where
 {
     type BreakValue = Diagnostic;
 
-    fn visit_effect_type_bind(
+    fn visit_effect_type(
         &mut self,
-        id: Id<node::EffectTypeBind>,
-        tree: &T,
-    ) -> ControlFlow<Self::BreakValue> {
-        let node::EffectTypeBind { ty, .. } = *id.get(tree);
-
-        self.visit_effect_row_type(ty, tree)?;
-
-        let row_t = self.types.meta(ty).clone();
-        self.insert_type(id, row_t);
-        ControlFlow::Continue(())
-    }
-
-    fn visit_effect_row_type(
-        &mut self,
-        id: Id<node::EffectRowType>,
+        id: Id<node::EffectType>,
         tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
         let effects = &id.get(tree).0;
 
-        let mut row_t = Row::Empty;
+        let mut row_t = Row::var();
 
         for effect in effects {
             self.visit_effect_op_type(*effect, tree)?;
@@ -167,77 +153,6 @@ where
 
         let effect_t = LabeledType::new(label, ty);
         self.insert_type(id, effect_t);
-        ControlFlow::Continue(())
-    }
-
-    fn visit_qualified_effect_type(
-        &mut self,
-        id: Id<node::QualifiedEffectType>,
-        tree: &T,
-    ) -> ControlFlow<Self::BreakValue> {
-        let node::QualifiedEffectType { path, ty } = *id.get(tree);
-
-        let eff_name = ty.get(tree).0;
-        let span = self.span(id);
-
-        let row_t = if let Some(path) = path {
-            // Module-qualified path
-            let ResolvedModule(module_sym) = *self.resolved.meta(path);
-
-            let (module_info, module) = &self.global_env[module_sym];
-
-            let Some(eff_sym) = module.get_effect(eff_name) else {
-                return ControlFlow::Break(
-                    Diagnostic::error(span, "Effect not found")
-                        .with_trace([("In this module".to_owned(), module_info.loc)]),
-                );
-            };
-
-            let (effect_def, effect) = &self.global_env[eff_sym];
-
-            if effect_def.vis != Vis::Export {
-                return ControlFlow::Break(
-                    Diagnostic::error(span, "Effect is not exported from the module").with_trace([
-                        ("In this module".to_owned(), module_info.loc),
-                        ("Declared here".to_owned(), effect_def.loc),
-                    ]),
-                );
-            }
-
-            effect.clone()
-        } else if let Some((_, row_t)) = self
-            .resolved
-            .meta(id)
-            .into_reference()
-            .and_then(|sym| self.module_env.get_effect(sym))
-        {
-            // Module-level effect type definition (like 'Io')
-            row_t.clone()
-        } else if let Some(builtin) = self.resolved.meta(id).into_builtin() {
-            match builtin {
-                BuiltinEffect::Pure => todo!(),
-            }
-        } else {
-            return ControlFlow::Break(Diagnostic::error(span, "Effect type not found in scope"));
-        };
-
-        self.insert_type(id, row_t);
-        ControlFlow::Continue(())
-    }
-
-    fn visit_effect_type(
-        &mut self,
-        id: Id<node::EffectType>,
-        tree: &T,
-    ) -> ControlFlow<Self::BreakValue> {
-        self.walk_effect_type(id, tree)?;
-
-        let row_t = match id.get(tree) {
-            node::EffectType::Qualified(id) => self.types.meta(*id).clone(),
-            node::EffectType::Row(id) => self.types.meta(*id).clone(),
-        };
-
-        self.insert_type(id, row_t);
         ControlFlow::Continue(())
     }
 
@@ -1964,6 +1879,20 @@ where
         ControlFlow::Continue(())
     }
 
+    /// Rule for Handler Clause
+    ///
+    /// ```ignore
+    /// ∆;Γ ⊢ param : α (fresh)
+    /// ∆;Γ, param:α ⊢ body : β ~ ε_body (fresh β, fresh ε_body)
+    /// clause_t = label : (α → β) with effect ε_body
+    /// -----------------------
+    /// ∆;Γ ⊢ | label param => body : (label : α → β ~ ε_body)
+    /// ```
+    ///
+    /// Here β is what gets returned to the `do` call site inside the source
+    /// computation - NOT the return type of the whole handle expression.
+    /// The effect ε_body is the ambient effect the clause body runs in,
+    /// which will be unified against ε_residual in visit_handle_expr.
     fn visit_handler_clause(
         &mut self,
         id: Id<node::HandlerClause>,
@@ -1975,18 +1904,45 @@ where
         let param_t = MonoType::var();
         let name = param.get(tree).0.clone();
 
+        self.effects_stack.push(Row::var());
         self.local_env.enter(name, param_t.clone());
         self.visit_expr(*body, tree)?;
         self.local_env.exit(&name);
-
+        let effect_t = self.effects_stack.pop().unwrap();
         let body_t = self.types.meta(*body).clone();
-        let clause_t = MonoType::func(param_t, CompType::pure(body_t)); // TODO this restricts handlers to be pure, maybe too strict
+
+        if let Some(ambient) = self.effects_stack.last().cloned() {
+            // Constrain the ambient effect to include the clause's effect
+            self.cons
+                .constrain_equal(ambient.into(), effect_t.into(), self.span(id));
+        } else {
+            // If there's no ambient effect, the clause must be pure
+            self.cons
+                .constrain_equal(effect_t.into(), Row::Empty.into(), self.span(id));
+        }
+
+        let clause_t = MonoType::func(param_t, body_t);
         let labeled_t = LabeledType::new(label, clause_t);
+
         self.insert_type(id, labeled_t);
 
         ControlFlow::Continue(())
     }
 
+    /// Rule for Handle Expression
+    ///
+    /// ```ignore
+    /// ∆;Γ ⊢ source : A ~ ε_source
+    /// ∆;Γ ⊢ clause_i : (label_i : α_i → β_i)   for each clause i
+    ///
+    /// ε_residual = ambient row from outer scope
+    ///
+    /// for each clause i:
+    ///   unify(ε_source, {label_i : α_i → β_i | ε_residual})
+    ///
+    /// -----------------------
+    /// ∆;Γ ⊢ handle source | clauses : A ~ ε_residual
+    /// ```
     fn visit_handle_expr(
         &mut self,
         id: Id<node::HandleExpr>,
@@ -2001,24 +1957,36 @@ where
         let source_effect = self.effects_stack.pop().unwrap();
         let source_t = self.types.meta(*source).clone();
 
-        // Residual: what's left after handling, propagates to outer scope
-        let residual_effect = self.effects_stack.last().cloned().unwrap_or(Row::Empty);
+        let mut remaining_effect = source_effect.clone();
 
         for &clause_id in clauses {
             self.visit_handler_clause(clause_id, tree)?;
             let head = self.types.meta(clause_id).clone();
 
+            // Fresh tail for what's left after peeling this label
+            let tail = Row::var(); // fresh ρ_i
+
+            // unify(remaining, {label_i : α_i → β_i | ρ_i})
             self.cons.constrain_equal(
-                MonoType::Row(Box::new(source_effect.clone())),
-                MonoType::Row(Box::new(Row::Extension {
-                    head,
-                    tail: Box::new(residual_effect.clone()),
-                })),
+                MonoType::Row(Box::new(remaining_effect)),
+                MonoType::Row(Box::new(Row::extension(head, tail.clone()))),
                 span,
             );
+
+            // Next iteration peels from the tail
+            remaining_effect = tail;
         }
 
-        let result_t = CompType::new(source_t, residual_effect);
+        let ambient_effect = self.effects_stack.last().cloned().unwrap_or(Row::Empty);
+
+        // Whatever is left after all clauses = ε_residual
+        self.cons.constrain_equal(
+            MonoType::Row(Box::new(remaining_effect.clone())),
+            MonoType::Row(Box::new(ambient_effect)),
+            span,
+        );
+
+        let result_t = CompType::new(source_t, remaining_effect);
 
         self.insert_type(id, result_t);
         ControlFlow::Continue(())
@@ -2039,20 +2007,26 @@ where
         let op_t = MonoType::func(arg_t, CompType::pure(result_t.clone()));
         let op_labeled_t = LabeledType::new(Label(name), op_t);
 
+        let extension = Row::extension(op_labeled_t, Row::var());
+
         // Guard: must be in a computation scope
-        let Some(ambient) = self.effects_stack.last_mut() else {
+        let Some(ambient) = self.effects_stack.last().cloned() else {
             return ControlFlow::Break(Diagnostic::error(
                 span,
                 "Effect operation cannot appear outside a function body or handler",
             ));
         };
 
-        // Extend the ambient row with this effect label
-        let current = std::mem::replace(ambient, Row::Empty);
-        *ambient = current.extend(op_labeled_t.clone());
+        // Constrain: ambient = { op : arg_t -> result_t | tail }
+        // This unifies the ambient row with an extension containing this op
+        self.cons.constrain_equal(
+            MonoType::Row(Box::new(ambient)),
+            MonoType::Row(Box::new(extension.clone())),
+            span,
+        );
 
         // This is just for debugging, the effect is already present in the ambient row
-        let result_comp = CompType::new(result_t, Row::unit(op_labeled_t));
+        let result_comp = CompType::new(result_t, extension);
 
         self.insert_type(id, result_comp);
         ControlFlow::Continue(())

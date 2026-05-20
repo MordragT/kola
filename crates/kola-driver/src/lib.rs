@@ -132,7 +132,6 @@ impl Driver {
             entry_points,
             value_orders,
             type_orders,
-            effect_orders,
             module_type_orders,
             module_order,
         } = &resolve_output;
@@ -176,7 +175,6 @@ impl Driver {
             &entry_points,
             &module_scopes,
             &module_order,
-            &effect_orders,
             &type_orders,
             &value_orders,
             &self.arena,
@@ -242,7 +240,6 @@ impl Driver {
                 entry_points,
                 value_orders,
                 type_orders,
-                effect_orders,
                 module_type_orders,
                 module_order,
             },
