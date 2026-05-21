@@ -1,8 +1,8 @@
 {
-    f : forall a b  . a -> b ~ { rec : a -> b } = fn x => (do rec x),
+    f = fn x => fn y => (do rec x),
 
-    main = handle (f 10)
-        | rec x => (f x),
+    main = handle (f 10 20)
+        | rec x => (f x 20),
 
     # f = fn x => (do rec x),
 

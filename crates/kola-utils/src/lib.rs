@@ -6,7 +6,6 @@ pub mod interner;
 pub mod interner_ext;
 pub mod io;
 pub mod scope;
-pub mod tracker;
 pub mod visit;
 
 #[macro_export]

@@ -1904,23 +1904,14 @@ where
         let param_t = MonoType::var();
         let name = param.get(tree).0.clone();
 
-        self.effects_stack.push(Row::var());
+        // No push/pop! Let effects inside the body write directly to the outer ambient row
         self.local_env.enter(name, param_t.clone());
         self.visit_expr(*body, tree)?;
         self.local_env.exit(&name);
-        let effect_t = self.effects_stack.pop().unwrap();
         let body_t = self.types.meta(*body).clone();
 
-        if let Some(ambient) = self.effects_stack.last().cloned() {
-            // Constrain the ambient effect to include the clause's effect
-            self.cons
-                .constrain_equal(ambient.into(), effect_t.into(), self.span(id));
-        } else {
-            // If there's no ambient effect, the clause must be pure
-            self.cons
-                .constrain_equal(effect_t.into(), Row::Empty.into(), self.span(id));
-        }
-
+        // The handler clause function itself is pure because its effects
+        // are already accounted for in the ambient row.
         let clause_t = MonoType::func(param_t, body_t);
         let labeled_t = LabeledType::new(label, clause_t);
 
@@ -1952,11 +1943,13 @@ where
 
         let node::HandleExpr { source, clauses } = id.get(tree);
 
+        // 1. Isolate the effects of the source
         self.effects_stack.push(Row::var());
         self.visit_expr(*source, tree)?;
         let source_effect = self.effects_stack.pop().unwrap();
         let source_t = self.types.meta(*source).clone();
 
+        // 2. Peel handled labels off the source's effect row
         let mut remaining_effect = source_effect.clone();
 
         for &clause_id in clauses {
@@ -1964,7 +1957,7 @@ where
             let head = self.types.meta(clause_id).clone();
 
             // Fresh tail for what's left after peeling this label
-            let tail = Row::var(); // fresh ρ_i
+            let tail = Row::var();
 
             // unify(remaining, {label_i : α_i → β_i | ρ_i})
             self.cons.constrain_equal(
@@ -1977,9 +1970,8 @@ where
             remaining_effect = tail;
         }
 
+        // 3. Unify whatever unhandled effects remain with the outer ambient environment
         let ambient_effect = self.effects_stack.last().cloned().unwrap_or(Row::Empty);
-
-        // Whatever is left after all clauses = ε_residual
         self.cons.constrain_equal(
             MonoType::Row(Box::new(remaining_effect.clone())),
             MonoType::Row(Box::new(ambient_effect)),
