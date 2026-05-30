@@ -1,6 +1,5 @@
 use imbl::shared_ptr::RcK;
 
-pub mod im_bi_map;
 pub mod im_shadow_map;
 pub mod shadow_map;
 pub mod shadow_stack;
@@ -70,7 +69,6 @@ pub mod im_vec {
 
 pub type Ptr = RcK;
 
-pub use im_bi_map::ImBiMap;
 pub use im_hash_map::ImHashMap;
 pub use im_hash_set::ImHashSet;
 pub use im_ord_map::ImOrdMap;
