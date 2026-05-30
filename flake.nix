@@ -2,84 +2,54 @@
   description = "Rust development template";
 
   inputs = {
-    utils.url = "github:numtide/flake-utils";
+    nixpkgs.url = "nixpkgs/nixos-unstable";
+
+    flake-parts = {
+      url = "github:hercules-ci/flake-parts";
+      inputs.nixpkgs-lib.follows = "nixpkgs";
+    };
+
+    git-hooks = {
+      url = "github:cachix/git-hooks.nix";
+      inputs.nixpkgs.follows = "nixpkgs";
+    };
+
     fenix = {
       url = "github:nix-community/fenix/monthly";
       inputs.nixpkgs.follows = "nixpkgs";
     };
+    systems.url = "github:nix-systems/default";
   };
 
-  outputs = {
-    self,
-    nixpkgs,
-    utils,
-    fenix,
-    ...
-  }:
-    utils.lib.eachDefaultSystem
-    (
-      system: let
-        pkgs = import nixpkgs {
-          inherit system;
-          overlays = [fenix.overlays.default];
+  outputs =
+    inputs:
+    inputs.flake-parts.lib.mkFlake { inherit inputs; } {
+      systems = import inputs.systems;
+
+      imports = [
+        inputs.git-hooks.flakeModule
+        ./nix
+      ];
+
+      perSystem =
+        { pkgs, ... }:
+        {
+          pre-commit = {
+            settings = {
+              package = pkgs.prek;
+              hooks = {
+                nixfmt = {
+                  enable = true;
+                  id = "nixfmt";
+                  after = [ "statix" ];
+                };
+                statix = {
+                  enable = true;
+                  id = "statix";
+                };
+              };
+            };
+          };
         };
-        toolchain = with pkgs.fenix;
-          combine [
-            latest.toolchain
-            targets.wasm32-unknown-unknown.latest.rust-std
-            targets.wasm32-wasip1.latest.rust-std
-            targets.wasm32-wasip2.latest.rust-std
-          ];
-
-        platform = pkgs.makeRustPlatform {
-          # Use nightly rustc and cargo provided by fenix for building
-          cargo = toolchain;
-          rustc = toolchain;
-        };
-      in rec
-      {
-        # Executed by `nix build`
-        packages.default = self.packages.${system}.kola;
-
-        packages.kola = platform.buildRustPackage {
-          pname = "kola";
-          version = "0.1.0";
-          src = ./.;
-          cargoLock.lockFile = ./Cargo.lock;
-        };
-
-        packages.kola-ls = platform.buildRustPackage {
-          pname = "kola-ls";
-          version = "0.1.0";
-          src = ./.;
-          cargoLock.lockFile = ./Cargo.lock;
-          cargoBuildFlags = ["-p" "kola-ls"];
-        };
-
-        # Executed by `nix run`
-        apps.default = utils.lib.mkApp {drv = packages.default;};
-
-        # Used by `nix develop`
-        devShells.default = pkgs.mkShell {
-          buildInputs = with pkgs; [
-            self.packages.${system}.kola-ls
-            toolchain
-            clippy
-            rustfmt
-            pkg-config
-            lldb
-            cargo-show-asm
-            cargo-expand
-            wasm-tools
-            python3
-            # docs
-            pnpm
-            nodejs
-          ];
-
-          # Specify the rust-src path (many editors rely on this)
-          RUST_SRC_PATH = "${pkgs.fenix.complete.rust-src}/lib/rustlib/src/rust/library";
-        };
-      }
-    );
+    };
 }
