@@ -29,7 +29,7 @@ pub fn eval_symbol(symbol: Symbol, env: &Env) -> Result<Value, String> {
     // Look up the symbol in the environment
     env.get(&symbol)
         .cloned()
-        .ok_or(format!("Unbound variable: {}", symbol))
+        .ok_or_else(|| format!("Unbound variable: {}", symbol))
 }
 
 pub fn eval_atom(atom: Atom, env: &Env, context: &MachineContext) -> Result<Value, String> {
