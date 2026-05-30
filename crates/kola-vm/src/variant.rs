@@ -7,7 +7,7 @@ use kola_utils::{
 };
 use serde::ser::SerializeStruct;
 
-use super::Value;
+use crate::value::Value;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Variant {

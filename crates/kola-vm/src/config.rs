@@ -1,4 +1,4 @@
-use crate::{cont::Cont, env::Env, value::Value};
+use crate::{cont::RawCont, env::RawEnv, value::Value};
 use derive_more::From;
 use kola_ir::{
     id::Id,
@@ -16,9 +16,9 @@ pub struct StandardConfig {
     /// M - The expression currently being evaluated
     pub control: Expr,
     /// γ - Environment binding free variables
-    pub env: Env,
+    pub env: RawEnv<'static>,
     /// κ - Continuation instructing what to do next
-    pub cont: Cont,
+    pub cont: RawCont<'static>,
 }
 
 /// The operation handling configuration in the CEK machine
@@ -34,11 +34,11 @@ pub struct OperationConfig {
     /// The argument to the operation
     pub arg: Id<Atom>,
     /// Environment for the operation
-    pub env: Env,
+    pub env: RawEnv<'static>,
     /// κ - Current continuation
-    pub cont: Cont,
+    pub cont: RawCont<'static>,
     /// κ0 - Forwarding continuation (handlers already tried)
-    pub forward: Cont,
+    pub forward: RawCont<'static>,
 }
 
 /// Pattern matching configuration in the CEK machine
@@ -51,9 +51,9 @@ pub struct PatternConfig {
     /// The pattern matcher instruction currently being evaluated
     pub matcher: Id<PatternMatcher>,
     /// Environment for pattern matching
-    pub env: Env,
+    pub env: RawEnv<'static>,
     /// Continuation to use after pattern matching completes
-    pub cont: Cont,
+    pub cont: RawCont<'static>,
 }
 
 /// Machine states represent the different configurations of the CEK machine

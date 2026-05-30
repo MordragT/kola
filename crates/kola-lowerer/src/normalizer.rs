@@ -1338,6 +1338,7 @@ mod tests {
     use kola_tree::prelude::*;
     use kola_utils::interner::StrInterner;
     use kola_vm::{
+        heap::Heap,
         machine::{CekMachine, MachineContext},
         value::Value,
     };
@@ -1394,9 +1395,9 @@ mod tests {
         builder.finish(root)
     }
 
-    fn new_machine(ir: Ir, interner: StrInterner) -> CekMachine {
+    fn new_machine(ir: Ir, interner: StrInterner, heap: &mut Heap) -> CekMachine {
         let context = MachineContext::new(ir, "/mocked/path", interner, TypeInterner::new());
-        CekMachine::new(context)
+        CekMachine::new(context, heap)
     }
 
     #[test]
@@ -1406,8 +1407,10 @@ mod tests {
 
         let resolved = mock_resolved(&builder);
         let ir = normalize(builder, lit, &resolved, &StrInterner::new());
-        let mut machine = new_machine(ir, StrInterner::new());
-        let value = machine.run().unwrap();
+
+        let mut heap = Heap::new();
+        let mut machine = new_machine(ir, StrInterner::new(), &mut heap);
+        let value = machine.run(&mut heap).unwrap();
 
         assert_eq!(value, Value::Num(10.0))
     }
@@ -1424,10 +1427,12 @@ mod tests {
 
         let resolved = mock_resolved(&builder);
         let ir = normalize(builder, path_expr, &resolved, &interner);
-        let mut machine = new_machine(ir, interner);
+
+        let mut heap = Heap::new();
+        let mut machine = new_machine(ir, interner, &mut heap);
 
         // Expect unbound symbol error.
-        let _err = machine.run().unwrap_err();
+        let _err = machine.run(&mut heap).unwrap_err();
     }
 
     #[test]
@@ -1449,8 +1454,10 @@ mod tests {
         resolved.insert_meta(let_expr, x_sym);
 
         let ir = normalize(builder, let_expr, &resolved, &interner);
-        let mut machine = new_machine(ir, interner);
-        let value = machine.run().unwrap();
+
+        let mut heap = Heap::new();
+        let mut machine = new_machine(ir, interner, &mut heap);
+        let value = machine.run(&mut heap).unwrap();
 
         // Should evaluate to 42 (the value bound to x)
         assert_eq!(value, Value::Num(42.0));
@@ -1484,8 +1491,10 @@ mod tests {
         let call_expr = builder.insert(node::CallExpr { func: lambda, arg });
 
         let ir = normalize(builder, call_expr, &resolved, &interner);
-        let mut machine = new_machine(ir, interner);
-        let value = machine.run().unwrap();
+
+        let mut heap = Heap::new();
+        let mut machine = new_machine(ir, interner, &mut heap);
+        let value = machine.run(&mut heap).unwrap();
 
         // Should evaluate to 42 (identity function returns its argument)
         assert_eq!(value, Value::Num(42.0));
@@ -1515,8 +1524,10 @@ mod tests {
         let record_id = builder.insert(node::Expr::Record(record_expr));
 
         let ir = normalize(builder, record_id, &resolved, &interner);
-        let mut machine = new_machine(ir, interner);
-        let value = machine.run().unwrap();
+
+        let mut heap = Heap::new();
+        let mut machine = new_machine(ir, interner, &mut heap);
+        let value = machine.run(&mut heap).unwrap();
 
         // Should evaluate to a record with two fields
         assert!(value.is_record());
@@ -1567,10 +1578,12 @@ mod tests {
         resolved.insert_meta(let_expr, r_sym);
 
         let ir = normalize(builder, let_expr, &resolved, &interner);
-        let mut machine = new_machine(ir, interner);
-        let value = machine.run().unwrap();
+
+        let mut heap = Heap::new();
+        let mut machine = new_machine(ir, interner, &mut heap);
+        let value = machine.run(&mut heap).unwrap();
 
         // Should evaluate to "hello" (the value of r.a.b.c)
-        assert_eq!(value, Value::Str("hello".to_owned()));
+        assert_eq!(value, Value::str("hello".to_owned()));
     }
 }

@@ -5,9 +5,10 @@ use kola_protocol::{TypeInterner, TypeKey, TypeProtocol};
 
 use crate::{
     config::{MachineState, OperationConfig, PatternConfig, StandardConfig},
-    cont::{Cont, ContFrame},
-    env::Env,
+    cont::{ContFrame, RawCont},
+    env::RawEnv,
     eval::{Eval, eval_atom},
+    heap::Heap,
     value::Value,
 };
 use kola_ir::{
@@ -43,10 +44,10 @@ impl MachineContext {
         }
     }
 
-    pub fn start_config(&self) -> StandardConfig {
+    pub fn start_config(&self, heap: &mut Heap) -> StandardConfig {
         let control = self.ir.root().get(&self.ir);
-        let env = Env::new();
-        let cont = Cont::identity(env.clone());
+        let env = RawEnv::new();
+        let cont = RawCont::identity(env.clone().alloc(heap));
 
         StandardConfig { control, env, cont }
     }
@@ -75,10 +76,10 @@ pub struct CekMachine {
 
 impl CekMachine {
     /// Create a new CEK machine to evaluate an expression
-    pub fn new(context: MachineContext) -> Self {
-        // Initial configuration (M-INIT in the paper)
-        // C = hM | ∅ | κ0i
-        let config = context.start_config();
+    /// Initial configuration (M-INIT in the paper)
+    /// C = hM | ∅ | κ0i
+    pub fn new(context: MachineContext, heap: &mut Heap) -> Self {
+        let config = context.start_config(heap);
 
         Self {
             context,
@@ -89,13 +90,15 @@ impl CekMachine {
     /// Execute a single step of the machine
     /// Returns Ok(true) if the machine has reached a final state,
     /// Ok(false) if more steps are needed, or Err if an error occurred
-    pub fn step(&mut self) -> bool {
+    pub fn step(&mut self, heap: &mut Heap) -> bool {
         let state = std::mem::replace(&mut self.state, MachineState::InProgress);
 
         self.state = match state {
-            MachineState::Standard(config) => Self::step_standard(config, &mut self.context),
-            MachineState::Operation(config) => Self::step_operation(config, &mut self.context),
-            MachineState::Pattern(config) => Self::step_pattern(config, &mut self.context),
+            MachineState::Standard(config) => Self::step_standard(config, &mut self.context, heap),
+            MachineState::Operation(config) => {
+                Self::step_operation(config, &mut self.context, heap)
+            }
+            MachineState::Pattern(config) => Self::step_pattern(config, &mut self.context, heap),
             MachineState::Value(_) | MachineState::Error(_) => {
                 // If the machine is in a terminal state, we don't need to do anything
                 state
@@ -110,8 +113,8 @@ impl CekMachine {
     }
 
     /// Run the machine until it reaches a terminal state
-    pub fn run(&mut self) -> Result<Value, String> {
-        while !self.step() {}
+    pub fn run(&mut self, heap: &mut Heap) -> Result<Value, String> {
+        while !self.step(heap) {}
 
         match &self.state {
             MachineState::Value(value) => Ok(value.clone()),
@@ -121,19 +124,31 @@ impl CekMachine {
     }
 
     /// Execute a standard configuration step
-    fn step_standard(config: StandardConfig, context: &mut MachineContext) -> MachineState {
+    fn step_standard(
+        config: StandardConfig,
+        context: &mut MachineContext,
+        heap: &mut Heap,
+    ) -> MachineState {
         let StandardConfig { control, env, cont } = config;
-        control.eval(env, cont, context)
+        control.eval(env, cont, context, heap)
     }
 
     /// Execute a pattern matching configuration step
-    fn step_pattern(config: PatternConfig, context: &mut MachineContext) -> MachineState {
+    fn step_pattern(
+        config: PatternConfig,
+        context: &mut MachineContext,
+        heap: &mut Heap,
+    ) -> MachineState {
         let PatternConfig { matcher, env, cont } = config;
-        matcher.get(&context.ir).eval(env, cont, context)
+        matcher.get(&context.ir).eval(env, cont, context, heap)
     }
 
     /// Execute an operation configuration step
-    fn step_operation(config: OperationConfig, context: &mut MachineContext) -> MachineState {
+    fn step_operation(
+        config: OperationConfig,
+        context: &mut MachineContext,
+        heap: &mut Heap,
+    ) -> MachineState {
         let OperationConfig {
             op,
             arg,
@@ -151,22 +166,23 @@ impl CekMachine {
 
         if let ContFrame::Handler {
             handler,
-            env: mut handler_env,
+            env: handler_env,
         } = frame
         {
             // Check if the top handler can handle this operation
             // And get the handler function
-            if let Some(Func { param, body }) = handler.find_operation(op) {
+            if let Some(Func { param, body }) = handler.get(heap).find_operation(op) {
                 // M-OP-HANDLE: Handler found, apply it
                 // ⟨(do ℓ V)^E | γ | (σ, (γ', H)) :: κ | κ'⟩^op → ⟨M | γ'[x ↦ ⟦V⟧_γ, k ↦ (κ' ++ [(σ, (γ', H))])^B] | κ⟩
 
                 // Evaluate the operation argument
-                let arg_value = match eval_atom(context.ir.instr(arg), &env, context) {
+                let arg_value = match eval_atom(context.ir.instr(arg), env, context) {
                     Ok(value) => value,
                     Err(err) => return MachineState::Error(err),
                 };
 
                 // Create the handler environment γ'[x ↦ ⟦V⟧_γ]
+                let mut handler_env = handler_env.get(heap).into_owned();
                 handler_env.insert(param, arg_value);
 
                 // Info: Continuation parameters are currently not present in the syntax, consider:
@@ -179,7 +195,7 @@ impl CekMachine {
                 // k ↦ (κ' ++ [(σ, (γ', H))])^B (the forwarding continuation plus current frame)
 
                 // Create the captured continuation by combining forwarding + current frame
-                forward.append(&mut cont);
+                forward.append(cont);
 
                 // Continue with the handler body (M in the rule) and remaining continuation (κ)
                 return MachineState::Standard(StandardConfig {
@@ -219,9 +235,15 @@ mod tests {
     };
     use kola_utils::interner::StrInterner;
 
-    use crate::machine::MachineContext;
+    use crate::{heap::Heap, machine::MachineContext};
     use crate::{machine::CekMachine, value::Value};
     use kola_protocol::TypeInterner;
+
+    fn run_machine(context: MachineContext) -> Result<Value, String> {
+        let mut heap = Heap::new();
+        let mut machine = CekMachine::new(context, &mut heap);
+        machine.run(&mut heap)
+    }
 
     #[test]
     fn test_simple_let_and_return() {
@@ -243,8 +265,7 @@ mod tests {
 
         let context =
             MachineContext::new(ir, "/mocked/path", StrInterner::new(), TypeInterner::new());
-        let mut machine = CekMachine::new(context);
-        let result = machine.run().unwrap();
+        let result = run_machine(context).unwrap();
 
         match result {
             Value::Num(n) => assert_eq!(n, 42.0),
@@ -294,8 +315,7 @@ mod tests {
         // Run the machine
         let context =
             MachineContext::new(ir, "/mocked/path", StrInterner::new(), TypeInterner::new());
-        let mut machine = CekMachine::new(context);
-        let result = machine.run().unwrap();
+        let result = run_machine(context).unwrap();
 
         // Check the result
         match result {
@@ -340,8 +360,7 @@ mod tests {
 
         // Run the machine
         let context = MachineContext::new(ir, "/mocked/path", interner, TypeInterner::new());
-        let mut machine = CekMachine::new(context);
-        let result = machine.run().unwrap();
+        let result = run_machine(context).unwrap();
 
         // Check the result - should be the value of the x field (10)
         match result {
@@ -393,8 +412,7 @@ mod tests {
 
         // Run the machine
         let context = MachineContext::new(ir, "/mocked/path", interner, TypeInterner::new());
-        let mut machine = CekMachine::new(context);
-        let result = machine.run().unwrap();
+        let result = run_machine(context).unwrap();
 
         // Check the result - should be the value of the z field (30)
         match result {
@@ -453,8 +471,7 @@ mod tests {
 
         // Run the machine
         let context = MachineContext::new(ir, "/mocked/path", interner, TypeInterner::new());
-        let mut machine = CekMachine::new(context);
-        let result = machine.run().unwrap();
+        let result = run_machine(context).unwrap();
 
         // Check the result - should be the updated value of x (20)
         match result {
@@ -506,8 +523,7 @@ mod tests {
 
         // Run the machine
         let context = MachineContext::new(ir, "/mocked/path", interner, TypeInterner::new());
-        let mut machine = CekMachine::new(context);
-        let result = machine.run().unwrap();
+        let result = run_machine(context).unwrap();
 
         // Check the result - should be 42
         match result {

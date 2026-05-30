@@ -9,22 +9,16 @@ use kola_utils::{
 };
 use std::fmt::{self, Display};
 
-use crate::cont::Cont;
-
-mod closure;
-mod list;
-mod record;
-mod variant;
-
-pub use closure::Closure;
-pub use list::List;
-pub use record::Record;
-pub use variant::Variant;
+use crate::{
+    closure::RawClosure, cont::RawCont, list::RawList, record::RawRecord, string::RawString,
+    variant::Variant, witness::RawWitness,
+};
 
 /// Values produced by evaluating expressions
-#[derive(Debug, EnumAsInner, From, Clone, PartialEq)]
+#[derive(Debug, Default, EnumAsInner, From, Clone, PartialEq)]
 pub enum Value {
     /// A unit value (no value)
+    #[default]
     None,
     /// A boolean value
     Bool(bool),
@@ -33,11 +27,11 @@ pub enum Value {
     /// A numeric value (floating point)
     Num(f64),
     /// A string value
-    Str(String),
+    Str(RawString<'static>),
     /// A function closure (environment, function definition)
-    Closure(Closure),
+    Closure(RawClosure<'static>),
     /// A captured continuation
-    Cont(Cont),
+    Cont(RawCont<'static>),
     /// A built-in function (e.g., `__builtin_first`)
     Builtin(BuiltinId),
     /// A tag
@@ -45,15 +39,15 @@ pub enum Value {
     /// A variant (tag, value)
     Variant(Variant),
     /// A record (map of labels to values)
-    Record(Record),
+    Record(RawRecord<'static>),
     /// A list of values
-    List(List),
+    List(RawList<'static>),
     /// A Type representation
-    Witness(TypeProtocol),
+    Witness(RawWitness<'static>),
 }
 
 impl Value {
-    pub fn str(s: impl Into<String>) -> Self {
+    pub fn str(s: impl Into<RawString<'static>>) -> Self {
         Value::Str(s.into())
     }
 
@@ -79,7 +73,7 @@ impl Value {
             ValueProtocol::Bool(b) => Value::Bool(b),
             ValueProtocol::Char(c) => Value::Char(c),
             ValueProtocol::Num(n) => Value::Num(n),
-            ValueProtocol::Str(s) => Value::Str(s),
+            ValueProtocol::Str(s) => Value::str(s),
             ValueProtocol::Variant(t, v) => {
                 let tag = Tag(interner.intern(t));
                 let value = Self::from_protocol(*v, interner);
@@ -87,7 +81,7 @@ impl Value {
                 Value::Variant(variant)
             }
             ValueProtocol::Record(r) => {
-                let mut record = Record::new();
+                let mut record = RawRecord::new();
 
                 // TODO if ValueProtocol was guaranteed to be sorted,
                 // this manual insertion (and binary searching) could be avoided.
@@ -126,7 +120,7 @@ impl DisplayWithInterner<str> for Value {
             Value::Variant(v) => v.fmt(f, interner),
             Value::Record(r) => r.fmt(f, interner),
             Value::List(l) => l.fmt(f, interner),
-            Value::Witness(proto) => proto.to_json().unwrap().fmt(f),
+            Value::Witness(w) => w.0.to_json().unwrap().fmt(f),
         }
     }
 }
@@ -141,7 +135,7 @@ impl SerializeWithInterner<str> for Value {
             Value::Bool(b) => serializer.serialize_bool(*b),
             Value::Char(c) => serializer.serialize_char(*c),
             Value::Num(n) => serializer.serialize_f64(*n),
-            Value::Str(s) => serializer.serialize_str(s),
+            Value::Str(s) => serializer.serialize_str(&s.0),
             Value::Variant(v) => v.serialize(serializer, interner),
             Value::Record(r) => r.serialize(serializer, interner),
             Value::List(l) => l.serialize(serializer, interner),

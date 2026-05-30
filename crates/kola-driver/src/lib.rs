@@ -21,7 +21,10 @@ use kola_typer::{
     print::TypeDecorator,
 };
 use kola_utils::{interner::StrInterner, interner_ext::InternerExt, io::FileSystem};
-use kola_vm::machine::{CekMachine, MachineContext};
+use kola_vm::{
+    heap::Heap,
+    machine::{CekMachine, MachineContext},
+};
 
 pub enum DriverOptions {}
 
@@ -300,10 +303,12 @@ impl Driver {
             path.parent().unwrap(),
             self.str_interner,
             self.type_interner,
-        ); // TODO handle unwrap
-        let mut machine = CekMachine::new(context);
+        );
 
-        match machine.run() {
+        let mut heap = Heap::new();
+        let mut machine = CekMachine::new(context, &mut heap);
+
+        match machine.run(&mut heap) {
             Ok(value) => {
                 println!(
                     "\nExecution result: {}",

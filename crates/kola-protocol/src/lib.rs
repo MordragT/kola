@@ -129,6 +129,14 @@ impl TypeProtocol {
         TypeProtocol::Witness(Box::new(wit))
     }
 
+    pub fn as_label(&self) -> Option<&str> {
+        if let TypeProtocol::Label(label) = self {
+            Some(label)
+        } else {
+            None
+        }
+    }
+
     pub fn to_json(&self) -> serde_json::Result<String> {
         serde_json::to_string_pretty(self)
     }
