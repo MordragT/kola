@@ -1,28 +1,27 @@
 {
+  module type ServiceInput = {
+    image : Str, tag : Str, replicas : Num,
+  },
 
+  module functor service (i : ServiceInput) => {
+    export image = i::image,
+    export tag   = i::tag,
+    export replicas = i::replicas,
+    export full_image = image #+ ":" + tag,
+  },
 
-    export module rand_a = {
-        export rand = fn x => x + 1,
-    },
+  module functor scale (i : ServiceInput) => {
+    export image = i::image,
+    export tag   = i::tag,
+    export replicas = 2 * i::replicas,
+  },
 
-    export module rand_b = {
-        export rand = fn x => x * 2,
-    },
+  module base = { export image = "ghcr.io/acme/api", export tag = "v1", export replicas = 1 },
 
-    export module my_add = {
-        export add1 = fn x => x + 1,
-    },
+  module dev  = (service base),
 
-    module my_functor = {
-        export module type Randomize = {
-            rand : Num -> Num,
-        },
+  module prod_input = (scale base),
+  module prod = (service prod_input),
 
-        export module functor combined_rand (a : Randomize) (b : Randomize) => {
-            export rand = fn x => (super::my_add::add1 (a::rand (b::rand x))),
-        },
-    },
-
-    export module rand_ab = (my_functor::combined_rand rand_a, rand_b),
-    main = let x = 10 in (rand_ab::rand x),
+  main = 10,
 }

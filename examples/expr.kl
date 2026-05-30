@@ -21,8 +21,8 @@
 
     # Arithmetic and comparison expressions
     math_expr = 10 + 5 - 2 * 3 / 2 % 4,
-    comparison = 5 < 10 and 8 >= 3 or 2 != 1,
-    equality_check = 5 == 5 and 3 <= 7 and 9 > 4,
+    comparison = 5 < 10 && 8 >= 3 || 2 != 1,
+    equality_check = 5 == 5 && 3 <= && 9 > 4,
 
     # Let expression
     let_example = let x = 5 in x * 2 + 1,

@@ -1,3 +1,0 @@
-{
-    export a_fn = fn x => x + 1,
-}

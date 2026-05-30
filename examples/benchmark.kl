@@ -1,0 +1,102 @@
+{
+    # Benchmark: exercises structural recursion, closures, records, pattern matching,
+    # arithmetic, lists, and strings — all using only total operations.
+    #
+    # The key idea: chain num_rec calls so each feeds into the next, creating
+    # a depth of execution without unbounded loops.
+
+    # --- helpers ---
+
+    is_even = fn n => n % 2 == 0,
+    is_odd  = fn n => n % 2 != 0,
+
+    # Count evens in a list
+    count_evens = fn list =>
+        (list_rec {
+            list = list,
+            base = 0,
+            step = fn s =>
+                if (is_even s.head) then s.acc + 1 else s.acc,
+        }),
+
+    # Sum a list
+    sum_list = fn list =>
+        (list_rec {
+            list = list,
+            base = 0,
+            step = fn s => s.acc + s.head,
+        }),
+
+    # Map a function over a list by building the result backwards, then reversing
+    map_list = fn f => fn list =>
+        let mapped = (list_rec {
+            list = list,
+            base = [],
+            step = fn s =>
+                (list_prepend { head = (f s.head), tail = s.acc }),
+        }) in
+        (list_reverse mapped),
+
+    # Build a range [1, 2, ..., n] as a list
+    range = fn n =>
+        let reversed = (num_rec {
+            num = n,
+            base = [],
+            step = fn s =>
+                (list_prepend { head = s.head, tail = s.acc }),
+        }) in
+        reversed,
+
+    # --- main benchmark ---
+    #
+    # Phase 1: Build a list of 2000 elements via num_rec (creates many closures)
+    # Phase 2: Map is_even over it (list_rec stress)
+    # Phase 3: Map is_odd over it (more list_rec)
+    # Phase 4: Count evens in the original list (another list_rec)
+    # Phase 5: Sum the evens-mapped list (yet another list_rec)
+    # Phase 6: Build another big list and chain multiple operations
+    #
+    # Result is a record so the VM has to construct and traverse records too.
+
+    main =
+        let big_list = (range 20000) in
+
+        # Phase 2: map is_even
+        let evens_list = (map_list is_even big_list) in
+
+        # Phase 3: map is_odd
+        let odds_list = (map_list is_odd big_list) in
+
+        # Phase 4: count evens in the original list
+        let even_count = (count_evens big_list) in
+
+        # Phase 5: sum of the big list
+        let total = (sum_list big_list) in
+
+        # Phase 6: build another range and chain operations on it
+        let big_list2 = (range 15000) in
+        let doubled = (map_list (fn x => x * 2) big_list2) in
+        let doubled_sum = (sum_list doubled) in
+
+        # Phase 7: build a third range and do more ops
+        let big_list3 = (range 10000) in
+        let added = (map_list (fn x => x + 5) big_list3) in
+        let added_sum = (sum_list added) in
+
+        # Phase 8: count evens in all three lists
+        let count1 = (count_evens big_list) in
+        let count2 = (count_evens big_list2) in
+        let count3 = (count_evens big_list3) in
+
+        # Return a record with all results — exercises record construction
+        {
+            even_count = even_count,
+            total = total,
+            doubled_sum = doubled_sum,
+            added_sum = added_sum,
+            count1 = count1,
+            count2 = count2,
+            count3 = count3,
+            final = even_count + total + doubled_sum + added_sum + count1 + count2 + count3,
+        },
+}

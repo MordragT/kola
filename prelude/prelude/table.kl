@@ -52,18 +52,18 @@
 
     # insert_row_at, remove_row_at,
 
-    export module type TableShape = {
-        type Row,
-    },
+    # export module type TableShape = {
+    #     type Row,
+    # },
 
-    export module functor join (t : TableShape) => {
-        export join = fn label => fn left : (List t::Row) => fn right : (List t::Row) =>
-            left |> (super::list::flat_map (fn lrow =>
-                let lkey = (super::record::select label lrow) in
-                    right
-                        |> (super::list::filter (fn rrow =>
-                            (super::record::select label rrow) == lkey))
-                        |> (super::list::map (fn rrow =>
-                            lrow & rrow)))),
-    },
+    # export module functor join (t : TableShape) => {
+    #     export join = fn label => fn left : (List t::Row) => fn right : (List t::Row) =>
+    #         left |> (super::list::flat_map (fn lrow =>
+    #             let lkey = (super::record::select label lrow) in
+    #                 right
+    #                     |> (super::list::filter (fn rrow =>
+    #                         (super::record::select label rrow) == lkey))
+    #                     |> (super::list::map (fn rrow =>
+    #                         lrow & rrow)))),
+    # },
 }

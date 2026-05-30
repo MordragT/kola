@@ -17,7 +17,6 @@
           lldb
           cargo-show-asm
           cargo-expand
-          cargo-flamegraph
           wasm-tools
           python3
           # docs

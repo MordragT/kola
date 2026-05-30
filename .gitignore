@@ -4,3 +4,4 @@ result
 thesis/
 test/
 extension.wasm
+profile.json.gz
