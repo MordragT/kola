@@ -1,6 +1,6 @@
 use crate::{
     env::Env,
-    value::{Closure, Value},
+    value::{Closure, List, Record},
 };
 use kola_ir::{
     id::Id,
@@ -15,8 +15,6 @@ pub enum ReturnClause {
     Identity,
     /// User-defined function from IR
     Function(Func),
-    /// Primitive recursive function with a head and a step function.
-    PrimitiveRec { head: Value, step: Func },
 }
 
 /// Contains the behavior of the handler, which is a set of clauses.
@@ -47,13 +45,6 @@ impl Handler {
     pub fn function(return_clause: Func) -> Self {
         Self {
             return_clause: ReturnClause::Function(return_clause),
-            op_clauses: Vec::new(),
-        }
-    }
-
-    pub fn primitive_rec(head: Value, step: Func) -> Self {
-        Self {
-            return_clause: ReturnClause::PrimitiveRec { head, step },
             op_clauses: Vec::new(),
         }
     }
@@ -94,106 +85,72 @@ impl Handler {
     }
 }
 
-/// A pure continuation frame (γ, x, N) closes a let-binding
-/// let x : Symbol = [ ] in N : Expr, over environment γ.
 #[derive(Debug, Clone, PartialEq)]
-pub struct PureContFrame {
-    pub var: Symbol,
-    pub body: Id<Expr>,
-    pub env: Env,
-}
+pub enum ContFrame {
+    /// A pure continuation frame (γ, x, N) closes a let-binding
+    /// let x : Symbol = [ ] in N : Expr, over environment γ.
+    Pure {
+        var: Symbol,
+        body: Id<Expr>,
+        env: Env,
+    },
 
-/// A pure continuation is a stack of pure continuation frames.
-#[derive(Debug, Clone, PartialEq)]
-pub struct PureCont {
-    frames: Vec<PureContFrame>,
-}
+    /// A handler closure (γ, H) closes a handler definition H over environment γ.
+    ///
+    /// Multiple handler closures might use the same handler definition but with different environments.
+    Handler { handler: Handler, env: Env },
 
-impl PureCont {
-    pub fn empty() -> Self {
-        Self { frames: Vec::new() }
-    }
+    /// A recursive continuation frame (data, step) is used for primitive recursion.
+    NumRec { data: f64, step: Closure },
 
-    pub fn push(&mut self, frame: PureContFrame) {
-        self.frames.push(frame);
-    }
+    /// A recursive continuation frame (data, step) is used for primitive recursion.
+    ListRec { data: List, step: Closure },
 
-    pub fn pop(&mut self) -> Option<PureContFrame> {
-        self.frames.pop()
-    }
+    /// A recursive continuation frame (data, step) is used for primitive recursion.
+    RecordRec { data: Record, step: Closure },
 
-    pub fn top(&self) -> Option<&PureContFrame> {
-        self.frames.last()
-    }
-
-    pub fn top_mut(&mut self) -> Option<&mut PureContFrame> {
-        self.frames.last_mut()
-    }
-
-    pub fn append(&mut self, cont: &mut PureCont) {
-        self.frames.append(&mut cont.frames);
-    }
-
-    pub fn is_empty(&self) -> bool {
-        self.frames.is_empty()
-    }
-
-    pub fn len(&self) -> usize {
-        self.frames.len()
-    }
-}
-
-/// A handler closure (γ, H) closes a handler definition H over environment γ.
-///
-/// Multiple handler closures might use the same handler definition but with different environments.
-#[derive(Debug, Clone, PartialEq)]
-pub struct HandlerClosure {
-    pub handler: Handler,
-    pub env: Env,
-}
-
-impl HandlerClosure {
-    pub fn new(handler: Handler, env: Env) -> Self {
-        Self { handler, env }
-    }
-}
-
-impl From<Closure> for HandlerClosure {
-    fn from(closure: Closure) -> Self {
-        Self {
-            handler: Handler::function(closure.func),
-            env: closure.env,
-        }
-    }
-}
-
-/// Intuitively, each continuation frame δ = (σ, χ) represents the pure continuation σ,
-/// corresponding to a sequence of let , inside a particular handler closure χ.
-#[derive(Debug, Clone, PartialEq)]
-pub struct ContFrame {
-    pub pure: PureCont,
-    pub handler_closure: HandlerClosure,
+    /// A recursive continuation frame (data, step) is used for primitive recursion.
+    StrRec { data: String, step: Closure },
 }
 
 impl ContFrame {
+    pub fn num_rec(data: f64, step: Closure) -> Self {
+        Self::NumRec { data, step }
+    }
+
+    pub fn list_rec(data: List, step: Closure) -> Self {
+        Self::ListRec { data, step }
+    }
+
+    pub fn record_rec(data: Record, step: Closure) -> Self {
+        Self::RecordRec { data, step }
+    }
+
+    pub fn str_rec(data: String, step: Closure) -> Self {
+        Self::StrRec { data, step }
+    }
+
+    pub fn pure(var: Symbol, body: Id<Expr>, env: Env) -> Self {
+        Self::Pure { var, body, env }
+    }
+
+    pub fn handler(handler: Handler, env: Env) -> Self {
+        Self::Handler { handler, env }
+    }
+
     /// Creates the identity continuation frame  ([ ], (∅, {return x → x}))
     pub fn identity(env: Env) -> Self {
-        Self {
-            pure: PureCont::empty(),
-            handler_closure: HandlerClosure {
-                handler: Handler::identity(),
-                env,
-            },
+        Self::Handler {
+            handler: Handler::identity(),
+            env,
         }
     }
 }
 
 /// A continuation κ consists of a stack of continuation frames
-/// We choose to annotate captured continuations with their input type
 #[derive(Debug, Clone, PartialEq)]
 pub struct Cont {
     frames: Vec<ContFrame>,
-    // TODO type info ?
 }
 
 impl Cont {

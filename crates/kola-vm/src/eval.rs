@@ -1,8 +1,8 @@
 use std::fs;
 
 use crate::{
-    config::{MachineState, OperationConfig, PatternConfig, PrimitiveRecConfig, StandardConfig},
-    cont::{Cont, ContFrame, Handler, HandlerClosure, PureCont, PureContFrame, ReturnClause},
+    config::{MachineState, OperationConfig, PatternConfig, StandardConfig},
+    cont::{Cont, ContFrame, Handler, ReturnClause},
     env::Env,
     machine::MachineContext,
     value::{Closure, List, Record, Value, Variant, to_usize_exact},
@@ -88,103 +88,208 @@ impl Eval for RetExpr {
         };
 
         // Remove the top continuation frame
-        let Some(ContFrame {
-            mut pure,
-            handler_closure,
-        }) = cont.pop()
-        else {
+        let Some(cont_frame) = cont.pop() else {
             // If the continuation is empty, return the value
             return MachineState::Value(value);
         };
 
-        // If there's a pure continuation, apply it
-        let Some(PureContFrame { var, body, mut env }) = pure.pop() else {
-            // M-RETHANDLER: <return V | γ | ([], (γ', H)) :: κ> --> <M | γ'[x ↦ V] | κ>,
-            // if H(return) = {return x ↦ M}
-            //
-            // When a return expression with value V reaches a handler frame with
-            // an empty pure continuation, we:
-            // 1. Extract the return clause from the handler H
-            // 2. Bind the returned value V to parameter x in the handler's environment γ'
-            // 3. Continue by evaluating the return handler's body M with the updated environment
-            // 4. Use the continuation κ below the current handler frame
+        match cont_frame {
+            ContFrame::Pure { var, body, mut env } => {
+                // M-RETCONT: <return V | γ | ((γ', x, N) :: σ, χ) :: κ> --> <N | γ'[x ↦ V] | (σ, χ) :: κ>
+                //
+                // When a return expression with value V reaches a pure continuation frame:
+                // 1. The value V is evaluated in the current environment γ
+                // 2. We extract the pure continuation frame containing variable x, body N, and environment γ'
+                // 3. We bind the value V to variable x in the environment γ'
+                // 4. We continue by evaluating N in this updated environment
+                // 5. The continuation stack is updated by removing the top pure frame
 
-            let HandlerClosure { handler, mut env } = handler_closure;
+                // Create new environment with the bound variable
+                env.insert(var, value);
 
-            return match handler.return_clause {
-                ReturnClause::Identity => {
-                    // Identity function just returns the value
-                    if cont.is_empty() {
-                        // No more frames, return the final value
-                        MachineState::Value(value)
-                    } else {
-                        // Continue with the next frame
+                // Continue with the next expression
+                MachineState::Standard(StandardConfig {
+                    control: body.get(&context.ir),
+                    env,
+                    cont,
+                })
+            }
+            ContFrame::Handler { handler, mut env } => {
+                // M-RETHANDLER: <return V | γ | ([], (γ', H)) :: κ> --> <M | γ'[x ↦ V] | κ>,
+                // if H(return) = {return x ↦ M}
+                //
+                // When a return expression with value V reaches a handler frame with
+                // an empty pure continuation, we:
+                // 1. Extract the return clause from the handler H
+                // 2. Bind the returned value V to parameter x in the handler's environment γ'
+                // 3. Continue by evaluating the return handler's body M with the updated environment
+                // 4. Use the continuation κ below the current handler frame
+
+                match handler.return_clause {
+                    ReturnClause::Identity => {
+                        // Identity function just returns the value
+                        if cont.is_empty() {
+                            // No more frames, return the final value
+                            MachineState::Value(value)
+                        } else {
+                            // Continue with the next frame
+                            MachineState::Standard(StandardConfig {
+                                control: Expr::from(*self),
+                                env,
+                                cont,
+                            })
+                        }
+                    }
+                    ReturnClause::Function(Func { param, body }) => {
+                        // Create a new environment with the value bound to param
+                        env.insert(param, value);
+
+                        // Evaluate the return handler body
                         MachineState::Standard(StandardConfig {
-                            control: Expr::from(*self),
+                            control: body.get(&context.ir),
                             env,
                             cont,
                         })
                     }
                 }
-                ReturnClause::Function(Func { param, body }) => {
-                    // Create a new environment with the value bound to param
-                    env.insert(param, value);
+            }
+            ContFrame::NumRec { data, step } => {
+                if data >= 1.0 {
+                    cont.push(ContFrame::NumRec {
+                        data: data - 1.0,
+                        step: step.clone(),
+                    });
+                }
 
-                    // Evaluate the return handler body
-                    MachineState::Standard(StandardConfig {
-                        control: body.get(&context.ir),
+                let Closure {
+                    mut env,
+                    func: Func { param, body },
+                } = step;
+
+                // Create argument for the step function
+                let mut record = Record::new();
+                record.insert(context.str_interner.intern("acc"), value); // value = result from previous step
+                record.insert(context.str_interner.intern("head"), Value::Num(data));
+
+                env.insert(param, Value::Record(record));
+
+                MachineState::Standard(StandardConfig {
+                    control: body.get(&context.ir),
+                    env,
+                    cont,
+                })
+            }
+            ContFrame::ListRec { data, step } => {
+                let Some((head, tail)) = data.split_first() else {
+                    // Empty list — continue with next frame
+                    return MachineState::Standard(StandardConfig {
+                        control: Expr::from(*self),
                         env,
                         cont,
-                    })
-                }
-                ReturnClause::PrimitiveRec {
-                    head,
-                    step: Func { param, body },
-                } => {
-                    // Create argument for the step function
-                    let mut record = Record::new();
-                    record.insert(context.str_interner.intern("acc"), value); // value = result from previous step
-                    record.insert(context.str_interner.intern("head"), head);
+                    });
+                };
 
-                    env.insert(param, Value::Record(record));
+                // Continue with the next frame
+                cont.push(ContFrame::ListRec {
+                    data: tail.clone(),
+                    step: step.clone(),
+                });
 
-                    MachineState::Standard(StandardConfig {
-                        control: body.get(&context.ir),
+                let Closure {
+                    mut env,
+                    func: Func { param, body },
+                } = step;
+
+                // Create argument for the step function
+                let mut record = Record::new();
+                record.insert(context.str_interner.intern("acc"), value); // value = result from previous step
+                record.insert(context.str_interner.intern("head"), head.clone());
+
+                env.insert(param, Value::Record(record));
+
+                MachineState::Standard(StandardConfig {
+                    control: body.get(&context.ir),
+                    env,
+                    cont,
+                })
+            }
+            ContFrame::RecordRec { mut data, step } => {
+                let Some(first) = data.pop_first() else {
+                    // Empty record — continue with next frame
+                    return MachineState::Standard(StandardConfig {
+                        control: Expr::from(*self),
                         env,
-                        cont, // Remaining handlers continue the chain
-                    })
-                }
-            };
-        };
+                        cont,
+                    });
+                };
 
-        // M-RETCONT: <return V | γ | ((γ', x, N) :: σ, χ) :: κ> --> <N | γ'[x ↦ V] | (σ, χ) :: κ>
-        //
-        // When a return expression with value V reaches a pure continuation frame:
-        // 1. The value V is evaluated in the current environment γ
-        // 2. We extract the pure continuation frame containing variable x, body N, and environment γ'
-        // 3. We bind the value V to variable x in the environment γ'
-        // 4. We continue by evaluating N in this updated environment
-        // 5. The continuation stack is updated by removing the top pure frame
+                let mut head = Record::new();
+                head.insert(
+                    context.str_interner.intern("key"),
+                    Value::Str(context.str_interner[first.0].clone()),
+                );
+                head.insert(context.str_interner.intern("value"), first.1);
 
-        // Create new environment with the bound variable
-        env.insert(var, value);
+                // Continue with the next frame
+                cont.push(ContFrame::RecordRec {
+                    data,
+                    step: step.clone(),
+                });
 
-        // Push back the modified ContFrame to preserve the handler context.
-        // Even if the pure continuation is now empty, the handler_closure must
-        // remain active to handle any effects raised during execution of the
-        // next expression and to process the final return value when the
-        // computation within this handler scope completes.
-        cont.push(ContFrame {
-            pure,
-            handler_closure,
-        });
+                let Closure {
+                    mut env,
+                    func: Func { param, body },
+                } = step;
 
-        // Continue with the next expression
-        MachineState::Standard(StandardConfig {
-            control: body.get(&context.ir),
-            env,
-            cont,
-        })
+                // Create argument for the step function
+                let mut record = Record::new();
+                record.insert(context.str_interner.intern("acc"), value); // value = result from previous step
+                record.insert(context.str_interner.intern("head"), Value::Record(head));
+
+                env.insert(param, Value::Record(record));
+
+                MachineState::Standard(StandardConfig {
+                    control: body.get(&context.ir),
+                    env,
+                    cont,
+                })
+            }
+            ContFrame::StrRec { mut data, step } => {
+                if data.is_empty() {
+                    // Empty string — continue with next frame
+                    return MachineState::Standard(StandardConfig {
+                        control: Expr::from(*self),
+                        env,
+                        cont,
+                    });
+                };
+                let head = data.remove(0).to_string();
+
+                // Continue with the next frame
+                cont.push(ContFrame::StrRec {
+                    data,
+                    step: step.clone(),
+                });
+
+                let Closure {
+                    mut env,
+                    func: Func { param, body },
+                } = step;
+
+                // Create argument for the step function
+                let mut record = Record::new();
+                record.insert(context.str_interner.intern("acc"), value); // value = result from previous step
+                record.insert(context.str_interner.intern("head"), Value::Str(head));
+
+                env.insert(param, Value::Record(record));
+
+                MachineState::Standard(StandardConfig {
+                    control: body.get(&context.ir),
+                    env,
+                    cont,
+                })
+            }
+        }
     }
 }
 
@@ -223,16 +328,8 @@ impl Eval for CallExpr {
                 func: Func { param, body },
             }) => {
                 // Create a pure continuation frame for the next expression
-                let pure_frame = PureContFrame {
-                    var: bind,
-                    body: next,
-                    env: env.clone(),
-                };
-
-                // Add the frame to the continuation
-                let mut frame = cont.pop_or_identity();
-                frame.pure.push(pure_frame);
-                cont.push(frame);
+                let pure_frame = ContFrame::pure(bind, next, env.clone());
+                cont.push(pure_frame);
 
                 // Create a new environment with the bound parameter
                 func_env.insert(param, arg_val);
@@ -258,16 +355,8 @@ impl Eval for CallExpr {
                 //    with the argument W becoming the returned value at that point
 
                 // Create a pure continuation frame for the next expression
-                let pure_frame = PureContFrame {
-                    var: bind,
-                    body: next,
-                    env: env.clone(),
-                };
-
-                // Add the frame to the continuation
-                let mut frame = cont.pop_or_identity();
-                frame.pure.push(pure_frame);
-                cont.push(frame);
+                let pure_frame = ContFrame::pure(bind, next, env.clone());
+                cont.push(pure_frame);
 
                 captured.append(&mut cont);
 
@@ -458,20 +547,39 @@ fn eval_builtin(
                 );
             };
 
-            // Create a pure continuation frame for the next expression
-            let mut frame = cont.pop_or_identity();
-            let pure_frame = PureContFrame {
-                var: bind,
-                body: next,
-                env,
+            let Some((head, tail)) = list.split_first() else {
+                // Empty list — bind base directly, go to next
+                env.insert(bind, base);
+                return MachineState::Standard(StandardConfig {
+                    control: next.get(&context.ir),
+                    env,
+                    cont,
+                });
             };
-            frame.pure.push(pure_frame);
-            cont.push(frame);
 
-            return MachineState::PrimitiveRec(PrimitiveRecConfig {
-                data: Value::List(list),
-                base,
-                step,
+            // Create a pure continuation frame for the next expression
+            let pure_frame = ContFrame::pure(bind, next, env);
+            cont.push(pure_frame);
+
+            // Create a primitive recursion frame for the list_rec operation,
+            // which will handle the recursive processing of the list.
+            let rec_frame = ContFrame::list_rec(tail, step.clone());
+            cont.push(rec_frame);
+
+            let Closure {
+                mut env,
+                func: Func { param, body },
+            } = step;
+
+            // Create argument for the step function
+            let mut record = Record::new();
+            record.insert(context.str_interner.intern("acc"), base);
+            record.insert(context.str_interner.intern("head"), head);
+            env.insert(param, Value::Record(record));
+
+            return MachineState::Standard(StandardConfig {
+                control: body.get(&context.ir),
+                env,
                 cont,
             });
         }
@@ -497,7 +605,7 @@ fn eval_builtin(
             Value::Num(base.powf(*exp))
         }
         (BuiltinId::NumRec, Value::Record(record)) => {
-            let Some(Value::Num(n)) = record.get(context.intern_str("num")) else {
+            let Some(&Value::Num(n)) = record.get(context.intern_str("num")) else {
                 return MachineState::Error("num_rec requires 'n' field with a number".to_owned());
             };
 
@@ -509,20 +617,40 @@ fn eval_builtin(
                 return MachineState::Error("num_rec requires 'step' field with a func".to_owned());
             };
 
-            // Create a pure continuation frame for the next expression
-            let mut frame = cont.pop_or_identity();
-            let pure_frame = PureContFrame {
-                var: bind,
-                body: next,
-                env,
-            };
-            frame.pure.push(pure_frame);
-            cont.push(frame);
+            if n <= 0.0 {
+                // Empty number — bind base directly, go to next
+                env.insert(bind, base);
+                return MachineState::Standard(StandardConfig {
+                    control: next.get(&context.ir),
+                    env,
+                    cont,
+                });
+            }
 
-            return MachineState::PrimitiveRec(PrimitiveRecConfig {
-                data: Value::Num(*n),
-                base,
-                step,
+            // Create a pure continuation frame for the next expression
+            let pure_frame = ContFrame::pure(bind, next, env);
+            cont.push(pure_frame);
+
+            // Create a primitive recursion frame
+            if n >= 2.0 {
+                let rec_frame = ContFrame::num_rec(n - 2.0, step.clone());
+                cont.push(rec_frame);
+            }
+
+            let Closure {
+                mut env,
+                func: Func { param, body },
+            } = step;
+
+            // Create argument for the step function
+            let mut record = Record::new();
+            record.insert(context.str_interner.intern("acc"), base);
+            record.insert(context.str_interner.intern("head"), Value::Num(n - 1.0));
+            env.insert(param, Value::Record(record));
+
+            return MachineState::Standard(StandardConfig {
+                control: body.get(&context.ir),
+                env,
                 cont,
             });
         }
@@ -698,7 +826,7 @@ fn eval_builtin(
             Value::Record(merged)
         }
         (BuiltinId::RecordRec, Value::Record(record)) => {
-            let Some(Value::Record(record)) = record.get(context.intern_str("record")).cloned()
+            let Some(Value::Record(mut record)) = record.get(context.intern_str("record")).cloned()
             else {
                 return MachineState::Error(
                     "record_rec requires 'record' field with a record".to_owned(),
@@ -715,20 +843,46 @@ fn eval_builtin(
                 );
             };
 
-            // Create a pure continuation frame for the next expression
-            let mut frame = cont.pop_or_identity();
-            let pure_frame = PureContFrame {
-                var: bind,
-                body: next,
-                env,
+            let Some(first) = record.pop_first() else {
+                // Empty record — bind base directly, go to next
+                env.insert(bind, base);
+                return MachineState::Standard(StandardConfig {
+                    control: next.get(&context.ir),
+                    env,
+                    cont,
+                });
             };
-            frame.pure.push(pure_frame);
-            cont.push(frame);
 
-            return MachineState::PrimitiveRec(PrimitiveRecConfig {
-                data: Value::Record(record),
-                base,
-                step,
+            let mut head = Record::new();
+            head.insert(
+                context.intern_str("key"),
+                Value::Str(context.str_interner[first.0].clone()),
+            );
+            head.insert(context.intern_str("value"), first.1);
+
+            // Create a pure continuation frame for the next expression
+            let pure_frame = ContFrame::pure(bind, next, env);
+            cont.push(pure_frame);
+
+            // Create a primitive recursion frame for the list_rec operation,
+            // which will handle the recursive processing of the list.
+            let rec_frame = ContFrame::record_rec(record, step.clone());
+            cont.push(rec_frame);
+
+            let Closure {
+                mut env,
+                func: Func { param, body },
+            } = step;
+
+            // Create argument for the step function
+            let mut record = Record::new();
+            record.insert(context.str_interner.intern("acc"), base);
+            record.insert(context.str_interner.intern("head"), Value::Record(head));
+            env.insert(param, Value::Record(record));
+
+            return MachineState::Standard(StandardConfig {
+                control: body.get(&context.ir),
+                env,
                 cont,
             });
         }
@@ -861,7 +1015,7 @@ fn eval_builtin(
             Value::Str(format!("{}{}", s1, s2))
         }
         (BuiltinId::StrRec, Value::Record(record)) => {
-            let Some(Value::Str(s)) = record.get(context.intern_str("str")).cloned() else {
+            let Some(Value::Str(mut s)) = record.get(context.intern_str("str")).cloned() else {
                 return MachineState::Error("str_rec requires 's' field with a string".to_owned());
             };
 
@@ -873,20 +1027,41 @@ fn eval_builtin(
                 return MachineState::Error("str_rec requires 'step' field with a func".to_owned());
             };
 
-            // Create a pure continuation frame for the next expression
-            let mut frame = cont.pop_or_identity();
-            let pure_frame = PureContFrame {
-                var: bind,
-                body: next,
-                env,
-            };
-            frame.pure.push(pure_frame);
-            cont.push(frame);
+            if s.is_empty() {
+                // Empty string — bind base directly, go to next
+                env.insert(bind, base);
+                return MachineState::Standard(StandardConfig {
+                    control: next.get(&context.ir),
+                    env,
+                    cont,
+                });
+            }
 
-            return MachineState::PrimitiveRec(PrimitiveRecConfig {
-                data: Value::Str(s),
-                base,
-                step,
+            let head = s.remove(0).to_string(); // Safety: we know string is not empty
+
+            // Create a pure continuation frame for the next expression
+            let pure_frame = ContFrame::pure(bind, next, env);
+            cont.push(pure_frame);
+
+            // Create a primitive recursion frame for the list_rec operation,
+            // which will handle the recursive processing of the list.
+            let rec_frame = ContFrame::str_rec(s, step.clone());
+            cont.push(rec_frame);
+
+            let Closure {
+                mut env,
+                func: Func { param, body },
+            } = step;
+
+            // Create argument for the step function
+            let mut record = Record::new();
+            record.insert(context.str_interner.intern("acc"), base);
+            record.insert(context.str_interner.intern("head"), Value::Str(head));
+            env.insert(param, Value::Record(record));
+
+            return MachineState::Standard(StandardConfig {
+                control: body.get(&context.ir),
+                env,
                 cont,
             });
         }
@@ -920,32 +1095,18 @@ impl Eval for HandleExpr {
         } = *self;
 
         // Create a pure continuation frame for the ANF binding
-        let pure_frame = PureContFrame {
-            var: bind,
-            body: next,
-            env: env.clone(),
-        };
-
-        // Get the current frame and add our pure continuation to it
-        let mut current_frame = cont.pop_or_identity();
-        current_frame.pure.push(pure_frame);
+        let pure_frame = ContFrame::pure(bind, next, env.clone());
 
         // Create handler from clauses (H in the rule)
         let handler = Handler::from_clauses(clause, &context.ir);
-        let handler_closure = HandlerClosure {
-            handler,
-            env: env.clone(),
-        };
+        let handler_frame = ContFrame::handler(handler, env.clone());
 
         // Push handler frame first ([], (γ, H)) :: κ
         // This ensures the handler is deeper in the stack
-        cont.push(ContFrame {
-            pure: PureCont::empty(), // Empty pure continuation as per M-HANDLE rule
-            handler_closure,
-        });
+        cont.push(handler_frame);
 
         // Push the frame with our ANF continuation on top
-        cont.push(current_frame);
+        cont.push(pure_frame);
 
         // Continue evaluating the source computation with the handler active
         MachineState::Standard(StandardConfig {
@@ -970,15 +1131,8 @@ impl Eval for DoExpr {
         } = *self;
 
         // Create a pure continuation frame
-        let pure_frame = PureContFrame {
-            var: bind,
-            body: next,
-            env: env.clone(),
-        };
-
-        let mut frame = cont.pop_or_identity();
-        frame.pure.push(pure_frame);
-        cont.push(frame);
+        let pure_frame = ContFrame::pure(bind, next, env.clone());
+        cont.push(pure_frame);
 
         // Transition to operation configuration
         // The forwarding continuation starts empty ([])
@@ -1004,15 +1158,8 @@ impl Eval for DoExpr {
 impl Eval for LetExpr {
     fn eval(&self, env: Env, mut cont: Cont, _context: &mut MachineContext) -> MachineState {
         // Create a pure continuation frame
-        let pure_frame = PureContFrame {
-            var: self.bind,
-            body: self.next,
-            env: env.clone(),
-        };
-
-        let mut frame = cont.pop_or_identity();
-        frame.pure.push(pure_frame);
-        cont.push(frame);
+        let pure_frame = ContFrame::pure(self.bind, self.next, env.clone());
+        cont.push(pure_frame);
 
         // Evaluate the bound value
         MachineState::Standard(StandardConfig {
@@ -1049,16 +1196,8 @@ impl Eval for IfExpr {
         };
 
         // Create a pure continuation frame for the next expression
-        let pure_frame = PureContFrame {
-            var: bind,
-            body: next,
-            env: env.clone(),
-        };
-
-        // Add the frame to the continuation
-        let mut frame = cont.pop_or_identity();
-        frame.pure.push(pure_frame);
-        cont.push(frame);
+        let pure_frame = ContFrame::pure(bind, next, env.clone());
+        cont.push(pure_frame);
 
         // Determine which branch to evaluate based on the predicate
         let branch = match pred_val {
@@ -1524,16 +1663,8 @@ impl Eval for PatternMatchExpr {
         } = *self;
 
         // Create a pure continuation frame for the next expression
-        let pure_frame = PureContFrame {
-            var: bind,
-            body: next,
-            env: env.clone(),
-        };
-
-        // Add the frame to the continuation
-        let mut frame = cont.pop_or_identity();
-        frame.pure.push(pure_frame);
-        cont.push(frame);
+        let pure_frame = ContFrame::pure(bind, next, env.clone());
+        cont.push(pure_frame);
 
         // Transition to pattern matching state
         MachineState::Pattern(PatternConfig { matcher, env, cont })

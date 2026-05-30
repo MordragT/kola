@@ -4,11 +4,11 @@ use camino::{Utf8Path, Utf8PathBuf};
 use kola_protocol::{TypeInterner, TypeKey, TypeProtocol};
 
 use crate::{
-    config::{MachineState, OperationConfig, PatternConfig, PrimitiveRecConfig, StandardConfig},
-    cont::{Cont, ContFrame, Handler, HandlerClosure, PureCont, ReturnClause},
+    config::{MachineState, OperationConfig, PatternConfig, StandardConfig},
+    cont::{Cont, ContFrame},
     env::Env,
     eval::{Eval, eval_atom},
-    value::{Closure, List, Record, Value, to_usize_exact},
+    value::Value,
 };
 use kola_ir::{
     instr::Func,
@@ -95,9 +95,6 @@ impl CekMachine {
         self.state = match state {
             MachineState::Standard(config) => Self::step_standard(config, &mut self.context),
             MachineState::Operation(config) => Self::step_operation(config, &mut self.context),
-            MachineState::PrimitiveRec(config) => {
-                Self::step_primitive_rec(config, &mut self.context)
-            }
             MachineState::Pattern(config) => Self::step_pattern(config, &mut self.context),
             MachineState::Value(_) | MachineState::Error(_) => {
                 // If the machine is in a terminal state, we don't need to do anything
@@ -135,306 +132,6 @@ impl CekMachine {
         matcher.get(&context.ir).eval(env, cont, context)
     }
 
-    fn step_primitive_rec(
-        config: PrimitiveRecConfig,
-        context: &mut MachineContext,
-    ) -> MachineState {
-        let PrimitiveRecConfig {
-            data,
-            base,
-            step,
-            cont,
-        } = config;
-
-        match data {
-            Value::List(list) => Self::step_list_rec(list, base, step, cont, context),
-            Value::Num(n) => Self::step_num_rec(n, base, step, cont, context),
-            Value::Record(record) => Self::step_record_rec(record, base, step, cont, context),
-            Value::Str(string) => Self::step_str_rec(string, base, step, cont, context),
-            _ => MachineState::Error(format!("Cannot recurse over {:?}", data)),
-        }
-    }
-
-    // list_rec([], base, step) = base
-    // list_rec([head, ...tail], base, step) = step(head, list_rec(tail, base, step))
-    fn step_list_rec(
-        list: List,
-        base: Value,
-        step: Closure,
-        mut cont: Cont,
-        context: &mut MachineContext,
-    ) -> MachineState {
-        let Some((head, tail)) = list.split_first() else {
-            // Base case: return the base value
-
-            // Remove the top continuation frame
-            let Some(cont_frame) = cont.pop() else {
-                // If the continuation is empty, return the value
-                return MachineState::Value(base);
-            };
-
-            let HandlerClosure { handler, mut env } = cont_frame.handler_closure;
-
-            let ReturnClause::PrimitiveRec {
-                head,
-                step: Func { param, body },
-            } = handler.return_clause
-            else {
-                return MachineState::Error("Expected primitive return clause".to_string());
-            };
-
-            // Create argument for the step function
-            let mut record = Record::new();
-            record.insert(context.intern_str("acc"), base);
-            record.insert(context.intern_str("head"), head);
-
-            env.insert(param, Value::Record(record));
-
-            return MachineState::Standard(StandardConfig {
-                control: body.get(&context.ir),
-                env,
-                cont, // Remaining handlers continue the chain
-            });
-        };
-
-        // Recursive case: we need to compute step(head, list_rec(tail, base, step))
-
-        // The idea here is to create a new handler for each step,
-        // then when the base case is reached,
-        // the machine needs to continue processing the contniuation stack,
-        // so the value will flow through them via the handler clauses
-        let Closure { env, func } = step.clone();
-
-        let handler = Handler::primitive_rec(head, func);
-        let handler_closure = HandlerClosure::new(handler, env);
-
-        cont.push(ContFrame {
-            pure: PureCont::empty(),
-            handler_closure,
-        });
-
-        MachineState::PrimitiveRec(PrimitiveRecConfig {
-            data: Value::List(tail),
-            base,
-            step,
-            cont,
-        })
-    }
-
-    // num_rec(0, base, step) = base
-    // num_rec(n + 1, base, step) = step(n, num_rec(n, base, step))
-    fn step_num_rec(
-        num: f64,
-        base: Value,
-        step: Closure,
-        mut cont: Cont,
-        context: &mut MachineContext,
-    ) -> MachineState {
-        debug_assert!(
-            to_usize_exact(num).is_some(),
-            "num_rec expects a non-negative integer"
-        );
-
-        if num == 0.0 {
-            // Base case: return the base value
-
-            // Remove the top continuation frame
-            let Some(cont_frame) = cont.pop() else {
-                // If the continuation is empty, return the value
-                return MachineState::Value(base);
-            };
-
-            let HandlerClosure { handler, mut env } = cont_frame.handler_closure;
-
-            let ReturnClause::PrimitiveRec {
-                head,
-                step: Func { param, body },
-            } = handler.return_clause
-            else {
-                return MachineState::Error("Expected primitive return clause".to_string());
-            };
-
-            // Create argument for the step function
-            let mut record = Record::new();
-            record.insert(context.intern_str("acc"), base);
-            record.insert(context.intern_str("head"), head);
-
-            env.insert(param, Value::Record(record));
-
-            return MachineState::Standard(StandardConfig {
-                control: body.get(&context.ir),
-                env,
-                cont, // Remaining handlers continue the chain
-            });
-        };
-
-        let n = num - 1.0;
-
-        // Recursive case: we need to compute step(n, num_rec(n, base, step))
-
-        // The idea here is to create a new handler for each step,
-        // then when the base case is reached,
-        // the machine needs to continue processing the contniuation stack,
-        // so the value will flow through them via the handler clauses
-        let Closure { env, func } = step.clone();
-
-        let handler = Handler::primitive_rec(Value::Num(n), func);
-        let handler_closure = HandlerClosure::new(handler, env);
-
-        cont.push(ContFrame {
-            pure: PureCont::empty(),
-            handler_closure,
-        });
-
-        MachineState::PrimitiveRec(PrimitiveRecConfig {
-            data: Value::Num(n),
-            base,
-            step,
-            cont,
-        })
-    }
-
-    // record_rec({}, base, step) = base
-    // record_rec({ a = val | r }, base, step) = step({ key = "a", value = val }, record_rec(r, base, step))
-    fn step_record_rec(
-        mut record: Record,
-        base: Value,
-        step: Closure,
-        mut cont: Cont,
-        context: &mut MachineContext,
-    ) -> MachineState {
-        let Some((label, value)) = record.pop_first() else {
-            // Base case: return the base value
-
-            // Remove the top continuation frame
-            let Some(cont_frame) = cont.pop() else {
-                // If the continuation is empty, return the value
-                return MachineState::Value(base);
-            };
-
-            let HandlerClosure { handler, mut env } = cont_frame.handler_closure;
-
-            let ReturnClause::PrimitiveRec {
-                head,
-                step: Func { param, body },
-            } = handler.return_clause
-            else {
-                return MachineState::Error("Expected primitive return clause".to_string());
-            };
-
-            // Create argument for the step function
-            let mut record = Record::new();
-            record.insert(context.intern_str("acc"), base);
-            record.insert(context.intern_str("head"), head);
-
-            env.insert(param, Value::Record(record));
-
-            return MachineState::Standard(StandardConfig {
-                control: body.get(&context.ir),
-                env,
-                cont, // Remaining handlers continue the chain
-            });
-        };
-
-        // Recursive case: we need to compute step({ key = "a", value = val }, record_rec(r, base, step))
-
-        // The idea here is to create a new handler for each step,
-        // then when the base case is reached,
-        // the machine needs to continue processing the contniuation stack,
-        // so the value will flow through them via the handler clauses
-        let Closure { env, func } = step.clone();
-
-        let mut head = Record::new();
-        head.insert(
-            context.intern_str("key"),
-            Value::Str(context.str_interner[label].clone()),
-        );
-        head.insert(context.intern_str("value"), value);
-
-        let handler = Handler::primitive_rec(Value::Record(head), func);
-        let handler_closure = HandlerClosure::new(handler, env);
-
-        cont.push(ContFrame {
-            pure: PureCont::empty(),
-            handler_closure,
-        });
-
-        MachineState::PrimitiveRec(PrimitiveRecConfig {
-            data: Value::Record(record),
-            base,
-            step,
-            cont,
-        })
-    }
-
-    // str_rec("", base, step) = base
-    // str_rec('a' ++ "bcd..", base, step) = step('a', str_rec("bcd..", base, step))
-    fn step_str_rec(
-        mut string: String,
-        base: Value,
-        step: Closure,
-        mut cont: Cont,
-        context: &mut MachineContext,
-    ) -> MachineState {
-        if string.is_empty() {
-            // Base case: return the base value
-
-            // Remove the top continuation frame
-            let Some(cont_frame) = cont.pop() else {
-                // If the continuation is empty, return the value
-                return MachineState::Value(base);
-            };
-
-            let HandlerClosure { handler, mut env } = cont_frame.handler_closure;
-
-            let ReturnClause::PrimitiveRec {
-                head,
-                step: Func { param, body },
-            } = handler.return_clause
-            else {
-                return MachineState::Error("Expected primitive return clause".to_string());
-            };
-
-            // Create argument for the step function
-            let mut record = Record::new();
-            record.insert(context.intern_str("acc"), base);
-            record.insert(context.intern_str("head"), head);
-
-            env.insert(param, Value::Record(record));
-
-            return MachineState::Standard(StandardConfig {
-                control: body.get(&context.ir),
-                env,
-                cont, // Remaining handlers continue the chain
-            });
-        };
-
-        let head = string.remove(0); // Safety: we know string is not empty
-
-        // Recursive case: we need to compute step('a', str_rec("bcd..", base, step))
-
-        // The idea here is to create a new handler for each step,
-        // then when the base case is reached,
-        // the machine needs to continue processing the contniuation stack,
-        // so the value will flow through them via the handler clauses
-        let Closure { env, func } = step.clone();
-
-        let handler = Handler::primitive_rec(Value::Char(head), func);
-        let handler_closure = HandlerClosure::new(handler, env);
-
-        cont.push(ContFrame {
-            pure: PureCont::empty(),
-            handler_closure,
-        });
-
-        MachineState::PrimitiveRec(PrimitiveRecConfig {
-            data: Value::Str(string),
-            base,
-            step,
-            cont,
-        })
-    }
-
     /// Execute an operation configuration step
     fn step_operation(config: OperationConfig, context: &mut MachineContext) -> MachineState {
         let OperationConfig {
@@ -445,80 +142,69 @@ impl CekMachine {
             mut forward,
         } = config;
 
-        // Check for handler in current continuation
-        let Some(ContFrame {
-            pure,
-            handler_closure,
-        }) = cont.pop()
-        else {
-            // No handler found
+        let Some(frame) = cont.pop() else {
             return MachineState::Error(format!(
                 "Unhandled effect operation: {} ({})",
                 context.str_interner[op], op,
             ));
         };
 
-        // Check if the top handler can handle this operation
-        // And get the handler function
-        if let Some(Func { param, body }) = handler_closure.handler.find_operation(op) {
-            // M-OP-HANDLE: Handler found, apply it
-            // ⟨(do ℓ V)^E | γ | (σ, (γ', H)) :: κ | κ'⟩^op → ⟨M | γ'[x ↦ ⟦V⟧_γ, k ↦ (κ' ++ [(σ, (γ', H))])^B] | κ⟩
+        if let ContFrame::Handler {
+            handler,
+            env: mut handler_env,
+        } = frame
+        {
+            // Check if the top handler can handle this operation
+            // And get the handler function
+            if let Some(Func { param, body }) = handler.find_operation(op) {
+                // M-OP-HANDLE: Handler found, apply it
+                // ⟨(do ℓ V)^E | γ | (σ, (γ', H)) :: κ | κ'⟩^op → ⟨M | γ'[x ↦ ⟦V⟧_γ, k ↦ (κ' ++ [(σ, (γ', H))])^B] | κ⟩
 
-            // Evaluate the operation argument
-            let arg_value = match eval_atom(context.ir.instr(arg), &env, context) {
-                Ok(value) => value,
-                Err(err) => return MachineState::Error(err),
-            };
+                // Evaluate the operation argument
+                let arg_value = match eval_atom(context.ir.instr(arg), &env, context) {
+                    Ok(value) => value,
+                    Err(err) => return MachineState::Error(err),
+                };
 
-            // Create the handler environment γ'[x ↦ ⟦V⟧_γ]
-            let mut handler_env = handler_closure.env.clone();
-            handler_env.insert(param, arg_value);
+                // Create the handler environment γ'[x ↦ ⟦V⟧_γ]
+                handler_env.insert(param, arg_value);
 
-            // Info: Continuation parameters are currently not present in the syntax, consider:
-            // handle some_computation | read arg k => (k "Hello from read") # k resumes the computation
-            // vs.
-            // handle some_computation | read arg => ("Hello from read") # implicitly resumes the computation
+                // Info: Continuation parameters are currently not present in the syntax, consider:
+                // handle some_computation | read arg k => (k "Hello from read") # k resumes the computation
+                // vs.
+                // handle some_computation | read arg => ("Hello from read") # implicitly resumes the computation
 
-            // For now, we ignore the continuation parameter 'k' since the syntax doesn't expose it
-            // In a full implementation, you would create a continuation value representing:
-            // k ↦ (κ' ++ [(σ, (γ', H))])^B (the forwarding continuation plus current frame)
+                // For now, we ignore the continuation parameter 'k' since the syntax doesn't expose it
+                // In a full implementation, you would create a continuation value representing:
+                // k ↦ (κ' ++ [(σ, (γ', H))])^B (the forwarding continuation plus current frame)
 
-            // Create the captured continuation by combining forwarding + current frame
-            let mut captured_continuation = forward;
-            captured_continuation.push(ContFrame {
-                pure,
-                handler_closure,
-            });
+                // Create the captured continuation by combining forwarding + current frame
+                forward.append(&mut cont);
 
-            // TODO: For continuation parameters, bind them here:
-            // handler_env.bind(continuation_param, captured_continuation);
+                // Continue with the handler body (M in the rule) and remaining continuation (κ)
+                return MachineState::Standard(StandardConfig {
+                    control: context.ir.instr(body),
+                    env: handler_env,
+                    cont: forward,
+                });
+            } else {
+                // M-OP-FORWARD: Handler doesn't handle this operation, forward it
 
-            // TODO: should cont actually be: forward.append(&mut cont) here ??
-
-            // Continue with the handler body (M in the rule) and remaining continuation (κ)
-            MachineState::Standard(StandardConfig {
-                control: context.ir.instr(body),
-                env: handler_env,
-                cont,
-            })
+                // Create a new forwarding continuation by adding current frame to it
+                forward.push(ContFrame::handler(handler, handler_env));
+            }
         } else {
-            // M-OP-FORWARD: Handler doesn't handle this operation, forward it
-
-            // Create a new forwarding continuation by adding current frame to it
-            forward.push(ContFrame {
-                pure,
-                handler_closure,
-            });
-
-            // Forward the operation
-            MachineState::Operation(OperationConfig {
-                op,
-                arg,
-                env,
-                cont,
-                forward,
-            })
+            forward.push(frame);
         }
+
+        // Forward the operation
+        MachineState::Operation(OperationConfig {
+            op,
+            arg,
+            env,
+            cont,
+            forward,
+        })
     }
 }
 #[cfg(test)]
