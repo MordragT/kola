@@ -6,7 +6,7 @@ use kola_ir::{
 };
 
 use crate::{
-    arenas::RangeIdx, closure::HeapClosure, env::HeapEnv, handler::HeapHandler, list::HeapList,
+    arenas::RangeIdx, closure::Closure, env::HeapEnv, handler::HeapHandler, list::HeapList,
     record::HeapRecord, string::HeapString,
 };
 
@@ -32,42 +32,42 @@ pub enum ContFrame {
     /// A recursive continuation frame (data, step) is used for primitive recursion.
     NumRec {
         data: f64,
-        step: HeapClosure,
+        step: Closure,
     },
 
     /// A recursive continuation frame (data, step) is used for primitive recursion.
     ListRec {
         data: HeapList,
-        step: HeapClosure,
+        step: Closure,
     },
 
     /// A recursive continuation frame (data, step) is used for primitive recursion.
     RecordRec {
         data: HeapRecord,
-        step: HeapClosure,
+        step: Closure,
     },
 
     /// A recursive continuation frame (data, step) is used for primitive recursion.
     StrRec {
         data: HeapString,
-        step: HeapClosure,
+        step: Closure,
     },
 }
 
 impl ContFrame {
-    pub fn num_rec(data: f64, step: HeapClosure) -> Self {
+    pub fn num_rec(data: f64, step: Closure) -> Self {
         Self::NumRec { data, step }
     }
 
-    pub fn list_rec(data: HeapList, step: HeapClosure) -> Self {
+    pub fn list_rec(data: HeapList, step: Closure) -> Self {
         Self::ListRec { data, step }
     }
 
-    pub fn record_rec(data: HeapRecord, step: HeapClosure) -> Self {
+    pub fn record_rec(data: HeapRecord, step: Closure) -> Self {
         Self::RecordRec { data, step }
     }
 
-    pub fn str_rec(data: HeapString, step: HeapClosure) -> Self {
+    pub fn str_rec(data: HeapString, step: Closure) -> Self {
         Self::StrRec { data, step }
     }
 

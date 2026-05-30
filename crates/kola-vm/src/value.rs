@@ -10,7 +10,7 @@ use kola_utils::{
 use std::fmt::{self, Display};
 
 use crate::{
-    closure::RawClosure, cont::RawCont, list::RawList, record::RawRecord, string::RawString,
+    closure::Closure, cont::RawCont, list::RawList, record::RawRecord, string::RawString,
     variant::Variant, witness::RawWitness,
 };
 
@@ -29,7 +29,7 @@ pub enum Value {
     /// A string value
     Str(RawString<'static>),
     /// A function closure (environment, function definition)
-    Closure(RawClosure<'static>),
+    Closure(Closure),
     /// A captured continuation
     Cont(RawCont<'static>),
     /// A built-in function (e.g., `__builtin_first`)

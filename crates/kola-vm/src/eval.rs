@@ -1,7 +1,7 @@
 use std::fs;
 
 use crate::{
-    closure::RawClosure,
+    closure::Closure,
     config::{MachineState, OperationConfig, PatternConfig, StandardConfig},
     cont::{ContFrame, RawCont},
     env::RawEnv,
@@ -39,8 +39,9 @@ pub fn eval_symbol(symbol: Symbol, env: &RawEnv) -> Result<Value, String> {
 
 pub fn eval_atom(
     atom: Atom,
-    env: RawEnv<'static>,
+    env: &RawEnv<'static>,
     context: &MachineContext,
+    heap: &mut Heap,
 ) -> Result<Value, String> {
     match atom {
         Atom::Noop => Ok(Value::None),
@@ -50,7 +51,7 @@ pub fn eval_atom(
         Atom::Str(s) => Ok(Value::str(context.str_interner[s].clone())),
         Atom::Func(f) => {
             // Create a closure by capturing the current environment
-            Ok(Value::Closure(RawClosure::new(env, f)))
+            Ok(Value::Closure(Closure::new(env.alloc(heap), f)))
         }
         Atom::Symbol(s) => eval_symbol(s, &env),
         Atom::Builtin(b) => Ok(Value::Builtin(b)),
@@ -119,7 +120,7 @@ impl Eval for RetExpr {
         heap: &mut Heap,
     ) -> MachineState {
         // Evaluate the return machine state of value
-        let value = match eval_atom(self.arg.get(&context.ir), env.clone(), context) {
+        let value = match eval_atom(self.arg.get(&context.ir), &env, context, heap) {
             Ok(value) => value,
             Err(err) => return MachineState::Error(err),
         };
@@ -210,16 +211,17 @@ impl Eval for RetExpr {
                     });
                 }
 
-                let RawClosure {
-                    mut env,
+                let Closure {
+                    env,
                     func: Func { param, body },
-                } = step.get(heap).into_owned();
+                } = step;
 
                 // Create argument for the step function
                 let mut record = RawRecord::new();
                 record.insert(context.str_interner.intern("acc"), value); // value = result from previous step
                 record.insert(context.str_interner.intern("head"), Value::Num(data));
 
+                let mut env = env.get(heap).into_owned();
                 env.insert(param, Value::Record(record));
 
                 MachineState::Standard(StandardConfig {
@@ -244,16 +246,17 @@ impl Eval for RetExpr {
                     step: step.clone(),
                 });
 
-                let RawClosure {
-                    mut env,
+                let Closure {
+                    env,
                     func: Func { param, body },
-                } = step.get(heap).into_owned();
+                } = step;
 
                 // Create argument for the step function
                 let mut record = RawRecord::new();
                 record.insert(context.str_interner.intern("acc"), value); // value = result from previous step
                 record.insert(context.str_interner.intern("head"), head.clone());
 
+                let mut env = env.get(heap).into_owned();
                 env.insert(param, Value::Record(record));
 
                 MachineState::Standard(StandardConfig {
@@ -285,16 +288,17 @@ impl Eval for RetExpr {
                     step: step.clone(),
                 });
 
-                let RawClosure {
-                    mut env,
+                let Closure {
+                    env,
                     func: Func { param, body },
-                } = step.get(heap).into_owned();
+                } = step;
 
                 // Create argument for the step function
                 let mut record = RawRecord::new();
                 record.insert(context.str_interner.intern("acc"), value); // value = result from previous step
                 record.insert(context.str_interner.intern("head"), Value::Record(head));
 
+                let mut env = env.get(heap).into_owned();
                 env.insert(param, Value::Record(record));
 
                 MachineState::Standard(StandardConfig {
@@ -319,16 +323,17 @@ impl Eval for RetExpr {
                     step: step.clone(),
                 });
 
-                let RawClosure {
-                    mut env,
+                let Closure {
+                    env,
                     func: Func { param, body },
-                } = step.get(heap).into_owned();
+                } = step;
 
                 // Create argument for the step function
                 let mut record = RawRecord::new();
                 record.insert(context.str_interner.intern("acc"), value); // value = result from previous step
                 record.insert(context.str_interner.intern("head"), Value::str(head));
 
+                let mut env = env.get(heap).into_owned();
                 env.insert(param, Value::Record(record));
 
                 MachineState::Standard(StandardConfig {
@@ -365,20 +370,20 @@ impl Eval for CallExpr {
         } = *self;
 
         // Get the function and argument
-        let func_val = match eval_atom(func.get(&context.ir), env.clone(), context) {
+        let func_val = match eval_atom(func.get(&context.ir), &env, context, heap) {
             Ok(value) => value,
             Err(err) => return MachineState::Error(err),
         };
 
-        let arg_val = match eval_atom(arg.get(&context.ir), env.clone(), context) {
+        let arg_val = match eval_atom(arg.get(&context.ir), &env, context, heap) {
             Ok(value) => value,
             Err(err) => return MachineState::Error(err),
         };
 
         match func_val {
             // Apply the function to the argument
-            Value::Closure(RawClosure {
-                env: mut func_env,
+            Value::Closure(Closure {
+                env: func_env,
                 func: Func { param, body },
             }) => {
                 // Create a pure continuation frame for the next expression
@@ -386,6 +391,7 @@ impl Eval for CallExpr {
                 cont.push(pure_frame);
 
                 // Create a new environment with the bound parameter
+                let mut func_env = func_env.get(heap).into_owned();
                 func_env.insert(param, arg_val);
 
                 // Evaluate the function body
@@ -627,11 +633,11 @@ fn eval_builtin(
 
             // Create a primitive recursion frame for the list_rec operation,
             // which will handle the recursive processing of the list.
-            let rec_frame = ContFrame::list_rec(tail.alloc(heap), step.alloc(heap));
+            let rec_frame = ContFrame::list_rec(tail.alloc(heap), step);
             cont.push(rec_frame);
 
-            let RawClosure {
-                mut env,
+            let Closure {
+                env,
                 func: Func { param, body },
             } = step;
 
@@ -639,6 +645,8 @@ fn eval_builtin(
             let mut record = RawRecord::new();
             record.insert(context.str_interner.intern("acc"), base);
             record.insert(context.str_interner.intern("head"), head);
+
+            let mut env = env.get(heap).into_owned();
             env.insert(param, Value::Record(record));
 
             return MachineState::Standard(StandardConfig {
@@ -697,12 +705,12 @@ fn eval_builtin(
 
             // Create a primitive recursion frame
             if n >= 2.0 {
-                let rec_frame = ContFrame::num_rec(n - 2.0, step.alloc(heap));
+                let rec_frame = ContFrame::num_rec(n - 2.0, step);
                 cont.push(rec_frame);
             }
 
-            let RawClosure {
-                mut env,
+            let Closure {
+                env,
                 func: Func { param, body },
             } = step;
 
@@ -710,6 +718,8 @@ fn eval_builtin(
             let mut record = RawRecord::new();
             record.insert(context.str_interner.intern("acc"), base);
             record.insert(context.str_interner.intern("head"), Value::Num(n - 1.0));
+
+            let mut env = env.get(heap).into_owned();
             env.insert(param, Value::Record(record));
 
             return MachineState::Standard(StandardConfig {
@@ -960,11 +970,11 @@ fn eval_builtin(
 
             // Create a primitive recursion frame for the list_rec operation,
             // which will handle the recursive processing of the list.
-            let rec_frame = ContFrame::record_rec(record.alloc(heap), step.alloc(heap));
+            let rec_frame = ContFrame::record_rec(record.alloc(heap), step);
             cont.push(rec_frame);
 
-            let RawClosure {
-                mut env,
+            let Closure {
+                env,
                 func: Func { param, body },
             } = step;
 
@@ -972,6 +982,8 @@ fn eval_builtin(
             let mut record = RawRecord::new();
             record.insert(context.str_interner.intern("acc"), base);
             record.insert(context.str_interner.intern("head"), Value::Record(head));
+
+            let mut env = env.get(heap).into_owned();
             env.insert(param, Value::Record(record));
 
             return MachineState::Standard(StandardConfig {
@@ -1138,11 +1150,11 @@ fn eval_builtin(
 
             // Create a primitive recursion frame for the list_rec operation,
             // which will handle the recursive processing of the list.
-            let rec_frame = ContFrame::str_rec(s.alloc(heap), step.alloc(heap));
+            let rec_frame = ContFrame::str_rec(s.alloc(heap), step);
             cont.push(rec_frame);
 
-            let RawClosure {
-                mut env,
+            let Closure {
+                env,
                 func: Func { param, body },
             } = step;
 
@@ -1150,6 +1162,8 @@ fn eval_builtin(
             let mut record = RawRecord::new();
             record.insert(context.str_interner.intern("acc"), base);
             record.insert(context.str_interner.intern("head"), Value::str(head));
+
+            let mut env = env.get(heap).into_owned();
             env.insert(param, Value::Record(record));
 
             return MachineState::Standard(StandardConfig {
@@ -1307,7 +1321,7 @@ impl Eval for IfExpr {
         } = *self;
 
         // Evaluate the predicate
-        let pred_val = match eval_atom(predicate.get(&context.ir), env.clone(), context) {
+        let pred_val = match eval_atom(predicate.get(&context.ir), &env, context, heap) {
             Ok(value) => value,
             Err(err) => return MachineState::Error(err),
         };
@@ -1364,7 +1378,7 @@ impl Eval for UnaryExpr {
         mut env: RawEnv<'static>,
         cont: RawCont<'static>,
         context: &mut MachineContext,
-        _heap: &mut Heap,
+        heap: &mut Heap,
     ) -> MachineState {
         let Self {
             bind,
@@ -1374,7 +1388,7 @@ impl Eval for UnaryExpr {
         } = *self;
 
         // Evaluate the operand
-        let arg_val = match eval_atom(arg.get(&context.ir), env.clone(), context) {
+        let arg_val = match eval_atom(arg.get(&context.ir), &env, context, heap) {
             Ok(value) => value,
             Err(err) => return MachineState::Error(err),
         };
@@ -1439,7 +1453,7 @@ impl Eval for BinaryExpr {
         mut env: RawEnv<'static>,
         cont: RawCont<'static>,
         context: &mut MachineContext,
-        _heap: &mut Heap,
+        heap: &mut Heap,
     ) -> MachineState {
         let Self {
             bind,
@@ -1450,13 +1464,13 @@ impl Eval for BinaryExpr {
         } = *self;
 
         // Evaluate the left operand
-        let left_val = match eval_atom(lhs.get(&context.ir), env.clone(), context) {
+        let left_val = match eval_atom(lhs.get(&context.ir), &env, context, heap) {
             Ok(value) => value,
             Err(err) => return MachineState::Error(err),
         };
 
         // Evaluate the right operand
-        let right_val = match eval_atom(rhs.get(&context.ir), env.clone(), context) {
+        let right_val = match eval_atom(rhs.get(&context.ir), &env, context, heap) {
             Ok(value) => value,
             Err(err) => return MachineState::Error(err),
         };
@@ -1485,7 +1499,7 @@ impl Eval for ListExpr {
         mut env: RawEnv<'static>,
         cont: RawCont<'static>,
         context: &mut MachineContext,
-        _heap: &mut Heap,
+        heap: &mut Heap,
     ) -> MachineState {
         let ListExpr {
             bind,
@@ -1497,7 +1511,7 @@ impl Eval for ListExpr {
         let mut list = RawList::new();
 
         for ListItem { value, .. } in context.ir.iter_items(head) {
-            match eval_atom(value.get(&context.ir), env.clone(), context) {
+            match eval_atom(value.get(&context.ir), &env, context, heap) {
                 Ok(value) => list.push_back(value),
                 Err(err) => return MachineState::Error(err),
             }
@@ -1527,7 +1541,7 @@ impl Eval for RecordExpr {
         mut env: RawEnv<'static>,
         cont: RawCont<'static>,
         context: &mut MachineContext,
-        _heap: &mut Heap,
+        heap: &mut Heap,
     ) -> MachineState {
         let RecordExpr { bind, head, next } = *self;
 
@@ -1535,7 +1549,7 @@ impl Eval for RecordExpr {
 
         // Evaluate each field value
         for RecordField { label, value, .. } in context.ir.iter_fields(head) {
-            match eval_atom(value.get(&context.ir), env.clone(), context) {
+            match eval_atom(value.get(&context.ir), &env, context, heap) {
                 Ok(value) => record.insert(label, value),
                 Err(err) => return MachineState::Error(err),
             }
@@ -1569,7 +1583,7 @@ impl Eval for RecordExtendExpr {
         mut env: RawEnv<'static>,
         cont: RawCont<'static>,
         context: &mut MachineContext,
-        _heap: &mut Heap,
+        heap: &mut Heap,
     ) -> MachineState {
         let Self {
             bind,
@@ -1580,13 +1594,13 @@ impl Eval for RecordExtendExpr {
         } = *self;
 
         // Evaluate the base record
-        let record_val = match eval_atom(base.get(&context.ir), env.clone(), context) {
+        let record_val = match eval_atom(base.get(&context.ir), &env, context, heap) {
             Ok(value) => value,
             Err(err) => return MachineState::Error(err),
         };
 
         // Evaluate the value to extend with
-        let extend_value = match eval_atom(value.get(&context.ir), env.clone(), context) {
+        let extend_value = match eval_atom(value.get(&context.ir), &env, context, heap) {
             Ok(value) => value,
             Err(err) => return MachineState::Error(err),
         };
@@ -1636,7 +1650,7 @@ impl Eval for RecordRestrictExpr {
         mut env: RawEnv<'static>,
         cont: RawCont<'static>,
         context: &mut MachineContext,
-        _heap: &mut Heap,
+        heap: &mut Heap,
     ) -> MachineState {
         let Self {
             bind,
@@ -1646,7 +1660,7 @@ impl Eval for RecordRestrictExpr {
         } = *self;
 
         // Evaluate the base record
-        let record_val = match eval_atom(base.get(&context.ir), env.clone(), context) {
+        let record_val = match eval_atom(base.get(&context.ir), &env, context, heap) {
             Ok(value) => value,
             Err(err) => return MachineState::Error(err),
         };
@@ -1711,7 +1725,7 @@ impl Eval for RecordUpdateExpr {
         mut env: RawEnv<'static>,
         cont: RawCont<'static>,
         context: &mut MachineContext,
-        _heap: &mut Heap,
+        heap: &mut Heap,
     ) -> MachineState {
         let Self {
             bind,
@@ -1723,13 +1737,13 @@ impl Eval for RecordUpdateExpr {
         } = *self;
 
         // Evaluate the base record
-        let record_val = match eval_atom(base.get(&context.ir), env.clone(), context) {
+        let record_val = match eval_atom(base.get(&context.ir), &env, context, heap) {
             Ok(value) => value,
             Err(err) => return MachineState::Error(err),
         };
 
         // Evaluate the value to update with
-        let update_val = match eval_atom(value.get(&context.ir), env.clone(), context) {
+        let update_val = match eval_atom(value.get(&context.ir), &env, context, heap) {
             Ok(value) => value,
             Err(err) => return MachineState::Error(err),
         };
@@ -1780,7 +1794,7 @@ impl Eval for RecordAccessExpr {
         mut env: RawEnv<'static>,
         cont: RawCont<'static>,
         context: &mut MachineContext,
-        _heap: &mut Heap,
+        heap: &mut Heap,
     ) -> MachineState {
         let Self {
             bind,
@@ -1790,7 +1804,7 @@ impl Eval for RecordAccessExpr {
         } = *self;
 
         // Evaluate the record
-        let record_val = match eval_atom(base.get(&context.ir), env.clone(), context) {
+        let record_val = match eval_atom(base.get(&context.ir), &env, context, heap) {
             Ok(value) => value,
             Err(err) => return MachineState::Error(err),
         };

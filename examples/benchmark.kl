@@ -59,7 +59,7 @@
     # Result is a record so the VM has to construct and traverse records too.
 
     main =
-        let big_list = (range 200) in
+        let big_list = (range 2000) in
 
         # Phase 2: map is_even
         let evens_list = (map_list is_even big_list) in
@@ -74,12 +74,12 @@
         let total = (sum_list big_list) in
 
         # Phase 6: build another range and chain operations on it
-        let big_list2 = (range 150) in
+        let big_list2 = (range 1500) in
         let doubled = (map_list (fn x => x * 2) big_list2) in
         let doubled_sum = (sum_list doubled) in
 
         # Phase 7: build a third range and do more ops
-        let big_list3 = (range 100) in
+        let big_list3 = (range 1000) in
         let added = (map_list (fn x => x + 5) big_list3) in
         let added_sum = (sum_list added) in
 

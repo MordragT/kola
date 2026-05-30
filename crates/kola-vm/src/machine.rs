@@ -176,7 +176,7 @@ impl CekMachine {
                 // ⟨(do ℓ V)^E | γ | (σ, (γ', H)) :: κ | κ'⟩^op → ⟨M | γ'[x ↦ ⟦V⟧_γ, k ↦ (κ' ++ [(σ, (γ', H))])^B] | κ⟩
 
                 // Evaluate the operation argument
-                let arg_value = match eval_atom(context.ir.instr(arg), env, context) {
+                let arg_value = match eval_atom(context.ir.instr(arg), &env, context, heap) {
                     Ok(value) => value,
                     Err(err) => return MachineState::Error(err),
                 };
