@@ -32,6 +32,52 @@ impl TypeSchemeProtocol {
     }
 }
 
+#[macro_export]
+macro_rules! ty {
+    // Simple type literals
+    (Unit) => { $crate::TypeProtocol::Unit };
+    (Bool) => { $crate::TypeProtocol::Bool };
+    (Num) => { $crate::TypeProtocol::Num };
+    (Char) => { $crate::TypeProtocol::Char };
+    (Str) => { $crate::TypeProtocol::Str };
+
+    // Compound: (List InnerType)
+    ((List $inner:tt)) => { $crate::TypeProtocol::List(Box::new(ty!($inner))) };
+
+    // Type variables — numeric literal
+    ($var:literal) => { $crate::TypeProtocol::Var($var, $crate::KindProtocol::Type) };
+
+    // Witnesses
+    ((TypeWit $inner:literal)) => {
+        $crate::TypeProtocol::Witness(Box::new($crate::TypeProtocol::Var($inner, $crate::KindProtocol::Type)))
+    };
+    ((LabelWit $inner:literal)) => {
+        $crate::TypeProtocol::Witness(Box::new($crate::TypeProtocol::Var($inner, $crate::KindProtocol::Label)))
+    };
+
+    // Record types  `{ "field": Type, … }`
+    ({ $($field:literal : $field_type:tt),* $(,)? }) => {
+        $crate::TypeProtocol::Record(::std::vec![
+            $((::std::string::String::from($field), ty!($field_type))),*
+        ])
+    };
+
+    // Variant types  `[ "Tag": Type, … ]`
+    ([ $($variant:literal : $variant_type:tt),* $(,)? ]) => {
+        $crate::TypeProtocol::Variant(::std::vec![
+            $((::std::string::String::from($variant), ty!($variant_type))),*
+        ])
+    };
+
+    // Function type  `Input -> Output`
+    (($left:tt -> $right:tt)) => {
+        $crate::TypeProtocol::Func(
+            Box::new(ty!($left)),
+            Box::new(ty!($right)),
+        )
+    };
+}
+
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum TypeProtocol {
     Unit,

@@ -5,5 +5,4 @@ edition = "2024"
 
 [dependencies]
 kola-protocol.workspace = true
-paste.workspace = true
-derive_more.workspace = true
+strum = { version = "0.28.0", features = ["derive"] }

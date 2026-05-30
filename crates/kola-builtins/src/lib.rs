@@ -1,28 +1,10 @@
-use derive_more::{Display, FromStr};
-use std::{cell::LazyCell, fmt};
+use std::{fmt, sync::LazyLock};
 
-use kola_protocol::{KindProtocol, TypeProtocol, TypeSchemeProtocol};
+use kola_protocol::{TypeProtocol, TypeSchemeProtocol, ty};
+use strum::{AsRefStr, EnumCount, EnumIter, EnumString, FromRepr, IntoStaticStr};
 
-#[derive(Debug, Display, FromStr, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum BuiltinEffect {
-    Pure,
-}
-
-impl BuiltinEffect {
-    pub fn from_name(name: &str) -> Option<Self> {
-        match name {
-            "Pure" => Some(Self::Pure),
-            _ => None,
-        }
-    }
-}
-
-#[inline]
-pub fn is_builtin_effect(s: &str) -> bool {
-    matches!(s, "Pure")
-}
-
-#[derive(Debug, Display, FromStr, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+/// BuiltinType - the simple, closed set of primitive type constructors
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, strum::Display, EnumString)]
 pub enum BuiltinType {
     Unit,
     Bool,
@@ -35,29 +17,41 @@ pub enum BuiltinType {
 }
 
 impl BuiltinType {
+    #[inline]
     pub fn from_name(name: &str) -> Option<Self> {
-        match name {
-            "Unit" => Some(Self::Unit),
-            "Bool" => Some(Self::Bool),
-            "Num" => Some(Self::Num),
-            "Char" => Some(Self::Char),
-            "Str" => Some(Self::Str),
-            "List" => Some(Self::List),
-            "Type" => Some(Self::Type),
-            "Label" => Some(Self::Label),
-            _ => None,
-        }
+        name.parse().ok()
     }
 }
 
 #[inline]
 pub fn is_builtin_type(s: &str) -> bool {
-    matches!(
-        s,
-        "Unit" | "Bool" | "Num" | "Char" | "Str" | "List" | "Type" | "Label"
-    )
+    s.parse::<BuiltinType>().is_ok()
 }
 
+pub static BUILTINS: LazyLock<[Builtin; BuiltinId::COUNT]> = LazyLock::new(|| {
+    std::array::from_fn(|i| {
+        let id = BuiltinId::from_repr(i).expect("valid BuiltinId discriminant");
+        id.definition()
+    })
+});
+
+#[inline]
+pub fn is_builtin(s: &str) -> bool {
+    s.parse::<BuiltinId>().is_ok()
+}
+
+#[inline]
+pub fn find_builtin(s: &str) -> Option<&'static Builtin> {
+    let id = s.parse::<BuiltinId>().ok()?;
+    Some(Builtin::from_id(id))
+}
+
+#[inline]
+pub fn find_builtin_id(s: &str) -> Option<BuiltinId> {
+    s.parse().ok()
+}
+
+/// Builtin - a single builtin function signature
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct Builtin {
     pub name: &'static str,
@@ -68,191 +62,218 @@ pub struct Builtin {
 
 impl Builtin {
     #[inline]
-    pub fn from_name(name: &'static str) -> Option<Self> {
+    pub fn from_name(name: &'static str) -> Option<&'static Self> {
         find_builtin(name)
     }
 
-    pub fn type_scheme(self) -> TypeSchemeProtocol {
-        let Self {
+    #[inline]
+    pub fn from_id(id: BuiltinId) -> &'static Self {
+        &BUILTINS[id as usize]
+    }
+
+    pub fn type_scheme(&self) -> TypeSchemeProtocol {
+        TypeSchemeProtocol::new(
+            self.forall,
+            TypeProtocol::func(self.input.clone(), self.output.clone()),
+        )
+    }
+}
+
+/// BuiltinId - one discriminant per builtin function
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    EnumCount,
+    FromRepr,
+    EnumIter,
+    AsRefStr,
+    IntoStaticStr,
+    EnumString,
+)]
+#[strum(serialize_all = "snake_case")]
+#[repr(usize)]
+pub enum BuiltinId {
+    IoDebug,
+    IoReadFile,
+    IoWriteFile,
+    ListLength,
+    ListIsEmpty,
+    ListReverse,
+    ListSum,
+    ListFirst,
+    ListLast,
+    ListContains,
+    ListAt,
+    ListPrepend,
+    ListAppend,
+    ListConcat,
+    ListRec,
+    NumAbs,
+    NumSqrt,
+    NumFloor,
+    NumCeil,
+    NumRound,
+    NumSin,
+    NumCos,
+    NumTan,
+    NumLn,
+    NumLog10,
+    NumExp,
+    NumPow,
+    NumRec,
+    RecordSelect,
+    RecordInsert,
+    RecordRemove,
+    RecordRename,
+    RecordContains,
+    RecordKeys,
+    RecordSize,
+    RecordMergeLeft,
+    RecordMergeRight,
+    RecordRec,
+    SerdeFromJson,
+    SerdeToJson,
+    StrLength,
+    StrIsEmpty,
+    StrReverse,
+    StrFirst,
+    StrLast,
+    StrContains,
+    StrAt,
+    StrPrepend,
+    StrAppend,
+    StrConcat,
+    StrRec,
+}
+
+impl fmt::Display for BuiltinId {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "__builtin_{}", self.as_ref())
+    }
+}
+
+impl BuiltinId {
+    fn definition(&self) -> Builtin {
+        let b = |forall, input, output| Builtin {
+            name: self.into(),
             forall,
             input,
             output,
-            ..
-        } = self;
+        };
 
-        TypeSchemeProtocol::new(forall, TypeProtocol::func(input, output))
-    }
+        match self {
+            // ---- Io ----
+            Self::IoDebug => b(1, ty!(0), ty!(0)),
+            Self::IoReadFile => b(0, ty!(Str), ty!([ "Ok": Str, "Err": Str ])),
+            Self::IoWriteFile => b(
+                0,
+                ty!({ "path": Str, "contents": Str }),
+                ty!([ "Ok": Unit, "Err": Str ]),
+            ),
 
-    #[inline]
-    pub fn from_id(id: BuiltinId) -> Self {
-        BUILTINS[id as usize].clone()
-    }
-}
+            // ---- List ----
+            Self::ListLength => b(1, ty!((List 0)), ty!(Num)),
+            Self::ListIsEmpty => b(1, ty!((List 0)), ty!(Bool)),
+            Self::ListReverse => b(1, ty!((List 0)), ty!((List 0))),
+            Self::ListSum => b(0, ty!((List Num)), ty!(Num)),
+            Self::ListFirst => b(1, ty!((List 0)), ty!([ "Some": 0, "None": Unit ])),
+            Self::ListLast => b(1, ty!((List 0)), ty!([ "Some": 0, "None": Unit ])),
+            Self::ListContains => b(1, ty!({ "list": (List 0), "value": 0 }), ty!(Bool)),
+            Self::ListAt => b(
+                1,
+                ty!({ "list": (List 0), "index": Num }),
+                ty!([ "Some": 0, "None": Unit ]),
+            ),
+            Self::ListPrepend => b(1, ty!({ "head": 0, "tail": (List 0) }), ty!((List 0))),
+            Self::ListAppend => b(1, ty!({ "head": (List 0), "tail": 0 }), ty!((List 0))),
+            Self::ListConcat => b(
+                1,
+                ty!({ "head": (List 0), "tail": (List 0) }),
+                ty!((List 0)),
+            ),
+            Self::ListRec => b(
+                2,
+                ty!({ "list": (List 0), "base": 1, "step": ({ "acc": 1, "head": 0 } -> 1) }),
+                ty!(1),
+            ),
 
-#[inline]
-pub fn is_builtin(s: &str) -> bool {
-    BUILTINS.iter().any(|builtin| builtin.name == s)
-}
+            // ---- Num ----
+            Self::NumAbs => b(0, ty!(Num), ty!(Num)),
+            Self::NumSqrt => b(0, ty!(Num), ty!(Num)),
+            Self::NumFloor => b(0, ty!(Num), ty!(Num)),
+            Self::NumCeil => b(0, ty!(Num), ty!(Num)),
+            Self::NumRound => b(0, ty!(Num), ty!(Num)),
+            Self::NumSin => b(0, ty!(Num), ty!(Num)),
+            Self::NumCos => b(0, ty!(Num), ty!(Num)),
+            Self::NumTan => b(0, ty!(Num), ty!(Num)),
+            Self::NumLn => b(0, ty!(Num), ty!(Num)),
+            Self::NumLog10 => b(0, ty!(Num), ty!(Num)),
+            Self::NumExp => b(0, ty!(Num), ty!(Num)),
+            Self::NumPow => b(0, ty!({ "base": Num, "exp": Num }), ty!(Num)),
+            Self::NumRec => b(
+                1,
+                ty!({ "num": Num, "base": 0, "step": ({ "acc": 0, "head": Num } -> 0) }),
+                ty!(0),
+            ),
 
-#[inline]
-pub fn find_builtin(s: &str) -> Option<Builtin> {
-    BUILTINS.iter().find(|builtin| builtin.name == s).cloned()
-}
+            // ---- Record ----
+            Self::RecordSelect => b(3, ty!({ "label": (LabelWit 0), "record": 1 }), ty!(2)),
+            Self::RecordInsert => b(
+                4,
+                ty!({ "label": (LabelWit 0), "value": 1, "record": 2 }),
+                ty!(3),
+            ),
+            Self::RecordRemove => b(3, ty!({ "label": (LabelWit 0), "record": 1 }), ty!(2)),
+            Self::RecordRename => b(
+                4,
+                ty!({ "from": (LabelWit 0), "to": (LabelWit 1), "record": 2 }),
+                ty!(3),
+            ),
+            Self::RecordContains => b(2, ty!({ "label": (LabelWit 0), "record": 1 }), ty!(Bool)),
+            Self::RecordKeys => b(1, ty!(0), ty!((List Str))),
+            Self::RecordSize => b(1, ty!(0), ty!(Num)),
+            Self::RecordMergeLeft => b(3, ty!({ "left": 0, "right": 1 }), ty!(2)),
+            Self::RecordMergeRight => b(3, ty!({ "left": 0, "right": 1 }), ty!(2)),
+            Self::RecordRec => b(
+                3,
+                ty!({ "record": 0, "base": 1, "step": ({ "acc": 1, "head": { "key": Str, "value": 2 } } -> 1) }),
+                ty!(1),
+            ),
 
-#[inline]
-pub fn find_builtin_id(s: &str) -> Option<BuiltinId> {
-    BUILTINS
-        .iter()
-        .position(|builtin| builtin.name == s)
-        .map(|id| BuiltinId::from_usize(id))
-}
+            // ---- Serde ----
+            Self::SerdeFromJson => b(
+                1,
+                ty!({ "proto": (TypeWit 0), "json": Str }),
+                ty!([ "Ok": 0, "Err": Str ]),
+            ),
+            Self::SerdeToJson => b(1, ty!(0), ty!([ "Ok": Str, "Err": Str ])),
 
-macro_rules! define_builtins {
-    (
-        $(
-            $name:ident : forall $forall:literal . $input:tt -> $output:tt
-        ),* $(,)?
-    ) => {
-        paste::paste! {
-            #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-            pub enum BuiltinId {
-                $(
-                    [<$name:camel>],
-                )*
-            }
-
-            impl BuiltinId {
-                #[inline]
-                const fn from_usize(id: usize) -> Self {
-                    match id {
-                        $(
-                            x if x == BuiltinId::[<$name:camel>] as usize => BuiltinId::[<$name:camel>],
-                        )*
-                        _ => panic!("Invalid BuiltinId"),
-                    }
-                }
-            }
-
-            impl fmt::Display for BuiltinId {
-                fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-                    match self {
-                        $(
-                            BuiltinId::[<$name:camel>] => write!(f, "__builtin_{}", stringify!($name)),
-                        )*
-                    }
-                }
-            }
+            // ---- Str ----
+            Self::StrLength => b(0, ty!(Str), ty!(Num)),
+            Self::StrIsEmpty => b(0, ty!(Str), ty!(Bool)),
+            Self::StrReverse => b(0, ty!(Str), ty!(Str)),
+            Self::StrFirst => b(0, ty!(Str), ty!([ "Some": Char, "None": Unit ])),
+            Self::StrLast => b(0, ty!(Str), ty!([ "Some": Char, "None": Unit ])),
+            Self::StrContains => b(0, ty!({ "str": Str, "value": Char }), ty!(Bool)),
+            Self::StrAt => b(
+                0,
+                ty!({ "str": Str, "index": Num }),
+                ty!([ "Some": Char, "None": Unit ]),
+            ),
+            Self::StrPrepend => b(0, ty!({ "head": Char, "tail": Str }), ty!(Str)),
+            Self::StrAppend => b(0, ty!({ "head": Str, "tail": Char }), ty!(Str)),
+            Self::StrConcat => b(0, ty!({ "head": Str, "tail": Str }), ty!(Str)),
+            Self::StrRec => b(
+                1,
+                ty!({ "str": Str, "base": 0, "step": ({ "acc": 0, "head": Char } -> 0) }),
+                ty!(0),
+            ),
         }
-
-        #[doc = "Array of all builtin function definitions"]
-        const BUILTINS: LazyCell<Vec<Builtin>> = LazyCell::new(|| vec![
-            $(
-                Builtin {
-                    name: stringify!($name),
-                    forall: $forall,
-                    input: define_builtins!(@type $input),
-                    output: define_builtins!(@type $output),
-                },
-            )*
-        ]);
-    };
-
-    // Type expression parsing
-    (@type Any) => { TypeProtocol::Any };
-    (@type Unit) => { TypeProtocol::Unit };
-    (@type Bool) => { TypeProtocol::Bool };
-    (@type Num) => { TypeProtocol::Num };
-    (@type Char) => { TypeProtocol::Char };
-    (@type Str) => { TypeProtocol::Str };
-    (@type (List $inner:tt)) => {
-        TypeProtocol::List(Box::new(define_builtins!(@type $inner)))
-    };
-    (@type $var:literal) => { TypeProtocol::Var($var, KindProtocol::Type) };
-    (@type (TypeWit $inner:literal)) => {
-        TypeProtocol::Witness(Box::new(TypeProtocol::Var($inner, KindProtocol::Type)))
-    };
-    (@type (LabelWit $inner:literal)) => {
-        TypeProtocol::Witness(Box::new(TypeProtocol::Var($inner, KindProtocol::Label)))
-    };
-    (@type { $($field:literal : $field_type:tt),* $(,)? }) => {
-        TypeProtocol::Record(vec![
-            $((String::from($field), define_builtins!(@type $field_type))),*
-        ])
-    };
-    (@type [ $($variant:literal : $variant_type:tt),* $(,)? ] ) => {
-        TypeProtocol::Variant(vec![
-            $((String::from($variant), define_builtins!(@type $variant_type))),*
-        ])
-    };
-    (@type ($left:tt -> $right:tt)) => {
-        TypeProtocol::Func(
-            Box::new(define_builtins!(@type $left)),
-            Box::new(define_builtins!(@type $right))
-        )
-    };
-}
-
-define_builtins! {
-    // Builtin Io functions
-    io_debug: forall 1 . 0 -> 0,
-    io_read_file: forall 0 . Str -> [ "Ok": Str, "Err": Str ],
-    io_write_file: forall 0 . { "path": Str, "contents": Str } -> [ "Ok": Unit, "Err": Str ],
-
-    // Builtin List functions
-    list_length: forall 1 . (List 0) -> Num,
-    list_is_empty: forall 1 . (List 0) -> Bool,
-    list_reverse: forall 1 . (List 0) -> (List 0),
-    list_sum: forall 0 . (List Num) -> Num,
-    list_first: forall 1 . (List 0) -> [ "Some": 0, "None": Unit ],
-    list_last: forall 1 . (List 0) -> [ "Some": 0, "None": Unit ],
-    list_contains: forall 1 . { "list": (List 0), "value": 0 } -> Bool,
-    list_at: forall 1 . { "list": (List 0), "index": Num } -> [ "Some": 0, "None": Unit ],
-    list_prepend: forall 1 . { "head": 0, "tail": (List 0) } -> (List 0),
-    list_append: forall 1 . { "head": (List 0), "tail": 0 } -> (List 0),
-    list_concat: forall 1 . { "head": (List 0), "tail": (List 0) } -> (List 0),
-    list_rec: forall 2 . { "list": (List 0), "base": 1, "step": ({ "acc": 1, "head": 0 } -> 1) } -> 1,
-
-    // Builtin Number functions
-    num_abs: forall 0 . Num -> Num,
-    num_sqrt: forall 0 . Num -> Num,
-    num_floor: forall 0 . Num -> Num,
-    num_ceil: forall 0 . Num -> Num,
-    num_round: forall 0 . Num -> Num,
-    num_sin: forall 0 . Num -> Num,
-    num_cos: forall 0 . Num -> Num,
-    num_tan: forall 0 . Num -> Num,
-    num_ln: forall 0 . Num -> Num,
-    num_log10: forall 0 . Num -> Num,
-    num_exp: forall 0 . Num -> Num,
-    num_pow: forall 0 . { "base": Num, "exp": Num } -> Num,
-    num_rec: forall 1 . { "num": Num, "base": 0, "step": ({ "acc": 0, "head": Num } -> 0) } -> 0,
-
-    // Builtin Record functions
-    record_select: forall 3 . { "label": (LabelWit 0), "record": 1 } -> 2,
-    record_insert: forall 4 . { "label": (LabelWit 0), "value": 1, "record": 2 } -> 3,
-    record_remove: forall 3 . { "label": (LabelWit 0), "record": 1 } -> 2,
-    record_rename: forall 4 . { "from": (LabelWit 0), "to": (LabelWit 1), "record": 2 } -> 3,
-    record_contains: forall 2 . { "label": (LabelWit 0), "record": 1 } -> Bool,
-    record_keys: forall 1 . 0 -> (List Str),
-    record_size: forall 1 . 0 -> Num,
-    record_merge_left: forall 3 . { "left": 0, "right": 1 } -> 2,
-    record_merge_right: forall 3 . { "left": 0, "right": 1 } -> 2,
-    record_rec: forall 3 . { "record": 0, "base": 1, "step": ({ "acc": 1, "head": { "key": Str, "value": 2 } } -> 1) } -> 1,
-
-    // Builtin Serde functions
-    serde_from_json: forall 1 . { "proto": (TypeWit 0), "json": Str } -> [ "Ok": 0, "Err": Str ],
-    serde_to_json: forall 1 . 0 -> [ "Ok": Str, "Err": Str ],
-
-    // Builtin String functions
-    str_length: forall 0 . Str -> Num,
-    str_is_empty: forall 0 . Str -> Bool,
-    str_reverse: forall 0 . Str -> Str,
-    str_first: forall 0 . Str -> [ "Some": Char, "None": Unit ],
-    str_last: forall 0 . Str -> [ "Some": Char, "None": Unit ],
-    str_contains: forall 0 . { "str": Str, "value": Char } -> Bool,
-    str_at: forall 0 . { "str": Str, "index": Num } -> [ "Some": Char, "None": Unit ],
-    str_prepend: forall 0 . { "head": Char, "tail": Str } -> Str,
-    str_append: forall 0 . { "head": Str, "tail": Char } -> Str,
-    str_concat: forall 0 . { "head": Str, "tail": Str } -> Str,
-    str_rec: forall 1 . { "str": Str, "base": 0, "step": ({ "acc": 0, "head": Char } -> 0) } -> 0,
+    }
 }
