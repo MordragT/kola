@@ -1,7 +1,6 @@
 use imbl::shared_ptr::RcK;
 
 pub mod bi_map;
-pub mod cons;
 pub mod im_bi_map;
 pub mod im_shadow_map;
 pub mod shadow_map;
@@ -81,7 +80,6 @@ pub use im_shadow_map::ImShadowMap;
 pub use im_vec::ImVec;
 
 pub use bi_map::BiMap;
-pub use cons::{Cons, Nil};
 pub use hash_map::HashMap;
 pub use hash_set::HashSet;
 pub use ord_map::OrdMap;
