@@ -8,7 +8,11 @@ pub struct Closure {
     pub func: Func,
 }
 
+const _: () = assert!(Closure::BYTES <= 12);
+
 impl Closure {
+    pub const BYTES: usize = std::mem::size_of::<Self>();
+
     #[inline]
     pub fn new(env: EnvIdx, func: Func) -> Self {
         Self { env, func }

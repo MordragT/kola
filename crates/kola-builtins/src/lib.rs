@@ -30,7 +30,7 @@ pub fn is_builtin_type(s: &str) -> bool {
 
 pub static BUILTINS: LazyLock<[Builtin; BuiltinId::COUNT]> = LazyLock::new(|| {
     std::array::from_fn(|i| {
-        let id = BuiltinId::from_repr(i).expect("valid BuiltinId discriminant");
+        let id = BuiltinId::from_repr(i as u8).expect("valid BuiltinId discriminant");
         id.definition()
     })
 });
@@ -97,7 +97,7 @@ impl Builtin {
     EnumString,
 )]
 #[strum(serialize_all = "snake_case")]
-#[repr(usize)]
+#[repr(u8)]
 pub enum BuiltinId {
     IoDebug,
     IoReadFile,

@@ -3,20 +3,72 @@ use std::collections::HashMap;
 use std::fmt;
 use std::hash::{BuildHasher, Hash, RandomState};
 use std::marker::PhantomData;
+use std::num::NonZeroU32;
 use std::ops::Index;
 
 use camino::Utf8Path;
 
-use crate::define_unique_id;
+#[derive(serde::Serialize, serde::Deserialize)]
+pub struct Key<T: ?Sized> {
+    id: NonZeroU32,
+    t: std::marker::PhantomData<T>,
+}
 
-// TODO nieche optimization: use a more efficient ID type
+impl<T: ?Sized> Clone for Key<T> {
+    fn clone(&self) -> Self {
+        Self {
+            id: self.id,
+            t: std::marker::PhantomData,
+        }
+    }
+}
 
-define_unique_id!(Key);
+impl<T: ?Sized> Copy for Key<T> {}
+
+impl<T: ?Sized> PartialEq for Key<T> {
+    fn eq(&self, other: &Self) -> bool {
+        self.id == other.id
+    }
+}
+
+impl<T: ?Sized> Eq for Key<T> {}
+
+impl<T: ?Sized> PartialOrd for Key<T> {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl<T: ?Sized> Ord for Key<T> {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.id.cmp(&other.id)
+    }
+}
+
+impl<T: ?Sized> std::hash::Hash for Key<T> {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.id.hash(state);
+    }
+}
+
+impl<T: ?Sized> std::fmt::Debug for Key<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}({})", std::any::type_name::<T>(), self.id)
+    }
+}
 
 impl<T: ?Sized> Key<T> {
+    pub fn as_usize(&self) -> usize {
+        self.id.get() as usize - 1
+    }
+
+    pub fn id(&self) -> u32 {
+        self.id.get() - 1
+    }
+
     const fn from_usize(key: usize) -> Self {
         Self {
-            id: key as u32,
+            id: NonZeroU32::new((key as u32) + 1).expect("key overflow"),
             t: PhantomData,
         }
     }

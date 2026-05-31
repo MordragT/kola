@@ -2,7 +2,6 @@ pub mod convert;
 pub mod dependency;
 pub mod display;
 pub mod errors;
-pub mod id;
 pub mod interner;
 pub mod interner_ext;
 pub mod io;

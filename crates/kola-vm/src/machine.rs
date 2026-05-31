@@ -29,9 +29,9 @@ impl MachineContext {
         }
     }
 
-    pub fn start_config(&self, heap: &mut Heap) -> StandardConfig {
+    pub fn start_config(&self) -> StandardConfig {
         let control = self.ir.root().get(&self.ir);
-        let env = heap.envs.alloc(&[]);
+        let env = EnvArena::ambient();
         let cont = Cont::identity(env);
 
         StandardConfig { control, env, cont }
@@ -55,8 +55,8 @@ impl CekMachine {
     /// Create a new CEK machine to evaluate an expression
     /// Initial configuration (M-INIT in the paper)
     /// C = hM | ∅ | κ0i
-    pub fn new(context: MachineContext, heap: &mut Heap) -> Self {
-        let config = context.start_config(heap);
+    pub fn new(context: MachineContext) -> Self {
+        let config = context.start_config();
 
         Self {
             context,
@@ -216,7 +216,7 @@ mod tests {
     use kola_protocol::TypeInterner;
 
     fn run_machine(context: MachineContext, heap: &mut Heap) -> Result<Value, String> {
-        let mut machine = CekMachine::new(context, heap);
+        let mut machine = CekMachine::new(context);
         machine.run(heap)
     }
 

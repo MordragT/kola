@@ -299,8 +299,9 @@ impl Driver {
         };
 
         let context = MachineContext::new(ir, path.parent().unwrap());
+        let mut machine = CekMachine::new(context);
+
         let mut heap = Heap::new(self.str_interner, self.type_interner);
-        let mut machine = CekMachine::new(context, &mut heap);
 
         match machine.run(&mut heap) {
             Ok(value) => {

@@ -1397,9 +1397,9 @@ mod tests {
         builder.finish(root)
     }
 
-    fn new_machine(ir: Ir, heap: &mut Heap) -> CekMachine {
+    fn new_machine(ir: Ir) -> CekMachine {
         let context = MachineContext::new(ir, "/mocked/path");
-        CekMachine::new(context, heap)
+        CekMachine::new(context)
     }
 
     #[test]
@@ -1411,7 +1411,7 @@ mod tests {
         let ir = normalize(builder, lit, &resolved, &StrInterner::new());
 
         let mut heap = Heap::new(StrInterner::new(), TypeInterner::new());
-        let mut machine = new_machine(ir, &mut heap);
+        let mut machine = new_machine(ir);
         let value = machine.run(&mut heap).unwrap();
 
         assert_eq!(value, Value::Num(10.0))
@@ -1431,7 +1431,7 @@ mod tests {
         let ir = normalize(builder, path_expr, &resolved, &interner);
 
         let mut heap = Heap::new(interner.clone(), TypeInterner::new());
-        let mut machine = new_machine(ir, &mut heap);
+        let mut machine = new_machine(ir);
 
         // Expect unbound symbol error.
         let _err = machine.run(&mut heap).unwrap_err();
@@ -1458,7 +1458,7 @@ mod tests {
         let ir = normalize(builder, let_expr, &resolved, &interner);
 
         let mut heap = Heap::new(interner, TypeInterner::new());
-        let mut machine = new_machine(ir, &mut heap);
+        let mut machine = new_machine(ir);
         let value = machine.run(&mut heap).unwrap();
 
         // Should evaluate to 42 (the value bound to x)
@@ -1495,7 +1495,7 @@ mod tests {
         let ir = normalize(builder, call_expr, &resolved, &interner);
 
         let mut heap = Heap::new(interner, TypeInterner::new());
-        let mut machine = new_machine(ir, &mut heap);
+        let mut machine = new_machine(ir);
         let value = machine.run(&mut heap).unwrap();
 
         // Should evaluate to 42 (identity function returns its argument)
@@ -1528,7 +1528,7 @@ mod tests {
         let ir = normalize(builder, record_id, &resolved, &interner);
 
         let mut heap = Heap::new(interner, TypeInterner::new());
-        let mut machine = new_machine(ir, &mut heap);
+        let mut machine = new_machine(ir);
         let value = machine.run(&mut heap).unwrap();
 
         // Should evaluate to a record with two fields
@@ -1582,7 +1582,7 @@ mod tests {
         let ir = normalize(builder, let_expr, &resolved, &interner);
 
         let mut heap = Heap::new(interner, TypeInterner::new());
-        let mut machine = new_machine(ir, &mut heap);
+        let mut machine = new_machine(ir);
         let value = machine.run(&mut heap).unwrap().into_str().unwrap();
 
         // Should evaluate to "hello" (the value of r.a.b.c)

@@ -41,7 +41,7 @@ pub enum Value {
     Witness(WitnessIdx),
 }
 
-const _: () = assert!(Value::BYTES <= 24);
+const _: () = assert!(Value::BYTES <= 16);
 
 impl Value {
     pub const BYTES: usize = std::mem::size_of::<Self>();
