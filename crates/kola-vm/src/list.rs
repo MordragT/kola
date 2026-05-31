@@ -59,7 +59,7 @@ pub struct ListNode {
 /// An arena that enforces true structural sharing for immutable lists.
 ///
 /// Prepend operations (`push_front`) and head/tail breakdowns (`split_front`)
-/// run in O(1) time and space, completely eliminating the O(N^2) memory explosions.
+/// run in O(1) time and space.
 #[derive(Debug, Clone)]
 pub struct ListArena {
     data: Vec<ListNode>,

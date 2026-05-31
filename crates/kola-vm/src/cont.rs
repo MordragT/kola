@@ -33,7 +33,10 @@ pub enum ContFrame {
     },
 
     /// A recursive continuation frame (data, step) is used for primitive recursion.
-    RecordRec { data: RecordIdx, step: Closure },
+    RecordRec {
+        data: Option<RecordIdx>,
+        step: Closure,
+    },
 
     /// A recursive continuation frame (data, step) is used for primitive recursion.
     StrRec { data: StringIdx, step: Closure },
@@ -52,7 +55,7 @@ impl ContFrame {
         Self::ListRec { data, step }
     }
 
-    pub fn record_rec(data: RecordIdx, step: Closure) -> Self {
+    pub fn record_rec(data: Option<RecordIdx>, step: Closure) -> Self {
         Self::RecordRec { data, step }
     }
 

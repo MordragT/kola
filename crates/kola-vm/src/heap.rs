@@ -95,7 +95,7 @@ impl Heap {
     #[inline]
     pub fn get_record_value<'a>(
         &mut self,
-        record: RecordIdx,
+        record: Option<RecordIdx>,
         field: impl Into<Cow<'a, str>>,
     ) -> Option<Value> {
         let key = self.intern_str(field);
@@ -103,11 +103,11 @@ impl Heap {
     }
 
     #[inline]
-    pub fn record_keys(&mut self, record: RecordIdx) -> Option<ListIdx> {
+    pub fn record_keys(&mut self, record: Option<RecordIdx>) -> Option<ListIdx> {
         let keys = self
             .records
-            .keys(record)
-            .map(|k| Value::Str(self.strings.alloc(&self.str_interner[k])))
+            .iter(record)
+            .map(|(k, _)| Value::Str(self.strings.alloc(&self.str_interner[k])))
             .collect::<Vec<_>>();
         self.lists.alloc(&keys)
     }

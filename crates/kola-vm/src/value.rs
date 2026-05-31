@@ -4,7 +4,7 @@ use kola_builtins::BuiltinId;
 use kola_ir::instr::Tag;
 use kola_protocol::{TypeProtocol, ValueProtocol};
 use kola_utils::{display::DisplayWith, serde::SerializeWith};
-use serde::ser::SerializeSeq;
+use serde::ser::{SerializeMap, SerializeSeq};
 use std::fmt;
 
 use crate::{
@@ -35,7 +35,7 @@ pub enum Value {
     /// A variant (tag, value)
     Variant(VariantIdx),
     /// A record (map of labels to values)
-    Record(RecordIdx),
+    Record(Option<RecordIdx>),
     /// A list of values
     List(Option<ListIdx>),
     /// A Type representation
@@ -107,7 +107,13 @@ impl DisplayWith<Heap> for Value {
             Value::Builtin(b) => write!(f, "{}", b),
             Value::Tag(t) => t.fmt(f, &heap.str_interner),
             Value::Variant(v) => v.fmt(f, heap),
-            Value::Record(r) => r.fmt(f, heap),
+            Value::Record(r) => {
+                if let Some(r) = r {
+                    r.fmt(f, heap)
+                } else {
+                    write!(f, "{{}}")
+                }
+            }
             Value::List(l) => {
                 if let Some(l) = l {
                     l.fmt(f, heap)
@@ -132,7 +138,14 @@ impl SerializeWith<Heap> for Value {
             Value::Num(n) => serializer.serialize_f64(*n),
             Value::Str(s) => s.serialize(serializer, heap),
             Value::Variant(v) => v.serialize(serializer, heap),
-            Value::Record(r) => r.serialize(serializer, heap),
+            Value::Record(r) => {
+                if let Some(r) = r {
+                    r.serialize(serializer, heap)
+                } else {
+                    let map = serializer.serialize_map(Some(0))?;
+                    map.end()
+                }
+            }
             Value::List(l) => {
                 if let Some(l) = l {
                     l.serialize(serializer, heap)
