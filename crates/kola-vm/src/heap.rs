@@ -103,12 +103,13 @@ impl Heap {
     }
 
     #[inline]
-    pub fn record_keys(&mut self, record: RecordIdx) -> ListIdx {
-        self.lists.alloc_iter(
-            self.records
-                .keys(record)
-                .map(|k| Value::Str(self.strings.alloc(&self.str_interner[k]))),
-        )
+    pub fn record_keys(&mut self, record: RecordIdx) -> Option<ListIdx> {
+        let keys = self
+            .records
+            .keys(record)
+            .map(|k| Value::Str(self.strings.alloc(&self.str_interner[k])))
+            .collect::<Vec<_>>();
+        self.lists.alloc(&keys)
     }
 
     #[inline]

@@ -463,8 +463,8 @@ fn eval_builtin(
                 Ok(_) => Value::Variant(heap.alloc_builtin_variant("Ok", Value::None)),
             }
         }
-        (BuiltinId::ListLength, Value::List(list)) => Value::Num(list.len() as f64),
-        (BuiltinId::ListIsEmpty, Value::List(list)) => Value::Bool(list.is_empty()),
+        (BuiltinId::ListLength, Value::List(list)) => Value::Num(heap.lists.len(list) as f64),
+        (BuiltinId::ListIsEmpty, Value::List(list)) => Value::Bool(heap.lists.is_empty(list)),
         (BuiltinId::ListReverse, Value::List(list)) => Value::List(heap.lists.reverse(list)),
         (BuiltinId::ListSum, Value::List(list)) => {
             match heap.lists.try_fold(list, 0.0, |acc, v| {
@@ -529,7 +529,7 @@ fn eval_builtin(
             };
 
             let result = heap.lists.push_front(tail_list, head_value);
-            Value::List(result)
+            Value::List(Some(result))
         }
         (BuiltinId::ListAppend, Value::Record(record)) => {
             let Some(Value::List(head_list)) = heap.get_record_value(record, "head") else {
@@ -543,7 +543,7 @@ fn eval_builtin(
             };
 
             let result = heap.lists.push_back(head_list, tail_value);
-            Value::List(result)
+            Value::List(Some(result))
         }
         (BuiltinId::ListConcat, Value::Record(record)) => {
             let Some(Value::List(head_list)) = heap.get_record_value(record, "head") else {
@@ -2143,7 +2143,7 @@ fn eval_list_is_exact(
     };
 
     let next_matcher = match source_val {
-        Value::List(ref list) if list.len() as u32 == length => on_success,
+        Value::List(list) if heap.lists.len(list) as u32 == length => on_success,
         _ => on_failure,
     };
 
@@ -2175,7 +2175,7 @@ fn eval_list_is_at_least(
     };
 
     let next_matcher = match source_val {
-        Value::List(ref list) if list.len() as u32 >= min_length => on_success,
+        Value::List(list) if heap.lists.len(list) as u32 >= min_length => on_success,
         _ => on_failure,
     };
 

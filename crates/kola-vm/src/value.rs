@@ -4,6 +4,7 @@ use kola_builtins::BuiltinId;
 use kola_ir::instr::Tag;
 use kola_protocol::{TypeProtocol, ValueProtocol};
 use kola_utils::{display::DisplayWith, serde::SerializeWith};
+use serde::ser::SerializeSeq;
 use std::fmt;
 
 use crate::{
@@ -36,7 +37,7 @@ pub enum Value {
     /// A record (map of labels to values)
     Record(RecordIdx),
     /// A list of values
-    List(ListIdx),
+    List(Option<ListIdx>),
     /// A Type representation
     Witness(WitnessIdx),
 }
@@ -107,7 +108,13 @@ impl DisplayWith<Heap> for Value {
             Value::Tag(t) => t.fmt(f, &heap.str_interner),
             Value::Variant(v) => v.fmt(f, heap),
             Value::Record(r) => r.fmt(f, heap),
-            Value::List(l) => l.fmt(f, heap),
+            Value::List(l) => {
+                if let Some(l) = l {
+                    l.fmt(f, heap)
+                } else {
+                    write!(f, "[]")
+                }
+            }
             Value::Witness(w) => w.fmt(f, heap),
         }
     }
@@ -126,7 +133,14 @@ impl SerializeWith<Heap> for Value {
             Value::Str(s) => s.serialize(serializer, heap),
             Value::Variant(v) => v.serialize(serializer, heap),
             Value::Record(r) => r.serialize(serializer, heap),
-            Value::List(l) => l.serialize(serializer, heap),
+            Value::List(l) => {
+                if let Some(l) = l {
+                    l.serialize(serializer, heap)
+                } else {
+                    let seq = serializer.serialize_seq(Some(0))?;
+                    seq.end()
+                }
+            }
             _ => Err(serde::ser::Error::custom(
                 "Cannot serialize this Value variant",
             )),
