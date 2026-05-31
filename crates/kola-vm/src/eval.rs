@@ -8,6 +8,7 @@ use crate::{
     handler::{RawHandler, ReturnClause},
     heap::Heap,
     machine::MachineContext,
+    string::StringIdx,
     value::{Value, to_usize_exact},
 };
 use kola_builtins::BuiltinId;
@@ -39,7 +40,7 @@ pub fn eval_atom(atom: Atom, env: EnvIdx, heap: &mut Heap) -> Result<Value, Stri
         Atom::Bool(b) => Ok(Value::Bool(b)),
         Atom::Char(c) => Ok(Value::Char(c)),
         Atom::Num(n) => Ok(Value::Num(n)),
-        Atom::Str(s) => Ok(Value::Str(heap.alloc_str_key(s))),
+        Atom::Str(s) => Ok(Value::Str(StringIdx::Static(s))),
         Atom::Func(f) => {
             // Create a closure by capturing the current environment
             Ok(Value::Closure(Closure::new(env, f)))
@@ -249,7 +250,7 @@ impl Eval for RetExpr {
 
                 let key = (
                     heap.intern_str("key"),
-                    Value::Str(heap.alloc_str_key(first.0)),
+                    Value::Str(StringIdx::Static(first.0)),
                 );
                 let val = (heap.intern_str("value"), first.1);
                 let head = heap.records.alloc(&[key, val]);
@@ -428,7 +429,10 @@ fn eval_builtin(
             value
         }
         (BuiltinId::IoReadFile, Value::Str(path)) => {
-            match fs::read_to_string(context.join_path(heap.strings.get(path))) {
+            let flattened = heap.strings.flatten(path);
+            let path = heap.strings.try_get(&flattened).unwrap();
+
+            match fs::read_to_string(context.join_path(path)) {
                 Err(err) => {
                     let err = heap.strings.alloc(&err.to_string());
                     Value::Variant(heap.alloc_builtin_variant("Err", Value::Str(err)))
@@ -452,10 +456,13 @@ fn eval_builtin(
                 );
             };
 
-            match fs::write(
-                context.join_path(heap.strings.get(path)),
-                heap.strings.get(contents),
-            ) {
+            let path_result = heap.strings.flatten(path);
+            let contents_result = heap.strings.flatten(contents);
+
+            let path = heap.strings.try_get(&path_result).unwrap();
+            let contents = heap.strings.try_get(&contents_result).unwrap();
+
+            match fs::write(context.join_path(path), contents) {
                 Err(err) => {
                     let err = heap.strings.alloc(&err.to_string());
                     Value::Variant(heap.alloc_builtin_variant("Err", Value::Str(err)))
@@ -908,7 +915,7 @@ fn eval_builtin(
 
             let key = (
                 heap.intern_str("key"),
-                Value::Str(heap.alloc_str_key(first.0)),
+                Value::Str(StringIdx::Static(first.0)),
             );
             let val = (heap.intern_str("value"), first.1);
             let head = heap.records.alloc(&[key, val]);
@@ -955,7 +962,8 @@ fn eval_builtin(
             };
 
             let proto = heap.witnesses.get(wit).clone();
-            let json_str = heap.strings.get(json).to_owned();
+            let json_result = heap.strings.flatten(json);
+            let json_str = heap.strings.try_get(&json_result).unwrap().to_owned();
 
             match Value::from_json(&proto, &json_str, heap) {
                 Ok(value) => Value::Variant(heap.alloc_builtin_variant("Ok", value)),
@@ -975,25 +983,25 @@ fn eval_builtin(
                 Value::Variant(heap.alloc_builtin_variant("Err", Value::Str(err)))
             }
         },
-        (BuiltinId::StrLength, Value::Str(s)) => Value::Num(s.len() as f64),
-        (BuiltinId::StrIsEmpty, Value::Str(s)) => Value::Bool(s.is_empty()),
+        (BuiltinId::StrLength, Value::Str(s)) => Value::Num(heap.strings.len(s) as f64),
+        (BuiltinId::StrIsEmpty, Value::Str(s)) => Value::Bool(heap.strings.is_empty(s)),
         (BuiltinId::StrReverse, Value::Str(s)) => Value::Str(heap.strings.reverse(s)),
         (BuiltinId::StrFirst, Value::Str(s)) => {
-            if let Some(first) = heap.strings.first_char(s) {
+            if let Some(first) = heap.strings.first(s) {
                 Value::Variant(heap.alloc_builtin_variant("Some", Value::Char(first)))
             } else {
                 Value::Variant(heap.alloc_builtin_variant("None", Value::None))
             }
         }
         (BuiltinId::StrLast, Value::Str(s)) => {
-            if let Some(last) = heap.strings.last_char(s) {
+            if let Some(last) = heap.strings.last(s) {
                 Value::Variant(heap.alloc_builtin_variant("Some", Value::Char(last)))
             } else {
                 Value::Variant(heap.alloc_builtin_variant("None", Value::None))
             }
         }
         (BuiltinId::StrContains, Value::Record(record)) => {
-            let Some(Value::Str(s)) = heap.get_record_value(record, "str") else {
+            let Some(Value::Str(mut s)) = heap.get_record_value(record, "str") else {
                 return MachineState::Error(
                     "str_contains requires 'str' field with a string".to_owned(),
                 );
@@ -1005,10 +1013,17 @@ fn eval_builtin(
                 );
             };
 
-            Value::Bool(heap.strings.get(s).contains(c))
+            let mut buf = [0; 4];
+            let needle: &str = c.encode_utf8(&mut buf);
+
+            let is_contained = heap.strings.contains_mut(&mut s, needle);
+
+            // TODO the unflattened string is still in the record.
+
+            Value::Bool(is_contained)
         }
         (BuiltinId::StrAt, Value::Record(record)) => {
-            let Some(Value::Str(s)) = heap.get_record_value(record, "str") else {
+            let Some(Value::Str(mut s)) = heap.get_record_value(record, "str") else {
                 return MachineState::Error("str_at requires 'str' field with a string".to_owned());
             };
 
@@ -1018,10 +1033,12 @@ fn eval_builtin(
                 );
             };
 
-            match to_usize_exact(index).and_then(|idx| heap.strings.get(s).chars().nth(idx)) {
+            match to_usize_exact(index).and_then(|idx| heap.strings.at_mut(&mut s, idx)) {
                 Some(c) => Value::Variant(heap.alloc_builtin_variant("Some", Value::Char(c))),
                 None => Value::Variant(heap.alloc_builtin_variant("None", Value::None)),
             }
+
+            // TODO the unflattened string is still in the record.
         }
         (BuiltinId::StrPrepend, Value::Record(record)) => {
             let Some(Value::Char(c)) = heap.get_record_value(record, "head") else {
@@ -1035,6 +1052,9 @@ fn eval_builtin(
                     "str_prepend requires 'tail' field with a string".to_owned(),
                 );
             };
+
+            let mut buf = [0; 4];
+            let c: &str = c.encode_utf8(&mut buf);
 
             Value::Str(heap.strings.push_front(s, c))
         }
@@ -1050,6 +1070,9 @@ fn eval_builtin(
                     "str_append requires 'tail' field with a char".to_owned(),
                 );
             };
+
+            let mut buf = [0; 4];
+            let c: &str = c.encode_utf8(&mut buf);
 
             Value::Str(heap.strings.push_back(s, c))
         }
@@ -1838,7 +1861,7 @@ impl Eval for PatternMatcher {
             PatternMatcher::IsBool(is_bool) => eval_is_bool(is_bool, env, cont, heap),
             PatternMatcher::IsNum(is_num) => eval_is_num(is_num, env, cont, heap),
             PatternMatcher::IsChar(is_char) => eval_is_char(is_char, env, cont, heap),
-            PatternMatcher::IsStr(is_str) => eval_is_str(is_str, env, cont, &heap),
+            PatternMatcher::IsStr(is_str) => eval_is_str(is_str, env, cont, heap),
             PatternMatcher::IsVariant(is_variant) => eval_is_variant(is_variant, env, cont, heap),
             PatternMatcher::IsRecord(is_record) => eval_is_record(is_record, env, cont, heap),
             PatternMatcher::RecordHasField(record_has_field) => {
@@ -1979,7 +2002,7 @@ fn eval_is_char(is_char: &IsChar, env: EnvIdx, cont: Cont, heap: &Heap) -> Machi
 }
 
 /// Evaluates IsStr pattern matcher
-fn eval_is_str(is_str: &IsStr, env: EnvIdx, cont: Cont, heap: &Heap) -> MachineState {
+fn eval_is_str(is_str: &IsStr, env: EnvIdx, cont: Cont, heap: &mut Heap) -> MachineState {
     let IsStr {
         source,
         payload,
@@ -1995,8 +2018,10 @@ fn eval_is_str(is_str: &IsStr, env: EnvIdx, cont: Cont, heap: &Heap) -> MachineS
     let next_matcher = match source_val {
         Value::Str(s) => {
             // Get the string from the interner to compare
-            let expected_str = &heap.str_interner[payload];
-            if heap.strings.get(s) == expected_str {
+            let s = heap.strings.flatten(s);
+            let expected_str = &heap.strings.interner[payload];
+
+            if heap.strings.try_get(&s).unwrap() == expected_str {
                 on_success
             } else {
                 on_failure

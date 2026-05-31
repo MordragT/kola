@@ -40,7 +40,7 @@ impl VariantIdx {
 
 impl DisplayWith<Heap> for VariantIdx {
     fn fmt(&self, f: &mut fmt::Formatter<'_>, heap: &Heap) -> fmt::Result {
-        self.tag.fmt(f, &heap.str_interner)?;
+        self.tag.fmt(f, &heap.strings.interner)?;
         write!(f, "(")?;
         heap.variants.get_value(*self).fmt(f, heap)?;
         write!(f, ")")
@@ -53,7 +53,7 @@ impl SerializeWith<Heap> for VariantIdx {
         S: serde::Serializer,
     {
         let mut state = serializer.serialize_struct("Variant", 2)?;
-        state.serialize_field("tag", &heap.str_interner[self.tag.0])?;
+        state.serialize_field("tag", &heap.strings.interner[self.tag.0])?;
         state.serialize_field("value", &heap.with(&heap.variants.get_value(*self)))?;
         state.end()
     }

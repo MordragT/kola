@@ -1,4 +1,4 @@
-use std::{borrow::Cow, fmt};
+use std::{array, borrow::Cow, fmt};
 
 use kola_ir::instr::{Func, Tag};
 use kola_protocol::{TypeInterner, TypeKey, TypeProtocol};
@@ -23,8 +23,6 @@ use crate::{
 
 #[derive(Debug)]
 pub struct Heap {
-    /// The interner used for symbol to string conversion
-    pub str_interner: StrInterner,
     /// The type interner used for type reification
     pub type_interner: TypeInterner,
     /// The arena for storing strings
@@ -45,9 +43,8 @@ pub struct Heap {
 impl Heap {
     pub fn new(str_interner: StrInterner, type_interner: TypeInterner) -> Self {
         Self {
-            str_interner,
             type_interner,
-            strings: StringArena::new(),
+            strings: StringArena::new(str_interner),
             lists: ListArena::new(),
             records: RecordArena::new(),
             witnesses: WitnessArena::new(),
@@ -71,12 +68,6 @@ impl Heap {
     }
 
     #[inline]
-    pub fn alloc_str_key(&mut self, key: StrKey) -> StringIdx {
-        let s = self.str_interner[key].as_str();
-        self.strings.alloc(s)
-    }
-
-    #[inline]
     pub fn alloc_type_key(&mut self, key: TypeKey) -> WitnessIdx {
         let t = self.type_interner[key].clone();
         self.witnesses.alloc(t)
@@ -84,7 +75,7 @@ impl Heap {
 
     #[inline]
     pub fn intern_str<'a>(&mut self, s: impl Into<Cow<'a, str>>) -> StrKey {
-        self.str_interner.intern(s)
+        self.strings.interner.intern(s)
     }
 
     #[inline]
@@ -98,7 +89,7 @@ impl Heap {
         record: Option<RecordIdx>,
         field: impl Into<Cow<'a, str>>,
     ) -> Option<Value> {
-        let key = self.intern_str(field);
+        let key = self.strings.interner.intern(field);
         self.records.get_value(record, key)
     }
 
@@ -107,7 +98,7 @@ impl Heap {
         let keys = self
             .records
             .iter(record)
-            .map(|(k, _)| Value::Str(self.strings.alloc(&self.str_interner[k])))
+            .map(|(k, _)| Value::Str(StringIdx::Static(k)))
             .collect::<Vec<_>>();
         self.lists.alloc(&keys)
     }

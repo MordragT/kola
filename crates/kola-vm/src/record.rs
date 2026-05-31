@@ -31,7 +31,7 @@ impl DisplayWith<Heap> for RecordIdx {
         let pairs = heap
             .records
             .iter(Some(*self))
-            .map(|(k, v)| (&heap.str_interner[k], v));
+            .map(|(k, v)| (&heap.strings.interner[k], v));
         f.debug_map().entries(pairs).finish()
     }
 }
@@ -45,7 +45,7 @@ impl SerializeWith<Heap> for RecordIdx {
         let mut map = serializer.serialize_map(Some(pairs.len()))?;
 
         for (key, val) in pairs {
-            map.serialize_entry(&heap.str_interner[key], &heap.with(&val))?;
+            map.serialize_entry(&heap.strings.interner[key], &heap.with(&val))?;
         }
 
         map.end()

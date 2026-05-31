@@ -137,7 +137,7 @@ impl CekMachine {
         let Some(frame) = cont.pop() else {
             return MachineState::Error(format!(
                 "Unhandled effect operation: {} ({})",
-                heap.str_interner[op], op,
+                heap.strings.interner[op], op,
             ));
         };
 

@@ -75,7 +75,7 @@ impl Value {
                 let pairs = r
                     .into_iter()
                     .map(|(label, value)| {
-                        let label = heap.str_interner.intern(label);
+                        let label = heap.strings.interner.intern(label);
                         let value = Self::from_protocol(value, heap);
                         (label, value)
                     })
@@ -101,11 +101,11 @@ impl DisplayWith<Heap> for Value {
             Value::Bool(b) => write!(f, "{}", b),
             Value::Char(c) => write!(f, "{}", c),
             Value::Num(n) => write!(f, "{}", n),
-            Value::Str(s) => s.fmt(f, heap),
+            Value::Str(s) => s.fmt(f, &heap.strings),
             Value::Closure(_) => write!(f, "<closure>"),
             // Value::Cont(_) => write!(f, "<continuation>"),
             Value::Builtin(b) => write!(f, "{}", b),
-            Value::Tag(t) => t.fmt(f, &heap.str_interner),
+            Value::Tag(t) => t.fmt(f, &heap.strings.interner),
             Value::Variant(v) => v.fmt(f, heap),
             Value::Record(r) => {
                 if let Some(r) = r {
@@ -136,7 +136,7 @@ impl SerializeWith<Heap> for Value {
             Value::Bool(b) => serializer.serialize_bool(*b),
             Value::Char(c) => serializer.serialize_char(*c),
             Value::Num(n) => serializer.serialize_f64(*n),
-            Value::Str(s) => s.serialize(serializer, heap),
+            Value::Str(s) => s.serialize(serializer, &heap.strings),
             Value::Variant(v) => v.serialize(serializer, heap),
             Value::Record(r) => {
                 if let Some(r) = r {
