@@ -1,6 +1,7 @@
 use std::{fmt, num::NonZeroU32, range::Range};
 
 use kola_utils::{display::DisplayWith, serde::SerializeWith};
+use serde::ser::SerializeSeq;
 
 use crate::{heap::Heap, value::Value};
 
@@ -9,7 +10,7 @@ use crate::{heap::Heap, value::Value};
 /// Represents a contiguous range of `Value`s in the arena's backing storage.
 /// All arena operations take this index rather than `&[Value]`,
 /// enabling `Value::List(ListIdx)` to be `Copy` (8 bytes).
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, PartialOrd, Ord)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct ListIdx(Range<NonZeroU32>);
 
 impl ListIdx {
@@ -45,7 +46,7 @@ impl ListIdx {
 impl DisplayWith<Heap> for ListIdx {
     fn fmt(&self, f: &mut fmt::Formatter<'_>, heap: &Heap) -> fmt::Result {
         let slice = heap.lists.get(*self);
-        write!(f, "{}", slice)
+        f.debug_list().entries(slice.iter()).finish()
     }
 }
 
@@ -55,7 +56,13 @@ impl SerializeWith<Heap> for ListIdx {
         S: serde::Serializer,
     {
         let slice = heap.lists.get(*self);
-        slice.serialize(serializer)
+        let mut seq = serializer.serialize_seq(Some(slice.len()))?;
+
+        for v in slice {
+            seq.serialize_element(&heap.with(v))?;
+        }
+
+        seq.end()
     }
 }
 
@@ -105,32 +112,32 @@ impl ListArena {
 
     /// Get a reference to the element at the given index within the list.
     #[inline]
-    pub fn get_element(&self, idx: ListIdx, index: usize) -> Option<&Value> {
-        self.get(idx).get(index)
+    pub fn get_element(&self, idx: ListIdx, index: usize) -> Option<Value> {
+        self.get(idx).get(index).copied()
     }
 
     /// Get a reference to the first element.
     #[inline]
-    pub fn first(&self, idx: ListIdx) -> Option<&Value> {
-        self.get(idx).first()
+    pub fn first(&self, idx: ListIdx) -> Option<Value> {
+        self.get(idx).first().copied()
     }
 
     /// Get a reference to the last element.
     #[inline]
-    pub fn last(&self, idx: ListIdx) -> Option<&Value> {
-        self.get(idx).last()
+    pub fn last(&self, idx: ListIdx) -> Option<Value> {
+        self.get(idx).last().copied()
     }
 
     /// Check if the list contains the given value.
     #[inline]
-    pub fn contains(&self, idx: ListIdx, value: &Value) -> bool {
-        self.get(idx).contains(value)
+    pub fn contains(&self, idx: ListIdx, value: Value) -> bool {
+        self.get(idx).contains(&value)
     }
 
     /// Iterate over the values in the list.
     #[inline]
-    pub fn iter(&self, idx: ListIdx) -> impl Iterator<Item = &Value> {
-        self.get(idx).iter()
+    pub fn iter(&self, idx: ListIdx) -> impl Iterator<Item = Value> {
+        self.get(idx).iter().copied()
     }
 
     // ── allocation ────────────────────────────────────────────────
@@ -253,7 +260,7 @@ impl ListArena {
     ///
     /// Returns `Some((first, tail_idx))` if the list is non-empty.
     /// The original list is untouched.
-    pub fn split_first(&mut self, idx: ListIdx) -> Option<(Value, ListIdx)> {
+    pub fn split_front(&mut self, idx: ListIdx) -> Option<(Value, ListIdx)> {
         let start = idx.start();
         let end = idx.end();
         if start == end {
@@ -274,7 +281,7 @@ impl ListArena {
     ///
     /// Returns `Some((head_idx, last))` if the list is non-empty.
     /// The original list is untouched.
-    pub fn split_last(&mut self, idx: ListIdx) -> Option<(ListIdx, Value)> {
+    pub fn split_back(&mut self, idx: ListIdx) -> Option<(ListIdx, Value)> {
         let start = idx.start();
         let end = idx.end();
         if start == end {
@@ -352,6 +359,30 @@ impl ListArena {
 
         let new_end = self.data.len();
         ListIdx::make(new_start, new_end)
+    }
+
+    /// Fold over the elements of the list with a function.
+    pub fn fold<B, F>(&mut self, idx: ListIdx, init: B, mut f: F) -> B
+    where
+        F: FnMut(B, &Value) -> B,
+    {
+        let mut acc = init;
+        for v in self.get(idx) {
+            acc = f(acc, v);
+        }
+        acc
+    }
+
+    /// Try to fold over the elements of the list with a function that can fail.
+    pub fn try_fold<B, F, E>(&mut self, idx: ListIdx, init: B, mut f: F) -> Result<B, E>
+    where
+        F: FnMut(B, &Value) -> Result<B, E>,
+    {
+        let mut acc = init;
+        for v in self.get(idx) {
+            acc = f(acc, v)?;
+        }
+        Ok(acc)
     }
 }
 
@@ -457,7 +488,7 @@ mod tests {
         let mut arena = ListArena::new();
         let idx = arena.alloc(&[Value::Num(1.0), Value::Num(2.0), Value::Num(3.0)]);
 
-        let (first, tail) = arena.split_first(idx).unwrap();
+        let (first, tail) = arena.split_front(idx).unwrap();
         assert_eq!(first, Value::Num(1.0));
         assert_eq!(arena.get(tail), &[Value::Num(2.0), Value::Num(3.0)]);
         // Original is untouched
@@ -469,7 +500,7 @@ mod tests {
         let mut arena = ListArena::new();
         let idx = arena.alloc(&[Value::Num(1.0), Value::Num(2.0), Value::Num(3.0)]);
 
-        let (head, last) = arena.split_last(idx).unwrap();
+        let (head, last) = arena.split_back(idx).unwrap();
         assert_eq!(last, Value::Num(3.0));
         assert_eq!(arena.get(head), &[Value::Num(1.0), Value::Num(2.0)]);
         assert_eq!(arena.len(idx), 3);
@@ -524,7 +555,7 @@ mod tests {
         let mut arena = ListArena::new();
         let idx = arena.alloc_empty();
 
-        assert!(arena.split_first(idx).is_none());
+        assert!(arena.split_front(idx).is_none());
     }
 
     #[test]
@@ -532,7 +563,7 @@ mod tests {
         let mut arena = ListArena::new();
         let idx = arena.alloc_empty();
 
-        assert!(arena.split_last(idx).is_none());
+        assert!(arena.split_back(idx).is_none());
     }
 
     #[test]
@@ -542,7 +573,7 @@ mod tests {
 
         // Push front, then split first
         let extended = arena.push_front(idx, Value::Num(0.0));
-        let (first, tail) = arena.split_first(extended).unwrap();
+        let (first, tail) = arena.split_front(extended).unwrap();
         assert_eq!(first, Value::Num(0.0));
         assert_eq!(
             arena.get(tail),
@@ -570,8 +601,8 @@ mod tests {
         let mut arena = ListArena::new();
         let idx = arena.alloc(&[Value::Num(1.0), Value::Num(2.0), Value::Num(3.0)]);
 
-        assert!(arena.contains(idx, &Value::Num(2.0)));
-        assert!(!arena.contains(idx, &Value::Num(4.0)));
+        assert!(arena.contains(idx, Value::Num(2.0)));
+        assert!(!arena.contains(idx, Value::Num(4.0)));
     }
 
     #[test]
@@ -579,10 +610,10 @@ mod tests {
         let mut arena = ListArena::new();
         let idx = arena.alloc(&[Value::Num(1.0), Value::Num(2.0), Value::Num(3.0)]);
 
-        let values: Vec<&Value> = arena.iter(idx).collect();
+        let values: Vec<Value> = arena.iter(idx).collect();
         assert_eq!(
             values,
-            vec![&Value::Num(1.0), &Value::Num(2.0), &Value::Num(3.0)]
+            vec![Value::Num(1.0), Value::Num(2.0), Value::Num(3.0)]
         );
     }
 }

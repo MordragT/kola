@@ -3,16 +3,16 @@ use enum_as_inner::EnumAsInner;
 use kola_builtins::BuiltinId;
 use kola_ir::instr::Tag;
 use kola_protocol::{TypeProtocol, ValueProtocol};
-use kola_utils::{display::DisplayWith, interner::StrInterner, serde::SerializeWith};
-use std::fmt::{self, Display};
+use kola_utils::{display::DisplayWith, serde::SerializeWith};
+use std::fmt;
 
 use crate::{
-    closure::Closure, cont::RawCont, heap::Heap, list::ListIdx, record::RawRecord,
-    string::StringIdx, variant::Variant, witness::RawWitness,
+    closure::Closure, heap::Heap, list::ListIdx, record::RecordIdx, string::StringIdx,
+    variant::VariantIdx, witness::WitnessIdx,
 };
 
 /// Values produced by evaluating expressions
-#[derive(Debug, Default, EnumAsInner, From, Clone, PartialEq)]
+#[derive(Debug, Default, EnumAsInner, From, Clone, Copy, PartialEq)]
 pub enum Value {
     /// A unit value (no value)
     #[default]
@@ -27,23 +27,23 @@ pub enum Value {
     Str(StringIdx),
     /// A function closure (environment, function definition)
     Closure(Closure),
-    /// A captured continuation
-    Cont(RawCont<'static>),
     /// A built-in function (e.g., `__builtin_first`)
     Builtin(BuiltinId),
     /// A tag
     Tag(Tag),
     /// A variant (tag, value)
-    Variant(Variant),
+    Variant(VariantIdx),
     /// A record (map of labels to values)
-    Record(RawRecord<'static>),
+    Record(RecordIdx),
     /// A list of values
     List(ListIdx),
     /// A Type representation
-    Witness(RawWitness<'static>),
+    Witness(WitnessIdx),
 }
 
 impl Value {
+    pub const BITS: usize = std::mem::size_of::<Self>() * 8;
+
     pub fn from_json(
         type_proto: &TypeProtocol,
         json: &str,
@@ -62,33 +62,30 @@ impl Value {
             ValueProtocol::Bool(b) => Value::Bool(b),
             ValueProtocol::Char(c) => Value::Char(c),
             ValueProtocol::Num(n) => Value::Num(n),
-            ValueProtocol::Str(s) => Value::str(s, heap),
+            ValueProtocol::Str(s) => Value::Str(heap.strings.alloc(&s)),
             ValueProtocol::Variant(t, v) => {
-                let tag = Tag(heap.str_interner.intern(t));
+                let tag = Tag(heap.intern_str(t));
                 let value = Self::from_protocol(*v, heap);
-                let variant = Variant::new(tag, value);
-                Value::Variant(variant)
+                Value::Variant(heap.variants.alloc(tag, value))
             }
             ValueProtocol::Record(r) => {
-                let mut record = RawRecord::new();
+                let pairs = r
+                    .into_iter()
+                    .map(|(label, value)| {
+                        let label = heap.str_interner.intern(label);
+                        let value = Self::from_protocol(value, heap);
+                        (label, value)
+                    })
+                    .collect::<Vec<_>>();
 
-                // TODO if ValueProtocol was guaranteed to be sorted,
-                // this manual insertion (and binary searching) could be avoided.
-
-                for (label, value) in r {
-                    let label = heap.str_interner.intern(label);
-                    let value = Self::from_protocol(value, heap);
-                    record.insert(label, value);
-                }
-
-                Value::Record(record)
+                Value::Record(heap.records.alloc(&pairs))
             }
             ValueProtocol::List(l) => {
-                let list = l
+                let values = l
                     .into_iter()
                     .map(|v| Self::from_protocol(v, heap))
-                    .collect();
-                Value::List(list)
+                    .collect::<Vec<_>>();
+                Value::List(heap.lists.alloc(&values))
             }
         }
     }
@@ -103,13 +100,13 @@ impl DisplayWith<Heap> for Value {
             Value::Num(n) => write!(f, "{}", n),
             Value::Str(s) => s.fmt(f, heap),
             Value::Closure(_) => write!(f, "<closure>"),
-            Value::Cont(_) => write!(f, "<continuation>"),
+            // Value::Cont(_) => write!(f, "<continuation>"),
             Value::Builtin(b) => write!(f, "{}", b),
             Value::Tag(t) => t.fmt(f, &heap.str_interner),
             Value::Variant(v) => v.fmt(f, heap),
             Value::Record(r) => r.fmt(f, heap),
             Value::List(l) => l.fmt(f, heap),
-            Value::Witness(w) => w.0.to_json().unwrap().fmt(f),
+            Value::Witness(w) => w.fmt(f, heap),
         }
     }
 }

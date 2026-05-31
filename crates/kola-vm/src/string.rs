@@ -256,6 +256,13 @@ impl StringArena {
         StringIdx::make(new_start, new_end)
     }
 
+    /// Reverse the string.
+    ///
+    /// Returns a new index for the reversed string.
+    pub fn reverse(&mut self, idx: StringIdx) -> StringIdx {
+        todo!()
+    }
+
     /// Split off the first character from the string.
     #[inline]
     pub fn split_front(&mut self, idx: StringIdx) -> Option<(StringIdx, StringIdx)> {

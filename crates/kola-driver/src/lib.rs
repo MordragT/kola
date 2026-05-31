@@ -298,22 +298,13 @@ impl Driver {
             return Ok(());
         };
 
-        let context = MachineContext::new(
-            ir,
-            path.parent().unwrap(),
-            self.str_interner,
-            self.type_interner,
-        );
-
-        let mut heap = Heap::new();
+        let context = MachineContext::new(ir, path.parent().unwrap());
+        let mut heap = Heap::new(self.str_interner, self.type_interner);
         let mut machine = CekMachine::new(context, &mut heap);
 
         match machine.run(&mut heap) {
             Ok(value) => {
-                println!(
-                    "\nExecution result: {}",
-                    machine.context.str_interner.with(&value)
-                )
+                println!("\nExecution result: {}", heap.with(&value))
             }
             Err(e) => eprintln!("\nRuntime error: {}", e),
         }

@@ -5,7 +5,7 @@ use kola_protocol::{TypeKey, TypeProtocol};
 
 use crate::{
     config::{MachineState, OperationConfig, PatternConfig, StandardConfig},
-    cont::{ContFrame, RawCont},
+    cont::{Cont, ContFrame},
     env::RawEnv,
     eval::{Eval, eval_atom},
     heap::Heap,
@@ -36,21 +36,13 @@ impl MachineContext {
     pub fn start_config(&self, heap: &mut Heap) -> StandardConfig {
         let control = self.ir.root().get(&self.ir);
         let env = RawEnv::new();
-        let cont = RawCont::identity(env.clone().alloc(heap));
+        let cont = Cont::identity(env.clone().alloc(heap));
 
         StandardConfig { control, env, cont }
     }
 
     pub fn join_path(&self, path: impl AsRef<Utf8Path>) -> Utf8PathBuf {
         self.working_dir.join(path)
-    }
-
-    pub fn intern_str<'a>(&mut self, s: impl Into<Cow<'a, str>>) -> StrKey {
-        self.str_interner.intern(s)
-    }
-
-    pub fn intern_type<'a>(&mut self, t: impl Into<Cow<'a, TypeProtocol>>) -> TypeKey {
-        self.type_interner.intern(t)
     }
 }
 
@@ -149,7 +141,7 @@ impl CekMachine {
         let Some(frame) = cont.pop() else {
             return MachineState::Error(format!(
                 "Unhandled effect operation: {} ({})",
-                context.str_interner[op], op,
+                heap.str_interner[op], op,
             ));
         };
 
@@ -165,7 +157,7 @@ impl CekMachine {
                 // ⟨(do ℓ V)^E | γ | (σ, (γ', H)) :: κ | κ'⟩^op → ⟨M | γ'[x ↦ ⟦V⟧_γ, k ↦ (κ' ++ [(σ, (γ', H))])^B] | κ⟩
 
                 // Evaluate the operation argument
-                let arg_value = match eval_atom(context.ir.instr(arg), &env, context, heap) {
+                let arg_value = match eval_atom(context.ir.instr(arg), &env, heap) {
                     Ok(value) => value,
                     Err(err) => return MachineState::Error(err),
                 };
@@ -184,7 +176,7 @@ impl CekMachine {
                 // k ↦ (κ' ++ [(σ, (γ', H))])^B (the forwarding continuation plus current frame)
 
                 // Create the captured continuation by combining forwarding + current frame
-                forward.append(cont);
+                forward.append(&mut cont);
 
                 // Continue with the handler body (M in the rule) and remaining continuation (κ)
                 return MachineState::Standard(StandardConfig {
