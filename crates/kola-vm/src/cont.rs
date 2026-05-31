@@ -6,8 +6,8 @@ use kola_ir::{
 };
 
 use crate::{
-    arenas::RangeIdx, closure::Closure, env::HeapEnv, handler::HeapHandler, list::HeapList,
-    record::HeapRecord, string::HeapString,
+    arenas::RangeIdx, closure::Closure, env::HeapEnv, handler::HeapHandler, list::ListIdx,
+    record::HeapRecord, string::StringIdx,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -37,7 +37,7 @@ pub enum ContFrame {
 
     /// A recursive continuation frame (data, step) is used for primitive recursion.
     ListRec {
-        data: HeapList,
+        data: ListIdx,
         step: Closure,
     },
 
@@ -49,7 +49,7 @@ pub enum ContFrame {
 
     /// A recursive continuation frame (data, step) is used for primitive recursion.
     StrRec {
-        data: HeapString,
+        data: StringIdx,
         step: Closure,
     },
 }
@@ -59,7 +59,7 @@ impl ContFrame {
         Self::NumRec { data, step }
     }
 
-    pub fn list_rec(data: HeapList, step: Closure) -> Self {
+    pub fn list_rec(data: ListIdx, step: Closure) -> Self {
         Self::ListRec { data, step }
     }
 
@@ -67,7 +67,7 @@ impl ContFrame {
         Self::RecordRec { data, step }
     }
 
-    pub fn str_rec(data: HeapString, step: Closure) -> Self {
+    pub fn str_rec(data: StringIdx, step: Closure) -> Self {
         Self::StrRec { data, step }
     }
 

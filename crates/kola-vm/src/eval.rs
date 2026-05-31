@@ -7,7 +7,7 @@ use crate::{
     env::RawEnv,
     handler::{RawHandler, ReturnClause},
     heap::Heap,
-    list::RawList,
+    list::ListIdx,
     machine::MachineContext,
     record::RawRecord,
     value::{Value, to_usize_exact},
@@ -48,7 +48,7 @@ pub fn eval_atom(
         Atom::Bool(b) => Ok(Value::Bool(b)),
         Atom::Char(c) => Ok(Value::Char(c)),
         Atom::Num(n) => Ok(Value::Num(n)),
-        Atom::Str(s) => Ok(Value::str(context.str_interner[s].clone())),
+        Atom::Str(s) => Ok(Value::Str(heap.alloc_str_key(s))),
         Atom::Func(f) => {
             // Create a closure by capturing the current environment
             Ok(Value::Closure(Closure::new(env.alloc(heap), f)))
@@ -278,7 +278,7 @@ impl Eval for RetExpr {
                 let mut head = RawRecord::new();
                 head.insert(
                     context.str_interner.intern("key"),
-                    Value::str(context.str_interner[first.0].to_owned()),
+                    Value::Str(heap.alloc_str_key(first.0)),
                 );
                 head.insert(context.str_interner.intern("value"), first.1);
 
@@ -308,7 +308,7 @@ impl Eval for RetExpr {
                 })
             }
             ContFrame::StrRec { data, step } => {
-                let Some(head) = data.get(heap).into_owned().pop_front() else {
+                let Some((head, tail)) = heap.strings.split_front(data) else {
                     // Empty string — continue with next frame
                     return MachineState::Standard(StandardConfig {
                         control: Expr::from(*self),
@@ -318,10 +318,7 @@ impl Eval for RetExpr {
                 };
 
                 // Continue with the next frame
-                cont.push(ContFrame::StrRec {
-                    data,
-                    step: step.clone(),
-                });
+                cont.push(ContFrame::StrRec { data, step });
 
                 let Closure {
                     env,
@@ -331,7 +328,7 @@ impl Eval for RetExpr {
                 // Create argument for the step function
                 let mut record = RawRecord::new();
                 record.insert(context.str_interner.intern("acc"), value); // value = result from previous step
-                record.insert(context.str_interner.intern("head"), Value::str(head));
+                record.insert(context.str_interner.intern("head"), Value::Str(head));
 
                 let mut env = env.get(heap).into_owned();
                 env.insert(param, Value::Record(record));
@@ -1508,17 +1505,17 @@ impl Eval for ListExpr {
             next,
         } = *self;
 
-        let mut list = RawList::new();
+        let list = heap
+            .lists
+            .try_alloc_iter(
+                context
+                    .ir
+                    .iter_items(head)
+                    .map(|item| eval_atom(item.value.get(&context.ir), &env, context, heap)),
+            )
+            .map_err(MachineState::Error)?;
 
-        for ListItem { value, .. } in context.ir.iter_items(head) {
-            match eval_atom(value.get(&context.ir), &env, context, heap) {
-                Ok(value) => list.push_back(value),
-                Err(err) => return MachineState::Error(err),
-            }
-        }
-
-        let list_value = Value::List(list);
-        env.insert(bind, list_value);
+        env.insert(bind, Value::List(list));
 
         MachineState::Standard(StandardConfig {
             control: next.get(&context.ir),

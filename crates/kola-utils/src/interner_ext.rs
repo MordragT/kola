@@ -7,37 +7,7 @@ use std::{
 use camino::Utf8Path;
 use serde::Serialize;
 
-use crate::interner::{Interner, PathInterner, PathKey, StrInterner, StrKey};
-
-pub trait DisplayWithInterner<B, S = RandomState>
-where
-    B: ?Sized + ToOwned + Eq + Hash + 'static,
-    <B as ToOwned>::Owned: Borrow<B> + 'static,
-{
-    fn fmt(&self, f: &mut fmt::Formatter<'_>, interner: &Interner<B, S>) -> fmt::Result;
-}
-
-impl DisplayWithInterner<str> for StrKey {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>, interner: &StrInterner) -> fmt::Result {
-        write!(f, "{}", interner[*self])
-    }
-}
-
-impl DisplayWithInterner<Utf8Path> for PathKey {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>, interner: &PathInterner) -> fmt::Result {
-        write!(f, "{}", interner[*self])
-    }
-}
-
-pub trait SerializeWithInterner<B, State = RandomState>
-where
-    B: ?Sized + ToOwned + Eq + Hash + 'static,
-    <B as ToOwned>::Owned: Borrow<B> + 'static,
-{
-    fn serialize<S>(&self, serializer: S, interner: &Interner<B, State>) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer;
-}
+use crate::{display::DisplayWith, interner::Interner, serde::SerializeWith};
 
 pub struct WithInterner<'a, T, B, S = RandomState>
 where
@@ -60,7 +30,7 @@ where
 
 impl<T, B, S> fmt::Display for WithInterner<'_, T, B, S>
 where
-    T: DisplayWithInterner<B, S>,
+    T: DisplayWith<Interner<B, S>>,
     B: ?Sized + ToOwned + Eq + Hash + 'static,
     <B as ToOwned>::Owned: Borrow<B> + 'static,
 {
@@ -71,7 +41,7 @@ where
 
 impl<T, B, State> Serialize for WithInterner<'_, T, B, State>
 where
-    T: SerializeWithInterner<B, State>,
+    T: SerializeWith<Interner<B, State>>,
     B: ?Sized + ToOwned + Eq + Hash + 'static,
     <B as ToOwned>::Owned: Borrow<B> + 'static,
 {
@@ -83,7 +53,7 @@ where
     }
 }
 
-pub trait InternerExt<B, S>
+pub trait InternerExt<B, S>: Sized
 where
     B: ?Sized + ToOwned + Eq + Hash + 'static,
     <B as ToOwned>::Owned: Borrow<B> + 'static,
@@ -93,7 +63,7 @@ where
     #[inline]
     fn to_string<T>(&self, value: &T) -> String
     where
-        T: DisplayWithInterner<B, S>,
+        T: DisplayWith<Interner<B, S>>,
     {
         self.with(value).to_string()
     }
@@ -101,7 +71,7 @@ where
     #[inline]
     fn to_json<T>(&self, value: &T) -> serde_json::Result<String>
     where
-        T: SerializeWithInterner<B, S>,
+        T: SerializeWith<Interner<B, S>>,
     {
         serde_json::to_string_pretty(&self.with(value))
     }

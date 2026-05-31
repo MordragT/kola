@@ -5,9 +5,10 @@ use kola_builtins::BuiltinId;
 use kola_print::prelude::*;
 use kola_protocol::{TypeInterner, TypeKey, TypeProtocol};
 use kola_utils::{
+    display::DisplayWith,
     impl_try_as,
     interner::{StrInterner, StrKey},
-    interner_ext::{DisplayWithInterner, InternerExt},
+    interner_ext::InternerExt,
 };
 
 use super::{Expr, Symbol};
@@ -73,7 +74,7 @@ impl<'a> Notate<'a> for IrPrinter<'a, Func> {
 #[derive(Debug, From, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Tag(pub StrKey);
 
-impl DisplayWithInterner<str> for Tag {
+impl DisplayWith<StrInterner> for Tag {
     fn fmt(&self, f: &mut fmt::Formatter<'_>, interner: &StrInterner) -> fmt::Result {
         write!(f, "#{}", interner[self.0].blue())
     }
@@ -82,7 +83,7 @@ impl DisplayWithInterner<str> for Tag {
 #[derive(Debug, From, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct Witness(pub TypeKey);
 
-impl DisplayWithInterner<TypeProtocol> for Witness {
+impl DisplayWith<TypeInterner> for Witness {
     fn fmt(&self, f: &mut fmt::Formatter<'_>, interner: &TypeInterner) -> fmt::Result {
         interner[self.0].to_json().unwrap().fmt(f)
     }

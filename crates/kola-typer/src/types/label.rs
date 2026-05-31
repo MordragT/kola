@@ -3,8 +3,8 @@ use std::fmt;
 use derive_more::{Display, From};
 use kola_protocol::TypeProtocol;
 use kola_utils::{
+    display::DisplayWith,
     interner::{StrInterner, StrKey},
-    interner_ext::DisplayWithInterner,
 };
 use serde::{Deserialize, Serialize};
 
@@ -32,7 +32,7 @@ impl fmt::Display for Label {
     }
 }
 
-impl DisplayWithInterner<str> for Label {
+impl DisplayWith<StrInterner> for Label {
     fn fmt(&self, f: &mut fmt::Formatter<'_>, interner: &StrInterner) -> fmt::Result {
         write!(f, "{}", interner[self.0])
     }
@@ -80,7 +80,7 @@ impl LabelOrVar {
     }
 }
 
-impl DisplayWithInterner<str> for LabelOrVar {
+impl DisplayWith<StrInterner> for LabelOrVar {
     fn fmt(&self, f: &mut fmt::Formatter<'_>, interner: &StrInterner) -> fmt::Result {
         match self {
             Self::Var(var) => write!(f, "{var}"),

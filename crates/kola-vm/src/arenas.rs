@@ -1,4 +1,4 @@
-use std::{borrow::Cow, marker::PhantomData, num::NonZeroU32, range::Range};
+use std::{marker::PhantomData, num::NonZeroU32, range::Range};
 
 #[derive(Debug)]
 pub struct Idx<T: ?Sized>(NonZeroU32, PhantomData<T>);
@@ -32,7 +32,7 @@ impl<T: ?Sized> Ord for Idx<T> {
 }
 
 #[derive(Debug)]
-pub struct Arena<T: Clone>(Vec<T>);
+pub struct Arena<T: Clone>(pub Vec<T>);
 
 impl<T: Clone> Arena<T> {
     #[inline]
@@ -53,8 +53,8 @@ impl<T: Clone> Arena<T> {
     }
 
     #[inline]
-    pub fn get(&self, idx: Idx<T>) -> Cow<'_, T> {
-        Cow::Borrowed(&self.0[idx.0.get() as usize - 1])
+    pub fn get(&self, idx: Idx<T>) -> &T {
+        &self.0[idx.0.get() as usize - 1]
     }
 }
 
@@ -88,7 +88,7 @@ impl<T: ?Sized> PartialEq for RangeIdx<T> {
 impl<T: ?Sized> Eq for RangeIdx<T> {}
 
 #[derive(Debug)]
-pub struct RangeArena<T: Clone>(Vec<T>);
+pub struct RangeArena<T: Clone>(pub Vec<T>);
 
 impl<T: Clone> RangeArena<T> {
     #[inline]
@@ -113,47 +113,7 @@ impl<T: Clone> RangeArena<T> {
     }
 
     #[inline]
-    pub fn get(&self, idx: RangeIdx<T>) -> Cow<'_, [T]> {
-        Cow::Borrowed(&self.0[idx.0.start.get() as usize - 1..idx.0.end.get() as usize - 1])
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct StringIndex(Range<NonZeroU32>);
-
-impl StringIndex {
-    pub fn is_empty(&self) -> bool {
-        self.0.start == self.0.end
-    }
-
-    pub fn len(&self) -> usize {
-        (self.0.end.get() - self.0.start.get()) as usize
-    }
-}
-
-#[derive(Debug)]
-pub struct StringArena(String);
-
-impl StringArena {
-    pub fn new() -> Self {
-        Self(String::new())
-    }
-
-    #[inline]
-    pub fn alloc(&mut self, s: &str) -> StringIndex {
-        let start = NonZeroU32::new((self.0.len() + 1) as u32).expect("string arena overflow");
-        self.0.push_str(s);
-        let end = NonZeroU32::new((self.0.len() + 1) as u32).expect("string arena overflow");
-        StringIndex(Range { start, end })
-    }
-
-    #[inline]
-    pub fn get(&self, idx: StringIndex) -> &str {
+    pub fn get(&self, idx: RangeIdx<T>) -> &[T] {
         &self.0[idx.0.start.get() as usize - 1..idx.0.end.get() as usize - 1]
-    }
-
-    #[inline]
-    pub fn get_cloned(&self, idx: StringIndex) -> String {
-        self.get(idx).to_owned()
     }
 }

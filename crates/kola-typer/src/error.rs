@@ -1,5 +1,9 @@
 use kola_span::IntoDiagnostic;
-use kola_utils::{errors::Errors, interner::StrKey, interner_ext::DisplayWithInterner};
+use kola_utils::{
+    display::DisplayWith,
+    errors::Errors,
+    interner::{StrInterner, StrKey},
+};
 use thiserror::Error;
 
 use crate::types::{Kind, LabelOrVar, MonoType, PolyType, TypeClass, TypeVar};
@@ -55,12 +59,8 @@ pub enum TypeError {
     MissingLabel(LabelOrVar),
 }
 
-impl DisplayWithInterner<str> for TypeError {
-    fn fmt(
-        &self,
-        f: &mut std::fmt::Formatter<'_>,
-        interner: &kola_utils::interner::StrInterner,
-    ) -> std::fmt::Result {
+impl DisplayWith<StrInterner> for TypeError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>, interner: &StrInterner) -> std::fmt::Result {
         match self {
             TypeError::Unbound(name) => writeln!(f, "Unbound: {}", interner[*name]),
             TypeError::Occurs(var) => writeln!(f, "Occurs: {}", var),

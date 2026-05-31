@@ -3,15 +3,12 @@ use enum_as_inner::EnumAsInner;
 use kola_builtins::BuiltinId;
 use kola_ir::instr::Tag;
 use kola_protocol::{TypeProtocol, ValueProtocol};
-use kola_utils::{
-    interner::StrInterner,
-    interner_ext::{DisplayWithInterner, SerializeWithInterner},
-};
+use kola_utils::{display::DisplayWith, interner::StrInterner, serde::SerializeWith};
 use std::fmt::{self, Display};
 
 use crate::{
-    closure::Closure, cont::RawCont, list::RawList, record::RawRecord, string::RawString,
-    variant::Variant, witness::RawWitness,
+    closure::Closure, cont::RawCont, heap::Heap, list::ListIdx, record::RawRecord,
+    string::StringIdx, variant::Variant, witness::RawWitness,
 };
 
 /// Values produced by evaluating expressions
@@ -27,7 +24,7 @@ pub enum Value {
     /// A numeric value (floating point)
     Num(f64),
     /// A string value
-    Str(RawString<'static>),
+    Str(StringIdx),
     /// A function closure (environment, function definition)
     Closure(Closure),
     /// A captured continuation
@@ -41,42 +38,34 @@ pub enum Value {
     /// A record (map of labels to values)
     Record(RawRecord<'static>),
     /// A list of values
-    List(RawList<'static>),
+    List(ListIdx),
     /// A Type representation
     Witness(RawWitness<'static>),
 }
 
 impl Value {
-    pub fn str(s: impl Into<RawString<'static>>) -> Self {
-        Value::Str(s.into())
-    }
-
-    pub fn variant(tag: Tag, value: Self) -> Self {
-        Value::Variant(Variant::new(tag, value))
-    }
-
     pub fn from_json(
         type_proto: &TypeProtocol,
         json: &str,
-        interner: &mut StrInterner,
+        heap: &mut Heap,
     ) -> Result<Self, String> {
         let proto = serde_json::from_str::<ValueProtocol>(json).map_err(|e| e.to_string())?;
 
         type_proto.validate_value(&proto)?;
 
-        Ok(Self::from_protocol(proto, interner))
+        Ok(Self::from_protocol(proto, heap))
     }
 
-    pub fn from_protocol(proto: ValueProtocol, interner: &mut StrInterner) -> Self {
+    pub fn from_protocol(proto: ValueProtocol, heap: &mut Heap) -> Self {
         match proto {
             ValueProtocol::Unit => Value::None,
             ValueProtocol::Bool(b) => Value::Bool(b),
             ValueProtocol::Char(c) => Value::Char(c),
             ValueProtocol::Num(n) => Value::Num(n),
-            ValueProtocol::Str(s) => Value::str(s),
+            ValueProtocol::Str(s) => Value::str(s, heap),
             ValueProtocol::Variant(t, v) => {
-                let tag = Tag(interner.intern(t));
-                let value = Self::from_protocol(*v, interner);
+                let tag = Tag(heap.str_interner.intern(t));
+                let value = Self::from_protocol(*v, heap);
                 let variant = Variant::new(tag, value);
                 Value::Variant(variant)
             }
@@ -87,8 +76,8 @@ impl Value {
                 // this manual insertion (and binary searching) could be avoided.
 
                 for (label, value) in r {
-                    let label = interner.intern(label);
-                    let value = Self::from_protocol(value, interner);
+                    let label = heap.str_interner.intern(label);
+                    let value = Self::from_protocol(value, heap);
                     record.insert(label, value);
                 }
 
@@ -97,7 +86,7 @@ impl Value {
             ValueProtocol::List(l) => {
                 let list = l
                     .into_iter()
-                    .map(|v| Self::from_protocol(v, interner))
+                    .map(|v| Self::from_protocol(v, heap))
                     .collect();
                 Value::List(list)
             }
@@ -105,28 +94,28 @@ impl Value {
     }
 }
 
-impl DisplayWithInterner<str> for Value {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>, interner: &StrInterner) -> fmt::Result {
+impl DisplayWith<Heap> for Value {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>, heap: &Heap) -> fmt::Result {
         match self {
             Value::None => write!(f, "()"),
             Value::Bool(b) => write!(f, "{}", b),
             Value::Char(c) => write!(f, "{}", c),
             Value::Num(n) => write!(f, "{}", n),
-            Value::Str(s) => write!(f, "{}", s),
+            Value::Str(s) => s.fmt(f, heap),
             Value::Closure(_) => write!(f, "<closure>"),
             Value::Cont(_) => write!(f, "<continuation>"),
             Value::Builtin(b) => write!(f, "{}", b),
-            Value::Tag(t) => t.fmt(f, interner),
-            Value::Variant(v) => v.fmt(f, interner),
-            Value::Record(r) => r.fmt(f, interner),
-            Value::List(l) => l.fmt(f, interner),
+            Value::Tag(t) => t.fmt(f, &heap.str_interner),
+            Value::Variant(v) => v.fmt(f, heap),
+            Value::Record(r) => r.fmt(f, heap),
+            Value::List(l) => l.fmt(f, heap),
             Value::Witness(w) => w.0.to_json().unwrap().fmt(f),
         }
     }
 }
 
-impl SerializeWithInterner<str> for Value {
-    fn serialize<S>(&self, serializer: S, interner: &StrInterner) -> Result<S::Ok, S::Error>
+impl SerializeWith<Heap> for Value {
+    fn serialize<S>(&self, serializer: S, heap: &Heap) -> Result<S::Ok, S::Error>
     where
         S: serde::Serializer,
     {
@@ -135,10 +124,10 @@ impl SerializeWithInterner<str> for Value {
             Value::Bool(b) => serializer.serialize_bool(*b),
             Value::Char(c) => serializer.serialize_char(*c),
             Value::Num(n) => serializer.serialize_f64(*n),
-            Value::Str(s) => serializer.serialize_str(&s.0),
-            Value::Variant(v) => v.serialize(serializer, interner),
-            Value::Record(r) => r.serialize(serializer, interner),
-            Value::List(l) => l.serialize(serializer, interner),
+            Value::Str(s) => s.serialize(serializer, heap),
+            Value::Variant(v) => v.serialize(serializer, heap),
+            Value::Record(r) => r.serialize(serializer, heap),
+            Value::List(l) => l.serialize(serializer, heap),
             _ => Err(serde::ser::Error::custom(
                 "Cannot serialize this Value variant",
             )),

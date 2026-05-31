@@ -1,331 +1,512 @@
-use std::{borrow::Cow, fmt};
+use std::{fmt, num::NonZeroU32, range::Range};
 
-use kola_utils::{
-    interner::{StrInterner, StrKey},
-    interner_ext::{DisplayWithInterner, InternerExt, SerializeWithInterner},
-};
+use kola_utils::interner::StrKey;
 
-use crate::{arenas::RangeIdx, heap::Heap, value::Value};
+use crate::value::Value;
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub struct HeapRecord(pub RangeIdx<(StrKey, Value)>);
+/// A `Copy`-friendly index into a `RecordArena`.
+///
+/// Represents a contiguous range of `(StrKey, Value)` pairs in the arena's
+/// backing storage. All arena operations take this index rather than `&[(StrKey, Value)]`,
+/// enabling `Value::Record(RecordIdx)` to be `Copy` (8 bytes).
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct RecordIdx(Range<NonZeroU32>);
 
-impl HeapRecord {
-    pub fn get(self, heap: &Heap) -> RawRecord<'_> {
-        heap.get_record(self)
+impl RecordIdx {
+    #[inline]
+    pub fn is_empty(self) -> bool {
+        self.0.start == self.0.end
+    }
+
+    #[inline]
+    pub fn len(self) -> usize {
+        (self.0.end.get() - self.0.start.get()) as usize
+    }
+
+    #[inline]
+    fn start(self) -> usize {
+        self.0.start.get() as usize - 1
+    }
+
+    #[inline]
+    fn end(self) -> usize {
+        self.0.end.get() as usize - 1
+    }
+
+    #[inline]
+    fn make(start: usize, end: usize) -> Self {
+        RecordIdx(Range {
+            start: NonZeroU32::new((start + 1) as u32).expect("record arena overflow"),
+            end: NonZeroU32::new((end + 1) as u32).expect("record arena overflow"),
+        })
     }
 }
 
-/// A record is an ordered sequence of `(StrKey, Value)` pairs sorted by key.
+/// An append-only arena for records.
 ///
-/// Duplicate keys are allowed (shadow semantics): the most recently inserted
-/// value for a key appears first in sorted order. `get()` returns the first
-/// match, so later inserts shadow earlier ones.
+/// All record entries are stored as `(StrKey, Value)` pairs in a `Vec`,
+/// sorted by key. Duplicate keys are allowed (shadow semantics): the
+/// most recently inserted value for a key appears first.
 ///
-/// Shadowed entries are preserved: if the visible entry is removed, the next
-/// one resurfaces.
-#[derive(Debug, Clone, PartialEq)]
-pub struct RawRecord<'a>(pub Cow<'a, [(StrKey, Value)]>);
+/// Mutating operations (`insert`, `remove`, etc.) create new regions
+/// in the arena. The original record is untouched.
+#[derive(Debug, Clone)]
+pub struct RecordArena {
+    data: Vec<(StrKey, Value)>,
+}
 
-// ——— read-only methods (any lifetime) ———
-
-impl<'a> RawRecord<'a> {
-    #[inline]
+impl RecordArena {
     pub fn new() -> Self {
-        Self(Cow::Borrowed(&[]))
+        Self { data: Vec::new() }
     }
 
-    /// Convert to an owned, `'static` version (clones only if borrowed).
-    #[inline]
-    pub fn into_owned(self) -> RawRecord<'static> {
-        RawRecord(Cow::Owned(self.0.into_owned()))
-    }
-
-    #[inline]
-    pub fn alloc(&self, heap: &mut Heap) -> HeapRecord {
-        heap.alloc_record(self)
-    }
-
-    /// Binary search for the first occurrence of `key`.
-    /// Returns the index if found, or the insertion point if not.
-    #[inline]
-    fn search(&self, key: &StrKey) -> Result<usize, usize> {
-        match self.0.binary_search_by_key(key, |(k, _)| *k) {
-            Ok(mut idx) => {
-                // Walk left to find the *first* occurrence (most recently inserted)
-                while idx > 0 && self.0[idx - 1].0 == *key {
-                    idx -= 1;
-                }
-                Ok(idx)
-            }
-            Err(idx) => Err(idx),
+    pub fn with_capacity(capacity: usize) -> Self {
+        Self {
+            data: Vec::with_capacity(capacity),
         }
     }
 
+    // ── read-only operations ──────────────────────────────────────
+
+    /// Get the slice of entries for the given index.
     #[inline]
-    pub fn get(&self, key: StrKey) -> Option<&Value> {
-        self.search(&key).ok().map(|idx| &self.0[idx].1)
+    pub fn get(&self, idx: RecordIdx) -> &[(StrKey, Value)] {
+        &self.data[idx.start()..idx.end()]
     }
 
+    /// Get the length (including shadowed entries).
     #[inline]
-    pub fn contains_key(&self, key: StrKey) -> bool {
-        self.search(&key).is_ok()
+    pub fn len(&self, idx: RecordIdx) -> usize {
+        idx.len()
     }
 
+    /// Check if the record is empty.
     #[inline]
-    pub fn first(&self) -> Option<(&StrKey, &Value)> {
-        self.0.first().map(|(k, v)| (k, v))
+    pub fn is_empty(&self, idx: RecordIdx) -> bool {
+        idx.is_empty()
     }
 
+    /// Get a value by key (returns the first/shadowing entry).
+    pub fn get_value(&self, idx: RecordIdx, key: StrKey) -> Option<&Value> {
+        let slice = self.get(idx);
+        slice
+            .binary_search_by_key(&key, |(k, _)| *k)
+            .ok()
+            .map(|pos| &slice[pos].1)
+    }
+
+    /// Check if the record contains the given key.
+    pub fn contains_key(&self, idx: RecordIdx, key: StrKey) -> bool {
+        let slice = self.get(idx);
+        slice.binary_search_by_key(&key, |(k, _)| *k).is_ok()
+    }
+
+    /// Get the first (oldest) entry.
+    pub fn first(&self, idx: RecordIdx) -> Option<(&StrKey, &Value)> {
+        self.get(idx).first().map(|(k, v)| (k, v))
+    }
+
+    /// Iterate over all entries (including shadowed).
+    pub fn iter(&self, idx: RecordIdx) -> impl Iterator<Item = &(StrKey, Value)> {
+        self.get(idx).iter()
+    }
+
+    // ── allocation ────────────────────────────────────────────────
+
+    /// Allocate a new record from a slice of entries.
+    /// The entries must be sorted by key.
     #[inline]
-    pub fn is_empty(&self) -> bool {
-        self.0.is_empty()
+    pub fn alloc(&mut self, entries: &[(StrKey, Value)]) -> RecordIdx {
+        let start = self.data.len();
+        self.data.extend_from_slice(entries);
+        let end = self.data.len();
+        RecordIdx::make(start, end)
     }
 
-    /// Returns the total number of entries (including shadowed).
+    /// Allocate an empty record.
     #[inline]
-    pub fn len_all(&self) -> usize {
-        self.0.len()
+    pub fn alloc_empty(&mut self) -> RecordIdx {
+        let pos = self.data.len();
+        RecordIdx::make(pos, pos)
     }
 
-    /// Returns an iterator over all entries (including shadowed).
+    /// Allocate a single-entry record.
     #[inline]
-    pub fn iter_all(&self) -> impl Iterator<Item = &(StrKey, Value)> {
-        self.0.iter()
+    pub fn alloc_unit(&mut self, key: StrKey, value: Value) -> RecordIdx {
+        let start = self.data.len();
+        self.data.push((key, value));
+        let end = self.data.len();
+        RecordIdx::make(start, end)
     }
 
-    /// Returns an iterator over visible (non-shadowed) entries.
-    ///
-    /// For keys that appear multiple times, only the first occurrence
-    /// (the most recently inserted value) is yielded.
-    pub fn iter(&self) -> impl Iterator<Item = (&StrKey, &Value)> {
-        let mut seen = std::collections::HashSet::new();
-        self.0.iter().filter_map(
-            move |(k, v)| {
-                if seen.insert(*k) { Some((k, v)) } else { None }
-            },
-        )
-    }
-
-    /// Returns the number of visible (non-shadowed) entries.
+    /// Copy an existing record within the arena.
     #[inline]
-    pub fn len(&self) -> usize {
-        self.iter().count()
+    pub fn copy(&mut self, idx: RecordIdx) -> RecordIdx {
+        let start = self.data.len();
+        self.data.extend_from_within(idx.start()..idx.end());
+        let end = self.data.len();
+        RecordIdx::make(start, end)
     }
 
-    #[inline]
-    pub fn keys(&self) -> impl Iterator<Item = StrKey> {
-        self.iter().map(|(k, _)| *k)
-    }
+    // ── mutating operations ───────────────────────────────────────
 
-    #[inline]
-    pub fn values(&self) -> impl Iterator<Item = &Value> {
-        self.iter().map(|(_, v)| v)
-    }
-}
-
-// ——— mutating methods (only on `'static` / owned data) ———
-
-impl RawRecord<'static> {
     /// Insert a key-value pair at the correct sorted position.
     ///
-    /// If the key already exists, this new value is inserted *before* the
-    /// existing one, shadowing it.
-    #[inline]
-    pub fn insert(&mut self, key: StrKey, value: Value) {
-        let idx = match self.search(&key) {
-            Ok(idx) => idx,  // insert before first existing occurrence → shadows it
-            Err(idx) => idx, // insert at computed position
+    /// If the key already exists, the new entry is inserted before the
+    /// existing one, shadowing it. The old entry is skipped in the copy.
+    ///
+    /// Returns a new index for the resulting record.
+    pub fn insert(&mut self, idx: RecordIdx, key: StrKey, value: Value) -> RecordIdx {
+        let start = idx.start();
+        let end = idx.end();
+        let slice = &self.data[start..end];
+
+        // Find insertion point
+        let insert_pos = match slice.binary_search_by_key(&key, |(k, _)| *k) {
+            Ok(pos) => pos, // insert at existing key position → shadows it
+            Err(pos) => pos,
         };
-        self.0.to_mut().insert(idx, (key, value));
-    }
 
-    /// Remove the first (visible) occurrence of `key`, unshadowing the next.
-    #[inline]
-    pub fn remove(&mut self, key: StrKey) -> Option<Value> {
-        let idx = self.search(&key).ok()?;
-        Some(self.0.to_mut().remove(idx).1)
-    }
-
-    #[inline]
-    pub fn pop_first(&mut self) -> Option<(StrKey, Value)> {
-        if self.0.is_empty() {
-            None
+        // Check if we're shadowing an existing entry
+        let has_shadow = insert_pos < (end - start) && self.data[start + insert_pos].0 == key;
+        let skip_start = if has_shadow {
+            start + insert_pos + 1
         } else {
-            Some(self.0.to_mut().remove(0))
+            start + insert_pos
+        };
+
+        let new_start = self.data.len();
+
+        // Copy entries before insertion point
+        if insert_pos > 0 {
+            self.data.extend_from_within(start..start + insert_pos);
         }
+
+        // Insert new entry
+        self.data.push((key, value));
+
+        // Copy entries after insertion point (skipping shadowed entry if any)
+        if skip_start < end {
+            self.data.extend_from_within(skip_start..end);
+        }
+
+        let new_end = self.data.len();
+        RecordIdx::make(new_start, new_end)
     }
 
-    #[inline]
-    pub fn unit(label: StrKey, value: Value) -> Self {
-        Self(Cow::Owned(vec![(label, value)]))
-    }
-
-    /// Merge two records, left-biased: keys from `self` shadow `other`.
+    /// Remove the first (visible) occurrence of `key`.
     ///
-    /// Shadowed entries are preserved — removing the left value makes the
-    /// right value resurfaces.
-    pub fn merge_left(self, other: RawRecord) -> Self {
-        let mut entries = self.0.into_owned();
-        let mut other_entries = other.0.into_owned();
-        entries.append(&mut other_entries);
-        entries.sort_by(|(a, _), (b, _)| a.cmp(b));
-        Self(Cow::Owned(entries))
+    /// Returns a new index for the resulting record.
+    /// If the key doesn't exist, returns the original index unchanged.
+    pub fn remove(&self, idx: RecordIdx, key: StrKey) -> RecordIdx {
+        let start = idx.start();
+        let end = idx.end();
+        let slice = &self.data[start..end];
+
+        let pos = match slice.binary_search_by_key(&key, |(k, _)| *k) {
+            Ok(pos) => pos,
+            Err(_) => return idx, // key not found, return unchanged
+        };
+
+        let new_start = self.data.len();
+
+        // Copy entries before the removed entry
+        if pos > 0 {
+            self.data.extend_from_within(start..start + pos);
+        }
+
+        // Copy entries after the removed entry
+        if start + pos + 1 < end {
+            self.data.extend_from_within(start + pos + 1..end);
+        }
+
+        let new_end = self.data.len();
+        RecordIdx::make(new_start, new_end)
     }
 
-    /// Merge two records, right-biased: keys from `other` shadow `self`.
-    pub fn merge_right(self, other: Self) -> Self {
-        other.merge_left(self)
-    }
-
-    /// Deep merge: same key → recursively merge record values.
+    /// Merge two records, left-biased: keys from `left` shadow `right`.
     ///
-    /// 1. `r & {}` or `{} & r` = `r`
-    /// 2. `{a: t | r} & {a: u | s}` = `{a: (t & u) | (r & s)}`
-    /// 3. `{a: t | r} & {b: u | s}` = `{a: t | b: u | (r & s)}` if `a ≠ b`
-    pub fn merge(mut self, mut other: Self) -> Option<Self> {
-        if self.is_empty() {
-            return Some(other);
-        }
-        if other.is_empty() {
-            return Some(self);
-        }
+    /// Both records must be sorted by key. The result is also sorted.
+    pub fn merge_left(&mut self, left: RecordIdx, right: RecordIdx) -> RecordIdx {
+        let l_start = left.start();
+        let l_end = left.end();
+        let r_start = right.start();
+        let r_end = right.end();
 
-        let mut merged = Self::new();
+        let new_start = self.data.len();
 
-        while let Some(((left_label, left_value), (right_label, right_value))) =
-            self.pop_first().zip(other.pop_first())
-        {
-            if left_label == right_label {
-                let (Value::Record(left_inner), Value::Record(right_inner)) =
-                    (left_value, right_value)
-                else {
-                    return None;
-                };
-                let merged_value = left_inner.merge(right_inner)?;
-                merged.insert(left_label, Value::Record(merged_value));
-            } else {
-                merged.insert(left_label, left_value);
-                merged.insert(right_label, right_value);
+        // Sorted merge: interleave entries from both records
+        let mut i = l_start;
+        let mut j = r_start;
+
+        while i < l_end && j < r_end {
+            match self.data[i].0.cmp(&self.data[j].0) {
+                std::cmp::Ordering::Less => {
+                    self.data.push(self.data[i].clone());
+                    i += 1;
+                }
+                std::cmp::Ordering::Greater => {
+                    self.data.push(self.data[j].clone());
+                    j += 1;
+                }
+                std::cmp::Ordering::Equal => {
+                    // Left shadows right
+                    self.data.push(self.data[i].clone());
+                    i += 1;
+                    j += 1;
+                }
             }
         }
 
-        // Drain remaining entries
-        while let Some((label, value)) = self.pop_first() {
-            merged.insert(label, value);
+        // Drain remaining
+        if i < l_end {
+            self.data.extend_from_within(i..l_end);
         }
-        while let Some((label, value)) = other.pop_first() {
-            merged.insert(label, value);
+        if j < r_end {
+            self.data.extend_from_within(j..r_end);
         }
 
-        Some(merged)
+        let new_end = self.data.len();
+        RecordIdx::make(new_start, new_end)
     }
 
-    /// Extend a record at the specified field path.
-    pub fn extend_at_path(&mut self, field_path: &[StrKey], value: Value) -> Result<(), String> {
-        match field_path {
-            [] => Err("Empty field path".to_string()),
-            [label] => {
-                self.insert(*label, value);
-                Ok(())
-            }
-            [label, rest @ ..] => {
-                let nested = self
-                    .get(*label)
-                    .cloned()
-                    .unwrap_or_else(|| Value::Record(RawRecord::new().into_owned()));
-                let Value::Record(mut nested_record) = nested else {
-                    return Err("Cannot extend non-record at field path".into());
-                };
-                nested_record.extend_at_path(rest, value)?;
-                self.insert(*label, Value::Record(nested_record));
-                Ok(())
-            }
-        }
-    }
-
-    /// Restrict (remove) a field at the specified field path.
-    pub fn restrict_at_path(&mut self, field_path: &[StrKey]) -> Result<(), String> {
-        match field_path {
-            [] => Err("Empty field path".to_string()),
-            [label] => {
-                self.remove(*label);
-                Ok(())
-            }
-            [label, rest @ ..] => {
-                let Some(nested) = self.get(*label).cloned() else {
-                    return Err("Cannot restrict non-existing field".into());
-                };
-                let Value::Record(mut nested_record) = nested else {
-                    return Err("Cannot restrict non-record at field path".into());
-                };
-                nested_record.restrict_at_path(rest)?;
-                self.insert(*label, Value::Record(nested_record));
-                Ok(())
-            }
-        }
-    }
-
-    /// Update a field at the specified field path using an update function.
-    pub fn update_at_path<F>(&mut self, field_path: &[StrKey], update_fn: F) -> Result<(), String>
-    where
-        F: FnOnce(Value) -> Result<Value, String>,
-    {
-        match field_path {
-            [] => Err("Empty field path".to_string()),
-            [label] => {
-                let Some(current_val) = self.get(*label).cloned() else {
-                    return Err("Cannot update non-existing field".into());
-                };
-                let new_value = update_fn(current_val)?;
-                self.remove(*label);
-                self.insert(*label, new_value);
-                Ok(())
-            }
-            [label, rest @ ..] => {
-                let Some(nested) = self.get(*label).cloned() else {
-                    return Err("Cannot update non-existing field".into());
-                };
-                let Value::Record(mut nested_record) = nested else {
-                    return Err("Cannot update non-record at field path".into());
-                };
-                nested_record.update_at_path(rest, update_fn)?;
-                self.remove(*label);
-                self.insert(*label, Value::Record(nested_record));
-                Ok(())
-            }
-        }
+    /// Merge two records, right-biased: keys from `right` shadow `left`.
+    pub fn merge_right(&mut self, left: RecordIdx, right: RecordIdx) -> RecordIdx {
+        self.merge_left(right, left)
     }
 }
 
-// ——— display / serialize ———
-
-impl<'a> DisplayWithInterner<str> for RawRecord<'a> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>, interner: &StrInterner) -> fmt::Result {
-        write!(f, "{{")?;
-        let mut first = true;
-        for (key, value) in self.iter() {
-            if !first {
-                write!(f, ", ")?;
-            }
-            write!(f, "{} = ", interner[*key])?;
-            value.fmt(f, interner)?;
-            first = false;
-        }
-        write!(f, "}}")
+impl Default for RecordArena {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
-impl<'a> SerializeWithInterner<str> for RawRecord<'a> {
-    fn serialize<S>(&self, serializer: S, interner: &StrInterner) -> Result<S::Ok, S::Error>
-    where
-        S: serde::Serializer,
-    {
-        use serde::ser::SerializeMap;
-        let mut map = serializer.serialize_map(Some(self.len()))?;
-        for (key, value) in self.iter() {
-            map.serialize_entry(&interner[*key], &interner.with(value))?;
-        }
-        map.end()
+impl fmt::Display for RecordArena {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "RecordArena({} entries)", self.data.len())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use kola_utils::interner::StrInterner;
+
+    fn key(interner: &mut StrInterner, s: &str) -> StrKey {
+        interner.intern(s)
+    }
+
+    #[test]
+    fn test_alloc_empty() {
+        let mut arena = RecordArena::new();
+        let idx = arena.alloc_empty();
+        assert!(arena.is_empty(idx));
+        assert_eq!(arena.len_all(idx), 0);
+    }
+
+    #[test]
+    fn test_alloc_unit() {
+        let mut interner = StrInterner::new();
+        let mut arena = RecordArena::new();
+        let k = key(&mut interner, "x");
+        let idx = arena.alloc_unit(k, Value::Num(42.0));
+
+        assert_eq!(arena.len_all(idx), 1);
+        assert_eq!(arena.get_value(idx, k), Some(&Value::Num(42.0)));
+    }
+
+    #[test]
+    fn test_insert_basic() {
+        let mut interner = StrInterner::new();
+        let mut arena = RecordArena::new();
+        let idx = arena.alloc_empty();
+
+        let kx = key(&mut interner, "x");
+        let ky = key(&mut interner, "y");
+        let kz = key(&mut interner, "z");
+
+        let idx = arena.insert(idx, ky, Value::Num(2.0));
+        let idx = arena.insert(idx, kx, Value::Num(1.0));
+        let idx = arena.insert(idx, kz, Value::Num(3.0));
+
+        assert_eq!(arena.len_all(idx), 3);
+        // Entries are sorted: x, y, z
+        assert_eq!(arena.get_value(idx, kx), Some(&Value::Num(1.0)));
+        assert_eq!(arena.get_value(idx, ky), Some(&Value::Num(2.0)));
+        assert_eq!(arena.get_value(idx, kz), Some(&Value::Num(3.0)));
+    }
+
+    #[test]
+    fn test_insert_shadow() {
+        let mut interner = StrInterner::new();
+        let mut arena = RecordArena::new();
+        let idx = arena.alloc_empty();
+
+        let kx = key(&mut interner, "x");
+
+        let idx = arena.insert(idx, kx, Value::Num(1.0));
+        assert_eq!(arena.get_value(idx, kx), Some(&Value::Num(1.0)));
+
+        // Insert same key → shadows the old one
+        let idx = arena.insert(idx, kx, Value::Num(99.0));
+        assert_eq!(arena.get_value(idx, kx), Some(&Value::Num(99.0)));
+        // Still only 1 visible entry, but 2 total (shadowed)
+        assert_eq!(arena.len_all(idx), 2);
+    }
+
+    #[test]
+    fn test_remove() {
+        let mut interner = StrInterner::new();
+        let mut arena = RecordArena::new();
+        let idx = arena.alloc_empty();
+
+        let kx = key(&mut interner, "x");
+        let ky = key(&mut interner, "y");
+
+        let idx = arena.insert(idx, kx, Value::Num(1.0));
+        let idx = arena.insert(idx, ky, Value::Num(2.0));
+
+        let idx = arena.remove(idx, kx);
+        assert_eq!(arena.get_value(idx, kx), None);
+        assert_eq!(arena.get_value(idx, ky), Some(&Value::Num(2.0)));
+    }
+
+    #[test]
+    fn test_remove_unshadow() {
+        let mut interner = StrInterner::new();
+        let mut arena = RecordArena::new();
+        let idx = arena.alloc_empty();
+
+        let kx = key(&mut interner, "x");
+
+        // Insert two values for the same key
+        let idx = arena.insert(idx, kx, Value::Num(1.0));
+        let idx = arena.insert(idx, kx, Value::Num(2.0));
+
+        // Visible value is 2.0
+        assert_eq!(arena.get_value(idx, kx), Some(&Value::Num(2.0)));
+
+        // Remove the visible one → 1.0 resurfaces
+        let idx = arena.remove(idx, kx);
+        assert_eq!(arena.get_value(idx, kx), Some(&Value::Num(1.0)));
+    }
+
+    #[test]
+    fn test_remove_not_found() {
+        let mut interner = StrInterner::new();
+        let mut arena = RecordArena::new();
+        let idx = arena.alloc_empty();
+
+        let kx = key(&mut interner, "x");
+        let ky = key(&mut interner, "y");
+
+        let idx = arena.insert(idx, kx, Value::Num(1.0));
+        let original = idx;
+
+        // Remove non-existent key → returns same index
+        let idx = arena.remove(idx, ky);
+        assert_eq!(idx, original);
+    }
+
+    #[test]
+    fn test_merge_left() {
+        let mut interner = StrInterner::new();
+        let mut arena = RecordArena::new();
+
+        let kx = key(&mut interner, "x");
+        let ky = key(&mut interner, "y");
+        let kz = key(&mut interner, "z");
+
+        let left = arena.alloc_empty();
+        let left = arena.insert(left, kx, Value::Num(1.0));
+        let left = arena.insert(left, ky, Value::Num(2.0));
+
+        let right = arena.alloc_empty();
+        let right = arena.insert(right, ky, Value::Num(20.0));
+        let right = arena.insert(right, kz, Value::Num(3.0));
+
+        let merged = arena.merge_left(left, right);
+
+        // x from left, y from left (shadows right), z from right
+        assert_eq!(arena.get_value(merged, kx), Some(&Value::Num(1.0)));
+        assert_eq!(arena.get_value(merged, ky), Some(&Value::Num(2.0)));
+        assert_eq!(arena.get_value(merged, kz), Some(&Value::Num(3.0)));
+    }
+
+    #[test]
+    fn test_merge_right() {
+        let mut interner = StrInterner::new();
+        let mut arena = RecordArena::new();
+
+        let kx = key(&mut interner, "x");
+        let ky = key(&mut interner, "y");
+        let kz = key(&mut interner, "z");
+
+        let left = arena.alloc_empty();
+        let left = arena.insert(left, kx, Value::Num(1.0));
+        let left = arena.insert(left, ky, Value::Num(2.0));
+
+        let right = arena.alloc_empty();
+        let right = arena.insert(right, ky, Value::Num(20.0));
+        let right = arena.insert(right, kz, Value::Num(3.0));
+
+        let merged = arena.merge_right(left, right);
+
+        // x from left, y from right (shadows left), z from right
+        assert_eq!(arena.get_value(merged, kx), Some(&Value::Num(1.0)));
+        assert_eq!(arena.get_value(merged, ky), Some(&Value::Num(20.0)));
+        assert_eq!(arena.get_value(merged, kz), Some(&Value::Num(3.0)));
+    }
+
+    #[test]
+    fn test_iter_visible() {
+        let mut interner = StrInterner::new();
+        let mut arena = RecordArena::new();
+        let idx = arena.alloc_empty();
+
+        let ka = key(&mut interner, "a");
+        let kb = key(&mut interner, "b");
+
+        let idx = arena.insert(idx, ka, Value::Num(1.0));
+        let idx = arena.insert(idx, kb, Value::Num(2.0));
+        let idx = arena.insert(idx, ka, Value::Num(10.0)); // shadow
+
+        let visible: Vec<_> = arena.iter(idx).collect();
+        assert_eq!(visible.len(), 2);
+        assert_eq!(visible[0].1, Value::Num(10.0)); // a: 10 (shadowing)
+        assert_eq!(visible[1].1, Value::Num(2.0)); // b: 2
+    }
+
+    #[test]
+    fn test_iter_all() {
+        let mut interner = StrInterner::new();
+        let mut arena = RecordArena::new();
+        let idx = arena.alloc_empty();
+
+        let ka = key(&mut interner, "a");
+        let idx = arena.insert(idx, ka, Value::Num(1.0));
+        let idx = arena.insert(idx, ka, Value::Num(2.0));
+
+        let all: Vec<_> = arena.iter_all(idx).collect();
+        assert_eq!(all.len(), 2);
+    }
+
+    #[test]
+    fn test_copy_preserves_original() {
+        let mut interner = StrInterner::new();
+        let mut arena = RecordArena::new();
+
+        let kx = key(&mut interner, "x");
+        let original = arena.alloc_unit(kx, Value::Num(1.0));
+        let copy = arena.copy(original);
+
+        let ky = key(&mut interner, "y");
+        let modified = arena.insert(copy, ky, Value::Num(2.0));
+
+        // Original untouched
+        assert_eq!(arena.len_all(original), 1);
+        assert_eq!(arena.len_all(copy), 1);
+        assert_eq!(arena.len_all(modified), 2);
     }
 }

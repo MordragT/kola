@@ -1581,9 +1581,9 @@ mod tests {
 
         let mut heap = Heap::new();
         let mut machine = new_machine(ir, interner, &mut heap);
-        let value = machine.run(&mut heap).unwrap();
+        let value = machine.run(&mut heap).unwrap().into_str().unwrap();
 
         // Should evaluate to "hello" (the value of r.a.b.c)
-        assert_eq!(value, Value::str("hello".to_owned()));
+        assert_eq!(heap.strings.get(value), "hello");
     }
 }

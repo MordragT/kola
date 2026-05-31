@@ -1,7 +1,7 @@
 use std::borrow::Cow;
 
 use camino::{Utf8Path, Utf8PathBuf};
-use kola_protocol::{TypeInterner, TypeKey, TypeProtocol};
+use kola_protocol::{TypeKey, TypeProtocol};
 
 use crate::{
     config::{MachineState, OperationConfig, PatternConfig, StandardConfig},
@@ -15,7 +15,7 @@ use kola_ir::{
     instr::Func,
     ir::{Ir, IrView},
 };
-use kola_utils::interner::{StrInterner, StrKey};
+use kola_utils::interner::StrKey;
 
 #[derive(Debug, Clone)]
 pub struct MachineContext {
@@ -23,24 +23,13 @@ pub struct MachineContext {
     pub ir: Ir,
     /// The working directory for the machine
     pub working_dir: Utf8PathBuf,
-    /// The interner used for symbol to string conversion
-    pub str_interner: StrInterner,
-    /// The type interner used for type reification
-    pub type_interner: TypeInterner,
 }
 
 impl MachineContext {
-    pub fn new(
-        ir: Ir,
-        working_dir: impl Into<Utf8PathBuf>,
-        str_interner: StrInterner,
-        type_interner: TypeInterner,
-    ) -> Self {
+    pub fn new(ir: Ir, working_dir: impl Into<Utf8PathBuf>) -> Self {
         Self {
             ir,
             working_dir: working_dir.into(),
-            str_interner,
-            type_interner,
         }
     }
 
@@ -239,10 +228,9 @@ mod tests {
     use crate::{machine::CekMachine, value::Value};
     use kola_protocol::TypeInterner;
 
-    fn run_machine(context: MachineContext) -> Result<Value, String> {
-        let mut heap = Heap::new();
-        let mut machine = CekMachine::new(context, &mut heap);
-        machine.run(&mut heap)
+    fn run_machine(context: MachineContext, heap: &mut Heap) -> Result<Value, String> {
+        let mut machine = CekMachine::new(context, heap);
+        machine.run(heap)
     }
 
     #[test]
@@ -263,9 +251,9 @@ mod tests {
 
         let ir = ir.finish(root);
 
-        let context =
-            MachineContext::new(ir, "/mocked/path", StrInterner::new(), TypeInterner::new());
-        let result = run_machine(context).unwrap();
+        let context = MachineContext::new(ir, "/mocked/path");
+        let mut heap = Heap::new(StrInterner::new(), TypeInterner::new());
+        let result = run_machine(context, &mut heap).unwrap();
 
         match result {
             Value::Num(n) => assert_eq!(n, 42.0),
@@ -313,9 +301,9 @@ mod tests {
         let ir = ir.finish(root);
 
         // Run the machine
-        let context =
-            MachineContext::new(ir, "/mocked/path", StrInterner::new(), TypeInterner::new());
-        let result = run_machine(context).unwrap();
+        let mut heap = Heap::new(StrInterner::new(), TypeInterner::new());
+        let context = MachineContext::new(ir, "/mocked/path");
+        let result = run_machine(context, &mut heap).unwrap();
 
         // Check the result
         match result {
@@ -359,8 +347,9 @@ mod tests {
         let ir = ir.finish(root);
 
         // Run the machine
-        let context = MachineContext::new(ir, "/mocked/path", interner, TypeInterner::new());
-        let result = run_machine(context).unwrap();
+        let mut heap = Heap::new(interner, TypeInterner::new());
+        let context = MachineContext::new(ir, "/mocked/path");
+        let result = run_machine(context, &mut heap).unwrap();
 
         // Check the result - should be the value of the x field (10)
         match result {
@@ -411,8 +400,9 @@ mod tests {
         let ir = ir.finish(root);
 
         // Run the machine
-        let context = MachineContext::new(ir, "/mocked/path", interner, TypeInterner::new());
-        let result = run_machine(context).unwrap();
+        let mut heap = Heap::new(interner, TypeInterner::new());
+        let context = MachineContext::new(ir, "/mocked/path");
+        let result = run_machine(context, &mut heap).unwrap();
 
         // Check the result - should be the value of the z field (30)
         match result {
@@ -470,8 +460,9 @@ mod tests {
         let ir = ir.finish(root);
 
         // Run the machine
-        let context = MachineContext::new(ir, "/mocked/path", interner, TypeInterner::new());
-        let result = run_machine(context).unwrap();
+        let mut heap = Heap::new(interner, TypeInterner::new());
+        let context = MachineContext::new(ir, "/mocked/path");
+        let result = run_machine(context, &mut heap).unwrap();
 
         // Check the result - should be the updated value of x (20)
         match result {
@@ -522,8 +513,9 @@ mod tests {
         let ir = ir.finish(root);
 
         // Run the machine
-        let context = MachineContext::new(ir, "/mocked/path", interner, TypeInterner::new());
-        let result = run_machine(context).unwrap();
+        let mut heap = Heap::new(interner, TypeInterner::new());
+        let context = MachineContext::new(ir, "/mocked/path");
+        let result = run_machine(context, &mut heap).unwrap();
 
         // Check the result - should be 42
         match result {

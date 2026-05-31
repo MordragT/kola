@@ -1,26 +1,37 @@
-use std::borrow::Cow;
+use std::fmt;
 
 use kola_ir::instr::{Func, Symbol};
-use kola_protocol::TypeProtocol;
-use kola_utils::interner::StrKey;
+use kola_protocol::{TypeInterner, TypeProtocol};
+use kola_utils::{
+    display::DisplayWith,
+    interner::{StrInterner, StrKey},
+    serde::SerializeWith,
+};
+use serde::Serialize;
 
 use crate::{
-    arenas::{Arena, RangeArena, StringArena},
+    arenas::{Arena, RangeArena},
     cont::{ContFrame, HeapCont, RawCont},
     env::{HeapEnv, RawEnv},
     handler::{HeapOpClauses, RawOpClauses},
-    list::{HeapList, RawList},
+    list::ListArena,
     record::{HeapRecord, RawRecord},
-    string::{HeapString, RawString},
+    string::{StringArena, StringIdx},
     value::Value,
     witness::{HeapWitness, RawWitness},
 };
 
 #[derive(Debug)]
 pub struct Heap {
-    strings: StringArena,
+    /// The interner used for symbol to string conversion
+    pub str_interner: StrInterner,
+    /// The type interner used for type reification
+    pub type_interner: TypeInterner,
+    /// The arena for storing strings
+    pub strings: StringArena,
+    /// The arena for storing lists
+    pub lists: ListArena,
     records: RangeArena<(StrKey, Value)>,
-    lists: RangeArena<Value>,
     conts: RangeArena<ContFrame>,
     witnesses: Arena<TypeProtocol>,
     environments: RangeArena<(Symbol, Value)>,
@@ -28,11 +39,13 @@ pub struct Heap {
 }
 
 impl Heap {
-    pub fn new() -> Self {
+    pub fn new(str_interner: StrInterner, type_interner: TypeInterner) -> Self {
         Self {
+            str_interner,
+            type_interner,
             strings: StringArena::new(),
+            lists: ListArena::new(),
             records: RangeArena::new(),
-            lists: RangeArena::new(),
             conts: RangeArena::new(),
             witnesses: Arena::new(),
             environments: RangeArena::new(),
@@ -41,13 +54,9 @@ impl Heap {
     }
 
     #[inline]
-    pub fn alloc_string(&mut self, s: &RawString) -> HeapString {
-        HeapString(self.strings.alloc(&s.0))
-    }
-
-    #[inline]
-    pub fn get_string(&self, idx: HeapString) -> RawString<'_> {
-        RawString(Cow::Borrowed(self.strings.get(idx.0)))
+    pub fn alloc_str_key(&mut self, key: StrKey) -> StringIdx {
+        let s = self.str_interner[key].as_str();
+        self.strings.alloc(s)
     }
 
     #[inline]
@@ -58,16 +67,6 @@ impl Heap {
     #[inline]
     pub fn get_record(&self, record: HeapRecord) -> RawRecord<'_> {
         RawRecord(self.records.get(record.0))
-    }
-
-    #[inline]
-    pub fn alloc_list(&mut self, list: &RawList) -> HeapList {
-        HeapList(self.lists.alloc(&list.0))
-    }
-
-    #[inline]
-    pub fn get_list(&self, list: HeapList) -> RawList<'_> {
-        RawList(self.lists.get(list.0))
     }
 
     #[inline]
@@ -108,5 +107,37 @@ impl Heap {
     #[inline]
     pub fn get_op_clauses(&self, clauses: HeapOpClauses) -> RawOpClauses<'_> {
         RawOpClauses(self.operation_clauses.get(clauses.0))
+    }
+}
+
+pub struct WithHeap<'a, T> {
+    pub value: &'a T,
+    pub heap: &'a Heap,
+}
+
+impl<'a, T> WithHeap<'a, T> {
+    pub fn new(value: &'a T, heap: &'a Heap) -> Self {
+        Self { value, heap }
+    }
+}
+
+impl<T> fmt::Display for WithHeap<'_, T>
+where
+    T: DisplayWith<Heap>,
+{
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.value.fmt(f, self.heap)
+    }
+}
+
+impl<T> Serialize for WithHeap<'_, T>
+where
+    T: SerializeWith<Heap>,
+{
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        self.value.serialize(serializer, self.heap)
     }
 }

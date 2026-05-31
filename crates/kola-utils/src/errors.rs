@@ -4,7 +4,7 @@ use std::{
     slice, vec,
 };
 
-use crate::interner_ext::DisplayWithInterner;
+use crate::display::DisplayWith;
 
 /// An error type which can represent multiple errors.
 #[derive(Clone, Debug, Eq, PartialEq, Hash)]
@@ -83,17 +83,13 @@ impl<T> Errors<T> {
     }
 }
 
-impl<T> DisplayWithInterner<str> for Errors<T>
+impl<T, U> DisplayWith<U> for Errors<T>
 where
-    T: DisplayWithInterner<str>,
+    T: DisplayWith<U>,
 {
-    fn fmt(
-        &self,
-        f: &mut fmt::Formatter<'_>,
-        interner: &crate::interner::StrInterner,
-    ) -> fmt::Result {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>, u: &U) -> fmt::Result {
         for err in &self.errors {
-            err.fmt(f, interner)?;
+            err.fmt(f, u)?;
             '\n'.fmt(f)?;
         }
 
