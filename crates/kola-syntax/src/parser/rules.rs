@@ -1246,7 +1246,7 @@ mod tests {
     };
 
     fn mocked_source() -> SourceId {
-        let mut interner = PathInterner::new();
+        let mut interner = PathInterner::default();
         interner.intern(Utf8PathBuf::from("test"))
     }
 
@@ -1269,7 +1269,7 @@ mod tests {
 
     #[test]
     fn pat() {
-        let mut interner = StrInterner::new();
+        let mut interner = StrInterner::default();
 
         let ParseResult { node, builder, .. } =
             try_parse_str_with("{ a: x, b: { y }, c: _, d }", pat_parser(), &mut interner);
@@ -1290,7 +1290,7 @@ mod tests {
 
     #[test]
     fn case_expr() {
-        let mut interner = StrInterner::new();
+        let mut interner = StrInterner::default();
 
         let ParseResult { node, builder, .. } = try_parse_str_with(
             "case x | 1 => true | _ => false",
@@ -1320,7 +1320,7 @@ mod tests {
 
     #[test]
     fn complex_case_expr() {
-        let mut interner = StrInterner::new();
+        let mut interner = StrInterner::default();
 
         // Test comprehensive pattern matching with all pattern types
         let test_case = r#"
@@ -1582,7 +1582,7 @@ mod tests {
 
     #[test]
     fn func_expr() {
-        let mut interner = StrInterner::new();
+        let mut interner = StrInterner::default();
 
         let ParseResult { node, builder, .. } =
             try_parse_str_with("fn name => \"Hello\" + name", expr_parser(), &mut interner);
@@ -1600,7 +1600,7 @@ mod tests {
 
     #[test]
     fn arithmetic_expr() {
-        let mut interner = StrInterner::new();
+        let mut interner = StrInterner::default();
 
         // ((-4 * 10) + (40 / 4)) + 30 = 0
         let ParseResult { node, builder, .. } =
@@ -1628,7 +1628,7 @@ mod tests {
 
     #[test]
     fn if_expr() {
-        let mut interner = StrInterner::new();
+        let mut interner = StrInterner::default();
 
         let ParseResult { node, builder, .. } =
             try_parse_str_with("if y then x else 0", expr_parser(), &mut interner);
@@ -1646,7 +1646,7 @@ mod tests {
 
     #[test]
     fn qualified_expr() {
-        let mut interner = StrInterner::new();
+        let mut interner = StrInterner::default();
 
         // Test simple field access
         let ParseResult { node, builder, .. } =
@@ -1676,7 +1676,7 @@ mod tests {
 
     #[test]
     fn record_extension() {
-        let mut interner = StrInterner::new();
+        let mut interner = StrInterner::default();
 
         let ParseResult { node, builder, .. } =
             try_parse_str_with("{ y | +x = 10 }", expr_parser(), &mut interner);
@@ -1694,7 +1694,7 @@ mod tests {
 
     #[test]
     fn record() {
-        let mut interner = StrInterner::new();
+        let mut interner = StrInterner::default();
 
         let ParseResult { node, builder, .. } =
             try_parse_str_with("{ x = 10, y = 20 }", expr_parser(), &mut interner);
@@ -1719,7 +1719,7 @@ mod tests {
 
     #[test]
     fn type_expr() {
-        let mut interner = StrInterner::new();
+        let mut interner = StrInterner::default();
 
         let ParseResult { node, builder, .. } = try_parse_str_with(
             "Num -> { a : Num, b : Num -> Num } -> Str",
@@ -1744,7 +1744,7 @@ mod tests {
 
     #[test]
     fn type_application() {
-        let mut interner = StrInterner::new();
+        let mut interner = StrInterner::default();
 
         let ParseResult { node, builder, .. } = try_parse_str_with(
             "Map (Num -> Str) (std::List Str)",
@@ -1766,7 +1766,7 @@ mod tests {
 
     #[test]
     fn type_() {
-        let mut interner = StrInterner::new();
+        let mut interner = StrInterner::default();
 
         let ParseResult { node, builder, .. } = try_parse_str_with(
             "forall a b . { left : a, right : Num -> b }",
@@ -1822,7 +1822,7 @@ mod tests {
 
     #[test]
     fn type_bind() {
-        let mut interner = StrInterner::new();
+        let mut interner = StrInterner::default();
 
         let ParseResult { node, builder, .. } = try_parse_str_with(
             "type Person = forall a . { id : a, name : Str, age : Num }",
@@ -1838,7 +1838,7 @@ mod tests {
 
     #[test]
     fn variant_type_bind() {
-        let mut interner = StrInterner::new();
+        let mut interner = StrInterner::default();
 
         let ParseResult { node, builder, .. } = try_parse_str_with(
             "type Option = forall a b . < Some : a, None | b >",
@@ -1869,7 +1869,7 @@ mod tests {
 
     #[test]
     fn module() {
-        let mut interner = StrInterner::new();
+        let mut interner = StrInterner::default();
 
         let ParseResult { node, builder, .. } =
             try_parse_str_with("{ x = 10, type T = Num }", module_parser(), &mut interner);
@@ -1900,7 +1900,7 @@ mod tests {
 
     #[test]
     fn module_type() {
-        let mut interner = StrInterner::new();
+        let mut interner = StrInterner::default();
 
         let ParseResult { node, builder, .. } =
             try_parse_str_with("{ x : Num, type T }", module_type_parser(), &mut interner);
@@ -1932,7 +1932,7 @@ mod tests {
 
     #[test]
     fn nested_module() {
-        let mut interner = StrInterner::new();
+        let mut interner = StrInterner::default();
 
         let ParseResult { node, builder, .. } =
             try_parse_str_with("{ module m = { x = 10 } }", module_parser(), &mut interner);
@@ -1969,7 +1969,7 @@ mod tests {
 
     #[test]
     fn nested_module_with_type() {
-        let mut interner = StrInterner::new();
+        let mut interner = StrInterner::default();
 
         let ParseResult { node, builder, .. } = try_parse_str_with(
             "{ module m : { x : Num } = { x = 10 } }",
@@ -2034,7 +2034,7 @@ mod tests {
 
     #[test]
     fn comments_are_transparent_to_parser() {
-        let mut interner = StrInterner::new();
+        let mut interner = StrInterner::default();
 
         let ParseResult { node, builder, .. } = try_parse_str_with(
             r#"{

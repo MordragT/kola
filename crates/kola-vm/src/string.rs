@@ -492,7 +492,7 @@ mod tests {
 
     #[test]
     fn test_sso_inline_allocation() {
-        let mut arena = StringArena::new(StrInterner::new());
+        let mut arena = StringArena::new(StrInterner::default());
         let short_str = "hello";
 
         let idx = arena.alloc(short_str);
@@ -503,7 +503,7 @@ mod tests {
 
     #[test]
     fn test_dynamic_slice_allocation() {
-        let mut arena = StringArena::new(StrInterner::new());
+        let mut arena = StringArena::new(StrInterner::default());
         let long_str = "this_string_is_longer_than_eleven_bytes";
 
         let idx = arena.alloc(long_str);
@@ -514,7 +514,7 @@ mod tests {
 
     #[test]
     fn test_structural_concat_and_flattening() {
-        let mut arena = StringArena::new(StrInterner::new());
+        let mut arena = StringArena::new(StrInterner::default());
 
         let left = arena.alloc("abc"); // Inline
         let right = arena.alloc("defghijklmnopqrstuvw"); // Slice
@@ -534,7 +534,7 @@ mod tests {
 
     #[test]
     fn test_sso_concatenation_merging() {
-        let mut arena = StringArena::new(StrInterner::new());
+        let mut arena = StringArena::new(StrInterner::default());
         let left = arena.alloc("foo");
         let right = arena.alloc("bar");
 
@@ -546,7 +546,7 @@ mod tests {
 
     #[test]
     fn test_fragment_streaming() {
-        let mut interner = StrInterner::new();
+        let mut interner = StrInterner::default();
         let t1 = interner.intern("static_prefix_");
         let t2 = interner.intern("_static_suffix");
 

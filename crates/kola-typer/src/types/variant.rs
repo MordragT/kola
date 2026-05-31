@@ -18,7 +18,7 @@ pub struct VariantType(pub Row);
 impl VariantType {
     pub fn to_protocol(&self, interner: &StrInterner) -> TypeProtocol {
         let cases = self.0.to_protocol(interner);
-        TypeProtocol::Variant(cases)
+        TypeProtocol::variant(cases)
     }
 }
 

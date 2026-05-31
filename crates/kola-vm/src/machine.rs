@@ -239,7 +239,7 @@ mod tests {
         let ir = ir.finish(root);
 
         let context = MachineContext::new(ir, "/mocked/path");
-        let mut heap = Heap::new(StrInterner::new(), TypeInterner::new());
+        let mut heap = Heap::new(StrInterner::default(), TypeInterner::new());
         let result = run_machine(context, &mut heap).unwrap();
 
         match result {
@@ -288,7 +288,7 @@ mod tests {
         let ir = ir.finish(root);
 
         // Run the machine
-        let mut heap = Heap::new(StrInterner::new(), TypeInterner::new());
+        let mut heap = Heap::new(StrInterner::default(), TypeInterner::new());
         let context = MachineContext::new(ir, "/mocked/path");
         let result = run_machine(context, &mut heap).unwrap();
 
@@ -301,7 +301,7 @@ mod tests {
 
     #[test]
     fn test_record_creation_and_access() {
-        let mut interner = StrInterner::new();
+        let mut interner = StrInterner::default();
 
         // Create labels for record fields
         let x_label = interner.intern("x");
@@ -347,7 +347,7 @@ mod tests {
 
     #[test]
     fn test_record_extension() {
-        let mut interner = StrInterner::new();
+        let mut interner = StrInterner::default();
 
         // Create labels for record fields
         let x_label = interner.intern("x");
@@ -400,7 +400,7 @@ mod tests {
 
     #[test]
     fn test_record_update() {
-        let mut interner = StrInterner::new();
+        let mut interner = StrInterner::default();
 
         // Create labels for record fields
         let x_label = interner.intern("x");
@@ -462,7 +462,7 @@ mod tests {
     fn test_simple_pattern_matching() {
         use kola_ir::instr::{PatternMatchExpr, PatternMatcher};
 
-        let interner = StrInterner::new();
+        let interner = StrInterner::default();
 
         // Create symbols
         let source_sym = Symbol::new(1);

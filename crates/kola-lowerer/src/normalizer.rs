@@ -1408,9 +1408,9 @@ mod tests {
         let lit = builder.insert(node::LiteralExpr::Num(10.0));
 
         let resolved = mock_resolved(&builder);
-        let ir = normalize(builder, lit, &resolved, &StrInterner::new());
+        let ir = normalize(builder, lit, &resolved, &StrInterner::default());
 
-        let mut heap = Heap::new(StrInterner::new(), TypeInterner::new());
+        let mut heap = Heap::new(StrInterner::default(), TypeInterner::new());
         let mut machine = new_machine(ir);
         let value = machine.run(&mut heap).unwrap();
 
@@ -1419,7 +1419,7 @@ mod tests {
 
     #[test]
     fn qualified_expr_unbound() {
-        let mut interner = StrInterner::new();
+        let mut interner = StrInterner::default();
         let mut builder = TreeBuilder::new();
 
         let x = interner.intern("x");
@@ -1439,7 +1439,7 @@ mod tests {
 
     #[test]
     fn let_expr() {
-        let mut interner = StrInterner::new();
+        let mut interner = StrInterner::default();
         let mut builder = TreeBuilder::new();
         let mut resolved = ResolvedNodes::default();
 
@@ -1467,7 +1467,7 @@ mod tests {
 
     #[test]
     fn lambda_call_expr() {
-        let mut interner = StrInterner::new();
+        let mut interner = StrInterner::default();
         let mut builder = TreeBuilder::new();
         let mut resolved = ResolvedNodes::default();
 
@@ -1504,7 +1504,7 @@ mod tests {
 
     #[test]
     fn record_expr() {
-        let mut interner = StrInterner::new();
+        let mut interner = StrInterner::default();
         let mut builder = TreeBuilder::new();
         let resolved = ResolvedNodes::default();
 
@@ -1537,7 +1537,7 @@ mod tests {
 
     #[test]
     fn record_access_expr() {
-        let mut interner = StrInterner::new();
+        let mut interner = StrInterner::default();
         let mut builder = TreeBuilder::new();
         let mut resolved = ResolvedNodes::default();
 
@@ -1586,6 +1586,6 @@ mod tests {
         let value = machine.run(&mut heap).unwrap().into_str().unwrap();
 
         // Should evaluate to "hello" (the value of r.a.b.c)
-        assert_eq!(heap.strings.get(value), "hello");
+        assert_eq!(heap.strings.try_get(&value).unwrap(), "hello");
     }
 }

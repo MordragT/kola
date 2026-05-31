@@ -367,7 +367,7 @@ mod test {
     };
 
     fn tokenize_str(text: &str) -> Vec<Located<Token<'_>>> {
-        let mut interner = PathInterner::new();
+        let mut interner = PathInterner::default();
         let source = interner.intern(Utf8PathBuf::from("test"));
 
         let input = LexInput { source, text };
@@ -645,7 +645,7 @@ mod test {
 
     #[test]
     fn test_recovery() {
-        let mut interner = PathInterner::new();
+        let mut interner = PathInterner::default();
         let source = interner.intern(Utf8PathBuf::from("test"));
         let mut report = Report::new();
 

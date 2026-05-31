@@ -32,17 +32,6 @@ impl CompType {
         Self { ty, effect }
     }
 
-    pub fn from_protocol(
-        proto: TypeProtocol,
-        bound: &mut BTreeMap<u32, TypeVar>,
-        interner: &mut StrInterner,
-    ) -> Result<Self, TypeError> {
-        let ty = MonoType::from_protocol(proto, bound, interner)?;
-        let effect = Row::Empty;
-
-        Ok(Self { ty, effect })
-    }
-
     // TODO also consider effects
     pub fn to_protocol(&self, interner: &StrInterner) -> TypeProtocol {
         self.ty.to_protocol(interner)

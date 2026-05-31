@@ -20,7 +20,7 @@ impl Server {
     pub fn new(client: Client) -> Self {
         Self {
             client,
-            interner: RwLock::new(PathInterner::new()),
+            interner: RwLock::new(PathInterner::default()),
             sources: DashMap::new(),
             outputs: DashMap::new(),
         }

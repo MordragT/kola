@@ -452,7 +452,7 @@ mod tests {
     use kola_utils::interner::StrInterner;
     #[test]
     fn test_same_row_variable_different_extensions_should_fail() {
-        let mut interner = StrInterner::new();
+        let mut interner = StrInterner::default();
         let mut subs = Substitution::empty();
 
         let shared_var = Row::var();
@@ -501,7 +501,7 @@ mod tests {
 
     #[test]
     fn test_row_unification_with_annotation() {
-        let mut interner = StrInterner::new();
+        let mut interner = StrInterner::default();
         let mut subs = Substitution::empty();
         let shared_row_var = Row::var();
 
@@ -568,7 +568,7 @@ mod tests {
 
     #[test]
     fn test_occurs_check() {
-        let mut interner = StrInterner::new();
+        let mut interner = StrInterner::default();
         let mut subs = Substitution::empty();
         let var = MonoType::var();
 
@@ -619,7 +619,7 @@ mod tests {
 
     #[test]
     fn test_complex_row_reordering() {
-        let mut interner = StrInterner::new();
+        let mut interner = StrInterner::default();
         let mut subs = Substitution::empty();
 
         // Type 1: { a : Int, b : String }
@@ -646,7 +646,7 @@ mod tests {
 
     #[test]
     fn test_missing_and_extra_labels() {
-        let mut interner = StrInterner::new();
+        let mut interner = StrInterner::default();
         let mut subs = Substitution::empty();
 
         // Type 1: { a : Int }
@@ -668,7 +668,7 @@ mod tests {
 
     #[test]
     fn test_row_variable_chaining() {
-        let mut interner = StrInterner::new();
+        let mut interner = StrInterner::default();
         let mut subs = Substitution::empty();
         let var1 = TypeVar::new(Kind::Type); // TODO maybe row ?
         let var2 = TypeVar::new(Kind::Type);
@@ -694,7 +694,7 @@ mod tests {
 
     #[test]
     fn test_incompatible_types() {
-        let mut interner = StrInterner::new();
+        let mut interner = StrInterner::default();
         let mut subs = Substitution::empty();
 
         let int_type = MonoType::NUM;

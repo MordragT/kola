@@ -7,6 +7,7 @@ use std::num::NonZeroU32;
 use std::ops::Index;
 
 use camino::Utf8Path;
+use rustc_hash::FxBuildHasher;
 
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct Key<T: ?Sized> {
@@ -81,10 +82,10 @@ impl<T: ?Sized> fmt::Display for Key<T> {
 }
 
 pub type PathKey = Key<Utf8Path>;
-pub type PathInterner<S = RandomState> = Interner<Utf8Path, S>;
+pub type PathInterner = Interner<Utf8Path, FxBuildHasher>;
 
 pub type StrKey = Key<str>;
-pub type StrInterner<S = RandomState> = Interner<str, S>;
+pub type StrInterner = Interner<str, FxBuildHasher>;
 
 /// A flexible interner that efficiently stores unique values.
 ///
@@ -128,15 +129,16 @@ where
     }
 }
 
-impl<B> Default for Interner<B>
+impl<B, S> Default for Interner<B, S>
 where
     B: ?Sized + ToOwned + Eq + Hash + 'static,
     <B as ToOwned>::Owned: Borrow<B> + 'static,
+    S: Default,
 {
     fn default() -> Self {
         Self {
             values: Vec::new(),
-            map: HashMap::new(),
+            map: HashMap::with_hasher(S::default()),
         }
     }
 }
@@ -179,7 +181,6 @@ where
     B: ?Sized + ToOwned + Eq + Hash + 'static,
     <B as ToOwned>::Owned: Borrow<B> + 'static,
 {
-    /// Creates a new empty interner.
     pub fn new() -> Self {
         Self {
             values: Vec::new(),
@@ -187,7 +188,6 @@ where
         }
     }
 
-    /// Creates a new empty interner with the specified capacity.
     pub fn with_capacity(capacity: usize) -> Self {
         Self {
             values: Vec::with_capacity(capacity),

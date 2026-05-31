@@ -2157,7 +2157,7 @@ mod tests {
 
     #[test]
     fn let_() {
-        let mut interner = StrInterner::new();
+        let mut interner = StrInterner::default();
         let mut builder = TreeBuilder::new();
 
         let value = builder.insert(node::LiteralExpr::Num(10.0));

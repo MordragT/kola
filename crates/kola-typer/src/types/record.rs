@@ -18,7 +18,7 @@ pub struct RecordType(pub Row);
 impl RecordType {
     pub fn to_protocol(&self, interner: &StrInterner) -> TypeProtocol {
         let fields = self.0.to_protocol(interner);
-        TypeProtocol::Record(fields)
+        TypeProtocol::record(fields)
     }
 
     pub fn merge_left(&self, other: &Self) -> Result<Self, TypeError> {

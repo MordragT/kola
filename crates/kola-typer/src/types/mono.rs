@@ -1,6 +1,6 @@
 use derive_more::From;
 use enum_as_inner::EnumAsInner;
-use kola_protocol::TypeProtocol;
+use kola_protocol::{TypeProtocol, TypeVariant};
 use kola_utils::interner::StrInterner;
 use serde::{Deserialize, Serialize};
 use std::{collections::BTreeMap, fmt};
@@ -74,41 +74,102 @@ impl MonoType {
         bound: &mut BTreeMap<u32, TypeVar>,
         interner: &mut StrInterner,
     ) -> Result<Self, TypeError> {
-        let this = match proto {
-            TypeProtocol::Unit => Self::UNIT,
-            TypeProtocol::Bool => Self::BOOL,
-            TypeProtocol::Num => Self::NUM,
-            TypeProtocol::Char => Self::CHAR,
-            TypeProtocol::Str => Self::STR,
-            TypeProtocol::List(el) => Self::list(Self::from_protocol(*el, bound, interner)?),
-            TypeProtocol::Func(arg, ret) => Self::func(
-                Self::from_protocol(*arg, bound, interner)?,
-                CompType::from_protocol(*ret, bound, interner)?,
-            ),
-            TypeProtocol::Record(fields) => {
+        let TypeProtocol { table, ty } = proto;
+
+        // Start the flat table decoding pass at root offset 0
+        Self::from_proto_variant(ty, &table, 0, bound, interner)
+    }
+
+    fn from_proto_variant(
+        ty: TypeVariant,
+        table: &[String],
+        base_offset: u32,
+        bound: &mut BTreeMap<u32, TypeVar>,
+        interner: &mut StrInterner,
+    ) -> Result<Self, TypeError> {
+        let this = match ty {
+            TypeVariant::Unit => Self::UNIT,
+            TypeVariant::Bool => Self::BOOL,
+            TypeVariant::Num => Self::NUM,
+            TypeVariant::Char => Self::CHAR,
+            TypeVariant::Str => Self::STR,
+
+            TypeVariant::List(el) => Self::list(Self::from_proto_variant(
+                *el,
+                table,
+                base_offset,
+                bound,
+                interner,
+            )?),
+
+            TypeVariant::Witness(proto) => {
+                let ty = Self::from_proto_variant(*proto, table, base_offset, bound, interner)?;
+                Self::wit(ty)
+            }
+
+            // Inlined CompType construction right here!
+            TypeVariant::Func(arg, output_offset, ret) => {
+                let arg_ty = Self::from_proto_variant(*arg, table, base_offset, bound, interner)?;
+                let ret_mono = Self::from_proto_variant(
+                    *ret,
+                    table,
+                    base_offset + output_offset,
+                    bound,
+                    interner,
+                )?;
+
+                let ret_comp = CompType {
+                    ty: ret_mono,
+                    effect: Row::Empty,
+                };
+
+                Self::func(arg_ty, ret_comp)
+            }
+
+            TypeVariant::Record(fields) => {
                 let mut row = Row::Empty;
-                for (label, ty) in fields.into_iter().rev() {
+                for (key_idx, child_offset, child_ty) in fields.into_iter().rev() {
+                    let label_str = &table[(base_offset + key_idx) as usize];
                     let head = LabeledType::new(
-                        Label(interner.intern(label)),
-                        Self::from_protocol(ty, bound, interner)?,
+                        Label(interner.intern(label_str)),
+                        Self::from_proto_variant(
+                            child_ty,
+                            table,
+                            base_offset + child_offset,
+                            bound,
+                            interner,
+                        )?,
                     );
                     row = Row::extension(head, row);
                 }
                 Self::record(row)
             }
-            TypeProtocol::Variant(tags) => {
+
+            TypeVariant::Variant(tags) => {
                 let mut row = Row::Empty;
-                for (label, ty) in tags.into_iter().rev() {
+                for (tag_idx, child_offset, child_ty) in tags.into_iter().rev() {
+                    let label_str = &table[(base_offset + tag_idx) as usize];
                     let head = LabeledType::new(
-                        Label(interner.intern(label)),
-                        Self::from_protocol(ty, bound, interner)?,
+                        Label(interner.intern(label_str)),
+                        Self::from_proto_variant(
+                            child_ty,
+                            table,
+                            base_offset + child_offset,
+                            bound,
+                            interner,
+                        )?,
                     );
                     row = Row::extension(head, row);
                 }
                 Self::variant(row)
             }
-            TypeProtocol::Label(label) => Self::label(Label(interner.intern(label))),
-            TypeProtocol::Var(id, kind) => {
+
+            TypeVariant::Label(idx) => {
+                let label_str = &table[(base_offset + idx) as usize];
+                Self::label(Label(interner.intern(label_str)))
+            }
+
+            TypeVariant::Var(id, kind) => {
                 let kind = Kind::from(kind);
 
                 let var = if let Some(var) = bound.get(&id) {
@@ -121,10 +182,6 @@ impl MonoType {
                 };
 
                 MonoType::Var(var)
-            }
-            TypeProtocol::Witness(proto) => {
-                let ty = Self::from_protocol(*proto, bound, interner)?;
-                Self::wit(ty)
             }
         };
 

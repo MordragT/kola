@@ -707,7 +707,7 @@ fn eval_builtin(
                 );
             };
 
-            let TypeProtocol::Label(label) = heap.witnesses.get(wit).clone() else {
+            let Some(label) = heap.witnesses.get(wit).as_label().map(ToOwned::to_owned) else {
                 return MachineState::Error(
                     "record_select requires 'label' field with a string".to_owned(),
                 );
@@ -733,7 +733,7 @@ fn eval_builtin(
                 );
             };
 
-            let TypeProtocol::Label(label) = heap.witnesses.get(wit).clone() else {
+            let Some(label) = heap.witnesses.get(wit).as_label().map(ToOwned::to_owned) else {
                 return MachineState::Error(
                     "record_insert requires 'label' field with a string".to_owned(),
                 );
@@ -762,7 +762,7 @@ fn eval_builtin(
                 );
             };
 
-            let TypeProtocol::Label(label) = heap.witnesses.get(wit).clone() else {
+            let Some(label) = heap.witnesses.get(wit).as_label().map(ToOwned::to_owned) else {
                 return MachineState::Error(
                     "record_remove requires 'label' field with a string".to_owned(),
                 );
@@ -787,7 +787,7 @@ fn eval_builtin(
                 );
             };
 
-            let TypeProtocol::Label(from) = heap.witnesses.get(wit).clone() else {
+            let Some(from) = heap.witnesses.get(wit).as_label().map(ToOwned::to_owned) else {
                 return MachineState::Error(
                     "record_rename requires 'from' field with a string".to_owned(),
                 );
@@ -799,7 +799,7 @@ fn eval_builtin(
                 );
             };
 
-            let TypeProtocol::Label(to) = heap.witnesses.get(wit).clone() else {
+            let Some(to) = heap.witnesses.get(wit).as_label().map(ToOwned::to_owned) else {
                 return MachineState::Error(
                     "record_rename requires 'to' field with a string".to_owned(),
                 );
@@ -829,7 +829,7 @@ fn eval_builtin(
                 );
             };
 
-            let TypeProtocol::Label(label) = heap.witnesses.get(wit).clone() else {
+            let Some(label) = heap.witnesses.get(wit).as_label().map(ToOwned::to_owned) else {
                 return MachineState::Error(
                     "record_contains requires 'label' field with a string".to_owned(),
                 );

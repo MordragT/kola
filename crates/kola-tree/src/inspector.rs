@@ -1,4 +1,4 @@
-use kola_utils::{convert::TryAsRef, interner::StrInterner};
+use kola_utils::{convert::TryAsRef, interner::Interner};
 use std::{fmt::Debug, hash::BuildHasher};
 
 use crate::{
@@ -13,7 +13,7 @@ use crate::{
 pub struct NodeInspector<'t, T, S: BuildHasher> {
     pub node: T,
     pub tree: &'t TreeBuilder,
-    pub interner: &'t StrInterner<S>,
+    pub interner: &'t Interner<str, S>,
 }
 
 impl<'t, T, S> Clone for NodeInspector<'t, T, S>
@@ -39,7 +39,7 @@ where
 
 impl<'t, T, S: BuildHasher> NodeInspector<'t, T, S> {
     /// Create a new inspector from a node and tree
-    pub fn new(node: T, tree: &'t TreeBuilder, interner: &'t StrInterner<S>) -> Self {
+    pub fn new(node: T, tree: &'t TreeBuilder, interner: &'t Interner<str, S>) -> Self {
         Self {
             node,
             tree,

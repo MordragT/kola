@@ -68,7 +68,7 @@ def main():
     t0 = time.perf_counter()
 
     # Phase 1: Build a list of 2000 elements
-    big_list = range_n(20000)
+    big_list = range_n(200000)
 
     # Phase 2: map is_even
     evens_list = map_list(is_even, big_list)
@@ -83,12 +83,12 @@ def main():
     total = sum_list(big_list)
 
     # Phase 6: build another range and chain operations
-    big_list2 = range_n(15000)
+    big_list2 = range_n(150000)
     doubled = map_list(lambda x: x * 2, big_list2)
     doubled_sum = sum_list(doubled)
 
     # Phase 7: build a third range and do more ops
-    big_list3 = range_n(10000)
+    big_list3 = range_n(100000)
     added = map_list(lambda x: x + 5, big_list3)
     added_sum = sum_list(added)
 

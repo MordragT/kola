@@ -275,8 +275,8 @@ pub trait IntoDiagnostic: fmt::Display + Sized {
 
 impl IntoDiagnostic for io::Error {}
 
-impl<T> IntoDiagnostic for WithInterner<'_, T, str> where T: DisplayWith<StrInterner> {}
-impl<T> IntoDiagnostic for WithInterner<'_, T, Utf8Path> where T: DisplayWith<PathInterner> {}
+impl<T> IntoDiagnostic for WithInterner<'_, T, StrInterner> where T: DisplayWith<StrInterner> {}
+impl<T> IntoDiagnostic for WithInterner<'_, T, PathInterner> where T: DisplayWith<PathInterner> {}
 
 /// Represents a diagnostic message with source location information.
 ///

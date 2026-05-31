@@ -308,7 +308,7 @@ mod tests {
 
     #[test]
     fn case_literal_pattern_mismatch() {
-        let mut interner = StrInterner::new();
+        let mut interner = StrInterner::default();
         let mut builder = TreeBuilder::new();
 
         // case "hello" of 42 => true, _ => false (should fail: string vs number)
@@ -333,7 +333,7 @@ mod tests {
 
     #[test]
     fn case_wildcard_pattern() {
-        let mut interner = StrInterner::new();
+        let mut interner = StrInterner::default();
         let mut builder = TreeBuilder::new();
 
         // case 42 of _ => "anything"
@@ -351,7 +351,7 @@ mod tests {
 
     #[test]
     fn case_bind_pattern() {
-        let mut interner = StrInterner::new();
+        let mut interner = StrInterner::default();
         let mut builder = TreeBuilder::new();
 
         // case 42 of x => x
@@ -371,7 +371,7 @@ mod tests {
 
     #[test]
     fn case_list_pattern_empty() {
-        let mut interner = StrInterner::new();
+        let mut interner = StrInterner::default();
         let mut builder = TreeBuilder::new();
 
         // case [] of [] => "empty", _ => "not empty"
@@ -394,7 +394,7 @@ mod tests {
 
     #[test]
     fn case_list_pattern_with_elements() {
-        let mut interner = StrInterner::new();
+        let mut interner = StrInterner::default();
         let mut builder = TreeBuilder::new();
 
         // case [1, 2, 3] of [x, y, z] => x
@@ -428,7 +428,7 @@ mod tests {
 
     #[test]
     fn case_list_pattern_with_spread() {
-        let mut interner = StrInterner::new();
+        let mut interner = StrInterner::default();
         let mut builder = TreeBuilder::new();
 
         // case [1, 2, 3] of [head, ...tail] => head
@@ -458,7 +458,7 @@ mod tests {
 
     #[test]
     fn case_record_pattern_exact() {
-        let mut interner = StrInterner::new();
+        let mut interner = StrInterner::default();
         let mut builder = TreeBuilder::new();
 
         // case {x = 10, y = 20} of {x, y} => x
@@ -496,7 +496,7 @@ mod tests {
 
     #[test]
     fn case_record_pattern_polymorphic() {
-        let mut interner = StrInterner::new();
+        let mut interner = StrInterner::default();
         let mut builder = TreeBuilder::new();
 
         // case {x = 10, y = 20, z = "hello"} of {x, y, ...} => x
@@ -541,7 +541,7 @@ mod tests {
 
     #[test]
     fn case_branch_type_mismatch() {
-        let mut interner = StrInterner::new();
+        let mut interner = StrInterner::default();
         let mut builder = TreeBuilder::new();
 
         // case 42 of

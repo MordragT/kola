@@ -16,7 +16,7 @@ use crate::{
 };
 
 pub fn mocked_source() -> SourceId {
-    let mut interner = PathInterner::new();
+    let mut interner = PathInterner::default();
     interner.intern(Utf8PathBuf::from("test"))
 }
 
@@ -34,7 +34,7 @@ where
 
     let global_type_env = TypeEnv::new();
     let module_type_env = TypeEnv::new();
-    let mut interner = StrInterner::new(); // TODO for tests with builtin types the interner should be passed
+    let mut interner = StrInterner::default(); // TODO for tests with builtin types the interner should be passed
     let resolved = ResolvedNodes::new();
 
     let mut cons = Constraints::new();

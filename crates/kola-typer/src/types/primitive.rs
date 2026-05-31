@@ -17,11 +17,11 @@ pub enum PrimitiveType {
 impl PrimitiveType {
     pub fn to_protocol(&self) -> TypeProtocol {
         match self {
-            PrimitiveType::Unit => TypeProtocol::Unit,
-            PrimitiveType::Bool => TypeProtocol::Bool,
-            PrimitiveType::Num => TypeProtocol::Num,
-            PrimitiveType::Char => TypeProtocol::Char,
-            PrimitiveType::Str => TypeProtocol::Str,
+            PrimitiveType::Unit => TypeProtocol::UNIT,
+            PrimitiveType::Bool => TypeProtocol::BOOL,
+            PrimitiveType::Num => TypeProtocol::NUM,
+            PrimitiveType::Char => TypeProtocol::CHAR,
+            PrimitiveType::Str => TypeProtocol::STR,
         }
     }
 }

@@ -1,4 +1,4 @@
-use std::{fmt, sync::LazyLock};
+use std::{collections::BTreeSet, fmt, sync::LazyLock};
 
 use kola_protocol::{TypeProtocol, TypeSchemeProtocol, ty};
 use strum::{AsRefStr, EnumCount, EnumIter, EnumString, FromRepr, IntoStaticStr};
@@ -33,6 +33,19 @@ pub static BUILTINS: LazyLock<[Builtin; BuiltinId::COUNT]> = LazyLock::new(|| {
         let id = BuiltinId::from_repr(i as u8).expect("valid BuiltinId discriminant");
         id.definition()
     })
+});
+
+pub static BUILTIN_TYPE_STRINGS: LazyLock<Vec<&'static str>> = LazyLock::new(|| {
+    let mut set = BTreeSet::new();
+    for builtin in BUILTINS.iter() {
+        for s in &builtin.input.table {
+            set.insert(s.as_str());
+        }
+        for s in &builtin.output.table {
+            set.insert(s.as_str());
+        }
+    }
+    set.into_iter().collect()
 });
 
 #[inline]

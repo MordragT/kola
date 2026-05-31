@@ -1,4 +1,5 @@
 use camino::Utf8Path;
+use kola_builtins::BUILTIN_TYPE_STRINGS;
 use std::io;
 
 use kola_ir::print::render_ir;
@@ -20,7 +21,7 @@ use kola_typer::{
     check::{TypeCheckOutput, type_check},
     print::TypeDecorator,
 };
-use kola_utils::{interner::StrInterner, interner_ext::InternerExt, io::FileSystem};
+use kola_utils::{interner::StrInterner, io::FileSystem};
 use kola_vm::{
     heap::Heap,
     machine::{CekMachine, MachineContext},
@@ -38,10 +39,16 @@ pub struct Driver {
 
 impl Driver {
     pub fn new(io: impl FileSystem + 'static) -> Self {
+        let mut str_interner = StrInterner::default();
+
+        for s in BUILTIN_TYPE_STRINGS.iter() {
+            str_interner.intern(*s);
+        }
+
         Self {
             io: Box::new(io),
             arena: Bump::new(),
-            str_interner: StrInterner::new(),
+            str_interner,
             type_interner: TypeInterner::new(),
             print_options: PrintOptions::default(),
         }

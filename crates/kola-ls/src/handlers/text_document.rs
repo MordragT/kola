@@ -23,7 +23,7 @@ async fn on_enter(server: &Server, uri: ls::Uri, version: i32, text: String) {
     let source_id = server.interner.write().await.intern(path.as_path());
     let source = Source::from(text);
 
-    let mut interner = StrInterner::new();
+    let mut interner = StrInterner::default();
     let mut report = Report::new();
 
     let Some(tokens) = tokenize(LexInput::new(source_id, source.text()), &mut report) else {
