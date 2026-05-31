@@ -1,24 +1,16 @@
 use kola_ir::instr::Func;
 
-use crate::{
-    env::{HeapEnv, RawEnv},
-    heap::Heap,
-};
+use crate::env::EnvIdx;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub struct Closure {
-    pub env: HeapEnv,
+    pub env: EnvIdx,
     pub func: Func,
 }
 
 impl Closure {
     #[inline]
-    pub fn new(env: HeapEnv, func: Func) -> Self {
+    pub fn new(env: EnvIdx, func: Func) -> Self {
         Self { env, func }
-    }
-
-    #[inline]
-    pub fn get_env(self, heap: &Heap) -> RawEnv {
-        heap.get_env(self.env)
     }
 }

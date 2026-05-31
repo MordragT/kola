@@ -1,6 +1,6 @@
 use std::{borrow::Cow, fmt};
 
-use kola_ir::instr::{Func, Symbol, Tag};
+use kola_ir::instr::{Func, Tag};
 use kola_protocol::{TypeInterner, TypeKey, TypeProtocol};
 use kola_utils::{
     display::DisplayWith,
@@ -11,7 +11,7 @@ use serde::Serialize;
 
 use crate::{
     arenas::RangeArena,
-    env::{HeapEnv, RawEnv},
+    env::EnvArena,
     handler::{HeapOpClauses, RawOpClauses},
     list::{ListArena, ListIdx},
     record::{RecordArena, RecordIdx},
@@ -37,7 +37,8 @@ pub struct Heap {
     pub witnesses: WitnessArena,
     /// The arena for storing variants
     pub variants: VariantArena,
-    environments: RangeArena<(Symbol, Value)>,
+    /// The arena for storing environments
+    pub envs: EnvArena,
     operation_clauses: RangeArena<(StrKey, Func)>,
 }
 
@@ -51,7 +52,7 @@ impl Heap {
             records: RecordArena::new(),
             witnesses: WitnessArena::new(),
             variants: VariantArena::new(),
-            environments: RangeArena::new(),
+            envs: EnvArena::new(),
             operation_clauses: RangeArena::new(),
         }
     }
@@ -120,17 +121,7 @@ impl Heap {
         self.variants.alloc(tag, value)
     }
 
-    // deprecated ------------------
-
-    #[inline]
-    pub fn alloc_env(&mut self, env: &RawEnv) -> HeapEnv {
-        HeapEnv(self.environments.alloc(&env.0))
-    }
-
-    #[inline]
-    pub fn get_env(&self, env: HeapEnv) -> RawEnv {
-        RawEnv(self.environments.get(env.0).to_vec())
-    }
+    // deprecated ----------------
 
     #[inline]
     pub fn alloc_op_clauses(&mut self, clauses: &RawOpClauses) -> HeapOpClauses {

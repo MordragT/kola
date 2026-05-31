@@ -3,7 +3,7 @@ use camino::{Utf8Path, Utf8PathBuf};
 use crate::{
     config::{MachineState, OperationConfig, PatternConfig, StandardConfig},
     cont::{Cont, ContFrame},
-    env::RawEnv,
+    env::EnvArena,
     eval::{Eval, eval_atom},
     heap::Heap,
     value::Value,
@@ -31,8 +31,8 @@ impl MachineContext {
 
     pub fn start_config(&self, heap: &mut Heap) -> StandardConfig {
         let control = self.ir.root().get(&self.ir);
-        let env = RawEnv::new();
-        let cont = Cont::identity(env.clone().alloc(heap));
+        let env = heap.envs.alloc(&[]);
+        let cont = Cont::identity(env);
 
         StandardConfig { control, env, cont }
     }
@@ -153,14 +153,13 @@ impl CekMachine {
                 // ⟨(do ℓ V)^E | γ | (σ, (γ', H)) :: κ | κ'⟩^op → ⟨M | γ'[x ↦ ⟦V⟧_γ, k ↦ (κ' ++ [(σ, (γ', H))])^B] | κ⟩
 
                 // Evaluate the operation argument
-                let arg_value = match eval_atom(context.ir.instr(arg), &env, heap) {
+                let arg_value = match eval_atom(context.ir.instr(arg), env, heap) {
                     Ok(value) => value,
                     Err(err) => return MachineState::Error(err),
                 };
 
                 // Create the handler environment γ'[x ↦ ⟦V⟧_γ]
-                let mut handler_env = handler_env.get(heap);
-                handler_env.insert(param, arg_value);
+                let handler_env = heap.envs.insert(handler_env, param, arg_value);
 
                 // Info: Continuation parameters are currently not present in the syntax, consider:
                 // handle some_computation | read arg k => (k "Hello from read") # k resumes the computation
