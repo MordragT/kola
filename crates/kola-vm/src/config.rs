@@ -16,7 +16,7 @@ pub struct StandardConfig {
     /// M - The expression currently being evaluated
     pub control: Expr,
     /// γ - Environment binding free variables
-    pub env: RawEnv<'static>,
+    pub env: RawEnv,
     /// κ - Continuation instructing what to do next
     pub cont: Cont,
 }
@@ -34,7 +34,7 @@ pub struct OperationConfig {
     /// The argument to the operation
     pub arg: Id<Atom>,
     /// Environment for the operation
-    pub env: RawEnv<'static>,
+    pub env: RawEnv,
     /// κ - Current continuation
     pub cont: Cont,
     /// κ0 - Forwarding continuation (handlers already tried)
@@ -51,7 +51,7 @@ pub struct PatternConfig {
     /// The pattern matcher instruction currently being evaluated
     pub matcher: Id<PatternMatcher>,
     /// Environment for pattern matching
-    pub env: RawEnv<'static>,
+    pub env: RawEnv,
     /// Continuation to use after pattern matching completes
     pub cont: Cont,
 }

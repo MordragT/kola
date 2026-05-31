@@ -3,7 +3,7 @@ use std::fmt::{self, Display};
 
 use kola_builtins::BuiltinId;
 use kola_print::prelude::*;
-use kola_protocol::{TypeInterner, TypeKey, TypeProtocol};
+use kola_protocol::{TypeInterner, TypeKey};
 use kola_utils::{
     display::DisplayWith,
     impl_try_as,

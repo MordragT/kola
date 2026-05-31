@@ -5,29 +5,91 @@ use kola_tree::node::{
     FunctorNamespace, ModuleNamespace, ModuleTypeNamespace, NamespaceKind, TypeNamespace,
     ValueNamespace,
 };
-use kola_utils::define_unique_leveled_id;
 use std::{
     borrow::Cow,
     fmt,
     hash::Hash,
     marker::PhantomData,
+    num::NonZeroU32,
     sync::atomic::{AtomicU32, Ordering},
 };
 
-static LEVEL: AtomicU32 = AtomicU32::new(0);
-static GENERATOR: AtomicU32 = AtomicU32::new(0);
+static LEVEL: AtomicU32 = AtomicU32::new(1);
+static GENERATOR: AtomicU32 = AtomicU32::new(1);
 
-define_unique_leveled_id!(Sym);
+#[derive(serde::Serialize, serde::Deserialize)]
+pub struct Sym<T: ?Sized> {
+    id: NonZeroU32,
+    level: NonZeroU32,
+    t: std::marker::PhantomData<T>,
+}
+
+impl<T: ?Sized> Clone for Sym<T> {
+    fn clone(&self) -> Self {
+        Self {
+            id: self.id,
+            level: self.level,
+            t: std::marker::PhantomData,
+        }
+    }
+}
+
+impl<T: ?Sized> Copy for Sym<T> {}
+
+impl<T: ?Sized> PartialEq for Sym<T> {
+    fn eq(&self, other: &Self) -> bool {
+        self.id == other.id && self.level == other.level
+    }
+}
+
+impl<T: ?Sized> Eq for Sym<T> {}
+
+impl<T: ?Sized> PartialOrd for Sym<T> {
+    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl<T: ?Sized> Ord for Sym<T> {
+    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
+        self.id.cmp(&other.id).then(self.level.cmp(&other.level))
+    }
+}
+
+impl<T: ?Sized> std::hash::Hash for Sym<T> {
+    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
+        self.id.hash(state);
+        self.level.hash(state);
+    }
+}
+
+impl<T: ?Sized> std::fmt::Debug for Sym<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "{}({}, level: {})", stringify!(Sym), self.id, self.level)
+    }
+}
 
 impl<T: ?Sized> Sym<T> {
     pub fn new() -> Self {
         let id = GENERATOR.fetch_add(1, Ordering::Relaxed);
         let level = Self::load_level();
         Self {
-            id,
-            level,
+            id: NonZeroU32::new(id).expect("Sym generator overflowed"),
+            level: NonZeroU32::new(level).expect("Sym level overflowed"),
             t: PhantomData,
         }
+    }
+
+    pub fn as_usize(&self) -> usize {
+        self.id.get() as usize
+    }
+
+    pub fn id(&self) -> u32 {
+        self.id.get()
+    }
+
+    pub fn level(&self) -> u32 {
+        self.level.get()
     }
 
     pub fn load_level() -> u32 {

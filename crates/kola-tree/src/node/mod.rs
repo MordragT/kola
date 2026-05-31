@@ -44,7 +44,7 @@ macro_rules! define_nodes {
         }
 
         impl Node {
-            pub const BITS: usize = mem::size_of::<Self>();
+            pub const BYTES: usize = mem::size_of::<Self>();
 
             pub fn kind(&self) -> NodeKind {
                 match self {
@@ -155,5 +155,5 @@ define_nodes!(
 );
 
 const _: () = {
-    assert!(Node::BITS == 40);
+    assert!(Node::BYTES == 40);
 };

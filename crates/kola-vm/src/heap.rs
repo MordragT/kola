@@ -128,8 +128,8 @@ impl Heap {
     }
 
     #[inline]
-    pub fn get_env(&self, env: HeapEnv) -> RawEnv<'_> {
-        RawEnv(Cow::Borrowed(self.environments.get(env.0)))
+    pub fn get_env(&self, env: HeapEnv) -> RawEnv {
+        RawEnv(self.environments.get(env.0).to_vec())
     }
 
     #[inline]

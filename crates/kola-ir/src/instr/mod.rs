@@ -1,4 +1,4 @@
-use std::{fmt, mem};
+use std::{fmt, mem, num::NonZeroU32};
 
 mod atom;
 mod expr;
@@ -12,7 +12,14 @@ pub use pattern::*;
 
 // TODO Symbol scoping
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct Symbol(pub u32);
+pub struct Symbol(NonZeroU32);
+
+impl Symbol {
+    pub const fn new(id: u32) -> Self {
+        let id = NonZeroU32::new(id).expect("Symbol id cannot be zero");
+        Self(id)
+    }
+}
 
 impl fmt::Display for Symbol {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -35,7 +42,7 @@ pub enum Instr {
 }
 
 impl Instr {
-    pub const BITS: usize = mem::size_of::<Self>();
+    pub const BYTES: usize = mem::size_of::<Self>();
 }
 
 // Ensure that the size of Instr is not too large

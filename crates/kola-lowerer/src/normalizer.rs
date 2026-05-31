@@ -52,7 +52,7 @@ impl<'a, Node> Normalizer<'a, Node> {
 
     pub fn next_symbol(&mut self) -> ir::Symbol {
         let sym = ValueSym::new();
-        let symbol = ir::Symbol(sym.id());
+        let symbol = ir::Symbol::new(sym.id());
         symbol
     }
 
@@ -62,7 +62,7 @@ impl<'a, Node> Normalizer<'a, Node> {
         T: MetaCast<ResolvePhase, Meta = Sym<N>>, // TODO maybe ValueSym ??
     {
         let sym = self.resolved.meta(id);
-        ir::Symbol(sym.id())
+        ir::Symbol::new(sym.id())
     }
 
     /// emit(atom) ~= let self.hole = atom; self.next
@@ -176,7 +176,9 @@ where
 
         if let Some(path) = module_path {
             let ResolvedModule(sym) = *self.resolved.meta(path);
-            let module_atom = self.builder.add(ir::Atom::Symbol(ir::Symbol(sym.id())));
+            let module_atom = self
+                .builder
+                .add(ir::Atom::Symbol(ir::Symbol::new(sym.id())));
 
             let name = source.get(tree).0;
 
@@ -195,7 +197,7 @@ where
 
         // Create atom
         let source_atom = match *self.resolved.meta(id) {
-            ResolvedValue::Reference(sym) => ir::Atom::Symbol(ir::Symbol(sym.id())),
+            ResolvedValue::Reference(sym) => ir::Atom::Symbol(ir::Symbol::new(sym.id())),
             ResolvedValue::Builtin(b) => ir::Atom::Builtin(b),
         }; // This is only defined if path is None so be careful about moving this
         let source_atom = self.builder.add(source_atom);
@@ -876,7 +878,7 @@ impl<'a> PatternNormalizer<'a> {
 
     pub fn next_symbol(&mut self) -> ir::Symbol {
         let sym = ValueSym::new();
-        let symbol = ir::Symbol(sym.id());
+        let symbol = ir::Symbol::new(sym.id());
         symbol
     }
 
@@ -886,7 +888,7 @@ impl<'a> PatternNormalizer<'a> {
         T: MetaCast<ResolvePhase, Meta = Sym<N>>, // TODO maybe ValueSym ??
     {
         let sym = self.resolved.meta(id);
-        ir::Symbol(sym.id())
+        ir::Symbol::new(sym.id())
     }
 }
 
@@ -1376,7 +1378,7 @@ mod tests {
 
         let mocked_typed = HashMap::new();
 
-        let hole = Symbol(ValueSym::new().id());
+        let hole = Symbol::new(ValueSym::new().id());
         let arg = builder.add(ir::Atom::Symbol(hole));
         let next = builder.add(ir::Expr::Ret(ir::RetExpr { arg }));
 
@@ -1395,8 +1397,8 @@ mod tests {
         builder.finish(root)
     }
 
-    fn new_machine(ir: Ir, interner: StrInterner, heap: &mut Heap) -> CekMachine {
-        let context = MachineContext::new(ir, "/mocked/path", interner, TypeInterner::new());
+    fn new_machine(ir: Ir, heap: &mut Heap) -> CekMachine {
+        let context = MachineContext::new(ir, "/mocked/path");
         CekMachine::new(context, heap)
     }
 
@@ -1408,8 +1410,8 @@ mod tests {
         let resolved = mock_resolved(&builder);
         let ir = normalize(builder, lit, &resolved, &StrInterner::new());
 
-        let mut heap = Heap::new();
-        let mut machine = new_machine(ir, StrInterner::new(), &mut heap);
+        let mut heap = Heap::new(StrInterner::new(), TypeInterner::new());
+        let mut machine = new_machine(ir, &mut heap);
         let value = machine.run(&mut heap).unwrap();
 
         assert_eq!(value, Value::Num(10.0))
@@ -1428,8 +1430,8 @@ mod tests {
         let resolved = mock_resolved(&builder);
         let ir = normalize(builder, path_expr, &resolved, &interner);
 
-        let mut heap = Heap::new();
-        let mut machine = new_machine(ir, interner, &mut heap);
+        let mut heap = Heap::new(interner.clone(), TypeInterner::new());
+        let mut machine = new_machine(ir, &mut heap);
 
         // Expect unbound symbol error.
         let _err = machine.run(&mut heap).unwrap_err();
@@ -1455,8 +1457,8 @@ mod tests {
 
         let ir = normalize(builder, let_expr, &resolved, &interner);
 
-        let mut heap = Heap::new();
-        let mut machine = new_machine(ir, interner, &mut heap);
+        let mut heap = Heap::new(interner, TypeInterner::new());
+        let mut machine = new_machine(ir, &mut heap);
         let value = machine.run(&mut heap).unwrap();
 
         // Should evaluate to 42 (the value bound to x)
@@ -1492,8 +1494,8 @@ mod tests {
 
         let ir = normalize(builder, call_expr, &resolved, &interner);
 
-        let mut heap = Heap::new();
-        let mut machine = new_machine(ir, interner, &mut heap);
+        let mut heap = Heap::new(interner, TypeInterner::new());
+        let mut machine = new_machine(ir, &mut heap);
         let value = machine.run(&mut heap).unwrap();
 
         // Should evaluate to 42 (identity function returns its argument)
@@ -1525,8 +1527,8 @@ mod tests {
 
         let ir = normalize(builder, record_id, &resolved, &interner);
 
-        let mut heap = Heap::new();
-        let mut machine = new_machine(ir, interner, &mut heap);
+        let mut heap = Heap::new(interner, TypeInterner::new());
+        let mut machine = new_machine(ir, &mut heap);
         let value = machine.run(&mut heap).unwrap();
 
         // Should evaluate to a record with two fields
@@ -1579,8 +1581,8 @@ mod tests {
 
         let ir = normalize(builder, let_expr, &resolved, &interner);
 
-        let mut heap = Heap::new();
-        let mut machine = new_machine(ir, interner, &mut heap);
+        let mut heap = Heap::new(interner, TypeInterner::new());
+        let mut machine = new_machine(ir, &mut heap);
         let value = machine.run(&mut heap).unwrap().into_str().unwrap();
 
         // Should evaluate to "hello" (the value of r.a.b.c)

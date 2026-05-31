@@ -18,7 +18,7 @@ impl Closure {
     }
 
     #[inline]
-    pub fn get_env(self, heap: &Heap) -> RawEnv<'_> {
+    pub fn get_env(self, heap: &Heap) -> RawEnv {
         heap.get_env(self.env)
     }
 }

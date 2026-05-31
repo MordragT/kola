@@ -267,7 +267,7 @@ impl ListArena {
             return None;
         }
 
-        let first = self.data[start].clone();
+        let first = self.data[start];
 
         // Copy the tail (all elements except the first)
         let new_start = self.data.len();
@@ -288,7 +288,7 @@ impl ListArena {
             return None;
         }
 
-        let last = self.data[end - 1].clone();
+        let last = self.data[end - 1];
 
         // Copy the head (all elements except the last)
         let new_start = self.data.len();
@@ -331,7 +331,7 @@ impl ListArena {
 
         // Copy elements in reverse order
         for i in (start..end).rev() {
-            self.data.push(self.data[i].clone());
+            self.data.push(self.data[i]);
         }
 
         let new_end = self.data.len();
@@ -351,9 +351,9 @@ impl ListArena {
         // Copy all elements, replacing the one at `index`
         for i in start..end {
             if i - start == index {
-                self.data.push(value.clone());
+                self.data.push(value);
             } else {
-                self.data.push(self.data[i].clone());
+                self.data.push(self.data[i]);
             }
         }
 

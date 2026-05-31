@@ -41,8 +41,10 @@ pub enum Value {
     Witness(WitnessIdx),
 }
 
+const _: () = assert!(Value::BYTES <= 24);
+
 impl Value {
-    pub const BITS: usize = std::mem::size_of::<Self>() * 8;
+    pub const BYTES: usize = std::mem::size_of::<Self>();
 
     pub fn from_json(
         type_proto: &TypeProtocol,

@@ -21,7 +21,7 @@ impl<'a> SymbolEnv<'a> {
 
     pub fn next(&mut self) -> ir::Symbol {
         let sym = ValueSym::new();
-        let symbol = ir::Symbol(sym.id());
+        let symbol = ir::Symbol::new(sym.id());
         symbol
     }
 
@@ -31,19 +31,19 @@ impl<'a> SymbolEnv<'a> {
         T: MetaCast<ResolvePhase, Meta = Sym<N>>,
     {
         let sym = self.resolved.meta(id);
-        ir::Symbol(sym.id())
+        ir::Symbol::new(sym.id())
     }
 
     pub fn atom_of_expr(&self, id: TreeId<node::QualifiedExpr>) -> ir::Atom {
         match *self.resolved.meta(id) {
-            ResolvedValue::Reference(sym) => ir::Atom::Symbol(ir::Symbol(sym.id())),
+            ResolvedValue::Reference(sym) => ir::Atom::Symbol(ir::Symbol::new(sym.id())),
             ResolvedValue::Builtin(b) => ir::Atom::Builtin(b),
         }
     }
 
     pub fn atom_of_module(&self, id: TreeId<node::ModulePath>) -> ir::Atom {
         let ResolvedModule(sym) = *self.resolved.meta(id);
-        ir::Atom::Symbol(ir::Symbol(sym.id()))
+        ir::Atom::Symbol(ir::Symbol::new(sym.id()))
     }
 }
 

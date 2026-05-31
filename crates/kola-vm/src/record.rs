@@ -299,7 +299,7 @@ impl RecordArena {
             return None;
         }
 
-        let first = self.data[start].clone();
+        let first = self.data[start];
 
         // Copy the tail (all entries except the first)
         let new_start = self.data.len();
@@ -320,7 +320,7 @@ impl RecordArena {
             return None;
         }
 
-        let last = self.data[end - 1].clone();
+        let last = self.data[end - 1];
 
         // Copy the head (all entries except the last)
         let new_start = self.data.len();

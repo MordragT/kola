@@ -36,7 +36,11 @@ pub enum ContFrame {
     StrRec { data: StringIdx, step: Closure },
 }
 
+const _: () = assert!(ContFrame::BYTES <= 32);
+
 impl ContFrame {
+    pub const BYTES: usize = std::mem::size_of::<Self>();
+
     pub fn num_rec(data: f64, step: Closure) -> Self {
         Self::NumRec { data, step }
     }

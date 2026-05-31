@@ -189,7 +189,7 @@ pub fn lower_module(
     let resolved = &scope.resolved;
 
     // Start with the module result (record creation)
-    let bind = ir::Symbol(scope.info.sym.id());
+    let bind = ir::Symbol::new(scope.info.sym.id());
     let mut fields = ir::RecordExpr {
         bind,
         head: None,
@@ -200,7 +200,7 @@ pub fn lower_module(
     for &value_sym in value_order {
         let id = scope.defs[value_sym].id();
         let label = id.get(tree).name.get(tree).0;
-        let hole = Symbol(resolved.meta(id).id());
+        let hole = Symbol::new(resolved.meta(id).id());
         fields.add_field((label, ir::Atom::Symbol(hole)), builder);
     }
 
@@ -213,7 +213,7 @@ pub fn lower_module(
     for &value_sym in value_order.iter().rev() {
         let id = scope.defs[value_sym].id();
         let value_bind = id.get(tree);
-        let hole = Symbol(resolved.meta(id).id());
+        let hole = Symbol::new(resolved.meta(id).id());
 
         let normalizer = Normalizer::new(
             value_bind.value,
@@ -266,7 +266,7 @@ pub fn lower(
     let mut builder = IrBuilder::new();
     let mut modules = Vec::new();
 
-    let entry = ir::Symbol(entry_point.id());
+    let entry = ir::Symbol::new(entry_point.id());
     let arg = builder.add(ir::Atom::Symbol(entry));
     let mut next = builder.add(ir::Expr::Ret(ir::RetExpr { arg }));
 

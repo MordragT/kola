@@ -24,17 +24,15 @@ use kola_ir::{
     ir::{Ir, IrView},
 };
 use kola_protocol::TypeProtocol;
-use kola_utils::interner::StrInterner;
 
 #[inline]
 pub fn eval_symbol(symbol: Symbol, env: &RawEnv) -> Result<Value, String> {
     // Look up the symbol in the environment
-    env.get(&symbol)
-        .cloned()
+    env.get(symbol)
         .ok_or_else(|| format!("Unbound variable: {}", symbol))
 }
 
-pub fn eval_atom(atom: Atom, env: &RawEnv<'static>, heap: &mut Heap) -> Result<Value, String> {
+pub fn eval_atom(atom: Atom, env: &RawEnv, heap: &mut Heap) -> Result<Value, String> {
     match atom {
         Atom::Noop => Ok(Value::None),
         Atom::Bool(b) => Ok(Value::Bool(b)),
@@ -55,7 +53,7 @@ pub fn eval_atom(atom: Atom, env: &RawEnv<'static>, heap: &mut Heap) -> Result<V
 pub trait Eval {
     fn eval(
         &self,
-        env: RawEnv<'static>,
+        env: RawEnv,
         cont: Cont,
         context: &mut MachineContext,
         heap: &mut Heap,
@@ -65,7 +63,7 @@ pub trait Eval {
 impl Eval for Expr {
     fn eval(
         &self,
-        env: RawEnv<'static>,
+        env: RawEnv,
         cont: Cont,
         context: &mut MachineContext,
         heap: &mut Heap,
@@ -104,7 +102,7 @@ impl Eval for Expr {
 impl Eval for RetExpr {
     fn eval(
         &self,
-        env: RawEnv<'static>,
+        env: RawEnv,
         mut cont: Cont,
         context: &mut MachineContext,
         heap: &mut Heap,
@@ -133,7 +131,7 @@ impl Eval for RetExpr {
                 // 5. The continuation stack is updated by removing the top pure frame
 
                 // Create new environment with the bound variable
-                let mut env = env.get(heap).into_owned();
+                let mut env = env.get(heap);
                 env.insert(var, value);
 
                 // Continue with the next expression
@@ -161,7 +159,7 @@ impl Eval for RetExpr {
                             // No more frames, return the final value
                             MachineState::Value(value)
                         } else {
-                            let env = env.get(heap).into_owned();
+                            let env = env.get(heap);
 
                             // Continue with the next frame
                             MachineState::Standard(StandardConfig {
@@ -173,7 +171,7 @@ impl Eval for RetExpr {
                     }
                     ReturnClause::Function(Func { param, body }) => {
                         // Create a new environment with the value bound to param
-                        let mut env = env.get(heap).into_owned();
+                        let mut env = env.get(heap);
                         env.insert(param, value);
 
                         // Evaluate the return handler body
@@ -189,7 +187,7 @@ impl Eval for RetExpr {
                 if data >= 1.0 {
                     cont.push(ContFrame::NumRec {
                         data: data - 1.0,
-                        step: step.clone(),
+                        step,
                     });
                 }
 
@@ -203,7 +201,7 @@ impl Eval for RetExpr {
                 let head = (heap.intern_str("head"), Value::Num(data));
                 let record = heap.records.alloc(&[acc, head]);
 
-                let mut env = env.get(heap).into_owned();
+                let mut env = env.get(heap);
                 env.insert(param, Value::Record(record));
 
                 MachineState::Standard(StandardConfig {
@@ -235,7 +233,7 @@ impl Eval for RetExpr {
                 let head = (heap.intern_str("head"), head);
                 let record = heap.records.alloc(&[acc, head]);
 
-                let mut env = env.get(heap).into_owned();
+                let mut env = env.get(heap);
                 env.insert(param, Value::Record(record));
 
                 MachineState::Standard(StandardConfig {
@@ -274,7 +272,7 @@ impl Eval for RetExpr {
                 let head = (heap.intern_str("head"), Value::Record(head));
                 let record = heap.records.alloc(&[acc, head]);
 
-                let mut env = env.get(heap).into_owned();
+                let mut env = env.get(heap);
                 env.insert(param, Value::Record(record));
 
                 MachineState::Standard(StandardConfig {
@@ -306,7 +304,7 @@ impl Eval for RetExpr {
                 let head = (heap.intern_str("head"), Value::Str(head));
                 let record = heap.records.alloc(&[acc, head]);
 
-                let mut env = env.get(heap).into_owned();
+                let mut env = env.get(heap);
                 env.insert(param, Value::Record(record));
 
                 MachineState::Standard(StandardConfig {
@@ -330,7 +328,7 @@ impl Eval for RetExpr {
 impl Eval for CallExpr {
     fn eval(
         &self,
-        mut env: RawEnv<'static>,
+        mut env: RawEnv,
         mut cont: Cont,
         context: &mut MachineContext,
         heap: &mut Heap,
@@ -364,7 +362,7 @@ impl Eval for CallExpr {
                 cont.push(pure_frame);
 
                 // Create a new environment with the bound parameter
-                let mut func_env = func_env.get(heap).into_owned();
+                let mut func_env = func_env.get(heap);
                 func_env.insert(param, arg_val);
 
                 // Evaluate the function body
@@ -426,7 +424,7 @@ fn eval_builtin(
     builtin: BuiltinId,
     bind: Symbol,
     arg: Value,
-    mut env: RawEnv<'static>,
+    mut env: RawEnv,
     mut cont: Cont,
     next: Id<Expr>,
     context: &mut MachineContext,
@@ -619,7 +617,7 @@ fn eval_builtin(
             let head = (heap.intern_str("head"), head);
             let record = heap.records.alloc(&[acc, head]);
 
-            let mut env = env.get(heap).into_owned();
+            let mut env = env.get(heap);
             env.insert(param, Value::Record(record));
 
             return MachineState::Standard(StandardConfig {
@@ -694,7 +692,7 @@ fn eval_builtin(
             let head = (heap.intern_str("head"), Value::Num(n - 1.0));
             let record = heap.records.alloc(&[acc, head]);
 
-            let mut env = env.get(heap).into_owned();
+            let mut env = env.get(heap);
             env.insert(param, Value::Record(record));
 
             return MachineState::Standard(StandardConfig {
@@ -723,7 +721,7 @@ fn eval_builtin(
             };
 
             match heap.get_record_value(record, &label) {
-                Some(value) => value.clone(),
+                Some(value) => value,
                 None => {
                     return MachineState::Error(format!("Field '{}' not found in record", label));
                 }
@@ -941,7 +939,7 @@ fn eval_builtin(
             let head = (heap.intern_str("head"), Value::Record(head));
             let record = heap.records.alloc(&[acc, head]);
 
-            let mut env = env.get(heap).into_owned();
+            let mut env = env.get(heap);
             env.insert(param, Value::Record(record));
 
             return MachineState::Standard(StandardConfig {
@@ -1121,7 +1119,7 @@ fn eval_builtin(
             let head = (heap.intern_str("head"), Value::Char(head));
             let record = heap.records.alloc(&[acc, head]);
 
-            let mut env = env.get(heap).into_owned();
+            let mut env = env.get(heap);
             env.insert(param, Value::Record(record));
 
             return MachineState::Standard(StandardConfig {
@@ -1153,7 +1151,7 @@ fn eval_builtin(
 impl Eval for HandleExpr {
     fn eval(
         &self,
-        env: RawEnv<'static>,
+        env: RawEnv,
         mut cont: Cont,
         context: &mut MachineContext,
         heap: &mut Heap,
@@ -1195,7 +1193,7 @@ impl Eval for HandleExpr {
 impl Eval for DoExpr {
     fn eval(
         &self,
-        env: RawEnv<'static>,
+        env: RawEnv,
         mut cont: Cont,
         _context: &mut MachineContext,
         heap: &mut Heap,
@@ -1235,7 +1233,7 @@ impl Eval for DoExpr {
 impl Eval for LetExpr {
     fn eval(
         &self,
-        env: RawEnv<'static>,
+        env: RawEnv,
         mut cont: Cont,
         _context: &mut MachineContext,
         heap: &mut Heap,
@@ -1265,7 +1263,7 @@ impl Eval for LetExpr {
 impl Eval for IfExpr {
     fn eval(
         &self,
-        env: RawEnv<'static>,
+        env: RawEnv,
         mut cont: Cont,
         context: &mut MachineContext,
         heap: &mut Heap,
@@ -1333,7 +1331,7 @@ pub fn eval_unary_op(op: UnaryOp, value: Value) -> Result<Value, String> {
 impl Eval for UnaryExpr {
     fn eval(
         &self,
-        mut env: RawEnv<'static>,
+        mut env: RawEnv,
         cont: Cont,
         context: &mut MachineContext,
         heap: &mut Heap,
@@ -1416,7 +1414,7 @@ pub fn eval_binary_op(
 impl Eval for BinaryExpr {
     fn eval(
         &self,
-        mut env: RawEnv<'static>,
+        mut env: RawEnv,
         cont: Cont,
         context: &mut MachineContext,
         heap: &mut Heap,
@@ -1462,7 +1460,7 @@ impl Eval for BinaryExpr {
 impl Eval for ListExpr {
     fn eval(
         &self,
-        mut env: RawEnv<'static>,
+        mut env: RawEnv,
         cont: Cont,
         context: &mut MachineContext,
         heap: &mut Heap,
@@ -1505,7 +1503,7 @@ impl Eval for ListExpr {
 impl Eval for RecordExpr {
     fn eval(
         &self,
-        mut env: RawEnv<'static>,
+        mut env: RawEnv,
         cont: Cont,
         context: &mut MachineContext,
         heap: &mut Heap,
@@ -1552,7 +1550,7 @@ impl Eval for RecordExpr {
 impl Eval for RecordExtendExpr {
     fn eval(
         &self,
-        mut env: RawEnv<'static>,
+        mut env: RawEnv,
         cont: Cont,
         context: &mut MachineContext,
         heap: &mut Heap,
@@ -1623,7 +1621,7 @@ impl Eval for RecordExtendExpr {
 impl Eval for RecordRestrictExpr {
     fn eval(
         &self,
-        mut env: RawEnv<'static>,
+        mut env: RawEnv,
         cont: Cont,
         context: &mut MachineContext,
         heap: &mut Heap,
@@ -1699,7 +1697,7 @@ pub fn eval_record_op(op: RecordUpdateOp, left: Value, right: Value) -> Result<V
 impl Eval for RecordUpdateExpr {
     fn eval(
         &self,
-        mut env: RawEnv<'static>,
+        mut env: RawEnv,
         cont: Cont,
         context: &mut MachineContext,
         heap: &mut Heap,
@@ -1741,7 +1739,7 @@ impl Eval for RecordUpdateExpr {
             .collect();
 
         // Use Record's update_at_path method
-        let update_fn = |current_val: Value| eval_record_op(op, current_val, update_val.clone());
+        let update_fn = |cur: Value| eval_record_op(op, cur, update_val);
         let record = match heap.records.update_at_path(record, &field_path, update_fn) {
             Ok(record) => record,
             Err(err) => return MachineState::Error(err),
@@ -1769,7 +1767,7 @@ impl Eval for RecordUpdateExpr {
 impl Eval for RecordAccessExpr {
     fn eval(
         &self,
-        mut env: RawEnv<'static>,
+        mut env: RawEnv,
         cont: Cont,
         context: &mut MachineContext,
         heap: &mut Heap,
@@ -1814,7 +1812,7 @@ impl Eval for RecordAccessExpr {
 impl Eval for PatternMatchExpr {
     fn eval(
         &self,
-        env: RawEnv<'static>,
+        env: RawEnv,
         mut cont: Cont,
         _context: &mut MachineContext,
         heap: &mut Heap,
@@ -1838,7 +1836,7 @@ impl Eval for PatternMatchExpr {
 impl Eval for PatternMatcher {
     fn eval(
         &self,
-        env: RawEnv<'static>,
+        env: RawEnv,
         cont: Cont,
         context: &mut MachineContext,
         heap: &mut Heap,
@@ -1884,7 +1882,7 @@ impl Eval for PatternMatcher {
 }
 
 /// Evaluates IsUnit pattern matcher - tests if the source value is Unit
-fn eval_is_unit(is_unit: &IsUnit, env: RawEnv<'static>, cont: Cont) -> MachineState {
+fn eval_is_unit(is_unit: &IsUnit, env: RawEnv, cont: Cont) -> MachineState {
     let IsUnit {
         source,
         on_success,
@@ -1892,8 +1890,8 @@ fn eval_is_unit(is_unit: &IsUnit, env: RawEnv<'static>, cont: Cont) -> MachineSt
     } = *is_unit;
 
     // Get the actual source value from the environment
-    let source_val = match env.get(&source) {
-        Some(val) => val.clone(),
+    let source_val = match env.get(source) {
+        Some(val) => val,
         None => return MachineState::Error(format!("Unbound variable: {}", source)),
     };
 
@@ -1911,7 +1909,7 @@ fn eval_is_unit(is_unit: &IsUnit, env: RawEnv<'static>, cont: Cont) -> MachineSt
 }
 
 /// Evaluates IsBool pattern matcher
-fn eval_is_bool(is_bool: &IsBool, env: RawEnv<'static>, cont: Cont) -> MachineState {
+fn eval_is_bool(is_bool: &IsBool, env: RawEnv, cont: Cont) -> MachineState {
     let IsBool {
         source,
         payload,
@@ -1919,8 +1917,8 @@ fn eval_is_bool(is_bool: &IsBool, env: RawEnv<'static>, cont: Cont) -> MachineSt
         on_failure,
     } = *is_bool;
 
-    let source_val = match env.get(&source) {
-        Some(val) => val.clone(),
+    let source_val = match env.get(source) {
+        Some(val) => val,
         None => return MachineState::Error(format!("Unbound variable: {}", source)),
     };
 
@@ -1937,7 +1935,7 @@ fn eval_is_bool(is_bool: &IsBool, env: RawEnv<'static>, cont: Cont) -> MachineSt
 }
 
 /// Evaluates IsNum pattern matcher
-fn eval_is_num(is_num: &IsNum, env: RawEnv<'static>, cont: Cont) -> MachineState {
+fn eval_is_num(is_num: &IsNum, env: RawEnv, cont: Cont) -> MachineState {
     let IsNum {
         source,
         payload,
@@ -1945,8 +1943,8 @@ fn eval_is_num(is_num: &IsNum, env: RawEnv<'static>, cont: Cont) -> MachineState
         on_failure,
     } = *is_num;
 
-    let source_val = match env.get(&source) {
-        Some(val) => val.clone(),
+    let source_val = match env.get(source) {
+        Some(val) => val,
         None => return MachineState::Error(format!("Unbound variable: {}", source)),
     };
 
@@ -1963,7 +1961,7 @@ fn eval_is_num(is_num: &IsNum, env: RawEnv<'static>, cont: Cont) -> MachineState
 }
 
 /// Evaluates IsChar pattern matcher
-fn eval_is_char(is_char: &IsChar, env: RawEnv<'static>, cont: Cont) -> MachineState {
+fn eval_is_char(is_char: &IsChar, env: RawEnv, cont: Cont) -> MachineState {
     let IsChar {
         source,
         payload,
@@ -1971,8 +1969,8 @@ fn eval_is_char(is_char: &IsChar, env: RawEnv<'static>, cont: Cont) -> MachineSt
         on_failure,
     } = *is_char;
 
-    let source_val = match env.get(&source) {
-        Some(val) => val.clone(),
+    let source_val = match env.get(source) {
+        Some(val) => val,
         None => return MachineState::Error(format!("Unbound variable: {}", source)),
     };
 
@@ -1989,7 +1987,7 @@ fn eval_is_char(is_char: &IsChar, env: RawEnv<'static>, cont: Cont) -> MachineSt
 }
 
 /// Evaluates IsStr pattern matcher
-fn eval_is_str(is_str: &IsStr, env: RawEnv<'static>, cont: Cont, heap: &Heap) -> MachineState {
+fn eval_is_str(is_str: &IsStr, env: RawEnv, cont: Cont, heap: &Heap) -> MachineState {
     let IsStr {
         source,
         payload,
@@ -1997,8 +1995,8 @@ fn eval_is_str(is_str: &IsStr, env: RawEnv<'static>, cont: Cont, heap: &Heap) ->
         on_failure,
     } = *is_str;
 
-    let source_val = match env.get(&source) {
-        Some(val) => val.clone(),
+    let source_val = match env.get(source) {
+        Some(val) => val,
         None => return MachineState::Error(format!("Unbound variable: {}", source)),
     };
 
@@ -2022,7 +2020,7 @@ fn eval_is_str(is_str: &IsStr, env: RawEnv<'static>, cont: Cont, heap: &Heap) ->
     })
 }
 
-fn eval_is_variant(is_tag: &IsVariant, env: RawEnv<'static>, cont: Cont) -> MachineState {
+fn eval_is_variant(is_tag: &IsVariant, env: RawEnv, cont: Cont) -> MachineState {
     let IsVariant {
         source,
         tag,
@@ -2031,8 +2029,8 @@ fn eval_is_variant(is_tag: &IsVariant, env: RawEnv<'static>, cont: Cont) -> Mach
     } = *is_tag;
 
     // Get the source value from the environment
-    let source_val = match env.get(&source) {
-        Some(val) => val.clone(),
+    let source_val = match env.get(source) {
+        Some(val) => val,
         None => return MachineState::Error(format!("Unbound variable: {}", source)),
     };
 
@@ -2049,7 +2047,7 @@ fn eval_is_variant(is_tag: &IsVariant, env: RawEnv<'static>, cont: Cont) -> Mach
     })
 }
 
-fn eval_is_record(is_record: &IsRecord, env: RawEnv<'static>, cont: Cont) -> MachineState {
+fn eval_is_record(is_record: &IsRecord, env: RawEnv, cont: Cont) -> MachineState {
     let IsRecord {
         source,
         on_success,
@@ -2057,8 +2055,8 @@ fn eval_is_record(is_record: &IsRecord, env: RawEnv<'static>, cont: Cont) -> Mac
     } = *is_record;
 
     // Get the source value from the environment
-    let source_val = match env.get(&source) {
-        Some(val) => val.clone(),
+    let source_val = match env.get(source) {
+        Some(val) => val,
         None => return MachineState::Error(format!("Unbound variable: {}", source)),
     };
 
@@ -2077,7 +2075,7 @@ fn eval_is_record(is_record: &IsRecord, env: RawEnv<'static>, cont: Cont) -> Mac
 
 fn eval_record_has_field(
     record_has_field: &RecordHasField,
-    env: RawEnv<'static>,
+    env: RawEnv,
     cont: Cont,
     heap: &Heap,
 ) -> MachineState {
@@ -2089,8 +2087,8 @@ fn eval_record_has_field(
     } = *record_has_field;
 
     // Get the source value from the environment
-    let source_val = match env.get(&source) {
-        Some(val) => val.clone(),
+    let source_val = match env.get(source) {
+        Some(val) => val,
         None => return MachineState::Error(format!("Unbound variable: {}", source)),
     };
 
@@ -2107,7 +2105,7 @@ fn eval_record_has_field(
     })
 }
 
-fn eval_is_list(is_list: &IsList, env: RawEnv<'static>, cont: Cont) -> MachineState {
+fn eval_is_list(is_list: &IsList, env: RawEnv, cont: Cont) -> MachineState {
     let IsList {
         source,
         on_success,
@@ -2115,8 +2113,8 @@ fn eval_is_list(is_list: &IsList, env: RawEnv<'static>, cont: Cont) -> MachineSt
     } = *is_list;
 
     // Get the source value from the environment
-    let source_val = match env.get(&source) {
-        Some(val) => val.clone(),
+    let source_val = match env.get(source) {
+        Some(val) => val,
         None => return MachineState::Error(format!("Unbound variable: {}", source)),
     };
 
@@ -2133,11 +2131,7 @@ fn eval_is_list(is_list: &IsList, env: RawEnv<'static>, cont: Cont) -> MachineSt
     })
 }
 
-fn eval_list_is_exact(
-    list_is_exact: &ListIsExact,
-    env: RawEnv<'static>,
-    cont: Cont,
-) -> MachineState {
+fn eval_list_is_exact(list_is_exact: &ListIsExact, env: RawEnv, cont: Cont) -> MachineState {
     let ListIsExact {
         source,
         length,
@@ -2146,8 +2140,8 @@ fn eval_list_is_exact(
     } = *list_is_exact;
 
     // Get the source value from the environment
-    let source_val = match env.get(&source) {
-        Some(val) => val.clone(),
+    let source_val = match env.get(source) {
+        Some(val) => val,
         None => return MachineState::Error(format!("Unbound variable: {}", source)),
     };
 
@@ -2164,11 +2158,7 @@ fn eval_list_is_exact(
     })
 }
 
-fn eval_list_is_at_least(
-    list_is_atleast: &ListIsAtLeast,
-    env: RawEnv<'static>,
-    cont: Cont,
-) -> MachineState {
+fn eval_list_is_at_least(list_is_atleast: &ListIsAtLeast, env: RawEnv, cont: Cont) -> MachineState {
     let ListIsAtLeast {
         source,
         min_length,
@@ -2177,8 +2167,8 @@ fn eval_list_is_at_least(
     } = *list_is_atleast;
 
     // Get the source value from the environment
-    let source_val = match env.get(&source) {
-        Some(val) => val.clone(),
+    let source_val = match env.get(source) {
+        Some(val) => val,
         None => return MachineState::Error(format!("Unbound variable: {}", source)),
     };
 
@@ -2196,7 +2186,7 @@ fn eval_list_is_at_least(
 }
 
 /// Evaluates Identity - binds the source value to a variable (for bind patterns and wildcards)
-fn eval_identity(extract: &Identity, mut env: RawEnv<'static>, cont: Cont) -> MachineState {
+fn eval_identity(extract: &Identity, mut env: RawEnv, cont: Cont) -> MachineState {
     let Identity {
         bind: extract_bind,
         source,
@@ -2204,8 +2194,8 @@ fn eval_identity(extract: &Identity, mut env: RawEnv<'static>, cont: Cont) -> Ma
     } = *extract;
 
     // Get the source value from the environment
-    let source_val = match env.get(&source) {
-        Some(val) => val.clone(),
+    let source_val = match env.get(source) {
+        Some(val) => val,
         None => return MachineState::Error(format!("Unbound variable: {}", source)),
     };
 
@@ -2221,7 +2211,7 @@ fn eval_identity(extract: &Identity, mut env: RawEnv<'static>, cont: Cont) -> Ma
 }
 fn eval_variant_get(
     extract: &VariantGet,
-    mut env: RawEnv<'static>,
+    mut env: RawEnv,
     cont: Cont,
     heap: &Heap,
 ) -> MachineState {
@@ -2232,8 +2222,8 @@ fn eval_variant_get(
     } = *extract;
 
     // Get the source value from the environment
-    let source_val = match env.get(&source) {
-        Some(val) => val.clone(),
+    let source_val = match env.get(source) {
+        Some(val) => val,
         None => return MachineState::Error(format!("Unbound variable: {}", source)),
     };
 
@@ -2255,7 +2245,7 @@ fn eval_variant_get(
 
 fn eval_record_get_at(
     extract: &RecordGetAt,
-    mut env: RawEnv<'static>,
+    mut env: RawEnv,
     cont: Cont,
     heap: &Heap,
 ) -> MachineState {
@@ -2267,8 +2257,8 @@ fn eval_record_get_at(
     } = *extract;
 
     // Get the source value from the environment
-    let source_val = match env.get(&source) {
-        Some(val) => val.clone(),
+    let source_val = match env.get(source) {
+        Some(val) => val,
         None => return MachineState::Error(format!("Unbound variable: {}", source)),
     };
 
@@ -2295,7 +2285,7 @@ fn eval_record_get_at(
 
 fn eval_list_split_head(
     extract: &ListSplitHead,
-    mut env: RawEnv<'static>,
+    mut env: RawEnv,
     cont: Cont,
     heap: &mut Heap,
 ) -> MachineState {
@@ -2307,8 +2297,8 @@ fn eval_list_split_head(
     } = *extract;
 
     // Get the source value from the environment
-    let source_val = match env.get(&source) {
-        Some(val) => val.clone(),
+    let source_val = match env.get(source) {
+        Some(val) => val,
         None => return MachineState::Error(format!("Unbound variable: {}", source)),
     };
 
@@ -2336,7 +2326,7 @@ fn eval_list_split_head(
 
 fn eval_list_split_tail(
     extract: &ListSplitTail,
-    mut env: RawEnv<'static>,
+    mut env: RawEnv,
     cont: Cont,
     heap: &mut Heap,
 ) -> MachineState {
@@ -2348,8 +2338,8 @@ fn eval_list_split_tail(
     } = *extract;
 
     // Get the source value from the environment
-    let source_val = match env.get(&source) {
-        Some(val) => val.clone(),
+    let source_val = match env.get(source) {
+        Some(val) => val,
         None => return MachineState::Error(format!("Unbound variable: {}", source)),
     };
 
@@ -2375,12 +2365,7 @@ fn eval_list_split_tail(
     })
 }
 
-fn eval_list_get_at(
-    extract: &ListGetAt,
-    mut env: RawEnv<'static>,
-    cont: Cont,
-    heap: &Heap,
-) -> MachineState {
+fn eval_list_get_at(extract: &ListGetAt, mut env: RawEnv, cont: Cont, heap: &Heap) -> MachineState {
     let ListGetAt {
         bind: extract_bind,
         source,
@@ -2389,8 +2374,8 @@ fn eval_list_get_at(
     } = *extract;
 
     // Get the source value from the environment
-    let source_val = match env.get(&source) {
-        Some(val) => val.clone(),
+    let source_val = match env.get(source) {
+        Some(val) => val,
         None => return MachineState::Error(format!("Unbound variable: {}", source)),
     };
 
@@ -2417,7 +2402,7 @@ fn eval_list_get_at(
 
 fn eval_list_split_at(
     extract: &ListSplitAt,
-    mut env: RawEnv<'static>,
+    mut env: RawEnv,
     cont: Cont,
     heap: &mut Heap,
 ) -> MachineState {
@@ -2430,8 +2415,8 @@ fn eval_list_split_at(
     } = *extract;
 
     // Get the source value from the environment
-    let source_val = match env.get(&source) {
-        Some(val) => val.clone(),
+    let source_val = match env.get(source) {
+        Some(val) => val,
         None => return MachineState::Error(format!("Unbound variable: {}", source)),
     };
 
@@ -2456,7 +2441,7 @@ fn eval_list_split_at(
 /// Evaluates PatternSuccess - pattern matching succeeded, continue to the matched expression
 fn eval_pattern_success(
     success: &PatternSuccess,
-    env: RawEnv<'static>,
+    env: RawEnv,
     cont: Cont,
     ir: &Ir,
 ) -> MachineState {
@@ -2469,7 +2454,7 @@ fn eval_pattern_success(
 
     // Continue with the matched branch expression
     MachineState::Standard(StandardConfig {
-        control: next.get(ir).clone(),
+        control: next.get(ir),
         env,
         cont,
     })

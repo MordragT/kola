@@ -13,7 +13,7 @@ pub struct Id<T> {
 }
 
 impl<T> Id<T> {
-    pub const BITS: usize = mem::size_of::<Self>();
+    pub const BYTES: usize = mem::size_of::<Self>();
 }
 
 const _: () = {

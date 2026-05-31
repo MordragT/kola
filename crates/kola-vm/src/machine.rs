@@ -1,7 +1,4 @@
-use std::borrow::Cow;
-
 use camino::{Utf8Path, Utf8PathBuf};
-use kola_protocol::{TypeKey, TypeProtocol};
 
 use crate::{
     config::{MachineState, OperationConfig, PatternConfig, StandardConfig},
@@ -15,7 +12,6 @@ use kola_ir::{
     instr::Func,
     ir::{Ir, IrView},
 };
-use kola_utils::interner::StrKey;
 
 #[derive(Debug, Clone)]
 pub struct MachineContext {
@@ -163,7 +159,7 @@ impl CekMachine {
                 };
 
                 // Create the handler environment γ'[x ↦ ⟦V⟧_γ]
-                let mut handler_env = handler_env.get(heap).into_owned();
+                let mut handler_env = handler_env.get(heap);
                 handler_env.insert(param, arg_value);
 
                 // Info: Continuation parameters are currently not present in the syntax, consider:
@@ -228,7 +224,7 @@ mod tests {
     #[test]
     fn test_simple_let_and_return() {
         // Create symbols
-        let x_sym = Symbol(0);
+        let x_sym = Symbol::new(1);
 
         // let x = 42 in
         //   return x
@@ -256,10 +252,10 @@ mod tests {
     #[test]
     fn test_function_application() {
         // Create symbols
-        let f_sym = Symbol(0);
-        let x_sym = Symbol(1);
-        let y_sym = Symbol(2);
-        let t_sym = Symbol(3);
+        let f_sym = Symbol::new(1);
+        let x_sym = Symbol::new(2);
+        let y_sym = Symbol::new(3);
+        let t_sym = Symbol::new(4);
 
         // let f = (x => return x+1) in
         //   let y = f(5) in
@@ -313,8 +309,8 @@ mod tests {
         let y_label = interner.intern("y");
 
         // Create symbols
-        let r_sym = Symbol(0);
-        let z_sym = Symbol(1);
+        let r_sym = Symbol::new(1);
+        let z_sym = Symbol::new(2);
 
         let mut ir = IrBuilder::new();
 
@@ -360,9 +356,9 @@ mod tests {
         let z_label = interner.intern("z");
 
         // Create symbols
-        let r1_sym = Symbol(0);
-        let r2_sym = Symbol(1);
-        let result_sym = Symbol(2);
+        let r1_sym = Symbol::new(1);
+        let r2_sym = Symbol::new(2);
+        let result_sym = Symbol::new(3);
 
         let mut ir = IrBuilder::new();
 
@@ -411,9 +407,9 @@ mod tests {
         let x_label = interner.intern("x");
 
         // Create symbols for use in the IR
-        let r1_sym = Symbol(0);
-        let r2_sym = Symbol(1);
-        let result_sym = Symbol(2);
+        let r1_sym = Symbol::new(1);
+        let r2_sym = Symbol::new(2);
+        let result_sym = Symbol::new(3);
 
         let mut ir = IrBuilder::new();
 
@@ -470,8 +466,8 @@ mod tests {
         let interner = StrInterner::new();
 
         // Create symbols
-        let source_sym = Symbol(0);
-        let result_sym = Symbol(1);
+        let source_sym = Symbol::new(1);
+        let result_sym = Symbol::new(2);
 
         let mut ir = IrBuilder::new();
 

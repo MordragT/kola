@@ -1,4 +1,4 @@
-use std::{borrow::Cow, ops::Index};
+use std::ops::Index;
 
 use kola_ir::instr::Symbol;
 
@@ -8,21 +8,17 @@ use crate::{arenas::RangeIdx, heap::Heap, value::Value};
 pub struct HeapEnv(pub RangeIdx<(Symbol, Value)>);
 
 impl HeapEnv {
-    pub fn get(self, heap: &Heap) -> RawEnv<'_> {
+    pub fn get(self, heap: &Heap) -> RawEnv {
         heap.get_env(self)
     }
 }
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct RawEnv<'a>(pub Cow<'a, [(Symbol, Value)]>);
+pub struct RawEnv(pub Vec<(Symbol, Value)>);
 
-impl<'a> RawEnv<'a> {
+impl RawEnv {
     pub fn new() -> Self {
-        Self(Cow::Borrowed(&[]))
-    }
-
-    pub fn into_owned(self) -> RawEnv<'static> {
-        RawEnv(Cow::Owned(self.0.into_owned()))
+        Self(Vec::new())
     }
 
     pub fn alloc(&self, heap: &mut Heap) -> HeapEnv {
@@ -30,26 +26,40 @@ impl<'a> RawEnv<'a> {
     }
 
     pub fn insert(&mut self, name: Symbol, value: impl Into<Value>) {
-        self.0.to_mut().push((name, value.into()));
+        let pos = match self.0.binary_search_by_key(&name, |(sym, _)| *sym) {
+            Ok(pos) => pos,
+            Err(pos) => pos,
+        };
+
+        self.0.insert(pos, (name, value.into()));
     }
 
-    pub fn remove(&mut self, name: &Symbol) -> Option<Value> {
-        let idx = self.0.iter().position(|(sym, _)| sym == name)?;
-        Some(self.0.to_mut().remove(idx).1)
+    pub fn remove(&mut self, name: Symbol) -> Option<Value> {
+        let pos = match self.0.binary_search_by_key(&name, |(sym, _)| *sym) {
+            Ok(pos) => pos,
+            Err(_) => return None,
+        };
+        Some(self.0.remove(pos).1)
     }
 
-    pub fn get(&self, name: &Symbol) -> Option<&Value> {
-        self.0
-            .iter()
-            .find(|(sym, _)| sym == name)
-            .map(|(_, val)| val)
+    pub fn get(&self, name: Symbol) -> Option<Value> {
+        let pos = match self.0.binary_search_by_key(&name, |(sym, _)| *sym) {
+            Ok(pos) => pos,
+            Err(_) => return None,
+        };
+
+        Some(self.0[pos].1)
     }
 }
 
-impl Index<Symbol> for RawEnv<'_> {
+impl Index<Symbol> for RawEnv {
     type Output = Value;
 
     fn index(&self, index: Symbol) -> &Self::Output {
-        self.get(&index).expect("Symbol not found in environment")
+        let pos = self
+            .0
+            .binary_search_by_key(&index, |(sym, _)| *sym)
+            .expect("Symbol not found in environment");
+        &self.0[pos].1
     }
 }
