@@ -148,12 +148,12 @@ impl CekMachine {
         {
             // Check if the top handler can handle this operation
             // And get the handler function
-            if let Some(Func { param, body }) = handler.get(heap).find_operation(op) {
+            if let Some(Func { param, body }) = handler.find(op, &context.ir) {
                 // M-OP-HANDLE: Handler found, apply it
                 // ⟨(do ℓ V)^E | γ | (σ, (γ', H)) :: κ | κ'⟩^op → ⟨M | γ'[x ↦ ⟦V⟧_γ, k ↦ (κ' ++ [(σ, (γ', H))])^B] | κ⟩
 
                 // Evaluate the operation argument
-                let arg_value = match eval_atom(context.ir.instr(arg), env, heap) {
+                let arg_value = match eval_atom(context.ir.instr(arg), env, &heap.envs) {
                     Ok(value) => value,
                     Err(err) => return MachineState::Error(err),
                 };

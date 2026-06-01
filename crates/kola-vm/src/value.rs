@@ -1,7 +1,7 @@
 use derive_more::From;
 use enum_as_inner::EnumAsInner;
 use kola_builtins::BuiltinId;
-use kola_ir::instr::Tag;
+use kola_ir::instr::{Tag, Witness};
 use kola_protocol::{TypeProtocol, ValueProtocol};
 use kola_utils::{display::DisplayWith, serde::SerializeWith};
 use serde::ser::{SerializeMap, SerializeSeq};
@@ -9,7 +9,7 @@ use std::fmt;
 
 use crate::{
     closure::Closure, heap::Heap, list::ListIdx, record::RecordIdx, string::StringIdx,
-    variant::VariantIdx, witness::WitnessIdx,
+    variant::VariantIdx,
 };
 
 /// Values produced by evaluating expressions
@@ -39,7 +39,7 @@ pub enum Value {
     /// A list of values
     List(Option<ListIdx>),
     /// A Type representation
-    Witness(WitnessIdx),
+    Witness(Witness),
 }
 
 const _: () = assert!(Value::BYTES <= 16);
@@ -127,7 +127,7 @@ impl DisplayWith<Heap> for Value {
                     write!(f, "[]")
                 }
             }
-            Value::Witness(w) => w.fmt(f, heap),
+            Value::Witness(w) => w.fmt(f, &heap.type_interner),
         }
     }
 }

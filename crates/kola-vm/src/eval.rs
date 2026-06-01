@@ -4,8 +4,8 @@ use crate::{
     closure::Closure,
     config::{MachineState, OperationConfig, PatternConfig, StandardConfig},
     cont::{Cont, ContFrame},
-    env::EnvIdx,
-    handler::{RawHandler, ReturnClause},
+    env::{EnvArena, EnvIdx},
+    handler::{Handler, ReturnClause},
     heap::Heap,
     machine::MachineContext,
     string::StringIdx,
@@ -26,14 +26,13 @@ use kola_ir::{
 };
 
 #[inline]
-pub fn eval_symbol(symbol: Symbol, env: EnvIdx, heap: &Heap) -> Result<Value, String> {
+pub fn eval_symbol(symbol: Symbol, env: EnvIdx, envs: &EnvArena) -> Result<Value, String> {
     // Look up the symbol in the environment
-    heap.envs
-        .get(env, symbol)
+    envs.get(env, symbol)
         .ok_or_else(|| format!("Unbound variable: {}", symbol))
 }
 
-pub fn eval_atom(atom: Atom, env: EnvIdx, heap: &mut Heap) -> Result<Value, String> {
+pub fn eval_atom(atom: Atom, env: EnvIdx, envs: &EnvArena) -> Result<Value, String> {
     match atom {
         Atom::Noop => Ok(Value::None),
         Atom::Bool(b) => Ok(Value::Bool(b)),
@@ -44,10 +43,10 @@ pub fn eval_atom(atom: Atom, env: EnvIdx, heap: &mut Heap) -> Result<Value, Stri
             // Create a closure by capturing the current environment
             Ok(Value::Closure(Closure::new(env, f)))
         }
-        Atom::Symbol(s) => eval_symbol(s, env, heap),
+        Atom::Symbol(s) => eval_symbol(s, env, envs),
         Atom::Builtin(b) => Ok(Value::Builtin(b)),
         Atom::Tag(t) => Ok(Value::Tag(t)),
-        Atom::Witness(w) => Ok(Value::Witness(heap.alloc_type_key(w.0))),
+        Atom::Witness(w) => Ok(Value::Witness(w)),
     }
 }
 
@@ -109,7 +108,7 @@ impl Eval for RetExpr {
         heap: &mut Heap,
     ) -> MachineState {
         // Evaluate the return machine state of value
-        let value = match eval_atom(self.arg.get(&context.ir), env, heap) {
+        let value = match eval_atom(self.arg.get(&context.ir), env, &heap.envs) {
             Ok(value) => value,
             Err(err) => return MachineState::Error(err),
         };
@@ -334,12 +333,12 @@ impl Eval for CallExpr {
         } = *self;
 
         // Get the function and argument
-        let func_val = match eval_atom(func.get(&context.ir), env, heap) {
+        let func_val = match eval_atom(func.get(&context.ir), env, &heap.envs) {
             Ok(value) => value,
             Err(err) => return MachineState::Error(err),
         };
 
-        let arg_val = match eval_atom(arg.get(&context.ir), env, heap) {
+        let arg_val = match eval_atom(arg.get(&context.ir), env, &heap.envs) {
             Ok(value) => value,
             Err(err) => return MachineState::Error(err),
         };
@@ -701,7 +700,7 @@ fn eval_builtin(
                 );
             };
 
-            let Some(label) = heap.witnesses.get(wit).as_label().map(ToOwned::to_owned) else {
+            let Some(label) = heap.get_interned_label(wit) else {
                 return MachineState::Error(
                     "record_select requires 'label' field with a string".to_owned(),
                 );
@@ -713,7 +712,7 @@ fn eval_builtin(
                 );
             };
 
-            match heap.get_record_value(record, &label) {
+            match heap.records.get_value(record, label) {
                 Some(value) => value,
                 None => {
                     return MachineState::Error(format!("Field '{}' not found in record", label));
@@ -727,7 +726,7 @@ fn eval_builtin(
                 );
             };
 
-            let Some(label) = heap.witnesses.get(wit).as_label().map(ToOwned::to_owned) else {
+            let Some(label) = heap.get_interned_label(wit) else {
                 return MachineState::Error(
                     "record_insert requires 'label' field with a string".to_owned(),
                 );
@@ -744,7 +743,6 @@ fn eval_builtin(
             };
 
             // Insert the value into the record
-            let label = heap.intern_str(label);
             heap.records.insert(record, label, value);
 
             Value::Record(record)
@@ -756,7 +754,7 @@ fn eval_builtin(
                 );
             };
 
-            let Some(label) = heap.witnesses.get(wit).as_label().map(ToOwned::to_owned) else {
+            let Some(label) = heap.get_interned_label(wit) else {
                 return MachineState::Error(
                     "record_remove requires 'label' field with a string".to_owned(),
                 );
@@ -769,7 +767,6 @@ fn eval_builtin(
             };
 
             // Remove the field from the record
-            let label = heap.intern_str(label);
             heap.records.remove(record, label);
 
             Value::Record(record)
@@ -781,7 +778,7 @@ fn eval_builtin(
                 );
             };
 
-            let Some(from) = heap.witnesses.get(wit).as_label().map(ToOwned::to_owned) else {
+            let Some(from) = heap.get_interned_label(wit) else {
                 return MachineState::Error(
                     "record_rename requires 'from' field with a string".to_owned(),
                 );
@@ -793,7 +790,7 @@ fn eval_builtin(
                 );
             };
 
-            let Some(to) = heap.witnesses.get(wit).as_label().map(ToOwned::to_owned) else {
+            let Some(to) = heap.get_interned_label(wit) else {
                 return MachineState::Error(
                     "record_rename requires 'to' field with a string".to_owned(),
                 );
@@ -806,8 +803,6 @@ fn eval_builtin(
             };
 
             // Rename the field in the record
-            let from = heap.intern_str(from);
-            let to = heap.intern_str(to);
             if let Some((value, record)) = heap.records.remove(record, from) {
                 heap.records.insert(record, to, value);
             } else {
@@ -823,7 +818,7 @@ fn eval_builtin(
                 );
             };
 
-            let Some(label) = heap.witnesses.get(wit).as_label().map(ToOwned::to_owned) else {
+            let Some(label) = heap.get_interned_label(wit) else {
                 return MachineState::Error(
                     "record_contains requires 'label' field with a string".to_owned(),
                 );
@@ -835,7 +830,6 @@ fn eval_builtin(
                 );
             };
 
-            let label = heap.intern_str(label);
             Value::Bool(heap.records.contains_key(record, label))
         }
         (BuiltinId::RecordKeys, Value::Record(record)) => Value::List(heap.record_keys(record)),
@@ -956,7 +950,7 @@ fn eval_builtin(
             };
 
             let json = heap.strings.get(&json).to_owned();
-            let proto = heap.witnesses.get(wit).clone();
+            let proto = heap.type_interner[wit.0].clone();
 
             match Value::from_json(&proto, &json, heap) {
                 Ok(value) => Value::Variant(heap.alloc_builtin_variant("Ok", value)),
@@ -1169,8 +1163,8 @@ impl Eval for HandleExpr {
         let pure_frame = ContFrame::pure(bind, next, env);
 
         // Create handler from clauses (H in the rule)
-        let handler = RawHandler::from_clauses(clause, &context.ir);
-        let handler_frame = ContFrame::handler(handler.alloc(heap), env);
+        let handler = Handler::from_clauses(clause);
+        let handler_frame = ContFrame::handler(handler, env);
 
         // Push handler frame first ([], (γ, H)) :: κ
         // This ensures the handler is deeper in the stack
@@ -1279,7 +1273,7 @@ impl Eval for IfExpr {
         } = *self;
 
         // Evaluate the predicate
-        let pred_val = match eval_atom(predicate.get(&context.ir), env, heap) {
+        let pred_val = match eval_atom(predicate.get(&context.ir), env, &heap.envs) {
             Ok(value) => value,
             Err(err) => return MachineState::Error(err),
         };
@@ -1346,7 +1340,7 @@ impl Eval for UnaryExpr {
         } = *self;
 
         // Evaluate the operand
-        let arg_val = match eval_atom(arg.get(&context.ir), env, heap) {
+        let arg_val = match eval_atom(arg.get(&context.ir), env, &heap.envs) {
             Ok(value) => value,
             Err(err) => return MachineState::Error(err),
         };
@@ -1395,7 +1389,7 @@ pub fn eval_binary_op(
             .records
             .merge(l, r)
             .map(Value::Record)
-            .ok_or("Cannot merge records with conflicting fields".to_owned()),
+            .ok_or_else(|| "Cannot merge records with conflicting fields".to_owned()),
         (BinaryOp::Concat, Value::List(l), Value::List(r)) => {
             Ok(Value::List(heap.lists.concat(l, r)))
         }
@@ -1430,13 +1424,13 @@ impl Eval for BinaryExpr {
         } = *self;
 
         // Evaluate the left operand
-        let left_val = match eval_atom(lhs.get(&context.ir), env, heap) {
+        let left_val = match eval_atom(lhs.get(&context.ir), env, &heap.envs) {
             Ok(value) => value,
             Err(err) => return MachineState::Error(err),
         };
 
         // Evaluate the right operand
-        let right_val = match eval_atom(rhs.get(&context.ir), env, heap) {
+        let right_val = match eval_atom(rhs.get(&context.ir), env, &heap.envs) {
             Ok(value) => value,
             Err(err) => return MachineState::Error(err),
         };
@@ -1477,7 +1471,7 @@ impl Eval for ListExpr {
         let items = match context
             .ir
             .iter_items(head)
-            .map(|item| eval_atom(item.value.get(&context.ir), env, heap))
+            .map(|item| eval_atom(item.value.get(&context.ir), env, &heap.envs))
             .collect::<Result<Vec<_>, _>>()
         {
             Ok(items) => items,
@@ -1516,7 +1510,7 @@ impl Eval for RecordExpr {
             .ir
             .iter_fields(head)
             .map(|RecordField { label, value, .. }| {
-                eval_atom(value.get(&context.ir), env, heap)
+                eval_atom(value.get(&context.ir), env, &heap.envs)
                     .map(|val| (label, val))
                     .map_err(|err| format!("Error evaluating field '{}': {}", label, err))
             })
@@ -1566,13 +1560,13 @@ impl Eval for RecordExtendExpr {
         } = *self;
 
         // Evaluate the base record
-        let record_val = match eval_atom(base.get(&context.ir), env, heap) {
+        let record_val = match eval_atom(base.get(&context.ir), env, &heap.envs) {
             Ok(value) => value,
             Err(err) => return MachineState::Error(err),
         };
 
         // Evaluate the value to extend with
-        let extend_value = match eval_atom(value.get(&context.ir), env, heap) {
+        let extend_value = match eval_atom(value.get(&context.ir), env, &heap.envs) {
             Ok(value) => value,
             Err(err) => return MachineState::Error(err),
         };
@@ -1636,7 +1630,7 @@ impl Eval for RecordRestrictExpr {
         } = *self;
 
         // Evaluate the base record
-        let record_val = match eval_atom(base.get(&context.ir), env, heap) {
+        let record_val = match eval_atom(base.get(&context.ir), env, &heap.envs) {
             Ok(value) => value,
             Err(err) => return MachineState::Error(err),
         };
@@ -1714,13 +1708,13 @@ impl Eval for RecordUpdateExpr {
         } = *self;
 
         // Evaluate the base record
-        let record_val = match eval_atom(base.get(&context.ir), env, heap) {
+        let record_val = match eval_atom(base.get(&context.ir), env, &heap.envs) {
             Ok(value) => value,
             Err(err) => return MachineState::Error(err),
         };
 
         // Evaluate the value to update with
-        let update_val = match eval_atom(value.get(&context.ir), env, heap) {
+        let update_val = match eval_atom(value.get(&context.ir), env, &heap.envs) {
             Ok(value) => value,
             Err(err) => return MachineState::Error(err),
         };
@@ -1782,7 +1776,7 @@ impl Eval for RecordAccessExpr {
         } = *self;
 
         // Evaluate the record
-        let record_val = match eval_atom(base.get(&context.ir), env, heap) {
+        let record_val = match eval_atom(base.get(&context.ir), env, &heap.envs) {
             Ok(value) => value,
             Err(err) => return MachineState::Error(err),
         };

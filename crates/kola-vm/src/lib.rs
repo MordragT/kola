@@ -1,7 +1,6 @@
 //! Liberating Effects with Rows and Handlers (4. Abstract Machine Semantics)
 // https://matt.might.net/articles/cek-machines/
 
-pub mod arenas;
 pub mod closure;
 pub mod config;
 pub mod cont;
@@ -15,4 +14,3 @@ pub mod record;
 pub mod string;
 pub mod value;
 pub mod variant;
-pub mod witness;

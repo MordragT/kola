@@ -4,7 +4,7 @@ use kola_ir::{
 };
 
 use crate::{
-    closure::Closure, env::EnvIdx, handler::HeapHandler, list::ListIdx, record::RecordIdx,
+    closure::Closure, env::EnvIdx, handler::Handler, list::ListIdx, record::RecordIdx,
     string::StringIdx,
 };
 
@@ -21,7 +21,7 @@ pub enum ContFrame {
     /// A handler closure (γ, H) closes a handler definition H over environment γ.
     ///
     /// Multiple handler closures might use the same handler definition but with different environments.
-    Handler { handler: HeapHandler, env: EnvIdx },
+    Handler { handler: Handler, env: EnvIdx },
 
     /// A recursive continuation frame (data, step) is used for primitive recursion.
     NumRec { data: f64, step: Closure },
@@ -70,14 +70,14 @@ impl ContFrame {
         Self::Pure { var, body, env }
     }
 
-    pub fn handler(handler: HeapHandler, env: EnvIdx) -> Self {
+    pub fn handler(handler: Handler, env: EnvIdx) -> Self {
         Self::Handler { handler, env }
     }
 
     /// Creates the identity continuation frame  ([ ], (∅, {return x → x}))
     pub fn identity(env: EnvIdx) -> Self {
         Self::Handler {
-            handler: HeapHandler::identity(),
+            handler: Handler::identity(),
             env,
         }
     }

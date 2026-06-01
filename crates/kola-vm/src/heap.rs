@@ -1,7 +1,7 @@
 use std::{borrow::Cow, fmt};
 
-use kola_ir::instr::{Func, Tag};
-use kola_protocol::{TypeInterner, TypeKey, TypeProtocol};
+use kola_ir::instr::{Tag, Witness};
+use kola_protocol::TypeInterner;
 use kola_utils::{
     display::DisplayWith,
     interner::{StrInterner, StrKey},
@@ -10,15 +10,12 @@ use kola_utils::{
 use serde::Serialize;
 
 use crate::{
-    arenas::RangeArena,
     env::EnvArena,
-    handler::{HeapOpClauses, RawOpClauses},
     list::{ListArena, ListIdx},
     record::{RecordArena, RecordIdx},
     string::{StringArena, StringIdx},
     value::Value,
     variant::{VariantArena, VariantIdx},
-    witness::{WitnessArena, WitnessIdx},
 };
 
 #[derive(Debug)]
@@ -31,13 +28,10 @@ pub struct Heap {
     pub lists: ListArena,
     /// The arena for storing records
     pub records: RecordArena,
-    /// The arena for storing witnesses
-    pub witnesses: WitnessArena,
     /// The arena for storing variants
     pub variants: VariantArena,
     /// The arena for storing environments
     pub envs: EnvArena,
-    operation_clauses: RangeArena<(StrKey, Func)>,
 }
 
 impl Heap {
@@ -47,10 +41,8 @@ impl Heap {
             strings: StringArena::new(str_interner),
             lists: ListArena::new(),
             records: RecordArena::new(),
-            witnesses: WitnessArena::new(),
             variants: VariantArena::new(),
             envs: EnvArena::new(),
-            operation_clauses: RangeArena::new(),
         }
     }
 
@@ -68,9 +60,9 @@ impl Heap {
     }
 
     #[inline]
-    pub fn alloc_type_key(&mut self, key: TypeKey) -> WitnessIdx {
-        let t = self.type_interner[key].clone();
-        self.witnesses.alloc(t)
+    pub fn get_interned_label(&mut self, wit: Witness) -> Option<StrKey> {
+        let label = self.type_interner[wit.0].as_label()?;
+        Some(self.strings.interner.intern(label))
     }
 
     #[inline]
@@ -79,17 +71,16 @@ impl Heap {
     }
 
     #[inline]
-    pub fn intern_type<'a>(&mut self, t: impl Into<Cow<'a, TypeProtocol>>) -> TypeKey {
-        self.type_interner.intern(t)
-    }
-
-    #[inline]
     pub fn get_record_value<'a>(
-        &mut self,
+        &self,
         record: Option<RecordIdx>,
-        field: impl Into<Cow<'a, str>>,
+        field: &'static str,
     ) -> Option<Value> {
-        let key = self.strings.interner.intern(field);
+        let key = self
+            .strings
+            .interner
+            .lookup(field)
+            .expect("Field name must be interned");
         self.records.get_value(record, key)
     }
 
@@ -104,25 +95,9 @@ impl Heap {
     }
 
     #[inline]
-    pub fn alloc_builtin_variant<'a>(
-        &mut self,
-        tag: impl Into<Cow<'a, str>>,
-        value: Value,
-    ) -> VariantIdx {
+    pub fn alloc_builtin_variant<'a>(&mut self, tag: &'static str, value: Value) -> VariantIdx {
         let tag = Tag(self.intern_str(tag));
         self.variants.alloc(tag, value)
-    }
-
-    // deprecated ----------------
-
-    #[inline]
-    pub fn alloc_op_clauses(&mut self, clauses: &RawOpClauses) -> HeapOpClauses {
-        HeapOpClauses(self.operation_clauses.alloc(&clauses.0))
-    }
-
-    #[inline]
-    pub fn get_op_clauses(&self, clauses: HeapOpClauses) -> RawOpClauses<'_> {
-        RawOpClauses(Cow::Borrowed(self.operation_clauses.get(clauses.0)))
     }
 }
 
