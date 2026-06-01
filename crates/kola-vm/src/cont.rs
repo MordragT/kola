@@ -39,7 +39,10 @@ pub enum ContFrame {
     },
 
     /// A recursive continuation frame (data, step) is used for primitive recursion.
-    StrRec { data: StringIdx, step: Closure },
+    StrRec {
+        data: Option<StringIdx>,
+        step: Closure,
+    },
 }
 
 const _: () = assert!(ContFrame::BYTES <= 32);
@@ -59,7 +62,7 @@ impl ContFrame {
         Self::RecordRec { data, step }
     }
 
-    pub fn str_rec(data: StringIdx, step: Closure) -> Self {
+    pub fn str_rec(data: Option<StringIdx>, step: Closure) -> Self {
         Self::StrRec { data, step }
     }
 

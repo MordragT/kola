@@ -24,7 +24,6 @@ use kola_ir::{
     },
     ir::{Ir, IrView},
 };
-use kola_protocol::TypeProtocol;
 
 #[inline]
 pub fn eval_symbol(symbol: Symbol, env: EnvIdx, heap: &Heap) -> Result<Value, String> {
@@ -40,7 +39,7 @@ pub fn eval_atom(atom: Atom, env: EnvIdx, heap: &mut Heap) -> Result<Value, Stri
         Atom::Bool(b) => Ok(Value::Bool(b)),
         Atom::Char(c) => Ok(Value::Char(c)),
         Atom::Num(n) => Ok(Value::Num(n)),
-        Atom::Str(s) => Ok(Value::Str(StringIdx::Static(s))),
+        Atom::Str(s) => Ok(Value::Str(Some(StringIdx::Static(s)))),
         Atom::Func(f) => {
             // Create a closure by capturing the current environment
             Ok(Value::Closure(Closure::new(env, f)))
@@ -250,7 +249,7 @@ impl Eval for RetExpr {
 
                 let key = (
                     heap.intern_str("key"),
-                    Value::Str(StringIdx::Static(first.0)),
+                    Value::Str(Some(StringIdx::Static(first.0))),
                 );
                 let val = (heap.intern_str("value"), first.1);
                 let head = heap.records.alloc(&[key, val]);
@@ -296,7 +295,7 @@ impl Eval for RetExpr {
 
                 // Create argument for the step function
                 let acc = (heap.intern_str("acc"), value); // value = result from previous step
-                let head = (heap.intern_str("head"), Value::Str(head));
+                let head = (heap.intern_str("head"), Value::Str(Some(head)));
                 let record = heap.records.alloc(&[acc, head]);
 
                 let env = heap.envs.insert(env, param, Value::Record(record));
@@ -429,8 +428,7 @@ fn eval_builtin(
             value
         }
         (BuiltinId::IoReadFile, Value::Str(path)) => {
-            let flattened = heap.strings.flatten(path);
-            let path = heap.strings.try_get(&flattened).unwrap();
+            let path = heap.strings.get(&path);
 
             match fs::read_to_string(context.join_path(path)) {
                 Err(err) => {
@@ -456,13 +454,9 @@ fn eval_builtin(
                 );
             };
 
-            let path_result = heap.strings.flatten(path);
-            let contents_result = heap.strings.flatten(contents);
+            let [path, contents] = heap.strings.resolve_many([&path, &contents]);
 
-            let path = heap.strings.try_get(&path_result).unwrap();
-            let contents = heap.strings.try_get(&contents_result).unwrap();
-
-            match fs::write(context.join_path(path), contents) {
+            match fs::write(context.join_path(path.get()), contents.get()) {
                 Err(err) => {
                     let err = heap.strings.alloc(&err.to_string());
                     Value::Variant(heap.alloc_builtin_variant("Err", Value::Str(err)))
@@ -915,7 +909,7 @@ fn eval_builtin(
 
             let key = (
                 heap.intern_str("key"),
-                Value::Str(StringIdx::Static(first.0)),
+                Value::Str(Some(StringIdx::Static(first.0))),
             );
             let val = (heap.intern_str("value"), first.1);
             let head = heap.records.alloc(&[key, val]);
@@ -961,11 +955,10 @@ fn eval_builtin(
                 );
             };
 
+            let json = heap.strings.get(&json).to_owned();
             let proto = heap.witnesses.get(wit).clone();
-            let json_result = heap.strings.flatten(json);
-            let json_str = heap.strings.try_get(&json_result).unwrap().to_owned();
 
-            match Value::from_json(&proto, &json_str, heap) {
+            match Value::from_json(&proto, &json, heap) {
                 Ok(value) => Value::Variant(heap.alloc_builtin_variant("Ok", value)),
                 Err(err) => {
                     let err = heap.strings.alloc(&err.to_string());
@@ -1001,7 +994,7 @@ fn eval_builtin(
             }
         }
         (BuiltinId::StrContains, Value::Record(record)) => {
-            let Some(Value::Str(mut s)) = heap.get_record_value(record, "str") else {
+            let Some(Value::Str(s)) = heap.get_record_value(record, "str") else {
                 return MachineState::Error(
                     "str_contains requires 'str' field with a string".to_owned(),
                 );
@@ -1016,14 +1009,10 @@ fn eval_builtin(
             let mut buf = [0; 4];
             let needle: &str = c.encode_utf8(&mut buf);
 
-            let is_contained = heap.strings.contains_mut(&mut s, needle);
-
-            // TODO the unflattened string is still in the record.
-
-            Value::Bool(is_contained)
+            Value::Bool(heap.strings.contains(s, needle))
         }
         (BuiltinId::StrAt, Value::Record(record)) => {
-            let Some(Value::Str(mut s)) = heap.get_record_value(record, "str") else {
+            let Some(Value::Str(s)) = heap.get_record_value(record, "str") else {
                 return MachineState::Error("str_at requires 'str' field with a string".to_owned());
             };
 
@@ -1033,12 +1022,10 @@ fn eval_builtin(
                 );
             };
 
-            match to_usize_exact(index).and_then(|idx| heap.strings.at_mut(&mut s, idx)) {
+            match to_usize_exact(index).and_then(|idx| heap.strings.at(s, idx)) {
                 Some(c) => Value::Variant(heap.alloc_builtin_variant("Some", Value::Char(c))),
                 None => Value::Variant(heap.alloc_builtin_variant("None", Value::None)),
             }
-
-            // TODO the unflattened string is still in the record.
         }
         (BuiltinId::StrPrepend, Value::Record(record)) => {
             let Some(Value::Char(c)) = heap.get_record_value(record, "head") else {
@@ -2017,11 +2004,7 @@ fn eval_is_str(is_str: &IsStr, env: EnvIdx, cont: Cont, heap: &mut Heap) -> Mach
 
     let next_matcher = match source_val {
         Value::Str(s) => {
-            // Get the string from the interner to compare
-            let s = heap.strings.flatten(s);
-            let expected_str = &heap.strings.interner[payload];
-
-            if heap.strings.try_get(&s).unwrap() == expected_str {
+            if heap.strings.eq(s, Some(StringIdx::Static(payload))) {
                 on_success
             } else {
                 on_failure

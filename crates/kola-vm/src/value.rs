@@ -101,7 +101,13 @@ impl DisplayWith<Heap> for Value {
             Value::Bool(b) => write!(f, "{}", b),
             Value::Char(c) => write!(f, "{}", c),
             Value::Num(n) => write!(f, "{}", n),
-            Value::Str(s) => s.fmt(f, &heap.strings),
+            Value::Str(s) => {
+                if let Some(s) = s {
+                    s.fmt(f, &heap.strings)
+                } else {
+                    write!(f, "\"\"")
+                }
+            }
             Value::Closure(_) => write!(f, "<closure>"),
             // Value::Cont(_) => write!(f, "<continuation>"),
             Value::Builtin(b) => write!(f, "{}", b),
@@ -136,7 +142,13 @@ impl SerializeWith<Heap> for Value {
             Value::Bool(b) => serializer.serialize_bool(*b),
             Value::Char(c) => serializer.serialize_char(*c),
             Value::Num(n) => serializer.serialize_f64(*n),
-            Value::Str(s) => s.serialize(serializer, &heap.strings),
+            Value::Str(s) => {
+                if let Some(s) = s {
+                    s.serialize(serializer, &heap.strings)
+                } else {
+                    serializer.serialize_str("")
+                }
+            }
             Value::Variant(v) => v.serialize(serializer, heap),
             Value::Record(r) => {
                 if let Some(r) = r {

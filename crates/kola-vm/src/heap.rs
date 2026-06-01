@@ -1,4 +1,4 @@
-use std::{array, borrow::Cow, fmt};
+use std::{borrow::Cow, fmt};
 
 use kola_ir::instr::{Func, Tag};
 use kola_protocol::{TypeInterner, TypeKey, TypeProtocol};
@@ -98,7 +98,7 @@ impl Heap {
         let keys = self
             .records
             .iter(record)
-            .map(|(k, _)| Value::Str(StringIdx::Static(k)))
+            .map(|(k, _)| Value::Str(Some(StringIdx::Static(k))))
             .collect::<Vec<_>>();
         self.lists.alloc(&keys)
     }
