@@ -195,7 +195,7 @@ impl Eval for RetExpr {
                 // Create argument for the step function
                 let acc = (heap.intern_str("acc"), value); // value = result from previous step
                 let head = (heap.intern_str("head"), Value::Num(data));
-                let record = heap.records.alloc(&[acc, head]);
+                let record = heap.records.alloc_fixed([acc, head]);
 
                 let env = heap.envs.insert(env, param, Value::Record(record));
 
@@ -226,7 +226,7 @@ impl Eval for RetExpr {
                 // Create argument for the step function
                 let acc = (heap.intern_str("acc"), value); // value = result from previous step
                 let head = (heap.intern_str("head"), head);
-                let record = heap.records.alloc(&[acc, head]);
+                let record = heap.records.alloc_fixed([acc, head]);
 
                 let env = heap.envs.insert(env, param, Value::Record(record));
 
@@ -251,7 +251,7 @@ impl Eval for RetExpr {
                     Value::Str(Some(StringIdx::Static(first.0))),
                 );
                 let val = (heap.intern_str("value"), first.1);
-                let head = heap.records.alloc(&[key, val]);
+                let head = heap.records.alloc_fixed([key, val]);
 
                 // Continue with the next frame
                 cont.push(ContFrame::RecordRec { data: tail, step });
@@ -264,7 +264,7 @@ impl Eval for RetExpr {
                 // Create argument for the step function
                 let acc = (heap.intern_str("acc"), value); // value = result from previous step
                 let head = (heap.intern_str("head"), Value::Record(head));
-                let record = heap.records.alloc(&[acc, head]);
+                let record = heap.records.alloc_fixed([acc, head]);
 
                 let env = heap.envs.insert(env, param, Value::Record(record));
 
@@ -295,7 +295,7 @@ impl Eval for RetExpr {
                 // Create argument for the step function
                 let acc = (heap.intern_str("acc"), value); // value = result from previous step
                 let head = (heap.intern_str("head"), Value::Str(Some(head)));
-                let record = heap.records.alloc(&[acc, head]);
+                let record = heap.records.alloc_fixed([acc, head]);
 
                 let env = heap.envs.insert(env, param, Value::Record(record));
 
@@ -608,7 +608,7 @@ fn eval_builtin(
             // Create argument for the step function
             let acc = (heap.intern_str("acc"), base); // value = result from previous step
             let head = (heap.intern_str("head"), head);
-            let record = heap.records.alloc(&[acc, head]);
+            let record = heap.records.alloc_fixed([acc, head]);
 
             let env = heap.envs.insert(env, param, Value::Record(record));
 
@@ -683,7 +683,7 @@ fn eval_builtin(
             // Create argument for the step function
             let acc = (heap.intern_str("acc"), base); // value = result from previous step
             let head = (heap.intern_str("head"), Value::Num(n - 1.0));
-            let record = heap.records.alloc(&[acc, head]);
+            let record = heap.records.alloc_fixed([acc, head]);
 
             let env = heap.envs.insert(env, param, Value::Record(record));
 
@@ -906,7 +906,7 @@ fn eval_builtin(
                 Value::Str(Some(StringIdx::Static(first.0))),
             );
             let val = (heap.intern_str("value"), first.1);
-            let head = heap.records.alloc(&[key, val]);
+            let head = heap.records.alloc_fixed([key, val]);
 
             // Create a pure continuation frame for the next expression
             let pure_frame = ContFrame::pure(bind, next, env);
@@ -925,7 +925,7 @@ fn eval_builtin(
             // Create argument for the step function
             let acc = (heap.intern_str("acc"), base); // value = result from previous step
             let head = (heap.intern_str("head"), Value::Record(head));
-            let record = heap.records.alloc(&[acc, head]);
+            let record = heap.records.alloc_fixed([acc, head]);
 
             let env = heap.envs.insert(env, param, Value::Record(record));
 
@@ -1114,7 +1114,7 @@ fn eval_builtin(
             // Create argument for the step function
             let acc = (heap.intern_str("acc"), base); // value = result from previous step
             let head = (heap.intern_str("head"), Value::Char(head));
-            let record = heap.records.alloc(&[acc, head]);
+            let record = heap.records.alloc_fixed([acc, head]);
 
             let env = heap.envs.insert(env, param, Value::Record(record));
 
@@ -1149,8 +1149,8 @@ impl Eval for HandleExpr {
         &self,
         env: EnvIdx,
         mut cont: Cont,
-        context: &mut MachineContext,
-        heap: &mut Heap,
+        _context: &mut MachineContext,
+        _heap: &mut Heap,
     ) -> MachineState {
         let Self {
             bind,
@@ -1468,17 +1468,16 @@ impl Eval for ListExpr {
             next,
         } = *self;
 
-        let items = match context
+        let item_iter = context
             .ir
             .iter_items(head)
-            .map(|item| eval_atom(item.value.get(&context.ir), env, &heap.envs))
-            .collect::<Result<Vec<_>, _>>()
-        {
-            Ok(items) => items,
+            .map(|item| eval_atom(item.value.get(&context.ir), env, &heap.envs));
+
+        let list = match heap.lists.try_alloc_from_iter(item_iter) {
+            Ok(list_idx) => list_idx,
             Err(err) => return MachineState::Error(err),
         };
 
-        let list = heap.lists.alloc(&items);
         let env = heap.envs.insert(env, bind, Value::List(list));
 
         MachineState::Standard(StandardConfig {
@@ -1506,26 +1505,24 @@ impl Eval for RecordExpr {
     ) -> MachineState {
         let RecordExpr { bind, head, next } = *self;
 
-        let pairs = match context
-            .ir
-            .iter_fields(head)
-            .map(|RecordField { label, value, .. }| {
-                eval_atom(value.get(&context.ir), env, &heap.envs)
-                    .map(|val| (label, val))
-                    .map_err(|err| format!("Error evaluating field '{}': {}", label, err))
-            })
-            .collect::<Result<Vec<_>, _>>()
-        {
-            Ok(pairs) => pairs,
+        let entry_iter =
+            context
+                .ir
+                .iter_fields(head)
+                .map(|RecordField { label, value, .. }| {
+                    eval_atom(value.get(&context.ir), env, &heap.envs)
+                        .map(|val| (label, val))
+                        .map_err(|err| format!("Error evaluating field '{}': {}", label, err))
+                });
+
+        // Create a record value from the evaluated fields
+        let record = match heap.records.try_alloc_from_iter(entry_iter) {
+            Ok(record_idx) => record_idx,
             Err(err) => return MachineState::Error(err),
         };
 
-        // Create a record value from the evaluated fields
-        let record = heap.records.alloc(&pairs);
-        let record_value = Value::Record(record);
-
         // Bind the record to the variable in the environment
-        let env = heap.envs.insert(env, bind, record_value);
+        let env = heap.envs.insert(env, bind, Value::Record(record));
 
         // Continue with the next expression
         MachineState::Standard(StandardConfig {

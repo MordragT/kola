@@ -169,20 +169,137 @@ where
 
     // ── allocation ────────────────────────────────────────────────
 
+    /// Allocate a new record from a fixed-size stack array of entries.
+    ///
+    /// Sorts the entries in-place on the stack by their integer keys, then builds
+    /// the persistent spine backwards to guarantee perfect arena density with zero host heap allocations.
+    pub fn alloc_fixed<const N: usize>(
+        &mut self,
+        mut entries: [(K, Value); N],
+    ) -> Option<RecordIdx> {
+        if N == 0 {
+            return None;
+        }
+
+        // 1. Sort entirely on the stack. For N=2 or N=3, this is practically free.
+        entries.sort_by_key(|(k, _)| *k);
+
+        // 2. Build the chain backwards. The tail is always the node from the previous iteration.
+        let mut curr = None;
+        for (k, v) in entries.into_iter().rev() {
+            curr = Some(self.alloc_node(k, v, curr));
+        }
+
+        curr
+    }
+
     /// Allocate a new record from a slice of entries.
     /// Sorts them by key and builds the chain backwards to preserve sorting and shadowing.
     pub fn alloc(&mut self, entries: &[(K, Value)]) -> Option<RecordIdx> {
         if entries.is_empty() {
             return None;
         }
-        let mut sorted = entries.to_vec();
-        sorted.sort_by_key(|(k, _)| *k);
+
+        debug_assert!(
+            entries.is_sorted_by_key(|el| el.0),
+            "Input entries must be pre-sorted by key for correct shadowing semantics: {:?}",
+            entries
+        );
 
         let mut curr = None;
-        for (k, v) in sorted.into_iter().rev() {
+        for (k, v) in entries.iter().rev().copied() {
             curr = Some(self.alloc_node(k, v, curr));
         }
         curr
+    }
+
+    /// Allocates a structured record directly from a fallible forward iterator.
+    /// Preserves iterator order via forward backpatching.
+    /// Transactionally rolls back all modifications if an evaluation error occurs.
+    pub fn try_alloc_from_iter<I, E>(&mut self, iter: I) -> Result<Option<RecordIdx>, E>
+    where
+        I: IntoIterator<Item = Result<(K, Value), E>>,
+    {
+        let start_len = self.data.len();
+        let iter = iter.into_iter();
+
+        // Optimize capacity upfront if the iterator provides a upper bound
+        if let Some(upper_bound) = iter.size_hint().1 {
+            self.data.reserve(upper_bound);
+        }
+
+        let mut prev_offset: Option<usize> = None;
+
+        for item_result in iter {
+            let (key, val) = match item_result {
+                Ok(pair) => pair,
+                Err(err) => {
+                    // Transactional Rollback: Wipe out partial record allocations
+                    self.data.truncate(start_len);
+                    return Err(err);
+                }
+            };
+
+            let curr_offset = self.data.len();
+
+            // Push the node forward. Its tail is unknown until the next iteration.
+            self.data.push(RecordNode {
+                key,
+                value: val,
+                tail: None,
+            });
+
+            // Backpatching: Link the previous node's tail to this new node
+            if let Some(prev) = prev_offset {
+                self.data[prev].tail = Some(RecordIdx::make(curr_offset));
+            }
+
+            prev_offset = Some(curr_offset);
+        }
+
+        if self.data.len() == start_len {
+            Ok(None) // Empty record
+        } else {
+            Ok(Some(RecordIdx::make(start_len))) // Head is the first node pushed
+        }
+    }
+
+    /// Allocates a structured record directly from a non-failing forward iterator.
+    /// Preserves iterator order via forward backpatching.
+    pub fn alloc_from_iter<I>(&mut self, iter: I) -> Option<RecordIdx>
+    where
+        I: IntoIterator<Item = (K, Value)>,
+    {
+        let start_len = self.data.len();
+        let iter = iter.into_iter();
+
+        if let Some(upper_bound) = iter.size_hint().1 {
+            self.data.reserve(upper_bound);
+        }
+
+        let mut prev_offset: Option<usize> = None;
+
+        for (key, val) in iter {
+            let curr_offset = self.data.len();
+
+            self.data.push(RecordNode {
+                key,
+                value: val,
+                tail: None,
+            });
+
+            if let Some(prev) = prev_offset {
+                self.data[prev].tail = Some(RecordIdx::make(curr_offset));
+            }
+
+            prev_offset = Some(curr_offset);
+        }
+
+        if self.data.len() == start_len {
+            None
+        } else {
+            Some(RecordIdx::make(start_len))
+        }
     }
 
     /// Allocate an empty record `{}`.
@@ -200,13 +317,12 @@ where
     // ── mutating operations (leveraging structural sharing) ───────
 
     /// Insert a key-value pair at the correct sorted position.
-    ///
-    /// **Structural Sharing Win:** Suffixes containing keys >= `key` are
-    /// fully shared. We only allocate nodes for fields that sort before `key`.
     pub fn insert(&mut self, idx: Option<RecordIdx>, key: K, value: Value) -> RecordIdx {
+        let start_len = self.data.len();
         let mut curr = idx;
-        let mut prefix = Vec::new();
+        let mut prev_offset: Option<usize> = None;
 
+        // Walk and speculatively copy the prefix directly into the arena
         while let Some(id) = curr {
             let RecordNode {
                 key: k,
@@ -214,58 +330,96 @@ where
                 tail,
             } = self.data[id.as_usize()];
             if k >= key {
-                break; // Insert here to maintain sorting and enable shadowing
+                break; // Found insertion point to maintain sorting / shadowing
             }
-            prefix.push((k, v));
+
+            let curr_offset = self.data.len();
+            self.data.push(RecordNode {
+                key: k,
+                value: v,
+                tail: None,
+            });
+
+            if let Some(prev) = prev_offset {
+                self.data[prev].tail = Some(RecordIdx::make(curr_offset));
+            }
+            prev_offset = Some(curr_offset);
             curr = tail;
         }
 
-        // Link the new node directly to the shared remaining tail
-        let mut new_idx = self.alloc_node(key, value, curr);
+        // Allocate the new node, linking it to the remaining shared suffix
+        let new_node_offset = self.data.len();
+        self.data.push(RecordNode {
+            key,
+            value,
+            tail: curr,
+        });
 
-        // Rebuild prefix spine backwards
-        for (k, v) in prefix.into_iter().rev() {
-            new_idx = self.alloc_node(k, v, Some(new_idx));
+        // Connect the end of our copied prefix chain to the new node
+        if let Some(prev) = prev_offset {
+            self.data[prev].tail = Some(RecordIdx::make(new_node_offset));
+            RecordIdx::make(start_len) // The root is the very first node we copied
+        } else {
+            RecordIdx::make(new_node_offset) // The new node is the new root
         }
-
-        new_idx
     }
 
     /// Remove the first (visible) occurrence of `key`.
-    ///
-    /// **Structural Sharing Win:** The entire tail following the removed element
-    /// is shared directly without copying.
     pub fn remove(&mut self, idx: Option<RecordIdx>, key: K) -> Option<(Value, Option<RecordIdx>)> {
+        let start_len = self.data.len();
         let mut curr = idx;
-        let mut prefix = Vec::new();
+        let mut prev_offset: Option<usize> = None;
         let mut removed_val = None;
 
         while let Some(id) = curr {
             let RecordNode {
                 key: k,
-                value,
+                value: v,
                 tail,
             } = self.data[id.as_usize()];
+
             if k == key {
-                removed_val = Some(value);
-                curr = tail; // Drop this node; the remaining tail is shared
+                removed_val = Some(v);
+                curr = tail; // Drop this node from the new spine; suffix is shared
                 break;
             }
+
             if k > key {
-                return None; // Key doesn't exist
+                // Sorted invariant broken: key definitely doesn't exist
+                self.data.truncate(start_len);
+                return None;
             }
-            prefix.push((k, value));
+
+            let curr_offset = self.data.len();
+            self.data.push(RecordNode {
+                key: k,
+                value: v,
+                tail: None,
+            });
+
+            if let Some(prev) = prev_offset {
+                self.data[prev].tail = Some(RecordIdx::make(curr_offset));
+            }
+            prev_offset = Some(curr_offset);
             curr = tail;
         }
 
-        let val = removed_val?;
-        let mut new_idx = curr;
+        // If we exited the loop without setting removed_val, the key wasn't found
+        let final_val = match removed_val {
+            Some(v) => v,
+            None => {
+                self.data.truncate(start_len);
+                return None;
+            }
+        };
 
-        for (k, v) in prefix.into_iter().rev() {
-            new_idx = Some(self.alloc_node(k, v, new_idx));
+        // Connect the last node of our new prefix to the shared suffix
+        if let Some(prev) = prev_offset {
+            self.data[prev].tail = curr;
+            Some((final_val, Some(RecordIdx::make(start_len))))
+        } else {
+            Some((final_val, curr))
         }
-
-        Some((val, new_idx))
     }
 
     /// Split off the first (smallest key) entry.
@@ -283,20 +437,37 @@ where
         idx: Option<RecordIdx>,
     ) -> Option<(Option<RecordIdx>, (K, Value))> {
         let id = idx?;
+        let start_len = self.data.len();
         let mut curr = Some(id);
-        let mut prefix = Vec::new();
+        let mut prev_offset: Option<usize> = None;
 
         while let Some(current_id) = curr {
             let RecordNode { key, value, tail } = self.data[current_id.as_usize()];
+
             if tail.is_none() {
+                // This is the final node! We do not copy it.
                 let last_pair = (key, value);
-                let mut new_list = None;
-                for (k, v) in prefix.into_iter().rev() {
-                    new_list = Some(self.alloc_node(k, v, new_list));
+
+                if let Some(prev) = prev_offset {
+                    self.data[prev].tail = None; // Terminate the new copied spine
+                    return Some((Some(RecordIdx::make(start_len)), last_pair));
+                } else {
+                    // The record only had one element; the remaining record is empty
+                    return Some((None, last_pair));
                 }
-                return Some((new_list, last_pair));
             }
-            prefix.push((key, value));
+
+            let curr_offset = self.data.len();
+            self.data.push(RecordNode {
+                key,
+                value,
+                tail: None,
+            });
+
+            if let Some(prev) = prev_offset {
+                self.data[prev].tail = Some(RecordIdx::make(curr_offset));
+            }
+            prev_offset = Some(curr_offset);
             curr = tail;
         }
         None
@@ -304,18 +475,17 @@ where
 
     /// Merge two records using row-polymorphic merge semantics.
     ///
-    /// Completely iterative spine zip-merge.
-    /// **Structural Sharing Win:** When either the left or right record runs
-    /// out of entries, the entire remainder of the other record is attached
-    /// in **O(1) time** as a shared tail. No leftover elements are copied!
+    /// Completely iterative spine zip-merge with zero host-heap allocations.
+    /// Instantly rolls back speculative nodes across the call stack if a type mismatch occurs.
     pub fn merge(
         &mut self,
         left: Option<RecordIdx>,
         right: Option<RecordIdx>,
     ) -> Option<Option<RecordIdx>> {
+        let start_len = self.data.len();
         let mut l_curr = left;
         let mut r_curr = right;
-        let mut prefix = Vec::new();
+        let mut prev_offset: Option<usize> = None;
 
         while let (Some(l_id), Some(r_id)) = (l_curr, r_curr) {
             let RecordNode {
@@ -329,45 +499,69 @@ where
                 tail: r_tail,
             } = self.data[r_id.as_usize()];
 
-            if l_k == r_k {
+            let (k, v, next_l, next_r) = if l_k == r_k {
                 let merged_val = match (l_v, r_v) {
                     (Value::Record(l_rec), Value::Record(r_rec)) => {
-                        Value::Record(self.merge(l_rec, r_rec)?)
+                        // Recursion takes advantage of our transactional truncation on failure
+                        match self.merge(l_rec, r_rec) {
+                            Some(Some(idx)) => Value::Record(Some(idx)),
+                            Some(None) => Value::Record(None),
+                            None => {
+                                self.data.truncate(start_len);
+                                return None;
+                            }
+                        }
                     }
-                    _ => return None, // Type mismatch error: Cannot merge non-record values
+                    _ => {
+                        self.data.truncate(start_len);
+                        return None; // Type mismatch error
+                    }
                 };
-                prefix.push((l_k, merged_val));
-                l_curr = l_tail;
-                r_curr = r_tail;
+                (l_k, merged_val, l_tail, r_tail)
             } else if l_k < r_k {
-                prefix.push((l_k, l_v));
-                l_curr = l_tail;
+                (l_k, l_v, l_tail, r_curr)
             } else {
-                prefix.push((r_k, r_v));
-                r_curr = r_tail;
+                (r_k, r_v, l_curr, r_tail)
+            };
+
+            let curr_offset = self.data.len();
+            self.data.push(RecordNode {
+                key: k,
+                value: v,
+                tail: None,
+            });
+
+            if let Some(prev) = prev_offset {
+                self.data[prev].tail = Some(RecordIdx::make(curr_offset));
             }
+            prev_offset = Some(curr_offset);
+            l_curr = next_l;
+            r_curr = next_r;
         }
 
-        // Link right into the unmerged trailing side instantaneously
-        let mut new_idx = if l_curr.is_some() { l_curr } else { r_curr };
+        // O(1) instantaneous attachment of the remaining unmerged side
+        let remainder = if l_curr.is_some() { l_curr } else { r_curr };
 
-        // Rebuild the merged spine
-        for (k, v) in prefix.into_iter().rev() {
-            new_idx = Some(self.alloc_node(k, v, new_idx));
+        if let Some(prev) = prev_offset {
+            self.data[prev].tail = remainder;
+            Some(Some(RecordIdx::make(start_len)))
+        } else {
+            Some(remainder)
         }
-
-        Some(new_idx)
     }
 
     /// Merge two records, with `left` taking precedence over `right` on duplicate keys.
+    ///
+    /// Zero host allocations. Single-pass forward backpatching.
     pub fn merge_left(
         &mut self,
         left: Option<RecordIdx>,
         right: Option<RecordIdx>,
     ) -> Option<RecordIdx> {
+        let start_len = self.data.len();
         let mut l_curr = left;
         let mut r_curr = right;
-        let mut prefix = Vec::new();
+        let mut prev_offset: Option<usize> = None;
 
         while let (Some(l_id), Some(r_id)) = (l_curr, r_curr) {
             let RecordNode {
@@ -381,58 +575,46 @@ where
                 tail: r_tail,
             } = self.data[r_id.as_usize()];
 
-            if l_k <= r_k {
-                prefix.push((l_k, l_v));
-                l_curr = l_tail;
+            let (k, v, next_l, next_r) = if l_k <= r_k {
+                (l_k, l_v, l_tail, r_curr)
             } else {
-                prefix.push((r_k, r_v));
-                r_curr = r_tail;
+                (r_k, r_v, l_curr, r_tail)
+            };
+
+            let curr_offset = self.data.len();
+            self.data.push(RecordNode {
+                key: k,
+                value: v,
+                tail: None,
+            });
+
+            if let Some(prev) = prev_offset {
+                self.data[prev].tail = Some(RecordIdx::make(curr_offset));
             }
+            prev_offset = Some(curr_offset);
+            l_curr = next_l;
+            r_curr = next_r;
         }
 
-        let mut new_idx = if l_curr.is_some() { l_curr } else { r_curr };
-        for (k, v) in prefix.into_iter().rev() {
-            new_idx = Some(self.alloc_node(k, v, new_idx));
+        let remainder = if l_curr.is_some() { l_curr } else { r_curr };
+
+        if let Some(prev) = prev_offset {
+            self.data[prev].tail = remainder;
+            Some(RecordIdx::make(start_len))
+        } else {
+            remainder
         }
-        new_idx
     }
-
     /// Merge two records, with `right` taking precedence over `left` on duplicate keys.
+    ///
+    /// Zero host allocations. Single-pass forward backpatching.
+    #[inline]
     pub fn merge_right(
         &mut self,
         left: Option<RecordIdx>,
         right: Option<RecordIdx>,
     ) -> Option<RecordIdx> {
-        let mut l_curr = left;
-        let mut r_curr = right;
-        let mut prefix = Vec::new();
-
-        while let (Some(l_id), Some(r_id)) = (l_curr, r_curr) {
-            let RecordNode {
-                key: l_k,
-                value: l_v,
-                tail: l_tail,
-            } = self.data[l_id.as_usize()];
-            let RecordNode {
-                key: r_k,
-                value: r_v,
-                tail: r_tail,
-            } = self.data[r_id.as_usize()];
-
-            if r_k <= l_k {
-                prefix.push((r_k, r_v));
-                r_curr = r_tail;
-            } else {
-                prefix.push((l_k, l_v));
-                l_curr = l_tail;
-            }
-        }
-
-        let mut new_idx = if l_curr.is_some() { l_curr } else { r_curr };
-        for (k, v) in prefix.into_iter().rev() {
-            new_idx = Some(self.alloc_node(k, v, new_idx));
-        }
-        new_idx
+        self.merge_left(right, left)
     }
 
     // ── path operations ───────────────────────────────────────────

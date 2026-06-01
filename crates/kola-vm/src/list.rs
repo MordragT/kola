@@ -187,6 +187,94 @@ impl ListArena {
         Some(self.push_front(None, value))
     }
 
+    /// Allocates a structurally shared list directly from a forward-moving iterator.
+    /// Preserves natural iterator order via forward backpatching.
+    /// Instantly rolls back all structural changes if an error is encountered.
+    pub fn try_alloc_from_iter<I, E>(&mut self, iter: I) -> Result<Option<ListIdx>, E>
+    where
+        I: IntoIterator<Item = Result<Value, E>>,
+    {
+        let start_len = self.data.len();
+        let iter = iter.into_iter();
+
+        // Size hint optimization to avoid intermediate vector resizing
+        if let Some(upper_bound) = iter.size_hint().1 {
+            self.data.reserve(upper_bound);
+        }
+
+        let mut prev_offset: Option<usize> = None;
+
+        for item_result in iter {
+            let val = match item_result {
+                Ok(v) => v,
+                Err(err) => {
+                    // Transactional Rollback: Wipe out all partially written nodes
+                    self.data.truncate(start_len);
+                    return Err(err);
+                }
+            };
+
+            let curr_offset = self.data.len();
+            self.data.push(ListNode {
+                head: val,
+                tail: None,
+            });
+
+            // Backpatching: Update the previous node's tail to point to this new node
+            if let Some(prev) = prev_offset {
+                self.data[prev].tail = Some(ListIdx::make(curr_offset));
+            }
+
+            prev_offset = Some(curr_offset);
+        }
+
+        if self.data.len() == start_len {
+            Ok(None)
+        } else {
+            // The head of the entire list is the very first node we pushed
+            Ok(Some(ListIdx::make(start_len)))
+        }
+    }
+
+    /// Allocates a structurally shared list directly from a non-failing forward iterator.
+    /// Preserves natural iterator order via forward backpatching.
+    pub fn alloc_from_iter<I>(&mut self, iter: I) -> Option<ListIdx>
+    where
+        I: IntoIterator<Item = Value>,
+    {
+        let start_len = self.data.len();
+        let iter = iter.into_iter();
+
+        // Size hint optimization to avoid intermediate vector resizing
+        if let Some(upper_bound) = iter.size_hint().1 {
+            self.data.reserve(upper_bound);
+        }
+
+        let mut prev_offset: Option<usize> = None;
+
+        for val in iter {
+            let curr_offset = self.data.len();
+            self.data.push(ListNode {
+                head: val,
+                tail: None,
+            });
+
+            // Backpatching: Update the previous node's tail to point to this new node
+            if let Some(prev) = prev_offset {
+                self.data[prev].tail = Some(ListIdx::make(curr_offset));
+            }
+
+            prev_offset = Some(curr_offset);
+        }
+
+        if self.data.len() == start_len {
+            None
+        } else {
+            // The head of the list is the very first node we pushed
+            Some(ListIdx::make(start_len))
+        }
+    }
+
     // ── mutating operations (leveraging structural sharing) ───────
 
     /// Prepend a value to the front of the list.

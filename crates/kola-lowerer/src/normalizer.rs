@@ -581,7 +581,10 @@ where
         // Create fresh symbols for each field value
         let field_value_syms: Vec<_> = (0..fields.len()).map(|_| self.next_symbol()).collect();
 
-        let field_pairs: Vec<_> = fields
+        //  Build the IR field pairs and SORT them statically by key.
+        // We use a stable sort to preserve original shadowing order if duplicate keys exist
+        // and reverse the order because the ir builder prepends fields to the head of the list.
+        let mut field_pairs: Vec<_> = fields
             .iter()
             .zip(&field_value_syms)
             .map(|(field_id, &value_sym)| {
@@ -590,6 +593,7 @@ where
                 (label, ir::Atom::Symbol(value_sym))
             })
             .collect();
+        field_pairs.sort_by_key(|(label, _)| std::cmp::Reverse(*label));
 
         // Create the record expression context and set continuation
         let mut record_expr = ir::RecordExpr {
@@ -1586,6 +1590,6 @@ mod tests {
         let value = machine.run(&mut heap).unwrap().into_str().unwrap();
 
         // Should evaluate to "hello" (the value of r.a.b.c)
-        assert_eq!(heap.strings.try_get(&value).unwrap(), "hello");
+        assert_eq!(heap.strings.get(&value), "hello");
     }
 }
