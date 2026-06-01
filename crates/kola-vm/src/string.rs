@@ -9,6 +9,8 @@ use kola_utils::{
     serde::SerializeWith,
 };
 
+pub const INLINE_CAPACITY: usize = 14;
+
 /// A compact, 16-byte unified string reference.
 /// It fits entirely in CPU registers and requires zero heap management.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -17,8 +19,11 @@ pub enum StringIdx {
     Static(StrKey),
 
     /// Small String Optimization (SSO): Holds short text directly inline.
-    /// No arena allocations, maximum cache locality. Fits up to 11 bytes.
-    Inline { len: NonZeroU8, bytes: [u8; 11] },
+    /// No arena allocations, maximum cache locality. Fits up to 14 bytes.
+    Inline {
+        len: NonZeroU8,
+        bytes: [u8; INLINE_CAPACITY],
+    },
 
     /// A contiguous chunk of runtime-allocated text inside the dynamic buffer.
     Buffer { start: u32, len: NonZeroU32 },
@@ -27,9 +32,13 @@ pub enum StringIdx {
     Node(NonZeroU32),
 }
 
+const _: () = assert!(StringIdx::BYTES <= 16);
+
 impl StringIdx {
+    pub const BYTES: usize = std::mem::size_of::<Self>();
+
     pub fn unit(c: char) -> Self {
-        let mut bytes = [0u8; 11];
+        let mut bytes = [0u8; INLINE_CAPACITY];
         c.encode_utf8(&mut bytes);
 
         let len = NonZeroU8::new(c.len_utf8() as u8).expect("char is never empty");
@@ -38,7 +47,7 @@ impl StringIdx {
     }
 
     pub fn tuple(left: char, right: char) -> Self {
-        let mut bytes = [0u8; 11];
+        let mut bytes = [0u8; INLINE_CAPACITY];
         let left_len = left.encode_utf8(&mut bytes).len() as u8;
         let right_len = right.encode_utf8(&mut bytes[left_len as usize..]).len() as u8;
 
@@ -221,8 +230,8 @@ impl StringArena {
         }
 
         // SSO Fast-Path (Guaranteed non-zero length here)
-        if len <= 11 {
-            let mut bytes = [0u8; 11];
+        if len <= INLINE_CAPACITY {
+            let mut bytes = [0u8; INLINE_CAPACITY];
             bytes[..len].copy_from_slice(s.as_bytes());
             return Some(StringIdx::Inline {
                 len: NonZeroU8::new(len as u8).expect("length is guaranteed to be non-zero"),
@@ -274,8 +283,8 @@ impl StringArena {
         ) = (l, r)
         {
             let combined_len = l_len.get() as usize + r_len.get() as usize;
-            if combined_len <= 11 {
-                let mut bytes = [0u8; 11];
+            if combined_len <= INLINE_CAPACITY {
+                let mut bytes = [0u8; INLINE_CAPACITY];
                 let l_idx = l_len.get() as usize;
 
                 bytes[..l_idx].copy_from_slice(&l_bytes[..l_idx]);

@@ -30,7 +30,11 @@ pub struct Handler {
     pub op_clauses: Option<Id<HandlerClause>>,
 }
 
+const _: () = assert!(Handler::BYTES <= 12);
+
 impl Handler {
+    pub const BYTES: usize = std::mem::size_of::<Self>();
+
     #[inline]
     pub fn identity() -> Self {
         Self {

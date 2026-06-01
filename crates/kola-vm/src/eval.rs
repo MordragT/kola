@@ -1363,41 +1363,163 @@ impl Eval for UnaryExpr {
     }
 }
 
+#[inline]
 pub fn eval_binary_op(
     op: BinaryOp,
     left: Value,
     right: Value,
     heap: &mut Heap,
 ) -> Result<Value, String> {
-    match (op, left, right) {
-        // TODO:
-        // - String concatenation (Add?)
-        (BinaryOp::Add, Value::Num(l), Value::Num(r)) => Ok(Value::Num(l + r)),
-        (BinaryOp::Sub, Value::Num(l), Value::Num(r)) => Ok(Value::Num(l - r)),
-        (BinaryOp::Mul, Value::Num(l), Value::Num(r)) => Ok(Value::Num(l * r)),
-        (BinaryOp::Div, Value::Num(l), Value::Num(r)) => Ok(Value::Num(l / r)), // TODO check for division by zero?
-        (BinaryOp::Rem, Value::Num(l), Value::Num(r)) => Ok(Value::Num(l % r)),
-        (BinaryOp::Less, Value::Num(l), Value::Num(r)) => Ok(Value::Bool(l < r)),
-        (BinaryOp::LessEq, Value::Num(l), Value::Num(r)) => Ok(Value::Bool(l <= r)),
-        (BinaryOp::Greater, Value::Num(l), Value::Num(r)) => Ok(Value::Bool(l > r)),
-        (BinaryOp::GreaterEq, Value::Num(l), Value::Num(r)) => Ok(Value::Bool(l >= r)),
-        (BinaryOp::And, Value::Bool(l), Value::Bool(r)) => Ok(Value::Bool(l && r)),
-        (BinaryOp::Or, Value::Bool(l), Value::Bool(r)) => Ok(Value::Bool(l || r)),
-        (BinaryOp::Eq, l, r) => Ok(Value::Bool(l == r)), // TODO: might need special handling
-        (BinaryOp::NotEq, l, r) => Ok(Value::Bool(l != r)), // TODO: might need special handling
-        (BinaryOp::Merge, Value::Record(l), Value::Record(r)) => heap
+    match op {
+        BinaryOp::Add => eval_add(left, right),
+        BinaryOp::Sub => eval_sub(left, right),
+        BinaryOp::Mul => eval_mul(left, right),
+        BinaryOp::Div => eval_div(left, right),
+        BinaryOp::Rem => eval_rem(left, right),
+
+        BinaryOp::Less => eval_less(left, right),
+        BinaryOp::LessEq => eval_less_eq(left, right),
+        BinaryOp::Greater => eval_greater(left, right),
+        BinaryOp::GreaterEq => eval_greater_eq(left, right),
+
+        BinaryOp::And => eval_and(left, right),
+        BinaryOp::Or => eval_or(left, right),
+
+        BinaryOp::Eq => eval_eq(left, right),
+        BinaryOp::NotEq => eval_not_eq(left, right),
+
+        BinaryOp::Merge => eval_merge(left, right, heap),
+        BinaryOp::Concat => eval_concat(left, right, heap),
+    }
+}
+
+#[inline]
+fn eval_add(left: Value, right: Value) -> Result<Value, String> {
+    match (left, right) {
+        (Value::Num(l), Value::Num(r)) => Ok(Value::Num(l + r)),
+        (left, right) => Err(type_error(BinaryOp::Add, left, right)),
+    }
+}
+
+#[inline]
+fn eval_sub(left: Value, right: Value) -> Result<Value, String> {
+    match (left, right) {
+        (Value::Num(l), Value::Num(r)) => Ok(Value::Num(l - r)),
+        (left, right) => Err(type_error(BinaryOp::Sub, left, right)),
+    }
+}
+
+#[inline]
+fn eval_mul(left: Value, right: Value) -> Result<Value, String> {
+    match (left, right) {
+        (Value::Num(l), Value::Num(r)) => Ok(Value::Num(l * r)),
+        (left, right) => Err(type_error(BinaryOp::Mul, left, right)),
+    }
+}
+
+#[inline]
+fn eval_div(left: Value, right: Value) -> Result<Value, String> {
+    match (left, right) {
+        (Value::Num(_), Value::Num(0.0)) => Err("Division by zero".to_owned()),
+        (Value::Num(l), Value::Num(r)) => Ok(Value::Num(l / r)),
+        (left, right) => Err(type_error(BinaryOp::Div, left, right)),
+    }
+}
+
+#[inline]
+fn eval_rem(left: Value, right: Value) -> Result<Value, String> {
+    match (left, right) {
+        (Value::Num(_), Value::Num(0.0)) => Err("Remainder by zero".to_owned()),
+        (Value::Num(l), Value::Num(r)) => Ok(Value::Num(l % r)),
+        (left, right) => Err(type_error(BinaryOp::Rem, left, right)),
+    }
+}
+
+#[inline]
+fn eval_less(left: Value, right: Value) -> Result<Value, String> {
+    match (left, right) {
+        (Value::Num(l), Value::Num(r)) => Ok(Value::Bool(l < r)),
+        (left, right) => Err(type_error(BinaryOp::Less, left, right)),
+    }
+}
+
+#[inline]
+fn eval_less_eq(left: Value, right: Value) -> Result<Value, String> {
+    match (left, right) {
+        (Value::Num(l), Value::Num(r)) => Ok(Value::Bool(l <= r)),
+        (left, right) => Err(type_error(BinaryOp::LessEq, left, right)),
+    }
+}
+
+#[inline]
+fn eval_greater(left: Value, right: Value) -> Result<Value, String> {
+    match (left, right) {
+        (Value::Num(l), Value::Num(r)) => Ok(Value::Bool(l > r)),
+        (left, right) => Err(type_error(BinaryOp::Greater, left, right)),
+    }
+}
+
+#[inline]
+fn eval_greater_eq(left: Value, right: Value) -> Result<Value, String> {
+    match (left, right) {
+        (Value::Num(l), Value::Num(r)) => Ok(Value::Bool(l >= r)),
+        (left, right) => Err(type_error(BinaryOp::GreaterEq, left, right)),
+    }
+}
+
+#[inline]
+fn eval_and(left: Value, right: Value) -> Result<Value, String> {
+    match (left, right) {
+        (Value::Bool(l), Value::Bool(r)) => Ok(Value::Bool(l && r)),
+        (left, right) => Err(type_error(BinaryOp::And, left, right)),
+    }
+}
+
+#[inline]
+fn eval_or(left: Value, right: Value) -> Result<Value, String> {
+    match (left, right) {
+        (Value::Bool(l), Value::Bool(r)) => Ok(Value::Bool(l || r)),
+        (left, right) => Err(type_error(BinaryOp::Or, left, right)),
+    }
+}
+
+#[inline]
+fn eval_eq(left: Value, right: Value) -> Result<Value, String> {
+    Ok(Value::Bool(left == right))
+}
+
+#[inline]
+fn eval_not_eq(left: Value, right: Value) -> Result<Value, String> {
+    Ok(Value::Bool(left != right))
+}
+
+#[inline]
+fn eval_merge(left: Value, right: Value, heap: &mut Heap) -> Result<Value, String> {
+    match (left, right) {
+        (Value::Record(l), Value::Record(r)) => heap
             .records
             .merge(l, r)
             .map(Value::Record)
             .ok_or_else(|| "Cannot merge records with conflicting fields".to_owned()),
-        (BinaryOp::Concat, Value::List(l), Value::List(r)) => {
-            Ok(Value::List(heap.lists.concat(l, r)))
-        }
-        (op, left, right) => Err(format!(
-            "Cannot apply binary operation {:?} to: {:?} and {:?}",
-            op, left, right
-        )),
+        (left, right) => Err(type_error(BinaryOp::Merge, left, right)),
     }
+}
+
+#[inline]
+fn eval_concat(left: Value, right: Value, heap: &mut Heap) -> Result<Value, String> {
+    match (left, right) {
+        (Value::List(l), Value::List(r)) => Ok(Value::List(heap.lists.concat(l, r))),
+        (left, right) => Err(type_error(BinaryOp::Concat, left, right)),
+    }
+}
+
+#[cold]
+#[inline(never)]
+fn type_error(op: BinaryOp, left: Value, right: Value) -> String {
+    format!(
+        "Cannot apply binary operation {:?} to: {:?} and {:?}",
+        op, left, right
+    )
 }
 
 // M-BINARY: <x = V1 op V2; N | γ | κ> --> <N | γ[x ↦ op(V1, V2)] | κ>
