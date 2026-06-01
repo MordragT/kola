@@ -25,7 +25,7 @@ pub enum Value {
     /// A numeric value (floating point)
     Num(f64),
     /// A string value
-    Str(StringIdx),
+    Str(Option<StringIdx>),
     /// A function closure (environment, function definition)
     Closure(Closure),
     /// A built-in function (e.g., `__builtin_first`)
