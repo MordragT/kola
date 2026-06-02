@@ -4,6 +4,7 @@ use std::{
     fmt::{self, Debug},
     num::NonZeroU32,
 };
+use thiserror::Error;
 
 use crate::{heap::Heap, value::Value};
 
@@ -139,21 +140,20 @@ where
 
     /// Get the first (smallest key) entry.
     /// **O(1) Complexity.**
-    pub fn first(&self, idx: Option<RecordIdx>) -> Option<(K, Value)> {
-        let id = idx?;
-        let RecordNode { key, value, .. } = self.data[id.as_usize()];
-        Some((key, value))
+    pub fn first(&self, idx: RecordIdx) -> (K, Value) {
+        let RecordNode { key, value, .. } = self.data[idx.as_usize()];
+        (key, value)
     }
 
     /// Get the last (largest key) entry.
-    pub fn last(&self, idx: Option<RecordIdx>) -> Option<(K, Value)> {
-        let mut curr = idx?;
+    pub fn last(&self, idx: RecordIdx) -> (K, Value) {
+        let mut curr = idx;
         loop {
             let RecordNode { key, value, tail } = self.data[curr.as_usize()];
             if let Some(next) = tail {
                 curr = next;
             } else {
-                return Some((key, value));
+                return (key, value);
             }
         }
     }
@@ -265,47 +265,13 @@ where
     }
 
     /// Allocates a structured record directly from a non-failing forward iterator.
-    /// Preserves iterator order via forward backpatching.
     pub fn alloc_from_iter<I>(&mut self, iter: I) -> Option<RecordIdx>
     where
         I: IntoIterator<Item = (K, Value)>,
     {
-        let start_len = self.data.len();
-        let iter = iter.into_iter();
-
-        if let Some(upper_bound) = iter.size_hint().1 {
-            self.data.reserve(upper_bound);
-        }
-
-        let mut prev_offset: Option<usize> = None;
-
-        for (key, val) in iter {
-            let curr_offset = self.data.len();
-
-            self.data.push(RecordNode {
-                key,
-                value: val,
-                tail: None,
-            });
-
-            if let Some(prev) = prev_offset {
-                self.data[prev].tail = Some(RecordIdx::make(curr_offset));
-            }
-
-            prev_offset = Some(curr_offset);
-        }
-
-        if self.data.len() == start_len {
-            None
-        } else {
-            Some(RecordIdx::make(start_len))
-        }
-    }
-
-    /// Allocate an empty record `{}`.
-    #[inline]
-    pub fn alloc_empty(&mut self) -> Option<RecordIdx> {
-        None
+        // Wrap items in Ok to leverage the transactional implementation without code duplication
+        self.try_alloc_from_iter(iter.into_iter().map(Ok::<_, std::convert::Infallible>))
+            .unwrap()
     }
 
     /// Allocate a single-entry record.
@@ -615,96 +581,352 @@ where
     ) -> Option<RecordIdx> {
         self.merge_left(right, left)
     }
+}
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Error)]
+pub enum PathError<K> {
+    #[error("Empty field path")]
+    EmptyPath,
+    #[error("Field '{label:?}' not found")]
+    NotFound { label: K },
+    #[error("Expected record at field '{label:?}', but found non-record value")]
+    NotARecord { label: K },
+    #[error("User defined update function failed during record update")]
+    EvaluationFailed,
+}
+
+impl<K> RecordArena<K>
+where
+    K: Debug + Copy + Eq + Ord,
+{
     // ── path operations ───────────────────────────────────────────
 
-    pub fn extend_at_path(
+    /// Copies all nodes with keys strictly less than `target` to the end of the arena.
+    /// Returns `(prev_offset, remaining_curr)` to let the caller handle the exact target boundary.
+    #[inline]
+    fn copy_prefix_less_than(
         &mut self,
         idx: Option<RecordIdx>,
-        field_path: &[K],
-        value: Value,
-    ) -> Result<Option<RecordIdx>, String> {
-        if field_path.is_empty() {
-            return Err("Empty field path".to_string());
+        target: K,
+    ) -> (Option<usize>, Option<RecordIdx>) {
+        let mut curr = idx;
+        let mut prev_offset: Option<usize> = None;
+
+        while let Some(id) = curr {
+            let node = self.data[id.as_usize()];
+            if node.key >= target {
+                break;
+            }
+
+            let curr_offset = self.data.len();
+            self.data.push(RecordNode {
+                key: node.key,
+                value: node.value,
+                tail: None,
+            });
+
+            if let Some(prev) = prev_offset {
+                self.data[prev].tail = Some(RecordIdx::make(curr_offset));
+            }
+            prev_offset = Some(curr_offset);
+            curr = node.tail;
         }
 
-        if field_path.len() == 1 {
-            Ok(Some(self.insert(idx, field_path[0], value)))
-        } else {
-            let label = field_path[0];
-            let nested = self.get_value(idx, label).unwrap_or(Value::Record(None));
-
-            let Value::Record(nested_idx) = nested else {
-                return Err(format!("Cannot extend non-record at field '{:?}'", label));
-            };
-
-            let new_nested = self.extend_at_path(nested_idx, &field_path[1..], value)?;
-            Ok(Some(self.insert(idx, label, Value::Record(new_nested))))
-        }
+        (prev_offset, curr)
     }
 
-    pub fn restrict_at_path(
-        &mut self,
-        idx: Option<RecordIdx>,
-        field_path: &[K],
-    ) -> Result<Option<RecordIdx>, String> {
-        if field_path.is_empty() {
-            return Err("Empty field path".to_string());
-        }
-
-        if field_path.len() == 1 {
-            Ok(self
-                .remove(idx, field_path[0])
-                .map(|(_, new_idx)| new_idx)
-                .unwrap_or(idx))
-        } else {
-            let label = field_path[0];
-            let nested = self
-                .get_value(idx, label)
-                .ok_or_else(|| format!("Cannot restrict non-existing field at '{:?}'", label))?;
-
-            let Value::Record(nested_idx) = nested else {
-                return Err(format!("Cannot restrict non-record at field '{:?}'", label));
-            };
-
-            let new_nested = self.restrict_at_path(nested_idx, &field_path[1..])?;
-            Ok(Some(self.insert(idx, label, Value::Record(new_nested))))
-        }
-    }
-
-    pub fn update_at_path<F>(
-        &mut self,
-        idx: Option<RecordIdx>,
-        field_path: &[K],
-        update_fn: F,
-    ) -> Result<Option<RecordIdx>, String>
+    /// Deeply searches a record spine without performing any allocations or arena writes.
+    pub fn get_at_path<I>(&self, idx: Option<RecordIdx>, path: I) -> Result<Value, PathError<K>>
     where
-        F: FnOnce(Value) -> Result<Value, String>,
+        I: IntoIterator<Item = K>,
     {
-        if field_path.is_empty() {
-            return Err("Empty field path".to_string());
+        let mut path = path.into_iter();
+        let mut curr = idx;
+
+        let Some(mut label) = path.next() else {
+            return Err(PathError::EmptyPath);
+        };
+
+        loop {
+            let mut found = false;
+            while let Some(id) = curr {
+                let node = self.data[id.as_usize()];
+                if node.key == label {
+                    match path.next() {
+                        Some(next_label) => {
+                            let Value::Record(nested_idx) = node.value else {
+                                return Err(PathError::NotARecord { label });
+                            };
+                            curr = nested_idx;
+                            label = next_label;
+                            found = true;
+                            break;
+                        }
+                        None => return Ok(node.value),
+                    }
+                }
+                if node.key > label {
+                    break;
+                }
+                curr = node.tail;
+            }
+            if !found {
+                return Err(PathError::NotFound { label });
+            }
+        }
+    }
+
+    /// Deeply inserts or overwrites a value at a nested path using an iterator thread.
+    pub fn extend_at_path<I>(
+        &mut self,
+        idx: Option<RecordIdx>,
+        path: I,
+        value: Value,
+    ) -> Result<Option<RecordIdx>, PathError<K>>
+    where
+        I: IntoIterator<Item = K>,
+    {
+        let mut peekable = path.into_iter().peekable();
+        self.extend_at_path_impl(idx, &mut peekable, value)
+    }
+
+    fn extend_at_path_impl<I>(
+        &mut self,
+        idx: Option<RecordIdx>,
+        path: &mut std::iter::Peekable<I>,
+        value: Value,
+    ) -> Result<Option<RecordIdx>, PathError<K>>
+    where
+        I: Iterator<Item = K>,
+    {
+        let Some(label) = path.next() else {
+            return Err(PathError::EmptyPath);
+        };
+        let start_len = self.data.len();
+
+        let (prev_offset, curr) = self.copy_prefix_less_than(idx, label);
+        let is_leaf = path.peek().is_none();
+
+        let (next_val, next_tail) = match curr {
+            Some(id) if self.data[id.as_usize()].key == label => {
+                let node = self.data[id.as_usize()];
+                let val = if is_leaf {
+                    value
+                } else {
+                    let Value::Record(nested_idx) = node.value else {
+                        self.data.truncate(start_len);
+                        return Err(PathError::NotARecord { label });
+                    };
+                    Value::Record(self.extend_at_path_impl(nested_idx, path, value).map_err(
+                        |e| {
+                            self.data.truncate(start_len);
+                            e
+                        },
+                    )?)
+                };
+                (val, node.tail)
+            }
+            _ => {
+                let val = if is_leaf {
+                    value
+                } else {
+                    Value::Record(self.extend_at_path_impl(None, path, value).map_err(|e| {
+                        self.data.truncate(start_len);
+                        e
+                    })?)
+                };
+                (val, curr)
+            }
+        };
+
+        let curr_offset = self.data.len();
+        self.data.push(RecordNode {
+            key: label,
+            value: next_val,
+            tail: next_tail,
+        });
+
+        if let Some(prev) = prev_offset {
+            self.data[prev].tail = Some(RecordIdx::make(curr_offset));
+            Ok(Some(RecordIdx::make(start_len)))
+        } else {
+            Ok(Some(RecordIdx::make(curr_offset)))
+        }
+    }
+
+    pub fn restrict_at_path<I>(
+        &mut self,
+        idx: Option<RecordIdx>,
+        path: I,
+    ) -> Result<Option<RecordIdx>, PathError<K>>
+    where
+        I: IntoIterator<Item = K>,
+    {
+        let mut peekable = path.into_iter().peekable();
+        self.restrict_at_path_impl(idx, &mut peekable)
+    }
+
+    /// Deeply removes a node at a nested path using an iterator thread.
+    pub fn restrict_at_path_impl<I>(
+        &mut self,
+        idx: Option<RecordIdx>,
+        path: &mut std::iter::Peekable<I>,
+    ) -> Result<Option<RecordIdx>, PathError<K>>
+    where
+        I: Iterator<Item = K>,
+    {
+        let Some(label) = path.next() else {
+            return Err(PathError::EmptyPath);
+        };
+        let start_len = self.data.len();
+
+        let (prev_offset, curr) = self.copy_prefix_less_than(idx, label);
+
+        let target_id = curr.ok_or_else(|| PathError::NotFound { label })?;
+        let node = self.data[target_id.as_usize()];
+        if node.key != label {
+            self.data.truncate(start_len);
+            return Err(PathError::NotFound { label });
         }
 
-        if field_path.len() == 1 {
-            let label = field_path[0];
-            let current_val = self
-                .get_value(idx, label)
-                .ok_or_else(|| format!("Cannot update non-existing field at '{:?}'", label))?;
-
-            let new_value = update_fn(current_val)?;
-            Ok(Some(self.insert(idx, label, new_value)))
+        if path.peek().is_none() {
+            if let Some(prev) = prev_offset {
+                self.data[prev].tail = node.tail;
+                Ok(Some(RecordIdx::make(start_len)))
+            } else {
+                Ok(node.tail)
+            }
         } else {
-            let label = field_path[0];
-            let nested = self
-                .get_value(idx, label)
-                .ok_or_else(|| format!("Cannot update non-existing field at '{:?}'", label))?;
-
-            let Value::Record(nested_idx) = nested else {
-                return Err(format!("Cannot update non-record at field '{:?}'", label));
+            let Value::Record(nested_idx) = node.value else {
+                self.data.truncate(start_len);
+                return Err(PathError::NotARecord { label });
             };
 
-            let new_nested = self.update_at_path(nested_idx, &field_path[1..], update_fn)?;
-            Ok(Some(self.insert(idx, label, Value::Record(new_nested))))
+            let new_nested = self.restrict_at_path_impl(nested_idx, path).map_err(|e| {
+                self.data.truncate(start_len);
+                e
+            })?;
+
+            let curr_offset = self.data.len();
+            self.data.push(RecordNode {
+                key: label,
+                value: Value::Record(new_nested),
+                tail: node.tail,
+            });
+
+            if let Some(prev) = prev_offset {
+                self.data[prev].tail = Some(RecordIdx::make(curr_offset));
+                Ok(Some(RecordIdx::make(start_len)))
+            } else {
+                Ok(Some(RecordIdx::make(curr_offset)))
+            }
+        }
+    }
+
+    /// Deeply updates the first visible leaf value matching the path.
+    /// Preserves all lower-scoped shadowed labels via structural sharing.
+    pub fn update_at_path<I, F>(
+        &mut self,
+        idx: Option<RecordIdx>,
+        path: I,
+        update_fn: F,
+    ) -> Result<Option<RecordIdx>, PathError<K>>
+    where
+        I: IntoIterator<Item = K>,
+        F: FnOnce(Value) -> Option<Value>, // Returns None if interpreter execution fails
+    {
+        let mut peekable = path.into_iter().peekable();
+        self.update_at_path_impl(idx, &mut peekable, update_fn)
+    }
+
+    fn update_at_path_impl<I, F>(
+        &mut self,
+        idx: Option<RecordIdx>,
+        path: &mut std::iter::Peekable<I>,
+        update_fn: F,
+    ) -> Result<Option<RecordIdx>, PathError<K>>
+    where
+        I: Iterator<Item = K>,
+        F: FnOnce(Value) -> Option<Value>,
+    {
+        let Some(label) = path.next() else {
+            return Err(PathError::EmptyPath);
+        };
+        let start_len = self.data.len();
+
+        let mut curr = idx;
+        let mut prev_offset: Option<usize> = None;
+        let mut target_node = None;
+
+        // 1. Scan forward to find the FIRST occurrence of the label
+        while let Some(id) = curr {
+            let node = self.data[id.as_usize()];
+            if node.key == label {
+                target_node = Some(node);
+                break;
+            }
+
+            // Optimization: if your spine is sorted ascending, we can stop early
+            if node.key > label {
+                break;
+            }
+
+            let curr_offset = self.data.len();
+            self.data.push(RecordNode {
+                key: node.key,
+                value: node.value,
+                tail: None,
+            });
+            if let Some(prev) = prev_offset {
+                self.data[prev].tail = Some(RecordIdx::make(curr_offset));
+            }
+            prev_offset = Some(curr_offset);
+            curr = node.tail;
+        }
+
+        // If the field wasn't found at this scope layer, roll back and fail
+        let Some(node) = target_node else {
+            self.data.truncate(start_len);
+            return Err(PathError::NotFound { label });
+        };
+
+        // 2. Compute the updated nested structure or leaf value
+        let next_val = if path.peek().is_none() {
+            match update_fn(node.value) {
+                Some(v) => v,
+                None => {
+                    self.data.truncate(start_len);
+                    return Err(PathError::EvaluationFailed);
+                }
+            }
+        } else {
+            let Value::Record(nested_idx) = node.value else {
+                self.data.truncate(start_len);
+                return Err(PathError::NotARecord { label });
+            };
+            match self.update_at_path_impl(nested_idx, path, update_fn) {
+                Ok(rec) => Value::Record(rec),
+                Err(err) => {
+                    self.data.truncate(start_len);
+                    return Err(err);
+                }
+            }
+        };
+
+        // 3. Rebuild the node link and attach the original tail completely untouched.
+        // This keeps any deeper shadowed fields with the same key perfectly preserved!
+        let curr_offset = self.data.len();
+        self.data.push(RecordNode {
+            key: node.key,
+            value: next_val,
+            tail: node.tail,
+        });
+
+        if let Some(prev) = prev_offset {
+            self.data[prev].tail = Some(RecordIdx::make(curr_offset));
+            Ok(Some(RecordIdx::make(start_len)))
+        } else {
+            Ok(Some(RecordIdx::make(curr_offset)))
         }
     }
 }
@@ -750,8 +972,7 @@ mod tests {
         let mut arena = RecordArena::new();
 
         // Empty records are completely free (None)
-        let empty = arena.alloc_empty();
-        assert!(empty.is_none());
+        let empty = None;
         assert!(arena.is_empty(empty));
         assert_eq!(arena.len(empty), 0);
 
@@ -932,11 +1153,15 @@ mod tests {
         let mut arena = RecordArena::new();
 
         // Test deeply nested path extensions: extend {a: {}} at path ["a", "b"] with 42
-        let inner = arena.alloc_empty();
+        let inner = None;
         let root = arena.alloc_unit(1, Value::Record(inner)); // key 1 is "a"
 
-        let path = vec![1, 2]; // path: ["a", "b"]
-        let updated_root = arena.extend_at_path(root, &path, Value::Num(42.0)).unwrap();
+        let path = [1, 2]; // path: ["a", "b"]
+
+        // 1. Extend path using an iterator thread
+        let updated_root = arena
+            .extend_at_path(root, path.iter().copied(), Value::Num(42.0))
+            .unwrap();
 
         // Navigate down to see if it created the nested layout correctly
         if let Some(Value::Record(level_1)) = arena.get_value(updated_root, 1) {
@@ -945,23 +1170,29 @@ mod tests {
             panic!("Failed to extend record at path");
         }
 
-        // Deep update path operation
+        // 2. Read-Modify-Write block replacing the old fallible `update_at_path`
+        let current_val = arena
+            .get_at_path(updated_root, path.iter().copied())
+            .unwrap();
+
+        let new_val = if let Value::Num(n) = current_val {
+            Value::Num(n + 8.0)
+        } else {
+            panic!("Expected Value::Num at target path");
+        };
+
         let modified_root = arena
-            .update_at_path(updated_root, &path, |v| {
-                if let Value::Num(n) = v {
-                    Ok(Value::Num(n + 8.0))
-                } else {
-                    Err("not an int".into())
-                }
-            })
+            .extend_at_path(updated_root, path.iter().copied(), new_val)
             .unwrap();
 
         if let Some(Value::Record(level_1)) = arena.get_value(modified_root, 1) {
             assert_eq!(arena.get_value(level_1, 2), Some(Value::Num(50.0))); // 42 + 8
         }
 
-        // Path restriction (removal)
-        let restricted_root = arena.restrict_at_path(modified_root, &path).unwrap();
+        // 3. Path restriction (removal)
+        let restricted_root = arena
+            .restrict_at_path(modified_root, path.iter().copied())
+            .unwrap();
         if let Some(Value::Record(level_1)) = arena.get_value(restricted_root, 1) {
             assert!(arena.is_empty(level_1));
         }

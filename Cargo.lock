@@ -1025,6 +1025,7 @@ dependencies = [
  "kola-utils",
  "serde",
  "serde_json",
+ "thiserror",
 ]
 
 [[package]]

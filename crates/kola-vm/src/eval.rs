@@ -1789,19 +1789,15 @@ impl Eval for RecordExtendExpr {
         };
 
         // Get field path as StrKeys
-        let field_path: Vec<_> = context
-            .ir
-            .iter_path(Some(path))
-            .map(|fp| fp.label)
-            .collect();
+        let field_iter = context.ir.iter_path(Some(path)).map(|fp| fp.label);
 
         // Use Record's extend_at_path method
         let record = match heap
             .records
-            .extend_at_path(record, &field_path, extend_value)
+            .extend_at_path(record, field_iter, extend_value)
         {
             Ok(record) => record,
-            Err(err) => return MachineState::Error(err),
+            Err(err) => return MachineState::Error(err.to_string()),
         };
 
         // Bind the extended record to the variable in the environment
@@ -1853,16 +1849,12 @@ impl Eval for RecordRestrictExpr {
         };
 
         // Get field path as StrKeys
-        let field_path: Vec<_> = context
-            .ir
-            .iter_path(Some(path))
-            .map(|fp| fp.label)
-            .collect();
+        let field_iter = context.ir.iter_path(Some(path)).map(|fp| fp.label);
 
         // Use Record's restrict_at_path method
-        let record = match heap.records.restrict_at_path(record, &field_path) {
+        let record = match heap.records.restrict_at_path(record, field_iter) {
             Ok(record) => record,
-            Err(err) => return MachineState::Error(err),
+            Err(err) => return MachineState::Error(err.to_string()),
         };
 
         // Bind the restricted record to the variable in the environment
@@ -1937,17 +1929,13 @@ impl Eval for RecordUpdateExpr {
         };
 
         // Get field path as StrKeys
-        let field_path: Vec<_> = context
-            .ir
-            .iter_path(Some(path))
-            .map(|fp| fp.label)
-            .collect();
+        let field_iter = context.ir.iter_path(Some(path)).map(|fp| fp.label);
 
         // Use Record's update_at_path method
-        let update_fn = |cur: Value| eval_record_op(op, cur, update_val);
-        let record = match heap.records.update_at_path(record, &field_path, update_fn) {
+        let update_fn = |cur: Value| eval_record_op(op, cur, update_val).ok();
+        let record = match heap.records.update_at_path(record, field_iter, update_fn) {
             Ok(record) => record,
-            Err(err) => return MachineState::Error(err),
+            Err(err) => return MachineState::Error(err.to_string()),
         };
 
         // Bind the updated record to the variable in the environment
