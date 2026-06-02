@@ -146,13 +146,6 @@ pub struct StringArena {
 
 impl StringArena {
     #[inline]
-    fn alloc_node(&mut self, node: StringNode) -> StringIdx {
-        let next_idx = self.nodes.len() as u32;
-        self.nodes.push(node);
-        StringIdx::Node(NonZeroU32::new(next_idx).expect("node index cannot be zero"))
-    }
-
-    #[inline]
     unsafe fn view(&self, start: u32, len: NonZeroU32) -> &str {
         let slice = &self.data[start as usize..(start + len.get()) as usize];
 
@@ -619,7 +612,7 @@ impl StringArena {
         let mut rev_s = String::with_capacity(self.len(idx) as usize);
 
         // Walk fragments backwards, reversing characters inside each fragment
-        self.walk_fragments_back(idx, &mut |frag| {
+        let _ = self.walk_fragments_back(idx, &mut |frag| {
             for ch in frag.chars().rev() {
                 rev_s.push(ch);
             }
@@ -810,7 +803,7 @@ mod tests {
         assert!(matches!(root, StringIdx::Node(_)));
 
         let mut output = String::new();
-        arena.walk_fragments(root, &mut |frag| {
+        let _ = arena.walk_fragments(root, &mut |frag| {
             output.push_str(frag);
             ControlFlow::<()>::Continue(())
         });
