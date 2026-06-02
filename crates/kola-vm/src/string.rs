@@ -1,6 +1,7 @@
 use std::{
     fmt,
     num::{NonZeroU8, NonZeroU32},
+    ops::ControlFlow,
 };
 
 use kola_utils::{
@@ -17,6 +18,13 @@ pub const INLINE_CAPACITY: usize = 14;
 pub enum StringIdx {
     /// Reference to a compile-time string inside the global string interner.
     Static(StrKey),
+
+    /// A slice of a static string, defined by a source key and byte offsets.
+    StaticSlice {
+        source: StrKey,
+        start: u32,
+        len: NonZeroU32,
+    },
 
     /// Small String Optimization (SSO): Holds short text directly inline.
     /// No arena allocations, maximum cache locality. Fits up to 14 bytes.
@@ -80,16 +88,22 @@ pub enum StringNode {
     Concat {
         left: StringIdx,
         right: StringIdx,
-    },
-    Slice {
-        source: StringIdx,
-        start: usize,
-        len: usize,
+        len: NonZeroU32,
     },
     Flat {
         start: u32,
-        len: u32,
+        len: NonZeroU32,
     },
+}
+
+impl StringNode {
+    pub fn is_concat(&self) -> bool {
+        matches!(self, StringNode::Concat { .. })
+    }
+
+    pub fn is_flat(&self) -> bool {
+        matches!(self, StringNode::Flat { .. })
+    }
 }
 
 /// A lightweight, deferred handle representing a string inside the arena.
@@ -139,8 +153,8 @@ impl StringArena {
     }
 
     #[inline]
-    unsafe fn unchecked_slice(&self, start: u32, len: u32) -> &str {
-        let slice = &self.data[start as usize..(start + len) as usize];
+    unsafe fn view(&self, start: u32, len: NonZeroU32) -> &str {
+        let slice = &self.data[start as usize..(start + len.get()) as usize];
 
         unsafe { std::str::from_utf8_unchecked(slice) }
     }
@@ -148,22 +162,14 @@ impl StringArena {
     /// Internal recursive flattener matching straight against node descriptors
     fn flatten_rec_node(&mut self, node: StringNode) {
         match node {
-            StringNode::Concat { left, right } => {
+            StringNode::Concat { left, right, .. } => {
                 self.flatten_rec(left);
                 self.flatten_rec(right);
             }
-            StringNode::Slice { source, start, len } => {
-                let scratch_start = self.data.len();
-                self.flatten_rec(source);
-
-                let slice_start = scratch_start + start;
-                self.data
-                    .copy_within(slice_start..slice_start + len, scratch_start);
-                self.data.truncate(scratch_start + len);
-            }
             StringNode::Flat { start, len } => {
                 let start = start as usize;
-                self.data.extend_from_within(start..start + len as usize);
+                let end = start + len.get() as usize;
+                self.data.extend_from_within(start..end);
             }
         }
     }
@@ -174,6 +180,12 @@ impl StringArena {
             StringIdx::Static(key) => {
                 let s = &self.interner[key];
                 self.data.extend_from_slice(s.as_bytes());
+            }
+            StringIdx::StaticSlice { source, start, len } => {
+                let s = &self.interner[source];
+                let start = start as usize;
+                let end = start + len.get() as usize;
+                self.data.extend_from_slice(&s.as_bytes()[start..end]);
             }
             StringIdx::Inline { len, bytes } => {
                 self.data.extend_from_slice(&bytes[..len.get() as usize]);
@@ -195,7 +207,10 @@ impl StringArena {
     pub fn new(interner: StrInterner) -> Self {
         let mut nodes = Vec::new();
         // Reserve the first node
-        nodes.push(StringNode::Flat { start: 0, len: 0 });
+        nodes.push(StringNode::Flat {
+            start: 0,
+            len: NonZeroU32::new(1).unwrap(),
+        });
 
         Self {
             data: Vec::new(),
@@ -207,7 +222,10 @@ impl StringArena {
     pub fn with_capacity(bytes: usize, nodes: usize, interner: StrInterner) -> Self {
         let mut nodes = Vec::with_capacity(nodes);
         // Reserve the first node
-        nodes.push(StringNode::Flat { start: 0, len: 0 });
+        nodes.push(StringNode::Flat {
+            start: 0,
+            len: NonZeroU32::new(1).unwrap(),
+        });
 
         Self {
             data: Vec::with_capacity(bytes),
@@ -255,21 +273,100 @@ impl StringArena {
         None
     }
 
+    /// Allocates a new string index representing a slice of an existing index.
+    pub fn slice(&mut self, idx: StringIdx, start: u32, len: NonZeroU32) -> StringIdx {
+        let owned_len = start + len.get();
+
+        match idx {
+            StringIdx::Static(source) => {
+                debug_assert!(owned_len <= self.interner[source].len() as u32);
+                StringIdx::StaticSlice { source, start, len }
+            }
+
+            StringIdx::StaticSlice {
+                source,
+                start: s_start,
+                len: s_len,
+            } => {
+                debug_assert!(owned_len <= s_len.get());
+                StringIdx::StaticSlice {
+                    source,
+                    start: s_start + start,
+                    len,
+                }
+            }
+
+            StringIdx::Inline {
+                len: inline_len,
+                bytes,
+            } => {
+                debug_assert!(owned_len <= inline_len.get() as u32,);
+
+                let mut new_bytes = [0u8; INLINE_CAPACITY];
+                let s = start as usize;
+                let e = s + len.get() as usize;
+                new_bytes[..len.get() as usize].copy_from_slice(&bytes[s..e]);
+
+                StringIdx::Inline {
+                    len: NonZeroU8::new(len.get() as u8).unwrap(),
+                    bytes: new_bytes,
+                }
+            }
+
+            StringIdx::Buffer {
+                start: buf_start,
+                len: buf_len,
+            } => {
+                debug_assert!(owned_len <= buf_len.get());
+                StringIdx::Buffer {
+                    start: buf_start + start,
+                    len,
+                }
+            }
+
+            StringIdx::Node(node_idx) => {
+                match self.nodes[node_idx.get() as usize] {
+                    StringNode::Flat {
+                        start: f_start,
+                        len: f_len,
+                    } => {
+                        debug_assert!(owned_len <= f_len.get());
+                        StringIdx::Buffer {
+                            start: f_start + start,
+                            len,
+                        }
+                    }
+
+                    StringNode::Concat {
+                        left,
+                        right,
+                        len: total_len,
+                    } => {
+                        debug_assert!(owned_len <= total_len.get());
+                        let len_left = self.len(left);
+
+                        if owned_len <= len_left {
+                            self.slice(left, start, len)
+                        } else if start >= len_left {
+                            self.slice(right, start - len_left, len)
+                        } else {
+                            // Straddles both branches: slice both and merge structurally
+                            let left_len = len_left - start;
+                            let right_len = len.get() - left_len;
+
+                            let l_part =
+                                self.slice(left, start, NonZeroU32::new(left_len).unwrap());
+                            let r_part = self.slice(right, 0, NonZeroU32::new(right_len).unwrap());
+                            self.concat(l_part, r_part)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
     /// Concatenates two string indices in O(1) time without copying bytes.
-    pub fn concat(
-        &mut self,
-        left: Option<StringIdx>,
-        right: Option<StringIdx>,
-    ) -> Option<StringIdx> {
-        // Optimize out empty identities
-        let Some(l) = left else {
-            return right;
-        };
-
-        let Some(r) = right else {
-            return left;
-        };
-
+    pub fn concat(&mut self, left: StringIdx, right: StringIdx) -> StringIdx {
         // Attempt to merge if both are inline strings and fit within SSO limits
         if let (
             StringIdx::Inline {
@@ -280,7 +377,7 @@ impl StringArena {
                 len: r_len,
                 bytes: r_bytes,
             },
-        ) = (l, r)
+        ) = (left, right)
         {
             let combined_len = l_len.get() as usize + r_len.get() as usize;
             if combined_len <= INLINE_CAPACITY {
@@ -290,55 +387,40 @@ impl StringArena {
                 bytes[..l_idx].copy_from_slice(&l_bytes[..l_idx]);
                 bytes[l_idx..combined_len].copy_from_slice(&r_bytes[..r_len.get() as usize]);
 
-                return Some(StringIdx::Inline {
+                return StringIdx::Inline {
                     len: NonZeroU8::new(combined_len as u8)
                         .expect("combined length is guaranteed to be non-zero"),
                     bytes,
-                });
+                };
             }
         }
 
         // Fallback to structural concatenation node
         // (l and r are guaranteed non-empty, pure StringIdx values)
         let next_idx = self.nodes.len() as u32;
-        self.nodes.push(StringNode::Concat { left: l, right: r });
+        let len = NonZeroU32::new(self.len(left) + self.len(right)).unwrap();
+        self.nodes.push(StringNode::Concat { left, right, len });
 
-        Some(StringIdx::Node(
-            NonZeroU32::new(next_idx).expect("node index cannot be zero"),
-        ))
+        StringIdx::Node(NonZeroU32::new(next_idx).expect("node index cannot be zero"))
     }
 
     // ── Introspection Primitives ─────────────────────────────────────
 
     /// Computes the total logical byte length of a string index.
-    pub fn len(&self, idx: Option<StringIdx>) -> usize {
-        let idx = match idx {
-            Some(i) => i,
-            None => return 0, // Empty string length is 0
-        };
-
+    pub fn len(&self, idx: StringIdx) -> u32 {
         match idx {
-            StringIdx::Static(key) => self.interner[key].len(),
-            StringIdx::Inline { len, .. } => len.get() as usize,
-            StringIdx::Buffer { len, .. } => len.get() as usize,
+            StringIdx::Static(key) => self.interner[key].len() as u32,
+            StringIdx::StaticSlice { len, .. } => len.get(),
+            StringIdx::Inline { len, .. } => len.get() as u32,
+            StringIdx::Buffer { len, .. } => len.get(),
             StringIdx::Node(node_idx) => {
                 // Read from our 1-based index arena safely
                 match self.nodes[node_idx.get() as usize] {
-                    StringNode::Concat { left, right } => {
-                        self.len(Some(left)) + self.len(Some(right))
-                    }
-                    StringNode::Slice { len, .. } => len,
-                    StringNode::Flat { len, .. } => len as usize,
+                    StringNode::Concat { len, .. } => len.get(),
+                    StringNode::Flat { len, .. } => len.get(),
                 }
             }
         }
-    }
-
-    /// Quick check to see if a string index points to an empty sequence.
-    /// Since we use `None` for empty strings, this collapses into a trivial O(1) instruction.
-    #[inline]
-    pub fn is_empty(&self, idx: Option<StringIdx>) -> bool {
-        idx.is_none()
     }
 
     // ── Contiguous Resolution (Flattening) ───────────────────────────
@@ -353,49 +435,20 @@ impl StringArena {
     {
         match *idx {
             StringIdx::Static(key) => Some(&self.interner[key]),
+            StringIdx::StaticSlice { source, start, len } => {
+                let s = &self.interner[source];
+                let start = start as usize;
+                let end = start + len.get() as usize;
+                Some(&s[start..end])
+            }
             StringIdx::Inline { len, ref bytes } => {
                 let slice = &bytes[..len.get() as usize];
                 // SAFETY: Internally managed strings are guaranteed valid UTF-8.
                 Some(unsafe { std::str::from_utf8_unchecked(slice) })
             }
-            StringIdx::Buffer { start, len } => {
-                Some(unsafe { self.unchecked_slice(start, len.get()) })
-            }
+            StringIdx::Buffer { start, len } => Some(unsafe { self.view(start, len) }),
             StringIdx::Node(_) => None,
         }
-    }
-
-    /// Resolves a single optional string index into a `StringHandle`.
-    ///
-    /// If the target is a structural node, this performs path compression
-    /// by flattening it into the contiguous buffer and caching the result.
-    pub fn resolve<'a, 'idx>(&'a mut self, idx: &'a Option<StringIdx>) -> StringHandle<'a, 'idx>
-    where
-        'a: 'idx, // Ensure the arena outlives the index reference
-    {
-        if let Some(StringIdx::Node(node_idx)) = idx {
-            let n_idx = node_idx.get() as usize;
-
-            // 1. Fast Path: Already flattened by a previous lookup
-            if let StringNode::Flat { .. } = self.nodes[n_idx] {
-                // Do nothing, ready to read
-            } else {
-                // 2. Slow Path: First time resolving this node. Flatten it.
-                let start = self.data.len() as u32;
-
-                // Copy the node descriptor out to unlock the mutable borrow on `self.nodes`
-                let node = self.nodes[n_idx];
-                self.flatten_rec_node(node);
-
-                let len = self.data.len() as u32 - start;
-
-                // 3. Path Compression: Mutate the arena storage cached state
-                self.nodes[n_idx] = StringNode::Flat { start, len };
-            }
-        }
-
-        // Downgrade our exclusive `&'a mut self` borrow into a shared `&'a StringArena` handle
-        StringHandle { arena: self, idx }
     }
 
     /// Batch resolves an arbitrary N-sized array of optional indices.
@@ -409,19 +462,24 @@ impl StringArena {
         'a: 'idx, // Ensure the arena outlives the index reference
     {
         // Phase 1: Run path-compression sequentially on every item
-        for idx in &indices {
-            if let Some(StringIdx::Node(node_idx)) = *idx {
-                let n_idx = node_idx.get() as usize;
-                if let StringNode::Flat { .. } = self.nodes[n_idx] {
-                    continue;
-                }
-                // Reuse the slow-path flattening optimization logic
-                let start = self.data.len() as u32;
-                let node = self.nodes[n_idx];
-                self.flatten_rec_node(node);
-                let len = self.data.len() as u32 - start;
-                self.nodes[n_idx] = StringNode::Flat { start, len };
+        for idx in indices {
+            let Some(StringIdx::Node(node_idx)) = idx else {
+                continue; // Skip non-node indices, they are already flat
+            };
+
+            let n_idx = node_idx.get() as usize;
+            let node = self.nodes[n_idx];
+
+            if node.is_flat() {
+                continue;
             }
+            // Reuse the slow-path flattening optimization logic
+            let start = self.data.len() as u32;
+            self.flatten_rec_node(node);
+            let len = NonZeroU32::new(self.data.len() as u32 - start).unwrap();
+
+            // Path Compression: Mutate the arena storage cached state
+            self.nodes[n_idx] = StringNode::Flat { start, len };
         }
 
         // Phase 2: Coerce our exclusive borrow down into a shared reference
@@ -437,352 +495,217 @@ impl StringArena {
     ///
     /// If the target is a structural `Node` (and not already flat), it flattens its
     /// children into the dynamic buffer and mutates the **internal arena node** /// into a `StringNode::Flat` variant. The source `StringIdx` remains untouched.
-    pub fn get<'a, 'idx>(&'a mut self, idx: &'idx Option<StringIdx>) -> &'idx str
+    pub fn get<'a, 'idx>(&'a mut self, idx: &'idx StringIdx) -> &'idx str
     where
         'a: 'idx, // Arena data must outlive the returned string view window
     {
-        let handle = self.resolve(idx);
-        handle.get()
+        if let StringIdx::Node(node_idx) = idx {
+            let n_idx = node_idx.get() as usize;
+            let node = self.nodes[n_idx];
+
+            if !node.is_flat() {
+                let start = self.data.len() as u32;
+                self.flatten_rec_node(node);
+                let len = NonZeroU32::new(self.data.len() as u32 - start).unwrap();
+
+                // Path Compression: Mutate the arena storage cached state
+                self.nodes[n_idx] = StringNode::Flat { start, len };
+            }
+        }
+
+        // Now that all nodes are guaranteed flat, we can borrow a contiguous view without mutating the arena further.
+        self.as_str(idx).unwrap()
+    }
+
+    /// Convenience method for optional indices, returning an empty string for `None` and flattening `Some` values as needed.
+    #[inline]
+    pub fn get_or_default<'a, 'idx>(&'a mut self, idx: &'a Option<StringIdx>) -> &'idx str
+    where
+        'a: 'idx,
+    {
+        match idx {
+            Some(idx) => self.get(idx),
+            None => "",
+        }
     }
 
     // ── Allocation-Free Streaming Traversal ──────────────────────────
 
     /// Streams through all internal string fragments of a `StringIdx` sequentially.
-    pub fn for_each_fragment(&self, idx: StringIdx, f: &mut dyn FnMut(&str)) {
+    pub fn walk_fragments<B>(
+        &self,
+        idx: StringIdx,
+        f: &mut dyn FnMut(&str) -> ControlFlow<B>,
+    ) -> ControlFlow<B> {
+        self.walk_fragments_impl::<false, B>(idx, f)
+    }
+
+    /// Streams backwards through all internal string fragments of a `StringIdx` sequentially.
+    pub fn walk_fragments_back<B>(
+        &self,
+        idx: StringIdx,
+        f: &mut dyn FnMut(&str) -> ControlFlow<B>,
+    ) -> ControlFlow<B> {
+        self.walk_fragments_impl::<true, B>(idx, f)
+    }
+
+    /// Internal generic engine driven by a built-in compile-time boolean.
+    pub fn walk_fragments_impl<const BACKWARD: bool, B>(
+        &self,
+        idx: StringIdx,
+        f: &mut dyn FnMut(&str) -> ControlFlow<B>,
+    ) -> ControlFlow<B> {
         match idx {
-            StringIdx::Node(node_idx) => {
-                match self.nodes[node_idx.get() as usize] {
-                    StringNode::Concat { left, right } => {
-                        self.for_each_fragment(left, f);
-                        self.for_each_fragment(right, f);
-                    }
-                    StringNode::Slice { source, start, len } => {
-                        // Tracks global byte intervals across disparate streaming fragments
-                        let mut skipped = 0;
-                        let mut written = 0;
-
-                        self.for_each_fragment(source, &mut |fragment| {
-                            if written >= len {
-                                return;
-                            }
-                            let frag_len = fragment.len();
-
-                            if skipped + frag_len <= start {
-                                skipped += frag_len;
-                                return;
-                            }
-
-                            let frag_start = if skipped < start { start - skipped } else { 0 };
-                            let frag_end = std::cmp::min(frag_len, frag_start + (len - written));
-
-                            f(&fragment[frag_start..frag_end]);
-                            written += frag_end - frag_start;
-                            skipped += frag_len;
-                        });
-                    }
-                    StringNode::Flat { start, len } => {
-                        f(unsafe { self.unchecked_slice(start, len) });
-                    }
-                }
-            }
-            StringIdx::Static(key) => {
-                f(&self.interner[key]);
+            StringIdx::Static(key) => f(&self.interner[key]),
+            StringIdx::StaticSlice { source, start, len } => {
+                let s = &self.interner[source];
+                let start = start as usize;
+                let end = start + len.get() as usize;
+                f(&s[start..end])
             }
             StringIdx::Inline { len, bytes } => {
                 let slice = &bytes[..len.get() as usize];
-                f(unsafe { std::str::from_utf8_unchecked(slice) });
+                f(unsafe { std::str::from_utf8_unchecked(slice) })
             }
-            StringIdx::Buffer { start, len } => {
-                f(unsafe { self.unchecked_slice(start, len.get()) });
-            }
+            StringIdx::Buffer { start, len } => f(unsafe { self.view(start, len) }),
+            StringIdx::Node(node_idx) => match self.nodes[node_idx.get() as usize] {
+                StringNode::Concat { left, right, .. } => {
+                    let (left, right) = if BACKWARD {
+                        (right, left)
+                    } else {
+                        (left, right)
+                    };
+                    self.walk_fragments_impl::<BACKWARD, B>(left, f)?;
+                    self.walk_fragments_impl::<BACKWARD, B>(right, f)
+                }
+                StringNode::Flat { start, len } => f(unsafe { self.view(start, len) }),
+            },
         }
     }
 
     // ── Additional utility methods ─────────────────────────────────
 
     /// Prepends a string slice to the given index, returning a new consolidated index.
-    pub fn push_front(&mut self, idx: Option<StringIdx>, s: &str) -> Option<StringIdx> {
-        let front = self.alloc(s);
-        self.concat(front, idx)
+    pub fn push_front(&mut self, idx: StringIdx, s: &str) -> StringIdx {
+        if let Some(front) = self.alloc(s) {
+            self.concat(front, idx)
+        } else {
+            idx
+        }
     }
 
     /// Appends a string slice to the given index, returning a new consolidated index.
-    pub fn push_back(&mut self, idx: Option<StringIdx>, s: &str) -> Option<StringIdx> {
-        let back = self.alloc(s);
-        self.concat(idx, back)
+    pub fn push_back(&mut self, idx: StringIdx, s: &str) -> StringIdx {
+        if let Some(back) = self.alloc(s) {
+            self.concat(idx, back)
+        } else {
+            idx
+        }
     }
 
     /// Reverses the string represented by `idx`, returning a new index for the result.
     ///
     /// For structural `Concat` nodes, this executes an O(1) tree inversion.
-    pub fn reverse(&mut self, idx: Option<StringIdx>) -> Option<StringIdx> {
-        let i = idx?;
-
-        if let StringIdx::Node(node_idx) = i
-            && let StringNode::Concat { left, right } = self.nodes[node_idx.get() as usize]
+    pub fn reverse(&mut self, idx: StringIdx) -> StringIdx {
+        if let StringIdx::Node(node_idx) = idx
+            && let StringNode::Concat { left, right, .. } = self.nodes[node_idx.get() as usize]
         {
-            // Structural inversion: swap left and right branches recursively
-            let rev_left = self.reverse(Some(left));
-            let rev_right = self.reverse(Some(right));
+            // O(1) Structural inversion: swap and recursively reverse branches
+            let rev_left = self.reverse(left);
+            let rev_right = self.reverse(right);
             return self.concat(rev_right, rev_left);
         }
 
-        // Leaf, Slice, or Flat node optimization fallback:
-        // Stream the fragments, reverse characters, and allocate a fresh flat sequence.
-        let mut s = String::new();
-        self.for_each_fragment(i, &mut |frag| s.push_str(frag));
+        let mut rev_s = String::with_capacity(self.len(idx) as usize);
 
-        let rev_s: String = s.chars().rev().collect();
-        self.alloc(&rev_s)
+        // Walk fragments backwards, reversing characters inside each fragment
+        self.walk_fragments_back(idx, &mut |frag| {
+            for ch in frag.chars().rev() {
+                rev_s.push(ch);
+            }
+            ControlFlow::<()>::Continue(())
+        });
+
+        self.alloc(&rev_s).unwrap()
     }
 
     /// Gets the first character of the string if it exists, without flattening.
     /// Fast-paths down left branches in O(log N) structural steps.
-    pub fn first(&self, idx: Option<StringIdx>) -> Option<char> {
-        let i = idx?;
+    pub fn first(&self, idx: StringIdx) -> char {
+        let ControlFlow::Break(first) = self.walk_fragments(idx, &mut |frag| {
+            let first = frag.chars().next().unwrap();
+            ControlFlow::Break(first)
+        }) else {
+            unreachable!()
+        };
 
-        if let StringIdx::Node(node_idx) = i
-            && let StringNode::Concat { left, .. } = self.nodes[node_idx.get() as usize]
-        {
-            return self.first(Some(left));
-        }
-
-        // Slices and Flat elements stream safely via fragment limits
-        let mut res = None;
-        self.for_each_fragment(i, &mut |frag| {
-            if res.is_none() {
-                res = frag.chars().next();
-            }
-        });
-        res
+        first
     }
 
     /// Gets the last character of the string if it exists, without flattening.
     /// Fast-paths down right branches in O(log N) structural steps.
-    pub fn last(&self, idx: Option<StringIdx>) -> Option<char> {
-        let i = idx?;
+    pub fn last(&self, idx: StringIdx) -> char {
+        let ControlFlow::Break(last) = self.walk_fragments(idx, &mut |frag| {
+            let last = frag.chars().next_back().unwrap();
+            ControlFlow::Break(last)
+        }) else {
+            unreachable!()
+        };
 
-        if let StringIdx::Node(node_idx) = i
-            && let StringNode::Concat { right, .. } = self.nodes[node_idx.get() as usize]
-        {
-            return self.last(Some(right));
-        }
-
-        // Slices and Flat elements stream safely via fragment limits
-        let mut res = None;
-        self.for_each_fragment(i, &mut |frag| {
-            if let Some(c) = frag.chars().next_back() {
-                res = Some(c);
-            }
-        });
-        res
+        last
     }
 
-    /// Removes and returns the first character along with the remaining string index, if it exists.
-    ///
-    /// This runs completely allocation-free by constructing structural `Slice` nodes.
-    pub fn pop_front(&mut self, idx: Option<StringIdx>) -> Option<(char, Option<StringIdx>)> {
-        match idx? {
-            StringIdx::Static(key) => {
-                let s = &self.interner[key];
-                let ch = s.chars().next()?;
-                let delta = ch.len_utf8();
-                let rem_len = s.len() - delta;
+    /// Removes and returns the first character along with the remaining string index, if it exists..
+    pub fn pop_front(&mut self, idx: StringIdx) -> (char, Option<StringIdx>) {
+        let ch = self.first(idx);
+        let delta = ch.len_utf8() as u32;
+        let total_len = self.len(idx);
 
-                let rest = (rem_len > 0).then(|| {
-                    self.alloc_node(StringNode::Slice {
-                        source: StringIdx::Static(key),
-                        start: delta,
-                        len: rem_len,
-                    })
-                });
-                Some((ch, rest))
-            }
+        let rem_len = total_len - delta;
+        let rest = if rem_len > 0 {
+            Some(self.slice(idx, delta, NonZeroU32::new(rem_len).unwrap()))
+        } else {
+            None
+        };
 
-            StringIdx::Inline { len, mut bytes } => {
-                let s = unsafe { std::str::from_utf8_unchecked(&bytes[..len.get() as usize]) };
-                let ch = s.chars().next()?;
-                let delta = ch.len_utf8();
-                let rem_len = len.get() as usize - delta;
-
-                let rest = (rem_len > 0).then(|| {
-                    bytes.copy_within(delta..len.get() as usize, 0);
-                    StringIdx::Inline {
-                        len: unsafe { NonZeroU8::new_unchecked(rem_len as u8) },
-                        bytes,
-                    }
-                });
-                Some((ch, rest))
-            }
-
-            StringIdx::Buffer { start, len } => {
-                let s = unsafe {
-                    std::str::from_utf8_unchecked(
-                        &self.data[start as usize..(start + len.get()) as usize],
-                    )
-                };
-                let ch = s.chars().next()?;
-                let delta = ch.len_utf8() as u32;
-                let rem_len = len.get() - delta;
-
-                let rest = (rem_len > 0).then(|| StringIdx::Buffer {
-                    start: start + delta,
-                    len: unsafe { NonZeroU32::new_unchecked(rem_len) },
-                });
-
-                Some((ch, rest))
-            }
-
-            StringIdx::Node(node_idx) => match self.nodes[node_idx.get() as usize] {
-                StringNode::Concat { left, right } => {
-                    let (ch, rest_left) = self.pop_front(Some(left))?;
-                    Some((ch, self.concat(rest_left, Some(right))))
-                }
-                StringNode::Slice { source, start, len } => {
-                    let ch = self.first(idx)?;
-                    let delta = ch.len_utf8();
-                    let rem_len = len - delta;
-
-                    let rest = (rem_len > 0).then(|| {
-                        self.alloc_node(StringNode::Slice {
-                            source,
-                            start: start + delta,
-                            len: rem_len,
-                        })
-                    });
-
-                    Some((ch, rest))
-                }
-                StringNode::Flat { start, len } => {
-                    let s = unsafe {
-                        std::str::from_utf8_unchecked(
-                            &self.data[start as usize..(start + len) as usize],
-                        )
-                    };
-                    let ch = s.chars().next()?;
-                    let delta = ch.len_utf8() as u32;
-                    let rem_len = len - delta;
-
-                    let rest = (rem_len > 0).then(|| {
-                        self.alloc_node(StringNode::Flat {
-                            start: start + delta,
-                            len: rem_len,
-                        })
-                    });
-
-                    Some((ch, rest))
-                }
-            },
-        }
+        (ch, rest)
     }
 
     /// Removes and returns the last character along with the remaining string index, if it exists.
-    pub fn pop_back(&mut self, idx: Option<StringIdx>) -> Option<(Option<StringIdx>, char)> {
-        match idx? {
-            StringIdx::Static(key) => {
-                let s = &self.interner[key];
-                let ch = s.chars().next_back()?;
-                let rem_len = s.len() - ch.len_utf8();
+    pub fn pop_back(&mut self, idx: StringIdx) -> (Option<StringIdx>, char) {
+        let ch = self.last(idx);
+        let delta = ch.len_utf8() as u32;
+        let total_len = self.len(idx);
 
-                let rest = (rem_len > 0).then(|| {
-                    self.alloc_node(StringNode::Slice {
-                        source: StringIdx::Static(key),
-                        start: 0,
-                        len: rem_len,
-                    })
-                });
-                Some((rest, ch))
-            }
+        let rem_len = total_len - delta;
+        let rest = if rem_len > 0 {
+            Some(self.slice(idx, 0, NonZeroU32::new(rem_len).unwrap()))
+        } else {
+            None
+        };
 
-            StringIdx::Inline { len, bytes } => {
-                let s = unsafe { std::str::from_utf8_unchecked(&bytes[..len.get() as usize]) };
-                let ch = s.chars().next_back()?;
-                let rem_len = len.get() - ch.len_utf8() as u8;
-
-                let rest = (rem_len > 0).then(|| StringIdx::Inline {
-                    len: unsafe { NonZeroU8::new_unchecked(rem_len) },
-                    bytes,
-                });
-                Some((rest, ch))
-            }
-
-            StringIdx::Buffer { start, len } => {
-                let s = unsafe {
-                    std::str::from_utf8_unchecked(
-                        &self.data[start as usize..(start + len.get()) as usize],
-                    )
-                };
-                let ch = s.chars().next_back()?;
-                let rem_len = len.get() - ch.len_utf8() as u32;
-
-                let rest = (rem_len > 0).then(|| StringIdx::Buffer {
-                    start,
-                    len: unsafe { NonZeroU32::new_unchecked(rem_len) },
-                });
-                Some((rest, ch))
-            }
-
-            StringIdx::Node(node_idx) => match self.nodes[node_idx.get() as usize] {
-                StringNode::Concat { left, right } => {
-                    let (rest_right, ch) = self.pop_back(Some(right))?;
-                    Some((self.concat(Some(left), rest_right), ch))
-                }
-                StringNode::Slice { source, start, len } => {
-                    let ch = self.last(idx)?;
-                    let rem_len = len - ch.len_utf8();
-
-                    let rest = (rem_len > 0).then(|| {
-                        self.alloc_node(StringNode::Slice {
-                            source,
-                            start,
-                            len: rem_len,
-                        })
-                    });
-
-                    Some((rest, ch))
-                }
-                StringNode::Flat { start, len } => {
-                    let s = unsafe {
-                        std::str::from_utf8_unchecked(
-                            &self.data[start as usize..(start + len) as usize],
-                        )
-                    };
-                    let ch = s.chars().next_back()?;
-                    let rem_len = len - ch.len_utf8() as u32;
-
-                    let rest = (rem_len > 0).then(|| {
-                        self.alloc_node(StringNode::Flat {
-                            start,
-                            len: rem_len,
-                        })
-                    });
-
-                    Some((rest, ch))
-                }
-            },
-        }
+        (rest, ch)
     }
 
     /// Splits the string at the front, returning a unit token for the character and the remainder.
-    pub fn split_front(
-        &mut self,
-        idx: Option<StringIdx>,
-    ) -> Option<(StringIdx, Option<StringIdx>)> {
-        let (head, tail) = self.pop_front(idx)?;
-        Some((StringIdx::unit(head), tail))
+    #[inline]
+    pub fn split_front(&mut self, idx: StringIdx) -> (StringIdx, Option<StringIdx>) {
+        let (head, tail) = self.pop_front(idx);
+        (StringIdx::unit(head), tail)
     }
 
     /// Splits the string at the back, returning the remainder and a unit token for the last character.
-    pub fn split_back(&mut self, idx: Option<StringIdx>) -> Option<(Option<StringIdx>, StringIdx)> {
-        let (tail, last) = self.pop_back(idx)?;
-        Some((tail, StringIdx::unit(last)))
+    #[inline]
+    pub fn split_back(&mut self, idx: StringIdx) -> (Option<StringIdx>, StringIdx) {
+        let (tail, last) = self.pop_back(idx);
+        (tail, StringIdx::unit(last))
     }
 
     /// Checks if the string contains a substring.
     ///
     /// Automatically flattens structural strings internally inside the arena
     /// to guarantee fast, contiguous SIMD execution—without mutating the caller's index.
-    pub fn contains(&mut self, idx: Option<StringIdx>, needle: &str) -> bool {
+    pub fn contains(&mut self, idx: StringIdx, needle: &str) -> bool {
         self.get(&idx).contains(needle)
     }
 
@@ -790,30 +713,24 @@ impl StringArena {
     ///
     /// Transparently performs path-compression inside the arena registry on first
     /// access, ensuring subsequent reads bypass tree traversal entirely.
-    pub fn at(&mut self, idx: Option<StringIdx>, char_index: usize) -> Option<char> {
+    pub fn at(&mut self, idx: StringIdx, char_index: usize) -> Option<char> {
         self.get(&idx).chars().nth(char_index)
     }
 
-    pub fn eq(&mut self, left: Option<StringIdx>, right: Option<StringIdx>) -> bool {
-        match (left, right) {
-            (None, None) => true,
-            (Some(_), None) | (None, Some(_)) => false,
-            (Some(a), Some(b)) => {
-                if a == b {
-                    return true;
-                }
-
-                if let (Some(slice_a), Some(slice_b)) = (self.as_str(&a), self.as_str(&b)) {
-                    return slice_a == slice_b;
-                }
-
-                // Slow Path: At least one is an un-flattened structural Node.
-                let a_idx = &Some(a);
-                let b_idx = &Some(b);
-                let [a, b] = self.resolve_many([a_idx, b_idx]);
-                a.get() == b.get()
-            }
+    pub fn eq(&mut self, a: StringIdx, b: StringIdx) -> bool {
+        if a == b {
+            return true;
         }
+
+        if let (Some(slice_a), Some(slice_b)) = (self.as_str(&a), self.as_str(&b)) {
+            return slice_a == slice_b;
+        }
+
+        // Slow Path: At least one is an un-flattened structural Node.
+        let a_opt = Some(a);
+        let b_opt = Some(b);
+        let [a, b] = self.resolve_many([&a_opt, &b_opt]);
+        a.get() == b.get()
     }
 }
 
@@ -828,9 +745,10 @@ mod tests {
         let mut arena = StringArena::new(StrInterner::default());
         let short_str = "hello";
 
-        let idx = arena.alloc(short_str);
+        // alloc returns Option if input can be empty; unwrap the guaranteed non-empty handle
+        let idx = arena.alloc(short_str).expect("allocation failed");
 
-        assert!(matches!(idx, Some(StringIdx::Inline { .. })));
+        assert!(matches!(idx, StringIdx::Inline { .. }));
         assert_eq!(arena.get(&idx), "hello");
     }
 
@@ -839,9 +757,9 @@ mod tests {
         let mut arena = StringArena::new(StrInterner::default());
         let long_str = "this_string_is_longer_than_eleven_bytes";
 
-        let idx = arena.alloc(long_str);
+        let idx = arena.alloc(long_str).expect("allocation failed");
 
-        assert!(matches!(idx, Some(StringIdx::Buffer { .. })));
+        assert!(matches!(idx, StringIdx::Buffer { .. }));
         assert_eq!(arena.get(&idx), long_str);
     }
 
@@ -849,24 +767,28 @@ mod tests {
     fn test_structural_concat_and_flattening() {
         let mut arena = StringArena::new(StrInterner::default());
 
-        let left = arena.alloc("abc"); // Inline
-        let right = arena.alloc("defghijklmnopqrstuvw"); // Slice
+        let left = arena.alloc("abc").expect("allocation failed"); // Inline
+        let right = arena
+            .alloc("defghijklmnopqrstuvw")
+            .expect("allocation failed"); // Slice
 
-        // Structural O(1) union
+        // Structural O(1) union now accepts and returns raw StringIdx values directly
         let structural_idx = arena.concat(left, right);
-        assert!(matches!(structural_idx, Some(StringIdx::Node(_))));
+
+        assert!(matches!(structural_idx, StringIdx::Node(_)));
         assert_eq!(arena.get(&structural_idx), "abcdefghijklmnopqrstuvw");
     }
 
     #[test]
     fn test_sso_concatenation_merging() {
         let mut arena = StringArena::new(StrInterner::default());
-        let left = arena.alloc("foo");
-        let right = arena.alloc("bar");
+        let left = arena.alloc("foo").expect("allocation failed");
+        let right = arena.alloc("bar").expect("allocation failed");
 
-        // "foo" (3) + "bar" (3) = 6 bytes. Should bypass the concat arena entirely and merge inline.
+        // "foo" (3) + "bar" (3) = 6 bytes. Bypasses the concat node array entirely.
         let merged = arena.concat(left, right);
-        assert!(matches!(merged, Some(StringIdx::Inline { .. })));
+
+        assert!(matches!(merged, StringIdx::Inline { .. }));
         assert_eq!(arena.get(&merged), "foobar");
     }
 
@@ -877,18 +799,20 @@ mod tests {
         let t2 = interner.intern("_static_suffix");
 
         let mut arena = StringArena::new(interner);
-        let s1 = Some(StringIdx::Static(t1));
-        let s2 = arena.alloc("runtime_");
-        let s3 = Some(StringIdx::Static(t2));
+        let s1 = StringIdx::Static(t1);
+        let s2 = arena.alloc("runtime_").expect("allocation failed");
+        let s3 = StringIdx::Static(t2);
 
+        // Chain bare indices sequentially without structural option wrapping overhead
         let c1 = arena.concat(s1, s2);
         let root = arena.concat(c1, s3);
 
-        assert!(matches!(root, Some(StringIdx::Node(_))));
+        assert!(matches!(root, StringIdx::Node(_)));
 
         let mut output = String::new();
-        arena.for_each_fragment(root.unwrap(), &mut |frag| {
+        arena.walk_fragments(root, &mut |frag| {
             output.push_str(frag);
+            ControlFlow::<()>::Continue(())
         });
 
         assert_eq!(output, "static_prefix_runtime__static_suffix");

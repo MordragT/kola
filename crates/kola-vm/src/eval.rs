@@ -7,7 +7,9 @@ use crate::{
     env::{EnvArena, EnvIdx},
     handler::{Handler, ReturnClause},
     heap::Heap,
+    list::ListIdx,
     machine::MachineContext,
+    record::RecordIdx,
     string::StringIdx,
     value::{Value, to_usize_exact},
 };
@@ -141,172 +143,217 @@ impl Eval for RetExpr {
                 })
             }
             ContFrame::Handler { handler, env } => {
-                // M-RETHANDLER: <return V | γ | ([], (γ', H)) :: κ> --> <M | γ'[x ↦ V] | κ>,
-                // if H(return) = {return x ↦ M}
-                //
-                // When a return expression with value V reaches a handler frame with
-                // an empty pure continuation, we:
-                // 1. Extract the return clause from the handler H
-                // 2. Bind the returned value V to parameter x in the handler's environment γ'
-                // 3. Continue by evaluating the return handler's body M with the updated environment
-                // 4. Use the continuation κ below the current handler frame
-
-                match handler.return_clause {
-                    ReturnClause::Identity => {
-                        // Identity function just returns the value
-                        if cont.is_empty() {
-                            // No more frames, return the final value
-                            MachineState::Value(value)
-                        } else {
-                            // Continue with the next frame
-                            MachineState::Standard(StandardConfig {
-                                control: Expr::from(*self),
-                                env,
-                                cont,
-                            })
-                        }
-                    }
-                    ReturnClause::Function(Func { param, body }) => {
-                        // Create a new environment with the value bound to param
-                        let env = heap.envs.insert(env, param, value);
-
-                        // Evaluate the return handler body
-                        MachineState::Standard(StandardConfig {
-                            control: body.get(&context.ir),
-                            env,
-                            cont,
-                        })
-                    }
-                }
+                eval_handler_frame(handler, env, value, cont, context, heap, *self)
             }
             ContFrame::NumRec { data, step } => {
-                if data >= 1.0 {
-                    cont.push(ContFrame::NumRec {
-                        data: data - 1.0,
-                        step,
-                    });
-                }
-
-                let Closure {
-                    env,
-                    func: Func { param, body },
-                } = step;
-
-                // Create argument for the step function
-                let acc = (heap.intern_str("acc"), value); // value = result from previous step
-                let head = (heap.intern_str("head"), Value::Num(data));
-                let record = heap.records.alloc_fixed([acc, head]);
-
-                let env = heap.envs.insert(env, param, Value::Record(record));
-
-                MachineState::Standard(StandardConfig {
-                    control: body.get(&context.ir),
-                    env,
-                    cont,
-                })
+                eval_num_rec(data, step, value, cont, context, heap)
             }
             ContFrame::ListRec { data, step } => {
-                let Some((head, tail)) = heap.lists.split_front(data) else {
-                    // Empty list — continue with next frame
-                    return MachineState::Standard(StandardConfig {
-                        control: Expr::from(*self),
-                        env,
-                        cont,
-                    });
-                };
-
-                // Continue with the next frame
-                cont.push(ContFrame::ListRec { data: tail, step });
-
-                let Closure {
-                    env,
-                    func: Func { param, body },
-                } = step;
-
-                // Create argument for the step function
-                let acc = (heap.intern_str("acc"), value); // value = result from previous step
-                let head = (heap.intern_str("head"), head);
-                let record = heap.records.alloc_fixed([acc, head]);
-
-                let env = heap.envs.insert(env, param, Value::Record(record));
-
-                MachineState::Standard(StandardConfig {
-                    control: body.get(&context.ir),
-                    env,
-                    cont,
-                })
+                eval_list_rec(data, step, value, cont, context, heap)
             }
             ContFrame::RecordRec { data, step } => {
-                let Some((first, tail)) = heap.records.split_front(data) else {
-                    // Empty record — continue with next frame
-                    return MachineState::Standard(StandardConfig {
-                        control: Expr::from(*self),
-                        env,
-                        cont,
-                    });
-                };
-
-                let key = (
-                    heap.intern_str("key"),
-                    Value::Str(Some(StringIdx::Static(first.0))),
-                );
-                let val = (heap.intern_str("value"), first.1);
-                let head = heap.records.alloc_fixed([key, val]);
-
-                // Continue with the next frame
-                cont.push(ContFrame::RecordRec { data: tail, step });
-
-                let Closure {
-                    env,
-                    func: Func { param, body },
-                } = step;
-
-                // Create argument for the step function
-                let acc = (heap.intern_str("acc"), value); // value = result from previous step
-                let head = (heap.intern_str("head"), Value::Record(head));
-                let record = heap.records.alloc_fixed([acc, head]);
-
-                let env = heap.envs.insert(env, param, Value::Record(record));
-
-                MachineState::Standard(StandardConfig {
-                    control: body.get(&context.ir),
-                    env,
-                    cont,
-                })
+                eval_record_rec(data, step, value, cont, context, heap)
             }
             ContFrame::StrRec { data, step } => {
-                let Some((head, tail)) = heap.strings.split_front(data) else {
-                    // Empty string — continue with next frame
-                    return MachineState::Standard(StandardConfig {
-                        control: Expr::from(*self),
-                        env,
-                        cont,
-                    });
-                };
+                eval_str_rec(data, step, value, cont, context, heap)
+            }
+        }
+    }
+}
 
+// M-RETHANDLER: <return V | γ | ([], (γ', H)) :: κ> --> <M | γ'[x ↦ V] | κ>,
+// if H(return) = {return x ↦ M}
+//
+// When a return expression with value V reaches a handler frame with
+// an empty pure continuation, we:
+// 1. Extract the return clause from the handler H
+// 2. Bind the returned value V to parameter x in the handler's environment γ'
+// 3. Continue by evaluating the return handler's body M with the updated environment
+// 4. Use the continuation κ below the current handler frame
+#[inline]
+fn eval_handler_frame(
+    handler: Handler,
+    env: EnvIdx,
+    value: Value,
+    cont: Cont,
+    context: &MachineContext,
+    heap: &mut Heap,
+    expr: RetExpr,
+) -> MachineState {
+    match handler.return_clause {
+        ReturnClause::Identity => {
+            // Identity function just returns the value
+            if cont.is_empty() {
+                // No more frames, return the final value
+                MachineState::Value(value)
+            } else {
                 // Continue with the next frame
-                cont.push(ContFrame::StrRec { data: tail, step });
-
-                let Closure {
-                    env,
-                    func: Func { param, body },
-                } = step;
-
-                // Create argument for the step function
-                let acc = (heap.intern_str("acc"), value); // value = result from previous step
-                let head = (heap.intern_str("head"), Value::Str(Some(head)));
-                let record = heap.records.alloc_fixed([acc, head]);
-
-                let env = heap.envs.insert(env, param, Value::Record(record));
-
                 MachineState::Standard(StandardConfig {
-                    control: body.get(&context.ir),
+                    control: Expr::from(expr),
                     env,
                     cont,
                 })
             }
         }
+        ReturnClause::Function(Func { param, body }) => {
+            // Create a new environment with the value bound to param
+            let env = heap.envs.insert(env, param, value);
+
+            // Evaluate the return handler body
+            MachineState::Standard(StandardConfig {
+                control: body.get(&context.ir),
+                env,
+                cont,
+            })
+        }
     }
+}
+
+#[inline]
+fn eval_num_rec(
+    data: f64,
+    step: Closure,
+    value: Value,
+    mut cont: Cont,
+    context: &MachineContext,
+    heap: &mut Heap,
+) -> MachineState {
+    if data >= 1.0 {
+        cont.push(ContFrame::NumRec {
+            data: data - 1.0,
+            step,
+        });
+    }
+
+    let Closure {
+        env,
+        func: Func { param, body },
+    } = step;
+
+    // Create argument for the step function
+    let acc = (heap.intern_str("acc"), value); // value = result from previous step
+    let head = (heap.intern_str("head"), Value::Num(data));
+    let record = heap.records.alloc_fixed([acc, head]);
+
+    let env = heap.envs.insert(env, param, Value::Record(record));
+
+    MachineState::Standard(StandardConfig {
+        control: body.get(&context.ir),
+        env,
+        cont,
+    })
+}
+
+#[inline]
+fn eval_list_rec(
+    data: ListIdx,
+    step: Closure,
+    value: Value,
+    mut cont: Cont,
+    context: &MachineContext,
+    heap: &mut Heap,
+) -> MachineState {
+    let (head, tail) = heap.lists.split_front(data);
+
+    // Continue with the next frame
+    if let Some(tail) = tail {
+        cont.push(ContFrame::ListRec { data: tail, step });
+    }
+
+    let Closure {
+        env,
+        func: Func { param, body },
+    } = step;
+
+    // Create argument for the step function
+    let acc = (heap.intern_str("acc"), value); // value = result from previous step
+    let head = (heap.intern_str("head"), head);
+    let record = heap.records.alloc_fixed([acc, head]);
+
+    let env = heap.envs.insert(env, param, Value::Record(record));
+
+    MachineState::Standard(StandardConfig {
+        control: body.get(&context.ir),
+        env,
+        cont,
+    })
+}
+
+#[inline]
+fn eval_record_rec(
+    data: RecordIdx,
+    step: Closure,
+    value: Value,
+    mut cont: Cont,
+    context: &MachineContext,
+    heap: &mut Heap,
+) -> MachineState {
+    let (first, tail) = heap.records.split_front(data);
+
+    let key = (
+        heap.intern_str("key"),
+        Value::Str(Some(StringIdx::Static(first.0))),
+    );
+    let val = (heap.intern_str("value"), first.1);
+    let head = heap.records.alloc_fixed([key, val]);
+
+    // Continue with the next frame
+    if let Some(tail) = tail {
+        cont.push(ContFrame::RecordRec { data: tail, step });
+    }
+
+    let Closure {
+        env,
+        func: Func { param, body },
+    } = step;
+
+    // Create argument for the step function
+    let acc = (heap.intern_str("acc"), value); // value = result from previous step
+    let head = (heap.intern_str("head"), Value::Record(head));
+    let record = heap.records.alloc_fixed([acc, head]);
+
+    let env = heap.envs.insert(env, param, Value::Record(record));
+
+    MachineState::Standard(StandardConfig {
+        control: body.get(&context.ir),
+        env,
+        cont,
+    })
+}
+
+#[inline]
+fn eval_str_rec(
+    data: StringIdx,
+    step: Closure,
+    value: Value,
+    mut cont: Cont,
+    context: &MachineContext,
+    heap: &mut Heap,
+) -> MachineState {
+    let (head, tail) = heap.strings.split_front(data);
+
+    // Continue with the next frame
+    if let Some(tail) = tail {
+        cont.push(ContFrame::StrRec { data: tail, step });
+    }
+
+    let Closure {
+        env,
+        func: Func { param, body },
+    } = step;
+
+    // Create argument for the step function
+    let acc = (heap.intern_str("acc"), value); // value = result from previous step
+    let head = (heap.intern_str("head"), Value::Str(Some(head)));
+    let record = heap.records.alloc_fixed([acc, head]);
+
+    let env = heap.envs.insert(env, param, Value::Record(record));
+
+    MachineState::Standard(StandardConfig {
+        control: body.get(&context.ir),
+        env,
+        cont,
+    })
 }
 
 // M-APP: <V W | γ | κ> --> <M | γ'[x ↦ W] | κ> if V = (γ', λx.M)
@@ -427,7 +474,7 @@ fn eval_builtin(
             value
         }
         (BuiltinId::IoReadFile, Value::Str(path)) => {
-            let path = heap.strings.get(&path);
+            let path = heap.strings.get_or_default(&path);
 
             match fs::read_to_string(context.join_path(path)) {
                 Err(err) => {
@@ -580,7 +627,7 @@ fn eval_builtin(
                 );
             };
 
-            let Some((head, tail)) = heap.lists.split_front(list) else {
+            let Some(list) = list else {
                 // Empty list — bind base directly, go to next
                 let env = heap.envs.insert(env, bind, base);
 
@@ -591,14 +638,18 @@ fn eval_builtin(
                 });
             };
 
+            let (head, tail) = heap.lists.split_front(list);
+
             // Create a pure continuation frame for the next expression
             let pure_frame = ContFrame::pure(bind, next, env);
             cont.push(pure_frame);
 
             // Create a primitive recursion frame for the list_rec operation,
             // which will handle the recursive processing of the list.
-            let rec_frame = ContFrame::list_rec(tail, step);
-            cont.push(rec_frame);
+            if let Some(tail) = tail {
+                let rec_frame = ContFrame::list_rec(tail, step);
+                cont.push(rec_frame);
+            }
 
             let Closure {
                 env,
@@ -890,7 +941,7 @@ fn eval_builtin(
                 );
             };
 
-            let Some((first, tail)) = heap.records.split_front(record) else {
+            let Some(record) = record else {
                 // Empty record — bind base directly, go to next
                 let env = heap.envs.insert(env, bind, base);
 
@@ -900,6 +951,8 @@ fn eval_builtin(
                     cont,
                 });
             };
+
+            let (first, tail) = heap.records.split_front(record);
 
             let key = (
                 heap.intern_str("key"),
@@ -914,8 +967,10 @@ fn eval_builtin(
 
             // Create a primitive recursion frame for the list_rec operation,
             // which will handle the recursive processing of the list.
-            let rec_frame = ContFrame::record_rec(tail, step);
-            cont.push(rec_frame);
+            if let Some(tail) = tail {
+                let rec_frame = ContFrame::record_rec(tail, step);
+                cont.push(rec_frame);
+            }
 
             let Closure {
                 env,
@@ -949,7 +1004,7 @@ fn eval_builtin(
                 );
             };
 
-            let json = heap.strings.get(&json).to_owned();
+            let json = heap.strings.get_or_default(&json).to_owned();
             let proto = heap.type_interner[wit.0].clone();
 
             match Value::from_json(&proto, &json, heap) {
@@ -970,18 +1025,22 @@ fn eval_builtin(
                 Value::Variant(heap.alloc_builtin_variant("Err", Value::Str(err)))
             }
         },
-        (BuiltinId::StrLength, Value::Str(s)) => Value::Num(heap.strings.len(s) as f64),
-        (BuiltinId::StrIsEmpty, Value::Str(s)) => Value::Bool(heap.strings.is_empty(s)),
-        (BuiltinId::StrReverse, Value::Str(s)) => Value::Str(heap.strings.reverse(s)),
+        (BuiltinId::StrLength, Value::Str(s)) => {
+            Value::Num(s.map(|s| heap.strings.len(s) as f64).unwrap_or(0.0))
+        }
+        (BuiltinId::StrIsEmpty, Value::Str(s)) => Value::Bool(s.is_none()),
+        (BuiltinId::StrReverse, Value::Str(s)) => Value::Str(s.map(|s| heap.strings.reverse(s))),
         (BuiltinId::StrFirst, Value::Str(s)) => {
-            if let Some(first) = heap.strings.first(s) {
+            if let Some(s) = s {
+                let first = heap.strings.first(s);
                 Value::Variant(heap.alloc_builtin_variant("Some", Value::Char(first)))
             } else {
                 Value::Variant(heap.alloc_builtin_variant("None", Value::None))
             }
         }
         (BuiltinId::StrLast, Value::Str(s)) => {
-            if let Some(last) = heap.strings.last(s) {
+            if let Some(s) = s {
+                let last = heap.strings.last(s);
                 Value::Variant(heap.alloc_builtin_variant("Some", Value::Char(last)))
             } else {
                 Value::Variant(heap.alloc_builtin_variant("None", Value::None))
@@ -1000,10 +1059,14 @@ fn eval_builtin(
                 );
             };
 
-            let mut buf = [0; 4];
-            let needle: &str = c.encode_utf8(&mut buf);
+            if let Some(s) = s {
+                let mut buf = [0; 4];
+                let needle: &str = c.encode_utf8(&mut buf);
 
-            Value::Bool(heap.strings.contains(s, needle))
+                Value::Bool(heap.strings.contains(s, needle))
+            } else {
+                Value::Bool(false)
+            }
         }
         (BuiltinId::StrAt, Value::Record(record)) => {
             let Some(Value::Str(s)) = heap.get_record_value(record, "str") else {
@@ -1016,9 +1079,19 @@ fn eval_builtin(
                 );
             };
 
-            match to_usize_exact(index).and_then(|idx| heap.strings.at(s, idx)) {
-                Some(c) => Value::Variant(heap.alloc_builtin_variant("Some", Value::Char(c))),
-                None => Value::Variant(heap.alloc_builtin_variant("None", Value::None)),
+            if let Some(s) = s {
+                let Some(idx) = to_usize_exact(index) else {
+                    return MachineState::Error(
+                        "str_at requires 'index' field to be a non-negative integer".to_owned(),
+                    );
+                };
+
+                match heap.strings.at(s, idx) {
+                    Some(c) => Value::Variant(heap.alloc_builtin_variant("Some", Value::Char(c))),
+                    None => Value::Variant(heap.alloc_builtin_variant("None", Value::None)),
+                }
+            } else {
+                Value::Variant(heap.alloc_builtin_variant("None", Value::None))
             }
         }
         (BuiltinId::StrPrepend, Value::Record(record)) => {
@@ -1034,10 +1107,14 @@ fn eval_builtin(
                 );
             };
 
-            let mut buf = [0; 4];
-            let c: &str = c.encode_utf8(&mut buf);
+            if let Some(s) = s {
+                let mut buf = [0; 4];
+                let c: &str = c.encode_utf8(&mut buf);
 
-            Value::Str(heap.strings.push_front(s, c))
+                Value::Str(Some(heap.strings.push_front(s, c)))
+            } else {
+                Value::Str(Some(StringIdx::unit(c)))
+            }
         }
         (BuiltinId::StrAppend, Value::Record(record)) => {
             let Some(Value::Str(s)) = heap.get_record_value(record, "head") else {
@@ -1052,10 +1129,14 @@ fn eval_builtin(
                 );
             };
 
-            let mut buf = [0; 4];
-            let c: &str = c.encode_utf8(&mut buf);
+            if let Some(s) = s {
+                let mut buf = [0; 4];
+                let c: &str = c.encode_utf8(&mut buf);
 
-            Value::Str(heap.strings.push_back(s, c))
+                Value::Str(Some(heap.strings.push_back(s, c)))
+            } else {
+                Value::Str(Some(StringIdx::unit(c)))
+            }
         }
         (BuiltinId::StrConcat, Value::Record(record)) => {
             let Some(Value::Str(s1)) = heap.get_record_value(record, "head") else {
@@ -1070,7 +1151,13 @@ fn eval_builtin(
                 );
             };
 
-            Value::Str(heap.strings.concat(s1, s2))
+            let result = match (s1, s2) {
+                (Some(s1), Some(s2)) => Some(heap.strings.concat(s1, s2)),
+                (Some(s), None) | (None, Some(s)) => Some(s),
+                _ => None,
+            };
+
+            Value::Str(result)
         }
 
         (BuiltinId::StrRec, Value::Record(record)) => {
@@ -1086,7 +1173,7 @@ fn eval_builtin(
                 return MachineState::Error("str_rec requires 'step' field with a func".to_owned());
             };
 
-            let Some((head, tail)) = heap.strings.pop_front(s) else {
+            let Some(s) = s else {
                 // Empty string — bind base directly, go to next
                 let env = heap.envs.insert(env, bind, base);
 
@@ -1097,14 +1184,17 @@ fn eval_builtin(
                 });
             };
 
+            let (head, tail) = heap.strings.pop_front(s);
+
             // Create a pure continuation frame for the next expression
             let pure_frame = ContFrame::pure(bind, next, env);
             cont.push(pure_frame);
 
-            // Create a primitive recursion frame for the list_rec operation,
-            // which will handle the recursive processing of the list.
-            let rec_frame = ContFrame::str_rec(tail, step);
-            cont.push(rec_frame);
+            // Create a primitive recursion frame
+            if let Some(tail) = tail {
+                let rec_frame = ContFrame::str_rec(tail, step);
+                cont.push(rec_frame);
+            }
 
             let Closure {
                 env,
@@ -2116,8 +2206,8 @@ fn eval_is_str(is_str: &IsStr, env: EnvIdx, cont: Cont, heap: &mut Heap) -> Mach
     };
 
     let next_matcher = match source_val {
-        Value::Str(s) => {
-            if heap.strings.eq(s, Some(StringIdx::Static(payload))) {
+        Value::Str(Some(s)) => {
+            if heap.strings.eq(s, StringIdx::Static(payload)) {
                 on_success
             } else {
                 on_failure
@@ -2429,18 +2519,15 @@ fn eval_list_split_head(
     };
 
     // Ensure the source value is a list
-    let Value::List(list) = source_val else {
-        return MachineState::Error(format!("Expected a list, got: {:?}", source_val));
+    let Value::List(Some(list)) = source_val else {
+        return MachineState::Error(format!("Expected a non-empty list, got: {:?}", source_val));
     };
 
     // Get the head of the list
-    if let Some((h, t)) = heap.lists.split_front(list) {
-        // Bind the head to the target variable
-        env = heap.envs.insert(env, head, h);
-        env = heap.envs.insert(env, tail_list, t);
-    } else {
-        return MachineState::Error(format!("List is empty, cannot extract head"));
-    }
+    let (h, t) = heap.lists.split_front(list);
+    // Bind the head to the target variable
+    env = heap.envs.insert(env, head, h);
+    env = heap.envs.insert(env, tail_list, t);
 
     // Continue with the next pattern matcher
     MachineState::Pattern(PatternConfig {
@@ -2470,18 +2557,15 @@ fn eval_list_split_tail(
     };
 
     // Ensure the source value is a list
-    let Value::List(list) = source_val else {
-        return MachineState::Error(format!("Expected a list, got: {:?}", source_val));
+    let Value::List(Some(list)) = source_val else {
+        return MachineState::Error(format!("Expected a non-empty list, got: {:?}", source_val));
     };
 
     // Get the tail of the list
-    if let Some((h, t)) = heap.lists.split_back(list) {
-        // Bind the tail to the target variable
-        env = heap.envs.insert(env, tail, t);
-        env = heap.envs.insert(env, head_list, h);
-    } else {
-        return MachineState::Error(format!("List is empty, cannot extract tail"));
-    }
+    let (h, t) = heap.lists.split_back(list);
+    // Bind the tail to the target variable
+    env = heap.envs.insert(env, tail, t);
+    env = heap.envs.insert(env, head_list, h);
 
     // Continue with the next pattern matcher
     MachineState::Pattern(PatternConfig {
@@ -2552,8 +2636,8 @@ fn eval_list_split_at(
     };
 
     // Ensure the source value is a list
-    let Value::List(list) = source_val else {
-        return MachineState::Error(format!("Expected a list, got: {:?}", source_val));
+    let Value::List(Some(list)) = source_val else {
+        return MachineState::Error(format!("Expected a non-empty list, got: {:?}", source_val));
     };
 
     // Get the slices from the specified range

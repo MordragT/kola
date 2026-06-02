@@ -27,22 +27,13 @@ pub enum ContFrame {
     NumRec { data: f64, step: Closure },
 
     /// A recursive continuation frame (data, step) is used for primitive recursion.
-    ListRec {
-        data: Option<ListIdx>,
-        step: Closure,
-    },
+    ListRec { data: ListIdx, step: Closure },
 
     /// A recursive continuation frame (data, step) is used for primitive recursion.
-    RecordRec {
-        data: Option<RecordIdx>,
-        step: Closure,
-    },
+    RecordRec { data: RecordIdx, step: Closure },
 
     /// A recursive continuation frame (data, step) is used for primitive recursion.
-    StrRec {
-        data: Option<StringIdx>,
-        step: Closure,
-    },
+    StrRec { data: StringIdx, step: Closure },
 }
 
 const _: () = assert!(ContFrame::BYTES <= 32);
@@ -54,15 +45,15 @@ impl ContFrame {
         Self::NumRec { data, step }
     }
 
-    pub fn list_rec(data: Option<ListIdx>, step: Closure) -> Self {
+    pub fn list_rec(data: ListIdx, step: Closure) -> Self {
         Self::ListRec { data, step }
     }
 
-    pub fn record_rec(data: Option<RecordIdx>, step: Closure) -> Self {
+    pub fn record_rec(data: RecordIdx, step: Closure) -> Self {
         Self::RecordRec { data, step }
     }
 
-    pub fn str_rec(data: Option<StringIdx>, step: Closure) -> Self {
+    pub fn str_rec(data: StringIdx, step: Closure) -> Self {
         Self::StrRec { data, step }
     }
 

@@ -289,104 +289,212 @@ impl ListArena {
 
     /// Append a value to the back of the list.
     ///
-    /// O(N) Time and Space. Copies only the *spine* nodes, not the values.
+    /// O(N) Time Complexity. Copies only the *spine* nodes in a single forward pass.
+    /// Auxiliary Space Complexity: O(1) (Zero temporary heap allocations).
     pub fn push_back(&mut self, idx: Option<ListIdx>, value: Value) -> ListIdx {
-        let mut heads = Vec::new();
-        let mut curr = idx;
-        while let Some(id) = curr {
-            let ListNode { head, tail } = self.data[id.as_usize()];
-            heads.push(head);
-            curr = tail;
-        }
+        // Step 1: Allocate the terminal node containing the new value right away.
+        let new_tail_idx = self.push_front(None, value);
 
-        // Build backwards, starting with the new last element node
-        let mut new_list = self.push_front(None, value);
-        for head in heads.into_iter().rev() {
-            new_list = self.push_front(Some(new_list), head);
+        // Base case: If the original list is empty, our new tail is the entire list.
+        let mut curr = match idx {
+            Some(start_idx) => start_idx,
+            None => return new_tail_idx,
+        };
+
+        let mut new_head = None;
+        let mut prev_new_id: Option<ListIdx> = None;
+
+        // Step 2: Traverse and link forward
+        loop {
+            let ListNode { head, tail } = self.data[curr.as_usize()];
+
+            match tail {
+                Some(next_idx) => {
+                    // `curr` has a successor; allocate a copy for the new spine.
+                    let new_id = self.push_front(None, head);
+
+                    if new_head.is_none() {
+                        new_head = Some(new_id);
+                    }
+
+                    // Link the previous node's tail to this new node
+                    if let Some(prev_id) = prev_new_id {
+                        self.data[prev_id.as_usize()].tail = Some(new_id);
+                    }
+
+                    prev_new_id = Some(new_id);
+                    curr = next_idx;
+                }
+                None => {
+                    // `curr` is the terminal node of the original list.
+                    // Link the final node of the new spine directly to our pre-allocated `new_tail_idx`.
+                    let final_new_id = self.push_front(Some(new_tail_idx), head);
+
+                    if let Some(prev_id) = prev_new_id {
+                        self.data[prev_id.as_usize()].tail = Some(final_new_id);
+                        return new_head.unwrap(); // Infallible, since new_head was set on loop 1
+                    } else {
+                        // The original list had exactly one element.
+                        return final_new_id;
+                    }
+                }
+            }
         }
-        new_list
     }
 
     /// Concatenate two lists together.
     ///
-    /// O(Left N) Complexity. Copies the spine of the left list, linking it directly to the shared right list.
+    /// O(Left N) Complexity. Copies the spine of the left list in a single forward pass,
+    /// linking its terminal node directly to the shared right list.
+    /// Auxiliary Space Complexity: O(1) (Zero temporary allocations).
     pub fn concat(&mut self, left: Option<ListIdx>, right: Option<ListIdx>) -> Option<ListIdx> {
-        let mut heads = Vec::new();
-        let mut curr = left;
-        while let Some(id) = curr {
-            let ListNode { head, tail } = self.data[id.as_usize()];
+        // Base case: If the left list is empty, we don't need to copy anything.
+        let mut curr = match left {
+            Some(idx) => idx,
+            None => return right,
+        };
 
-            heads.push(head);
-            curr = tail;
-        }
+        let mut new_head = None;
+        let mut prev_new_id: Option<ListIdx> = None;
 
-        let mut new_list = right;
-        for head in heads.into_iter().rev() {
-            new_list = Some(self.push_front(new_list, head));
+        loop {
+            let ListNode { head, tail } = self.data[curr.as_usize()];
+
+            match tail {
+                Some(next_idx) => {
+                    // `curr` has a successor; allocate a new node copy.
+                    // We temporarily set its tail to None.
+                    let new_id = self.push_front(None, head);
+
+                    if new_head.is_none() {
+                        new_head = Some(new_id);
+                    }
+
+                    // Forward-link the previous node in the new spine to this one
+                    if let Some(prev_id) = prev_new_id {
+                        self.data[prev_id.as_usize()].tail = Some(new_id);
+                    }
+
+                    prev_new_id = Some(new_id);
+                    curr = next_idx;
+                }
+                None => {
+                    // `curr` is the terminal node of the left list.
+                    // Allocate the final node of the new spine, pointing its tail directly to `right`.
+                    let final_new_id = self.push_front(right, head);
+
+                    if let Some(prev_id) = prev_new_id {
+                        self.data[prev_id.as_usize()].tail = Some(final_new_id);
+                        return new_head;
+                    } else {
+                        // The left list had exactly one element.
+                        return Some(final_new_id);
+                    }
+                }
+            }
         }
-        new_list
     }
 
     /// Split off the first element.
     ///
     /// **O(1) Time and Space.** Instantly yields the head and the shared tail.
-    pub fn split_front(&self, idx: Option<ListIdx>) -> Option<(Value, Option<ListIdx>)> {
-        let id = idx?;
-        let ListNode { head, tail } = self.data[id.as_usize()];
+    pub fn split_front(&self, idx: ListIdx) -> (Value, Option<ListIdx>) {
+        let ListNode { head, tail } = self.data[idx.as_usize()];
 
-        Some((head, tail))
+        (head, tail)
     }
 
     /// Split off the last element.
     ///
-    /// O(N) Complexity. Rebuilds the spine without the terminal node.
-    pub fn split_back(&mut self, idx: Option<ListIdx>) -> Option<(Option<ListIdx>, Value)> {
-        let id = idx?;
-        let mut heads = Vec::new();
-        let mut curr = Some(id);
-        while let Some(current_id) = curr {
-            let ListNode { head, tail } = self.data[current_id.as_usize()];
-            heads.push(head);
-            curr = tail;
-        }
+    /// O(N) Complexity. Rebuilds the spine without the terminal node in a single pass.
+    /// Auxiliary Space Complexity: O(1) (No temporary heap allocations).
+    pub fn split_back(&mut self, idx: ListIdx) -> (Option<ListIdx>, Value) {
+        let mut curr = idx;
+        let mut new_head = None;
+        let mut prev_new_id: Option<ListIdx> = None;
 
-        let last = heads.pop()?;
-        let mut new_list = None;
-        for head in heads.into_iter().rev() {
-            new_list = Some(self.push_front(new_list, head));
+        loop {
+            // Destructure by value to immediately release any read-borrow on self.data
+            let ListNode { head, tail } = self.data[curr.as_usize()];
+
+            match tail {
+                Some(next_idx) => {
+                    // `curr` is not the terminal node, so copy its head to the new spine.
+                    // We temporarily initialize its tail as None.
+                    let new_id = self.push_front(None, head);
+
+                    if new_head.is_none() {
+                        new_head = Some(new_id);
+                    }
+
+                    // Forward-link the previous node's tail to this freshly allocated node
+                    if let Some(prev_id) = prev_new_id {
+                        self.data[prev_id.as_usize()].tail = Some(new_id);
+                    }
+
+                    prev_new_id = Some(new_id);
+                    curr = next_idx;
+                }
+                None => {
+                    // `curr` has no tail, meaning it IS the terminal node!
+                    // We stop here, leaving the new spine gracefully terminated with None.
+                    return (new_head, head);
+                }
+            }
         }
-        Some((new_list, last))
     }
 
     /// Split the list at a given position.
     ///
-    /// Rebuilds the prefix spine up to `index`, and connects it to the shared tail suffix.
-    pub fn split_at(
-        &mut self,
-        idx: Option<ListIdx>,
-        index: usize,
-    ) -> (Option<ListIdx>, Option<ListIdx>) {
-        let mut heads = Vec::new();
+    /// Rebuilds the prefix spine up to `index` in a single pass, and connects
+    /// its end to the shared tail suffix.
+    /// Auxiliary Space Complexity: O(1) (Zero temporary heap allocations).
+    pub fn split_at(&mut self, idx: ListIdx, index: usize) -> (Option<ListIdx>, Option<ListIdx>) {
+        // Base case: splitting at index 0 means the prefix is empty, and the entire list is the suffix.
+        if index == 0 {
+            return (None, Some(idx));
+        }
+
         let mut curr = idx;
+        let mut new_head = None;
+        let mut prev_new_id: Option<ListIdx> = None;
         let mut i = 0;
 
-        while i < index {
-            if let Some(id) = curr {
-                let ListNode { head, tail } = self.data[id.as_usize()];
-                heads.push(head);
-                curr = tail;
-                i += 1;
-            } else {
-                break;
+        loop {
+            let ListNode { head, tail } = self.data[curr.as_usize()];
+
+            // Check if this node is the last node of the new prefix spine
+            if i == index - 1 {
+                let final_prefix_id = self.push_front(None, head);
+
+                if let Some(prev_id) = prev_new_id {
+                    self.data[prev_id.as_usize()].tail = Some(final_prefix_id);
+                    return (new_head, tail);
+                } else {
+                    // Split at index 1 on a single-element traversal
+                    return (Some(final_prefix_id), tail);
+                }
+            }
+
+            // Otherwise, clone this prefix node and link forward
+            let new_id = self.push_front(None, head);
+            if new_head.is_none() {
+                new_head = Some(new_id);
+            }
+
+            if let Some(prev_id) = prev_new_id {
+                self.data[prev_id.as_usize()].tail = Some(new_id);
+            }
+
+            prev_new_id = Some(new_id);
+            i += 1;
+
+            // Out-of-bounds safety: if the original list ends before reaching `index`
+            match tail {
+                Some(next_idx) => curr = next_idx,
+                None => return (new_head, None),
             }
         }
-
-        let mut head_list = None;
-        for head in heads.into_iter().rev() {
-            head_list = Some(self.push_front(head_list, head));
-        }
-
-        (head_list, curr)
     }
 
     /// Reverse the list.
@@ -401,34 +509,6 @@ impl ListArena {
             curr = tail;
         }
         rev_list
-    }
-
-    /// Replaces an item at a specific index.
-    ///
-    /// **Structural Sharing Win:** Only copies the spine nodes *up to* the modification index.
-    /// The entire rest of the list after the modification index is directly shared with the old list.
-    pub fn set(&mut self, idx: Option<ListIdx>, index: usize, value: Value) -> Option<ListIdx> {
-        let mut heads = Vec::new();
-        let mut curr = idx;
-        let mut i = 0;
-
-        while i < index {
-            let id = curr?;
-            let ListNode { head, tail } = self.data[id.as_usize()];
-
-            heads.push(head);
-            curr = tail;
-            i += 1;
-        }
-
-        let target_id = curr?;
-        let shared_tail = self.data[target_id.as_usize()].tail;
-
-        let mut new_list = Some(self.push_front(shared_tail, value));
-        for head in heads.into_iter().rev() {
-            new_list = Some(self.push_front(new_list, head));
-        }
-        new_list
     }
 
     /// Fold over the elements of the list.
@@ -578,7 +658,7 @@ mod tests {
         let mut arena = ListArena::new();
         let idx = arena.alloc(&[Value::Num(1.0), Value::Num(2.0), Value::Num(3.0)]);
 
-        let (first, tail) = arena.split_front(idx).unwrap();
+        let (first, tail) = arena.split_front(idx.unwrap());
         assert_eq!(first, Value::Num(1.0));
         assert_eq!(to_vec(&arena, tail), vec![Value::Num(2.0), Value::Num(3.0)]);
         // Original is untouched
@@ -590,7 +670,7 @@ mod tests {
         let mut arena = ListArena::new();
         let idx = arena.alloc(&[Value::Num(1.0), Value::Num(2.0), Value::Num(3.0)]);
 
-        let (head, last) = arena.split_back(idx).unwrap();
+        let (head, last) = arena.split_back(idx.unwrap());
         assert_eq!(last, Value::Num(3.0));
         assert_eq!(to_vec(&arena, head), vec![Value::Num(1.0), Value::Num(2.0)]);
         assert_eq!(arena.len(idx), 3);
@@ -601,7 +681,7 @@ mod tests {
         let mut arena = ListArena::new();
         let idx = arena.alloc(&[Value::Num(1.0), Value::Num(2.0), Value::Num(3.0)]);
 
-        let (head, tail) = arena.split_at(idx, 1);
+        let (head, tail) = arena.split_at(idx.unwrap(), 1);
         assert_eq!(to_vec(&arena, head), vec![Value::Num(1.0)]);
         assert_eq!(to_vec(&arena, tail), vec![Value::Num(2.0), Value::Num(3.0)]);
     }
@@ -624,46 +704,13 @@ mod tests {
     }
 
     #[test]
-    fn test_set() {
-        let mut arena = ListArena::new();
-        let idx = arena.alloc(&[Value::Num(1.0), Value::Num(2.0), Value::Num(3.0)]);
-
-        let new = arena.set(idx, 1, Value::Num(99.0));
-        assert_eq!(
-            to_vec(&arena, new),
-            vec![Value::Num(1.0), Value::Num(99.0), Value::Num(3.0)]
-        );
-        // Original is untouched
-        assert_eq!(
-            to_vec(&arena, idx),
-            vec![Value::Num(1.0), Value::Num(2.0), Value::Num(3.0)]
-        );
-    }
-
-    #[test]
-    fn test_split_first_empty() {
-        let mut arena = ListArena::new();
-        let idx = arena.alloc_empty();
-
-        assert!(arena.split_front(idx).is_none());
-    }
-
-    #[test]
-    fn test_split_last_empty() {
-        let mut arena = ListArena::new();
-        let idx = arena.alloc_empty();
-
-        assert!(arena.split_back(idx).is_none());
-    }
-
-    #[test]
     fn test_chained_operations() {
         let mut arena = ListArena::new();
         let idx = arena.alloc(&[Value::Num(1.0), Value::Num(2.0), Value::Num(3.0)]);
 
         // Push front, then split first
-        let extended = Some(arena.push_front(idx, Value::Num(0.0)));
-        let (first, tail) = arena.split_front(extended).unwrap();
+        let extended = arena.push_front(idx, Value::Num(0.0));
+        let (first, tail) = arena.split_front(extended);
         assert_eq!(first, Value::Num(0.0));
         assert_eq!(
             to_vec(&arena, tail),

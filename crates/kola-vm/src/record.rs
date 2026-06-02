@@ -425,24 +425,22 @@ where
     /// Split off the first (smallest key) entry.
     ///
     /// **O(1) Time and Space.** Zero allocations. Directly returns the shared tail.
-    pub fn split_front(&self, idx: Option<RecordIdx>) -> Option<((K, Value), Option<RecordIdx>)> {
-        let id = idx?;
-        let RecordNode { key, value, tail } = &self.data[id.as_usize()];
-        Some(((*key, *value), *tail))
+    pub fn split_front(&self, idx: RecordIdx) -> ((K, Value), Option<RecordIdx>) {
+        let RecordNode { key, value, tail } = &self.data[idx.as_usize()];
+        ((*key, *value), *tail)
     }
 
     /// Split off the last (largest key) entry.
-    pub fn split_back(
-        &mut self,
-        idx: Option<RecordIdx>,
-    ) -> Option<(Option<RecordIdx>, (K, Value))> {
-        let id = idx?;
+    ///
+    /// O(N) Time Complexity. Rebuilds the record spine without the terminal node.
+    /// Auxiliary Space Complexity: O(1) (Zero temporary heap allocations).
+    pub fn split_back(&mut self, idx: RecordIdx) -> (Option<RecordIdx>, (K, Value)) {
         let start_len = self.data.len();
-        let mut curr = Some(id);
+        let mut curr = idx;
         let mut prev_offset: Option<usize> = None;
 
-        while let Some(current_id) = curr {
-            let RecordNode { key, value, tail } = self.data[current_id.as_usize()];
+        loop {
+            let RecordNode { key, value, tail } = self.data[curr.as_usize()];
 
             if tail.is_none() {
                 // This is the final node! We do not copy it.
@@ -450,10 +448,10 @@ where
 
                 if let Some(prev) = prev_offset {
                     self.data[prev].tail = None; // Terminate the new copied spine
-                    return Some((Some(RecordIdx::make(start_len)), last_pair));
+                    return (Some(RecordIdx::make(start_len)), last_pair);
                 } else {
                     // The record only had one element; the remaining record is empty
-                    return Some((None, last_pair));
+                    return (None, last_pair);
                 }
             }
 
@@ -468,9 +466,10 @@ where
                 self.data[prev].tail = Some(RecordIdx::make(curr_offset));
             }
             prev_offset = Some(curr_offset);
-            curr = tail;
+
+            // Infallible unwrap because the tail.is_none() check didn't hit
+            curr = tail.unwrap();
         }
-        None
     }
 
     /// Merge two records using row-polymorphic merge semantics.
@@ -856,13 +855,13 @@ mod tests {
         ]);
 
         // O(1) split front
-        let ((k_head, v_head), tail) = arena.split_front(rec).unwrap();
+        let ((k_head, v_head), tail) = arena.split_front(rec.unwrap());
         assert_eq!(k_head, 1);
         assert_eq!(v_head, Value::Num(10.0));
         assert_eq!(arena.len(tail), 2);
 
         // Split back
-        let (head, (k_tail, v_tail)) = arena.split_back(rec).unwrap();
+        let (head, (k_tail, v_tail)) = arena.split_back(rec.unwrap());
         assert_eq!(k_tail, 3);
         assert_eq!(v_tail, Value::Num(30.0));
         assert_eq!(arena.len(head), 2);
