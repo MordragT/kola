@@ -21,6 +21,8 @@ pub struct StandardConfig {
     pub cont: Cont,
 }
 
+const _: () = assert!(std::mem::size_of::<StandardConfig>() <= 56);
+
 /// The operation handling configuration in the CEK machine
 /// C = M | γ | κ | κ0iop, where:
 /// - M is the operation being performed
@@ -41,6 +43,8 @@ pub struct OperationConfig {
     pub forward: Cont,
 }
 
+const _: () = assert!(std::mem::size_of::<OperationConfig>() <= 64);
+
 /// Pattern matching configuration in the CEK machine
 /// C = P | γ | κi, where:
 /// - P is the pattern matcher instruction currently being evaluated
@@ -55,6 +59,8 @@ pub struct PatternConfig {
     /// Continuation to use after pattern matching completes
     pub cont: Cont,
 }
+
+const _: () = assert!(std::mem::size_of::<PatternConfig>() <= 32);
 
 /// Machine states represent the different configurations of the CEK machine
 #[derive(Debug, From, Clone, PartialEq)]
@@ -72,3 +78,5 @@ pub enum MachineState {
     /// The machine is in the middle of an operation
     InProgress,
 }
+
+const _: () = assert!(std::mem::size_of::<MachineState>() <= 64);

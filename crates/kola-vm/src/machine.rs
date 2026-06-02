@@ -64,60 +64,40 @@ impl CekMachine {
         }
     }
 
-    /// Execute a single step of the machine
-    /// Returns Ok(true) if the machine has reached a final state,
-    /// Ok(false) if more steps are needed, or Err if an error occurred
-    pub fn step(&mut self, heap: &mut Heap) -> bool {
-        let state = std::mem::replace(&mut self.state, MachineState::InProgress);
-
-        self.state = match state {
-            MachineState::Standard(config) => Self::step_standard(config, &mut self.context, heap),
-            MachineState::Operation(config) => {
-                Self::step_operation(config, &mut self.context, heap)
-            }
-            MachineState::Pattern(config) => Self::step_pattern(config, &mut self.context, heap),
-            MachineState::Value(_) | MachineState::Error(_) => {
-                // If the machine is in a terminal state, we don't need to do anything
-                state
-            }
-            MachineState::InProgress => {
-                // This should never happen
-                panic!("Machine is in an invalid state: {:?}", state)
-            }
-        };
-
-        matches!(&self.state, MachineState::Error(_) | MachineState::Value(_))
-    }
-
-    /// Run the machine until it reaches a terminal state
     pub fn run(&mut self, heap: &mut Heap) -> Result<Value, String> {
-        while !self.step(heap) {}
+        // Pull the state out exactly ONCE when execution starts
+        let mut current_state = std::mem::replace(&mut self.state, MachineState::InProgress);
 
-        match &self.state {
-            MachineState::Value(value) => Ok(value.clone()),
-            MachineState::Error(msg) => Err(msg.clone()),
-            _ => Err("Machine stopped in a non-terminal state".to_string()),
+        loop {
+            current_state = match current_state {
+                MachineState::Standard(config) => {
+                    let StandardConfig { control, env, cont } = config;
+                    control.eval(env, cont, &mut self.context, heap)
+                }
+                MachineState::Operation(config) => {
+                    Self::step_operation(config, &mut self.context, heap)
+                }
+                MachineState::Pattern(config) => {
+                    let PatternConfig { matcher, env, cont } = config;
+                    matcher
+                        .get(&self.context.ir)
+                        .eval(env, cont, &mut self.context, heap)
+                }
+                MachineState::Value(value) => {
+                    let cloned_val = value.clone();
+                    self.state = MachineState::Value(value);
+                    return Ok(cloned_val);
+                }
+                MachineState::Error(msg) => {
+                    let cloned_msg = msg.clone();
+                    self.state = MachineState::Error(msg);
+                    return Err(cloned_msg);
+                }
+                MachineState::InProgress => {
+                    panic!("Machine entered an invalid intermediate state.")
+                }
+            };
         }
-    }
-
-    /// Execute a standard configuration step
-    fn step_standard(
-        config: StandardConfig,
-        context: &mut MachineContext,
-        heap: &mut Heap,
-    ) -> MachineState {
-        let StandardConfig { control, env, cont } = config;
-        control.eval(env, cont, context, heap)
-    }
-
-    /// Execute a pattern matching configuration step
-    fn step_pattern(
-        config: PatternConfig,
-        context: &mut MachineContext,
-        heap: &mut Heap,
-    ) -> MachineState {
-        let PatternConfig { matcher, env, cont } = config;
-        matcher.get(&context.ir).eval(env, cont, context, heap)
     }
 
     /// Execute an operation configuration step

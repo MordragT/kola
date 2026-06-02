@@ -31,6 +31,13 @@ impl EnvArena {
     }
 
     #[inline]
+    pub fn with_capacity(capacity: usize) -> Self {
+        Self {
+            data: Vec::with_capacity(capacity),
+        }
+    }
+
+    #[inline]
     pub fn ambient() -> EnvIdx {
         EnvIdx::make(0) // The ambient environment is at index 0
     }

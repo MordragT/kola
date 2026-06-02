@@ -18,6 +18,32 @@ use crate::{
     variant::{VariantArena, VariantIdx},
 };
 
+/// Configurable capacities for your runtime arenas to eliminate execution-time reallocations.
+#[derive(Debug, Clone, Copy)]
+pub struct HeapCapacities {
+    pub envs: usize,
+    pub records: usize,
+    pub lists: usize,
+    pub variants: usize,
+    /// Backing store size in bytes for dynamic runtime string data (e.g., 64 KB)
+    pub strings_bytes: usize,
+    /// Number of structural string pieces/nodes to pre-allocate
+    pub strings_nodes: usize,
+}
+
+impl Default for HeapCapacities {
+    fn default() -> Self {
+        Self {
+            envs: 4096,               // Enough for deep lexical scoping chains and loops
+            records: 4096,            // High structural sharing means nodes stack up fast
+            lists: 2048,              // Tail-allocated lists or list spines
+            variants: 1024,           // Typically lower volume than records/environments
+            strings_bytes: 64 * 1024, // 65,536 bytes of dynamic character space
+            strings_nodes: 1024,      // 1,024 rope/slice tracking descriptors
+        }
+    }
+}
+
 #[derive(Debug)]
 pub struct Heap {
     /// The type interner used for type reification
@@ -35,14 +61,28 @@ pub struct Heap {
 }
 
 impl Heap {
+    /// Creates a fresh runtime heap with optimized default capacities.
     pub fn new(str_interner: StrInterner, type_interner: TypeInterner) -> Self {
+        Self::with_capacities(str_interner, type_interner, HeapCapacities::default())
+    }
+
+    /// Allows passing custom capacities (e.g., tiny limits for testing, massive limits for compiler flags).
+    pub fn with_capacities(
+        str_interner: StrInterner,
+        type_interner: TypeInterner,
+        caps: HeapCapacities,
+    ) -> Self {
         Self {
             type_interner,
-            strings: StringArena::new(str_interner),
-            lists: ListArena::new(),
-            records: RecordArena::new(),
-            variants: VariantArena::new(),
-            envs: EnvArena::new(),
+            strings: StringArena::with_capacity(
+                caps.strings_bytes,
+                caps.strings_nodes,
+                str_interner,
+            ),
+            lists: ListArena::with_capacity(caps.lists),
+            records: RecordArena::with_capacity(caps.records),
+            variants: VariantArena::with_capacity(caps.variants),
+            envs: EnvArena::with_capacity(caps.envs),
         }
     }
 
