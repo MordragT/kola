@@ -4,9 +4,11 @@ use std::io;
 
 use kola_ir::print::render_ir;
 use kola_lowerer::module::{Program, lower};
+use kola_machine::machine::{CekMachine, MachineContext};
 use kola_print::{PrintOptions, prelude::*};
 use kola_protocol::TypeInterner;
 use kola_resolver::{prelude::*, print::ResolutionDecorator};
+use kola_runtime::heap::Heap;
 use kola_span::{Issue, Report, SourceManager};
 use kola_syntax::{
     lexer::{LexInput, tokenize},
@@ -22,10 +24,6 @@ use kola_typer::{
     print::TypeDecorator,
 };
 use kola_utils::{interner::StrInterner, io::FileSystem};
-use kola_vm::{
-    heap::Heap,
-    machine::{CekMachine, MachineContext},
-};
 
 pub enum DriverOptions {}
 

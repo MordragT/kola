@@ -13,12 +13,13 @@ kola-macros = { path = "crates/kola-macros" }
 kola-print = { path = "crates/kola-print" }
 kola-protocol = { path = "crates/kola-protocol" }
 kola-resolver = { path = "crates/kola-resolver" }
+kola-runtime = { path = "crates/kola-runtime" }
 kola-span = { path = "crates/kola-span" }
 kola-syntax = { path = "crates/kola-syntax" }
 kola-tree = { path = "crates/kola-tree" }
 kola-typer = { path = "crates/kola-typer" }
 kola-utils = { path = "crates/kola-utils" }
-kola-vm = { path = "crates/kola-vm" }
+kola-machine = { path = "crates/kola-machine" }
 
 camino = "1.1"
 indexmap = "2.7.1"

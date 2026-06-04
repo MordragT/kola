@@ -16,7 +16,8 @@ kola-utils.workspace = true
 log.workspace = true
 
 [dev-dependencies]
-kola-vm.workspace = true
+kola-runtime.workspace = true
+kola-machine.workspace = true
 # camino.workspace = true
 kola-utils.workspace = true
 # kola-syntax.workspace = true

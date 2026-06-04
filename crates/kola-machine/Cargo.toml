@@ -1,0 +1,15 @@
+[package]
+name = "kola-machine"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+kola-builtins.workspace = true
+kola-ir.workspace = true
+kola-runtime.workspace = true
+kola-utils.workspace = true
+derive_more.workspace = true
+camino.workspace = true
+
+[dev-dependencies]
+kola-protocol.workspace = true

@@ -9,7 +9,7 @@
     {
       devShells.default = pkgs.mkShell {
         buildInputs = with pkgs; [
-          self'.packages.kola-ls
+          # self'.packages.kola-ls
           self'.packages.toolchain
           clippy
           rustfmt

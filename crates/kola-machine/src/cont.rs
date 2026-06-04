@@ -2,11 +2,11 @@ use kola_ir::{
     id::Id,
     instr::{Expr, Symbol},
 };
-
-use crate::{
-    closure::Closure, env::EnvIdx, handler::Handler, list::ListIdx, record::RecordIdx,
-    string::StringIdx,
+use kola_runtime::{
+    closure::Closure, env::EnvIdx, list::ListIdx, record::RecordIdx, string::StringIdx,
 };
+
+use crate::handler::Handler;
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum ContFrame {

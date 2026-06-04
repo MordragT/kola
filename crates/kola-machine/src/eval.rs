@@ -1,18 +1,5 @@
 use std::fs;
 
-use crate::{
-    closure::Closure,
-    config::{MachineState, OperationConfig, PatternConfig, StandardConfig},
-    cont::{Cont, ContFrame},
-    env::{EnvArena, EnvIdx},
-    handler::{Handler, ReturnClause},
-    heap::Heap,
-    list::ListIdx,
-    machine::MachineContext,
-    record::RecordIdx,
-    string::StringIdx,
-    value::{Value, to_usize_exact},
-};
 use kola_builtins::BuiltinId;
 use kola_ir::{
     id::Id,
@@ -25,6 +12,22 @@ use kola_ir::{
         RecordUpdateExpr, RecordUpdateOp, RetExpr, Symbol, UnaryExpr, UnaryOp, VariantGet,
     },
     ir::{Ir, IrView},
+};
+use kola_runtime::{
+    closure::Closure,
+    env::{EnvArena, EnvIdx},
+    heap::Heap,
+    list::ListIdx,
+    record::RecordIdx,
+    string::StringIdx,
+    value::{Value, to_usize_exact},
+};
+
+use crate::{
+    config::{MachineState, OperationConfig, PatternConfig, StandardConfig},
+    cont::{Cont, ContFrame},
+    handler::{Handler, ReturnClause},
+    machine::MachineContext,
 };
 
 #[inline]

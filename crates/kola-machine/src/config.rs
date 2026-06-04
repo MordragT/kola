@@ -1,10 +1,12 @@
-use crate::{cont::Cont, env::EnvIdx, value::Value};
 use derive_more::From;
 use kola_ir::{
     id::Id,
     instr::{Atom, Expr, PatternMatcher},
 };
+use kola_runtime::{env::EnvIdx, value::Value};
 use kola_utils::interner::StrKey;
+
+use crate::cont::Cont;
 
 /// The standard configuration in the CEK machine
 /// C = M | γ | κi, where:

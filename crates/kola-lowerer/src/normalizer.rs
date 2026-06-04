@@ -1336,18 +1336,15 @@ mod tests {
         instr::{self as ir, Symbol},
         ir::{Ir, IrBuilder},
     };
+    use kola_machine::machine::{CekMachine, MachineContext};
     use kola_protocol::TypeInterner;
     use kola_resolver::{
         phase::{ResolvedNodes, ResolvedValue},
         symbol::ValueSym,
     };
+    use kola_runtime::{heap::Heap, value::Value};
     use kola_tree::prelude::*;
     use kola_utils::interner::StrInterner;
-    use kola_vm::{
-        heap::Heap,
-        machine::{CekMachine, MachineContext},
-        value::Value,
-    };
 
     use super::Normalizer;
 
@@ -1590,6 +1587,6 @@ mod tests {
         let value = machine.run(&mut heap).unwrap().into_str().unwrap();
 
         // Should evaluate to "hello" (the value of r.a.b.c)
-        assert_eq!(heap.strings.get(&value), "hello");
+        assert_eq!(heap.strings.get(&value.unwrap()), "hello");
     }
 }

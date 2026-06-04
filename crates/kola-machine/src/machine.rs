@@ -1,16 +1,15 @@
 use camino::{Utf8Path, Utf8PathBuf};
 
-use crate::{
-    config::{MachineState, OperationConfig, PatternConfig, StandardConfig},
-    cont::{Cont, ContFrame},
-    env::EnvArena,
-    eval::{Eval, eval_atom},
-    heap::Heap,
-    value::Value,
-};
 use kola_ir::{
     instr::Func,
     ir::{Ir, IrView},
+};
+use kola_runtime::{env::EnvArena, heap::Heap, value::Value};
+
+use crate::{
+    config::{MachineState, OperationConfig, PatternConfig, StandardConfig},
+    cont::{Cont, ContFrame},
+    eval::{Eval, eval_atom},
 };
 
 #[derive(Debug, Clone)]
@@ -189,11 +188,11 @@ mod tests {
         },
         ir::IrBuilder,
     };
+    use kola_protocol::TypeInterner;
+    use kola_runtime::{heap::Heap, value::Value};
     use kola_utils::interner::StrInterner;
 
-    use crate::{heap::Heap, machine::MachineContext};
-    use crate::{machine::CekMachine, value::Value};
-    use kola_protocol::TypeInterner;
+    use crate::machine::{CekMachine, MachineContext};
 
     fn run_machine(context: MachineContext, heap: &mut Heap) -> Result<Value, String> {
         let mut machine = CekMachine::new(context);
