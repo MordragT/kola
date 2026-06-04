@@ -34,7 +34,9 @@
 //!   within a module, preserving type variable relationships
 //! - **No let-bind generalization**: Local let-binds remain monomorphic for algorithmic
 //!   simplicity while maintaining expressiveness through top-level polymorphism
+//!
 
+use kola_builtins::BuiltinLexicon;
 use kola_print::prelude::*;
 use kola_resolver::{
     forest::Forest,
@@ -49,18 +51,21 @@ use kola_tree::{
     meta::MetaView,
     print::{Decorators, TreePrinter},
 };
+use kola_types::{
+    class::TypeClassEnv,
+    env::TypeEnv,
+    substitute::{Substitutable, Substitution},
+    types::ModuleType,
+};
 use kola_utils::{interner::StrInterner, interner_ext::InternerExt};
 use log::trace;
 
 use crate::{
     analysis::exhaust_check_all,
     constraints::Constraints,
-    env::{TypeClassEnv, TypeEnv},
     phase::{TypeAnnotations, TypedNodes},
     print::TypeDecorator,
-    substitute::{Substitutable, Substitution},
     typer::Typer,
-    types::ModuleType,
 };
 
 #[derive(Debug, Clone, Default)]
@@ -94,7 +99,7 @@ pub fn type_check(
     value_orders: &ValueOrders,
     arena: &Bump,
     str_interner: &mut StrInterner,
-    // type_interner: &mut TypeInterner,
+    lexicon: &BuiltinLexicon,
     report: &mut Report,
     print_options: PrintOptions,
 ) -> TypeCheckOutput {
@@ -129,6 +134,7 @@ pub fn type_check(
                 entry_points,
                 &mut constraints,
                 str_interner,
+                lexicon,
             );
 
             let Some((typed_nodes, _)) = typer.run(tree, report) else {
@@ -169,6 +175,7 @@ pub fn type_check(
                 entry_points,
                 &mut constraints,
                 str_interner,
+                lexicon,
             );
 
             let Some((mut typed_nodes, cases)) = typer.run(tree, report) else {

@@ -1,12 +1,10 @@
-use kola_protocol::TypeProtocol;
-use kola_utils::interner::StrInterner;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
-use super::{Kind, LabelOrVar, MonoType, TypeClass, TypeVar, Typed};
+use super::{LabelOrVar, MergeError, MonoType, TypeVar, Typed};
 use crate::{
-    env::TypeClassEnv,
-    error::TypeError,
+    class::{CheckClass, TypeClass, TypeClassEnv, TypeClassError},
+    kind::{CheckKind, Kind},
     substitute::{Substitutable, Substitution, merge},
 };
 
@@ -33,7 +31,7 @@ impl LabeledType {
         Self { label, ty }
     }
 
-    pub fn merge_deep(&self, other: &Self) -> Result<Self, TypeError> {
+    pub fn merge_deep(&self, other: &Self) -> Result<Self, MergeError> {
         if let (LabelOrVar::Var(_), LabelOrVar::Var(_)) = (&self.label, &other.label) {
             todo!("Merging of label variables is not implemented yet");
         }
@@ -46,7 +44,7 @@ impl LabeledType {
                 ty: MonoType::Row(Box::new(merged)),
             })
         } else {
-            Err(TypeError::CannotMerge {
+            Err(MergeError {
                 lhs: self.ty.clone(),
                 rhs: other.ty.clone(),
             })
@@ -128,7 +126,7 @@ impl Row {
         }
     }
 
-    pub fn extension(head: LabeledType, tail: Self) -> Self {
+    pub fn ext(head: LabeledType, tail: Self) -> Self {
         Self::Extension {
             head,
             tail: Box::new(tail),
@@ -141,31 +139,9 @@ impl Row {
         Self::Extension { head, tail }
     }
 
-    pub fn to_protocol(&self, interner: &StrInterner) -> Vec<(String, TypeProtocol)> {
-        let mut rows = Vec::new();
-        let mut next = self;
-
-        while let Self::Extension {
-            head: LabeledType { label, ty },
-            tail,
-        } = next
-        {
-            let LabelOrVar::Label(label) = label else {
-                todo!("RowType::to_protocol only supports Key labels for now");
-            };
-
-            let ty = ty.to_protocol(interner);
-            rows.push((interner[label.0].to_owned(), ty));
-
-            next = tail;
-        }
-
-        rows
-    }
-
     /// Only works, if the left-hand side is a concrete row type.
     /// The right-hand side can be a row type or a row variable.
-    pub fn merge_left(&self, other: &Self) -> Result<Self, TypeError> {
+    pub fn merge_left(&self, other: &Self) -> Result<Self, MergeError> {
         match (self, other) {
             (Self::Extension { head, tail: l_tail }, r) => {
                 let tail = Box::new(l_tail.merge_left(r)?);
@@ -177,7 +153,7 @@ impl Row {
                 Ok(next)
             }
             (Self::Empty, r) => Ok(r.clone()),
-            (lhs, rhs) => Err(TypeError::CannotMerge {
+            (lhs, rhs) => Err(MergeError {
                 lhs: MonoType::Row(Box::new(lhs.clone())),
                 rhs: MonoType::Row(Box::new(rhs.clone())),
             }),
@@ -187,7 +163,7 @@ impl Row {
     /// Only works, if the right-hand side is a concrete row type.
     /// The left-hand side can be a row type or a row variable.
     #[inline]
-    pub fn merge_right(&self, other: &Self) -> Result<Self, TypeError> {
+    pub fn merge_right(&self, other: &Self) -> Result<Self, MergeError> {
         other.merge_left(self)
     }
 
@@ -205,7 +181,7 @@ impl Row {
     ///    The 'a != b' condition merely distinguishes this case from Rule 2.
     ///    In scoped labels, distinct field order is semantically equivalent,
     ///    eliminating the need for explicit negative (absence) constraints here.
-    pub fn merge_deep(&self, other: &Self) -> Result<Self, TypeError> {
+    pub fn merge_deep(&self, other: &Self) -> Result<Self, MergeError> {
         match (self, other) {
             (
                 Self::Extension {
@@ -236,7 +212,7 @@ impl Row {
 
             (Self::Empty, r) => Ok(r.clone()),
             (l, Self::Empty) => Ok(l.clone()),
-            _ => Err(TypeError::CannotMerge {
+            _ => Err(MergeError {
                 lhs: MonoType::Row(Box::new(self.clone())),
                 rhs: MonoType::Row(Box::new(other.clone())),
             }),
@@ -254,20 +230,24 @@ impl fmt::Display for Row {
     }
 }
 
-impl Typed for Row {
+impl CheckKind for Row {
     fn kind(&self) -> Kind {
         Kind::Row
     }
+}
 
-    fn constrain_class(&self, with: TypeClass, _env: &mut TypeClassEnv) -> Result<(), TypeError> {
+impl CheckClass for Row {
+    fn check_class(&self, with: TypeClass, _env: &mut TypeClassEnv) -> Result<(), TypeClassError> {
         match with {
-            _ => Err(TypeError::CannotConstrainClass {
+            _ => Err(TypeClassError {
                 expected: with,
                 actual: self.clone().into(),
             }),
         }
     }
 }
+
+impl Typed for Row {}
 
 impl Substitutable for Row {
     fn try_apply(&self, s: &mut Substitution) -> Option<Self> {

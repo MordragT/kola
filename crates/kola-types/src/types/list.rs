@@ -1,27 +1,16 @@
+use serde::{Deserialize, Serialize};
 use std::fmt;
 
-use kola_protocol::TypeProtocol;
-use kola_utils::interner::StrInterner;
-use serde::{Deserialize, Serialize};
-
 use crate::{
-    env::TypeClassEnv,
-    error::TypeError,
+    class::{CheckClass, TypeClass, TypeClassEnv, TypeClassError},
+    kind::{CheckKind, Kind},
     substitute::{Substitutable, Substitution},
 };
 
-use super::{Kind, MonoType, TypeClass, Typed};
+use super::{MonoType, Typed};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct ListType(pub MonoType);
-
-impl ListType {
-    pub fn to_protocol(&self, interner: &StrInterner) -> TypeProtocol {
-        let el = self.0.to_protocol(interner);
-
-        TypeProtocol::list(el)
-    }
-}
 
 impl fmt::Display for ListType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -29,21 +18,25 @@ impl fmt::Display for ListType {
     }
 }
 
-impl Typed for ListType {
-    fn kind(&self) -> Kind {
+impl CheckKind for ListType {
+    fn kind(&self) -> crate::kind::Kind {
         Kind::Type
     }
+}
 
-    fn constrain_class(&self, with: TypeClass, _env: &mut TypeClassEnv) -> Result<(), TypeError> {
+impl CheckClass for ListType {
+    fn check_class(&self, with: TypeClass, _env: &mut TypeClassEnv) -> Result<(), TypeClassError> {
         match with {
             TypeClass::Addable | TypeClass::Comparable | TypeClass::Equatable => Ok(()),
-            _ => Err(TypeError::CannotConstrainClass {
+            _ => Err(TypeClassError {
                 expected: with,
                 actual: self.clone().into(),
             }),
         }
     }
 }
+
+impl Typed for ListType {}
 
 impl Substitutable for ListType {
     fn try_apply(&self, s: &mut Substitution) -> Option<Self> {

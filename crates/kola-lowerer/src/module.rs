@@ -107,7 +107,6 @@ use kola_ir::{
     print::render_ir,
 };
 use kola_print::prelude::*;
-use kola_protocol::TypeInterner;
 use kola_resolver::{
     forest::Forest,
     resolver::ValueOrders,
@@ -115,7 +114,6 @@ use kola_resolver::{
     symbol::{ModuleSym, ValueSym},
 };
 use kola_tree::{meta::MetaView, tree::Tree};
-use kola_typer::phase::{TypeAnnotations, TypedNodes};
 use kola_utils::interner::StrInterner;
 use log::trace;
 
@@ -180,11 +178,8 @@ pub fn lower_module(
     next: InstrId<ir::Expr>,
     value_order: &[ValueSym],
     scope: &ModuleScope,
-    typed: &TypedNodes,
     tree: &Tree,
     builder: &mut IrBuilder,
-    type_interner: &mut TypeInterner,
-    str_interner: &StrInterner,
 ) -> InstrId<ir::Expr> {
     let resolved = &scope.resolved;
 
@@ -215,16 +210,7 @@ pub fn lower_module(
         let value_bind = id.get(tree);
         let hole = Symbol::new(resolved.meta(id).id());
 
-        let normalizer = Normalizer::new(
-            value_bind.value,
-            next,
-            hole,
-            resolved,
-            typed,
-            builder,
-            type_interner,
-            str_interner,
-        );
+        let normalizer = Normalizer::new(value_bind.value, next, hole, resolved, builder);
         next = normalizer.run(tree);
     }
 
@@ -254,13 +240,11 @@ pub fn lower_module(
 pub fn lower(
     entry_point: ValueSym,
     scopes: &ModuleScopes,
-    type_annots: &TypeAnnotations,
     module_order: &[ModuleSym],
     value_orders: &ValueOrders,
     forest: &Forest,
     arena: &Bump,
     str_interner: &StrInterner,
-    type_interner: &mut TypeInterner,
     print_options: PrintOptions,
 ) -> Program {
     let mut builder = IrBuilder::new();
@@ -275,16 +259,7 @@ pub fn lower(
         let value_order = &value_orders[&sym];
         let tree = &*forest[scope.info.source];
 
-        next = lower_module(
-            next,
-            value_order,
-            scope,
-            &type_annots[&sym],
-            tree,
-            &mut builder,
-            type_interner,
-            str_interner,
-        );
+        next = lower_module(next, value_order, scope, tree, &mut builder);
 
         modules.push(LoweredModule { sym });
     }

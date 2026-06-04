@@ -4,5 +4,5 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-kola-protocol.workspace = true
+kola-utils.workspace = true
 strum = { version = "0.28.0", features = ["derive"] }

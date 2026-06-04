@@ -6,7 +6,6 @@ edition = "2024"
 [dependencies]
 kola-builtins.workspace = true
 kola-ir.workspace = true
-kola-protocol.workspace = true
 kola-runtime.workspace = true
 kola-machine.workspace = true
 kola-lowerer.workspace = true

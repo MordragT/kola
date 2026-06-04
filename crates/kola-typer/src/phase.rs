@@ -1,8 +1,7 @@
 use kola_collections::HashMap;
 use kola_resolver::symbol::ModuleSym;
 use kola_tree::meta::*;
-
-use crate::types;
+use kola_types::types;
 
 pub type TypeAnnotations = HashMap<ModuleSym, TypedNodes>;
 pub type TypedNodes = MetaMap<TypePhase>;

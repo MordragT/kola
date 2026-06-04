@@ -47,12 +47,12 @@ use kola_collections::OrdSet;
 use kola_span::{Diagnostic, Loc};
 use kola_syntax::loc::Locations;
 use kola_tree::prelude::*;
+use kola_types::types::{
+    Label, LabelOrVar, ListType, MonoType, PrimitiveType, RecordType, Row, VariantType,
+};
 use kola_utils::{as_variant, errors::Errors};
 
-use crate::{
-    phase::TypedNodes,
-    types::{Label, LabelOrVar, ListType, MonoType, PrimitiveType, RecordType, Row, VariantType},
-};
+use crate::phase::TypedNodes;
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash)]
 pub struct ExhaustError {

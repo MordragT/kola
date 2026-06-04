@@ -1,13 +1,15 @@
 use derive_more::Display;
 use kola_span::{Loc, Located};
+use kola_types::{
+    class::{CheckClass, TypeClass, TypeClassEnv},
+    substitute::{Substitutable, Substitution},
+    types::{MonoType, TypeVar},
+};
 use kola_utils::errors::Errors;
 use log::trace;
 
 use crate::{
-    env::TypeClassEnv,
     error::{TypeError, TypeErrors},
-    substitute::{Substitutable, Substitution},
-    types::{MonoType, TypeClass, TypeVar, Typed},
     unify::Unifiable,
 };
 
@@ -56,7 +58,7 @@ impl Constraints {
         self.0.push(c);
     }
 
-    pub fn constrain_class(&mut self, expected: TypeClass, actual: MonoType, span: Loc) {
+    pub fn check_class(&mut self, expected: TypeClass, actual: MonoType, span: Loc) {
         let c = Constraint::Class {
             expected,
             actual,
@@ -142,8 +144,8 @@ impl Constraints {
                     trace!("CLASS: {} :: {}", actual, expected);
 
                     actual
-                        .constrain_class(expected, class_env)
-                        .map_err(|e| (Errors::unit(e), span))?;
+                        .check_class(expected, class_env)
+                        .map_err(|e| (Errors::unit(e.into()), span))?;
                 }
                 Constraint::Equal {
                     expected,
@@ -187,7 +189,9 @@ impl Constraints {
                         return Err((errs, span));
                     };
 
-                    let result_t = lhs.merge_left(&rhs).map_err(|e| (Errors::unit(e), span))?;
+                    let result_t = lhs
+                        .merge_left(&rhs)
+                        .map_err(|e| (Errors::unit(e.into()), span))?;
 
                     s.insert(result, MonoType::Record(Box::new(result_t)));
                 }
@@ -218,7 +222,9 @@ impl Constraints {
                         return Err((errs, span));
                     };
 
-                    let result_t = lhs.merge_right(&rhs).map_err(|e| (Errors::unit(e), span))?;
+                    let result_t = lhs
+                        .merge_right(&rhs)
+                        .map_err(|e| (Errors::unit(e.into()), span))?;
 
                     s.insert(result, MonoType::Record(Box::new(result_t)));
                 }
@@ -249,7 +255,9 @@ impl Constraints {
                         return Err((errs, span));
                     };
 
-                    let result_t = lhs.merge_deep(&rhs).map_err(|e| (Errors::unit(e), span))?;
+                    let result_t = lhs
+                        .merge_deep(&rhs)
+                        .map_err(|e| (Errors::unit(e.into()), span))?;
 
                     s.insert(result, MonoType::Record(Box::new(result_t)));
                 }

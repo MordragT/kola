@@ -5,10 +5,8 @@ edition = "2024"
 
 [dependencies]
 kola-ir.workspace = true
-kola-protocol.workspace = true
 kola-tree.workspace = true
 kola-resolver.workspace = true
-kola-typer.workspace = true
 kola-builtins.workspace = true
 kola-collections.workspace = true
 kola-print.workspace = true
@@ -18,7 +16,4 @@ log.workspace = true
 [dev-dependencies]
 kola-runtime.workspace = true
 kola-machine.workspace = true
-# camino.workspace = true
 kola-utils.workspace = true
-# kola-syntax.workspace = true
-# kola-span.workspace = true

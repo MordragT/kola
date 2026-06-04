@@ -52,52 +52,6 @@ impl Substitute for ResolvedValue {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub enum ResolvedTypeWitness {
-    Reference(TypeSym),
-    Label(ValueName),
-    Builtin(BuiltinType),
-}
-
-impl ResolvedTypeWitness {
-    pub fn into_builtin(self) -> Option<BuiltinType> {
-        as_variant!(self, Self::Builtin)
-    }
-
-    pub fn into_label(self) -> Option<ValueName> {
-        as_variant!(self, Self::Label)
-    }
-
-    pub fn into_reference(self) -> Option<TypeSym> {
-        as_variant!(self, Self::Reference)
-    }
-}
-
-impl fmt::Display for ResolvedTypeWitness {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            Self::Reference(sym) => sym.fmt(f),
-            Self::Label(name) => name.fmt(f),
-            Self::Builtin(ty) => ty.fmt(f),
-        }
-    }
-}
-
-impl Substitute for ResolvedTypeWitness {
-    fn try_subst(&self, s: &HashMap<AnySym, AnySym>) -> Option<Self>
-    where
-        Self: Sized,
-    {
-        if let Self::Reference(sym) = self
-            && let Some(to) = sym.try_subst(s)
-        {
-            Some(Self::Reference(to))
-        } else {
-            None
-        }
-    }
-}
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum ResolvedType {
     Reference(TypeSym),
     Builtin(BuiltinType),
@@ -226,7 +180,6 @@ impl Phase for ResolvePhase {
     type LambdaExpr = ValueSym; // Creates symbol for the parameter binding
     type HandlerClause = ValueSym; // Creates symbol for the handler parameter
 
-    // type TypeWitnessExpr = ResolvedTypeWitness;
     type TypeWitnessExpr = !;
 
     // ===== TYPES =====

@@ -1,6 +1,6 @@
 use std::{ops::ControlFlow, rc::Rc};
 
-use kola_builtins::{Builtin, BuiltinType};
+use kola_builtins::{BuiltinLexicon, BuiltinType};
 use kola_resolver::{
     phase::{ResolvedModule, ResolvedNodes},
     symbol::ValueSym,
@@ -8,17 +8,20 @@ use kola_resolver::{
 use kola_span::{Diagnostic, IntoDiagnostic, Loc, Report};
 use kola_syntax::prelude::*;
 use kola_tree::{node::Vis, prelude::*};
-use kola_utils::{interner::StrInterner, interner_ext::InternerExt};
+use kola_types::{
+    class::TypeClass,
+    env::{LocalTypeEnv, TypeEnv},
+    kind::Kind,
+    substitute::{Substitutable, Substitution},
+    types::{CompType, Label, LabelOrVar, LabeledType, MonoType, PolyType, Row, TypeVar},
+};
+use kola_utils::interner::StrInterner;
 
 use crate::{
+    builtins::builtin_type,
     constraints::{Constraints, MergeKind},
-    env::{LocalTypeEnv, TypeEnv},
     pattern_typer::PatternTyper,
     phase::{TypePhase, TypedNodes},
-    substitute::{Substitutable, Substitution},
-    types::{
-        CompType, Kind, Label, LabelOrVar, LabeledType, MonoType, PolyType, Row, TypeClass, TypeVar,
-    },
 };
 
 // https://blog.stimsina.com/post/implementing-a-hindley-milner-type-system-part-2
@@ -42,6 +45,7 @@ pub struct Typer<'a, N> {
     entry_points: &'a [ValueSym],
     cons: &'a mut Constraints,
     interner: &'a mut StrInterner,
+    lexicon: &'a BuiltinLexicon,
 }
 
 impl<'a, N> Typer<'a, N> {
@@ -54,6 +58,7 @@ impl<'a, N> Typer<'a, N> {
         entry_points: &'a [ValueSym],
         cons: &'a mut Constraints,
         interner: &'a mut StrInterner,
+        lexicon: &'a BuiltinLexicon,
     ) -> Self {
         Self {
             root_id,
@@ -68,6 +73,7 @@ impl<'a, N> Typer<'a, N> {
             entry_points,
             cons,
             interner,
+            lexicon,
         }
     }
 
@@ -824,7 +830,10 @@ where
         let mut value_t = self.types.meta(value).clone();
 
         if let Some(ty_scheme) = ty_scheme {
-            let expected_t = self.types.meta(ty_scheme).instantiate(self.cons);
+            let expected_t = self
+                .types
+                .meta(ty_scheme)
+                .instantiate(|from, to| self.cons.constrain_inst(from, to));
             self.cons.constrain_equal(expected_t, value_t.clone(), span);
         }
 
@@ -979,7 +988,7 @@ where
                 );
             }
 
-            poly_t.instantiate(self.cons)
+            poly_t.instantiate(|from, to| self.cons.constrain_inst(from, to))
         } else if let Some(local_t) = self.local_env.get(&name) {
             // Local let-bound variable
             local_t.clone()
@@ -990,18 +999,11 @@ where
             .and_then(|sym| self.module_env.get_value(sym))
         {
             // Module-level value definition
-            poly_t.instantiate(self.cons)
+            poly_t.instantiate(|from, to| self.cons.constrain_inst(from, to))
         } else if let Some(builtin_id) = self.resolved.meta(id).into_builtin() {
-            let builtin = Builtin::from_id(builtin_id);
+            let pt = builtin_type(builtin_id, &self.lexicon);
 
-            let pt = match PolyType::from_protocol(builtin.type_scheme(), self.interner) {
-                Ok(pt) => pt,
-                Err(e) => {
-                    return ControlFlow::Break(self.interner.with(&e).into_diagnostic(span));
-                }
-            };
-
-            pt.instantiate(self.cons)
+            pt.instantiate(|from, to| self.cons.constrain_inst(from, to))
         } else {
             return ControlFlow::Break(Diagnostic::error(span, "Value not found in scope"));
         };
@@ -1021,7 +1023,7 @@ where
             let head_t = LabeledType::new(label, value_t.clone());
 
             self.cons.constrain_equal(
-                MonoType::record(Row::extension(head_t, Row::var())),
+                MonoType::record(Row::ext(head_t, Row::var())),
                 result_t.clone(),
                 span,
             );
@@ -1158,7 +1160,7 @@ where
             let head_t = LabeledType::new(label, value_t.clone());
 
             self.cons.constrain_equal(
-                MonoType::record(Row::extension(head_t, Row::var())),
+                MonoType::record(Row::ext(head_t, Row::var())),
                 source_t.clone(),
                 span,
             );
@@ -1169,7 +1171,7 @@ where
         let source_head_t = LabeledType::var();
         let source_tail_t = Row::var();
         self.cons.constrain_equal(
-            MonoType::record(Row::extension(source_head_t.clone(), source_tail_t.clone())),
+            MonoType::record(Row::ext(source_head_t.clone(), source_tail_t.clone())),
             source_t.clone(),
             span,
         );
@@ -1188,10 +1190,7 @@ where
         let label = Label(field.get(tree).0.clone());
         let head_t = LabeledType::new(label, value_t.clone());
 
-        let result_t = MonoType::record(Row::extension(
-            head_t,
-            Row::extension(source_head_t, source_tail_t),
-        ));
+        let result_t = MonoType::record(Row::ext(head_t, Row::ext(source_head_t, source_tail_t)));
 
         self.insert_type(id, result_t);
         ControlFlow::Continue(())
@@ -1256,7 +1255,7 @@ where
             let head_t = LabeledType::new(label, value_t.clone());
 
             self.cons.constrain_equal(
-                MonoType::record(Row::extension(head_t, Row::var())),
+                MonoType::record(Row::ext(head_t, Row::var())),
                 source_t.clone(),
                 span,
             );
@@ -1282,7 +1281,7 @@ where
         let tail_t = Row::var();
 
         self.cons.constrain_equal(
-            MonoType::record(Row::extension(head_t, tail_t.clone())),
+            MonoType::record(Row::ext(head_t, tail_t.clone())),
             source_t.clone(),
             span,
         );
@@ -1309,7 +1308,7 @@ where
             node::RecordUpdateOp::AddAssign => {
                 let addable_t = MonoType::var();
                 self.cons
-                    .constrain_class(TypeClass::Addable, addable_t.clone(), span);
+                    .check_class(TypeClass::Addable, addable_t.clone(), span);
                 addable_t
             }
             node::RecordUpdateOp::SubAssign
@@ -1389,7 +1388,7 @@ where
             let head_t = LabeledType::new(label, value_t.clone());
 
             self.cons.constrain_equal(
-                MonoType::record(Row::extension(head_t, Row::var())),
+                MonoType::record(Row::ext(head_t, Row::var())),
                 source_t.clone(),
                 span,
             );
@@ -1404,7 +1403,7 @@ where
         let tail_t = Row::var();
 
         self.cons.constrain_equal(
-            MonoType::record(Row::extension(old_head_t, tail_t.clone())),
+            MonoType::record(Row::ext(old_head_t, tail_t.clone())),
             source_t.clone(),
             span,
         );
@@ -1431,7 +1430,7 @@ where
         );
 
         let new_head_t = LabeledType::new(label, new_value_t);
-        let result_t = MonoType::record(Row::extension(new_head_t, tail_t));
+        let result_t = MonoType::record(Row::ext(new_head_t, tail_t));
 
         self.insert_type(id, result_t);
         ControlFlow::Continue(())
@@ -1453,9 +1452,9 @@ where
         let rhs_t = self.types.meta(rhs).clone();
 
         // self.cons
-        //     .constrain_class(TypeClass::Record, lhs_t.clone(), span);
+        //     .check_class(TypeClass::Record, lhs_t.clone(), span);
         // self.cons
-        //     .constrain_class(TypeClass::Record, rhs_t.clone(), span);
+        //     .check_class(TypeClass::Record, rhs_t.clone(), span);
 
         let result = TypeVar::new(Kind::Type);
         self.cons
@@ -1537,7 +1536,7 @@ where
             node::BinaryOp::Add => {
                 let addable_t = MonoType::var();
                 self.cons
-                    .constrain_class(TypeClass::Addable, addable_t.clone(), span);
+                    .check_class(TypeClass::Addable, addable_t.clone(), span);
                 (addable_t, MonoType::NUM)
             }
             node::BinaryOp::Sub
@@ -1551,7 +1550,7 @@ where
             | node::BinaryOp::GreaterEq => {
                 let comparable_t = MonoType::var();
                 self.cons
-                    .constrain_class(TypeClass::Comparable, comparable_t.clone(), span);
+                    .check_class(TypeClass::Comparable, comparable_t.clone(), span);
                 (comparable_t, MonoType::BOOL)
             }
             // Logical
@@ -1560,7 +1559,7 @@ where
             node::BinaryOp::Eq | node::BinaryOp::NotEq => {
                 let equatable_t = MonoType::var();
                 self.cons
-                    .constrain_class(TypeClass::Equatable, equatable_t.clone(), span);
+                    .check_class(TypeClass::Equatable, equatable_t.clone(), span);
                 (equatable_t, MonoType::BOOL)
             }
             // Other
@@ -1962,7 +1961,7 @@ where
             // unify(remaining, {label_i : α_i → β_i | ρ_i})
             self.cons.constrain_equal(
                 MonoType::Row(Box::new(remaining_effect)),
-                MonoType::Row(Box::new(Row::extension(head, tail.clone()))),
+                MonoType::Row(Box::new(Row::ext(head, tail.clone()))),
                 span,
             );
 
@@ -1999,7 +1998,7 @@ where
         let op_t = MonoType::func(arg_t, CompType::pure(result_t.clone()));
         let op_labeled_t = LabeledType::new(Label(name), op_t);
 
-        let extension = Row::extension(op_labeled_t, Row::var());
+        let extension = Row::ext(op_labeled_t, Row::var());
 
         // Guard: must be in a computation scope
         let Some(ambient) = self.effects_stack.last().cloned() else {
@@ -2031,7 +2030,7 @@ where
         let row_var = Row::var();
 
         let arg_t = MonoType::var();
-        let ret_t = Row::extension(LabeledType::new(tag, arg_t.clone()), row_var);
+        let ret_t = Row::ext(LabeledType::new(tag, arg_t.clone()), row_var);
         let tag_t = MonoType::func(arg_t, MonoType::variant(ret_t));
 
         self.insert_type(id, tag_t);
@@ -2045,9 +2044,10 @@ where
         tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
         let t = match *id.get(tree) {
-            node::TypeWitnessExpr::Qualified(qual_id) => {
-                self.types.meta(qual_id).instantiate(self.cons)
-            }
+            node::TypeWitnessExpr::Qualified(qual_id) => self
+                .types
+                .meta(qual_id)
+                .instantiate(|from, to| self.cons.constrain_inst(from, to)),
             node::TypeWitnessExpr::Label(label_id) => MonoType::label(Label(label_id.get(tree).0)),
         };
 
@@ -2092,9 +2092,10 @@ where
 mod tests {
 
     use kola_tree::prelude::*;
+    use kola_types::types::*;
     use kola_utils::interner::StrInterner;
 
-    use crate::{error::TypeError, test::run_typer, types::*};
+    use crate::{error::TypeError, test::run_typer};
 
     #[test]
     fn literal() {

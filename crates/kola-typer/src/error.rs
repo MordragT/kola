@@ -1,20 +1,16 @@
-use kola_span::IntoDiagnostic;
+use std::fmt::Pointer;
+
 use kola_utils::{
     display::DisplayWith,
     errors::Errors,
     interner::{StrInterner, StrKey},
 };
-use thiserror::Error;
 
-use crate::types::{Kind, LabelOrVar, MonoType, PolyType, TypeClass, TypeVar};
-
-#[derive(Debug, Clone, Error)]
-pub enum TypeConversionError {
-    #[error("Cannot convert `{0}` to a monomorphic type")]
-    NotMonomorphic(PolyType),
-}
-
-impl IntoDiagnostic for TypeConversionError {}
+use kola_types::{
+    class::TypeClassError,
+    kind::{Kind, KindError},
+    types::{LabelOrVar, MergeError, MonoType, TypeVar},
+};
 
 pub type TypeErrors = Errors<TypeError>;
 
@@ -24,10 +20,7 @@ pub enum TypeError {
     Occurs(TypeVar),
     NotExistent(TypeVar),
     ExpectedRecord(MonoType),
-    CannotMerge {
-        lhs: MonoType,
-        rhs: MonoType,
-    },
+    CannotMerge(MergeError),
     CannotMergeLabel {
         label: LabelOrVar,
         lhs: MonoType,
@@ -43,14 +36,8 @@ pub enum TypeError {
         actual: MonoType,
         cause: TypeErrors,
     },
-    CannotConstrainClass {
-        expected: TypeClass,
-        actual: MonoType,
-    },
-    CannotConstrainKind {
-        expected: Kind,
-        actual: MonoType,
-    },
+    CannotConstrainClass(TypeClassError),
+    CannotConstrainKind(KindError),
     KindMismatch {
         expected: Kind,
         actual: Kind,
@@ -68,9 +55,7 @@ impl DisplayWith<StrInterner> for TypeError {
             TypeError::ExpectedRecord(mono) => {
                 writeln!(f, "Expected Record: {}", mono)
             }
-            TypeError::CannotMerge { lhs, rhs } => {
-                writeln!(f, "Cannot Merge: Cannot merge `{}` with `{}`", lhs, rhs)
-            }
+            TypeError::CannotMerge(e) => e.fmt(f),
             TypeError::CannotMergeLabel { label, lhs, rhs } => {
                 writeln!(f, "Cannot Merge Label: {} : {} with {}", label, lhs, rhs)
             }
@@ -92,12 +77,8 @@ impl DisplayWith<StrInterner> for TypeError {
                 )?;
                 cause.fmt(f, interner)
             }
-            TypeError::CannotConstrainClass { expected, actual } => {
-                writeln!(f, "Cannot Constrain: {} {}", expected, actual)
-            }
-            TypeError::CannotConstrainKind { expected, actual } => {
-                writeln!(f, "Cannot Constrain: {} {}", expected, actual)
-            }
+            TypeError::CannotConstrainClass(e) => e.fmt(f),
+            TypeError::CannotConstrainKind(e) => e.fmt(f),
             TypeError::KindMismatch { expected, actual } => {
                 writeln!(f, "Kind Mismatch: Expected {} but got {}", expected, actual)
             }
@@ -110,5 +91,23 @@ impl DisplayWith<StrInterner> for TypeError {
                 label.fmt(f, interner)
             }
         }
+    }
+}
+
+impl From<MergeError> for TypeError {
+    fn from(e: MergeError) -> Self {
+        TypeError::CannotMerge(e)
+    }
+}
+
+impl From<TypeClassError> for TypeError {
+    fn from(e: TypeClassError) -> Self {
+        TypeError::CannotConstrainClass(e)
+    }
+}
+
+impl From<KindError> for TypeError {
+    fn from(e: KindError) -> Self {
+        TypeError::CannotConstrainKind(e)
     }
 }

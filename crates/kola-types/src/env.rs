@@ -1,6 +1,5 @@
 use std::{collections::HashMap, ops::Index};
 
-use indexmap::IndexMap;
 use kola_resolver::{
     defs::{TypeDef, ValueDef},
     info::ModuleInfo,
@@ -8,9 +7,7 @@ use kola_resolver::{
 };
 use kola_utils::{interner::StrKey, scope::LinearScope};
 
-use crate::types::{ModuleType, MonoType, PolyType, TypeClass, TypeVar};
-
-pub type TypeClassEnv = IndexMap<TypeVar, Vec<TypeClass>>;
+use crate::types::{ModuleType, MonoType, PolyType, TypeVar};
 
 pub trait BoundVars {
     /// Extends the given vector with the type variables that are bound in this type.

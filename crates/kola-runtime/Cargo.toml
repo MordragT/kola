@@ -7,7 +7,6 @@ edition = "2024"
 kola-builtins.workspace = true
 kola-ir.workspace = true
 kola-utils.workspace = true
-kola-protocol.workspace = true
 serde.workspace = true
 serde_json.workspace = true
 thiserror.workspace = true

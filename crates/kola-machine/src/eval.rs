@@ -1,6 +1,4 @@
-use std::fs;
-
-use kola_builtins::BuiltinId;
+use kola_builtins::{BuiltinId, BuiltinLabel};
 use kola_ir::{
     id::Id,
     instr::{
@@ -20,14 +18,15 @@ use kola_runtime::{
     list::ListIdx,
     record::RecordIdx,
     string::StringIdx,
-    value::{Value, to_usize_exact},
+    value::Value,
 };
 
 use crate::{
+    builtins,
     config::{MachineState, OperationConfig, PatternConfig, StandardConfig},
     cont::{Cont, ContFrame},
     handler::{Handler, ReturnClause},
-    machine::MachineContext,
+    machine::Ctx,
 };
 
 #[inline]
@@ -52,68 +51,44 @@ pub fn eval_atom(atom: Atom, env: EnvIdx, envs: &EnvArena) -> Result<Value, Stri
         Atom::Builtin(b) => Ok(Value::Builtin(b)),
         Atom::Tag(t) => Ok(Value::Tag(t)),
         Atom::Witness(w) => Ok(Value::Witness(w)),
+        Atom::BuiltinWitness(bw) => Ok(Value::BuiltinWitness(bw)),
+        Atom::Label(l) => Ok(Value::Label(l)),
     }
 }
 
 pub trait Eval {
-    fn eval(
-        &self,
-        env: EnvIdx,
-        cont: Cont,
-        context: &mut MachineContext,
-        heap: &mut Heap,
-    ) -> MachineState;
+    fn eval(&self, env: EnvIdx, cont: Cont, ctx: &mut Ctx, heap: &mut Heap) -> MachineState;
 }
 
 impl Eval for Expr {
-    fn eval(
-        &self,
-        env: EnvIdx,
-        cont: Cont,
-        context: &mut MachineContext,
-        heap: &mut Heap,
-    ) -> MachineState {
+    fn eval(&self, env: EnvIdx, cont: Cont, ctx: &mut Ctx, heap: &mut Heap) -> MachineState {
         match self {
-            Expr::Ret(ret_expr) => ret_expr.eval(env, cont, context, heap),
-            Expr::Call(call) => call.eval(env, cont, context, heap),
-            Expr::Handle(handle) => handle.eval(env, cont, context, heap),
-            Expr::Do(do_expr) => do_expr.eval(env, cont, context, heap),
-            Expr::Let(let_expr) => let_expr.eval(env, cont, context, heap),
-            Expr::If(if_expr) => if_expr.eval(env, cont, context, heap),
-            Expr::Unary(unary_expr) => unary_expr.eval(env, cont, context, heap),
-            Expr::Binary(binary_expr) => binary_expr.eval(env, cont, context, heap),
-            Expr::List(list_expr) => list_expr.eval(env, cont, context, heap),
-            Expr::Record(record_expr) => record_expr.eval(env, cont, context, heap),
-            Expr::RecordExtend(record_extend_expr) => {
-                record_extend_expr.eval(env, cont, context, heap)
-            }
+            Expr::Ret(ret_expr) => ret_expr.eval(env, cont, ctx, heap),
+            Expr::Call(call) => call.eval(env, cont, ctx, heap),
+            Expr::Handle(handle) => handle.eval(env, cont, ctx, heap),
+            Expr::Do(do_expr) => do_expr.eval(env, cont, ctx, heap),
+            Expr::Let(let_expr) => let_expr.eval(env, cont, ctx, heap),
+            Expr::If(if_expr) => if_expr.eval(env, cont, ctx, heap),
+            Expr::Unary(unary_expr) => unary_expr.eval(env, cont, ctx, heap),
+            Expr::Binary(binary_expr) => binary_expr.eval(env, cont, ctx, heap),
+            Expr::List(list_expr) => list_expr.eval(env, cont, ctx, heap),
+            Expr::Record(record_expr) => record_expr.eval(env, cont, ctx, heap),
+            Expr::RecordExtend(record_extend_expr) => record_extend_expr.eval(env, cont, ctx, heap),
             Expr::RecordRestrict(record_restrict_expr) => {
-                record_restrict_expr.eval(env, cont, context, heap)
+                record_restrict_expr.eval(env, cont, ctx, heap)
             }
-            Expr::RecordUpdate(record_update_expr) => {
-                record_update_expr.eval(env, cont, context, heap)
-            }
-            Expr::RecordAccess(record_access_expr) => {
-                record_access_expr.eval(env, cont, context, heap)
-            }
-            Expr::PatternMatch(pattern_match_expr) => {
-                pattern_match_expr.eval(env, cont, context, heap)
-            }
+            Expr::RecordUpdate(record_update_expr) => record_update_expr.eval(env, cont, ctx, heap),
+            Expr::RecordAccess(record_access_expr) => record_access_expr.eval(env, cont, ctx, heap),
+            Expr::PatternMatch(pattern_match_expr) => pattern_match_expr.eval(env, cont, ctx, heap),
         }
     }
 }
 
 // M-RET : Return with a value
 impl Eval for RetExpr {
-    fn eval(
-        &self,
-        env: EnvIdx,
-        mut cont: Cont,
-        context: &mut MachineContext,
-        heap: &mut Heap,
-    ) -> MachineState {
+    fn eval(&self, env: EnvIdx, mut cont: Cont, ctx: &mut Ctx, heap: &mut Heap) -> MachineState {
         // Evaluate the return machine state of value
-        let value = match eval_atom(self.arg.get(&context.ir), env, &heap.envs) {
+        let value = match eval_atom(self.arg.get(&ctx.ir), env, &heap.envs) {
             Ok(value) => value,
             Err(err) => return MachineState::Error(err),
         };
@@ -140,26 +115,20 @@ impl Eval for RetExpr {
 
                 // Continue with the next expression
                 MachineState::Standard(StandardConfig {
-                    control: body.get(&context.ir),
+                    control: body.get(&ctx.ir),
                     env,
                     cont,
                 })
             }
             ContFrame::Handler { handler, env } => {
-                eval_handler_frame(handler, env, value, cont, context, heap, *self)
+                eval_handler_frame(handler, env, value, cont, ctx, heap, *self)
             }
-            ContFrame::NumRec { data, step } => {
-                eval_num_rec(data, step, value, cont, context, heap)
-            }
-            ContFrame::ListRec { data, step } => {
-                eval_list_rec(data, step, value, cont, context, heap)
-            }
+            ContFrame::NumRec { data, step } => eval_num_rec(data, step, value, cont, ctx, heap),
+            ContFrame::ListRec { data, step } => eval_list_rec(data, step, value, cont, ctx, heap),
             ContFrame::RecordRec { data, step } => {
-                eval_record_rec(data, step, value, cont, context, heap)
+                eval_record_rec(data, step, value, cont, ctx, heap)
             }
-            ContFrame::StrRec { data, step } => {
-                eval_str_rec(data, step, value, cont, context, heap)
-            }
+            ContFrame::StrRec { data, step } => eval_str_rec(data, step, value, cont, ctx, heap),
         }
     }
 }
@@ -179,7 +148,7 @@ fn eval_handler_frame(
     env: EnvIdx,
     value: Value,
     cont: Cont,
-    context: &MachineContext,
+    ctx: &Ctx,
     heap: &mut Heap,
     expr: RetExpr,
 ) -> MachineState {
@@ -204,7 +173,7 @@ fn eval_handler_frame(
 
             // Evaluate the return handler body
             MachineState::Standard(StandardConfig {
-                control: body.get(&context.ir),
+                control: body.get(&ctx.ir),
                 env,
                 cont,
             })
@@ -218,7 +187,7 @@ fn eval_num_rec(
     step: Closure,
     value: Value,
     mut cont: Cont,
-    context: &MachineContext,
+    ctx: &Ctx,
     heap: &mut Heap,
 ) -> MachineState {
     if data >= 1.0 {
@@ -234,14 +203,14 @@ fn eval_num_rec(
     } = step;
 
     // Create argument for the step function
-    let acc = (heap.intern_str("acc"), value); // value = result from previous step
-    let head = (heap.intern_str("head"), Value::Num(data));
+    let acc = (ctx.lexicon.label(BuiltinLabel::Acc), value); // value = result from previous step
+    let head = (ctx.lexicon.label(BuiltinLabel::Head), Value::Num(data));
     let record = heap.records.alloc_fixed([acc, head]);
 
     let env = heap.envs.insert(env, param, Value::Record(record));
 
     MachineState::Standard(StandardConfig {
-        control: body.get(&context.ir),
+        control: body.get(&ctx.ir),
         env,
         cont,
     })
@@ -253,7 +222,7 @@ fn eval_list_rec(
     step: Closure,
     value: Value,
     mut cont: Cont,
-    context: &MachineContext,
+    ctx: &Ctx,
     heap: &mut Heap,
 ) -> MachineState {
     let (head, tail) = heap.lists.split_front(data);
@@ -269,14 +238,14 @@ fn eval_list_rec(
     } = step;
 
     // Create argument for the step function
-    let acc = (heap.intern_str("acc"), value); // value = result from previous step
-    let head = (heap.intern_str("head"), head);
+    let acc = (ctx.lexicon.label(BuiltinLabel::Acc), value); // value = result from previous step
+    let head = (ctx.lexicon.label(BuiltinLabel::Head), head);
     let record = heap.records.alloc_fixed([acc, head]);
 
     let env = heap.envs.insert(env, param, Value::Record(record));
 
     MachineState::Standard(StandardConfig {
-        control: body.get(&context.ir),
+        control: body.get(&ctx.ir),
         env,
         cont,
     })
@@ -288,16 +257,16 @@ fn eval_record_rec(
     step: Closure,
     value: Value,
     mut cont: Cont,
-    context: &MachineContext,
+    ctx: &Ctx,
     heap: &mut Heap,
 ) -> MachineState {
     let (first, tail) = heap.records.split_front(data);
 
     let key = (
-        heap.intern_str("key"),
+        ctx.lexicon.label(BuiltinLabel::Key),
         Value::Str(Some(StringIdx::Static(first.0))),
     );
-    let val = (heap.intern_str("value"), first.1);
+    let val = (ctx.lexicon.label(BuiltinLabel::Value), first.1);
     let head = heap.records.alloc_fixed([key, val]);
 
     // Continue with the next frame
@@ -311,14 +280,14 @@ fn eval_record_rec(
     } = step;
 
     // Create argument for the step function
-    let acc = (heap.intern_str("acc"), value); // value = result from previous step
-    let head = (heap.intern_str("head"), Value::Record(head));
+    let acc = (ctx.lexicon.label(BuiltinLabel::Acc), value); // value = result from previous step
+    let head = (ctx.lexicon.label(BuiltinLabel::Head), Value::Record(head));
     let record = heap.records.alloc_fixed([acc, head]);
 
     let env = heap.envs.insert(env, param, Value::Record(record));
 
     MachineState::Standard(StandardConfig {
-        control: body.get(&context.ir),
+        control: body.get(&ctx.ir),
         env,
         cont,
     })
@@ -330,7 +299,7 @@ fn eval_str_rec(
     step: Closure,
     value: Value,
     mut cont: Cont,
-    context: &MachineContext,
+    ctx: &Ctx,
     heap: &mut Heap,
 ) -> MachineState {
     let (head, tail) = heap.strings.split_front(data);
@@ -346,14 +315,17 @@ fn eval_str_rec(
     } = step;
 
     // Create argument for the step function
-    let acc = (heap.intern_str("acc"), value); // value = result from previous step
-    let head = (heap.intern_str("head"), Value::Str(Some(head)));
+    let acc = (ctx.lexicon.label(BuiltinLabel::Acc), value); // value = result from previous step
+    let head = (
+        ctx.lexicon.label(BuiltinLabel::Head),
+        Value::Str(Some(head)),
+    );
     let record = heap.records.alloc_fixed([acc, head]);
 
     let env = heap.envs.insert(env, param, Value::Record(record));
 
     MachineState::Standard(StandardConfig {
-        control: body.get(&context.ir),
+        control: body.get(&ctx.ir),
         env,
         cont,
     })
@@ -368,13 +340,7 @@ fn eval_str_rec(
 // 4. Using an extended environment that adds the binding [x ↦ W] to the function's captured environment γ'
 // 5. The continuation κ remains unchanged during function application
 impl Eval for CallExpr {
-    fn eval(
-        &self,
-        env: EnvIdx,
-        mut cont: Cont,
-        context: &mut MachineContext,
-        heap: &mut Heap,
-    ) -> MachineState {
+    fn eval(&self, env: EnvIdx, mut cont: Cont, ctx: &mut Ctx, heap: &mut Heap) -> MachineState {
         let Self {
             bind,
             func,
@@ -383,12 +349,12 @@ impl Eval for CallExpr {
         } = *self;
 
         // Get the function and argument
-        let func_val = match eval_atom(func.get(&context.ir), env, &heap.envs) {
+        let func_val = match eval_atom(func.get(&ctx.ir), env, &heap.envs) {
             Ok(value) => value,
             Err(err) => return MachineState::Error(err),
         };
 
-        let arg_val = match eval_atom(arg.get(&context.ir), env, &heap.envs) {
+        let arg_val = match eval_atom(arg.get(&ctx.ir), env, &heap.envs) {
             Ok(value) => value,
             Err(err) => return MachineState::Error(err),
         };
@@ -408,7 +374,7 @@ impl Eval for CallExpr {
 
                 // Evaluate the function body
                 MachineState::Standard(StandardConfig {
-                    control: body.get(&context.ir),
+                    control: body.get(&ctx.ir),
                     env: func_env,
                     cont,
                 })
@@ -440,7 +406,7 @@ impl Eval for CallExpr {
             //     })
             // }
             Value::Builtin(builtin) => {
-                eval_builtin(builtin, bind, arg_val, env, cont, next, context, heap)
+                eval_builtin(builtin, bind, arg_val, env, cont, next, ctx, heap)
             }
             Value::Tag(tag) => {
                 let value = Value::Variant(heap.variants.alloc(tag, arg_val));
@@ -450,7 +416,7 @@ impl Eval for CallExpr {
 
                 // Continue with the next expression
                 MachineState::Standard(StandardConfig {
-                    control: next.get(&context.ir),
+                    control: next.get(&ctx.ir),
                     env,
                     cont,
                 })
@@ -466,771 +432,91 @@ fn eval_builtin(
     bind: Symbol,
     arg: Value,
     env: EnvIdx,
-    mut cont: Cont,
+    cont: Cont,
     next: Id<Expr>,
-    context: &mut MachineContext,
+    ctx: &mut Ctx,
     heap: &mut Heap,
 ) -> MachineState {
-    let value = match (builtin, arg) {
-        (BuiltinId::IoDebug, value) => {
-            println!("Debug: {:?}", value);
-            value
+    // Some builtins (list_rec, num_rec, record_rec, str_rec) interact
+    // directly with the continuation stack and environment, returning
+    // a MachineState. The rest (simple builtins) produce a Value.
+    let result = match builtin {
+        BuiltinId::ListRec => {
+            return builtins::list_rec(bind, arg, env, cont, next, ctx, heap);
         }
-        (BuiltinId::IoReadFile, Value::Str(path)) => {
-            let path = heap.strings.get_or_default(&path);
-
-            match fs::read_to_string(context.join_path(path)) {
-                Err(err) => {
-                    let err = heap.strings.alloc(&err.to_string());
-                    Value::Variant(heap.alloc_builtin_variant("Err", Value::Str(err)))
-                }
-                Ok(contents) => {
-                    let contents = heap.strings.alloc(&contents);
-                    Value::Variant(heap.alloc_builtin_variant("Ok", Value::Str(contents)))
-                }
-            }
+        BuiltinId::NumRec => {
+            return builtins::num_rec(bind, arg, env, cont, next, ctx, heap);
         }
-        (BuiltinId::IoWriteFile, Value::Record(record)) => {
-            let Some(Value::Str(path)) = heap.get_record_value(record, "path") else {
-                return MachineState::Error(
-                    "io_write_file requires 'path' field with a string".to_owned(),
-                );
-            };
-
-            let Some(Value::Str(contents)) = heap.get_record_value(record, "contents") else {
-                return MachineState::Error(
-                    "io_write_file requires 'contents' field with a string".to_owned(),
-                );
-            };
-
-            let [path, contents] = heap.strings.resolve_many([&path, &contents]);
-
-            match fs::write(context.join_path(path.get()), contents.get()) {
-                Err(err) => {
-                    let err = heap.strings.alloc(&err.to_string());
-                    Value::Variant(heap.alloc_builtin_variant("Err", Value::Str(err)))
-                }
-                Ok(_) => Value::Variant(heap.alloc_builtin_variant("Ok", Value::None)),
-            }
+        BuiltinId::RecordRec => {
+            return builtins::record_rec(bind, arg, env, cont, next, ctx, heap);
         }
-        (BuiltinId::ListLength, Value::List(list)) => Value::Num(heap.lists.len(list) as f64),
-        (BuiltinId::ListIsEmpty, Value::List(list)) => Value::Bool(heap.lists.is_empty(list)),
-        (BuiltinId::ListReverse, Value::List(list)) => Value::List(heap.lists.reverse(list)),
-        (BuiltinId::ListSum, Value::List(list)) => {
-            match heap.lists.try_fold(list, 0.0, |acc, v| {
-                if let Value::Num(n) = v {
-                    Ok(acc + n)
-                } else {
-                    Err(format!("Cannot sum non-numeric value: {:?}", v))
-                }
-            }) {
-                Ok(sum) => Value::Num(sum),
-                Err(err) => {
-                    return MachineState::Error(err);
-                }
-            }
-        }
-        (BuiltinId::ListContains, Value::Record(record)) => {
-            let Some(Value::List(list)) = heap.get_record_value(record, "list") else {
-                return MachineState::Error(
-                    "list_contains requires 'list' field with a list".to_owned(),
-                );
-            };
-
-            let Some(value) = heap.get_record_value(record, "value") else {
-                return MachineState::Error("list_contains requires 'value' field".to_owned());
-            };
-
-            Value::Bool(heap.lists.contains(list, value))
-        }
-        (BuiltinId::ListAt, Value::Record(record)) => {
-            let Some(Value::List(list)) = heap.get_record_value(record, "list") else {
-                return MachineState::Error(
-                    "list_get requires 'list' field with a list".to_owned(),
-                );
-            };
-
-            let Some(Value::Num(index)) = heap.get_record_value(record, "index") else {
-                return MachineState::Error("list_get requires 'index' field".to_owned());
-            };
-
-            match to_usize_exact(index).and_then(|idx| heap.lists.get_element(list, idx)) {
-                Some(value) => Value::Variant(heap.alloc_builtin_variant("Some", value)),
-                None => Value::Variant(heap.alloc_builtin_variant("None", Value::None)),
-            }
-        }
-        (BuiltinId::ListFirst, Value::List(list)) => match heap.lists.first(list) {
-            Some(head) => Value::Variant(heap.alloc_builtin_variant("Some", head)),
-            None => Value::Variant(heap.alloc_builtin_variant("None", Value::None)),
-        },
-        (BuiltinId::ListLast, Value::List(list)) => match heap.lists.last(list) {
-            Some(tail) => Value::Variant(heap.alloc_builtin_variant("Some", tail)),
-            None => Value::Variant(heap.alloc_builtin_variant("None", Value::None)),
-        },
-        (BuiltinId::ListPrepend, Value::Record(record)) => {
-            let Some(head_value) = heap.get_record_value(record, "head") else {
-                return MachineState::Error("list_prepend requires 'head' field".to_owned());
-            };
-
-            let Some(Value::List(tail_list)) = heap.get_record_value(record, "tail") else {
-                return MachineState::Error(
-                    "list_prepend requires 'tail' field with a list".to_owned(),
-                );
-            };
-
-            let result = heap.lists.push_front(tail_list, head_value);
-            Value::List(Some(result))
-        }
-        (BuiltinId::ListAppend, Value::Record(record)) => {
-            let Some(Value::List(head_list)) = heap.get_record_value(record, "head") else {
-                return MachineState::Error(
-                    "list_append requires 'head' field with a list".to_owned(),
-                );
-            };
-
-            let Some(tail_value) = heap.get_record_value(record, "tail") else {
-                return MachineState::Error("list_append requires 'tail' field".to_owned());
-            };
-
-            let result = heap.lists.push_back(head_list, tail_value);
-            Value::List(Some(result))
-        }
-        (BuiltinId::ListConcat, Value::Record(record)) => {
-            let Some(Value::List(head_list)) = heap.get_record_value(record, "head") else {
-                return MachineState::Error(
-                    "list_concat requires 'head' field with a list".to_owned(),
-                );
-            };
-
-            let Some(Value::List(tail_list)) = heap.get_record_value(record, "tail") else {
-                return MachineState::Error(
-                    "list_concat requires 'tail' field with a list".to_owned(),
-                );
-            };
-
-            let result = heap.lists.concat(head_list, tail_list);
-            Value::List(result)
-        }
-        // list_rec([], base, step) = base
-        // list_rec([head, ...tail], base, step) = step(head, list_rec(tail, base step))
-        (BuiltinId::ListRec, Value::Record(record)) => {
-            let Some(Value::List(list)) = heap.get_record_value(record, "list") else {
-                return MachineState::Error(
-                    "list_rec requires 'list' field with a list".to_owned(),
-                );
-            };
-
-            let Some(base) = heap.get_record_value(record, "base") else {
-                return MachineState::Error("list_rec requires 'base' field".to_owned());
-            };
-
-            let Some(Value::Closure(step)) = heap.get_record_value(record, "step") else {
-                return MachineState::Error(
-                    "list_rec requires 'step' field with a func".to_owned(),
-                );
-            };
-
-            let Some(list) = list else {
-                // Empty list — bind base directly, go to next
-                let env = heap.envs.insert(env, bind, base);
-
-                return MachineState::Standard(StandardConfig {
-                    control: next.get(&context.ir),
-                    env,
-                    cont,
-                });
-            };
-
-            let (head, tail) = heap.lists.split_front(list);
-
-            // Create a pure continuation frame for the next expression
-            let pure_frame = ContFrame::pure(bind, next, env);
-            cont.push(pure_frame);
-
-            // Create a primitive recursion frame for the list_rec operation,
-            // which will handle the recursive processing of the list.
-            if let Some(tail) = tail {
-                let rec_frame = ContFrame::list_rec(tail, step);
-                cont.push(rec_frame);
-            }
-
-            let Closure {
-                env,
-                func: Func { param, body },
-            } = step;
-
-            // Create argument for the step function
-            let acc = (heap.intern_str("acc"), base); // value = result from previous step
-            let head = (heap.intern_str("head"), head);
-            let record = heap.records.alloc_fixed([acc, head]);
-
-            let env = heap.envs.insert(env, param, Value::Record(record));
-
-            return MachineState::Standard(StandardConfig {
-                control: body.get(&context.ir),
-                env,
-                cont,
-            });
-        }
-        (BuiltinId::NumAbs, Value::Num(n)) => Value::Num(n.abs()),
-        (BuiltinId::NumSqrt, Value::Num(n)) => Value::Num(n.sqrt()),
-        (BuiltinId::NumFloor, Value::Num(n)) => Value::Num(n.floor()),
-        (BuiltinId::NumCeil, Value::Num(n)) => Value::Num(n.ceil()),
-        (BuiltinId::NumRound, Value::Num(n)) => Value::Num(n.round()),
-        (BuiltinId::NumSin, Value::Num(n)) => Value::Num(n.sin()),
-        (BuiltinId::NumCos, Value::Num(n)) => Value::Num(n.cos()),
-        (BuiltinId::NumTan, Value::Num(n)) => Value::Num(n.tan()),
-        (BuiltinId::NumLn, Value::Num(n)) => Value::Num(n.ln()),
-        (BuiltinId::NumLog10, Value::Num(n)) => Value::Num(n.log10()),
-        (BuiltinId::NumExp, Value::Num(n)) => Value::Num(n.exp()),
-        (BuiltinId::NumPow, Value::Record(record)) => {
-            let Some(Value::Num(base)) = heap.get_record_value(record, "base") else {
-                return MachineState::Error("num_pow requires 'base' field".to_owned());
-            };
-            let Some(Value::Num(exp)) = heap.get_record_value(record, "exp") else {
-                return MachineState::Error("num_pow requires 'exp' field".to_owned());
-            };
-
-            Value::Num(base.powf(exp))
-        }
-        (BuiltinId::NumRec, Value::Record(record)) => {
-            let Some(Value::Num(n)) = heap.get_record_value(record, "num") else {
-                return MachineState::Error(
-                    "num_rec requires 'num' field with a number".to_owned(),
-                );
-            };
-
-            let Some(base) = heap.get_record_value(record, "base") else {
-                return MachineState::Error("num_rec requires 'base' field".to_owned());
-            };
-
-            let Some(Value::Closure(step)) = heap.get_record_value(record, "step") else {
-                return MachineState::Error("num_rec requires 'step' field with a func".to_owned());
-            };
-
-            if n <= 0.0 {
-                // Empty number — bind base directly, go to next
-                let env = heap.envs.insert(env, bind, base);
-
-                return MachineState::Standard(StandardConfig {
-                    control: next.get(&context.ir),
-                    env,
-                    cont,
-                });
-            }
-
-            // Create a pure continuation frame for the next expression
-            let pure_frame = ContFrame::pure(bind, next, env);
-            cont.push(pure_frame);
-
-            // Create a primitive recursion frame
-            if n >= 2.0 {
-                let rec_frame = ContFrame::num_rec(n - 2.0, step);
-                cont.push(rec_frame);
-            }
-
-            let Closure {
-                env,
-                func: Func { param, body },
-            } = step;
-
-            // Create argument for the step function
-            let acc = (heap.intern_str("acc"), base); // value = result from previous step
-            let head = (heap.intern_str("head"), Value::Num(n - 1.0));
-            let record = heap.records.alloc_fixed([acc, head]);
-
-            let env = heap.envs.insert(env, param, Value::Record(record));
-
-            return MachineState::Standard(StandardConfig {
-                control: body.get(&context.ir),
-                env,
-                cont,
-            });
-        }
-        (BuiltinId::RecordSelect, Value::Record(record)) => {
-            let Some(Value::Witness(wit)) = heap.get_record_value(record, "label") else {
-                return MachineState::Error(
-                    "record_select requires 'label' field with a string".to_owned(),
-                );
-            };
-
-            let Some(label) = heap.get_interned_label(wit) else {
-                return MachineState::Error(
-                    "record_select requires 'label' field with a string".to_owned(),
-                );
-            };
-
-            let Some(Value::Record(record)) = heap.get_record_value(record, "record") else {
-                return MachineState::Error(
-                    "record_select requires 'record' field with a record".to_owned(),
-                );
-            };
-
-            match heap.records.get_value(record, label) {
-                Some(value) => value,
-                None => {
-                    return MachineState::Error(format!("Field '{}' not found in record", label));
-                }
-            }
-        }
-        (BuiltinId::RecordInsert, Value::Record(record)) => {
-            let Some(Value::Witness(wit)) = heap.get_record_value(record, "label") else {
-                return MachineState::Error(
-                    "record_insert requires 'label' field with a string".to_owned(),
-                );
-            };
-
-            let Some(label) = heap.get_interned_label(wit) else {
-                return MachineState::Error(
-                    "record_insert requires 'label' field with a string".to_owned(),
-                );
-            };
-
-            let Some(value) = heap.get_record_value(record, "value") else {
-                return MachineState::Error("record_insert requires 'value' field".to_owned());
-            };
-
-            let Some(Value::Record(record)) = heap.get_record_value(record, "record") else {
-                return MachineState::Error(
-                    "record_insert requires 'record' field with a record".to_owned(),
-                );
-            };
-
-            // Insert the value into the record
-            heap.records.insert(record, label, value);
-
-            Value::Record(record)
-        }
-        (BuiltinId::RecordRemove, Value::Record(record)) => {
-            let Some(Value::Witness(wit)) = heap.get_record_value(record, "label") else {
-                return MachineState::Error(
-                    "record_remove requires 'label' field with a string".to_owned(),
-                );
-            };
-
-            let Some(label) = heap.get_interned_label(wit) else {
-                return MachineState::Error(
-                    "record_remove requires 'label' field with a string".to_owned(),
-                );
-            };
-
-            let Some(Value::Record(record)) = heap.get_record_value(record, "record") else {
-                return MachineState::Error(
-                    "record_remove requires 'record' field with a record".to_owned(),
-                );
-            };
-
-            // Remove the field from the record
-            heap.records.remove(record, label);
-
-            Value::Record(record)
-        }
-        (BuiltinId::RecordRename, Value::Record(record)) => {
-            let Some(Value::Witness(wit)) = heap.get_record_value(record, "from") else {
-                return MachineState::Error(
-                    "record_rename requires 'from' field with a string".to_owned(),
-                );
-            };
-
-            let Some(from) = heap.get_interned_label(wit) else {
-                return MachineState::Error(
-                    "record_rename requires 'from' field with a string".to_owned(),
-                );
-            };
-
-            let Some(Value::Witness(wit)) = heap.get_record_value(record, "to") else {
-                return MachineState::Error(
-                    "record_rename requires 'to' field with a string".to_owned(),
-                );
-            };
-
-            let Some(to) = heap.get_interned_label(wit) else {
-                return MachineState::Error(
-                    "record_rename requires 'to' field with a string".to_owned(),
-                );
-            };
-
-            let Some(Value::Record(record)) = heap.get_record_value(record, "record") else {
-                return MachineState::Error(
-                    "record_rename requires 'record' field with a record".to_owned(),
-                );
-            };
-
-            // Rename the field in the record
-            if let Some((value, record)) = heap.records.remove(record, from) {
-                heap.records.insert(record, to, value);
-            } else {
-                return MachineState::Error(format!("Field '{}' not found in record", from));
-            }
-
-            Value::Record(record)
-        }
-        (BuiltinId::RecordContains, Value::Record(record)) => {
-            let Some(Value::Witness(wit)) = heap.get_record_value(record, "label") else {
-                return MachineState::Error(
-                    "record_contains requires 'label' field with a string".to_owned(),
-                );
-            };
-
-            let Some(label) = heap.get_interned_label(wit) else {
-                return MachineState::Error(
-                    "record_contains requires 'label' field with a string".to_owned(),
-                );
-            };
-
-            let Some(Value::Record(record)) = heap.get_record_value(record, "record") else {
-                return MachineState::Error(
-                    "record_contains requires 'record' field with a record".to_owned(),
-                );
-            };
-
-            Value::Bool(heap.records.contains_key(record, label))
-        }
-        (BuiltinId::RecordKeys, Value::Record(record)) => Value::List(heap.record_keys(record)),
-        (BuiltinId::RecordSize, Value::Record(record)) => {
-            // Return the number of fields in the record
-            Value::Num(heap.records.len(record) as f64)
-        }
-        (BuiltinId::RecordMergeLeft, Value::Record(record)) => {
-            let Some(Value::Record(left)) = heap.get_record_value(record, "left") else {
-                return MachineState::Error(
-                    "record_merge_left requires 'left' field with a record".to_owned(),
-                );
-            };
-
-            let Some(Value::Record(right)) = heap.get_record_value(record, "right") else {
-                return MachineState::Error(
-                    "record_merge_left requires 'right' field with a record".to_owned(),
-                );
-            };
-
-            // Merge the two records, with left taking precedence
-            let merged = heap.records.merge_left(left, right);
-
-            Value::Record(merged)
-        }
-        (BuiltinId::RecordMergeRight, Value::Record(record)) => {
-            let Some(Value::Record(left)) = heap.get_record_value(record, "left") else {
-                return MachineState::Error(
-                    "record_merge_left requires 'left' field with a record".to_owned(),
-                );
-            };
-
-            let Some(Value::Record(right)) = heap.get_record_value(record, "right") else {
-                return MachineState::Error(
-                    "record_merge_left requires 'right' field with a record".to_owned(),
-                );
-            };
-
-            // Merge the two records, with right taking precedence
-            let merged = heap.records.merge_right(left, right);
-
-            Value::Record(merged)
-        }
-        (BuiltinId::RecordRec, Value::Record(record)) => {
-            let Some(Value::Record(record)) = heap.get_record_value(record, "record") else {
-                return MachineState::Error(
-                    "record_rec requires 'record' field with a record".to_owned(),
-                );
-            };
-
-            let Some(base) = heap.get_record_value(record, "base") else {
-                return MachineState::Error("record_rec requires 'base' field".to_owned());
-            };
-
-            let Some(Value::Closure(step)) = heap.get_record_value(record, "step") else {
-                return MachineState::Error(
-                    "record_rec requires 'step' field with a func".to_owned(),
-                );
-            };
-
-            let Some(record) = record else {
-                // Empty record — bind base directly, go to next
-                let env = heap.envs.insert(env, bind, base);
-
-                return MachineState::Standard(StandardConfig {
-                    control: next.get(&context.ir),
-                    env,
-                    cont,
-                });
-            };
-
-            let (first, tail) = heap.records.split_front(record);
-
-            let key = (
-                heap.intern_str("key"),
-                Value::Str(Some(StringIdx::Static(first.0))),
-            );
-            let val = (heap.intern_str("value"), first.1);
-            let head = heap.records.alloc_fixed([key, val]);
-
-            // Create a pure continuation frame for the next expression
-            let pure_frame = ContFrame::pure(bind, next, env);
-            cont.push(pure_frame);
-
-            // Create a primitive recursion frame for the list_rec operation,
-            // which will handle the recursive processing of the list.
-            if let Some(tail) = tail {
-                let rec_frame = ContFrame::record_rec(tail, step);
-                cont.push(rec_frame);
-            }
-
-            let Closure {
-                env,
-                func: Func { param, body },
-            } = step;
-
-            // Create argument for the step function
-            let acc = (heap.intern_str("acc"), base); // value = result from previous step
-            let head = (heap.intern_str("head"), Value::Record(head));
-            let record = heap.records.alloc_fixed([acc, head]);
-
-            let env = heap.envs.insert(env, param, Value::Record(record));
-
-            return MachineState::Standard(StandardConfig {
-                control: body.get(&context.ir),
-                env,
-                cont,
-            });
-        }
-        // TODO these serde methods do not enforce type annotations
-        (BuiltinId::SerdeFromJson, Value::Record(record)) => {
-            let Some(Value::Witness(wit)) = heap.get_record_value(record, "proto") else {
-                return MachineState::Error(
-                    "serde_from_json requires 'proto' field with a TypeRep".to_owned(),
-                );
-            };
-
-            let Some(Value::Str(json)) = heap.get_record_value(record, "json") else {
-                return MachineState::Error(
-                    "serde_from_json requires 'json' field with a string".to_owned(),
-                );
-            };
-
-            let json = heap.strings.get_or_default(&json).to_owned();
-            let proto = heap.type_interner[wit.0].clone();
-
-            match Value::from_json(&proto, &json, heap) {
-                Ok(value) => Value::Variant(heap.alloc_builtin_variant("Ok", value)),
-                Err(err) => {
-                    let err = heap.strings.alloc(&err.to_string());
-                    Value::Variant(heap.alloc_builtin_variant("Err", Value::Str(err)))
-                }
-            }
-        }
-        (BuiltinId::SerdeToJson, value) => match heap.to_json(&value) {
-            Ok(json_str) => {
-                let json_str = heap.strings.alloc(&json_str);
-                Value::Variant(heap.alloc_builtin_variant("Ok", Value::Str(json_str)))
-            }
-            Err(err) => {
-                let err = heap.strings.alloc(&err.to_string());
-                Value::Variant(heap.alloc_builtin_variant("Err", Value::Str(err)))
-            }
-        },
-        (BuiltinId::StrLength, Value::Str(s)) => {
-            Value::Num(s.map(|s| heap.strings.len(s) as f64).unwrap_or(0.0))
-        }
-        (BuiltinId::StrIsEmpty, Value::Str(s)) => Value::Bool(s.is_none()),
-        (BuiltinId::StrReverse, Value::Str(s)) => Value::Str(s.map(|s| heap.strings.reverse(s))),
-        (BuiltinId::StrFirst, Value::Str(s)) => {
-            if let Some(s) = s {
-                let first = heap.strings.first(s);
-                Value::Variant(heap.alloc_builtin_variant("Some", Value::Char(first)))
-            } else {
-                Value::Variant(heap.alloc_builtin_variant("None", Value::None))
-            }
-        }
-        (BuiltinId::StrLast, Value::Str(s)) => {
-            if let Some(s) = s {
-                let last = heap.strings.last(s);
-                Value::Variant(heap.alloc_builtin_variant("Some", Value::Char(last)))
-            } else {
-                Value::Variant(heap.alloc_builtin_variant("None", Value::None))
-            }
-        }
-        (BuiltinId::StrContains, Value::Record(record)) => {
-            let Some(Value::Str(s)) = heap.get_record_value(record, "str") else {
-                return MachineState::Error(
-                    "str_contains requires 'str' field with a string".to_owned(),
-                );
-            };
-
-            let Some(Value::Char(c)) = heap.get_record_value(record, "value") else {
-                return MachineState::Error(
-                    "str_contains requires 'value' field with a char".to_owned(),
-                );
-            };
-
-            if let Some(s) = s {
-                let mut buf = [0; 4];
-                let needle: &str = c.encode_utf8(&mut buf);
-
-                Value::Bool(heap.strings.contains(s, needle))
-            } else {
-                Value::Bool(false)
-            }
-        }
-        (BuiltinId::StrAt, Value::Record(record)) => {
-            let Some(Value::Str(s)) = heap.get_record_value(record, "str") else {
-                return MachineState::Error("str_at requires 'str' field with a string".to_owned());
-            };
-
-            let Some(Value::Num(index)) = heap.get_record_value(record, "index") else {
-                return MachineState::Error(
-                    "str_at requires 'index' field with a number".to_owned(),
-                );
-            };
-
-            if let Some(s) = s {
-                let Some(idx) = to_usize_exact(index) else {
-                    return MachineState::Error(
-                        "str_at requires 'index' field to be a non-negative integer".to_owned(),
-                    );
-                };
-
-                match heap.strings.at(s, idx) {
-                    Some(c) => Value::Variant(heap.alloc_builtin_variant("Some", Value::Char(c))),
-                    None => Value::Variant(heap.alloc_builtin_variant("None", Value::None)),
-                }
-            } else {
-                Value::Variant(heap.alloc_builtin_variant("None", Value::None))
-            }
-        }
-        (BuiltinId::StrPrepend, Value::Record(record)) => {
-            let Some(Value::Char(c)) = heap.get_record_value(record, "head") else {
-                return MachineState::Error(
-                    "str_prepend requires 'head' field with a char".to_owned(),
-                );
-            };
-
-            let Some(Value::Str(s)) = heap.get_record_value(record, "tail") else {
-                return MachineState::Error(
-                    "str_prepend requires 'tail' field with a string".to_owned(),
-                );
-            };
-
-            if let Some(s) = s {
-                let mut buf = [0; 4];
-                let c: &str = c.encode_utf8(&mut buf);
-
-                Value::Str(Some(heap.strings.push_front(s, c)))
-            } else {
-                Value::Str(Some(StringIdx::unit(c)))
-            }
-        }
-        (BuiltinId::StrAppend, Value::Record(record)) => {
-            let Some(Value::Str(s)) = heap.get_record_value(record, "head") else {
-                return MachineState::Error(
-                    "str_append requires 'head' field with a string".to_owned(),
-                );
-            };
-
-            let Some(Value::Char(c)) = heap.get_record_value(record, "tail") else {
-                return MachineState::Error(
-                    "str_append requires 'tail' field with a char".to_owned(),
-                );
-            };
-
-            if let Some(s) = s {
-                let mut buf = [0; 4];
-                let c: &str = c.encode_utf8(&mut buf);
-
-                Value::Str(Some(heap.strings.push_back(s, c)))
-            } else {
-                Value::Str(Some(StringIdx::unit(c)))
-            }
-        }
-        (BuiltinId::StrConcat, Value::Record(record)) => {
-            let Some(Value::Str(s1)) = heap.get_record_value(record, "head") else {
-                return MachineState::Error(
-                    "str_concat requires 'head' field with a string".to_owned(),
-                );
-            };
-
-            let Some(Value::Str(s2)) = heap.get_record_value(record, "tail") else {
-                return MachineState::Error(
-                    "str_concat requires 'tail' field with a string".to_owned(),
-                );
-            };
-
-            let result = match (s1, s2) {
-                (Some(s1), Some(s2)) => Some(heap.strings.concat(s1, s2)),
-                (Some(s), None) | (None, Some(s)) => Some(s),
-                _ => None,
-            };
-
-            Value::Str(result)
+        BuiltinId::StrRec => {
+            return builtins::str_rec(bind, arg, env, cont, next, ctx, heap);
         }
 
-        (BuiltinId::StrRec, Value::Record(record)) => {
-            let Some(Value::Str(s)) = heap.get_record_value(record, "str") else {
-                return MachineState::Error("str_rec requires 's' field with a string".to_owned());
-            };
-
-            let Some(base) = heap.get_record_value(record, "base") else {
-                return MachineState::Error("str_rec requires 'base' field".to_owned());
-            };
-
-            let Some(Value::Closure(step)) = heap.get_record_value(record, "step") else {
-                return MachineState::Error("str_rec requires 'step' field with a func".to_owned());
-            };
-
-            let Some(s) = s else {
-                // Empty string — bind base directly, go to next
-                let env = heap.envs.insert(env, bind, base);
-
-                return MachineState::Standard(StandardConfig {
-                    control: next.get(&context.ir),
-                    env,
-                    cont,
-                });
-            };
-
-            let (head, tail) = heap.strings.pop_front(s);
-
-            // Create a pure continuation frame for the next expression
-            let pure_frame = ContFrame::pure(bind, next, env);
-            cont.push(pure_frame);
-
-            // Create a primitive recursion frame
-            if let Some(tail) = tail {
-                let rec_frame = ContFrame::str_rec(tail, step);
-                cont.push(rec_frame);
-            }
-
-            let Closure {
-                env,
-                func: Func { param, body },
-            } = step;
-
-            // Create argument for the step function
-            let acc = (heap.intern_str("acc"), base); // value = result from previous step
-            let head = (heap.intern_str("head"), Value::Char(head));
-            let record = heap.records.alloc_fixed([acc, head]);
-
-            let env = heap.envs.insert(env, param, Value::Record(record));
-
-            return MachineState::Standard(StandardConfig {
-                control: body.get(&context.ir),
-                env,
-                cont,
-            });
-        }
-        (_, value) => {
-            return MachineState::Error(format!("Cannot apply {builtin} to: {:?}", value));
-        }
+        BuiltinId::IoDebug => builtins::io_debug(arg, heap, ctx),
+        BuiltinId::IoReadFile => builtins::io_read_file(arg, heap, ctx),
+        BuiltinId::IoWriteFile => builtins::io_write_file(arg, heap, ctx),
+        BuiltinId::ListLength => builtins::list_length(arg, heap, ctx),
+        BuiltinId::ListIsEmpty => builtins::list_is_empty(arg, heap, ctx),
+        BuiltinId::ListReverse => builtins::list_reverse(arg, heap, ctx),
+        BuiltinId::ListSum => builtins::list_sum(arg, heap, ctx),
+        BuiltinId::ListContains => builtins::list_contains(arg, heap, ctx),
+        BuiltinId::ListAt => builtins::list_at(arg, heap, ctx),
+        BuiltinId::ListFirst => builtins::list_first(arg, heap, ctx),
+        BuiltinId::ListLast => builtins::list_last(arg, heap, ctx),
+        BuiltinId::ListPrepend => builtins::list_prepend(arg, heap, ctx),
+        BuiltinId::ListAppend => builtins::list_append(arg, heap, ctx),
+        BuiltinId::ListConcat => builtins::list_concat(arg, heap, ctx),
+        BuiltinId::NumAbs => builtins::num_abs(arg, heap, ctx),
+        BuiltinId::NumSqrt => builtins::num_sqrt(arg, heap, ctx),
+        BuiltinId::NumFloor => builtins::num_floor(arg, heap, ctx),
+        BuiltinId::NumCeil => builtins::num_ceil(arg, heap, ctx),
+        BuiltinId::NumRound => builtins::num_round(arg, heap, ctx),
+        BuiltinId::NumSin => builtins::num_sin(arg, heap, ctx),
+        BuiltinId::NumCos => builtins::num_cos(arg, heap, ctx),
+        BuiltinId::NumTan => builtins::num_tan(arg, heap, ctx),
+        BuiltinId::NumLn => builtins::num_ln(arg, heap, ctx),
+        BuiltinId::NumLog10 => builtins::num_log10(arg, heap, ctx),
+        BuiltinId::NumExp => builtins::num_exp(arg, heap, ctx),
+        BuiltinId::NumPow => builtins::num_pow(arg, heap, ctx),
+        BuiltinId::RecordSelect => builtins::record_select(arg, heap, ctx),
+        BuiltinId::RecordInsert => builtins::record_insert(arg, heap, ctx),
+        BuiltinId::RecordRemove => builtins::record_remove(arg, heap, ctx),
+        BuiltinId::RecordRename => builtins::record_rename(arg, heap, ctx),
+        BuiltinId::RecordContains => builtins::record_contains(arg, heap, ctx),
+        BuiltinId::RecordKeys => builtins::record_keys(arg, heap, ctx),
+        BuiltinId::RecordSize => builtins::record_size(arg, heap, ctx),
+        BuiltinId::RecordMergeLeft => builtins::record_merge_left(arg, heap, ctx),
+        BuiltinId::RecordMergeRight => builtins::record_merge_right(arg, heap, ctx),
+        BuiltinId::SerdeFromJson => builtins::serde_from_json(arg, heap, ctx),
+        BuiltinId::SerdeToJson => builtins::serde_to_json(arg, heap, ctx),
+        BuiltinId::StrLength => builtins::str_length(arg, heap, ctx),
+        BuiltinId::StrIsEmpty => builtins::str_is_empty(arg, heap, ctx),
+        BuiltinId::StrReverse => builtins::str_reverse(arg, heap, ctx),
+        BuiltinId::StrFirst => builtins::str_first(arg, heap, ctx),
+        BuiltinId::StrLast => builtins::str_last(arg, heap, ctx),
+        BuiltinId::StrContains => builtins::str_contains(arg, heap, ctx),
+        BuiltinId::StrAt => builtins::str_at(arg, heap, ctx),
+        BuiltinId::StrPrepend => builtins::str_prepend(arg, heap, ctx),
+        BuiltinId::StrAppend => builtins::str_append(arg, heap, ctx),
+        BuiltinId::StrConcat => builtins::str_concat(arg, heap, ctx),
     };
 
-    // Create a new environment with the result bound to the variable
-    let env = heap.envs.insert(env, bind, value);
+    match result {
+        Ok(value) => {
+            // Create a new environment with the result bound to the variable
+            let env = heap.envs.insert(env, bind, value);
 
-    // Continue with the next expression
-    MachineState::Standard(StandardConfig {
-        control: next.get(&context.ir),
-        env,
-        cont,
-    })
+            // Continue with the next expression
+            MachineState::Standard(StandardConfig {
+                control: next.get(&ctx.ir),
+                env,
+                cont,
+            })
+        }
+        Err(err) => MachineState::Error(err),
+    }
 }
 //
 // M-HANDLE: ⟨handle M with H | γ | κ⟩ → ⟨M | γ | ([], (γ, H)) :: κ⟩
@@ -1238,13 +524,7 @@ fn eval_builtin(
 // This rule pushes a handler frame onto the continuation stack and
 // continues evaluating the source computation M with the handler available.
 impl Eval for HandleExpr {
-    fn eval(
-        &self,
-        env: EnvIdx,
-        mut cont: Cont,
-        _context: &mut MachineContext,
-        _heap: &mut Heap,
-    ) -> MachineState {
+    fn eval(&self, env: EnvIdx, mut cont: Cont, _ctx: &mut Ctx, _heap: &mut Heap) -> MachineState {
         let Self {
             bind,
             source,
@@ -1280,13 +560,7 @@ impl Eval for HandleExpr {
 // This rule transitions to an operation configuration where the machine
 // searches for a handler that can handle operation ℓ with argument V.
 impl Eval for DoExpr {
-    fn eval(
-        &self,
-        env: EnvIdx,
-        mut cont: Cont,
-        _context: &mut MachineContext,
-        _heap: &mut Heap,
-    ) -> MachineState {
+    fn eval(&self, env: EnvIdx, mut cont: Cont, _ctx: &mut Ctx, _heap: &mut Heap) -> MachineState {
         let Self {
             bind,
             op,
@@ -1320,13 +594,7 @@ impl Eval for DoExpr {
 // 4. When M evaluates to a value, it will be bound to x via the continuation mechanism,
 //    which will then evaluate N with the extended environment
 impl Eval for LetExpr {
-    fn eval(
-        &self,
-        env: EnvIdx,
-        mut cont: Cont,
-        _context: &mut MachineContext,
-        _heap: &mut Heap,
-    ) -> MachineState {
+    fn eval(&self, env: EnvIdx, mut cont: Cont, _ctx: &mut Ctx, _heap: &mut Heap) -> MachineState {
         // Create a pure continuation frame
         let pure_frame = ContFrame::pure(self.bind, self.next, env);
         cont.push(pure_frame);
@@ -1350,13 +618,7 @@ impl Eval for LetExpr {
 // 4. In both cases, we maintain the same environment γ and continuation κ
 // 5. The machine state transitions directly to evaluating the selected branch
 impl Eval for IfExpr {
-    fn eval(
-        &self,
-        env: EnvIdx,
-        mut cont: Cont,
-        context: &mut MachineContext,
-        heap: &mut Heap,
-    ) -> MachineState {
+    fn eval(&self, env: EnvIdx, mut cont: Cont, ctx: &mut Ctx, heap: &mut Heap) -> MachineState {
         let Self {
             bind,
             predicate,
@@ -1366,7 +628,7 @@ impl Eval for IfExpr {
         } = *self;
 
         // Evaluate the predicate
-        let pred_val = match eval_atom(predicate.get(&context.ir), env, &heap.envs) {
+        let pred_val = match eval_atom(predicate.get(&ctx.ir), env, &heap.envs) {
             Ok(value) => value,
             Err(err) => return MachineState::Error(err),
         };
@@ -1389,7 +651,7 @@ impl Eval for IfExpr {
 
         // Evaluate the selected branch
         MachineState::Standard(StandardConfig {
-            control: branch.get(&context.ir),
+            control: branch.get(&ctx.ir),
             env,
             cont,
         })
@@ -1418,13 +680,7 @@ pub fn eval_unary_op(op: UnaryOp, value: Value) -> Result<Value, String> {
 // 4. The machine transitions directly to evaluating the next expression N
 // 5. The continuation κ remains unchanged during this transition
 impl Eval for UnaryExpr {
-    fn eval(
-        &self,
-        env: EnvIdx,
-        cont: Cont,
-        context: &mut MachineContext,
-        heap: &mut Heap,
-    ) -> MachineState {
+    fn eval(&self, env: EnvIdx, cont: Cont, ctx: &mut Ctx, heap: &mut Heap) -> MachineState {
         let Self {
             bind,
             op,
@@ -1433,7 +689,7 @@ impl Eval for UnaryExpr {
         } = *self;
 
         // Evaluate the operand
-        let arg_val = match eval_atom(arg.get(&context.ir), env, &heap.envs) {
+        let arg_val = match eval_atom(arg.get(&ctx.ir), env, &heap.envs) {
             Ok(value) => value,
             Err(err) => return MachineState::Error(err),
         };
@@ -1449,7 +705,7 @@ impl Eval for UnaryExpr {
 
         // Continue directly with the next expression
         MachineState::Standard(StandardConfig {
-            control: next.get(&context.ir),
+            control: next.get(&ctx.ir),
             env,
             cont,
         })
@@ -1623,13 +879,7 @@ fn type_error(op: BinaryOp, left: Value, right: Value) -> String {
 // 3. The result is bound to variable x in the environment
 // 4. The machine transitions directly to evaluating the next expression N
 impl Eval for BinaryExpr {
-    fn eval(
-        &self,
-        env: EnvIdx,
-        cont: Cont,
-        context: &mut MachineContext,
-        heap: &mut Heap,
-    ) -> MachineState {
+    fn eval(&self, env: EnvIdx, cont: Cont, ctx: &mut Ctx, heap: &mut Heap) -> MachineState {
         let Self {
             bind,
             op,
@@ -1639,13 +889,13 @@ impl Eval for BinaryExpr {
         } = *self;
 
         // Evaluate the left operand
-        let left_val = match eval_atom(lhs.get(&context.ir), env, &heap.envs) {
+        let left_val = match eval_atom(lhs.get(&ctx.ir), env, &heap.envs) {
             Ok(value) => value,
             Err(err) => return MachineState::Error(err),
         };
 
         // Evaluate the right operand
-        let right_val = match eval_atom(rhs.get(&context.ir), env, &heap.envs) {
+        let right_val = match eval_atom(rhs.get(&ctx.ir), env, &heap.envs) {
             Ok(value) => value,
             Err(err) => return MachineState::Error(err),
         };
@@ -1661,7 +911,7 @@ impl Eval for BinaryExpr {
 
         // Continue directly with the next expression
         MachineState::Standard(StandardConfig {
-            control: next.get(&context.ir),
+            control: next.get(&ctx.ir),
             env,
             cont,
         })
@@ -1669,13 +919,7 @@ impl Eval for BinaryExpr {
 }
 
 impl Eval for ListExpr {
-    fn eval(
-        &self,
-        env: EnvIdx,
-        cont: Cont,
-        context: &mut MachineContext,
-        heap: &mut Heap,
-    ) -> MachineState {
+    fn eval(&self, env: EnvIdx, cont: Cont, ctx: &mut Ctx, heap: &mut Heap) -> MachineState {
         let ListExpr {
             bind,
             head,
@@ -1683,10 +927,10 @@ impl Eval for ListExpr {
             next,
         } = *self;
 
-        let item_iter = context
+        let item_iter = ctx
             .ir
             .iter_items(head)
-            .map(|item| eval_atom(item.value.get(&context.ir), env, &heap.envs));
+            .map(|item| eval_atom(item.value.get(&ctx.ir), env, &heap.envs));
 
         let list = match heap.lists.try_alloc_from_iter(item_iter) {
             Ok(list_idx) => list_idx,
@@ -1696,7 +940,7 @@ impl Eval for ListExpr {
         let env = heap.envs.insert(env, bind, Value::List(list));
 
         MachineState::Standard(StandardConfig {
-            control: next.get(&context.ir),
+            control: next.get(&ctx.ir),
             env,
             cont,
         })
@@ -1711,24 +955,17 @@ impl Eval for ListExpr {
 // 3. The record value is bound to the variable specified in the RecordExpr
 // 4. We continue with the next expression
 impl Eval for RecordExpr {
-    fn eval(
-        &self,
-        env: EnvIdx,
-        cont: Cont,
-        context: &mut MachineContext,
-        heap: &mut Heap,
-    ) -> MachineState {
+    fn eval(&self, env: EnvIdx, cont: Cont, ctx: &mut Ctx, heap: &mut Heap) -> MachineState {
         let RecordExpr { bind, head, next } = *self;
 
-        let entry_iter =
-            context
-                .ir
-                .iter_fields(head)
-                .map(|RecordField { label, value, .. }| {
-                    eval_atom(value.get(&context.ir), env, &heap.envs)
-                        .map(|val| (label, val))
-                        .map_err(|err| format!("Error evaluating field '{}': {}", label, err))
-                });
+        let entry_iter = ctx
+            .ir
+            .iter_fields(head)
+            .map(|RecordField { label, value, .. }| {
+                eval_atom(value.get(&ctx.ir), env, &heap.envs)
+                    .map(|val| (label, val))
+                    .map_err(|err| format!("Error evaluating field '{}': {}", label, err))
+            });
 
         // Create a record value from the evaluated fields
         let record = match heap.records.try_alloc_from_iter(entry_iter) {
@@ -1741,7 +978,7 @@ impl Eval for RecordExpr {
 
         // Continue with the next expression
         MachineState::Standard(StandardConfig {
-            control: next.get(&context.ir),
+            control: next.get(&ctx.ir),
             env,
             cont,
         })
@@ -1756,13 +993,7 @@ impl Eval for RecordExpr {
 // 3. The resulting extended record is bound to variable x in the environment
 // 4. The machine transitions directly to evaluating the next expression N
 impl Eval for RecordExtendExpr {
-    fn eval(
-        &self,
-        env: EnvIdx,
-        cont: Cont,
-        context: &mut MachineContext,
-        heap: &mut Heap,
-    ) -> MachineState {
+    fn eval(&self, env: EnvIdx, cont: Cont, ctx: &mut Ctx, heap: &mut Heap) -> MachineState {
         let Self {
             bind,
             base,
@@ -1772,13 +1003,13 @@ impl Eval for RecordExtendExpr {
         } = *self;
 
         // Evaluate the base record
-        let record_val = match eval_atom(base.get(&context.ir), env, &heap.envs) {
+        let record_val = match eval_atom(base.get(&ctx.ir), env, &heap.envs) {
             Ok(value) => value,
             Err(err) => return MachineState::Error(err),
         };
 
         // Evaluate the value to extend with
-        let extend_value = match eval_atom(value.get(&context.ir), env, &heap.envs) {
+        let extend_value = match eval_atom(value.get(&ctx.ir), env, &heap.envs) {
             Ok(value) => value,
             Err(err) => return MachineState::Error(err),
         };
@@ -1792,7 +1023,7 @@ impl Eval for RecordExtendExpr {
         };
 
         // Get field path as StrKeys
-        let field_iter = context.ir.iter_path(Some(path)).map(|fp| fp.label);
+        let field_iter = ctx.ir.iter_path(Some(path)).map(|fp| fp.label);
 
         // Use Record's extend_at_path method
         let record = match heap
@@ -1808,7 +1039,7 @@ impl Eval for RecordExtendExpr {
 
         // Continue with the next expression
         MachineState::Standard(StandardConfig {
-            control: next.get(&context.ir),
+            control: next.get(&ctx.ir),
             env,
             cont,
         })
@@ -1823,13 +1054,7 @@ impl Eval for RecordExtendExpr {
 // 3. The resulting restricted record is bound to variable x in the environment
 // 4. The machine transitions directly to evaluating the next expression N
 impl Eval for RecordRestrictExpr {
-    fn eval(
-        &self,
-        env: EnvIdx,
-        cont: Cont,
-        context: &mut MachineContext,
-        heap: &mut Heap,
-    ) -> MachineState {
+    fn eval(&self, env: EnvIdx, cont: Cont, ctx: &mut Ctx, heap: &mut Heap) -> MachineState {
         let Self {
             bind,
             base,
@@ -1838,7 +1063,7 @@ impl Eval for RecordRestrictExpr {
         } = *self;
 
         // Evaluate the base record
-        let record_val = match eval_atom(base.get(&context.ir), env, &heap.envs) {
+        let record_val = match eval_atom(base.get(&ctx.ir), env, &heap.envs) {
             Ok(value) => value,
             Err(err) => return MachineState::Error(err),
         };
@@ -1852,7 +1077,7 @@ impl Eval for RecordRestrictExpr {
         };
 
         // Get field path as StrKeys
-        let field_iter = context.ir.iter_path(Some(path)).map(|fp| fp.label);
+        let field_iter = ctx.ir.iter_path(Some(path)).map(|fp| fp.label);
 
         // Use Record's restrict_at_path method
         let record = match heap.records.restrict_at_path(record, field_iter) {
@@ -1865,7 +1090,7 @@ impl Eval for RecordRestrictExpr {
 
         // Continue with the next expression
         MachineState::Standard(StandardConfig {
-            control: next.get(&context.ir),
+            control: next.get(&ctx.ir),
             env,
             cont,
         })
@@ -1895,13 +1120,7 @@ pub fn eval_record_op(op: RecordUpdateOp, left: Value, right: Value) -> Result<V
 // 3. The resulting updated record is bound to variable x in the environment
 // 4. The machine transitions directly to evaluating the next expression N
 impl Eval for RecordUpdateExpr {
-    fn eval(
-        &self,
-        env: EnvIdx,
-        cont: Cont,
-        context: &mut MachineContext,
-        heap: &mut Heap,
-    ) -> MachineState {
+    fn eval(&self, env: EnvIdx, cont: Cont, ctx: &mut Ctx, heap: &mut Heap) -> MachineState {
         let Self {
             bind,
             base,
@@ -1912,13 +1131,13 @@ impl Eval for RecordUpdateExpr {
         } = *self;
 
         // Evaluate the base record
-        let record_val = match eval_atom(base.get(&context.ir), env, &heap.envs) {
+        let record_val = match eval_atom(base.get(&ctx.ir), env, &heap.envs) {
             Ok(value) => value,
             Err(err) => return MachineState::Error(err),
         };
 
         // Evaluate the value to update with
-        let update_val = match eval_atom(value.get(&context.ir), env, &heap.envs) {
+        let update_val = match eval_atom(value.get(&ctx.ir), env, &heap.envs) {
             Ok(value) => value,
             Err(err) => return MachineState::Error(err),
         };
@@ -1932,7 +1151,7 @@ impl Eval for RecordUpdateExpr {
         };
 
         // Get field path as StrKeys
-        let field_iter = context.ir.iter_path(Some(path)).map(|fp| fp.label);
+        let field_iter = ctx.ir.iter_path(Some(path)).map(|fp| fp.label);
 
         // Use Record's update_at_path method
         let update_fn = |cur: Value| eval_record_op(op, cur, update_val).ok();
@@ -1946,7 +1165,7 @@ impl Eval for RecordUpdateExpr {
 
         // Continue with the next expression
         MachineState::Standard(StandardConfig {
-            control: next.get(&context.ir),
+            control: next.get(&ctx.ir),
             env,
             cont,
         })
@@ -1961,13 +1180,7 @@ impl Eval for RecordUpdateExpr {
 // 3. The resulting field value is bound to variable x in the environment
 // 4. The machine transitions directly to evaluating the next expression N
 impl Eval for RecordAccessExpr {
-    fn eval(
-        &self,
-        env: EnvIdx,
-        cont: Cont,
-        context: &mut MachineContext,
-        heap: &mut Heap,
-    ) -> MachineState {
+    fn eval(&self, env: EnvIdx, cont: Cont, ctx: &mut Ctx, heap: &mut Heap) -> MachineState {
         let Self {
             bind,
             base,
@@ -1976,7 +1189,7 @@ impl Eval for RecordAccessExpr {
         } = *self;
 
         // Evaluate the record
-        let record_val = match eval_atom(base.get(&context.ir), env, &heap.envs) {
+        let record_val = match eval_atom(base.get(&ctx.ir), env, &heap.envs) {
             Ok(value) => value,
             Err(err) => return MachineState::Error(err),
         };
@@ -1999,20 +1212,14 @@ impl Eval for RecordAccessExpr {
 
         // Continue with the next expression
         MachineState::Standard(StandardConfig {
-            control: next.get(&context.ir),
+            control: next.get(&ctx.ir),
             env,
             cont,
         })
     }
 }
 impl Eval for PatternMatchExpr {
-    fn eval(
-        &self,
-        env: EnvIdx,
-        mut cont: Cont,
-        _context: &mut MachineContext,
-        _heap: &mut Heap,
-    ) -> MachineState {
+    fn eval(&self, env: EnvIdx, mut cont: Cont, _ctx: &mut Ctx, _heap: &mut Heap) -> MachineState {
         let Self {
             bind,
             matcher,
@@ -2030,13 +1237,7 @@ impl Eval for PatternMatchExpr {
 
 /// Evaluates a pattern matching configuration
 impl Eval for PatternMatcher {
-    fn eval(
-        &self,
-        env: EnvIdx,
-        cont: Cont,
-        context: &mut MachineContext,
-        heap: &mut Heap,
-    ) -> MachineState {
+    fn eval(&self, env: EnvIdx, cont: Cont, ctx: &mut Ctx, heap: &mut Heap) -> MachineState {
         match self {
             PatternMatcher::IsUnit(is_unit) => eval_is_unit(is_unit, env, cont, heap),
             PatternMatcher::IsBool(is_bool) => eval_is_bool(is_bool, env, cont, heap),
@@ -2067,9 +1268,7 @@ impl Eval for PatternMatcher {
             PatternMatcher::ListGetAt(extract) => eval_list_get_at(extract, env, cont, heap),
             PatternMatcher::ListSplitAt(extract) => eval_list_split_at(extract, env, cont, heap),
 
-            PatternMatcher::Success(success) => {
-                eval_pattern_success(success, env, cont, &context.ir)
-            }
+            PatternMatcher::Success(success) => eval_pattern_success(success, env, cont, &ctx.ir),
             PatternMatcher::Failure(_) => {
                 MachineState::Error("Pattern match failure - no matching case found".to_string())
             }

@@ -837,8 +837,6 @@ where
         ControlFlow::Continue(())
     }
 
-    // TODOs insert symbols
-
     fn visit_bind_pat(&mut self, id: Id<node::BindPat>, tree: &T) -> ControlFlow<Self::BreakValue> {
         let name = *id.get(tree).0.get(tree);
         let sym = ValueSym::new();
@@ -901,24 +899,6 @@ where
         id: Id<node::VariantPat>,
         tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
-        // let tags = &id.get(tree).0;
-
-        // for id in tags {
-        //     let node::VariantTagPat { tag, pat } = *id.get(tree);
-
-        //     if let Some(pat) = pat {
-        //         self.visit_pat(pat, tree)?;
-        //     } else {
-        //         // No pattern means a binding: Variant { a } => ...
-
-        //         let name = *name.get(tree);
-        //         let sym = ValueSym::new();
-
-        //         self.stack.value_scope_mut().enter(name, sym);
-        //     }
-        // }
-        //
-
         // Actually I think nothing needs to be done here, for example:
         // < Some : { a } > => ...
         // This will create a binding but the binding part is handled by the Pat visitor,
@@ -1034,30 +1014,6 @@ where
 
         ControlFlow::Continue(())
     }
-
-    // // TODO this isn't really necessary anymore to implement,
-    // // because it is essentially a walk
-    // fn visit_type_scheme(
-    //     &mut self,
-    //     id: Id<node::TypeScheme>,
-    //     tree: &T,
-    // ) -> ControlFlow<Self::BreakValue> {
-    //     let node::TypeScheme { with, forall, ty } = *id.get(tree);
-
-    //     // Enters with variables in scope
-    //     if let Some(with) = with {
-    //         self.visit_with_binder(with, tree)?;
-    //     }
-
-    //     // Enters forall variables in scope
-    //     if let Some(forall) = forall {
-    //         self.visit_forall_binder(forall, tree)?;
-    //     }
-
-    //     self.visit_type(ty, tree)?;
-
-    //     ControlFlow::Continue(())
-    // }
 
     fn visit_qualified_type(
         &mut self,

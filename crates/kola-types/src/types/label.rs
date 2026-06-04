@@ -1,7 +1,6 @@
 use std::fmt;
 
 use derive_more::{Display, From};
-use kola_protocol::TypeProtocol;
 use kola_utils::{
     display::DisplayWith,
     interner::{StrInterner, StrKey},
@@ -9,22 +8,16 @@ use kola_utils::{
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    env::TypeClassEnv,
-    error::TypeError,
+    class::{CheckClass, TypeClass, TypeClassEnv, TypeClassError},
+    kind::{CheckKind, Kind},
     substitute::{Substitutable, Substitution},
     types::TypeVar,
 };
 
-use super::{Kind, TypeClass, Typed};
+use super::Typed;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct Label(pub StrKey);
-
-impl Label {
-    pub fn to_protocol(&self, interner: &StrInterner) -> TypeProtocol {
-        TypeProtocol::label(interner[self.0].to_owned())
-    }
-}
 
 impl fmt::Display for Label {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -71,13 +64,6 @@ impl LabelOrVar {
             (Self::Label(lhs), Self::Label(rhs)) => lhs == rhs,
         }
     }
-
-    pub fn to_protocol(&self, interner: &StrInterner) -> TypeProtocol {
-        match self {
-            Self::Var(_var) => todo!(),
-            Self::Label(label) => label.to_protocol(interner),
-        }
-    }
 }
 
 impl DisplayWith<StrInterner> for LabelOrVar {
@@ -89,20 +75,22 @@ impl DisplayWith<StrInterner> for LabelOrVar {
     }
 }
 
-impl Typed for LabelOrVar {
+impl CheckKind for LabelOrVar {
     fn kind(&self) -> Kind {
         Kind::Label
     }
+}
 
-    fn constrain_class(&self, with: TypeClass, _env: &mut TypeClassEnv) -> Result<(), TypeError> {
-        match with {
-            _ => Err(TypeError::CannotConstrainClass {
-                expected: with,
-                actual: self.clone().into(),
-            }),
-        }
+impl CheckClass for LabelOrVar {
+    fn check_class(&self, with: TypeClass, _env: &mut TypeClassEnv) -> Result<(), TypeClassError> {
+        Err(TypeClassError {
+            expected: with,
+            actual: self.clone().into(),
+        })
     }
 }
+
+impl Typed for LabelOrVar {}
 
 impl Substitutable for LabelOrVar {
     fn try_apply(&self, s: &mut Substitution) -> Option<Self> {

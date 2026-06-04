@@ -1,17 +1,9 @@
-use std::{
-    collections::BTreeMap,
-    fmt::{self},
-};
+use std::fmt::{self};
 
-use kola_protocol::TypeProtocol;
-use kola_utils::interner::StrInterner;
 use serde::{Deserialize, Serialize};
 
-use super::{MonoType, Row, TypeVar};
-use crate::{
-    error::TypeError,
-    substitute::{Substitutable, Substitution, merge},
-};
+use super::{MonoType, Row};
+use crate::substitute::{Substitutable, Substitution, merge};
 
 /// Computation type
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -30,11 +22,6 @@ impl CompType {
 
     pub fn new(ty: MonoType, effect: Row) -> Self {
         Self { ty, effect }
-    }
-
-    // TODO also consider effects
-    pub fn to_protocol(&self, interner: &StrInterner) -> TypeProtocol {
-        self.ty.to_protocol(interner)
     }
 }
 

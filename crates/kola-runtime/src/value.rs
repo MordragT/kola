@@ -1,11 +1,10 @@
 use derive_more::From;
 use enum_as_inner::EnumAsInner;
-use kola_builtins::BuiltinId;
-use kola_ir::instr::{Tag, Witness};
-use kola_protocol::{TypeProtocol, ValueProtocol};
+use kola_builtins::{BuiltinId, BuiltinType};
+use kola_ir::instr::{Label, Tag, Witness};
 use kola_utils::{display::DisplayWith, serde::SerializeWith};
 use serde::ser::{SerializeMap, SerializeSeq};
-use std::fmt;
+use std::fmt::{self, Pointer};
 
 use crate::{
     closure::Closure, heap::Heap, list::ListIdx, record::RecordIdx, string::StringIdx,
@@ -40,58 +39,16 @@ pub enum Value {
     List(Option<ListIdx>),
     /// A Type representation
     Witness(Witness),
+    /// A built-in type representation
+    BuiltinWitness(BuiltinType),
+    /// A label
+    Label(Label),
 }
 
 const _: () = assert!(Value::BYTES <= 16);
 
 impl Value {
     pub const BYTES: usize = std::mem::size_of::<Self>();
-
-    pub fn from_json(
-        type_proto: &TypeProtocol,
-        json: &str,
-        heap: &mut Heap,
-    ) -> Result<Self, String> {
-        let proto = serde_json::from_str::<ValueProtocol>(json).map_err(|e| e.to_string())?;
-
-        type_proto.validate_value(&proto)?;
-
-        Ok(Self::from_protocol(proto, heap))
-    }
-
-    pub fn from_protocol(proto: ValueProtocol, heap: &mut Heap) -> Self {
-        match proto {
-            ValueProtocol::Unit => Value::None,
-            ValueProtocol::Bool(b) => Value::Bool(b),
-            ValueProtocol::Char(c) => Value::Char(c),
-            ValueProtocol::Num(n) => Value::Num(n),
-            ValueProtocol::Str(s) => Value::Str(heap.strings.alloc(&s)),
-            ValueProtocol::Variant(t, v) => {
-                let tag = Tag(heap.intern_str(t));
-                let value = Self::from_protocol(*v, heap);
-                Value::Variant(heap.variants.alloc(tag, value))
-            }
-            ValueProtocol::Record(r) => {
-                let pairs = r
-                    .into_iter()
-                    .map(|(label, value)| {
-                        let label = heap.strings.interner.intern(label);
-                        let value = Self::from_protocol(value, heap);
-                        (label, value)
-                    })
-                    .collect::<Vec<_>>();
-
-                Value::Record(heap.records.alloc(&pairs))
-            }
-            ValueProtocol::List(l) => {
-                let values = l
-                    .into_iter()
-                    .map(|v| Self::from_protocol(v, heap))
-                    .collect::<Vec<_>>();
-                Value::List(heap.lists.alloc(&values))
-            }
-        }
-    }
 }
 
 impl DisplayWith<Heap> for Value {
@@ -127,7 +84,9 @@ impl DisplayWith<Heap> for Value {
                     write!(f, "[]")
                 }
             }
-            Value::Witness(w) => w.fmt(f, &heap.type_interner),
+            Value::Witness(w) => w.fmt(f),
+            Value::BuiltinWitness(w) => w.fmt(f),
+            Value::Label(l) => l.fmt(f, &heap.strings.interner),
         }
     }
 }

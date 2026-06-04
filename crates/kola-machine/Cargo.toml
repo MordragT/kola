@@ -12,4 +12,3 @@ derive_more.workspace = true
 camino.workspace = true
 
 [dev-dependencies]
-kola-protocol.workspace = true

@@ -1,26 +1,17 @@
 use std::fmt;
 
-use kola_protocol::TypeProtocol;
-use kola_utils::interner::StrInterner;
 use serde::{Deserialize, Serialize};
 
 use crate::{
-    env::TypeClassEnv,
-    error::TypeError,
+    class::{CheckClass, TypeClass, TypeClassEnv, TypeClassError},
+    kind::{CheckKind, Kind},
     substitute::{Substitutable, Substitution},
 };
 
-use super::{Kind, Row, TypeClass, Typed};
+use super::{Row, Typed};
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub struct VariantType(pub Row);
-
-impl VariantType {
-    pub fn to_protocol(&self, interner: &StrInterner) -> TypeProtocol {
-        let cases = self.0.to_protocol(interner);
-        TypeProtocol::variant(cases)
-    }
-}
 
 impl fmt::Display for VariantType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -28,21 +19,25 @@ impl fmt::Display for VariantType {
     }
 }
 
-impl Typed for VariantType {
+impl CheckKind for VariantType {
     fn kind(&self) -> Kind {
         Kind::Type
     }
+}
 
-    fn constrain_class(&self, with: TypeClass, _env: &mut TypeClassEnv) -> Result<(), TypeError> {
+impl CheckClass for VariantType {
+    fn check_class(&self, with: TypeClass, _env: &mut TypeClassEnv) -> Result<(), TypeClassError> {
         match with {
             TypeClass::Equatable => Ok(()),
-            _ => Err(TypeError::CannotConstrainClass {
+            _ => Err(TypeClassError {
                 expected: with,
                 actual: self.clone().into(),
             }),
         }
     }
 }
+
+impl Typed for VariantType {}
 
 impl Substitutable for VariantType {
     fn try_apply(&self, s: &mut Substitution) -> Option<Self> {

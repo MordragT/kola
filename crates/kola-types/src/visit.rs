@@ -1,3 +1,4 @@
+use crate::types;
 use std::ops::ControlFlow;
 
 pub trait TypeVisitor: Sized {
@@ -5,49 +6,49 @@ pub trait TypeVisitor: Sized {
 
     fn visit_primitive(
         &mut self,
-        _primitive: &super::PrimitiveType,
+        _primitive: &types::PrimitiveType,
     ) -> ControlFlow<Self::BreakValue> {
         ControlFlow::Continue(())
     }
 
-    fn visit_func(&mut self, func: &super::FuncType) -> ControlFlow<Self::BreakValue> {
+    fn visit_func(&mut self, func: &types::FuncType) -> ControlFlow<Self::BreakValue> {
         self.visit_mono(&func.input)?;
         self.visit_comp(&func.output)?;
         ControlFlow::Continue(())
     }
 
-    fn visit_comp(&mut self, comp: &super::CompType) -> ControlFlow<Self::BreakValue> {
+    fn visit_comp(&mut self, comp: &types::CompType) -> ControlFlow<Self::BreakValue> {
         self.visit_mono(&comp.ty)?;
         self.visit_row(&comp.effect)?;
 
         ControlFlow::Continue(())
     }
 
-    fn visit_list(&mut self, list: &super::ListType) -> ControlFlow<Self::BreakValue> {
+    fn visit_list(&mut self, list: &types::ListType) -> ControlFlow<Self::BreakValue> {
         self.visit_mono(&list.0)?;
         ControlFlow::Continue(())
     }
 
-    fn visit_record(&mut self, record: &super::RecordType) -> ControlFlow<Self::BreakValue> {
+    fn visit_record(&mut self, record: &types::RecordType) -> ControlFlow<Self::BreakValue> {
         self.visit_row(&record.0)?;
         ControlFlow::Continue(())
     }
 
-    fn visit_variant(&mut self, variant: &super::VariantType) -> ControlFlow<Self::BreakValue> {
+    fn visit_variant(&mut self, variant: &types::VariantType) -> ControlFlow<Self::BreakValue> {
         self.visit_row(&variant.0)?;
         ControlFlow::Continue(())
     }
 
-    fn visit_labeled(&mut self, property: &super::LabeledType) -> ControlFlow<Self::BreakValue> {
+    fn visit_labeled(&mut self, property: &types::LabeledType) -> ControlFlow<Self::BreakValue> {
         self.visit_mono(&property.ty)?;
         ControlFlow::Continue(())
     }
 
-    fn visit_row(&mut self, row: &super::Row) -> ControlFlow<Self::BreakValue> {
+    fn visit_row(&mut self, row: &types::Row) -> ControlFlow<Self::BreakValue> {
         match row {
-            super::Row::Empty => ControlFlow::Continue(()),
-            super::Row::Var(var) => self.visit_var(var),
-            super::Row::Extension { head, tail } => {
+            types::Row::Empty => ControlFlow::Continue(()),
+            types::Row::Var(var) => self.visit_var(var),
+            types::Row::Extension { head, tail } => {
                 self.visit_labeled(head)?;
                 self.visit_row(tail)?;
                 ControlFlow::Continue(())
@@ -55,39 +56,39 @@ pub trait TypeVisitor: Sized {
         }
     }
 
-    fn visit_var(&mut self, _var: &super::TypeVar) -> ControlFlow<Self::BreakValue> {
+    fn visit_var(&mut self, _var: &types::TypeVar) -> ControlFlow<Self::BreakValue> {
         ControlFlow::Continue(())
     }
 
     fn visit_label_or_var(
         &mut self,
-        label_or_var: &super::LabelOrVar,
+        label_or_var: &types::LabelOrVar,
     ) -> ControlFlow<Self::BreakValue> {
         match label_or_var {
-            super::LabelOrVar::Label(label) => self.visit_label(label),
-            super::LabelOrVar::Var(var) => self.visit_var(var),
+            types::LabelOrVar::Label(label) => self.visit_label(label),
+            types::LabelOrVar::Var(var) => self.visit_var(var),
         }
     }
 
-    fn visit_label(&mut self, _label: &super::Label) -> ControlFlow<Self::BreakValue> {
+    fn visit_label(&mut self, _label: &types::Label) -> ControlFlow<Self::BreakValue> {
         ControlFlow::Continue(())
     }
 
-    fn visit_wit(&mut self, wit: &super::WitType) -> ControlFlow<Self::BreakValue> {
+    fn visit_wit(&mut self, wit: &types::WitType) -> ControlFlow<Self::BreakValue> {
         self.visit_mono(&wit.0)
     }
 
-    fn visit_mono(&mut self, mono: &super::MonoType) -> ControlFlow<Self::BreakValue> {
+    fn visit_mono(&mut self, mono: &types::MonoType) -> ControlFlow<Self::BreakValue> {
         match mono {
-            super::MonoType::Primitive(b) => self.visit_primitive(b),
-            super::MonoType::Func(f) => self.visit_func(f),
-            super::MonoType::List(l) => self.visit_list(l),
-            super::MonoType::Record(r) => self.visit_record(r),
-            super::MonoType::Variant(v) => self.visit_variant(v),
-            super::MonoType::Var(v) => self.visit_var(v),
-            super::MonoType::Row(r) => self.visit_row(r),
-            super::MonoType::Label(l) => self.visit_label_or_var(l),
-            super::MonoType::Wit(w) => self.visit_wit(w),
+            types::MonoType::Primitive(b) => self.visit_primitive(b),
+            types::MonoType::Func(f) => self.visit_func(f),
+            types::MonoType::List(l) => self.visit_list(l),
+            types::MonoType::Record(r) => self.visit_record(r),
+            types::MonoType::Variant(v) => self.visit_variant(v),
+            types::MonoType::Var(v) => self.visit_var(v),
+            types::MonoType::Row(r) => self.visit_row(r),
+            types::MonoType::Label(l) => self.visit_label_or_var(l),
+            types::MonoType::Wit(w) => self.visit_wit(w),
         }
     }
 }
@@ -97,32 +98,32 @@ pub trait TypeVisitorMut: Sized {
 
     fn visit_primitive_mut(
         &mut self,
-        _primitive: &mut super::PrimitiveType,
+        _primitive: &mut types::PrimitiveType,
     ) -> ControlFlow<Self::BreakValue> {
         ControlFlow::Continue(())
     }
 
-    fn visit_func_mut(&mut self, func: &mut super::FuncType) -> ControlFlow<Self::BreakValue> {
+    fn visit_func_mut(&mut self, func: &mut types::FuncType) -> ControlFlow<Self::BreakValue> {
         self.visit_mono_mut(&mut func.input)?;
         self.visit_comp_mut(&mut func.output)?;
         ControlFlow::Continue(())
     }
 
-    fn visit_comp_mut(&mut self, comp: &mut super::CompType) -> ControlFlow<Self::BreakValue> {
+    fn visit_comp_mut(&mut self, comp: &mut types::CompType) -> ControlFlow<Self::BreakValue> {
         self.visit_mono_mut(&mut comp.ty)?;
         self.visit_row_mut(&mut comp.effect)?;
 
         ControlFlow::Continue(())
     }
 
-    fn visit_list_mut(&mut self, list: &mut super::ListType) -> ControlFlow<Self::BreakValue> {
+    fn visit_list_mut(&mut self, list: &mut types::ListType) -> ControlFlow<Self::BreakValue> {
         self.visit_mono_mut(&mut list.0)?;
         ControlFlow::Continue(())
     }
 
     fn visit_record_mut(
         &mut self,
-        record: &mut super::RecordType,
+        record: &mut types::RecordType,
     ) -> ControlFlow<Self::BreakValue> {
         self.visit_row_mut(&mut record.0)?;
         ControlFlow::Continue(())
@@ -130,7 +131,7 @@ pub trait TypeVisitorMut: Sized {
 
     fn visit_variant_mut(
         &mut self,
-        variant: &mut super::VariantType,
+        variant: &mut types::VariantType,
     ) -> ControlFlow<Self::BreakValue> {
         self.visit_row_mut(&mut variant.0)?;
         ControlFlow::Continue(())
@@ -138,17 +139,17 @@ pub trait TypeVisitorMut: Sized {
 
     fn visit_labeled_mut(
         &mut self,
-        property: &mut super::LabeledType,
+        property: &mut types::LabeledType,
     ) -> ControlFlow<Self::BreakValue> {
         self.visit_mono_mut(&mut property.ty)?;
         ControlFlow::Continue(())
     }
 
-    fn visit_row_mut(&mut self, row: &mut super::Row) -> ControlFlow<Self::BreakValue> {
+    fn visit_row_mut(&mut self, row: &mut types::Row) -> ControlFlow<Self::BreakValue> {
         match row {
-            super::Row::Empty => ControlFlow::Continue(()),
-            super::Row::Var(var) => self.visit_var_mut(var),
-            super::Row::Extension { head, tail } => {
+            types::Row::Empty => ControlFlow::Continue(()),
+            types::Row::Var(var) => self.visit_var_mut(var),
+            types::Row::Extension { head, tail } => {
                 self.visit_labeled_mut(head)?;
                 self.visit_row_mut(tail)?;
                 ControlFlow::Continue(())
@@ -156,39 +157,39 @@ pub trait TypeVisitorMut: Sized {
         }
     }
 
-    fn visit_var_mut(&mut self, _var: &mut super::TypeVar) -> ControlFlow<Self::BreakValue> {
+    fn visit_var_mut(&mut self, _var: &mut types::TypeVar) -> ControlFlow<Self::BreakValue> {
         ControlFlow::Continue(())
     }
 
     fn visit_label_or_var_mut(
         &mut self,
-        label_or_var: &mut super::LabelOrVar,
+        label_or_var: &mut types::LabelOrVar,
     ) -> ControlFlow<Self::BreakValue> {
         match label_or_var {
-            super::LabelOrVar::Label(label) => self.visit_label_mut(label),
-            super::LabelOrVar::Var(var) => self.visit_var_mut(var),
+            types::LabelOrVar::Label(label) => self.visit_label_mut(label),
+            types::LabelOrVar::Var(var) => self.visit_var_mut(var),
         }
     }
 
-    fn visit_label_mut(&mut self, _label: &mut super::Label) -> ControlFlow<Self::BreakValue> {
+    fn visit_label_mut(&mut self, _label: &mut types::Label) -> ControlFlow<Self::BreakValue> {
         ControlFlow::Continue(())
     }
 
-    fn visit_wit_mut(&mut self, wit: &mut super::WitType) -> ControlFlow<Self::BreakValue> {
+    fn visit_wit_mut(&mut self, wit: &mut types::WitType) -> ControlFlow<Self::BreakValue> {
         self.visit_mono_mut(&mut wit.0)
     }
 
-    fn visit_mono_mut(&mut self, mono: &mut super::MonoType) -> ControlFlow<Self::BreakValue> {
+    fn visit_mono_mut(&mut self, mono: &mut types::MonoType) -> ControlFlow<Self::BreakValue> {
         match mono {
-            super::MonoType::Primitive(b) => self.visit_primitive_mut(b),
-            super::MonoType::Func(f) => self.visit_func_mut(f),
-            super::MonoType::List(l) => self.visit_list_mut(l),
-            super::MonoType::Record(r) => self.visit_record_mut(r),
-            super::MonoType::Variant(v) => self.visit_variant_mut(v),
-            super::MonoType::Row(r) => self.visit_row_mut(r),
-            super::MonoType::Var(v) => self.visit_var_mut(v),
-            super::MonoType::Label(l) => self.visit_label_or_var_mut(l),
-            super::MonoType::Wit(w) => self.visit_wit_mut(w),
+            types::MonoType::Primitive(b) => self.visit_primitive_mut(b),
+            types::MonoType::Func(f) => self.visit_func_mut(f),
+            types::MonoType::List(l) => self.visit_list_mut(l),
+            types::MonoType::Record(r) => self.visit_record_mut(r),
+            types::MonoType::Variant(v) => self.visit_variant_mut(v),
+            types::MonoType::Row(r) => self.visit_row_mut(r),
+            types::MonoType::Var(v) => self.visit_var_mut(v),
+            types::MonoType::Label(l) => self.visit_label_or_var_mut(l),
+            types::MonoType::Wit(w) => self.visit_wit_mut(w),
         }
     }
 }
@@ -202,7 +203,7 @@ pub trait TypeVisitable {
         V: TypeVisitorMut;
 }
 
-impl TypeVisitable for super::PrimitiveType {
+impl TypeVisitable for types::PrimitiveType {
     fn visit_type_by<V>(&self, visitor: &mut V) -> ControlFlow<V::BreakValue>
     where
         V: TypeVisitor,
@@ -218,7 +219,7 @@ impl TypeVisitable for super::PrimitiveType {
     }
 }
 
-impl TypeVisitable for super::FuncType {
+impl TypeVisitable for types::FuncType {
     fn visit_type_by<V>(&self, visitor: &mut V) -> ControlFlow<V::BreakValue>
     where
         V: TypeVisitor,
@@ -234,7 +235,7 @@ impl TypeVisitable for super::FuncType {
     }
 }
 
-impl TypeVisitable for super::CompType {
+impl TypeVisitable for types::CompType {
     fn visit_type_by<V>(&self, visitor: &mut V) -> ControlFlow<V::BreakValue>
     where
         V: TypeVisitor,
@@ -250,7 +251,7 @@ impl TypeVisitable for super::CompType {
     }
 }
 
-impl TypeVisitable for super::ListType {
+impl TypeVisitable for types::ListType {
     fn visit_type_by<V>(&self, visitor: &mut V) -> ControlFlow<V::BreakValue>
     where
         V: TypeVisitor,
@@ -266,7 +267,7 @@ impl TypeVisitable for super::ListType {
     }
 }
 
-impl TypeVisitable for super::RecordType {
+impl TypeVisitable for types::RecordType {
     fn visit_type_by<V>(&self, visitor: &mut V) -> ControlFlow<V::BreakValue>
     where
         V: TypeVisitor,
@@ -282,7 +283,7 @@ impl TypeVisitable for super::RecordType {
     }
 }
 
-impl TypeVisitable for super::VariantType {
+impl TypeVisitable for types::VariantType {
     fn visit_type_by<V>(&self, visitor: &mut V) -> ControlFlow<V::BreakValue>
     where
         V: TypeVisitor,
@@ -298,7 +299,7 @@ impl TypeVisitable for super::VariantType {
     }
 }
 
-impl TypeVisitable for super::MonoType {
+impl TypeVisitable for types::MonoType {
     fn visit_type_by<V>(&self, visitor: &mut V) -> ControlFlow<V::BreakValue>
     where
         V: TypeVisitor,
@@ -314,7 +315,7 @@ impl TypeVisitable for super::MonoType {
     }
 }
 
-impl TypeVisitable for super::LabeledType {
+impl TypeVisitable for types::LabeledType {
     fn visit_type_by<V>(&self, visitor: &mut V) -> ControlFlow<V::BreakValue>
     where
         V: TypeVisitor,
@@ -330,7 +331,7 @@ impl TypeVisitable for super::LabeledType {
     }
 }
 
-impl TypeVisitable for super::Row {
+impl TypeVisitable for types::Row {
     fn visit_type_by<V>(&self, visitor: &mut V) -> ControlFlow<V::BreakValue>
     where
         V: TypeVisitor,
@@ -346,7 +347,7 @@ impl TypeVisitable for super::Row {
     }
 }
 
-impl TypeVisitable for super::TypeVar {
+impl TypeVisitable for types::TypeVar {
     fn visit_type_by<V>(&self, visitor: &mut V) -> ControlFlow<V::BreakValue>
     where
         V: TypeVisitor,
@@ -362,7 +363,7 @@ impl TypeVisitable for super::TypeVar {
     }
 }
 
-impl TypeVisitable for super::LabelOrVar {
+impl TypeVisitable for types::LabelOrVar {
     fn visit_type_by<V>(&self, visitor: &mut V) -> ControlFlow<V::BreakValue>
     where
         V: TypeVisitor,
@@ -378,7 +379,7 @@ impl TypeVisitable for super::LabelOrVar {
     }
 }
 
-impl TypeVisitable for super::Label {
+impl TypeVisitable for types::Label {
     fn visit_type_by<V>(&self, visitor: &mut V) -> ControlFlow<V::BreakValue>
     where
         V: TypeVisitor,
@@ -394,7 +395,7 @@ impl TypeVisitable for super::Label {
     }
 }
 
-impl TypeVisitable for super::WitType {
+impl TypeVisitable for types::WitType {
     fn visit_type_by<V>(&self, visitor: &mut V) -> ControlFlow<V::BreakValue>
     where
         V: TypeVisitor,

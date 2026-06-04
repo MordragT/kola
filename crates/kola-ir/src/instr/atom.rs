@@ -1,9 +1,8 @@
 use derive_more::From;
 use std::fmt::{self, Display};
 
-use kola_builtins::BuiltinId;
+use kola_builtins::{BuiltinId, BuiltinType};
 use kola_print::prelude::*;
-use kola_protocol::{TypeInterner, TypeKey};
 use kola_utils::{
     display::DisplayWith,
     impl_try_as,
@@ -81,11 +80,20 @@ impl DisplayWith<StrInterner> for Tag {
 }
 
 #[derive(Debug, From, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct Witness(pub TypeKey);
+pub struct Witness(pub Symbol);
 
-impl DisplayWith<TypeInterner> for Witness {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>, interner: &TypeInterner) -> fmt::Result {
-        interner[self.0].to_json().unwrap().fmt(f)
+impl fmt::Display for Witness {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "w{}", self.0.0)
+    }
+}
+
+#[derive(Debug, From, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct Label(pub StrKey);
+
+impl DisplayWith<StrInterner> for Label {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>, interner: &StrInterner) -> fmt::Result {
+        write!(f, "'{}", interner[self.0].blue())
     }
 }
 
@@ -106,6 +114,8 @@ pub enum Atom {
     Builtin(BuiltinId),
     Tag(Tag),
     Witness(Witness),
+    BuiltinWitness(BuiltinType),
+    Label(Label),
 }
 
 impl<T> From<&T> for Atom
@@ -142,7 +152,9 @@ impl<'a> Notate<'a> for IrPrinter<'a, Id<Atom>> {
             Atom::Symbol(s) => s.display_in(arena),
             Atom::Builtin(b) => b.display_in(arena),
             Atom::Tag(t) => self.interner.with(&t).display_in(arena),
-            Atom::Witness(tr) => tr.0.display_in(arena),
+            Atom::Witness(w) => w.display_in(arena),
+            Atom::BuiltinWitness(bw) => bw.display_in(arena),
+            Atom::Label(l) => self.interner.with(&l).display_in(arena),
         };
 
         notation

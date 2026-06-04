@@ -1,12 +1,10 @@
-use kola_protocol::TypeProtocol;
-use kola_utils::interner::StrInterner;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
-use super::{CompType, Kind, MonoType, TypeClass, Typed};
+use super::{CompType, MonoType, Typed};
 use crate::{
-    env::TypeClassEnv,
-    error::TypeError,
+    class::{CheckClass, TypeClass, TypeClassEnv, TypeClassError},
+    kind::{CheckKind, Kind},
     substitute::{Substitutable, Substitution, merge},
 };
 
@@ -20,15 +18,6 @@ impl FuncType {
     pub fn new(input: MonoType, output: CompType) -> Self {
         Self { input, output }
     }
-
-    pub fn to_protocol(&self, interner: &StrInterner) -> TypeProtocol {
-        let Self { input, output } = self;
-
-        let input = input.to_protocol(interner);
-        let output = output.to_protocol(interner);
-
-        TypeProtocol::func(input, output)
-    }
 }
 
 impl fmt::Display for FuncType {
@@ -37,18 +26,22 @@ impl fmt::Display for FuncType {
     }
 }
 
-impl Typed for FuncType {
+impl CheckKind for FuncType {
     fn kind(&self) -> Kind {
         Kind::Type
     }
+}
 
-    fn constrain_class(&self, with: TypeClass, _env: &mut TypeClassEnv) -> Result<(), TypeError> {
-        Err(TypeError::CannotConstrainClass {
+impl CheckClass for FuncType {
+    fn check_class(&self, with: TypeClass, _env: &mut TypeClassEnv) -> Result<(), TypeClassError> {
+        Err(TypeClassError {
             expected: with,
             actual: self.clone().into(),
         })
     }
 }
+
+impl Typed for FuncType {}
 
 impl Substitutable for FuncType {
     fn try_apply(&self, s: &mut Substitution) -> Option<Self> {

@@ -1,15 +1,11 @@
-use std::{collections::BTreeMap, fmt};
+use std::fmt;
 
-use kola_protocol::TypeSchemeProtocol;
-use kola_utils::interner::StrInterner;
 use serde::{Deserialize, Serialize};
 
-use super::{MonoType, TypeVar, Typed};
+use super::{LabelOrVar, MonoType, Row, TypeConversionError, TypeVar, Typed};
 use crate::{
-    constraints::Constraints,
-    error::{TypeConversionError, TypeError},
+    kind::Kind,
     substitute::{Substitutable, Substitution},
-    types::{Kind, LabelOrVar, Row},
 };
 
 /// Polytype
@@ -32,24 +28,6 @@ impl PolyType {
             forall: Vec::new(),
             ty,
         }
-    }
-
-    pub fn from_protocol(
-        proto: TypeSchemeProtocol,
-        interner: &mut StrInterner,
-    ) -> Result<Self, TypeError> {
-        let TypeSchemeProtocol { forall, ty } = proto;
-
-        let mut bound = BTreeMap::new();
-
-        // Convert types using simple array indexing
-        let ty = MonoType::from_protocol(ty, &mut bound, interner)?;
-
-        assert_eq!(forall as usize, bound.len());
-
-        let forall = bound.into_values().collect();
-
-        Ok(Self { forall, ty })
     }
 
     pub fn bound_vars(&self) -> &Vec<TypeVar> {
@@ -93,7 +71,7 @@ impl PolyType {
 
     /// The procedure inst(σ) specializes the polytype σ by copying the term
     /// and replacing the bound type variables consistently by new monotype variables.
-    pub fn instantiate(&self, cons: &mut Constraints) -> MonoType {
+    pub fn instantiate(&self, mut f: impl FnMut(TypeVar, TypeVar)) -> MonoType {
         let mut ty = self.ty.clone();
 
         let table = self
@@ -103,7 +81,7 @@ impl PolyType {
             .map(|from| {
                 let to = from.fresh();
 
-                cons.constrain_inst(from, to);
+                f(from, to);
 
                 let mono_t = match from.kind() {
                     Kind::Type => MonoType::Var(to),

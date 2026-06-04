@@ -5,7 +5,6 @@
 
 pub mod module;
 pub mod normalizer;
-pub mod symbol;
 
 pub mod prelude {
     pub use crate::module::{LoweredModule, lower, lower_module};

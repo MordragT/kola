@@ -1,8 +1,10 @@
-use crate::{
-    error::{TypeError, TypeErrors},
+use kola_types::{
+    kind::{CheckKind, Kind},
     substitute::{Substitutable, Substitution},
     types::*,
 };
+
+use crate::error::{TypeError, TypeErrors};
 
 /// Principal Type: Most general type that can be inferred for a given expression
 /// Unify algorithm in J performs mutation, in W it does not.
@@ -337,14 +339,14 @@ impl<'a> Unifier<'a> {
             ) if !a.can_unify(b) => {
                 let var = Row::var();
 
-                let exp = Row::extension(
+                let exp = Row::ext(
                     LabeledType {
                         label: a.clone(),
                         ty: t.clone(),
                     },
                     var.clone(),
                 );
-                let act = Row::extension(
+                let act = Row::ext(
                     LabeledType {
                         label: b.clone(),
                         ty: u.clone(),
@@ -458,15 +460,15 @@ mod tests {
         let shared_var = Row::var();
 
         // Type 1: { name : Str | shared_var }
-        let type1 = Row::extension(
+        let type1 = Row::ext(
             LabeledType::new(Label(interner.intern("name")), MonoType::STR),
             shared_var.clone(),
         );
 
         // Type 2: { name : Str, age : Num }
-        let type2 = Row::extension(
+        let type2 = Row::ext(
             LabeledType::new(Label(interner.intern("name")), MonoType::STR),
-            Row::extension(
+            Row::ext(
                 LabeledType::new(Label(interner.intern("age")), MonoType::NUM),
                 Row::Empty,
             ),
@@ -477,16 +479,16 @@ mod tests {
         assert!(result1.is_ok());
 
         // Type 3: { name : Str, car : Str }
-        let type3 = Row::extension(
+        let type3 = Row::ext(
             LabeledType::new(Label(interner.intern("name")), MonoType::STR),
-            Row::extension(
+            Row::ext(
                 LabeledType::new(Label(interner.intern("car")), MonoType::STR),
                 Row::Empty,
             ),
         );
 
         // Type 4: { name : Str | shared_var } (same shared_var!)
-        let type4 = Row::extension(
+        let type4 = Row::ext(
             LabeledType::new(Label(interner.intern("name")), MonoType::STR),
             shared_var,
         );
@@ -506,18 +508,18 @@ mod tests {
         let shared_row_var = Row::var();
 
         // Person a = { name : Str | a }
-        let person_a = Row::extension(
+        let person_a = Row::ext(
             LabeledType::new(Label(interner.intern("name")), MonoType::STR),
             shared_row_var.clone(),
         );
 
         // Annotation type: { zero : Person a, one : Person a }
-        let annotation = Row::extension(
+        let annotation = Row::ext(
             LabeledType::new(
                 Label(interner.intern("zero")),
                 MonoType::Row(Box::new(person_a.clone())),
             ),
-            Row::extension(
+            Row::ext(
                 LabeledType::new(
                     Label(interner.intern("one")),
                     MonoType::Row(Box::new(person_a.clone())),
@@ -527,29 +529,29 @@ mod tests {
         );
 
         // alice_type = { name : Str, age : Num }
-        let alice_type = Row::extension(
+        let alice_type = Row::ext(
             LabeledType::new(Label(interner.intern("name")), MonoType::STR),
-            Row::extension(
+            Row::ext(
                 LabeledType::new(Label(interner.intern("age")), MonoType::NUM),
                 Row::Empty,
             ),
         );
 
         // bob_type = { name : Str, car : Str }
-        let bob_type = Row::extension(
+        let bob_type = Row::ext(
             LabeledType::new(Label(interner.intern("name")), MonoType::STR),
-            Row::extension(
+            Row::ext(
                 LabeledType::new(Label(interner.intern("car")), MonoType::STR),
                 Row::Empty,
             ),
         );
 
-        let inferred = Row::extension(
+        let inferred = Row::ext(
             LabeledType::new(
                 Label(interner.intern("zero")),
                 MonoType::Row(Box::new(alice_type)),
             ),
-            Row::extension(
+            Row::ext(
                 LabeledType::new(
                     Label(interner.intern("one")),
                     MonoType::Row(Box::new(bob_type)),
@@ -573,7 +575,7 @@ mod tests {
         let var = MonoType::var();
 
         // Create a recursive type: var = { field : var }
-        let recursive_type = Row::extension(
+        let recursive_type = Row::ext(
             LabeledType::new(Label(interner.intern("field")), var.clone()),
             Row::Empty,
         );
@@ -623,18 +625,18 @@ mod tests {
         let mut subs = Substitution::empty();
 
         // Type 1: { a : Int, b : String }
-        let type1 = Row::extension(
+        let type1 = Row::ext(
             LabeledType::new(Label(interner.intern("a")), MonoType::NUM),
-            Row::extension(
+            Row::ext(
                 LabeledType::new(Label(interner.intern("b")), MonoType::STR),
                 Row::Empty,
             ),
         );
 
         // Type 2: { b : String, a : Int } (different order)
-        let type2 = Row::extension(
+        let type2 = Row::ext(
             LabeledType::new(Label(interner.intern("b")), MonoType::STR),
-            Row::extension(
+            Row::ext(
                 LabeledType::new(Label(interner.intern("a")), MonoType::NUM),
                 Row::Empty,
             ),
@@ -650,7 +652,7 @@ mod tests {
         let mut subs = Substitution::empty();
 
         // Type 1: { a : Int }
-        let type1 = Row::extension(
+        let type1 = Row::ext(
             LabeledType::new(Label(interner.intern("a")), MonoType::NUM),
             Row::Empty,
         );
@@ -678,7 +680,7 @@ mod tests {
         assert!(result1.is_ok());
 
         // Then bind var2 = { field : Int }
-        let concrete_type = Row::extension(
+        let concrete_type = Row::ext(
             LabeledType::new(Label(interner.intern("field")), MonoType::NUM),
             Row::Empty,
         );
@@ -699,7 +701,7 @@ mod tests {
 
         let int_type = MonoType::NUM;
         let str_type = MonoType::STR;
-        let record_type = MonoType::Row(Box::new(Row::extension(
+        let record_type = MonoType::Row(Box::new(Row::ext(
             LabeledType::new(Label(interner.intern("field")), MonoType::NUM),
             Row::Empty,
         )));

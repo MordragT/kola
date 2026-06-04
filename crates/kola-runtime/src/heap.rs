@@ -1,21 +1,10 @@
-use std::{borrow::Cow, fmt};
+use std::fmt;
 
-use kola_ir::instr::{Tag, Witness};
-use kola_protocol::TypeInterner;
-use kola_utils::{
-    display::DisplayWith,
-    interner::{StrInterner, StrKey},
-    serde::SerializeWith,
-};
+use kola_utils::{display::DisplayWith, interner::StrInterner, serde::SerializeWith};
 use serde::Serialize;
 
 use crate::{
-    env::EnvArena,
-    list::{ListArena, ListIdx},
-    record::{RecordArena, RecordIdx},
-    string::{StringArena, StringIdx},
-    value::Value,
-    variant::{VariantArena, VariantIdx},
+    env::EnvArena, list::ListArena, record::RecordArena, string::StringArena, variant::VariantArena,
 };
 
 /// Configurable capacities for your runtime arenas to eliminate execution-time reallocations.
@@ -46,8 +35,6 @@ impl Default for HeapCapacities {
 
 #[derive(Debug)]
 pub struct Heap {
-    /// The type interner used for type reification
-    pub type_interner: TypeInterner,
     /// The arena for storing strings
     pub strings: StringArena,
     /// The arena for storing lists
@@ -62,18 +49,13 @@ pub struct Heap {
 
 impl Heap {
     /// Creates a fresh runtime heap with optimized default capacities.
-    pub fn new(str_interner: StrInterner, type_interner: TypeInterner) -> Self {
-        Self::with_capacities(str_interner, type_interner, HeapCapacities::default())
+    pub fn new(str_interner: StrInterner) -> Self {
+        Self::with_capacities(HeapCapacities::default(), str_interner)
     }
 
     /// Allows passing custom capacities (e.g., tiny limits for testing, massive limits for compiler flags).
-    pub fn with_capacities(
-        str_interner: StrInterner,
-        type_interner: TypeInterner,
-        caps: HeapCapacities,
-    ) -> Self {
+    pub fn with_capacities(caps: HeapCapacities, str_interner: StrInterner) -> Self {
         Self {
-            type_interner,
             strings: StringArena::with_capacity(
                 caps.strings_bytes,
                 caps.strings_nodes,
@@ -97,47 +79,6 @@ impl Heap {
         T: SerializeWith<Self>,
     {
         serde_json::to_string_pretty(&self.with(value))
-    }
-
-    #[inline]
-    pub fn get_interned_label(&mut self, wit: Witness) -> Option<StrKey> {
-        let label = self.type_interner[wit.0].as_label()?;
-        Some(self.strings.interner.intern(label))
-    }
-
-    #[inline]
-    pub fn intern_str<'a>(&mut self, s: impl Into<Cow<'a, str>>) -> StrKey {
-        self.strings.interner.intern(s)
-    }
-
-    #[inline]
-    pub fn get_record_value<'a>(
-        &self,
-        record: Option<RecordIdx>,
-        field: &'static str,
-    ) -> Option<Value> {
-        let key = self
-            .strings
-            .interner
-            .lookup(field)
-            .expect("Field name must be interned");
-        self.records.get_value(record, key)
-    }
-
-    #[inline]
-    pub fn record_keys(&mut self, record: Option<RecordIdx>) -> Option<ListIdx> {
-        let keys = self
-            .records
-            .iter(record)
-            .map(|(k, _)| Value::Str(Some(StringIdx::Static(k))))
-            .collect::<Vec<_>>();
-        self.lists.alloc(&keys)
-    }
-
-    #[inline]
-    pub fn alloc_builtin_variant<'a>(&mut self, tag: &'static str, value: Value) -> VariantIdx {
-        let tag = Tag(self.intern_str(tag));
-        self.variants.alloc(tag, value)
     }
 }
 

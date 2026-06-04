@@ -1,17 +1,14 @@
 use std::ops::ControlFlow;
 
 use kola_ir::prelude::{Id as InstrId, instr as ir, *};
-use kola_protocol::TypeInterner;
 use kola_resolver::{
-    phase::{ResolvePhase, ResolvedModule, ResolvedNodes, ResolvedValue},
+    phase::{ResolvePhase, ResolvedModule, ResolvedNodes, ResolvedType, ResolvedValue},
     symbol::{Sym, ValueSym},
 };
 use kola_tree::{
     node::Namespace,
     prelude::{Id as TreeId, *},
 };
-use kola_typer::phase::TypedNodes;
-use kola_utils::interner::StrInterner;
 
 // https://matt.might.net/articles/cps-conversion/
 
@@ -21,10 +18,7 @@ pub struct Normalizer<'a, Node> {
     next: InstrId<ir::Expr>,
     hole: ir::Symbol,
     resolved: &'a ResolvedNodes,
-    typed: &'a TypedNodes,
     builder: &'a mut IrBuilder,
-    type_interner: &'a mut TypeInterner,
-    str_interner: &'a StrInterner,
 }
 
 impl<'a, Node> Normalizer<'a, Node> {
@@ -33,24 +27,18 @@ impl<'a, Node> Normalizer<'a, Node> {
         next: InstrId<ir::Expr>,
         hole: ir::Symbol,
         resolved: &'a ResolvedNodes,
-        typed: &'a TypedNodes,
         builder: &'a mut IrBuilder,
-        type_interner: &'a mut TypeInterner,
-        str_interner: &'a StrInterner,
     ) -> Self {
         Self {
             root_id,
             next,
             hole,
             resolved,
-            typed,
             builder,
-            type_interner,
-            str_interner,
         }
     }
 
-    pub fn next_symbol(&mut self) -> ir::Symbol {
+    pub fn next_symbol() -> ir::Symbol {
         let sym = ValueSym::new();
         let symbol = ir::Symbol::new(sym.id());
         symbol
@@ -83,7 +71,7 @@ impl<'a, Node> Normalizer<'a, Node> {
         F: FnOnce(&mut Self, &T) -> ControlFlow<!>,
     {
         // Create fresh symbols for the nested context
-        let fresh_hole = self.next_symbol();
+        let fresh_hole = Self::next_symbol();
         let fresh_arg = self.builder.add(ir::Atom::Symbol(fresh_hole));
         let fresh_ret = self
             .builder
@@ -205,15 +193,8 @@ where
         if let Some(field_path) = field_path {
             let field_path = &field_path.get(tree).0;
 
-            // Pre-allocate symbols for each field access
-            let mut field_symbols = (0..field_path.len())
-                .map(|_| self.next_symbol())
-                .collect::<Vec<_>>();
-
-            // The last field access should bind to self.hole
-            if let Some(last) = field_symbols.last_mut() {
-                *last = self.hole;
-            }
+            // The final field access in the chain always binds to self.hole
+            let mut current_sym = self.hole;
 
             // Build the access chain from right to left (last field to first field)
             // This ensures proper execution order
@@ -221,13 +202,15 @@ where
 
             for (i, field_id) in field_path.iter().enumerate().rev() {
                 let field_label = field_id.get(tree).0;
-                let bind_sym = field_symbols[i];
+                let bind_sym = current_sym;
 
                 // Determine the base atom for this access
                 let base_atom = if i == 0 {
                     source_atom // First field accesses the original source
                 } else {
-                    self.builder.add(ir::Atom::Symbol(field_symbols[i - 1]))
+                    let next_sym = Self::next_symbol();
+                    current_sym = next_sym;
+                    self.builder.add(ir::Atom::Symbol(next_sym))
                 };
 
                 // Create the record access expression
@@ -267,13 +250,24 @@ where
     fn visit_type_witness_expr(
         &mut self,
         id: TreeId<node::TypeWitnessExpr>,
-        _tree: &T,
+        tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
-        let ty = self.typed.meta(id);
-        let ty_proto = ty.to_protocol(self.str_interner);
-        let ty_key = self.type_interner.intern(ty_proto);
+        let wit = *id.get(tree);
 
-        let atom = self.builder.add(ir::Atom::Witness(ir::Witness(ty_key)));
+        let atom = match wit {
+            node::TypeWitnessExpr::Label(l) => {
+                let label = l.get(tree).0;
+                ir::Atom::Label(ir::Label(label))
+            }
+            node::TypeWitnessExpr::Qualified(t) => match self.resolved.meta(t) {
+                ResolvedType::Builtin(bt) => ir::Atom::BuiltinWitness(*bt),
+                ResolvedType::Reference(ts) => {
+                    ir::Atom::Witness(ir::Witness(ir::Symbol::new(ts.id())))
+                }
+            },
+        };
+
+        let atom = self.builder.add(atom);
         self.emit(atom);
 
         ControlFlow::Continue(())
@@ -320,8 +314,8 @@ where
         let node::CallExpr { func, arg } = *id.get(tree);
 
         // Create fresh symbols and corresponding atoms
-        let f_sym = self.next_symbol();
-        let x_sym = self.next_symbol();
+        let f_sym = Self::next_symbol();
+        let x_sym = Self::next_symbol();
 
         let f_atom = self.builder.add(ir::Atom::Symbol(f_sym));
         let x_atom = self.builder.add(ir::Atom::Symbol(x_sym));
@@ -353,7 +347,7 @@ where
         let node::HandleExpr { source, clauses } = id.get(tree);
 
         // Create a fresh symbol and atom for the source
-        let source_sym = self.next_symbol();
+        let source_sym = Self::next_symbol();
         let source_atom = self.builder.add(ir::Atom::Symbol(source_sym));
 
         let mut next = None;
@@ -408,7 +402,7 @@ where
         let op = op.get(tree).0;
 
         // Create fresh symbols and corresponding atoms
-        let arg_sym = self.next_symbol();
+        let arg_sym = Self::next_symbol();
         let arg_atom = self.builder.add(ir::Atom::Symbol(arg_sym));
 
         // Create the do expression context and set continuation
@@ -437,7 +431,7 @@ where
         } = *id.get(tree);
 
         // Create fresh symbol and corresponding atom
-        let pred_sym = self.next_symbol();
+        let pred_sym = Self::next_symbol();
         let pred_atom = self.builder.add(ir::Atom::Symbol(pred_sym));
 
         let then_expr = self.with_fresh_context(tree, |this, tree| this.visit_expr(then, tree));
@@ -467,7 +461,7 @@ where
         let node::UnaryExpr { op, operand } = *id.get(tree);
 
         // Create fresh symbol and corresponding atom
-        let operand_sym = self.next_symbol();
+        let operand_sym = Self::next_symbol();
         let operand_atom = self.builder.add(ir::Atom::Symbol(operand_sym));
 
         let unary_op = match *op.get(tree) {
@@ -497,8 +491,8 @@ where
         let node::BinaryExpr { lhs, op, rhs } = *id.get(tree);
 
         // Create fresh symbols and correpsonding atoms
-        let lhs_sym = self.next_symbol();
-        let rhs_sym = self.next_symbol();
+        let lhs_sym = Self::next_symbol();
+        let rhs_sym = Self::next_symbol();
 
         let lhs_atom = self.builder.add(ir::Atom::Symbol(lhs_sym));
         let rhs_atom = self.builder.add(ir::Atom::Symbol(rhs_sym));
@@ -549,7 +543,7 @@ where
 
         // Create fresh symbols for each item
         let item_syms = (0..items.len())
-            .map(|_| self.next_symbol())
+            .map(|_| Self::next_symbol())
             .collect::<Vec<_>>();
 
         // Create the list expression context and set continuation
@@ -579,7 +573,7 @@ where
         let fields = &id.get(tree).0;
 
         // Create fresh symbols for each field value
-        let field_value_syms: Vec<_> = (0..fields.len()).map(|_| self.next_symbol()).collect();
+        let field_value_syms: Vec<_> = (0..fields.len()).map(|_| Self::next_symbol()).collect();
 
         //  Build the IR field pairs and SORT them statically by key.
         // We use a stable sort to preserve original shadowing order if duplicate keys exist
@@ -627,8 +621,8 @@ where
         } = *id.get(tree);
 
         // Create fresh symbols and corresponding atoms
-        let value_sym = self.next_symbol();
-        let source_sym = self.next_symbol();
+        let value_sym = Self::next_symbol();
+        let source_sym = Self::next_symbol();
 
         let value_atom = self.builder.add(ir::Atom::Symbol(value_sym));
         let source_atom = self.builder.add(ir::Atom::Symbol(source_sym));
@@ -669,7 +663,7 @@ where
         } = *id.get(tree);
 
         // Create fresh symbol and corresponding atom
-        let source_sym = self.next_symbol();
+        let source_sym = Self::next_symbol();
         let source_atom = self.builder.add(ir::Atom::Symbol(source_sym));
 
         // Build FieldPath from AST field path
@@ -708,8 +702,8 @@ where
         } = *id.get(tree);
 
         // Create fresh symbols and corresponding atoms
-        let value_sym = self.next_symbol();
-        let source_sym = self.next_symbol();
+        let value_sym = Self::next_symbol();
+        let source_sym = Self::next_symbol();
 
         let value_atom = self.builder.add(ir::Atom::Symbol(value_sym));
         let source_atom = self.builder.add(ir::Atom::Symbol(source_sym));
@@ -758,8 +752,8 @@ where
         let node::RecordMergeExpr { lhs, rhs } = *id.get(tree);
 
         // Create fresh symbols and correpsonding atoms
-        let lhs_sym = self.next_symbol();
-        let rhs_sym = self.next_symbol();
+        let lhs_sym = Self::next_symbol();
+        let rhs_sym = Self::next_symbol();
 
         let lhs_atom = self.builder.add(ir::Atom::Symbol(lhs_sym));
         let rhs_atom = self.builder.add(ir::Atom::Symbol(rhs_sym));
@@ -795,7 +789,7 @@ where
         let result_hole = self.hole;
 
         // Create symbol for the value being matched
-        let source_sym = self.next_symbol();
+        let source_sym = Self::next_symbol();
 
         let mut on_failure = self
             .builder
@@ -1336,15 +1330,13 @@ mod tests {
         instr::{self as ir, Symbol},
         ir::{Ir, IrBuilder},
     };
-    use kola_machine::machine::{CekMachine, MachineContext};
-    use kola_protocol::TypeInterner;
+    use kola_machine::machine::{Ctx, Machine};
     use kola_resolver::{
         phase::{ResolvedNodes, ResolvedValue},
         symbol::ValueSym,
     };
     use kola_runtime::{heap::Heap, value::Value};
     use kola_tree::prelude::*;
-    use kola_utils::interner::StrInterner;
 
     use super::Normalizer;
 
@@ -1374,33 +1366,21 @@ mod tests {
     where
         Id<T>: Visitable<TreeBuilder>,
     {
-        let mut type_interner = TypeInterner::new();
         let mut builder = IrBuilder::new();
-
-        let mocked_typed = HashMap::new();
 
         let hole = Symbol::new(ValueSym::new().id());
         let arg = builder.add(ir::Atom::Symbol(hole));
         let next = builder.add(ir::Expr::Ret(ir::RetExpr { arg }));
 
-        let normalizer = Normalizer::new(
-            root_id,
-            next,
-            hole,
-            resolved,
-            &mocked_typed,
-            &mut builder,
-            &mut type_interner,
-            str_interner,
-        );
+        let normalizer = Normalizer::new(root_id, next, hole, resolved, &mut builder);
         let root = normalizer.run(&tree);
 
         builder.finish(root)
     }
 
-    fn new_machine(ir: Ir) -> CekMachine {
-        let context = MachineContext::new(ir, "/mocked/path");
-        CekMachine::new(context)
+    fn new_machine(ir: Ir) -> Machine {
+        let context = Ctx::new(ir, "/mocked/path");
+        Machine::new(context)
     }
 
     #[test]

@@ -1,0 +1,17 @@
+[package]
+name = "kola-types"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+kola-collections.workspace = true
+kola-print.workspace = true
+kola-resolver.workspace = true
+kola-span.workspace = true
+kola-tree.workspace = true
+kola-utils.workspace = true
+serde.workspace = true
+derive_more.workspace = true
+indexmap.workspace = true
+thiserror.workspace = true
+enum-as-inner.workspace = true

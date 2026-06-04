@@ -1,5 +1,6 @@
 use camino::{Utf8Path, Utf8PathBuf};
 
+use kola_builtins::BuiltinLexicon;
 use kola_ir::{
     instr::Func,
     ir::{Ir, IrView},
@@ -13,17 +14,20 @@ use crate::{
 };
 
 #[derive(Debug, Clone)]
-pub struct MachineContext {
+pub struct Ctx {
     /// The IR being interpreted
     pub ir: Ir,
     /// The working directory for the machine
     pub working_dir: Utf8PathBuf,
+    /// The built-in lexicon for the machine (e.g., built-in functions, types, etc.)
+    pub lexicon: BuiltinLexicon,
 }
 
-impl MachineContext {
-    pub fn new(ir: Ir, working_dir: impl Into<Utf8PathBuf>) -> Self {
+impl Ctx {
+    pub fn new(ir: Ir, lexicon: BuiltinLexicon, working_dir: impl Into<Utf8PathBuf>) -> Self {
         Self {
             ir,
+            lexicon,
             working_dir: working_dir.into(),
         }
     }
@@ -43,18 +47,18 @@ impl MachineContext {
 
 /// CEK-style abstract machine for interpreting the language
 #[derive(Debug, Clone)]
-pub struct CekMachine {
+pub struct Machine {
     /// The current state of the machine
     pub state: MachineState,
     /// The context of the machine
-    pub context: MachineContext,
+    pub context: Ctx,
 }
 
-impl CekMachine {
+impl Machine {
     /// Create a new CEK machine to evaluate an expression
     /// Initial configuration (M-INIT in the paper)
     /// C = hM | ∅ | κ0i
-    pub fn new(context: MachineContext) -> Self {
+    pub fn new(context: Ctx) -> Self {
         let config = context.start_config();
 
         Self {
@@ -100,11 +104,7 @@ impl CekMachine {
     }
 
     /// Execute an operation configuration step
-    fn step_operation(
-        config: OperationConfig,
-        context: &mut MachineContext,
-        heap: &mut Heap,
-    ) -> MachineState {
+    fn step_operation(config: OperationConfig, context: &mut Ctx, heap: &mut Heap) -> MachineState {
         let OperationConfig {
             op,
             arg,
@@ -180,23 +180,26 @@ impl CekMachine {
 }
 #[cfg(test)]
 mod tests {
+    use kola_builtins::BuiltinLexicon;
     use kola_ir::{
         instr::{
             Atom, BinaryExpr, BinaryOp, CallExpr, Func, LetExpr, PatternFailure, PatternSuccess,
             RecordAccessExpr, RecordExpr, RecordExtendExpr, RecordUpdateExpr, RecordUpdateOp,
             RetExpr, Symbol,
         },
-        ir::IrBuilder,
+        ir::{Ir, IrBuilder},
     };
-    use kola_protocol::TypeInterner;
     use kola_runtime::{heap::Heap, value::Value};
     use kola_utils::interner::StrInterner;
 
-    use crate::machine::{CekMachine, MachineContext};
+    use crate::machine::{Ctx, Machine};
 
-    fn run_machine(context: MachineContext, heap: &mut Heap) -> Result<Value, String> {
-        let mut machine = CekMachine::new(context);
-        machine.run(heap)
+    fn run_machine(ir: Ir, mut interner: StrInterner) -> Result<Value, String> {
+        let lexicon = BuiltinLexicon::new(&mut interner);
+        let context = Ctx::new(ir, lexicon, "/mocked/path");
+        let mut heap = Heap::new(interner);
+        let mut machine = Machine::new(context);
+        machine.run(&mut heap)
     }
 
     #[test]
@@ -217,9 +220,8 @@ mod tests {
 
         let ir = ir.finish(root);
 
-        let context = MachineContext::new(ir, "/mocked/path");
-        let mut heap = Heap::new(StrInterner::default(), TypeInterner::new());
-        let result = run_machine(context, &mut heap).unwrap();
+        let interner = StrInterner::default();
+        let result = run_machine(ir, interner).unwrap();
 
         match result {
             Value::Num(n) => assert_eq!(n, 42.0),
@@ -267,9 +269,8 @@ mod tests {
         let ir = ir.finish(root);
 
         // Run the machine
-        let mut heap = Heap::new(StrInterner::default(), TypeInterner::new());
-        let context = MachineContext::new(ir, "/mocked/path");
-        let result = run_machine(context, &mut heap).unwrap();
+        let interner = StrInterner::default();
+        let result = run_machine(ir, interner).unwrap();
 
         // Check the result
         match result {
@@ -313,9 +314,7 @@ mod tests {
         let ir = ir.finish(root);
 
         // Run the machine
-        let mut heap = Heap::new(interner, TypeInterner::new());
-        let context = MachineContext::new(ir, "/mocked/path");
-        let result = run_machine(context, &mut heap).unwrap();
+        let result = run_machine(ir, interner).unwrap();
 
         // Check the result - should be the value of the x field (10)
         match result {
@@ -366,9 +365,7 @@ mod tests {
         let ir = ir.finish(root);
 
         // Run the machine
-        let mut heap = Heap::new(interner, TypeInterner::new());
-        let context = MachineContext::new(ir, "/mocked/path");
-        let result = run_machine(context, &mut heap).unwrap();
+        let result = run_machine(ir, interner).unwrap();
 
         // Check the result - should be the value of the z field (30)
         match result {
@@ -426,9 +423,7 @@ mod tests {
         let ir = ir.finish(root);
 
         // Run the machine
-        let mut heap = Heap::new(interner, TypeInterner::new());
-        let context = MachineContext::new(ir, "/mocked/path");
-        let result = run_machine(context, &mut heap).unwrap();
+        let result = run_machine(ir, interner).unwrap();
 
         // Check the result - should be the updated value of x (20)
         match result {
@@ -440,8 +435,6 @@ mod tests {
     #[test]
     fn test_simple_pattern_matching() {
         use kola_ir::instr::{PatternMatchExpr, PatternMatcher};
-
-        let interner = StrInterner::default();
 
         // Create symbols
         let source_sym = Symbol::new(1);
@@ -479,9 +472,8 @@ mod tests {
         let ir = ir.finish(root);
 
         // Run the machine
-        let mut heap = Heap::new(interner, TypeInterner::new());
-        let context = MachineContext::new(ir, "/mocked/path");
-        let result = run_machine(context, &mut heap).unwrap();
+        let interner = StrInterner::default();
+        let result = run_machine(ir, interner).unwrap();
 
         // Check the result - should be 42
         match result {

@@ -9,17 +9,17 @@ kola-driver = { path = "crates/kola-driver" }
 kola-ir = { path = "crates/kola-ir" }
 kola-lowerer = { path = "crates/kola-lowerer" }
 kola-ls = { path = "crates/kola-ls" }
+kola-machine = { path = "crates/kola-machine" }
 kola-macros = { path = "crates/kola-macros" }
 kola-print = { path = "crates/kola-print" }
-kola-protocol = { path = "crates/kola-protocol" }
 kola-resolver = { path = "crates/kola-resolver" }
 kola-runtime = { path = "crates/kola-runtime" }
 kola-span = { path = "crates/kola-span" }
 kola-syntax = { path = "crates/kola-syntax" }
 kola-tree = { path = "crates/kola-tree" }
 kola-typer = { path = "crates/kola-typer" }
+kola-types = { path = "crates/kola-types" }
 kola-utils = { path = "crates/kola-utils" }
-kola-machine = { path = "crates/kola-machine" }
 
 camino = "1.1"
 indexmap = "2.7.1"

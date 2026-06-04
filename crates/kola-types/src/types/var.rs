@@ -4,12 +4,11 @@ use std::{
     sync::atomic::{AtomicU32, Ordering},
 };
 
-use super::{MonoType, TypeClass, Typed};
+use super::{MonoType, Typed};
 use crate::{
-    env::TypeClassEnv,
-    error::TypeError,
+    class::{CheckClass, TypeClass, TypeClassEnv, TypeClassError},
+    kind::{CheckKind, Kind},
     substitute::{Substitutable, Substitution},
-    types::Kind,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
@@ -86,15 +85,19 @@ impl Default for TypeVar {
     }
 }
 
-impl Typed for TypeVar {
+impl CheckKind for TypeVar {
     fn kind(&self) -> Kind {
         self.kind
     }
+}
 
-    fn constrain_class(&self, with: TypeClass, env: &mut TypeClassEnv) -> Result<(), TypeError> {
+impl CheckClass for TypeVar {
+    fn check_class(&self, with: TypeClass, env: &mut TypeClassEnv) -> Result<(), TypeClassError> {
         env.entry(*self)
             .and_modify(|constraint| constraint.push(with))
             .or_insert_with(|| vec![with]);
         Ok(())
     }
 }
+
+impl Typed for TypeVar {}

@@ -1,9 +1,12 @@
-use kola_protocol::TypeProtocol;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
-use super::{Kind, TypeClass, Typed};
-use crate::{env::TypeClassEnv, error::TypeError};
+use crate::{
+    class::{CheckClass, TypeClass, TypeClassEnv, TypeClassError},
+    kind::{CheckKind, Kind},
+};
+
+use super::Typed;
 
 #[derive(Debug, Copy, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum PrimitiveType {
@@ -12,18 +15,6 @@ pub enum PrimitiveType {
     Num,
     Char,
     Str,
-}
-
-impl PrimitiveType {
-    pub fn to_protocol(&self) -> TypeProtocol {
-        match self {
-            PrimitiveType::Unit => TypeProtocol::UNIT,
-            PrimitiveType::Bool => TypeProtocol::BOOL,
-            PrimitiveType::Num => TypeProtocol::NUM,
-            PrimitiveType::Char => TypeProtocol::CHAR,
-            PrimitiveType::Str => TypeProtocol::STR,
-        }
-    }
 }
 
 impl fmt::Display for PrimitiveType {
@@ -38,20 +29,22 @@ impl fmt::Display for PrimitiveType {
     }
 }
 
-impl Typed for PrimitiveType {
+impl CheckKind for PrimitiveType {
     fn kind(&self) -> Kind {
         Kind::Type
     }
+}
 
-    fn constrain_class(&self, with: TypeClass, _env: &mut TypeClassEnv) -> Result<(), TypeError> {
+impl CheckClass for PrimitiveType {
+    fn check_class(&self, with: TypeClass, _env: &mut TypeClassEnv) -> Result<(), TypeClassError> {
         match self {
-            PrimitiveType::Unit => Err(TypeError::CannotConstrainClass {
+            PrimitiveType::Unit => Err(TypeClassError {
                 expected: with,
                 actual: self.into(),
             }),
             PrimitiveType::Bool => match with {
                 TypeClass::Equatable | TypeClass::Stringable => Ok(()),
-                _ => Err(TypeError::CannotConstrainClass {
+                _ => Err(TypeClassError {
                     expected: with,
                     actual: self.into(),
                 }),
@@ -64,14 +57,14 @@ impl Typed for PrimitiveType {
             },
             PrimitiveType::Char => match with {
                 TypeClass::Equatable | TypeClass::Stringable => Ok(()),
-                _ => Err(TypeError::CannotConstrainClass {
+                _ => Err(TypeClassError {
                     expected: with,
                     actual: self.into(),
                 }),
             },
             PrimitiveType::Str => match with {
                 TypeClass::Addable | TypeClass::Equatable | TypeClass::Stringable => Ok(()),
-                _ => Err(TypeError::CannotConstrainClass {
+                _ => Err(TypeClassError {
                     expected: with,
                     actual: self.into(),
                 }),
@@ -79,3 +72,5 @@ impl Typed for PrimitiveType {
         }
     }
 }
+
+impl Typed for PrimitiveType {}

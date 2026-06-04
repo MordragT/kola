@@ -1,10 +1,30 @@
-use std::{collections::BTreeSet, fmt, sync::LazyLock};
-
-use kola_protocol::{TypeProtocol, TypeSchemeProtocol, ty};
-use strum::{AsRefStr, EnumCount, EnumIter, EnumString, FromRepr, IntoStaticStr};
+use kola_utils::interner::{StrInterner, StrKey};
+use std::fmt;
+use strum::{
+    AsRefStr, Display, EnumCount, EnumIter, EnumString, FromRepr, IntoStaticStr, VariantNames,
+};
 
 /// BuiltinType - the simple, closed set of primitive type constructors
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, strum::Display, EnumString)]
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    EnumCount,
+    FromRepr,
+    EnumIter,
+    AsRefStr,
+    IntoStaticStr,
+    EnumString,
+    Display,
+    VariantNames,
+)]
+#[strum(serialize_all = "PascalCase")]
+#[repr(u8)]
 pub enum BuiltinType {
     Unit,
     Bool,
@@ -28,67 +48,140 @@ pub fn is_builtin_type(s: &str) -> bool {
     s.parse::<BuiltinType>().is_ok()
 }
 
-pub static BUILTINS: LazyLock<[Builtin; BuiltinId::COUNT]> = LazyLock::new(|| {
-    std::array::from_fn(|i| {
-        let id = BuiltinId::from_repr(i as u8).expect("valid BuiltinId discriminant");
-        id.definition()
-    })
-});
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    EnumCount,
+    FromRepr,
+    EnumIter,
+    AsRefStr,
+    IntoStaticStr,
+    EnumString,
+    Display,
+    VariantNames,
+)]
+#[strum(serialize_all = "PascalCase")]
+#[repr(u8)]
+pub enum BuiltinTag {
+    Ok,
+    Err,
+    None,
+    Some,
+}
 
-pub static BUILTIN_TYPE_STRINGS: LazyLock<Vec<&'static str>> = LazyLock::new(|| {
-    let mut set = BTreeSet::new();
-    for builtin in BUILTINS.iter() {
-        for s in &builtin.input.table {
-            set.insert(s.as_str());
-        }
-        for s in &builtin.output.table {
-            set.insert(s.as_str());
-        }
+impl BuiltinTag {
+    #[inline]
+    pub fn from_name(name: &str) -> Option<Self> {
+        name.parse().ok()
     }
-    set.into_iter().collect()
-});
-
-#[inline]
-pub fn is_builtin(s: &str) -> bool {
-    s.parse::<BuiltinId>().is_ok()
 }
 
 #[inline]
-pub fn find_builtin(s: &str) -> Option<&'static Builtin> {
-    let id = s.parse::<BuiltinId>().ok()?;
-    Some(Builtin::from_id(id))
+pub fn is_builtin_tag(s: &str) -> bool {
+    s.parse::<BuiltinTag>().is_ok()
 }
 
 #[inline]
-pub fn find_builtin_id(s: &str) -> Option<BuiltinId> {
+pub fn find_builtin_tag(s: &str) -> Option<BuiltinTag> {
     s.parse().ok()
 }
 
-/// Builtin - a single builtin function signature
-#[derive(Debug, Clone, PartialEq, Eq, Hash)]
-pub struct Builtin {
-    pub name: &'static str,
-    pub forall: u32,
-    pub input: TypeProtocol,
-    pub output: TypeProtocol,
+#[derive(
+    Debug,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    EnumCount,
+    FromRepr,
+    EnumIter,
+    AsRefStr,
+    IntoStaticStr,
+    EnumString,
+    Display,
+    VariantNames,
+)]
+#[strum(serialize_all = "snake_case")]
+#[repr(u8)]
+pub enum BuiltinLabel {
+    Path,
+    Contents,
+    List,
+    Value,
+    Index,
+    Head,
+    Tail,
+    Base,
+    Exp,
+    Step,
+    Acc,
+    Num,
+    Label,
+    Record,
+    Field,
+    From,
+    To,
+    Left,
+    Right,
+    Key,
+    Proto,
+    Json,
+    Str,
 }
 
-impl Builtin {
+impl BuiltinLabel {
     #[inline]
-    pub fn from_name(name: &'static str) -> Option<&'static Self> {
-        find_builtin(name)
+    pub fn from_name(name: &str) -> Option<Self> {
+        name.parse().ok()
+    }
+}
+
+#[inline]
+pub fn is_builtin_label(s: &str) -> bool {
+    s.parse::<BuiltinLabel>().is_ok()
+}
+
+#[inline]
+pub fn find_builtin_label(s: &str) -> Option<BuiltinLabel> {
+    s.parse().ok()
+}
+
+#[derive(Debug, Clone)]
+pub struct BuiltinLexicon {
+    labels: [StrKey; BuiltinLabel::COUNT],
+    tags: [StrKey; BuiltinTag::COUNT],
+}
+
+impl BuiltinLexicon {
+    pub fn new(interner: &mut StrInterner) -> Self {
+        let mut labels_iter = BuiltinLabel::VARIANTS.iter().map(|l| interner.intern(*l));
+
+        let labels = std::array::from_fn(|_| labels_iter.next().unwrap());
+
+        let mut tags_iter = BuiltinTag::VARIANTS.iter().map(|t| interner.intern(*t));
+
+        let tags = std::array::from_fn(|_| tags_iter.next().unwrap());
+
+        Self { labels, tags }
     }
 
     #[inline]
-    pub fn from_id(id: BuiltinId) -> &'static Self {
-        &BUILTINS[id as usize]
+    pub fn label(&self, label: BuiltinLabel) -> StrKey {
+        self.labels[label as usize]
     }
 
-    pub fn type_scheme(&self) -> TypeSchemeProtocol {
-        TypeSchemeProtocol::new(
-            self.forall,
-            TypeProtocol::func(self.input.clone(), self.output.clone()),
-        )
+    #[inline]
+    pub fn tag(&self, tag: BuiltinTag) -> StrKey {
+        self.tags[tag as usize]
     }
 }
 
@@ -108,6 +201,7 @@ impl Builtin {
     AsRefStr,
     IntoStaticStr,
     EnumString,
+    VariantNames,
 )]
 #[strum(serialize_all = "snake_case")]
 #[repr(u8)]
@@ -165,128 +259,25 @@ pub enum BuiltinId {
     StrRec,
 }
 
+impl BuiltinId {
+    #[inline]
+    pub fn from_name(name: &str) -> Option<Self> {
+        name.parse().ok()
+    }
+}
+
 impl fmt::Display for BuiltinId {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "__builtin_{}", self.as_ref())
     }
 }
 
-impl BuiltinId {
-    fn definition(&self) -> Builtin {
-        let b = |forall, input, output| Builtin {
-            name: self.into(),
-            forall,
-            input,
-            output,
-        };
+#[inline]
+pub fn is_builtin(s: &str) -> bool {
+    s.parse::<BuiltinId>().is_ok()
+}
 
-        match self {
-            // ---- Io ----
-            Self::IoDebug => b(1, ty!(0), ty!(0)),
-            Self::IoReadFile => b(0, ty!(Str), ty!([ "Ok": Str, "Err": Str ])),
-            Self::IoWriteFile => b(
-                0,
-                ty!({ "path": Str, "contents": Str }),
-                ty!([ "Ok": Unit, "Err": Str ]),
-            ),
-
-            // ---- List ----
-            Self::ListLength => b(1, ty!((List 0)), ty!(Num)),
-            Self::ListIsEmpty => b(1, ty!((List 0)), ty!(Bool)),
-            Self::ListReverse => b(1, ty!((List 0)), ty!((List 0))),
-            Self::ListSum => b(0, ty!((List Num)), ty!(Num)),
-            Self::ListFirst => b(1, ty!((List 0)), ty!([ "Some": 0, "None": Unit ])),
-            Self::ListLast => b(1, ty!((List 0)), ty!([ "Some": 0, "None": Unit ])),
-            Self::ListContains => b(1, ty!({ "list": (List 0), "value": 0 }), ty!(Bool)),
-            Self::ListAt => b(
-                1,
-                ty!({ "list": (List 0), "index": Num }),
-                ty!([ "Some": 0, "None": Unit ]),
-            ),
-            Self::ListPrepend => b(1, ty!({ "head": 0, "tail": (List 0) }), ty!((List 0))),
-            Self::ListAppend => b(1, ty!({ "head": (List 0), "tail": 0 }), ty!((List 0))),
-            Self::ListConcat => b(
-                1,
-                ty!({ "head": (List 0), "tail": (List 0) }),
-                ty!((List 0)),
-            ),
-            Self::ListRec => b(
-                2,
-                ty!({ "list": (List 0), "base": 1, "step": ({ "acc": 1, "head": 0 } -> 1) }),
-                ty!(1),
-            ),
-
-            // ---- Num ----
-            Self::NumAbs => b(0, ty!(Num), ty!(Num)),
-            Self::NumSqrt => b(0, ty!(Num), ty!(Num)),
-            Self::NumFloor => b(0, ty!(Num), ty!(Num)),
-            Self::NumCeil => b(0, ty!(Num), ty!(Num)),
-            Self::NumRound => b(0, ty!(Num), ty!(Num)),
-            Self::NumSin => b(0, ty!(Num), ty!(Num)),
-            Self::NumCos => b(0, ty!(Num), ty!(Num)),
-            Self::NumTan => b(0, ty!(Num), ty!(Num)),
-            Self::NumLn => b(0, ty!(Num), ty!(Num)),
-            Self::NumLog10 => b(0, ty!(Num), ty!(Num)),
-            Self::NumExp => b(0, ty!(Num), ty!(Num)),
-            Self::NumPow => b(0, ty!({ "base": Num, "exp": Num }), ty!(Num)),
-            Self::NumRec => b(
-                1,
-                ty!({ "num": Num, "base": 0, "step": ({ "acc": 0, "head": Num } -> 0) }),
-                ty!(0),
-            ),
-
-            // ---- Record ----
-            Self::RecordSelect => b(3, ty!({ "label": (LabelWit 0), "record": 1 }), ty!(2)),
-            Self::RecordInsert => b(
-                4,
-                ty!({ "label": (LabelWit 0), "value": 1, "record": 2 }),
-                ty!(3),
-            ),
-            Self::RecordRemove => b(3, ty!({ "label": (LabelWit 0), "record": 1 }), ty!(2)),
-            Self::RecordRename => b(
-                4,
-                ty!({ "from": (LabelWit 0), "to": (LabelWit 1), "record": 2 }),
-                ty!(3),
-            ),
-            Self::RecordContains => b(2, ty!({ "label": (LabelWit 0), "record": 1 }), ty!(Bool)),
-            Self::RecordKeys => b(1, ty!(0), ty!((List Str))),
-            Self::RecordSize => b(1, ty!(0), ty!(Num)),
-            Self::RecordMergeLeft => b(3, ty!({ "left": 0, "right": 1 }), ty!(2)),
-            Self::RecordMergeRight => b(3, ty!({ "left": 0, "right": 1 }), ty!(2)),
-            Self::RecordRec => b(
-                3,
-                ty!({ "record": 0, "base": 1, "step": ({ "acc": 1, "head": { "key": Str, "value": 2 } } -> 1) }),
-                ty!(1),
-            ),
-
-            // ---- Serde ----
-            Self::SerdeFromJson => b(
-                1,
-                ty!({ "proto": (TypeWit 0), "json": Str }),
-                ty!([ "Ok": 0, "Err": Str ]),
-            ),
-            Self::SerdeToJson => b(1, ty!(0), ty!([ "Ok": Str, "Err": Str ])),
-
-            // ---- Str ----
-            Self::StrLength => b(0, ty!(Str), ty!(Num)),
-            Self::StrIsEmpty => b(0, ty!(Str), ty!(Bool)),
-            Self::StrReverse => b(0, ty!(Str), ty!(Str)),
-            Self::StrFirst => b(0, ty!(Str), ty!([ "Some": Char, "None": Unit ])),
-            Self::StrLast => b(0, ty!(Str), ty!([ "Some": Char, "None": Unit ])),
-            Self::StrContains => b(0, ty!({ "str": Str, "value": Char }), ty!(Bool)),
-            Self::StrAt => b(
-                0,
-                ty!({ "str": Str, "index": Num }),
-                ty!([ "Some": Char, "None": Unit ]),
-            ),
-            Self::StrPrepend => b(0, ty!({ "head": Char, "tail": Str }), ty!(Str)),
-            Self::StrAppend => b(0, ty!({ "head": Str, "tail": Char }), ty!(Str)),
-            Self::StrConcat => b(0, ty!({ "head": Str, "tail": Str }), ty!(Str)),
-            Self::StrRec => b(
-                1,
-                ty!({ "str": Str, "base": 0, "step": ({ "acc": 0, "head": Char } -> 0) }),
-                ty!(0),
-            ),
-        }
-    }
+#[inline]
+pub fn find_builtin_id(s: &str) -> Option<BuiltinId> {
+    s.parse().ok()
 }

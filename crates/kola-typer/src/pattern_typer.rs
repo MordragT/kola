@@ -2,11 +2,12 @@ use kola_span::Loc;
 use kola_tree::prelude::*;
 use std::ops::ControlFlow;
 
-use crate::{
-    constraints::Constraints,
+use kola_types::{
     env::LocalTypeEnv,
     types::{Label, LabeledType, MonoType, Row},
 };
+
+use crate::constraints::Constraints;
 
 pub struct PatternTyper<'a> {
     env: &'a mut LocalTypeEnv,
@@ -280,9 +281,10 @@ where
 mod tests {
 
     use kola_tree::prelude::*;
+    use kola_types::types::*;
     use kola_utils::interner::StrInterner;
 
-    use crate::{error::TypeError, test::run_typer, types::*};
+    use crate::{error::TypeError, test::run_typer};
 
     #[test]
     fn case_literal_pattern() {

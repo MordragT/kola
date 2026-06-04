@@ -1,12 +1,11 @@
 use camino::Utf8Path;
-use kola_builtins::BUILTIN_TYPE_STRINGS;
+use kola_builtins::BuiltinLexicon;
 use std::io;
 
 use kola_ir::print::render_ir;
 use kola_lowerer::module::{Program, lower};
-use kola_machine::machine::{CekMachine, MachineContext};
+use kola_machine::machine::{Ctx, Machine};
 use kola_print::{PrintOptions, prelude::*};
-use kola_protocol::TypeInterner;
 use kola_resolver::{prelude::*, print::ResolutionDecorator};
 use kola_runtime::heap::Heap;
 use kola_span::{Issue, Report, SourceManager};
@@ -31,23 +30,20 @@ pub struct Driver {
     io: Box<dyn FileSystem>,
     arena: Bump,
     str_interner: StrInterner,
-    type_interner: TypeInterner,
+    lexicon: BuiltinLexicon,
     print_options: PrintOptions,
 }
 
 impl Driver {
     pub fn new(io: impl FileSystem + 'static) -> Self {
         let mut str_interner = StrInterner::default();
-
-        for s in BUILTIN_TYPE_STRINGS.iter() {
-            str_interner.intern(*s);
-        }
+        let lexicon = BuiltinLexicon::new(&mut str_interner);
 
         Self {
             io: Box::new(io),
             arena: Bump::new(),
             str_interner,
-            type_interner: TypeInterner::new(),
+            lexicon,
             print_options: PrintOptions::default(),
         }
     }
@@ -187,6 +183,7 @@ impl Driver {
             &value_orders,
             &self.arena,
             &mut self.str_interner,
+            &self.lexicon,
             &mut report,
             self.print_options,
         );
@@ -273,13 +270,11 @@ impl Driver {
         let program = lower(
             entry_point,
             &module_scopes,
-            &type_annotations,
             &module_order,
             &value_orders,
             &forest,
             &self.arena,
             &self.str_interner,
-            &mut self.type_interner,
             self.print_options,
         );
 
@@ -303,10 +298,10 @@ impl Driver {
             return Ok(());
         };
 
-        let context = MachineContext::new(ir, path.parent().unwrap());
-        let mut machine = CekMachine::new(context);
+        let context = Ctx::new(ir, self.lexicon, path.parent().unwrap());
+        let mut machine = Machine::new(context);
 
-        let mut heap = Heap::new(self.str_interner, self.type_interner);
+        let mut heap = Heap::new(self.str_interner);
 
         match machine.run(&mut heap) {
             Ok(value) => {

@@ -1,19 +1,19 @@
 use std::rc::Rc;
 
 use camino::Utf8PathBuf;
+use kola_builtins::BuiltinLexicon;
 use kola_resolver::phase::ResolvedNodes;
 use kola_span::{Loc, Located, Report, SourceId, Span};
 use kola_syntax::loc::Locations;
 use kola_tree::prelude::*;
+use kola_types::{
+    class::TypeClassEnv,
+    env::TypeEnv,
+    substitute::{Substitutable, Substitution},
+};
 use kola_utils::interner::{PathInterner, StrInterner};
 
-use crate::{
-    env::{TypeClassEnv, TypeEnv},
-    error::TypeErrors,
-    phase::TypedNodes,
-    prelude::{Constraints, Substitutable, Substitution},
-    typer::Typer,
-};
+use crate::{constraints::Constraints, error::TypeErrors, phase::TypedNodes, typer::Typer};
 
 pub fn mocked_source() -> SourceId {
     let mut interner = PathInterner::default();
@@ -35,6 +35,7 @@ where
     let global_type_env = TypeEnv::new();
     let module_type_env = TypeEnv::new();
     let mut interner = StrInterner::default(); // TODO for tests with builtin types the interner should be passed
+    let lexicon = BuiltinLexicon::new(&mut interner);
     let resolved = ResolvedNodes::new();
 
     let mut cons = Constraints::new();
@@ -48,6 +49,7 @@ where
         &[],
         &mut cons,
         &mut interner,
+        &lexicon,
     );
 
     let (mut types, _) = typer.run(&tree, &mut Report::new()).unwrap();
