@@ -594,14 +594,17 @@ impl Eval for DoExpr {
 // 4. When M evaluates to a value, it will be bound to x via the continuation mechanism,
 //    which will then evaluate N with the extended environment
 impl Eval for LetExpr {
-    fn eval(&self, env: EnvIdx, mut cont: Cont, _ctx: &mut Ctx, _heap: &mut Heap) -> MachineState {
-        // Create a pure continuation frame
-        let pure_frame = ContFrame::pure(self.bind, self.next, env);
-        cont.push(pure_frame);
+    fn eval(&self, env: EnvIdx, cont: Cont, ctx: &mut Ctx, heap: &mut Heap) -> MachineState {
+        let value = match eval_atom(self.value.get(&ctx.ir), env, &heap.envs) {
+            Ok(value) => value,
+            Err(err) => return MachineState::Error(err),
+        };
 
-        // Evaluate the bound value
+        let env = heap.envs.insert(env, self.bind, value);
+
+        // Evaluate the next expression
         MachineState::Standard(StandardConfig {
-            control: Expr::from(RetExpr { arg: self.value }),
+            control: self.next.get(&ctx.ir),
             env,
             cont,
         })
