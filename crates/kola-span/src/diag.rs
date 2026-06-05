@@ -1,4 +1,3 @@
-use camino::Utf8Path;
 use derive_more::Display;
 use kola_utils::{
     display::DisplayWith,

@@ -1,3 +1,5 @@
+use std::sync::Arc;
+
 use camino::Utf8Path;
 use kola_builtins::BuiltinLexicon;
 use std::io;
@@ -10,7 +12,7 @@ use kola_resolver::{prelude::*, print::ResolutionDecorator};
 use kola_runtime::heap::Heap;
 use kola_span::{Issue, Report, SourceManager};
 use kola_syntax::{
-    lexer::{LexInput, tokenize},
+    lexer::tokenize,
     parser::{ParseInput, ParseOutput, parse},
     token::TokenPrinter,
 };
@@ -27,7 +29,7 @@ use kola_utils::{interner::StrInterner, io::FileSystem};
 pub enum DriverOptions {}
 
 pub struct Driver {
-    io: Box<dyn FileSystem>,
+    io: Arc<dyn FileSystem>,
     arena: Bump,
     str_interner: StrInterner,
     lexicon: BuiltinLexicon,
@@ -40,7 +42,7 @@ impl Driver {
         let lexicon = BuiltinLexicon::new(&mut str_interner);
 
         Self {
-            io: Box::new(io),
+            io: Arc::new(io),
             arena: Bump::new(),
             str_interner,
             lexicon,
@@ -55,18 +57,25 @@ impl Driver {
 
     fn _parse(&mut self, path: impl AsRef<Utf8Path>, print: bool) -> io::Result<Option<Tree>> {
         let mut report = Report::new();
-        let mut source_manager = SourceManager::new();
+        let mut source_manager = SourceManager::new(Arc::clone(&self.io));
 
         let path = path.as_ref().canonicalize_utf8()?;
 
-        let (source_id, source) = source_manager.fetch(path, &self.io)?;
+        let source_id = source_manager.lookup(&path).unwrap_or_else(|| {
+            // The file might not be cached yet — fetch it first
+            let (id, _) = source_manager.refetch(&path).unwrap();
+            id
+        });
+        let source = &source_manager[source_id];
 
-        let Some(tokens) = tokenize(LexInput::new(source_id, source.text()), &mut report) else {
+        let Some(token_map) = tokenize(&mut source_manager, &path, &mut report) else {
             report.eprint(&source_manager)?;
             return Ok(None);
         };
+
+        let tokens = &token_map[&source_id];
         if print {
-            let printer = TokenPrinter(&tokens, self.print_options);
+            let printer = TokenPrinter(tokens, self.print_options);
             printer.print(self.print_options, &self.arena);
         }
 
@@ -76,7 +85,7 @@ impl Driver {
             spans: _,
             recovered,
         } = parse(
-            ParseInput::new(source_id, tokens, &mut self.str_interner),
+            ParseInput::new(source_id, tokens.clone(), &mut self.str_interner),
             &mut report,
         );
 
