@@ -7,6 +7,7 @@ use kola_tree::node::{
 };
 use std::{
     borrow::Cow,
+    collections::VecDeque,
     fmt,
     hash::Hash,
     marker::PhantomData,
@@ -80,15 +81,15 @@ impl<T: ?Sized> Sym<T> {
         }
     }
 
-    pub fn as_usize(&self) -> usize {
+    pub const fn as_usize(&self) -> usize {
         self.id.get() as usize
     }
 
-    pub fn id(&self) -> u32 {
+    pub const fn id(&self) -> u32 {
         self.id.get()
     }
 
-    pub fn level(&self) -> u32 {
+    pub const fn level(&self) -> u32 {
         self.level.get()
     }
 
@@ -164,7 +165,7 @@ pub enum AnySym {
 }
 
 impl AnySym {
-    pub fn id(&self) -> u32 {
+    pub const fn id(&self) -> u32 {
         match self {
             Self::Functor(symbol) => symbol.id(),
             Self::ModuleType(symbol) => symbol.id(),
@@ -174,11 +175,11 @@ impl AnySym {
         }
     }
 
-    pub fn as_usize(&self) -> usize {
+    pub const fn as_usize(&self) -> usize {
         self.id() as usize
     }
 
-    pub fn level(&self) -> u32 {
+    pub const fn level(&self) -> u32 {
         match self {
             Self::Functor(symbol) => symbol.level(),
             Self::ModuleType(symbol) => symbol.level(),
@@ -188,7 +189,7 @@ impl AnySym {
         }
     }
 
-    pub fn kind(&self) -> NamespaceKind {
+    pub const fn kind(&self) -> NamespaceKind {
         match self {
             Self::Functor(_) => NamespaceKind::Functor,
             Self::ModuleType(_) => NamespaceKind::ModuleType,
@@ -445,9 +446,6 @@ impl Substitute for ValueSym {
     }
 }
 
-// TODO kind of tedious to implement this for all symbols, but it's necessary for module sym substitution.
-// For now just implement it for module namespace, if we need this for other namespaces create a macro.
-
 impl Substitute for AnySym {
     fn try_subst(&self, s: &HashMap<AnySym, AnySym>) -> Option<Self> {
         s.get(self).copied()
@@ -478,6 +476,32 @@ where
 }
 
 impl<T> Substitute for Vec<T>
+where
+    T: Substitute + Clone,
+{
+    fn try_subst(&self, s: &HashMap<AnySym, AnySym>) -> Option<Self>
+    where
+        Self: Sized,
+    {
+        let mut result = None;
+
+        for (i, el) in self.iter().enumerate() {
+            if let Some(el) = el.try_subst(s) {
+                result.get_or_insert_with(|| self.clone())[i] = el;
+            }
+        }
+
+        result
+    }
+
+    fn subst_mut(&mut self, s: &HashMap<AnySym, AnySym>) {
+        for el in self.iter_mut() {
+            el.subst_mut(s);
+        }
+    }
+}
+
+impl<T> Substitute for VecDeque<T>
 where
     T: Substitute + Clone,
 {

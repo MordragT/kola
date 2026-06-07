@@ -3,10 +3,7 @@
 use std::{collections::HashMap, fmt};
 
 use kola_builtins::{BuiltinId, BuiltinType};
-use kola_tree::{
-    meta::{MetaMap, Phase},
-    node::ValueName,
-};
+use kola_tree::meta::{MetaMap, Phase};
 use kola_utils::as_variant;
 
 use crate::symbol::{AnySym, FunctorSym, ModuleSym, ModuleTypeSym, Substitute, TypeSym, ValueSym};
@@ -115,7 +112,7 @@ impl Substitute for ResolvedModuleType {
     }
 }
 
-pub type ResolvedNodes = MetaMap<ResolvePhase>;
+pub type NodeMap = MetaMap<ResolvePhase>;
 
 #[derive(Debug, Clone, Copy)]
 pub struct ResolvePhase;

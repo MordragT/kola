@@ -2,9 +2,9 @@ use std::rc::Rc;
 
 use camino::Utf8PathBuf;
 use kola_builtins::BuiltinLexicon;
-use kola_resolver::phase::ResolvedNodes;
+use kola_resolver::{def::DefMap, env::ModuleMap, phase::NodeMap};
 use kola_span::{Loc, Located, Report, SourceId, Span};
-use kola_syntax::loc::Locations;
+use kola_syntax::loc::LocVec;
 use kola_tree::prelude::*;
 use kola_types::{
     class::TypeClassEnv,
@@ -20,7 +20,7 @@ pub fn mocked_source() -> SourceId {
     interner.intern(Utf8PathBuf::from("test"))
 }
 
-pub fn mocked_spans(source_id: SourceId, tree: &impl TreeView) -> Locations {
+pub fn mocked_spans(source_id: SourceId, tree: &impl TreeView) -> LocVec {
     let span = Loc::new(source_id, Span::new(0, 0));
     tree.metadata_with(|node| Meta::default_with(span, node.kind()))
 }
@@ -30,22 +30,27 @@ where
     Id<T>: Visitable<TreeBuilder>,
 {
     let source_id = mocked_source();
-    let spans = Rc::new(mocked_spans(source_id, &tree));
+    let spans = mocked_spans(source_id, &tree);
 
     let global_type_env = TypeEnv::new();
     let module_type_env = TypeEnv::new();
     let mut interner = StrInterner::default(); // TODO for tests with builtin types the interner should be passed
     let lexicon = BuiltinLexicon::new(&mut interner);
-    let resolved = ResolvedNodes::new();
+
+    let modules = ModuleMap::new();
+    let nodes = NodeMap::new();
+    let defs = DefMap::new();
 
     let mut cons = Constraints::new();
 
     let typer = Typer::new(
         root_id,
-        spans,
+        &spans,
         &module_type_env,
         &global_type_env,
-        &resolved,
+        &modules,
+        &defs,
+        &nodes,
         &[],
         &mut cons,
         &mut interner,

@@ -1,14 +1,12 @@
-use std::ops::Index;
+use std::{collections::HashMap, ops::Index};
 
 use crate::symbol::{
     AnySym, FunctorSym, ModuleSym, ModuleTypeSym, Substitute, TypeSym, ValueSym, merge5,
 };
-use kola_collections::HashMap;
 use kola_tree::node::{AnyName, FunctorName, ModuleName, ModuleTypeName, TypeName, ValueName};
 
-// TODO this is more of a symbol table than a shape, consider renaming
 #[derive(Debug, Clone, Default)]
-pub struct Shape {
+pub struct NameMap {
     functors: HashMap<FunctorName, FunctorSym>,
     module_types: HashMap<ModuleTypeName, ModuleTypeSym>,
     modules: HashMap<ModuleName, ModuleSym>,
@@ -16,7 +14,7 @@ pub struct Shape {
     values: HashMap<ValueName, ValueSym>,
 }
 
-impl Shape {
+impl NameMap {
     #[inline]
     pub fn new() -> Self {
         Self::default()
@@ -144,7 +142,7 @@ impl Shape {
     }
 }
 
-impl Index<FunctorName> for Shape {
+impl Index<FunctorName> for NameMap {
     type Output = FunctorSym;
 
     fn index(&self, index: FunctorName) -> &Self::Output {
@@ -152,7 +150,7 @@ impl Index<FunctorName> for Shape {
     }
 }
 
-impl Index<ModuleTypeName> for Shape {
+impl Index<ModuleTypeName> for NameMap {
     type Output = ModuleTypeSym;
 
     fn index(&self, index: ModuleTypeName) -> &Self::Output {
@@ -160,7 +158,7 @@ impl Index<ModuleTypeName> for Shape {
     }
 }
 
-impl Index<ModuleName> for Shape {
+impl Index<ModuleName> for NameMap {
     type Output = ModuleSym;
 
     fn index(&self, index: ModuleName) -> &Self::Output {
@@ -168,7 +166,7 @@ impl Index<ModuleName> for Shape {
     }
 }
 
-impl Index<TypeName> for Shape {
+impl Index<TypeName> for NameMap {
     type Output = TypeSym;
 
     fn index(&self, index: TypeName) -> &Self::Output {
@@ -176,7 +174,7 @@ impl Index<TypeName> for Shape {
     }
 }
 
-impl Index<ValueName> for Shape {
+impl Index<ValueName> for NameMap {
     type Output = ValueSym;
 
     fn index(&self, index: ValueName) -> &Self::Output {
@@ -184,7 +182,7 @@ impl Index<ValueName> for Shape {
     }
 }
 
-impl Substitute for Shape {
+impl Substitute for NameMap {
     fn try_subst(&self, s: &HashMap<AnySym, AnySym>) -> Option<Self>
     where
         Self: Sized,

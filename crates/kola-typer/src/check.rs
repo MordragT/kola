@@ -39,23 +39,23 @@
 use kola_builtins::BuiltinLexicon;
 use kola_print::prelude::*;
 use kola_resolver::{
-    forest::Forest,
-    prelude::Topography,
+    def::DefMap,
+    env::ModuleMap,
     print::ResolutionDecorator,
-    resolver::{TypeOrders, ValueOrders},
-    scope::ModuleScopes,
+    resolve::{TypeOrders, ValueOrders},
     symbol::{ModuleSym, ValueSym},
 };
 use kola_span::{IntoDiagnostic, Report};
+use kola_syntax::loc::LocMap;
 use kola_tree::{
     meta::MetaView,
     print::{Decorators, TreePrinter},
+    tree::TreeMap,
 };
 use kola_types::{
     class::TypeClassEnv,
     env::TypeEnv,
     substitute::{Substitutable, Substitution},
-    types::ModuleType,
 };
 use kola_utils::{interner::StrInterner, interner_ext::InternerExt};
 use log::trace;
@@ -90,10 +90,11 @@ pub struct TypeCheckOutput {
 /// This incremental approach ensures that each binding is available in its fully generalized
 /// form to subsequent bindings within the same module, maintaining consistency with cross-module usage.
 pub fn type_check(
-    forest: &Forest,
-    topography: &Topography,
+    tree_map: &TreeMap,
+    loc_map: &LocMap,
+    modules: &ModuleMap,
+    defs: &DefMap,
     entry_points: &[ValueSym],
-    module_scopes: &ModuleScopes,
     module_order: &[ModuleSym],
     type_orders: &TypeOrders,
     value_orders: &ValueOrders,
@@ -108,11 +109,11 @@ pub fn type_check(
     let mut type_annotations = TypeAnnotations::new();
 
     for &module_sym in module_order {
-        let module_scope = module_scopes[&module_sym].clone();
-        let info = module_scope.info;
+        let module = modules[&module_sym].clone();
+        let module_def = defs[module_sym];
 
-        let tree = &*forest[info.source];
-        let spans = topography[info.source].clone();
+        let tree = &tree_map[&module_def.loc.path];
+        let spans = &loc_map[&module_def.loc.path];
         let value_order = &value_orders[&module_sym];
         let type_order = &type_orders[&module_sym];
 
@@ -121,16 +122,18 @@ pub fn type_check(
         let mut module_env = TypeEnv::new();
 
         for &type_sym in type_order {
-            let def = module_scope.defs[type_sym];
+            let def = defs[type_sym];
 
             let mut constraints = Constraints::new();
 
             let typer = Typer::new(
                 def.id(),
-                spans.clone(),
+                spans,
                 &module_env,
                 &global_env,
-                &module_scope.resolved,
+                &modules,
+                &defs,
+                &module.nodes,
                 entry_points,
                 &mut constraints,
                 str_interner,
@@ -162,16 +165,18 @@ pub fn type_check(
         }
 
         for &value_sym in value_order {
-            let def = module_scope.defs[value_sym];
+            let def = defs[value_sym];
 
             let mut constraints = Constraints::new();
 
             let typer = Typer::new(
                 def.id(),
-                spans.clone(),
+                spans,
                 &module_env,
                 &global_env,
-                &module_scope.resolved,
+                &modules,
+                &defs,
+                &module.nodes,
                 entry_points,
                 &mut constraints,
                 str_interner,
@@ -216,21 +221,18 @@ pub fn type_check(
         module_annotations.apply_mut(&mut subs);
         global_env.merge(module_env);
 
-        let module_type = ModuleType::from(module_scope.shape.clone());
-        global_env.insert_module(module_sym, info, module_type);
-
-        let resolution_decorator = ResolutionDecorator(&module_scope.resolved);
+        let resolution_decorator = ResolutionDecorator(&module.nodes);
         let type_decorator = TypeDecorator(&module_annotations);
         let decorators = Decorators::new()
             .with(&resolution_decorator)
             .with(&type_decorator);
 
-        let tree_printer = TreePrinter::new(&tree, &str_interner, decorators, info.id);
+        let tree_printer = TreePrinter::new(&tree, &str_interner, decorators, module_def.id);
 
         trace!(
             "{} SourceId {}, ModuleSym {}\n{}",
             "Typed Abstract Syntax Tree".bold().bright_white(),
-            info.source,
+            module_def.loc.path,
             module_sym,
             tree_printer.render(print_options, arena)
         );

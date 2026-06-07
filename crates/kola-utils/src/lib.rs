@@ -1,3 +1,6 @@
+#![feature(const_cmp)]
+#![feature(const_trait_impl)]
+
 pub mod convert;
 pub mod dependency;
 pub mod display;

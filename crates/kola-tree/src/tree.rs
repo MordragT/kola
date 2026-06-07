@@ -1,10 +1,17 @@
-use kola_utils::convert::{TryAsMut, TryAsRef};
+use std::collections::HashMap;
+
+use kola_utils::{
+    convert::{TryAsMut, TryAsRef},
+    interner::PathKey,
+};
 
 use crate::{
     id::Id,
     meta::{Meta, Phase},
     node::{Module, Node},
 };
+
+pub type TreeMap = HashMap<PathKey, Tree>;
 
 pub enum Query2<'a, T, U> {
     V0(Id<T>, &'a T),

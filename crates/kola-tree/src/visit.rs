@@ -1315,21 +1315,12 @@ pub trait Visitor<T: TreeView> {
         self.walk_module_path(id, tree)
     }
 
-    fn walk_module_import(
-        &mut self,
-        id: Id<node::ModuleImport>,
-        tree: &T,
-    ) -> ControlFlow<Self::BreakValue> {
-        let import = id.get(tree);
-        self.visit_module_name(import.0, tree)
-    }
-
     fn visit_module_import(
         &mut self,
-        id: Id<node::ModuleImport>,
-        tree: &T,
+        _id: Id<node::ModuleImport>,
+        _tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
-        self.walk_module_import(id, tree)
+        ControlFlow::Continue(())
     }
 
     fn walk_functor_args(

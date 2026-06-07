@@ -1,14 +1,19 @@
-use camino::{Utf8Path, Utf8PathBuf};
+use camino::Utf8Path;
 use std::collections::HashMap;
 
 use unscanny::Scanner;
 
 use kola_span::{Diagnostic, Issue, Loc, Report, SourceId, SourceManager, Span};
 
-use crate::token::{CommentT, LiteralT, Token, Tokens};
+use crate::token::{CommentT, LiteralT, Token, TokenMap, Tokens};
 
 /// The file extension for source files.
 pub const EXTENSION: &str = "kl";
+
+pub struct TokenOutput<'t> {
+    pub root_id: SourceId,
+    pub token_map: TokenMap<'t>,
+}
 
 /// Lex an entire project starting from the root path.
 ///
@@ -18,73 +23,91 @@ pub const EXTENSION: &str = "kl";
 ///
 /// Import resolution: if file `foo/main.kl` does `import bar`, the imported file
 /// is expected at `foo/bar.kl`.
-pub fn tokenize<'a>(
-    source_manager: &'a mut SourceManager,
+pub fn tokenize<'t>(
+    source_manager: &'t mut SourceManager,
     root_path: &Utf8Path,
     report: &mut Report,
-) -> HashMap<SourceId, Tokens<'a>> {
+) -> TokenOutput<'t> {
+    let root = source_manager
+        .fetch(root_path)
+        .expect("Failed to read root file");
+
     let mut token_map = HashMap::new();
-    let mut worklist = vec![root_path.to_owned()];
+    let mut worklist = vec![root];
 
-    while let Some(path) = worklist.pop() {
-        let Ok((id, source)) = source_manager.fetch(path.as_path()) else {
-            report.add_issue(Issue::error(format!("Failed to read file: {path}"), 0));
-            continue;
-        };
-
-        let parent_dir = path.parent().unwrap_or(Utf8Path::new(""));
+    while let Some((id, source)) = worklist.pop() {
+        let parent_dir = source_manager
+            .get_path(id)
+            .parent()
+            .unwrap_or(Utf8Path::new(""))
+            .to_owned();
         let mut tokens = Vec::new();
-        let mut errors = Vec::new();
 
         lex(
             id,
             source,
-            parent_dir,
+            &parent_dir,
             &mut tokens,
-            &mut errors,
+            report,
             &mut worklist,
+            source_manager,
         );
 
-        report.extend_diagnostics(errors);
         token_map.insert(id, tokens);
     }
 
-    token_map
+    TokenOutput {
+        root_id: root.0,
+        token_map,
+    }
 }
 
 /// Like `tokenize` but returns a Result instead of using a Report.
-pub fn try_tokenize<'a>(
-    source_manager: &'a mut SourceManager,
+pub fn try_tokenize<'t>(
+    source_manager: &'t mut SourceManager,
     root_path: &Utf8Path,
-) -> Result<HashMap<SourceId, Tokens<'a>>, Vec<Diagnostic>> {
+) -> Result<TokenOutput<'t>, Report> {
+    let root = match source_manager.fetch(root_path) {
+        Ok(root) => root,
+        Err(_) => {
+            let mut report = Report::new();
+            report.add_issue(Issue::error(format!("Failed to read file: {root_path}"), 0));
+            return Err(report);
+        }
+    };
+
     let mut token_map = HashMap::new();
-    let mut errors = Vec::new();
-    let mut worklist = vec![root_path.to_owned()];
+    let mut report = Report::new();
+    let mut worklist = vec![root];
 
-    while let Some(path) = worklist.pop() {
-        let Ok((id, source)) = source_manager.fetch(path.as_path()) else {
-            return Err(errors);
-        };
-
-        let parent_dir = path.parent().unwrap_or(Utf8Path::new(""));
+    while let Some((id, source)) = worklist.pop() {
+        let parent_dir = source_manager
+            .get_path(id)
+            .parent()
+            .unwrap_or(Utf8Path::new(""))
+            .to_owned();
         let mut tokens = Vec::new();
 
         lex(
             id,
             source,
-            parent_dir,
+            &parent_dir,
             &mut tokens,
-            &mut errors,
+            &mut report,
             &mut worklist,
+            source_manager,
         );
 
         token_map.insert(id, tokens);
     }
 
-    if errors.is_empty() {
-        Ok(token_map)
+    if report.is_empty() {
+        Ok(TokenOutput {
+            root_id: root.0,
+            token_map,
+        })
     } else {
-        Err(errors)
+        Err(report)
     }
 }
 
@@ -110,13 +133,16 @@ pub fn try_tokenize<'a>(
  * unexpected runtime behavior or parse failures!
  */
 
+type Worklist = Vec<(SourceId, &'static str)>;
+
 fn lex<'t>(
     source: SourceId,
     text: &'t str,
     parent_dir: &Utf8Path,
     tokens: &mut Tokens<'t>,
-    errors: &mut Vec<Diagnostic>,
-    worklist: &mut Vec<Utf8PathBuf>,
+    report: &mut Report,
+    worklist: &mut Worklist,
+    source_manager: &mut SourceManager,
 ) {
     let mut s = Scanner::new(text);
 
@@ -130,12 +156,19 @@ fn lex<'t>(
 
         match s.peek() {
             Some('#') => lex_comment(&mut s, source, tokens),
-            Some('"') => lex_string(&mut s, source, text, tokens, errors),
+            Some('"') => lex_string(&mut s, source, text, tokens, report),
             Some(c) if c.is_ascii_digit() => lex_number(&mut s, source, text, tokens),
-            Some(c) if is_ident_start(c) => {
-                lex_word(&mut s, source, text, tokens, errors, parent_dir, worklist)
-            }
-            Some(_) => lex_punct(&mut s, source, tokens, errors),
+            Some(c) if is_ident_start(c) => lex_word(
+                &mut s,
+                source,
+                text,
+                tokens,
+                report,
+                parent_dir,
+                worklist,
+                source_manager,
+            ),
+            Some(_) => lex_punct(&mut s, source, tokens, report),
             None => break,
         }
 
@@ -143,7 +176,7 @@ fn lex<'t>(
         if s.cursor() == start {
             let c = s.eat().unwrap();
             let loc = Loc::new(source, Span::new(start, s.cursor()));
-            errors.push(Diagnostic::error(
+            report.add_diagnostic(Diagnostic::error(
                 loc,
                 format!("unexpected character '{c}'"),
             ));
@@ -182,7 +215,7 @@ fn lex_string<'t>(
     source: SourceId,
     text: &'t str,
     tokens: &mut Tokens<'t>,
-    errors: &mut Vec<Diagnostic>,
+    report: &mut Report,
 ) {
     let start = s.cursor();
 
@@ -205,7 +238,7 @@ fn lex_string<'t>(
             }
             None => {
                 let loc = Loc::new(source, Span::new(start, s.cursor()));
-                errors.push(Diagnostic::error(loc, "unterminated string literal"));
+                report.add_diagnostic(Diagnostic::error(loc, "unterminated string literal"));
                 return;
             }
         }
@@ -252,9 +285,10 @@ fn lex_word<'t>(
     source: SourceId,
     text: &'t str,
     tokens: &mut Tokens<'t>,
-    errors: &mut Vec<Diagnostic>,
+    report: &mut Report,
     parent_dir: &Utf8Path,
-    worklist: &mut Vec<Utf8PathBuf>,
+    worklist: &mut Worklist,
+    source_manager: &mut SourceManager,
 ) {
     let start = s.cursor();
     s.eat_while(is_ident_continue);
@@ -271,28 +305,40 @@ fn lex_word<'t>(
             // and push the resolved child file path onto the worklist.
             s.eat_whitespace();
             let name_start = s.cursor();
-            if let Some(c) = s.peek() {
+            let id = if let Some(c) = s.peek() {
                 if is_ident_start(c) {
                     s.eat_while(is_ident_continue);
                     let name = &text[name_start..s.cursor()];
 
                     let child = parent_dir.join(name).with_extension(EXTENSION);
+
+                    let Ok(child) = source_manager.fetch(child.as_path()) else {
+                        let loc2 = Loc::new(source, Span::new(name_start, s.cursor()));
+                        report.add_diagnostic(Diagnostic::error(
+                            loc2,
+                            format!("failed to resolve import '{name}'"),
+                        ));
+                        return;
+                    };
                     worklist.push(child);
+                    child.0
                 } else {
                     let loc2 = Loc::new(source, Span::new(name_start, name_start + 1));
-                    errors.push(Diagnostic::error(
+                    report.add_diagnostic(Diagnostic::error(
                         loc2,
                         "expected module name after 'import'",
                     ));
+                    return;
                 }
             } else {
                 let loc2 = Loc::new(source, Span::new(end, end));
-                errors.push(Diagnostic::error(
+                report.add_diagnostic(Diagnostic::error(
                     loc2,
                     "expected module name after 'import'",
                 ));
-            }
-            Token::Atom("import")
+                return;
+            };
+            Token::Import(id)
         }
         "export" => Token::Atom("export"),
         "functor" => Token::Atom("functor"),
@@ -331,7 +377,7 @@ fn lex_punct<'t>(
     s: &mut Scanner<'t>,
     source: SourceId,
     tokens: &mut Tokens<'t>,
-    errors: &mut Vec<Diagnostic>,
+    report: &mut Report,
 ) {
     let start = s.cursor();
     let c = s.eat().unwrap();
@@ -425,7 +471,7 @@ fn lex_punct<'t>(
 
         _ => {
             let loc = Loc::new(source, Span::new(start, s.cursor()));
-            errors.push(Diagnostic::error(
+            report.add_diagnostic(Diagnostic::error(
                 loc,
                 format!("unexpected character '{c}'"),
             ));
@@ -445,27 +491,32 @@ mod test {
     use std::sync::Arc;
 
     use camino::Utf8Path;
-    use kola_span::{Diagnostic, SourceManager, Span};
+    use kola_span::{Report, SourceManager, Span};
     use kola_utils::io::MockFileSystem;
 
     use super::lex;
     use crate::token::{CommentT, LiteralT, Token, Tokens};
 
-    fn tokenize<'t>(text: &'t str) -> (Tokens<'t>, Vec<Diagnostic>) {
-        let mut source_manager = SourceManager::new(Arc::new(MockFileSystem::new()));
-        let source = source_manager.fetch(Utf8Path::new("test.kl")).unwrap().0;
+    fn tokenize<'t>(text: &'t str) -> (Tokens<'t>, Report) {
+        let path = Utf8Path::new("test.kl");
+        let mut fs = MockFileSystem::new();
+        fs.add_file(path.to_owned(), text.to_string());
+
+        let mut source_manager = SourceManager::new(Arc::new(fs));
+        let (source, text) = source_manager.fetch(path).unwrap();
 
         let mut tokens = Vec::new();
-        let mut errors = Vec::new();
+        let mut report = Report::new();
         lex(
             source,
             text,
             Utf8Path::new("."),
             &mut tokens,
-            &mut errors,
-            &mut vec![],
+            &mut report,
+            &mut Vec::new(),
+            &mut source_manager,
         );
-        (tokens, errors)
+        (tokens, report)
     }
 
     fn tokenize_str<'t>(text: &'t str) -> Tokens<'t> {
@@ -743,7 +794,7 @@ mod test {
     fn test_recovery() {
         // Invalid tokens should be skipped and lexing should continue
         let (tokens, errors) = tokenize("let x = ` 42");
-        assert_eq!(errors.len(), 1);
+        assert_eq!(errors.diagnostics.len(), 1);
         assert_eq!(tokens.len(), 4); // let, x, =, 42
     }
 

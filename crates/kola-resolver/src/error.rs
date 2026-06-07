@@ -1,6 +1,39 @@
 use std::hash::Hash;
 
-use kola_span::{Diagnostic, Loc};
+use kola_span::{Diagnostic, Loc, Located};
+use kola_tree::node::NamespaceKind;
+
+pub fn name_collision(
+    this: Located<NamespaceKind>,
+    other: Located<NamespaceKind>,
+) -> NameCollision {
+    use NamespaceKind::*;
+
+    let help = match (this.0, other.0) {
+        (ModuleType, ModuleType) => {
+            "Module type bindings must have distinct names from Module type bindings."
+        }
+        (Module, Module) => "Module bindings must have distinct names from Module bindings.",
+        (Module, Value) => "Module bindings must have distinct names from Value bindings.",
+        (Module, Type) => "Module bindings must have distinct names from Type bindings.",
+        (Value, Module) => "Value bindings must have distinct names from Module bindings.",
+        (Value, Value) => "Value bindings must have distinct names from Value bindings.",
+        (Value, Type) => "Value bindings must have distinct names from Type bindings.",
+        (Type, Module) => "Type bindings must have distinct names from Module bindings.",
+        (Type, Value) => "Type bindings must have distinct names from Value bindings.",
+        (Type, Type) => "Type bindings must have distinct names from Type bindings.",
+        (_, _) => "Bindings must have distinct names.",
+    };
+
+    match this.0 {
+        ModuleType => NameCollision::module_type_bind(this.1, other.1, help),
+        Module => NameCollision::module_bind(this.1, other.1, help),
+        Value => NameCollision::value_bind(this.1, other.1, help),
+        Type => NameCollision::type_bind(this.1, other.1, help),
+        Functor => NameCollision::functor_bind(this.1, other.1, help),
+        _ => unreachable!(),
+    }
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum NameCollision {

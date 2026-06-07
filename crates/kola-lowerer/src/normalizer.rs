@@ -2,7 +2,7 @@ use std::ops::ControlFlow;
 
 use kola_ir::prelude::{Id as InstrId, instr as ir, *};
 use kola_resolver::{
-    phase::{ResolvePhase, ResolvedModule, ResolvedNodes, ResolvedType, ResolvedValue},
+    phase::{NodeMap, ResolvePhase, ResolvedModule, ResolvedType, ResolvedValue},
     symbol::{Sym, ValueSym},
 };
 use kola_tree::{
@@ -17,7 +17,7 @@ pub struct Normalizer<'a, Node> {
     root_id: TreeId<Node>,
     next: InstrId<ir::Expr>,
     hole: ir::Symbol,
-    resolved: &'a ResolvedNodes,
+    resolutions: &'a NodeMap,
     builder: &'a mut IrBuilder,
 }
 
@@ -26,14 +26,14 @@ impl<'a, Node> Normalizer<'a, Node> {
         root_id: TreeId<Node>,
         next: InstrId<ir::Expr>,
         hole: ir::Symbol,
-        resolved: &'a ResolvedNodes,
+        resolutions: &'a NodeMap,
         builder: &'a mut IrBuilder,
     ) -> Self {
         Self {
             root_id,
             next,
             hole,
-            resolved,
+            resolutions,
             builder,
         }
     }
@@ -49,7 +49,7 @@ impl<'a, Node> Normalizer<'a, Node> {
         N: Namespace,
         T: MetaCast<ResolvePhase, Meta = Sym<N>>, // TODO maybe ValueSym ??
     {
-        let sym = self.resolved.meta(id);
+        let sym = self.resolutions.meta(id);
         ir::Symbol::new(sym.id())
     }
 
@@ -163,7 +163,7 @@ where
         } = *id.get(tree);
 
         if let Some(path) = module_path {
-            let ResolvedModule(sym) = *self.resolved.meta(path);
+            let ResolvedModule(sym) = *self.resolutions.meta(path);
             let module_atom = self
                 .builder
                 .add(ir::Atom::Symbol(ir::Symbol::new(sym.id())));
@@ -184,7 +184,7 @@ where
         }
 
         // Create atom
-        let source_atom = match *self.resolved.meta(id) {
+        let source_atom = match *self.resolutions.meta(id) {
             ResolvedValue::Reference(sym) => ir::Atom::Symbol(ir::Symbol::new(sym.id())),
             ResolvedValue::Builtin(b) => ir::Atom::Builtin(b),
         }; // This is only defined if path is None so be careful about moving this
@@ -259,7 +259,7 @@ where
                 let label = l.get(tree).0;
                 ir::Atom::Label(ir::Label(label))
             }
-            node::TypeWitnessExpr::Qualified(t) => match self.resolved.meta(t) {
+            node::TypeWitnessExpr::Qualified(t) => match self.resolutions.meta(t) {
                 ResolvedType::Builtin(bt) => ir::Atom::BuiltinWitness(*bt),
                 ResolvedType::Reference(ts) => {
                     ir::Atom::Witness(ir::Witness(ir::Symbol::new(ts.id())))
@@ -821,7 +821,7 @@ where
                 source_sym,  // value being matched
                 on_success,
                 on_failure,
-                self.resolved,
+                self.resolutions,
                 self.builder,
             );
             pat.visit_by(&mut pat_normalizer, tree)?;
@@ -851,7 +851,7 @@ pub struct PatternNormalizer<'a> {
     source: ir::Symbol, // What we're matching against
     on_success: InstrId<ir::PatternMatcher>,
     on_failure: InstrId<ir::PatternMatcher>,
-    resolved: &'a ResolvedNodes,
+    resolved: &'a NodeMap,
     builder: &'a mut IrBuilder,
 }
 
@@ -861,7 +861,7 @@ impl<'a> PatternNormalizer<'a> {
         source: ir::Symbol,
         on_success: InstrId<ir::PatternMatcher>,
         on_failure: InstrId<ir::PatternMatcher>,
-        resolved: &'a ResolvedNodes,
+        resolved: &'a NodeMap,
         builder: &'a mut IrBuilder,
     ) -> Self {
         Self {
@@ -1331,7 +1331,7 @@ mod tests {
     };
     use kola_machine::machine::{Ctx, Machine};
     use kola_resolver::{
-        phase::{ResolvedNodes, ResolvedValue},
+        phase::{NodeMap, ResolvedValue},
         symbol::ValueSym,
     };
     use kola_runtime::{heap::Heap, value::Value};
@@ -1341,8 +1341,8 @@ mod tests {
     use super::Normalizer;
 
     // TODO this wont work for path expressions using bound symbols,
-    fn mock_resolved(tree: &impl TreeView) -> ResolvedNodes {
-        let mut resolved = ResolvedNodes::default();
+    fn mock_resolved(tree: &impl TreeView) -> NodeMap {
+        let mut resolved = NodeMap::default();
 
         for query in tree.query3::<node::QualifiedExpr, node::LetExpr, node::LambdaExpr>() {
             match query {
@@ -1357,7 +1357,7 @@ mod tests {
         resolved
     }
 
-    fn normalize<T>(tree: TreeBuilder, root_id: Id<T>, resolved: &ResolvedNodes) -> Ir
+    fn normalize<T>(tree: TreeBuilder, root_id: Id<T>, resolved: &NodeMap) -> Ir
     where
         Id<T>: Visitable<TreeBuilder>,
     {
@@ -1415,7 +1415,7 @@ mod tests {
     fn let_expr() {
         let mut interner = StrInterner::default();
         let mut builder = TreeBuilder::new();
-        let mut resolved = ResolvedNodes::default();
+        let mut resolved = NodeMap::default();
 
         let x = interner.intern("x");
         let x_sym = ValueSym::new();
@@ -1441,7 +1441,7 @@ mod tests {
     fn lambda_call_expr() {
         let mut interner = StrInterner::default();
         let mut builder = TreeBuilder::new();
-        let mut resolved = ResolvedNodes::default();
+        let mut resolved = NodeMap::default();
 
         let x = interner.intern("x");
         let x_sym = ValueSym::new();
@@ -1476,7 +1476,7 @@ mod tests {
     fn record_expr() {
         let mut interner = StrInterner::default();
         let mut builder = TreeBuilder::new();
-        let resolved = ResolvedNodes::default();
+        let resolved = NodeMap::default();
 
         // Build: { a = 42, b = "hello" }
 
@@ -1507,7 +1507,7 @@ mod tests {
     fn record_access_expr() {
         let mut interner = StrInterner::default();
         let mut builder = TreeBuilder::new();
-        let mut resolved = ResolvedNodes::default();
+        let mut resolved = NodeMap::default();
 
         // Build: let r = { a = { b = { c = "hello" } } } in r.a.b.c
 

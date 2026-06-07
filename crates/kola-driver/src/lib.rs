@@ -12,13 +12,14 @@ use kola_resolver::{prelude::*, print::ResolutionDecorator};
 use kola_runtime::heap::Heap;
 use kola_span::{Issue, Report, SourceManager};
 use kola_syntax::{
-    lexer::tokenize,
+    lexer::{TokenOutput, tokenize},
+    loc::LocMap,
     parser::{ParseInput, ParseOutput, parse},
     token::TokenPrinter,
 };
 use kola_tree::{
     print::{Decorators, TreePrinter},
-    tree::Tree,
+    tree::{Tree, TreeMap},
 };
 use kola_typer::{
     check::{TypeCheckOutput, type_check},
@@ -51,72 +52,88 @@ impl Driver {
     }
 
     #[inline]
-    pub fn parse(&mut self, path: impl AsRef<Utf8Path>) -> io::Result<Option<Tree>> {
+    pub fn parse(
+        &mut self,
+        path: impl AsRef<Utf8Path>,
+    ) -> io::Result<(TreeMap, LocMap, SourceManager)> {
         self._parse(path, true)
     }
 
-    fn _parse(&mut self, path: impl AsRef<Utf8Path>, print: bool) -> io::Result<Option<Tree>> {
+    fn _parse(
+        &mut self,
+        path: impl AsRef<Utf8Path>,
+        print: bool,
+    ) -> io::Result<(TreeMap, LocMap, SourceManager)> {
         let mut report = Report::new();
         let mut source_manager = SourceManager::new(Arc::clone(&self.io));
 
         let path = path.as_ref().canonicalize_utf8()?;
 
-        let source_id = source_manager.lookup(&path).unwrap_or_else(|| {
-            // The file might not be cached yet — fetch it first
-            let (id, _) = source_manager.refetch(&path).unwrap();
-            id
-        });
-        let source = &source_manager[source_id];
+        let TokenOutput { token_map, .. } = tokenize(&mut source_manager, &path, &mut report);
 
-        let Some(token_map) = tokenize(&mut source_manager, &path, &mut report) else {
-            report.eprint(&source_manager)?;
-            return Ok(None);
-        };
-
-        let tokens = &token_map[&source_id];
         if print {
-            let printer = TokenPrinter(tokens, self.print_options);
-            printer.print(self.print_options, &self.arena);
+            for tokens in token_map.values() {
+                let printer = TokenPrinter(tokens, self.print_options);
+                printer.print(self.print_options, &self.arena);
+            }
         }
 
-        let ParseOutput {
-            tokens: _,
-            tree,
-            spans: _,
-            recovered,
-        } = parse(
-            ParseInput::new(source_id, tokens.clone(), &mut self.str_interner),
-            &mut report,
-        );
+        let mut tree_map = TreeMap::new();
+        let mut loc_map = LocMap::new();
 
-        if let Some(tree) = &tree
-            && print
-        {
-            let decorators = Decorators::new();
-            let printer = TreePrinter::root(&tree, &self.str_interner, decorators);
-            printer.print(self.print_options, &self.arena);
-        }
-
-        if !report.is_empty() {
-            report.eprint(&source_manager)?;
-        }
-
-        if !recovered.is_empty() {
-            eprintln!(
-                "{} issues recovered during parsing.",
-                "Warning:".bold().yellow(),
+        for (source_id, tokens) in token_map {
+            let ParseOutput {
+                tokens: _,
+                tree,
+                spans,
+                recovered,
+            } = parse(
+                ParseInput::new(source_id, tokens, &mut self.str_interner),
+                &mut report,
             );
-            recovered.eprint(&source_manager)?;
+
+            loc_map.insert(source_id, spans);
+
+            if let Some(tree) = tree {
+                if print {
+                    let decorators = Decorators::new();
+                    let printer = TreePrinter::root(&tree, &self.str_interner, decorators);
+                    printer.print(self.print_options, &self.arena);
+                }
+                tree_map.insert(source_id, tree);
+            }
+
+            if !report.is_empty() {
+                report.eprint(&source_manager)?;
+                break;
+            }
+
+            if !recovered.is_empty() {
+                eprintln!(
+                    "{} issues recovered during parsing.",
+                    "Warning:".bold().yellow(),
+                );
+                recovered.eprint(&source_manager)?;
+                break;
+            }
         }
 
-        Ok(tree)
+        Ok((tree_map, loc_map, source_manager))
     }
 
     #[inline]
     pub fn analyze(
         &mut self,
         path: impl AsRef<Utf8Path>,
-    ) -> io::Result<Option<(ResolveOutput, TypeCheckOutput)>> {
+    ) -> io::Result<
+        Option<(
+            TreeMap,
+            LocMap,
+            SourceManager,
+            ResolveOutput,
+            TypeCheckOutput,
+        )>,
+    > {
         self._analyze(path, true)
     }
 
@@ -124,12 +141,22 @@ impl Driver {
         &mut self,
         path: impl AsRef<Utf8Path>,
         print: bool,
-    ) -> io::Result<Option<(ResolveOutput, TypeCheckOutput)>> {
+    ) -> io::Result<
+        Option<(
+            TreeMap,
+            LocMap,
+            SourceManager,
+            ResolveOutput,
+            TypeCheckOutput,
+        )>,
+    > {
         let mut report = Report::new();
 
+        let (tree_map, loc_map, source_manager) = self._parse(path.as_ref(), false)?;
+
         let resolve_output = resolve(
-            path,
-            &self.io,
+            &tree_map,
+            &loc_map,
             &self.arena,
             &mut self.str_interner,
             &mut report,
@@ -137,11 +164,9 @@ impl Driver {
         )?;
 
         let ResolveOutput {
-            source_manager,
-            forest,
-            topography,
+            modules,
+            defs,
             module_graph,
-            module_scopes,
             entry_points,
             value_orders,
             type_orders,
@@ -151,20 +176,20 @@ impl Driver {
 
         if print {
             // TODO provide a way to filter or select specific modules to print
-            for (sym, scope) in module_scopes {
-                let source = scope.info.source;
-                let tree = &*forest[source];
+            for (sym, module) in modules {
+                let module_def = defs[*sym];
+                let tree = &tree_map[&module_def.loc.path];
 
-                let resolution_decorator = ResolutionDecorator(&scope.resolved);
+                let resolution_decorator = ResolutionDecorator(&module.nodes);
                 let decorators = Decorators::new().with(&resolution_decorator);
 
                 let tree_printer =
-                    TreePrinter::new(tree, &self.str_interner, decorators, scope.info.id);
+                    TreePrinter::new(tree, &self.str_interner, decorators, module_def.id);
 
                 println!(
                     "{} SourceId {}, ModuleSym {}\n{}",
                     "Resolved Abstract Syntax Tree".bold().bright_white(),
-                    source,
+                    module_def.loc.path,
                     sym,
                     tree_printer.render(self.print_options, &self.arena)
                 );
@@ -183,10 +208,11 @@ impl Driver {
         }
 
         let type_check_output = type_check(
-            &forest,
-            &topography,
+            &tree_map,
+            &loc_map,
+            &modules,
+            &defs,
             &entry_points,
-            &module_scopes,
             &module_order,
             &type_orders,
             &value_orders,
@@ -203,26 +229,27 @@ impl Driver {
         } = &type_check_output;
 
         if print {
-            for (sym, scope) in module_scopes {
-                let info = scope.info;
-                let tree = &*forest[info.source];
+            for (sym, module) in modules {
+                let module_def = defs[*sym];
+                let tree = &tree_map[&module_def.loc.path];
 
                 let Some(annots) = type_annotations.get(sym) else {
                     continue;
                 };
 
-                let resolution_decorator = ResolutionDecorator(&scope.resolved);
+                let resolution_decorator = ResolutionDecorator(&module.nodes);
                 let type_decorator = TypeDecorator(annots);
                 let decorators = Decorators::new()
                     .with(&resolution_decorator)
                     .with(&type_decorator);
 
-                let tree_printer = TreePrinter::new(&tree, &self.str_interner, decorators, info.id);
+                let tree_printer =
+                    TreePrinter::new(&tree, &self.str_interner, decorators, module_def.id);
 
                 println!(
                     "{} SourceId {}, ModuleSym {}\n{}",
                     "Typed Abstract Syntax Tree".bold().bright_white(),
-                    info.source,
+                    module_def.loc.path,
                     sym,
                     tree_printer.render(self.print_options, &self.arena)
                 );
@@ -234,7 +261,13 @@ impl Driver {
             return Ok(None);
         }
 
-        Ok(Some((resolve_output, type_check_output)))
+        Ok(Some((
+            tree_map,
+            loc_map,
+            source_manager,
+            resolve_output,
+            type_check_output,
+        )))
     }
 
     pub fn compile(&mut self, path: impl AsRef<Utf8Path>) -> io::Result<Option<Program>> {
@@ -245,12 +278,13 @@ impl Driver {
         let mut report = Report::new();
 
         let Some((
+            tree_map,
+            loc_map,
+            source_manager,
             ResolveOutput {
-                source_manager,
-                forest,
-                topography,
+                modules,
+                defs,
                 module_graph,
-                module_scopes,
                 entry_points,
                 value_orders,
                 type_orders,
@@ -278,10 +312,11 @@ impl Driver {
 
         let program = lower(
             entry_point,
-            &module_scopes,
+            &modules,
+            &defs,
             &module_order,
             &value_orders,
-            &forest,
+            &tree_map,
             &self.arena,
             &self.str_interner,
             self.print_options,

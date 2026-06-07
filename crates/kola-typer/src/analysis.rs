@@ -45,7 +45,7 @@ use derive_more::Display;
 use enumset::{EnumSet, EnumSetType};
 use kola_collections::OrdSet;
 use kola_span::{Diagnostic, Loc};
-use kola_syntax::loc::Locations;
+use kola_syntax::loc::LocVec;
 use kola_tree::prelude::*;
 use kola_types::types::{
     Label, LabelOrVar, ListType, MonoType, PrimitiveType, RecordType, Row, VariantType,
@@ -88,7 +88,7 @@ pub fn exhaust_check_all<T: TreeView>(
     cases: &[Id<node::CaseExpr>],
     tree: &T,
     types: &TypedNodes,
-    spans: &Locations,
+    spans: &LocVec,
 ) -> Result<(), Errors<ExhaustError>> {
     let mut errors = Errors::new();
 

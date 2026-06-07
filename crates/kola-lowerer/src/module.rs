@@ -108,12 +108,15 @@ use kola_ir::{
 };
 use kola_print::prelude::*;
 use kola_resolver::{
-    forest::Forest,
-    resolver::ValueOrders,
-    scope::{ModuleScope, ModuleScopes},
+    def::DefMap,
+    env::{Module, ModuleMap},
+    resolve::ValueOrders,
     symbol::{ModuleSym, ValueSym},
 };
-use kola_tree::{meta::MetaView, tree::Tree};
+use kola_tree::{
+    meta::MetaView,
+    tree::{Tree, TreeMap},
+};
 use kola_utils::interner::StrInterner;
 use log::trace;
 
@@ -177,14 +180,17 @@ pub struct LoweredModule {
 pub fn lower_module(
     next: InstrId<ir::Expr>,
     value_order: &[ValueSym],
-    scope: &ModuleScope,
+    sym: ModuleSym,
+    modules: &ModuleMap,
+    defs: &DefMap,
     tree: &Tree,
     builder: &mut IrBuilder,
 ) -> InstrId<ir::Expr> {
-    let resolved = &scope.resolved;
+    let nodes = &modules[&sym].nodes;
+    let module_def = defs[sym];
 
     // Start with the module result (record creation)
-    let bind = ir::Symbol::new(scope.info.sym.id());
+    let bind = ir::Symbol::new(module_def.id.id());
     let mut fields = ir::RecordExpr {
         bind,
         head: None,
@@ -193,9 +199,9 @@ pub fn lower_module(
 
     // Collect field information first
     for &value_sym in value_order {
-        let id = scope.defs[value_sym].id();
+        let id = defs[value_sym].id();
         let label = id.get(tree).name.get(tree).0;
-        let hole = Symbol::new(resolved.meta(id).id());
+        let hole = Symbol::new(nodes.meta(id).id());
         fields.add_field((label, ir::Atom::Symbol(hole)), builder);
     }
 
@@ -206,11 +212,11 @@ pub fn lower_module(
     let mut next = record_expr;
 
     for &value_sym in value_order.iter().rev() {
-        let id = scope.defs[value_sym].id();
+        let id = defs[value_sym].id();
         let value_bind = id.get(tree);
-        let hole = Symbol::new(resolved.meta(id).id());
+        let hole = Symbol::new(nodes.meta(id).id());
 
-        let normalizer = Normalizer::new(value_bind.value, next, hole, resolved, builder);
+        let normalizer = Normalizer::new(value_bind.value, next, hole, nodes, builder);
         next = normalizer.run(tree);
     }
 
@@ -239,29 +245,30 @@ pub fn lower_module(
 /// A `Program` containing the compiled IR and module metadata.
 pub fn lower(
     entry_point: ValueSym,
-    scopes: &ModuleScopes,
+    modules: &ModuleMap,
+    defs: &DefMap,
     module_order: &[ModuleSym],
     value_orders: &ValueOrders,
-    forest: &Forest,
+    tree_map: &TreeMap,
     arena: &Bump,
     str_interner: &StrInterner,
     print_options: PrintOptions,
 ) -> Program {
     let mut builder = IrBuilder::new();
-    let mut modules = Vec::new();
+    let mut lowered_modules = Vec::new();
 
     let entry = ir::Symbol::new(entry_point.id());
     let arg = builder.add(ir::Atom::Symbol(entry));
     let mut next = builder.add(ir::Expr::Ret(ir::RetExpr { arg }));
 
     for &sym in module_order.iter().rev() {
-        let scope = &scopes[&sym];
         let value_order = &value_orders[&sym];
-        let tree = &*forest[scope.info.source];
+        let module_def = defs[sym];
+        let tree = &tree_map[&module_def.loc.path];
 
-        next = lower_module(next, value_order, scope, tree, &mut builder);
+        next = lower_module(next, value_order, sym, modules, defs, tree, &mut builder);
 
-        modules.push(LoweredModule { sym });
+        lowered_modules.push(LoweredModule { sym });
     }
 
     let ir = builder.finish(next);
@@ -272,5 +279,8 @@ pub fn lower(
         render_ir(&ir, arena, str_interner, print_options)
     );
 
-    Program { ir, modules }
+    Program {
+        ir,
+        modules: lowered_modules,
+    }
 }

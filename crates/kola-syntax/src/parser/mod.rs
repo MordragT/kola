@@ -15,12 +15,12 @@ use kola_span::parser::Parser;
 use kola_span::{Diagnostic, Report, primitive::Lazy};
 use kola_tree::prelude::*;
 
-use crate::{loc::Locations, token::SemanticTokens};
+use crate::{loc::LocVec, token::SemanticTokens};
 
 pub struct ParseOutput {
     pub tokens: SemanticTokens,
     pub tree: Option<Tree>,
-    pub spans: Locations,
+    pub spans: LocVec,
     pub recovered: Report,
 }
 
@@ -67,7 +67,7 @@ pub struct ParseResult<T> {
     pub node: T,
     pub tokens: SemanticTokens,
     pub builder: TreeBuilder,
-    pub spans: Locations,
+    pub spans: LocVec,
     pub recovered: Report,
 }
 

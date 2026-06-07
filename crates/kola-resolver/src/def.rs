@@ -18,32 +18,24 @@ use crate::symbol::{
 pub struct Def<T> {
     pub loc: Loc,
     pub vis: Vis,
-    pub id: Option<Id<T>>,
+    pub id: Id<T>,
 }
 
 impl<T> Def<T> {
-    pub const fn bound(id: Id<T>, vis: Vis, loc: Loc) -> Self {
-        Self {
-            loc,
-            vis,
-            id: Some(id),
-        }
+    pub const fn new(id: Id<T>, vis: Vis, loc: Loc) -> Self {
+        Self { loc, vis, id }
     }
 
-    pub const fn unbound(loc: Loc, vis: Vis) -> Self {
-        Self { loc, vis, id: None }
-    }
-
-    pub const fn loc(&self) -> Loc {
+    pub const fn loc(self) -> Loc {
         self.loc
     }
 
-    pub const fn vis(&self) -> Vis {
+    pub const fn vis(self) -> Vis {
         self.vis
     }
 
-    pub fn id(&self) -> Id<T> {
-        self.id.unwrap()
+    pub fn id(self) -> Id<T> {
+        self.id
     }
 }
 
@@ -121,7 +113,7 @@ impl AnyDef {
         }
     }
 
-    pub const fn location(&self) -> Loc {
+    pub const fn loc(&self) -> Loc {
         match self {
             AnyDef::Functor(info) => info.loc,
             AnyDef::ModuleType(info) => info.loc,
@@ -131,7 +123,7 @@ impl AnyDef {
         }
     }
 
-    pub const fn visibility(&self) -> Vis {
+    pub const fn vis(&self) -> Vis {
         match self {
             AnyDef::Functor(info) => info.vis,
             AnyDef::ModuleType(info) => info.vis,
@@ -217,34 +209,6 @@ impl<N: Namespace, T> Index<Sym<N>> for Defs<N, T> {
         self.0.get(&sym).expect("Bind not found")
     }
 }
-
-// impl<N: Namespace, T> Substitute for Defs<N, T>
-// where
-//     AnySym: From<Sym<N>>,{
-//     fn try_subst(&self, s: &HashMap<AnySym, AnySym>) -> Option<Self>
-//     where
-//         Self: Sized,
-//     {
-
-//         if let Some(def) = self.0.get(&from) {
-//             let mut new_defs = self.clone();
-//             new_defs.0.remove(&from);
-//             new_defs.0.insert(to, *def);
-//             Some(new_defs)
-//         } else {
-//             None
-//         }
-//     }
-
-//     fn subst_mut(&mut self, from: Sym<N>, to: Sym<N>)
-//     where
-//         Self: Sized,
-//     {
-//         if let Some(def) = self.0.remove(&from) {
-//             self.0.insert(to, def);
-//         }
-//     }
-// }
 
 impl Substitute for Defs<FunctorNamespace, node::FunctorBind> {
     fn try_subst(&self, s: &HashMap<AnySym, AnySym>) -> Option<Self>
@@ -422,7 +386,7 @@ impl Substitute for Defs<ValueNamespace, node::ValueBind> {
 }
 
 #[derive(Debug, Clone, Default)]
-pub struct Definitions {
+pub struct DefMap {
     functors: Defs<FunctorNamespace, node::FunctorBind>,
     module_types: Defs<ModuleTypeNamespace, node::ModuleTypeBind>,
     modules: Defs<ModuleNamespace, node::ModuleBind>,
@@ -430,7 +394,7 @@ pub struct Definitions {
     values: Defs<ValueNamespace, node::ValueBind>,
 }
 
-impl Definitions {
+impl DefMap {
     #[inline]
     pub fn new() -> Self {
         Self::default()
@@ -523,7 +487,7 @@ impl Definitions {
     }
 }
 
-impl Index<FunctorSym> for Definitions {
+impl Index<FunctorSym> for DefMap {
     type Output = FunctorDef;
 
     fn index(&self, index: FunctorSym) -> &Self::Output {
@@ -531,7 +495,7 @@ impl Index<FunctorSym> for Definitions {
     }
 }
 
-impl Index<ModuleTypeSym> for Definitions {
+impl Index<ModuleTypeSym> for DefMap {
     type Output = ModuleTypeDef;
 
     fn index(&self, index: ModuleTypeSym) -> &Self::Output {
@@ -539,7 +503,7 @@ impl Index<ModuleTypeSym> for Definitions {
     }
 }
 
-impl Index<ModuleSym> for Definitions {
+impl Index<ModuleSym> for DefMap {
     type Output = ModuleDef;
 
     fn index(&self, index: ModuleSym) -> &Self::Output {
@@ -547,7 +511,7 @@ impl Index<ModuleSym> for Definitions {
     }
 }
 
-impl Index<TypeSym> for Definitions {
+impl Index<TypeSym> for DefMap {
     type Output = TypeDef;
 
     fn index(&self, index: TypeSym) -> &Self::Output {
@@ -555,7 +519,7 @@ impl Index<TypeSym> for Definitions {
     }
 }
 
-impl Index<ValueSym> for Definitions {
+impl Index<ValueSym> for DefMap {
     type Output = ValueDef;
 
     fn index(&self, index: ValueSym) -> &Self::Output {
@@ -563,7 +527,7 @@ impl Index<ValueSym> for Definitions {
     }
 }
 
-impl Substitute for Definitions {
+impl Substitute for DefMap {
     fn try_subst(&self, s: &HashMap<AnySym, AnySym>) -> Option<Self>
     where
         Self: Sized,

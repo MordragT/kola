@@ -289,7 +289,7 @@ where
 #[macro_export]
 macro_rules! select {
     ($($pat:pat $(if $guard:expr)? => $expr:expr),+ $(,)?) => {
-        Select(|token| match token {
+        $crate::primitive::Select(|token| match token {
             $($pat $(if $guard)? => Some($expr),)+
             _ => None,
         })

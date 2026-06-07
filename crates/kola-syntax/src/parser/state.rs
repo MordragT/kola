@@ -5,7 +5,7 @@ use kola_tree::prelude::*;
 use kola_utils::interner::{StrInterner, StrKey};
 
 use crate::{
-    loc::{LocPhase, Locations},
+    loc::{LocPhase, LocVec},
     token::{SemanticToken, SemanticTokens},
 };
 
@@ -21,7 +21,7 @@ pub struct StateCheckpoint {
 pub struct State<'t> {
     pub tokens: SemanticTokens,
     pub builder: TreeBuilder,
-    pub spans: Locations,
+    pub spans: LocVec,
     pub interner: &'t mut StrInterner,
     pub recovered: Report,
 }
@@ -31,7 +31,7 @@ impl<'t> State<'t> {
         Self {
             tokens: SemanticTokens::default(),
             builder: TreeBuilder::default(),
-            spans: Locations::default(),
+            spans: LocVec::default(),
             interner,
             recovered: Report::new(),
         }

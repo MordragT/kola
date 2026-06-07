@@ -15,6 +15,12 @@ pub struct Key<T: ?Sized> {
     t: std::marker::PhantomData<T>,
 }
 
+const impl<T: ?Sized> PartialEq for Key<T> {
+    fn eq(&self, other: &Self) -> bool {
+        self.id == other.id
+    }
+}
+
 impl<T: ?Sized> Clone for Key<T> {
     fn clone(&self) -> Self {
         Self {
@@ -26,11 +32,11 @@ impl<T: ?Sized> Clone for Key<T> {
 
 impl<T: ?Sized> Copy for Key<T> {}
 
-impl<T: ?Sized> PartialEq for Key<T> {
-    fn eq(&self, other: &Self) -> bool {
-        self.id == other.id
-    }
-}
+// impl<T: ?Sized> PartialEq for Key<T> {
+//     fn eq(&self, other: &Self) -> bool {
+//         self.id == other.id
+//     }
+// }
 
 impl<T: ?Sized> Eq for Key<T> {}
 

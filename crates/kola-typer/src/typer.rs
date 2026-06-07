@@ -1,8 +1,10 @@
-use std::{ops::ControlFlow, rc::Rc};
+use std::ops::ControlFlow;
 
 use kola_builtins::{BuiltinLexicon, BuiltinType};
 use kola_resolver::{
-    phase::{ResolvedModule, ResolvedNodes},
+    def::DefMap,
+    env::ModuleMap,
+    phase::{NodeMap, ResolvedModule},
     symbol::ValueSym,
 };
 use kola_span::{Diagnostic, IntoDiagnostic, Loc, Report};
@@ -34,14 +36,16 @@ use crate::{
 
 pub struct Typer<'a, N> {
     root_id: Id<N>,
-    spans: Rc<Locations>,
+    spans: &'a LocVec,
     types: TypedNodes,
     cases: Vec<Id<node::CaseExpr>>, // TODO maybe proper wrapper
     effects_stack: Vec<Row>,
     local_env: LocalTypeEnv,
     module_env: &'a TypeEnv,
     global_env: &'a TypeEnv,
-    resolved: &'a ResolvedNodes,
+    modules: &'a ModuleMap,
+    defs: &'a DefMap,
+    nodes: &'a NodeMap,
     entry_points: &'a [ValueSym],
     cons: &'a mut Constraints,
     interner: &'a mut StrInterner,
@@ -51,10 +55,12 @@ pub struct Typer<'a, N> {
 impl<'a, N> Typer<'a, N> {
     pub fn new(
         root_id: Id<N>,
-        spans: Rc<Locations>,
+        spans: &'a LocVec,
         module_env: &'a TypeEnv,
         global_env: &'a TypeEnv,
-        resolved: &'a ResolvedNodes,
+        modules: &'a ModuleMap,
+        defs: &'a DefMap,
+        nodes: &'a NodeMap,
         entry_points: &'a [ValueSym],
         cons: &'a mut Constraints,
         interner: &'a mut StrInterner,
@@ -69,7 +75,9 @@ impl<'a, N> Typer<'a, N> {
             local_env: LocalTypeEnv::new(),
             module_env,
             global_env,
-            resolved,
+            modules,
+            nodes,
+            defs,
             entry_points,
             cons,
             interner,
@@ -355,19 +363,20 @@ where
     ) -> ControlFlow<Self::BreakValue> {
         let node::QualifiedType { path, ty } = *id.get(tree);
 
-        let type_name = ty.get(tree).0;
+        let type_name = *ty.get(tree);
         let span = self.span(id);
 
         let poly_t = if let Some(path) = path {
             // Module-qualified path
-            let ResolvedModule(module_sym) = *self.resolved.meta(path);
+            let ResolvedModule(module_sym) = *self.nodes.meta(path);
 
-            let (module_info, module) = &self.global_env[module_sym];
+            let module_def = &self.defs[module_sym];
+            let module = &self.modules[&module_sym];
 
-            let Some(type_sym) = module.get_type(type_name) else {
+            let Some(type_sym) = module.names.get_type(type_name) else {
                 return ControlFlow::Break(
                     Diagnostic::error(span, "Type not found")
-                        .with_trace([("In this module".to_owned(), module_info.loc)]),
+                        .with_trace([("In this module".to_owned(), module_def.loc)]),
                 );
             };
 
@@ -376,7 +385,7 @@ where
             if type_def.vis != Vis::Export {
                 return ControlFlow::Break(
                     Diagnostic::error(span, "Type is not exported from the module").with_trace([
-                        ("In this module".to_owned(), module_info.loc),
+                        ("In this module".to_owned(), module_def.loc),
                         ("Declared here".to_owned(), type_def.loc),
                     ]),
                 );
@@ -387,14 +396,14 @@ where
             // Local type parameter (like 'a' in forall a)
             PolyType::from_mono(local_t.clone())
         } else if let Some((_, poly_t)) = self
-            .resolved
+            .nodes
             .meta(id)
             .into_reference()
             .and_then(|sym| self.module_env.get_type(sym))
         {
             // Module-level type definition (like 'Person')
             poly_t.clone()
-        } else if let Some(builtin_t) = self.resolved.meta(id).into_builtin() {
+        } else if let Some(builtin_t) = self.nodes.meta(id).into_builtin() {
             match builtin_t {
                 BuiltinType::Unit => PolyType::from_mono(MonoType::UNIT),
                 BuiltinType::Bool => PolyType::from_mono(MonoType::BOOL),
@@ -811,7 +820,7 @@ where
         } = *id.get(tree);
 
         // TODO: instead of these entrypoint hacks it would be nicer if main would just be an own node maybe ?
-        let is_entrypoint = self.entry_points.contains(self.resolved.meta(id));
+        let is_entrypoint = self.entry_points.contains(self.nodes.meta(id));
 
         if is_entrypoint {
             self.effects_stack.push(Row::var());
@@ -962,18 +971,19 @@ where
             field_path,
         } = *id.get(tree);
 
-        let name = source.get(tree).0;
+        let name = *source.get(tree);
 
         let base_t = if let Some(path) = module_path {
             // Module-qualified path
-            let ResolvedModule(module_sym) = *self.resolved.meta(path);
+            let ResolvedModule(module_sym) = *self.nodes.meta(path);
 
-            let (module_info, module) = &self.global_env[module_sym];
+            let module_def = &self.defs[module_sym];
+            let module = &self.modules[&module_sym];
 
-            let Some(value_sym) = module.get_value(name) else {
+            let Some(value_sym) = module.names.get_value(name) else {
                 return ControlFlow::Break(
                     Diagnostic::error(span, "Value not found")
-                        .with_trace([("In this module".to_owned(), module_info.loc)]),
+                        .with_trace([("In this module".to_owned(), module_def.loc)]),
                 );
             };
 
@@ -982,7 +992,7 @@ where
             if value_def.vis != Vis::Export {
                 return ControlFlow::Break(
                     Diagnostic::error(span, "Value is not exported from the module").with_trace([
-                        ("In this module".to_owned(), module_info.loc),
+                        ("In this module".to_owned(), module_def.loc),
                         ("Declared here".to_owned(), value_def.loc),
                     ]),
                 );
@@ -993,14 +1003,14 @@ where
             // Local let-bound variable
             local_t.clone()
         } else if let Some((_, poly_t)) = self
-            .resolved
+            .nodes
             .meta(id)
             .into_reference()
             .and_then(|sym| self.module_env.get_value(sym))
         {
             // Module-level value definition
             poly_t.instantiate(|from, to| self.cons.constrain_inst(from, to))
-        } else if let Some(builtin_id) = self.resolved.meta(id).into_builtin() {
+        } else if let Some(builtin_id) = self.nodes.meta(id).into_builtin() {
             let pt = builtin_type(builtin_id, &self.lexicon);
 
             pt.instantiate(|from, to| self.cons.constrain_inst(from, to))

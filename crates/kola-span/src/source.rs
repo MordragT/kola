@@ -67,6 +67,10 @@ impl SourceManager {
         &self.sources[&id]
     }
 
+    pub fn get_path(&self, id: SourceId) -> &Utf8Path {
+        self.interner[id].as_path()
+    }
+
     pub fn fs(&self) -> &dyn FileSystem {
         &*self.fs
     }

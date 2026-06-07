@@ -25,6 +25,7 @@
 use derive_more::{From, IntoIterator};
 use enum_as_inner::EnumAsInner;
 use kola_macros::{Inspector, Notate};
+use kola_utils::interner::PathKey;
 use serde::{Deserialize, Serialize};
 
 use kola_print::prelude::*;
@@ -446,7 +447,7 @@ impl ModulePath {
     Deserialize,
 )]
 #[notate(color = "green")]
-pub struct ModuleImport(pub Id<ModuleName>);
+pub struct ModuleImport(pub PathKey);
 
 #[derive(
     Debug,

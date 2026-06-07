@@ -1,7 +1,7 @@
 use derive_more::Display;
 use paste::paste;
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, fmt, ops::Index};
+use std::{collections::HashMap, fmt};
 
 use kola_print::prelude::*;
 use kola_span::{Located, SourceId};
@@ -23,6 +23,7 @@ impl<'a> Notate<'a> for TokenPrinter<'a> {
                     Token::LowerSymbol(_) => "lower symbol".cyan().display_in(arena),
                     Token::Literal(_) => "literal".green().display_in(arena),
                     Token::Comment(_) => "comment".yellow().display_in(arena),
+                    Token::Import(_) => "import".magenta().display_in(arena),
                 };
                 let span = span.display_in(arena);
 
@@ -85,39 +86,8 @@ pub enum CommentT<'t> {
     Doc(&'t str),
 }
 
-#[derive(Debug, Clone, PartialEq, Default)]
-pub struct TokenCache<'t> {
-    cache: HashMap<SourceId, Tokens<'t>>,
-}
-
-impl<'t> TokenCache<'t> {
-    pub fn new() -> Self {
-        Self::default()
-    }
-
-    pub fn get(&self, source: SourceId) -> Option<&Tokens<'_>> {
-        self.cache.get(&source)
-    }
-
-    pub fn get_mut(&mut self, source: SourceId) -> Option<&mut Tokens<'t>> {
-        self.cache.get_mut(&source)
-    }
-
-    pub fn insert(&mut self, path: SourceId, tokens: Tokens<'t>) {
-        self.cache.insert(path, tokens);
-    }
-}
-
-impl<'t> Index<SourceId> for TokenCache<'t> {
-    type Output = Tokens<'t>;
-
-    fn index(&self, index: SourceId) -> &Self::Output {
-        self.cache.get(&index).unwrap()
-    }
-}
-
+pub type TokenMap<'t> = HashMap<SourceId, Tokens<'t>>;
 pub type Tokens<'t> = Vec<Located<Token<'t>>>;
-pub type TokenSlice<'t> = &'t [Located<Token<'t>>];
 
 #[derive(Debug, Display, Clone, Copy)]
 #[derive_const(PartialEq)]
@@ -132,6 +102,8 @@ pub enum Token<'t> {
     Literal(LiteralT<'t>),
     #[display("{_0}")]
     Comment(CommentT<'t>),
+    #[display("{_0}")]
+    Import(SourceId),
 }
 
 #[derive(Clone, Copy, Debug)]
@@ -246,7 +218,6 @@ define_token_type!(Op {
 define_token_type!(Kw {
     None => "None",
     Module => "module",
-    Import => "import",
     Export => "export",
     Functor => "functor",
     Effect => "effect",
@@ -261,7 +232,6 @@ define_token_type!(Kw {
     Else => "else",
     Case => "case",
     Handle => "handle",
-
 });
 
 define_token_type!(Ctrl {
@@ -312,7 +282,7 @@ pub enum Literal {
     Str,
 }
 
-impl<'t> const From<LiteralT<'t>> for Literal {
+const impl<'t> From<LiteralT<'t>> for Literal {
     fn from(value: LiteralT<'t>) -> Self {
         match value {
             LiteralT::Unit => Literal::Unit,
@@ -350,13 +320,13 @@ pub enum SemanticToken {
     Close(Delim),
 }
 
-impl const From<Symbol> for SemanticToken {
+const impl From<Symbol> for SemanticToken {
     fn from(value: Symbol) -> Self {
         Self::Symbol(value)
     }
 }
 
-impl<'t> const From<OpenT<'t>> for SemanticToken {
+const impl<'t> From<OpenT<'t>> for SemanticToken {
     fn from(value: OpenT<'t>) -> Self {
         if value == OpenT::PAREN {
             SemanticToken::Open(Delim::Paren)
@@ -372,7 +342,7 @@ impl<'t> const From<OpenT<'t>> for SemanticToken {
     }
 }
 
-impl<'t> const From<CloseT<'t>> for SemanticToken {
+const impl<'t> From<CloseT<'t>> for SemanticToken {
     fn from(value: CloseT<'t>) -> Self {
         if value == CloseT::PAREN {
             SemanticToken::Close(Delim::Paren)
@@ -388,7 +358,7 @@ impl<'t> const From<CloseT<'t>> for SemanticToken {
     }
 }
 
-impl<'t> const From<LiteralT<'t>> for SemanticToken {
+const impl<'t> From<LiteralT<'t>> for SemanticToken {
     fn from(value: LiteralT<'t>) -> Self {
         Self::Literal(Literal::from(value))
     }

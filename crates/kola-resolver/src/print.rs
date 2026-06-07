@@ -1,9 +1,9 @@
 use kola_print::prelude::*;
 use kola_tree::{meta::Meta, print::Decorator};
 
-use crate::phase::{ResolvedModule, ResolvedModuleType, ResolvedNodes};
+use crate::phase::{NodeMap, ResolvedModule, ResolvedModuleType};
 
-pub struct ResolutionDecorator<'a>(pub &'a ResolvedNodes);
+pub struct ResolutionDecorator<'a>(pub &'a NodeMap);
 
 impl<'a> Decorator<'a> for ResolutionDecorator<'a> {
     fn decorate(&self, notation: Notation<'a>, with: usize, arena: &'a Bump) -> Notation<'a> {

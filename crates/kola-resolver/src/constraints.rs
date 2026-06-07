@@ -1,18 +1,20 @@
-use std::ops::Index;
+use std::collections::{HashMap, VecDeque};
 
-use kola_collections::HashMap;
-use kola_span::Loc;
+use kola_span::{Loc, SourceId};
 use kola_tree::{
     id::Id,
     node::{self, FunctorName, ModuleName, ModuleTypeName, TypeName, ValueName},
 };
 
-use crate::symbol::{AnySym, ModuleSym, ModuleTypeSym, Substitute, TypeSym, ValueSym, merge3};
+use crate::symbol::{
+    AnySym, ModuleSym, ModuleTypeSym, Substitute, TypeSym, ValueSym, merge2, merge4, merge6,
+};
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum ModuleBindConst {
     Functor {
         id: Id<node::FunctorApp>,
+        parent: ModuleSym,
         bind: ModuleSym,
         path: Option<ModuleSym>,
         loc: Loc,
@@ -21,15 +23,24 @@ pub enum ModuleBindConst {
     },
     Path {
         id: Id<node::ModulePath>,
+        parent: ModuleSym,
         bind: ModuleSym,
         loc: Loc,
         path: Vec<ModuleName>,
+    },
+    Import {
+        id: Id<node::ModuleImport>,
+        parent: ModuleSym,
+        target: SourceId, // The path being imported
+        bind: ModuleSym,  // The local symbol we generated for it
+        loc: Loc,
     },
 }
 
 impl ModuleBindConst {
     pub fn functor(
         id: Id<node::FunctorApp>,
+        parent: ModuleSym,
         bind: ModuleSym,
         path: Option<ModuleSym>,
         loc: Loc,
@@ -38,6 +49,7 @@ impl ModuleBindConst {
     ) -> Self {
         Self::Functor {
             id,
+            parent,
             bind,
             path,
             loc,
@@ -48,15 +60,33 @@ impl ModuleBindConst {
 
     pub fn path(
         id: Id<node::ModulePath>,
+        parent: ModuleSym,
         bind: ModuleSym,
         loc: Loc,
         path: Vec<ModuleName>,
     ) -> Self {
         Self::Path {
             id,
+            parent,
             bind,
             loc,
             path,
+        }
+    }
+
+    pub fn import(
+        id: Id<node::ModuleImport>,
+        parent: ModuleSym,
+        target: SourceId,
+        bind: ModuleSym,
+        loc: Loc,
+    ) -> Self {
+        Self::Import {
+            id,
+            parent,
+            target,
+            bind,
+            loc,
         }
     }
 
@@ -64,6 +94,7 @@ impl ModuleBindConst {
         match self {
             Self::Functor { bind, .. } => *bind,
             Self::Path { bind, .. } => *bind,
+            Self::Import { bind, .. } => *bind,
         }
     }
 
@@ -71,6 +102,15 @@ impl ModuleBindConst {
         match self {
             Self::Functor { loc, .. } => *loc,
             Self::Path { loc, .. } => *loc,
+            Self::Import { loc, .. } => *loc,
+        }
+    }
+
+    pub fn parent(&self) -> ModuleSym {
+        match self {
+            Self::Functor { parent, .. } => *parent,
+            Self::Path { parent, .. } => *parent,
+            Self::Import { parent, .. } => *parent,
         }
     }
 }
@@ -80,17 +120,21 @@ impl Substitute for ModuleBindConst {
         match self {
             Self::Functor {
                 id,
+                parent,
                 bind,
                 path,
                 loc,
                 functor,
                 args,
             } => {
+                let parent_opt = parent.try_subst(s);
                 let bind_opt = bind.try_subst(s);
                 let path_opt = path.try_subst(s);
                 let args_opt = args.try_subst(s);
 
-                merge3(
+                merge4(
+                    parent_opt,
+                    || *parent,
                     bind_opt,
                     || *bind,
                     path_opt,
@@ -98,35 +142,61 @@ impl Substitute for ModuleBindConst {
                     args_opt,
                     || args.clone(),
                 )
-                .map(|(bind, path, args)| Self::functor(*id, bind, path, *loc, *functor, args))
+                .map(|(parent, bind, path, args)| {
+                    Self::functor(*id, parent, bind, path, *loc, *functor, args)
+                })
             }
             Self::Path {
                 id,
+                parent,
                 bind,
                 loc,
                 path,
             } => {
-                if let Some(bind) = bind.try_subst(s) {
-                    Some(Self::path(*id, bind, *loc, path.clone()))
-                } else {
-                    None
-                }
+                let parent_opt = parent.try_subst(s);
+                let bind_opt = bind.try_subst(s);
+
+                merge2(parent_opt, || *parent, bind_opt, || *bind)
+                    .map(|(parent, bind)| Self::path(*id, parent, bind, *loc, path.clone()))
+            }
+            Self::Import {
+                id,
+                parent,
+                target,
+                bind,
+                loc,
+            } => {
+                let parent_opt = parent.try_subst(s);
+                let bind_opt = bind.try_subst(s);
+
+                merge2(parent_opt, || *parent, bind_opt, || *bind)
+                    .map(|(parent, bind)| Self::import(*id, parent, *target, bind, *loc))
             }
         }
     }
 
     fn subst_mut(&mut self, s: &HashMap<AnySym, AnySym>) {
         match self {
-            Self::Functor { bind, args, .. } => {
+            Self::Functor {
+                parent, bind, args, ..
+            } => {
+                parent.subst_mut(s);
                 bind.subst_mut(s);
                 args.subst_mut(s);
             }
-            Self::Path { bind, .. } => {
+            Self::Path { parent, bind, .. } => {
+                parent.subst_mut(s);
+                bind.subst_mut(s);
+            }
+            Self::Import { parent, bind, .. } => {
+                parent.subst_mut(s);
                 bind.subst_mut(s);
             }
         }
     }
 }
+
+pub type GlobalConstraints = VecDeque<ModuleBindConst>;
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ModuleConst {
@@ -193,6 +263,20 @@ impl ValueConst {
     }
 }
 
+impl Substitute for ValueConst {
+    fn try_subst(&self, s: &HashMap<AnySym, AnySym>) -> Option<Self> {
+        if let Some(source) = self.source.try_subst(s) {
+            Some(Self::new(self.name, self.id, source, self.loc))
+        } else {
+            None
+        }
+    }
+
+    fn subst_mut(&mut self, s: &HashMap<AnySym, AnySym>) {
+        self.source.subst_mut(s);
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct TypeBindConst {
     /// The name of the type reference.
@@ -213,6 +297,20 @@ impl TypeBindConst {
             source,
             loc,
         }
+    }
+}
+
+impl Substitute for TypeBindConst {
+    fn try_subst(&self, s: &HashMap<AnySym, AnySym>) -> Option<Self> {
+        if let Some(source) = self.source.try_subst(s) {
+            Some(Self::new(self.name, self.id, source, self.loc))
+        } else {
+            None
+        }
+    }
+
+    fn subst_mut(&mut self, s: &HashMap<AnySym, AnySym>) {
+        self.source.subst_mut(s);
     }
 }
 
@@ -246,6 +344,15 @@ impl TypeConst {
     // }
 }
 
+impl Substitute for TypeConst {
+    fn try_subst(&self, _s: &HashMap<AnySym, AnySym>) -> Option<Self> {
+        match self {
+            Self::Qualified { name, id, loc } => Some(Self::qualified(*name, *id, *loc)),
+            // Self::TypeRep { name, id, loc } => Some(Self::type_rep(*name, *id, *loc)),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ModuleTypeBindConst {
     /// The name of the module type reference.
@@ -274,6 +381,20 @@ impl ModuleTypeBindConst {
     }
 }
 
+impl Substitute for ModuleTypeBindConst {
+    fn try_subst(&self, s: &HashMap<AnySym, AnySym>) -> Option<Self> {
+        if let Some(source) = self.source.try_subst(s) {
+            Some(Self::new(self.name, self.id, source, self.loc))
+        } else {
+            None
+        }
+    }
+
+    fn subst_mut(&mut self, s: &HashMap<AnySym, AnySym>) {
+        self.source.subst_mut(s);
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ModuleTypeConst {
     /// The name of the module type reference.
@@ -290,18 +411,23 @@ impl ModuleTypeConst {
     }
 }
 
+impl Substitute for ModuleTypeConst {
+    fn try_subst(&self, _s: &HashMap<AnySym, AnySym>) -> Option<Self> {
+        Some(Self::new(self.name, self.id, self.loc))
+    }
+}
+
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
-pub struct Constraints {
+pub struct LocalConstraints {
     module_type_binds: Vec<ModuleTypeBindConst>,
     module_types: Vec<ModuleTypeConst>,
-    module_binds: HashMap<ModuleSym, ModuleBindConst>,
     modules: Vec<ModuleConst>,
     type_binds: Vec<TypeBindConst>,
     types: Vec<TypeConst>,
     values: Vec<ValueConst>,
 }
 
-impl Constraints {
+impl LocalConstraints {
     #[inline]
     pub fn new() -> Self {
         Self::default()
@@ -315,11 +441,6 @@ impl Constraints {
     #[inline]
     pub fn insert_module_type(&mut self, type_ref: ModuleTypeConst) {
         self.module_types.push(type_ref);
-    }
-
-    #[inline]
-    pub fn insert_module_bind(&mut self, sym: ModuleSym, constraint: ModuleBindConst) {
-        self.module_binds.insert(sym, constraint);
     }
 
     #[inline]
@@ -343,11 +464,6 @@ impl Constraints {
     }
 
     #[inline]
-    pub fn get_module_bind(&self, sym: ModuleSym) -> Option<&ModuleBindConst> {
-        self.module_binds.get(&sym)
-    }
-
-    #[inline]
     pub fn module_type_binds(&self) -> &[ModuleTypeBindConst] {
         &self.module_type_binds
     }
@@ -355,11 +471,6 @@ impl Constraints {
     #[inline]
     pub fn module_types(&self) -> &[ModuleTypeConst] {
         &self.module_types
-    }
-
-    #[inline]
-    pub fn module_binds(&self) -> &HashMap<ModuleSym, ModuleBindConst> {
-        &self.module_binds
     }
 
     #[inline]
@@ -383,34 +494,56 @@ impl Constraints {
     }
 }
 
-impl Index<ModuleSym> for Constraints {
-    type Output = ModuleBindConst;
+impl Substitute for LocalConstraints {
+    fn try_subst(&self, s: &HashMap<AnySym, AnySym>) -> Option<Self> {
+        let Self {
+            module_type_binds,
+            module_types,
+            modules,
+            type_binds,
+            types,
+            values,
+        } = self;
 
-    fn index(&self, index: ModuleSym) -> &Self::Output {
-        self.module_binds
-            .get(&index)
-            .expect("ModuleSym not found in ModuleRefs")
-    }
-}
+        let module_type_binds_opt = module_type_binds.try_subst(s);
+        let module_types_opt = module_types.try_subst(s);
+        let modules_opt = modules.try_subst(s);
+        let type_binds_opt = type_binds.try_subst(s);
+        let types_opt = types.try_subst(s);
+        let values_opt = values.try_subst(s);
 
-impl Substitute for Constraints {
-    fn try_subst(&self, _s: &HashMap<AnySym, AnySym>) -> Option<Self> {
-        unimplemented!()
+        merge6(
+            module_type_binds_opt,
+            || module_type_binds.clone(),
+            module_types_opt,
+            || module_types.clone(),
+            modules_opt,
+            || modules.clone(),
+            type_binds_opt,
+            || type_binds.clone(),
+            types_opt,
+            || types.clone(),
+            values_opt,
+            || values.clone(),
+        )
+        .map(
+            |(module_type_binds, module_types, modules, type_binds, types, values)| Self {
+                module_type_binds,
+                module_types,
+                modules,
+                type_binds,
+                types,
+                values,
+            },
+        )
     }
 
     fn subst_mut(&mut self, s: &HashMap<AnySym, AnySym>) {
-        // TODO this doesn't implement substitution for all fields, because currently module symbols are the only ones
-        // that are substituted anyway.
-
-        let mut module_binds = HashMap::new();
-        for (mut sym, mut constraint) in self.module_binds.drain() {
-            sym.subst_mut(s);
-            constraint.subst_mut(s);
-
-            module_binds.insert(sym, constraint);
-        }
-        self.module_binds = module_binds;
-
+        self.module_type_binds.subst_mut(s);
+        self.module_types.subst_mut(s);
         self.modules.subst_mut(s);
+        self.type_binds.subst_mut(s);
+        self.types.subst_mut(s);
+        self.values.subst_mut(s);
     }
 }

@@ -1,7 +1,7 @@
-use kola_span::Loc;
 use kola_span::input::Input;
 use kola_span::parser::Parser;
 use kola_span::primitive::{Lazy, OpaqueFn, choice, group, lazy};
+use kola_span::{Loc, select};
 use kola_span::{
     combinator::{Combinator, IterCombinator},
     skip::{skip_delimiters, skip_until},
@@ -117,12 +117,7 @@ impl<'t> Lazy<ParseInput<'t>, Id<node::Module>> for ModuleCombinator {
     const COMBINATOR: Self::Combinator = {
         let module = module_parser();
 
-        let module_import = kw(KwT::IMPORT)
-            .ignore_then(
-                module_name_parser()
-                    .throw("Expected module name after 'import'")
-                    .with_note("ModuleImport"),
-            )
+        let module_import = select! { Token::Import(id) => id }
             .map_to_node(node::ModuleImport)
             .to_module_expr();
 
@@ -1228,27 +1223,24 @@ pub const fn type_bind_parser<'t>() -> impl const KolaCombinator<'t, Id<node::Ty
 #[cfg(test)]
 mod tests {
     use std::fmt::Debug;
+    use std::sync::Arc;
 
     use camino::Utf8PathBuf;
 
-    use kola_span::SourceId;
+    use kola_span::SourceManager;
     use kola_span::parser::Parser;
     use kola_tree::{inspector::NodeInspector, prelude::*};
-    use kola_utils::interner::{PathInterner, StrInterner};
+    use kola_utils::interner::StrInterner;
+    use kola_utils::io::MockFileSystem;
 
     use super::{
         expr_parser, module_parser, module_type_parser, pat_parser, type_bind_parser, type_parser,
         type_scheme_parser,
     };
     use crate::{
-        lexer::{LexInput, try_tokenize},
+        lexer::{TokenOutput, try_tokenize},
         parser::{ParseInput, ParseResult, try_parse_with},
     };
-
-    fn mocked_source() -> SourceId {
-        let mut interner = PathInterner::default();
-        interner.intern(Utf8PathBuf::from("test"))
-    }
 
     fn try_parse_str_with<'t, T, P>(
         text: &'t str,
@@ -1259,10 +1251,17 @@ mod tests {
         T: Debug,
         P: Parser<ParseInput<'t>, T>,
     {
-        let source = mocked_source();
-        let input = LexInput { source, text };
-        let tokens = try_tokenize(input).unwrap();
-        let input = ParseInput::new(source, tokens, interner);
+        let path = Utf8PathBuf::from("test.kola");
+        let mut fs = MockFileSystem::new();
+        fs.add_file(path.clone(), text.to_owned());
+
+        let source_manager = Box::new(SourceManager::new(Arc::new(fs)));
+        let source_manager = Box::leak(source_manager);
+
+        let TokenOutput { root_id, token_map } =
+            try_tokenize(source_manager, path.as_path()).unwrap();
+
+        let input = ParseInput::new(root_id, token_map[&root_id].clone(), interner);
 
         try_parse_with(input, parser).unwrap()
     }

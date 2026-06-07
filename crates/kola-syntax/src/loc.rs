@@ -1,4 +1,7 @@
+use std::collections::HashMap;
+
 use kola_print::prelude::*;
+use kola_span::SourceId;
 use kola_tree::prelude::*;
 
 #[derive(Clone, Copy, Debug)]
@@ -8,10 +11,11 @@ impl UniformPhase for LocPhase {
     type Meta = kola_span::Loc;
 }
 
-pub type Locations = MetaVec<LocPhase>;
+pub type LocVec = MetaVec<LocPhase>;
+pub type LocMap = HashMap<SourceId, LocVec>;
 
 #[derive(Debug, Clone)]
-pub struct LocDecorator<'a>(pub &'a Locations);
+pub struct LocDecorator<'a>(pub &'a LocVec);
 
 impl<'a> Decorator<'a> for LocDecorator<'a> {
     fn decorate(&self, notation: Notation<'a>, with: usize, arena: &'a Bump) -> Notation<'a> {
