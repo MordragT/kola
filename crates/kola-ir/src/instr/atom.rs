@@ -1,5 +1,5 @@
 use derive_more::From;
-use std::fmt::{self, Display};
+use std::fmt;
 
 use kola_builtins::{BuiltinId, BuiltinType};
 use kola_print::prelude::*;

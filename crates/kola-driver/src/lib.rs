@@ -202,8 +202,7 @@ impl Driver {
         );
 
         let TypeCheckOutput {
-            global_env,
-            type_annotations,
+            type_annotations, ..
         } = &type_check_output;
 
         if print {
@@ -272,7 +271,7 @@ impl Driver {
             self.print_options,
         );
 
-        let Program { ir, modules } = &program;
+        let Program { ir, .. } = &program;
 
         if print {
             println!(
@@ -296,7 +295,7 @@ impl Driver {
             return Ok(());
         };
 
-        let Some(Program { ir, modules }) = self._compile(&db, false)? else {
+        let Some(Program { ir, .. }) = self._compile(&db, false)? else {
             return Ok(());
         };
 

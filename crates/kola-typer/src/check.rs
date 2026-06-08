@@ -38,20 +38,11 @@
 
 use kola_builtins::BuiltinLexicon;
 use kola_print::prelude::*;
-use kola_resolver::{
-    db::Db,
-    def::DefMap,
-    env::ModuleMap,
-    print::ResolutionDecorator,
-    resolve::{TypeOrders, ValueOrders},
-    symbol::{ModuleSym, ValueSym},
-};
+use kola_resolver::{db::Db, print::ResolutionDecorator};
 use kola_span::{IntoDiagnostic, Report};
-use kola_syntax::loc::LocMap;
 use kola_tree::{
     meta::MetaView,
     print::{Decorators, TreePrinter},
-    tree::TreeMap,
 };
 use kola_types::{
     class::TypeClassEnv,
