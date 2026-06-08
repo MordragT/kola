@@ -1,6 +1,6 @@
 use std::collections::{HashMap, HashSet};
 
-use kola_span::{Diagnostic, Report, SourceId};
+use kola_span::{Diagnostic, Report};
 use kola_tree::node::{ModuleName, Vis};
 use kola_utils::interner::StrInterner;
 
@@ -21,7 +21,6 @@ pub fn resolve_structure(
     mut modules: ModuleMap,
     mut local_cons_map: HashMap<ModuleSym, LocalConstraints>,
     global_cons: GlobalConstraints,
-    files: &HashMap<SourceId, ModuleSym>,
     functors: &FunctorMap,
     defs: &DefMap,
     module_graph: &mut ModuleGraph,
@@ -189,35 +188,6 @@ pub fn resolve_structure(
 
                         unresolved_binds.remove(&bind);
                         progress_made_this_pass = true;
-                    }
-                }
-                ModuleBindConst::Import { id, target, .. } => {
-                    // Match the target SourceId to its canonical pre-parsed File Module Symbol
-                    if let Some(&file_module_sym) = files.get(&target) {
-                        // If the file's own internal declarations haven't finished checking, we must wait
-                        if unresolved_binds.contains(&file_module_sym) {
-                            worklist.push_back(ModuleBindConst::Import {
-                                id,
-                                parent,
-                                bind,
-                                loc,
-                                target,
-                            });
-                        } else {
-                            // File module blueprint is fully verified! Structural copy into this alias slot
-                            let targeted_module = modules[&file_module_sym].clone();
-                            modules.insert(bind, targeted_module);
-                            module_graph.add_dependency(parent, file_module_sym);
-
-                            unresolved_binds.remove(&bind);
-                            progress_made_this_pass = true;
-                        }
-                    } else {
-                        report.add_diagnostic(Diagnostic::error(
-                            loc,
-                            "Source file not found or failed to parse",
-                        ));
-                        unresolved_binds.remove(&bind);
                     }
                 }
             }

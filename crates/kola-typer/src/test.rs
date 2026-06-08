@@ -1,5 +1,3 @@
-use std::rc::Rc;
-
 use camino::Utf8PathBuf;
 use kola_builtins::BuiltinLexicon;
 use kola_resolver::{def::DefMap, env::ModuleMap, phase::NodeMap};

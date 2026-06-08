@@ -1,6 +1,6 @@
 use std::collections::{HashMap, VecDeque};
 
-use kola_span::{Loc, SourceId};
+use kola_span::Loc;
 use kola_tree::{
     id::Id,
     node::{self, FunctorName, ModuleName, ModuleTypeName, TypeName, ValueName},
@@ -27,13 +27,6 @@ pub enum ModuleBindConst {
         bind: ModuleSym,
         loc: Loc,
         path: Vec<ModuleName>,
-    },
-    Import {
-        id: Id<node::ModuleImport>,
-        parent: ModuleSym,
-        target: SourceId, // The path being imported
-        bind: ModuleSym,  // The local symbol we generated for it
-        loc: Loc,
     },
 }
 
@@ -74,27 +67,10 @@ impl ModuleBindConst {
         }
     }
 
-    pub fn import(
-        id: Id<node::ModuleImport>,
-        parent: ModuleSym,
-        target: SourceId,
-        bind: ModuleSym,
-        loc: Loc,
-    ) -> Self {
-        Self::Import {
-            id,
-            parent,
-            target,
-            bind,
-            loc,
-        }
-    }
-
     pub fn bind(&self) -> ModuleSym {
         match self {
             Self::Functor { bind, .. } => *bind,
             Self::Path { bind, .. } => *bind,
-            Self::Import { bind, .. } => *bind,
         }
     }
 
@@ -102,7 +78,6 @@ impl ModuleBindConst {
         match self {
             Self::Functor { loc, .. } => *loc,
             Self::Path { loc, .. } => *loc,
-            Self::Import { loc, .. } => *loc,
         }
     }
 
@@ -110,7 +85,6 @@ impl ModuleBindConst {
         match self {
             Self::Functor { parent, .. } => *parent,
             Self::Path { parent, .. } => *parent,
-            Self::Import { parent, .. } => *parent,
         }
     }
 }
@@ -159,19 +133,6 @@ impl Substitute for ModuleBindConst {
                 merge2(parent_opt, || *parent, bind_opt, || *bind)
                     .map(|(parent, bind)| Self::path(*id, parent, bind, *loc, path.clone()))
             }
-            Self::Import {
-                id,
-                parent,
-                target,
-                bind,
-                loc,
-            } => {
-                let parent_opt = parent.try_subst(s);
-                let bind_opt = bind.try_subst(s);
-
-                merge2(parent_opt, || *parent, bind_opt, || *bind)
-                    .map(|(parent, bind)| Self::import(*id, parent, *target, bind, *loc))
-            }
         }
     }
 
@@ -185,10 +146,6 @@ impl Substitute for ModuleBindConst {
                 args.subst_mut(s);
             }
             Self::Path { parent, bind, .. } => {
-                parent.subst_mut(s);
-                bind.subst_mut(s);
-            }
-            Self::Import { parent, bind, .. } => {
                 parent.subst_mut(s);
                 bind.subst_mut(s);
             }

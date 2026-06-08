@@ -7,6 +7,7 @@
 #![feature(exhaustive_patterns)]
 
 pub mod constraints;
+pub mod db;
 pub mod def;
 pub mod env;
 pub mod error;
@@ -17,5 +18,8 @@ pub mod resolve;
 pub mod symbol;
 
 pub mod prelude {
-    pub use crate::resolve::{ResolveOutput, resolve};
+    pub use crate::{
+        db::{Db, ModuleView},
+        resolve::resolve,
+    };
 }

@@ -19,7 +19,7 @@ use kola_syntax::{
 };
 use kola_tree::{
     print::{Decorators, TreePrinter},
-    tree::{Tree, TreeMap},
+    tree::TreeMap,
 };
 use kola_typer::{
     check::{TypeCheckOutput, type_check},
@@ -122,75 +122,48 @@ impl Driver {
     }
 
     #[inline]
-    pub fn analyze(
-        &mut self,
-        path: impl AsRef<Utf8Path>,
-    ) -> io::Result<
-        Option<(
-            TreeMap,
-            LocMap,
-            SourceManager,
-            ResolveOutput,
-            TypeCheckOutput,
-        )>,
-    > {
-        self._analyze(path, true)
+    pub fn resolve(&mut self, path: impl AsRef<Utf8Path>) -> io::Result<Option<Db>> {
+        self._resolve(path, true)
     }
 
-    fn _analyze(
-        &mut self,
-        path: impl AsRef<Utf8Path>,
-        print: bool,
-    ) -> io::Result<
-        Option<(
-            TreeMap,
-            LocMap,
-            SourceManager,
-            ResolveOutput,
-            TypeCheckOutput,
-        )>,
-    > {
+    fn _resolve(&mut self, path: impl AsRef<Utf8Path>, print: bool) -> io::Result<Option<Db>> {
         let mut report = Report::new();
 
         let (tree_map, loc_map, source_manager) = self._parse(path.as_ref(), false)?;
 
-        let resolve_output = resolve(
-            &tree_map,
-            &loc_map,
+        let db = resolve(
+            source_manager,
+            tree_map,
+            loc_map,
             &self.arena,
             &mut self.str_interner,
             &mut report,
             self.print_options,
         )?;
 
-        let ResolveOutput {
-            modules,
-            defs,
-            module_graph,
-            entry_points,
-            value_orders,
-            type_orders,
-            module_type_orders,
-            module_order,
-        } = &resolve_output;
+        if !report.is_empty() {
+            report.eprint(db.sources())?;
+            return Ok(None);
+        }
 
         if print {
             // TODO provide a way to filter or select specific modules to print
-            for (sym, module) in modules {
-                let module_def = defs[*sym];
-                let tree = &tree_map[&module_def.loc.path];
-
-                let resolution_decorator = ResolutionDecorator(&module.nodes);
+            for view in db.all_modules() {
+                let resolution_decorator = ResolutionDecorator(&view.module.nodes);
                 let decorators = Decorators::new().with(&resolution_decorator);
 
+                let source_id = view.module.loc.path;
+                let tree = &view.tree_map[&source_id];
+
+                // TODO: tree.root_id() is wrong, need to find the correct root id for the module (should be the id of the module def)
                 let tree_printer =
-                    TreePrinter::new(tree, &self.str_interner, decorators, module_def.id);
+                    TreePrinter::new(tree, &self.str_interner, decorators, tree.root_id());
 
                 println!(
                     "{} SourceId {}, ModuleSym {}\n{}",
                     "Resolved Abstract Syntax Tree".bold().bright_white(),
-                    module_def.loc.path,
-                    sym,
+                    source_id,
+                    view.sym,
                     tree_printer.render(self.print_options, &self.arena)
                 );
             }
@@ -198,24 +171,29 @@ impl Driver {
             println!(
                 "{} Module Graph:\n{}",
                 "Module Graph".bold().bright_white(),
-                module_graph.to_dot()
+                db.module_graph.to_dot()
             );
         }
 
-        if !report.is_empty() {
-            report.eprint(&source_manager)?;
+        Ok(Some(db))
+    }
+
+    pub fn type_check(
+        &mut self,
+        path: impl AsRef<Utf8Path>,
+    ) -> io::Result<Option<TypeCheckOutput>> {
+        let Some(db) = self._resolve(path, false)? else {
             return Ok(None);
-        }
+        };
+
+        self._type_check(&db, true)
+    }
+
+    pub fn _type_check(&mut self, db: &Db, print: bool) -> io::Result<Option<TypeCheckOutput>> {
+        let mut report = Report::new();
 
         let type_check_output = type_check(
-            &tree_map,
-            &loc_map,
-            &modules,
-            &defs,
-            &entry_points,
-            &module_order,
-            &type_orders,
-            &value_orders,
+            &db,
             &self.arena,
             &mut self.str_interner,
             &self.lexicon,
@@ -229,94 +207,66 @@ impl Driver {
         } = &type_check_output;
 
         if print {
-            for (sym, module) in modules {
-                let module_def = defs[*sym];
-                let tree = &tree_map[&module_def.loc.path];
-
-                let Some(annots) = type_annotations.get(sym) else {
+            for view in db.all_modules() {
+                let Some(annots) = type_annotations.get(&view.sym) else {
                     continue;
                 };
 
-                let resolution_decorator = ResolutionDecorator(&module.nodes);
+                let resolution_decorator = ResolutionDecorator(&view.module.nodes);
                 let type_decorator = TypeDecorator(annots);
                 let decorators = Decorators::new()
                     .with(&resolution_decorator)
                     .with(&type_decorator);
 
+                let source_id = view.module.loc.path;
+                let tree = &view.tree_map[&source_id];
+
+                // TODO: tree.root_id() is wrong, need to find the correct root id for the module (should be the id of the module def)
                 let tree_printer =
-                    TreePrinter::new(&tree, &self.str_interner, decorators, module_def.id);
+                    TreePrinter::new(&tree, &self.str_interner, decorators, tree.root_id());
 
                 println!(
                     "{} SourceId {}, ModuleSym {}\n{}",
                     "Typed Abstract Syntax Tree".bold().bright_white(),
-                    module_def.loc.path,
-                    sym,
+                    source_id,
+                    view.sym,
                     tree_printer.render(self.print_options, &self.arena)
                 );
             }
         }
 
         if !report.is_empty() {
-            report.eprint(&source_manager)?;
+            report.eprint(&db.source_manager)?;
             return Ok(None);
         }
 
-        Ok(Some((
-            tree_map,
-            loc_map,
-            source_manager,
-            resolve_output,
-            type_check_output,
-        )))
+        Ok(Some(type_check_output))
     }
 
     pub fn compile(&mut self, path: impl AsRef<Utf8Path>) -> io::Result<Option<Program>> {
-        self._compile(path, true)
-    }
-
-    fn _compile(&mut self, path: impl AsRef<Utf8Path>, print: bool) -> io::Result<Option<Program>> {
-        let mut report = Report::new();
-
-        let Some((
-            tree_map,
-            loc_map,
-            source_manager,
-            ResolveOutput {
-                modules,
-                defs,
-                module_graph,
-                entry_points,
-                value_orders,
-                type_orders,
-                module_type_orders,
-                module_order,
-            },
-            TypeCheckOutput {
-                global_env,
-                type_annotations,
-            },
-        )) = self._analyze(path, false)?
-        else {
+        let Some(db) = self._resolve(path, false)? else {
             return Ok(None);
         };
 
+        self._compile(&db, true)
+    }
+
+    fn _compile(&mut self, db: &Db, print: bool) -> io::Result<Option<Program>> {
+        let mut report = Report::new();
+
         // TODO entry points should return locs for better error reporting
-        let &[entry_point] = entry_points.as_slice() else {
+        let &[entry_point] = db.entry_points.as_slice() else {
             report.add_issue(
                 Issue::error("No entry point, or multiple entry points defined.", 0)
                     .with_help("Ensure that exactly one entry point is defined."),
             );
-            report.eprint(&source_manager)?;
+            report.eprint(&db.source_manager)?;
             return Ok(None);
         };
 
         let program = lower(
             entry_point,
-            &modules,
-            &defs,
-            &module_order,
-            &value_orders,
-            &tree_map,
+            &db,
             &self.arena,
             &self.str_interner,
             self.print_options,
@@ -338,7 +288,15 @@ impl Driver {
     pub fn run(mut self, path: impl AsRef<Utf8Path>) -> io::Result<()> {
         let path = path.as_ref().canonicalize_utf8()?;
 
-        let Some(Program { ir, modules }) = self._compile(&path, false)? else {
+        let Some(db) = self._resolve(&path, false)? else {
+            return Ok(());
+        };
+
+        let Some(_) = self._type_check(&db, false)? else {
+            return Ok(());
+        };
+
+        let Some(Program { ir, modules }) = self._compile(&db, false)? else {
             return Ok(());
         };
 

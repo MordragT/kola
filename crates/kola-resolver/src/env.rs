@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use indexmap::IndexMap;
+use kola_span::Loc;
 
 use crate::{
     constraints::{GlobalConstraints, LocalConstraints},
@@ -14,13 +15,15 @@ pub type FunctorMap = IndexMap<FunctorSym, Functor>;
 
 #[derive(Debug, Clone)]
 pub struct Module {
+    pub loc: Loc,
     pub names: NameMap,
     pub nodes: NodeMap,
 }
 
 impl Module {
-    pub fn new() -> Self {
+    pub fn new(loc: Loc) -> Self {
         Self {
+            loc,
             names: NameMap::new(),
             nodes: NodeMap::new(),
         }
@@ -29,7 +32,7 @@ impl Module {
 
 impl Substitute for Module {
     fn try_subst(&self, s: &HashMap<AnySym, AnySym>) -> Option<Self> {
-        let Self { names, nodes } = self;
+        let Self { loc, names, nodes } = self;
 
         let names_opt = names.try_subst(s);
         let nodes_opt = nodes.try_subst(s);
@@ -37,7 +40,11 @@ impl Substitute for Module {
         if let Some((names, nodes)) =
             merge2(names_opt, || names.clone(), nodes_opt, || nodes.clone())
         {
-            Some(Self { names, nodes })
+            Some(Self {
+                loc: *loc,
+                names,
+                nodes,
+            })
         } else {
             None
         }

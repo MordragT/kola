@@ -962,6 +962,7 @@ version = "0.1.0"
 dependencies = [
  "camino",
  "derive_more",
+ "indexmap",
  "kola-print",
  "kola-span",
  "kola-tree",
@@ -979,6 +980,7 @@ version = "0.1.0"
 dependencies = [
  "derive_more",
  "enum-as-inner",
+ "indexmap",
  "kola-macros",
  "kola-print",
  "kola-utils",

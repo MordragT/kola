@@ -1,5 +1,4 @@
 use camino::Utf8Path;
-use std::collections::HashMap;
 
 use unscanny::Scanner;
 
@@ -32,7 +31,7 @@ pub fn tokenize<'t>(
         .fetch(root_path)
         .expect("Failed to read root file");
 
-    let mut token_map = HashMap::new();
+    let mut token_map = TokenMap::new();
     let mut worklist = vec![root];
 
     while let Some((id, source)) = worklist.pop() {
@@ -76,7 +75,7 @@ pub fn try_tokenize<'t>(
         }
     };
 
-    let mut token_map = HashMap::new();
+    let mut token_map = TokenMap::new();
     let mut report = Report::new();
     let mut worklist = vec![root];
 

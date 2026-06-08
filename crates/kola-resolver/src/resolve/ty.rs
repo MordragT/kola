@@ -1,3 +1,4 @@
+use indexmap::IndexMap;
 use kola_span::{Diagnostic, Issue, Report};
 use kola_tree::meta::MetaMapExt;
 use log::debug;
@@ -17,7 +18,7 @@ pub struct TypeResolution {
 
 pub fn resolve_types(
     modules: &mut ModuleMap,
-    mut type_graph_map: HashMap<ModuleSym, TypeGraph>,
+    mut type_graph_map: IndexMap<ModuleSym, TypeGraph>,
     local_cons_map: &HashMap<ModuleSym, LocalConstraints>,
     module_order: &[ModuleSym],
     report: &mut Report,
@@ -26,29 +27,29 @@ pub fn resolve_types(
 
     // Process each module safely along the verified global topological order
     for &sym in module_order {
+        // Localized dependency graph to determine declaration/mutual-recursion order within this module
+        let mut type_graph = type_graph_map.swap_remove(&sym).unwrap();
+
         if let Some(local_cons) = local_cons_map.get(&sym) {
-            // Localized dependency graph to determine declaration/mutual-recursion order within this module
-            let mut type_graph = type_graph_map.remove(&sym).unwrap();
-
             resolve_types_in_module(sym, modules, local_cons, &mut type_graph, report);
+        }
 
-            // Sort internal type definitions to validate structural ordering and find cycles
-            match type_graph.topological_sort() {
-                Ok(order) => {
-                    type_orders.insert(sym, order);
-                }
-                Err(cycle) => {
-                    report.add_issue(
-                        Issue::error(cycle.to_string(), 0)
-                            .with_help("Check for circular dependencies in type definitions."),
-                    );
+        // Sort internal type definitions to validate structural ordering and find cycles
+        match type_graph.topological_sort() {
+            Ok(order) => {
+                type_orders.insert(sym, order);
+            }
+            Err(cycle) => {
+                report.add_issue(
+                    Issue::error(cycle.to_string(), 0)
+                        .with_help("Check for circular dependencies in type definitions."),
+                );
 
-                    debug!(
-                        "Internal type dependency cycle detected inside module symbol {:?}:\n{}",
-                        sym,
-                        type_graph.to_dot()
-                    );
-                }
+                debug!(
+                    "Internal type dependency cycle detected inside module symbol {:?}:\n{}",
+                    sym,
+                    type_graph.to_dot()
+                );
             }
         }
     }

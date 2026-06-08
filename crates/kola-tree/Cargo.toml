@@ -12,3 +12,4 @@ derive_more.workspace = true
 paste.workspace = true
 # stacker = "0.1"                  # TODO use for visitor recursion
 enum-as-inner.workspace = true
+indexmap.workspace = true

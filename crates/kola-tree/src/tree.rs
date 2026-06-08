@@ -1,5 +1,4 @@
-use std::collections::HashMap;
-
+use indexmap::IndexMap;
 use kola_utils::{
     convert::{TryAsMut, TryAsRef},
     interner::PathKey,
@@ -11,7 +10,7 @@ use crate::{
     node::{Module, Node},
 };
 
-pub type TreeMap = HashMap<PathKey, Tree>;
+pub type TreeMap = IndexMap<PathKey, Tree>;
 
 pub enum Query2<'a, T, U> {
     V0(Id<T>, &'a T),

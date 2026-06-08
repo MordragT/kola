@@ -31,6 +31,7 @@ Let’s define:
 */
 use std::ops::ControlFlow;
 
+use indexmap::IndexMap;
 use kola_builtins::{BuiltinType, find_builtin_id};
 use kola_span::{Loc, Report};
 use kola_syntax::prelude::*;
@@ -49,38 +50,52 @@ use crate::{
     env::{Functor, FunctorMap, Module, ModuleMap},
     error::name_collision,
     phase::{ResolvePhase, ResolvedModule, ResolvedModuleType, ResolvedType, ResolvedValue},
-    resolve::{ModuleGraph, ModuleTypeGraph, TypeGraph, ValueGraph},
+    resolve::{FileMap, ModuleGraph, ModuleTypeGraph, TypeGraph, ValueGraph},
     symbol::{FunctorSym, ModuleSym, ModuleTypeSym, TypeSym, ValueSym},
 };
 
 #[derive(Debug, Clone)]
 pub struct DiscoverOutput {
-    pub root: ModuleSym,
     pub cons: LocalConstraints,
     pub report: Report,
-    pub value_graph: ValueGraph,
-    pub type_graph: TypeGraph,
 }
 
 pub fn discover(
+    sym: ModuleSym,
     tree: &Tree,
     locs: &LocVec,
+    files: &FileMap,
     interner: &StrInterner,
     modules: &mut ModuleMap,
     functors: &mut FunctorMap,
     entry_points: &mut Vec<ValueSym>,
     defs: &mut DefMap,
+    value_graph_map: &mut IndexMap<ModuleSym, ValueGraph>,
+    type_graph_map: &mut IndexMap<ModuleSym, TypeGraph>,
+    module_type_graph_map: &mut IndexMap<ModuleSym, ModuleTypeGraph>,
     module_graph: &mut ModuleGraph,
     global_cons: &mut GlobalConstraints,
 ) -> DiscoverOutput {
+    let loc = *locs.meta(tree.root_id());
+
+    value_graph_map.insert(sym, ValueGraph::new());
+    type_graph_map.insert(sym, TypeGraph::new());
+    module_type_graph_map.insert(sym, ModuleTypeGraph::new());
+
     // Create a visitor to walk the tree and collect declarations
     let mut discoverer = Discoverer::new(
+        sym,
+        loc,
         locs,
+        files,
         interner,
         modules,
         functors,
         entry_points,
         defs,
+        value_graph_map,
+        type_graph_map,
+        module_type_graph_map,
         module_graph,
         global_cons,
     );
@@ -88,11 +103,8 @@ pub fn discover(
     ControlFlow::Continue(()) = tree.root_id().visit_by(&mut discoverer, tree);
 
     DiscoverOutput {
-        root: discoverer.root,
         cons: discoverer.cons,
         report: discoverer.report,
-        value_graph: discoverer.value_graph,
-        type_graph: discoverer.type_graph,
     }
 }
 
@@ -132,47 +144,53 @@ struct Discoverer<'a> {
     scopes: Scopes,
     report: Report,
     locs: &'a LocVec,
+    files: &'a FileMap,
     interner: &'a StrInterner,
     modules: &'a mut ModuleMap,
     functors: &'a mut FunctorMap,
     entry_points: &'a mut Vec<ValueSym>,
     defs: &'a mut DefMap,
-    value_graph: ValueGraph,
-    type_graph: TypeGraph,
-    module_type_graph: ModuleTypeGraph,
+    value_graph_map: &'a mut IndexMap<ModuleSym, ValueGraph>,
+    type_graph_map: &'a mut IndexMap<ModuleSym, TypeGraph>,
+    module_type_graph_map: &'a mut IndexMap<ModuleSym, ModuleTypeGraph>,
     module_graph: &'a mut ModuleGraph,
 }
 
 impl<'a> Discoverer<'a> {
     fn new(
+        root: ModuleSym,
+        loc: Loc,
         locs: &'a LocVec,
+        files: &'a FileMap,
         interner: &'a StrInterner,
         modules: &'a mut ModuleMap,
         functors: &'a mut FunctorMap,
         entry_points: &'a mut Vec<ValueSym>,
         defs: &'a mut DefMap,
+        value_graph_map: &'a mut IndexMap<ModuleSym, ValueGraph>,
+        type_graph_map: &'a mut IndexMap<ModuleSym, TypeGraph>,
+        module_type_graph_map: &'a mut IndexMap<ModuleSym, ModuleTypeGraph>,
         module_graph: &'a mut ModuleGraph,
         global_cons: &'a mut GlobalConstraints,
     ) -> Self {
-        let root = ModuleSym::new();
-
         Self {
             root,
-            scope: Module::new(),
+            scope: Module::new(loc),
             cons: LocalConstraints::new(),
             global_cons,
             bindings: Bindings::new(),
             scopes: Scopes::default(),
             report: Report::new(),
             locs,
+            files,
             interner,
             modules,
             functors,
             entry_points,
             defs,
-            value_graph: ValueGraph::new(),
-            type_graph: TypeGraph::new(),
-            module_type_graph: ModuleTypeGraph::new(),
+            value_graph_map,
+            type_graph_map,
+            module_type_graph_map,
             module_graph,
         }
     }
@@ -279,16 +297,25 @@ impl<'a> Discoverer<'a> {
         self.defs.insert_value(sym, def);
     }
 
-    fn with_fresh_scope<T, F>(&mut self, child: ModuleSym, f: F) -> (T, Module)
+    fn with_fresh_scope<T, F>(&mut self, child: ModuleSym, loc: Loc, f: F) -> (T, Module)
     where
         F: FnOnce(&mut Self) -> T,
     {
         let parent = self.root;
-        self.module_graph.add_dependency(parent, child);
+
+        // Skip adding dependencies if child is the same as parent,
+        // which should only happen in the root module
+        if child != parent {
+            self.module_graph.add_dependency(parent, child);
+            self.value_graph_map.insert(child, ValueGraph::new());
+            self.type_graph_map.insert(child, TypeGraph::new());
+            self.module_type_graph_map
+                .insert(child, ModuleTypeGraph::new());
+        }
 
         let saved = self.bindings.replace();
 
-        let mut child_scope = Module::new();
+        let mut child_scope = Module::new(loc);
         std::mem::swap(&mut child_scope, &mut self.scope);
         self.root = child;
 
@@ -315,6 +342,8 @@ where
             params,
             body,
         } = tree.node(id);
+
+        let loc = self.span(id);
         let name = *name.get(tree);
 
         // Visit parameter types in parent scope
@@ -326,7 +355,7 @@ where
         let local_cons = std::mem::take(&mut self.cons);
         let global_cons = std::mem::take(self.global_cons);
         let prototype = ModuleSym::new();
-        let (param_syms, body_scope) = self.with_fresh_scope(prototype, |this| {
+        let (param_syms, body_scope) = self.with_fresh_scope(prototype, loc, |this| {
             // Insert parameter modules into the fresh scope
             let mut param_syms = Vec::with_capacity(params.len());
 
@@ -349,7 +378,7 @@ where
 
         let sym = FunctorSym::new();
         self.insert_symbol(id, sym);
-        self.insert_functor(name, sym, Def::new(id, *vis.get(tree), self.span(id)));
+        self.insert_functor(name, sym, Def::new(id, *vis.get(tree), loc));
 
         let local_cons = std::mem::replace(&mut self.cons, local_cons);
         let global_cons = std::mem::replace(self.global_cons, global_cons);
@@ -461,7 +490,7 @@ where
             // Only in the former case we need to add a dependency.
             if let Some(current_sym) = self.bindings.module_type {
                 // Add dependency from the current type bind to this type
-                self.module_type_graph.add_dependency(current_sym, sym);
+                self.module_type_graph_map[&self.root].add_dependency(current_sym, sym);
             }
         }
         // Either a forward reference or not found in the current module scope
@@ -497,9 +526,11 @@ where
     }
 
     fn visit_module(&mut self, id: Id<node::Module>, tree: &T) -> ControlFlow<Self::BreakValue> {
-        let sym = self.bindings.module.take().unwrap();
+        // Either inline module or root module
+        let sym = self.bindings.module.take().unwrap_or(self.root);
+        let loc = self.span(id);
 
-        let (_, module) = self.with_fresh_scope(sym, |this| {
+        let (_, module) = self.with_fresh_scope(sym, loc, |this| {
             let _ = this.walk_module(id, tree);
         });
 
@@ -513,19 +544,15 @@ where
         id: Id<node::ModuleImport>,
         tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
-        let sym = self.bindings.module.take().unwrap();
-        self.insert_symbol(id, sym);
-        self.module_graph.add_dependency(self.root, sym);
+        // Just remove the module bindings symbol,
+        // we use the file map to retrieve the actual symbol
+        self.bindings.module.take();
 
         let target = id.get(tree).0;
+        let sym = self.files[&target];
 
-        self.global_cons.push_back(ModuleBindConst::import(
-            id,
-            self.root,
-            target,
-            sym,
-            self.span(id),
-        ));
+        self.insert_symbol(id, sym);
+        self.module_graph.add_dependency(self.root, sym);
 
         ControlFlow::Continue(())
     }
@@ -584,7 +611,7 @@ where
         let value_sym = ValueSym::new();
         self.insert_symbol(id, value_sym);
         self.bindings.value = Some(value_sym);
-        self.value_graph.add_node(value_sym);
+        self.value_graph_map[&self.root].add_node(value_sym);
 
         if self.interner.get(name.0) == Some("main") {
             // If this is the main entry point, we will collect it later
@@ -797,7 +824,7 @@ where
             self.insert_symbol(id, ResolvedValue::Reference(value_sym));
 
             let current_sym = self.bindings.value.unwrap();
-            self.value_graph.add_dependency(current_sym, value_sym);
+            self.value_graph_map[&self.root].add_dependency(current_sym, value_sym);
 
             ControlFlow::Continue(())
         } else if let Some(builtin) = self.interner.get(name.0).and_then(find_builtin_id) {
@@ -834,7 +861,7 @@ where
         let type_sym = TypeSym::new();
         self.insert_symbol(id, type_sym);
         self.bindings.type_ = Some(type_sym);
-        self.type_graph.add_node(type_sym);
+        self.type_graph_map[&self.root].add_node(type_sym);
 
         // Register the type binding in the current scope
         self.insert_type(name, type_sym, Def::new(id, vis, span));
@@ -892,7 +919,7 @@ where
             // Only in the former case we need to add a dependency.
             if let Some(current_sym) = self.bindings.type_ {
                 // Add dependency from the current type bind to this type
-                self.type_graph.add_dependency(current_sym, type_sym);
+                self.type_graph_map[&self.root].add_dependency(current_sym, type_sym);
             }
 
             ControlFlow::Continue(())

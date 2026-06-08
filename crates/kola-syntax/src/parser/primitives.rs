@@ -8,7 +8,6 @@ use super::state::State;
 use crate::token::{
     CloseT, Ctrl, CtrlT, Kw, KwT, LiteralT, Op, OpT, OpenT, SemanticToken, Symbol, Token,
 };
-use kola_span::primitive::Select;
 use kola_utils::interner::StrKey;
 
 pub const fn op<'t>(op: OpT<'t>) -> impl const Combinator<ParseInput<'t>, Op> + Clone {

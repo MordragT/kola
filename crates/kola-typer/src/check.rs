@@ -39,6 +39,7 @@
 use kola_builtins::BuiltinLexicon;
 use kola_print::prelude::*;
 use kola_resolver::{
+    db::Db,
     def::DefMap,
     env::ModuleMap,
     print::ResolutionDecorator,
@@ -90,14 +91,7 @@ pub struct TypeCheckOutput {
 /// This incremental approach ensures that each binding is available in its fully generalized
 /// form to subsequent bindings within the same module, maintaining consistency with cross-module usage.
 pub fn type_check(
-    tree_map: &TreeMap,
-    loc_map: &LocMap,
-    modules: &ModuleMap,
-    defs: &DefMap,
-    entry_points: &[ValueSym],
-    module_order: &[ModuleSym],
-    type_orders: &TypeOrders,
-    value_orders: &ValueOrders,
+    db: &Db,
     arena: &Bump,
     str_interner: &mut StrInterner,
     lexicon: &BuiltinLexicon,
@@ -108,33 +102,25 @@ pub fn type_check(
     let mut class_env = TypeClassEnv::new();
     let mut type_annotations = TypeAnnotations::new();
 
-    for &module_sym in module_order {
-        let module = modules[&module_sym].clone();
-        let module_def = defs[module_sym];
-
-        let tree = &tree_map[&module_def.loc.path];
-        let spans = &loc_map[&module_def.loc.path];
-        let value_order = &value_orders[&module_sym];
-        let type_order = &type_orders[&module_sym];
-
+    for view in db.all_modules() {
         let mut subs = Substitution::empty(); // TODO better if this is bind local ?
         let mut module_annotations = TypedNodes::new();
         let mut module_env = TypeEnv::new();
 
-        for &type_sym in type_order {
-            let def = defs[type_sym];
+        for &type_sym in view.type_order {
+            let (id, tree, spans) = view.type_node(type_sym);
 
             let mut constraints = Constraints::new();
 
             let typer = Typer::new(
-                def.id(),
+                id,
                 spans,
                 &module_env,
                 &global_env,
-                &modules,
-                &defs,
-                &module.nodes,
-                entry_points,
+                &db.modules,
+                &view.defs,
+                &view.module.nodes,
+                &db.entry_points,
                 &mut constraints,
                 str_interner,
                 lexicon,
@@ -151,11 +137,11 @@ pub fn type_check(
                 break;
             }
 
-            let type_ = typed_nodes.meta(def.id()).clone().apply(&mut subs);
+            let type_ = typed_nodes.meta(id).clone().apply(&mut subs);
 
             // TODO generalize ?
 
-            module_env.insert_type(type_sym, def, type_);
+            module_env.insert_type(type_sym, type_);
             module_annotations.extend(typed_nodes);
         }
 
@@ -164,20 +150,20 @@ pub fn type_check(
             break;
         }
 
-        for &value_sym in value_order {
-            let def = defs[value_sym];
+        for &value_sym in view.value_order {
+            let (id, tree, spans) = view.value_node(value_sym);
 
             let mut constraints = Constraints::new();
 
             let typer = Typer::new(
-                def.id(),
+                id,
                 spans,
                 &module_env,
                 &global_env,
-                &modules,
-                &defs,
-                &module.nodes,
-                entry_points,
+                &db.modules,
+                &view.defs,
+                &view.module.nodes,
+                &db.entry_points,
                 &mut constraints,
                 str_interner,
                 lexicon,
@@ -204,12 +190,12 @@ pub fn type_check(
             }
 
             // Generalize immediately (making it available for subsequent binds)
-            let actual_t = typed_nodes.meta(def.id()).to_mono().unwrap();
+            let actual_t = typed_nodes.meta(id).to_mono().unwrap();
             let poly_type = actual_t.generalize(&[]); // TODO should bound be something ? &type_env.bound_vars()
-            module_env.insert_value(value_sym, def, poly_type.clone());
+            module_env.insert_value(value_sym, poly_type.clone());
 
             // Update annotations with the final type
-            *typed_nodes.meta_mut(def.id()) = poly_type;
+            *typed_nodes.meta_mut(id) = poly_type;
             module_annotations.extend(typed_nodes);
         }
 
@@ -221,23 +207,27 @@ pub fn type_check(
         module_annotations.apply_mut(&mut subs);
         global_env.merge(module_env);
 
-        let resolution_decorator = ResolutionDecorator(&module.nodes);
+        let resolution_decorator = ResolutionDecorator(&view.module.nodes);
         let type_decorator = TypeDecorator(&module_annotations);
         let decorators = Decorators::new()
             .with(&resolution_decorator)
             .with(&type_decorator);
 
-        let tree_printer = TreePrinter::new(&tree, &str_interner, decorators, module_def.id);
+        let source_id = view.module.loc.path;
+        let tree = &view.tree_map[&source_id];
+
+        // TODO: tree.root_id() is wrong, need to find the correct root id for the module (should be the id of the module def)
+        let tree_printer = TreePrinter::new(tree, &str_interner, decorators, tree.root_id());
 
         trace!(
             "{} SourceId {}, ModuleSym {}\n{}",
             "Typed Abstract Syntax Tree".bold().bright_white(),
-            module_def.loc.path,
-            module_sym,
+            source_id,
+            view.sym,
             tree_printer.render(print_options, arena)
         );
 
-        type_annotations.insert(module_sym, module_annotations);
+        type_annotations.insert(view.sym, module_annotations);
     }
 
     TypeCheckOutput {

@@ -1,7 +1,8 @@
 use derive_more::Display;
+use indexmap::IndexMap;
 use paste::paste;
 use serde::{Deserialize, Serialize};
-use std::{collections::HashMap, fmt};
+use std::fmt;
 
 use kola_print::prelude::*;
 use kola_span::{Located, SourceId};
@@ -86,7 +87,7 @@ pub enum CommentT<'t> {
     Doc(&'t str),
 }
 
-pub type TokenMap<'t> = HashMap<SourceId, Tokens<'t>>;
+pub type TokenMap<'t> = IndexMap<SourceId, Tokens<'t>>;
 pub type Tokens<'t> = Vec<Located<Token<'t>>>;
 
 #[derive(Debug, Display, Clone, Copy)]

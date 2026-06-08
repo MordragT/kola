@@ -380,7 +380,8 @@ where
                 );
             };
 
-            let (type_def, poly_t) = &self.global_env[type_sym];
+            let poly_t = &self.global_env[type_sym];
+            let type_def = self.defs[type_sym];
 
             if type_def.vis != Vis::Export {
                 return ControlFlow::Break(
@@ -395,7 +396,7 @@ where
         } else if let Some(local_t) = self.local_env.get(&type_name) {
             // Local type parameter (like 'a' in forall a)
             PolyType::from_mono(local_t.clone())
-        } else if let Some((_, poly_t)) = self
+        } else if let Some(poly_t) = self
             .nodes
             .meta(id)
             .into_reference()
@@ -987,7 +988,8 @@ where
                 );
             };
 
-            let (value_def, poly_t) = &self.global_env[value_sym];
+            let poly_t = &self.global_env[value_sym];
+            let value_def = self.defs[value_sym];
 
             if value_def.vis != Vis::Export {
                 return ControlFlow::Break(
@@ -1002,7 +1004,7 @@ where
         } else if let Some(local_t) = self.local_env.get(&name) {
             // Local let-bound variable
             local_t.clone()
-        } else if let Some((_, poly_t)) = self
+        } else if let Some(poly_t) = self
             .nodes
             .meta(id)
             .into_reference()

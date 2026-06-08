@@ -17,7 +17,7 @@ pub struct Normalizer<'a, Node> {
     root_id: TreeId<Node>,
     next: InstrId<ir::Expr>,
     hole: ir::Symbol,
-    resolutions: &'a NodeMap,
+    nodes: &'a NodeMap,
     builder: &'a mut IrBuilder,
 }
 
@@ -26,14 +26,14 @@ impl<'a, Node> Normalizer<'a, Node> {
         root_id: TreeId<Node>,
         next: InstrId<ir::Expr>,
         hole: ir::Symbol,
-        resolutions: &'a NodeMap,
+        nodes: &'a NodeMap,
         builder: &'a mut IrBuilder,
     ) -> Self {
         Self {
             root_id,
             next,
             hole,
-            resolutions,
+            nodes,
             builder,
         }
     }
@@ -49,7 +49,7 @@ impl<'a, Node> Normalizer<'a, Node> {
         N: Namespace,
         T: MetaCast<ResolvePhase, Meta = Sym<N>>, // TODO maybe ValueSym ??
     {
-        let sym = self.resolutions.meta(id);
+        let sym = self.nodes.meta(id);
         ir::Symbol::new(sym.id())
     }
 
@@ -163,7 +163,7 @@ where
         } = *id.get(tree);
 
         if let Some(path) = module_path {
-            let ResolvedModule(sym) = *self.resolutions.meta(path);
+            let ResolvedModule(sym) = *self.nodes.meta(path);
             let module_atom = self
                 .builder
                 .add(ir::Atom::Symbol(ir::Symbol::new(sym.id())));
@@ -184,7 +184,7 @@ where
         }
 
         // Create atom
-        let source_atom = match *self.resolutions.meta(id) {
+        let source_atom = match *self.nodes.meta(id) {
             ResolvedValue::Reference(sym) => ir::Atom::Symbol(ir::Symbol::new(sym.id())),
             ResolvedValue::Builtin(b) => ir::Atom::Builtin(b),
         }; // This is only defined if path is None so be careful about moving this
@@ -259,7 +259,7 @@ where
                 let label = l.get(tree).0;
                 ir::Atom::Label(ir::Label(label))
             }
-            node::TypeWitnessExpr::Qualified(t) => match self.resolutions.meta(t) {
+            node::TypeWitnessExpr::Qualified(t) => match self.nodes.meta(t) {
                 ResolvedType::Builtin(bt) => ir::Atom::BuiltinWitness(*bt),
                 ResolvedType::Reference(ts) => {
                     ir::Atom::Witness(ir::Witness(ir::Symbol::new(ts.id())))
@@ -821,7 +821,7 @@ where
                 source_sym,  // value being matched
                 on_success,
                 on_failure,
-                self.resolutions,
+                self.nodes,
                 self.builder,
             );
             pat.visit_by(&mut pat_normalizer, tree)?;

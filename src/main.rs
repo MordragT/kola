@@ -14,7 +14,8 @@ pub struct Cli {
 #[derive(clap::Subcommand, Debug)]
 pub enum Cmd {
     Parse { path: Utf8PathBuf },
-    Analyze { path: Utf8PathBuf },
+    Resolve { path: Utf8PathBuf },
+    TypeCheck { path: Utf8PathBuf },
     Compile { path: Utf8PathBuf },
     Run { path: Utf8PathBuf },
     Test { path: Utf8PathBuf },
@@ -37,8 +38,11 @@ fn main() -> io::Result<()> {
         Cmd::Parse { path } => {
             driver.parse(path)?;
         }
-        Cmd::Analyze { path } => {
-            driver.analyze(path)?;
+        Cmd::Resolve { path } => {
+            driver.resolve(path)?;
+        }
+        Cmd::TypeCheck { path } => {
+            driver.type_check(path)?;
         }
         Cmd::Compile { path } => {
             driver.compile(path)?;

@@ -25,11 +25,11 @@ pub fn resolve_module_types(
 
     // Process each module following the verified global topological order
     for &sym in module_order {
+        // Build a localized dependency graph to determine declaration order inside this specific module
+        let mut module_type_graph = ModuleTypeGraph::new();
+
         // Not all modules (like empty files or re-exports) necessarily have local constraints
         if let Some(local_cons) = local_cons_map.get(&sym) {
-            // Build a localized dependency graph to determine declaration order inside this specific module
-            let mut module_type_graph = ModuleTypeGraph::new();
-
             resolve_module_types_in_module(
                 sym,
                 modules,
@@ -37,25 +37,24 @@ pub fn resolve_module_types(
                 &mut module_type_graph,
                 report,
             );
+        }
 
-            // Sort the internal module type definitions to catch cyclic type signatures
-            match module_type_graph.topological_sort() {
-                Ok(order) => {
-                    module_type_orders.insert(sym, order);
-                }
-                Err(cycle) => {
-                    report.add_issue(
-                        Issue::error(cycle.to_string(), 0).with_help(
-                            "Check for circular dependencies in module type definitions.",
-                        ),
-                    );
+        // Sort the internal module type definitions to catch cyclic type signatures
+        match module_type_graph.topological_sort() {
+            Ok(order) => {
+                module_type_orders.insert(sym, order);
+            }
+            Err(cycle) => {
+                report.add_issue(
+                    Issue::error(cycle.to_string(), 0)
+                        .with_help("Check for circular dependencies in module type definitions."),
+                );
 
-                    debug!(
-                        "Internal module type cycle detected inside module symbol {:?}:\n{}",
-                        sym,
-                        module_type_graph.to_dot()
-                    );
-                }
+                debug!(
+                    "Internal module type cycle detected inside module symbol {:?}:\n{}",
+                    sym,
+                    module_type_graph.to_dot()
+                );
             }
         }
     }

@@ -5,7 +5,7 @@ use camino::Utf8Path;
 
 use kola_utils::{
     interner::{PathInterner, PathKey},
-    io::FileSystem,
+    io::{FileSystem, RealFileSystem},
 };
 
 pub type SourceId = PathKey;
@@ -23,6 +23,22 @@ impl fmt::Debug for SourceManager {
             .field("interner", &self.interner)
             .field("sources", &self.sources)
             .finish()
+    }
+}
+
+impl Clone for SourceManager {
+    fn clone(&self) -> Self {
+        Self {
+            interner: self.interner.clone(),
+            sources: self.sources.clone(),
+            fs: Arc::clone(&self.fs),
+        }
+    }
+}
+
+impl Default for SourceManager {
+    fn default() -> Self {
+        Self::new(Arc::new(RealFileSystem))
     }
 }
 

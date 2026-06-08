@@ -1,9 +1,6 @@
 use std::{collections::HashMap, ops::Index};
 
-use kola_resolver::{
-    def::{TypeDef, ValueDef},
-    symbol::{TypeSym, ValueSym},
-};
+use kola_resolver::symbol::{TypeSym, ValueSym};
 use kola_utils::{interner::StrKey, scope::LinearScope};
 
 use crate::types::{MonoType, PolyType, TypeVar};
@@ -26,42 +23,42 @@ pub type LocalTypeEnv = LinearScope<StrKey, MonoType>;
 
 #[derive(Debug, Clone, Default)]
 pub struct TypeEnv {
-    values: HashMap<ValueSym, (ValueDef, PolyType)>,
-    types: HashMap<TypeSym, (TypeDef, PolyType)>,
+    values: HashMap<ValueSym, PolyType>,
+    types: HashMap<TypeSym, PolyType>,
 }
 impl TypeEnv {
     pub fn new() -> Self {
         Self::default()
     }
 
-    pub fn insert_value(&mut self, sym: ValueSym, def: ValueDef, ty: PolyType) {
-        self.values.insert(sym, (def, ty));
+    pub fn insert_value(&mut self, sym: ValueSym, ty: PolyType) {
+        self.values.insert(sym, ty);
     }
 
-    pub fn insert_type(&mut self, sym: TypeSym, def: TypeDef, ty: PolyType) {
-        self.types.insert(sym, (def, ty));
+    pub fn insert_type(&mut self, sym: TypeSym, ty: PolyType) {
+        self.types.insert(sym, ty);
     }
 
-    pub fn get_value(&self, sym: ValueSym) -> Option<(ValueDef, &PolyType)> {
-        self.values.get(&sym).map(|(def, ty)| (*def, ty))
+    pub fn get_value(&self, sym: ValueSym) -> Option<&PolyType> {
+        self.values.get(&sym)
     }
 
-    pub fn get_type(&self, sym: TypeSym) -> Option<(TypeDef, &PolyType)> {
-        self.types.get(&sym).map(|(def, ty)| (*def, ty))
+    pub fn get_type(&self, sym: TypeSym) -> Option<&PolyType> {
+        self.types.get(&sym)
     }
 
     pub fn merge(&mut self, other: Self) {
-        for (sym, (def, ty)) in other.values {
-            self.values.insert(sym, (def, ty));
+        for (sym, ty) in other.values {
+            self.values.insert(sym, ty);
         }
-        for (sym, (def, ty)) in other.types {
-            self.types.insert(sym, (def, ty));
+        for (sym, ty) in other.types {
+            self.types.insert(sym, ty);
         }
     }
 }
 
 impl Index<ValueSym> for TypeEnv {
-    type Output = (ValueDef, PolyType);
+    type Output = PolyType;
 
     fn index(&self, sym: ValueSym) -> &Self::Output {
         self.values
@@ -71,7 +68,7 @@ impl Index<ValueSym> for TypeEnv {
 }
 
 impl Index<TypeSym> for TypeEnv {
-    type Output = (TypeDef, PolyType);
+    type Output = PolyType;
 
     fn index(&self, sym: TypeSym) -> &Self::Output {
         self.types

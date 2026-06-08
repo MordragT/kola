@@ -3,7 +3,7 @@ use std::{collections::HashMap, io};
 use indexmap::IndexMap;
 
 use kola_print::prelude::*;
-use kola_span::{Issue, Report};
+use kola_span::{Issue, Report, SourceId, SourceManager};
 use kola_syntax::loc::LocMap;
 use kola_tree::{
     print::{Decorators, TreePrinter},
@@ -14,6 +14,7 @@ use log::{debug, trace};
 
 use crate::{
     constraints::GlobalConstraints,
+    db::Db,
     def::DefMap,
     env::{FunctorMap, ModuleMap},
     print::ResolutionDecorator,
@@ -43,52 +44,57 @@ pub type ModuleTypeOrders = IndexMap<ModuleSym, Vec<ModuleTypeSym>>;
 pub type TypeOrders = IndexMap<ModuleSym, Vec<TypeSym>>;
 pub type ValueOrders = IndexMap<ModuleSym, Vec<ValueSym>>;
 
-#[derive(Debug, Clone, Default)]
-pub struct ResolveOutput {
-    pub modules: ModuleMap,
-    pub defs: DefMap,
-    pub module_graph: ModuleGraph,
-    pub entry_points: Vec<ValueSym>,
-    pub module_order: Vec<ModuleSym>,
-    pub module_type_orders: ModuleTypeOrders,
-    pub type_orders: TypeOrders,
-    pub value_orders: ValueOrders,
-}
+pub type FileMap = IndexMap<SourceId, ModuleSym>;
 
 pub fn resolve(
-    tree_map: &TreeMap,
-    loc_map: &LocMap,
+    source_manager: SourceManager,
+    tree_map: TreeMap,
+    loc_map: LocMap,
     arena: &Bump,
     interner: &mut StrInterner,
     report: &mut Report,
     print_options: PrintOptions,
-) -> io::Result<ResolveOutput> {
+) -> io::Result<Db> {
     let mut modules = ModuleMap::new();
     let mut functors = FunctorMap::new();
     let mut entry_points = Vec::new();
     let mut defs = DefMap::new();
-    let mut module_graph = ModuleGraph::new();
+
     let mut global_cons = GlobalConstraints::new();
     let mut local_cons_map = HashMap::new();
-    let mut files = HashMap::new();
-    let mut value_graph_map = HashMap::new();
-    let mut type_graph_map = HashMap::new();
 
-    for (source_id, tree) in tree_map {
+    let mut value_graph_map = IndexMap::new();
+    let mut type_graph_map = IndexMap::new();
+    let mut module_type_graph = IndexMap::new();
+    let mut module_graph = ModuleGraph::new();
+
+    // Precompute the module symbols for each file to ensure consistent symbol assignment across modules.
+    let files = tree_map
+        .keys()
+        .map(|id| (*id, ModuleSym::new()))
+        .collect::<FileMap>();
+
+    let root = *files.first().unwrap().1;
+
+    for (source_id, tree) in &tree_map {
+        let sym = files[source_id];
+
         let DiscoverOutput {
-            root,
             cons,
             report: module_report,
-            value_graph,
-            type_graph,
         } = discover::discover(
+            sym,
             tree,
             &loc_map[source_id],
+            &files,
             interner,
             &mut modules,
             &mut functors,
             &mut entry_points,
             &mut defs,
+            &mut value_graph_map,
+            &mut type_graph_map,
+            &mut module_type_graph,
             &mut module_graph,
             &mut global_cons,
         );
@@ -96,19 +102,22 @@ pub fn resolve(
         if !module_report.is_empty() {
             report.append(module_report);
 
-            return Ok(ResolveOutput {
+            return Ok(Db {
+                root,
+                source_manager,
+                tree_map,
+                loc_map,
+                files,
                 modules,
                 defs,
+                functors,
                 module_graph,
                 entry_points,
                 ..Default::default()
             });
         }
 
-        files.insert(*source_id, root);
-        local_cons_map.insert(root, cons);
-        value_graph_map.insert(root, value_graph);
-        type_graph_map.insert(root, type_graph);
+        local_cons_map.insert(sym, cons);
     }
 
     let StructureResolution {
@@ -118,7 +127,6 @@ pub fn resolve(
         modules,
         local_cons_map,
         global_cons,
-        &files,
         &functors,
         &defs,
         &mut module_graph,
@@ -127,9 +135,15 @@ pub fn resolve(
     );
 
     if !report.is_empty() {
-        return Ok(ResolveOutput {
+        return Ok(Db {
+            root,
+            source_manager,
+            tree_map,
+            loc_map,
+            files,
             modules,
             defs,
+            functors,
             module_graph,
             entry_points,
             ..Default::default()
@@ -145,9 +159,15 @@ pub fn resolve(
     );
 
     if !report.is_empty() {
-        return Ok(ResolveOutput {
+        return Ok(Db {
+            root,
+            source_manager,
+            tree_map,
+            loc_map,
+            files,
             modules,
             defs,
+            functors,
             module_graph,
             entry_points,
             ..Default::default()
@@ -161,9 +181,15 @@ pub fn resolve(
                 Issue::error(cycle.to_string(), 0)
                     .with_help("Check for circular dependencies in module definitions."),
             );
-            return Ok(ResolveOutput {
+            return Ok(Db {
+                root,
+                source_manager,
+                tree_map,
+                loc_map,
+                files,
                 modules,
                 defs,
+                functors,
                 module_graph,
                 entry_points,
                 ..Default::default()
@@ -175,9 +201,15 @@ pub fn resolve(
         resolve_module_types(&mut modules, &local_cons_map, &module_order, report);
 
     if !report.is_empty() {
-        return Ok(ResolveOutput {
+        return Ok(Db {
+            root,
+            source_manager,
+            tree_map,
+            loc_map,
+            files,
             modules,
             defs,
+            functors,
             module_graph,
             entry_points,
             module_order,
@@ -194,9 +226,15 @@ pub fn resolve(
     );
 
     if !report.is_empty() {
-        return Ok(ResolveOutput {
+        return Ok(Db {
+            root,
+            source_manager,
+            tree_map,
+            loc_map,
+            files,
             modules,
             defs,
+            functors,
             module_graph,
             entry_points,
             module_order,
@@ -214,9 +252,15 @@ pub fn resolve(
     );
 
     if !report.is_empty() {
-        return Ok(ResolveOutput {
+        return Ok(Db {
+            root,
+            source_manager,
+            tree_map,
+            loc_map,
+            files,
             modules,
             defs,
+            functors,
             module_graph,
             entry_points,
             module_order,
@@ -226,10 +270,10 @@ pub fn resolve(
         });
     }
 
-    for (source_id, sym) in files {
-        let tree = &tree_map[&source_id];
+    for (source_id, sym) in &files {
+        let tree = &tree_map[source_id];
 
-        let resolution_decorator = ResolutionDecorator(&modules[&sym].nodes);
+        let resolution_decorator = ResolutionDecorator(&modules[sym].nodes);
         let decorators = Decorators::new().with(&resolution_decorator);
 
         let tree_printer = TreePrinter::new(tree, interner, decorators, tree.root_id());
@@ -256,9 +300,15 @@ pub fn resolve(
                 Issue::error(cycle.to_string(), 0)
                     .with_help("Check for circular dependencies in module definitions."),
             );
-            return Ok(ResolveOutput {
+            return Ok(Db {
+                root,
+                source_manager,
+                tree_map,
+                loc_map,
+                files,
                 modules,
                 defs,
+                functors,
                 module_graph,
                 entry_points,
                 module_type_orders,
@@ -269,9 +319,15 @@ pub fn resolve(
         }
     };
 
-    Ok(ResolveOutput {
+    Ok(Db {
+        root,
+        source_manager,
+        tree_map,
+        loc_map,
+        files,
         modules,
         defs,
+        functors,
         module_graph,
         entry_points,
         module_order,
