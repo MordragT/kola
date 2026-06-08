@@ -81,6 +81,7 @@ pub fn discover(
     value_graph_map.insert(sym, ValueGraph::new());
     type_graph_map.insert(sym, TypeGraph::new());
     module_type_graph_map.insert(sym, ModuleTypeGraph::new());
+    module_graph.add_node(sym);
 
     // Create a visitor to walk the tree and collect declarations
     let mut discoverer = Discoverer::new(
