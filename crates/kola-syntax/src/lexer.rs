@@ -35,17 +35,17 @@ pub fn tokenize<'t>(
     let mut worklist = vec![root];
 
     while let Some((id, source)) = worklist.pop() {
-        let parent_dir = source_manager
-            .get_path(id)
-            .parent()
-            .unwrap_or(Utf8Path::new(""))
-            .to_owned();
+        let path = source_manager.get_path(id);
+
+        let name = path.file_stem().unwrap(); // TODO assert that files have the right Extension
+        let import_dir = path.parent().unwrap().join(name); // path is absolute so this mustn't panic
+
         let mut tokens = Vec::new();
 
         lex(
             id,
             source,
-            &parent_dir,
+            &import_dir,
             &mut tokens,
             report,
             &mut worklist,
@@ -80,17 +80,17 @@ pub fn try_tokenize<'t>(
     let mut worklist = vec![root];
 
     while let Some((id, source)) = worklist.pop() {
-        let parent_dir = source_manager
-            .get_path(id)
-            .parent()
-            .unwrap_or(Utf8Path::new(""))
-            .to_owned();
+        let path = source_manager.get_path(id);
+
+        let name = path.file_stem().unwrap(); // TODO assert that files have the right Extension
+        let import_dir = path.parent().unwrap().join(name); // path is absolute so this mustn't panic
+
         let mut tokens = Vec::new();
 
         lex(
             id,
             source,
-            &parent_dir,
+            &import_dir,
             &mut tokens,
             &mut report,
             &mut worklist,
@@ -137,7 +137,7 @@ type Worklist = Vec<(SourceId, &'static str)>;
 fn lex<'t>(
     source: SourceId,
     text: &'t str,
-    parent_dir: &Utf8Path,
+    import_dir: &Utf8Path,
     tokens: &mut Tokens<'t>,
     report: &mut Report,
     worklist: &mut Worklist,
@@ -163,7 +163,7 @@ fn lex<'t>(
                 text,
                 tokens,
                 report,
-                parent_dir,
+                import_dir,
                 worklist,
                 source_manager,
             ),
@@ -285,7 +285,7 @@ fn lex_word<'t>(
     text: &'t str,
     tokens: &mut Tokens<'t>,
     report: &mut Report,
-    parent_dir: &Utf8Path,
+    import_dir: &Utf8Path,
     worklist: &mut Worklist,
     source_manager: &mut SourceManager,
 ) {
@@ -309,7 +309,7 @@ fn lex_word<'t>(
                     s.eat_while(is_ident_continue);
                     let name = &text[name_start..s.cursor()];
 
-                    let child = parent_dir.join(name).with_extension(EXTENSION);
+                    let child = import_dir.join(name).with_extension(EXTENSION);
 
                     let Ok(child) = source_manager.fetch(child.as_path()) else {
                         let loc2 = Loc::new(source, Span::new(name_start, s.cursor()));

@@ -1,10 +1,13 @@
 use derive_more::From;
 use enum_as_inner::EnumAsInner;
+use indexmap::IndexMap;
 use kola_collections::HashMap;
+use kola_span::SourceId;
 use kola_tree::node::{
     FunctorNamespace, ModuleNamespace, ModuleTypeNamespace, NamespaceKind, TypeNamespace,
     ValueNamespace,
 };
+use kola_utils::dependency::DependencyGraph;
 use std::{
     borrow::Cow,
     collections::VecDeque,
@@ -14,6 +17,18 @@ use std::{
     num::NonZeroU32,
     sync::atomic::{AtomicU32, Ordering},
 };
+
+pub type ModuleTypeGraph = DependencyGraph<ModuleTypeSym>;
+pub type ModuleGraph = DependencyGraph<ModuleSym>;
+pub type TypeGraph = DependencyGraph<TypeSym>;
+pub type ValueGraph = DependencyGraph<ValueSym>;
+
+pub type ModuleTypeOrders = IndexMap<ModuleSym, Vec<ModuleTypeSym>>;
+pub type TypeOrders = IndexMap<ModuleSym, Vec<TypeSym>>;
+pub type ValueOrders = IndexMap<ModuleSym, Vec<ValueSym>>;
+pub type ModuleOrder = Vec<ModuleSym>;
+
+pub type FileMap = IndexMap<SourceId, ModuleSym>;
 
 static LEVEL: AtomicU32 = AtomicU32::new(1);
 static GENERATOR: AtomicU32 = AtomicU32::new(1);

@@ -1,32 +1,30 @@
-use std::collections::{HashMap, HashSet};
+use std::collections::HashSet;
 
 use kola_span::{Diagnostic, Report};
 use kola_tree::node::{ModuleName, Vis};
 use kola_utils::interner::StrInterner;
 
 use crate::{
-    constraints::{GlobalConstraints, LocalConstraints, ModuleBindConst},
     def::DefMap,
     env::{FunctorMap, ModuleMap},
-    resolve::ModuleGraph,
-    symbol::ModuleSym,
+    lookup::Lookups,
+    symbol::{ModuleGraph, ModuleSym},
 };
 
-pub struct StructureResolution {
-    pub modules: ModuleMap,
-    pub local_cons_map: HashMap<ModuleSym, LocalConstraints>,
-}
+mod job;
 
-pub fn resolve_structure(
-    mut modules: ModuleMap,
-    mut local_cons_map: HashMap<ModuleSym, LocalConstraints>,
-    global_cons: GlobalConstraints,
+pub use job::{ElabJob, ElabJobs};
+
+pub fn elaborate_modules(
+    elab_jobs: ElabJobs,
+    lookups: &mut Lookups,
+    modules: &mut ModuleMap,
     functors: &FunctorMap,
-    defs: &DefMap,
+    defs: &mut DefMap,
     module_graph: &mut ModuleGraph,
     interner: &mut StrInterner,
     report: &mut Report,
-) -> StructureResolution {
+) {
     // Standard name for parent scope access
     let super_name = ModuleName::new(interner.intern("super"));
 
@@ -41,7 +39,7 @@ pub fn resolve_structure(
     }
 
     // 2. INITIALIZE WORKLIST & TRACKING
-    let mut worklist = global_cons;
+    let mut worklist = elab_jobs;
 
     // Track symbols whose bindings are still being actively evaluated.
     // If a path or functor points here, it must block until the target is removed from this set.
@@ -56,13 +54,13 @@ pub fn resolve_structure(
 
         // INNER Pass: Process the Current Generation
         for _ in 0..current_pass_size {
-            let constraint = worklist.pop_front().unwrap();
-            let parent = constraint.parent();
-            let bind = constraint.bind();
-            let loc = constraint.loc();
+            let job = worklist.pop_front().unwrap();
+            let parent = job.parent();
+            let bind = job.bind();
+            let loc = job.loc();
 
-            match constraint {
-                ModuleBindConst::Path { id, path, .. } => {
+            match job {
+                ElabJob::Path { id, path, .. } => {
                     let mut current_sym = parent;
                     let mut is_blocked = false;
 
@@ -71,6 +69,14 @@ pub fn resolve_structure(
                         let current_module = &modules[&current_sym];
 
                         if let Some(next_sym) = current_module.names.get_module(*name) {
+                            // If a segment depends on an un-evaluated module, this entire path is blocked
+                            // Check this first so that its sound to access `defs` in the next step,
+                            // without worrying about missing entries due to constraint ordering
+                            if unresolved_binds.contains(&next_sym) {
+                                is_blocked = true;
+                                break;
+                            }
+
                             // Enforce export visibility rules if we cross past our local module boundary
                             if current_sym != parent && defs[next_sym].vis != Vis::Export {
                                 report
@@ -78,11 +84,6 @@ pub fn resolve_structure(
                                 break;
                             }
 
-                            // If a segment depends on an un-evaluated module, this entire path is blocked
-                            if unresolved_binds.contains(&next_sym) {
-                                is_blocked = true;
-                                break;
-                            }
                             current_sym = next_sym;
                         } else {
                             report.add_diagnostic(Diagnostic::error(loc, "Module not found"));
@@ -92,7 +93,7 @@ pub fn resolve_structure(
 
                     if is_blocked {
                         // Re-queue the intact path to try again during the next generation pass
-                        worklist.push_back(ModuleBindConst::Path {
+                        worklist.push_back(ElabJob::Path {
                             id,
                             parent,
                             bind,
@@ -103,13 +104,19 @@ pub fn resolve_structure(
                         // Success! Clone the targeted module structure into this local alias binding slot
                         let targeted_module = modules[&current_sym].clone();
                         modules.insert(bind, targeted_module);
+
+                        let def = defs[current_sym];
+                        defs.insert_module(bind, def);
+
+                        // TODO this could break things I guess because the symbol is not its unique identity,
+                        // meaning, that the module graph might become useless here.
                         module_graph.add_dependency(parent, current_sym);
 
                         unresolved_binds.remove(&bind);
                         progress_made_this_pass = true;
                     }
                 }
-                ModuleBindConst::Functor {
+                ElabJob::Functor {
                     id,
                     path,
                     functor,
@@ -119,7 +126,7 @@ pub fn resolve_structure(
                     // Resolve the prefix path container module where the functor declaration resides
                     let container_sym = if let Some(p_sym) = path {
                         if unresolved_binds.contains(&p_sym) {
-                            worklist.push_back(ModuleBindConst::Functor {
+                            worklist.push_back(ElabJob::Functor {
                                 id,
                                 parent,
                                 bind,
@@ -145,7 +152,7 @@ pub fn resolve_structure(
                     // Check if any argument modules passed to the functor are still unresolved
                     let any_arg_blocked = args.iter().any(|arg| unresolved_binds.contains(arg));
                     if any_arg_blocked {
-                        worklist.push_back(ModuleBindConst::Functor {
+                        worklist.push_back(ElabJob::Functor {
                             id,
                             parent,
                             bind,
@@ -166,24 +173,23 @@ pub fn resolve_structure(
                         }
 
                         // --- INSTANTIATION ---
-                        // Evaluate the functor body. This generates structural bodies, local type constraints,
-                        // and *fresh* downstream global constraints internal to the functor instance.
-                        let (mut inst_body, inst_local, inst_global) =
+                        // Evaluate the functor body. This generates a fresh module structure with all parameter references substituted for the provided argument modules.
+                        let (mut inst_body, inst_lookups, inst_elab_jobs) =
                             functor_def.apply(bind, args);
 
                         // Set up the local instance's "super" pointer dynamically to its callsite parent
                         inst_body.names.insert_module(super_name, parent);
 
-                        // Feed the newly discovered internal global constraints to the back of the worklist.
+                        // Feed the newly discovered internal jobs to the back of the worklist.
                         // They will wait safely to be evaluated in subsequent generation passes.
-                        for inner_const in inst_global {
-                            unresolved_binds.insert(inner_const.bind());
-                            worklist.push_back(inner_const);
+                        for job in inst_elab_jobs {
+                            unresolved_binds.insert(job.bind());
+                            worklist.push_back(job);
                         }
+                        lookups.append(inst_lookups);
 
-                        // Cache structural environments and local type constraints downstream
+                        // Cache the fully elaborated module body into the global module map under this instance's unique symbol.
                         modules.insert(bind, inst_body);
-                        local_cons_map.insert(bind, inst_local);
                         module_graph.add_dependency(parent, bind);
 
                         unresolved_binds.remove(&bind);
@@ -207,10 +213,5 @@ pub fn resolve_structure(
             }
             break;
         }
-    }
-
-    StructureResolution {
-        modules,
-        local_cons_map,
     }
 }

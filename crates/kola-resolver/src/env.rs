@@ -4,7 +4,8 @@ use indexmap::IndexMap;
 use kola_span::Loc;
 
 use crate::{
-    constraints::{GlobalConstraints, LocalConstraints},
+    elaborate::ElabJobs,
+    lookup::Lookups,
     name::NameMap,
     phase::NodeMap,
     symbol::{AnySym, FunctorSym, ModuleSym, Substitute, merge2},
@@ -56,8 +57,8 @@ pub struct Functor {
     pub prototype: ModuleSym,
     pub params: Vec<ModuleSym>,
     pub body: Module,
-    pub local_cons: LocalConstraints,
-    pub global_cons: GlobalConstraints,
+    pub lookups: Lookups,
+    pub elab_jobs: ElabJobs,
 }
 
 impl Functor {
@@ -65,29 +66,25 @@ impl Functor {
         prototype: ModuleSym,
         params: Vec<ModuleSym>,
         body: Module,
-        local_cons: LocalConstraints,
-        global_cons: GlobalConstraints,
+        lookups: Lookups,
+        elab_jobs: ElabJobs,
     ) -> Self {
         Self {
             prototype,
             params,
             body,
-            global_cons,
-            local_cons,
+            elab_jobs,
+            lookups,
         }
     }
 
-    pub fn apply(
-        self,
-        instance: ModuleSym,
-        args: Vec<ModuleSym>,
-    ) -> (Module, LocalConstraints, GlobalConstraints) {
+    pub fn apply(self, instance: ModuleSym, args: Vec<ModuleSym>) -> (Module, Lookups, ElabJobs) {
         let Self {
             prototype,
             params,
             mut body,
-            mut global_cons,
-            mut local_cons,
+            mut elab_jobs,
+            mut lookups,
         } = self;
 
         let mut s = HashMap::new();
@@ -99,9 +96,9 @@ impl Functor {
         }
 
         body.subst_mut(&mut s);
-        local_cons.subst_mut(&mut s);
-        global_cons.subst_mut(&mut s);
+        lookups.subst_mut(&mut s);
+        elab_jobs.subst_mut(&mut s);
 
-        (body, local_cons, global_cons)
+        (body, lookups, elab_jobs)
     }
 }

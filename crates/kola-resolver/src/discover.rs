@@ -42,21 +42,23 @@ use kola_tree::{
 use kola_utils::{interner::StrInterner, scope::LinearScope};
 
 use crate::{
-    constraints::{
-        GlobalConstraints, LocalConstraints, ModuleBindConst, ModuleConst, ModuleTypeBindConst,
-        ModuleTypeConst, TypeBindConst, TypeConst, ValueConst,
-    },
     def::{AnyDef, Def, DefMap, FunctorDef, ModuleDef, ModuleTypeDef, TypeDef, ValueDef},
+    elaborate::{ElabJob, ElabJobs},
     env::{Functor, FunctorMap, Module, ModuleMap},
     error::name_collision,
+    lookup::{
+        Lookups, ModuleLookup, ModuleTypeAnnotLookup, ModuleTypeLookup, TypeAnnotLookup,
+        TypeLookup, ValueLookup,
+    },
     phase::{ResolvePhase, ResolvedModule, ResolvedModuleType, ResolvedType, ResolvedValue},
-    resolve::{FileMap, ModuleGraph, ModuleTypeGraph, TypeGraph, ValueGraph},
-    symbol::{FunctorSym, ModuleSym, ModuleTypeSym, TypeSym, ValueSym},
+    symbol::{
+        FileMap, FunctorSym, ModuleGraph, ModuleSym, ModuleTypeGraph, ModuleTypeSym, TypeGraph,
+        TypeSym, ValueGraph, ValueSym,
+    },
 };
 
 #[derive(Debug, Clone)]
 pub struct DiscoverOutput {
-    pub cons: LocalConstraints,
     pub report: Report,
 }
 
@@ -74,7 +76,8 @@ pub fn discover(
     type_graph_map: &mut IndexMap<ModuleSym, TypeGraph>,
     module_type_graph_map: &mut IndexMap<ModuleSym, ModuleTypeGraph>,
     module_graph: &mut ModuleGraph,
-    global_cons: &mut GlobalConstraints,
+    lookups: &mut Lookups,
+    elab_jobs: &mut ElabJobs,
 ) -> DiscoverOutput {
     let loc = *locs.meta(tree.root_id());
 
@@ -98,13 +101,13 @@ pub fn discover(
         type_graph_map,
         module_type_graph_map,
         module_graph,
-        global_cons,
+        lookups,
+        elab_jobs,
     );
 
     ControlFlow::Continue(()) = tree.root_id().visit_by(&mut discoverer, tree);
 
     DiscoverOutput {
-        cons: discoverer.cons,
         report: discoverer.report,
     }
 }
@@ -139,8 +142,8 @@ impl Bindings {
 struct Discoverer<'a> {
     root: ModuleSym,
     scope: Module,
-    cons: LocalConstraints,
-    global_cons: &'a mut GlobalConstraints,
+    lookups: &'a mut Lookups,
+    elab_jobs: &'a mut ElabJobs,
     bindings: Bindings,
     scopes: Scopes,
     report: Report,
@@ -172,13 +175,14 @@ impl<'a> Discoverer<'a> {
         type_graph_map: &'a mut IndexMap<ModuleSym, TypeGraph>,
         module_type_graph_map: &'a mut IndexMap<ModuleSym, ModuleTypeGraph>,
         module_graph: &'a mut ModuleGraph,
-        global_cons: &'a mut GlobalConstraints,
+        lookups: &'a mut Lookups,
+        elab_jobs: &'a mut ElabJobs,
     ) -> Self {
         Self {
             root,
             scope: Module::new(loc),
-            cons: LocalConstraints::new(),
-            global_cons,
+            lookups,
+            elab_jobs,
             bindings: Bindings::new(),
             scopes: Scopes::default(),
             report: Report::new(),
@@ -353,8 +357,8 @@ where
         }
 
         // Functor body gets its own fresh scope
-        let local_cons = std::mem::take(&mut self.cons);
-        let global_cons = std::mem::take(self.global_cons);
+        let lookups = std::mem::take(self.lookups);
+        let elab_jobs = std::mem::take(self.elab_jobs);
         let prototype = ModuleSym::new();
         let (param_syms, body_scope) = self.with_fresh_scope(prototype, loc, |this| {
             // Insert parameter modules into the fresh scope
@@ -381,10 +385,10 @@ where
         self.insert_symbol(id, sym);
         self.insert_functor(name, sym, Def::new(id, *vis.get(tree), loc));
 
-        let local_cons = std::mem::replace(&mut self.cons, local_cons);
-        let global_cons = std::mem::replace(self.global_cons, global_cons);
+        let lookups = std::mem::replace(self.lookups, lookups);
+        let elab_jobs = std::mem::replace(self.elab_jobs, elab_jobs);
 
-        let functor = Functor::new(prototype, param_syms, body_scope, local_cons, global_cons);
+        let functor = Functor::new(prototype, param_syms, body_scope, lookups, elab_jobs);
         self.functors.insert(sym, functor);
         ControlFlow::Continue(())
     }
@@ -437,8 +441,8 @@ where
         self.visit_functor_args(args, tree)?;
         let arg_syms = self.scope.nodes.meta(args).clone();
 
-        let constraint = ModuleBindConst::functor(id, self.root, bind, path, loc, name, arg_syms);
-        self.global_cons.push_back(constraint);
+        let job = ElabJob::functor(id, self.root, bind, path, loc, name, arg_syms);
+        self.elab_jobs.push_back(job);
 
         ControlFlow::Continue(())
     }
@@ -496,11 +500,11 @@ where
         }
         // Either a forward reference or not found in the current module scope
         else if let Some(current_sym) = self.bindings.module_type {
-            let ref_ = ModuleTypeBindConst::new(name, id, current_sym, loc);
-            self.cons.insert_module_type_bind(ref_);
+            let lookup = ModuleTypeLookup::new(name, id, current_sym, loc, self.root);
+            self.lookups.insert_module_type(lookup);
         } else {
-            let ref_ = ModuleTypeConst::new(name, id, loc);
-            self.cons.insert_module_type(ref_);
+            let lookup = ModuleTypeAnnotLookup::new(name, id, loc, self.root);
+            self.lookups.insert_module_type_annot(lookup);
         }
         ControlFlow::Continue(())
     }
@@ -510,20 +514,35 @@ where
         id: Id<node::ModuleBind>,
         tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
-        let node::ModuleBind { vis, name, .. } = *tree.node(id);
+        let node::ModuleBind {
+            vis, name, value, ..
+        } = *tree.node(id);
 
         let name = *tree.node(name);
         let vis = tree.node(vis);
-
         let span = self.span(id);
 
-        let module_sym = ModuleSym::new();
-        self.insert_symbol(id, module_sym);
-        self.bindings.module = Some(module_sym);
+        // If this is an import of another file, we can skip creating a new module and just reference the imported module's symbol
+        if let node::ModuleExpr::Import(import_id) = *tree.node(value) {
+            let target = import_id.get(tree).0;
+            let sym = self.files[&target];
 
-        // Register the module binding in the current scope
-        self.insert_module(name, module_sym, Def::new(id, *vis, span));
-        self.walk_module_bind(id, tree)
+            self.insert_symbol(id, sym);
+            self.insert_symbol(import_id, sym);
+            self.insert_module(name, sym, Def::new(id, *vis, span));
+            self.module_graph.add_dependency(self.root, sym);
+
+            ControlFlow::Continue(())
+        } else {
+            let module_sym = ModuleSym::new();
+            self.bindings.module = Some(module_sym);
+
+            self.insert_symbol(id, module_sym);
+
+            // Register the module binding in the current scope
+            self.insert_module(name, module_sym, Def::new(id, *vis, span));
+            self.walk_module_bind(id, tree)
+        }
     }
 
     fn visit_module(&mut self, id: Id<node::Module>, tree: &T) -> ControlFlow<Self::BreakValue> {
@@ -536,24 +555,6 @@ where
         });
 
         self.modules.insert(sym, module);
-
-        ControlFlow::Continue(())
-    }
-
-    fn visit_module_import(
-        &mut self,
-        id: Id<node::ModuleImport>,
-        tree: &T,
-    ) -> ControlFlow<Self::BreakValue> {
-        // Just remove the module bindings symbol,
-        // we use the file map to retrieve the actual symbol
-        self.bindings.module.take();
-
-        let target = id.get(tree).0;
-        let sym = self.files[&target];
-
-        self.insert_symbol(id, sym);
-        self.module_graph.add_dependency(self.root, sym);
 
         ControlFlow::Continue(())
     }
@@ -579,14 +580,14 @@ where
 
             self.insert_symbol(id, ResolvedModule(bind));
 
-            let constraint = ModuleBindConst::path(id, self.root, bind, loc, path);
-            self.global_cons.push_back(constraint);
+            let job = ElabJob::path(id, self.root, bind, loc, path);
+            self.elab_jobs.push_back(job);
         } else {
             // If we don't have a current module bind, we need to create a reference
             // module::record.field
 
-            self.cons
-                .insert_module(ModuleConst::new(path, id, self.root, self.span(id)));
+            self.lookups
+                .insert_module(ModuleLookup::new(path, id, self.root, loc));
         }
 
         ControlFlow::Continue(())
@@ -836,9 +837,9 @@ where
             // Either a forward reference or not found in the current module scope
 
             let current_sym = self.bindings.value.unwrap();
-            let ref_ = ValueConst::new(name, id, current_sym, self.span(id));
+            let lookup = ValueLookup::new(name, id, current_sym, self.span(id), self.root);
 
-            self.cons.insert_value(ref_);
+            self.lookups.insert_value(lookup);
 
             ControlFlow::Continue(())
         }
@@ -935,13 +936,13 @@ where
         }
         // Either a forward reference or not found in the current module scope
         else if let Some(current_sym) = self.bindings.type_ {
-            let ref_ = TypeBindConst::new(name, id, current_sym, loc);
-            self.cons.insert_type_bind(ref_);
+            let lookup = TypeLookup::new(name, id, current_sym, loc, self.root);
+            self.lookups.insert_type(lookup);
 
             ControlFlow::Continue(())
         } else {
-            let ref_ = TypeConst::qualified(name, id, loc);
-            self.cons.insert_type(ref_);
+            let lookup = TypeAnnotLookup::new(name, id, loc, self.root);
+            self.lookups.insert_type_annot(lookup);
 
             ControlFlow::Continue(())
         }

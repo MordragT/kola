@@ -13,8 +13,10 @@ use crate::{
     def::{AnyDef, Def, DefMap, ModuleDef},
     env::{Functor, FunctorMap, Module, ModuleMap},
     phase::ResolvePhase,
-    resolve::{FileMap, ModuleGraph, ModuleTypeOrders, TypeOrders, ValueOrders},
-    symbol::{AnySym, FunctorSym, ModuleSym, ModuleTypeSym, TypeSym, ValueSym},
+    symbol::{
+        AnySym, FileMap, FunctorSym, ModuleGraph, ModuleSym, ModuleTypeOrders, ModuleTypeSym,
+        TypeOrders, TypeSym, ValueOrders, ValueSym,
+    },
 };
 
 /// The resolved program database.

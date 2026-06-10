@@ -1,50 +1,27 @@
-use std::{collections::HashMap, io};
+use std::io;
 
 use indexmap::IndexMap;
 
 use kola_print::prelude::*;
-use kola_span::{Issue, Report, SourceId, SourceManager};
+use kola_span::{Issue, Report, SourceManager};
 use kola_syntax::loc::LocMap;
 use kola_tree::{
     print::{Decorators, TreePrinter},
     tree::TreeMap,
 };
-use kola_utils::{dependency::DependencyGraph, interner::StrInterner};
+use kola_utils::interner::StrInterner;
 use log::{debug, trace};
 
 use crate::{
-    constraints::GlobalConstraints,
     db::Db,
     def::DefMap,
+    discover::{DiscoverOutput, discover},
+    elaborate::{ElabJobs, elaborate_modules},
     env::{FunctorMap, ModuleMap},
+    lookup::{Lookups, lookup_module_types, lookup_modules, lookup_types, lookup_values},
     print::ResolutionDecorator,
-    symbol::{ModuleSym, ModuleTypeSym, TypeSym, ValueSym},
+    symbol::{FileMap, ModuleGraph, ModuleSym},
 };
-
-mod discover;
-mod module;
-mod module_ty;
-mod structure;
-mod ty;
-mod value;
-
-pub use discover::{DiscoverOutput, discover};
-pub use module::resolve_modules;
-pub use module_ty::{ModuleTypeResolution, resolve_module_types};
-pub use structure::{StructureResolution, resolve_structure};
-pub use ty::{TypeResolution, resolve_types};
-pub use value::{ValueResolution, resolve_values};
-
-pub type ModuleTypeGraph = DependencyGraph<ModuleTypeSym>;
-pub type ModuleGraph = DependencyGraph<ModuleSym>;
-pub type TypeGraph = DependencyGraph<TypeSym>;
-pub type ValueGraph = DependencyGraph<ValueSym>;
-
-pub type ModuleTypeOrders = IndexMap<ModuleSym, Vec<ModuleTypeSym>>;
-pub type TypeOrders = IndexMap<ModuleSym, Vec<TypeSym>>;
-pub type ValueOrders = IndexMap<ModuleSym, Vec<ValueSym>>;
-
-pub type FileMap = IndexMap<SourceId, ModuleSym>;
 
 pub fn resolve(
     source_manager: SourceManager,
@@ -60,8 +37,8 @@ pub fn resolve(
     let mut entry_points = Vec::new();
     let mut defs = DefMap::new();
 
-    let mut global_cons = GlobalConstraints::new();
-    let mut local_cons_map = HashMap::new();
+    let mut elab_jobs = ElabJobs::new();
+    let mut lookups = Lookups::new();
 
     let mut value_graph_map = IndexMap::new();
     let mut type_graph_map = IndexMap::new();
@@ -80,9 +57,8 @@ pub fn resolve(
         let sym = files[source_id];
 
         let DiscoverOutput {
-            cons,
             report: module_report,
-        } = discover::discover(
+        } = discover(
             sym,
             tree,
             &loc_map[source_id],
@@ -96,7 +72,8 @@ pub fn resolve(
             &mut type_graph_map,
             &mut module_type_graph,
             &mut module_graph,
-            &mut global_cons,
+            &mut lookups,
+            &mut elab_jobs,
         );
 
         if !module_report.is_empty() {
@@ -116,19 +93,14 @@ pub fn resolve(
                 ..Default::default()
             });
         }
-
-        local_cons_map.insert(sym, cons);
     }
 
-    let StructureResolution {
-        mut modules,
-        local_cons_map,
-    } = resolve_structure(
-        modules,
-        local_cons_map,
-        global_cons,
+    elaborate_modules(
+        elab_jobs,
+        &mut lookups,
+        &mut modules,
         &functors,
-        &defs,
+        &mut defs,
         &mut module_graph,
         interner,
         report,
@@ -150,9 +122,18 @@ pub fn resolve(
         });
     }
 
-    resolve_modules(
+    let Lookups {
+        module_types: mut module_type_lookups,
+        module_type_annots: mut module_type_annot_lookups,
+        modules: module_lookups,
+        types: mut type_lookups,
+        type_annots: mut type_annot_lookups,
+        values: mut value_lookups,
+    } = lookups;
+
+    lookup_modules(
         &mut modules,
-        &local_cons_map,
+        &module_lookups,
         &defs,
         &mut module_graph,
         report,
@@ -197,8 +178,28 @@ pub fn resolve(
         }
     };
 
-    let ModuleTypeResolution { module_type_orders } =
-        resolve_module_types(&mut modules, &local_cons_map, &module_order, report);
+    // Precompute the module ranks to efficiently order lookups
+    // by their containing module's position in the module graph.
+    let max_sym = module_order
+        .iter()
+        .map(|sym| sym.as_usize())
+        .max()
+        .unwrap_or_default();
+    let mut rank = vec![max_sym; max_sym + 1];
+    for (i, sym) in module_order.iter().enumerate() {
+        rank[sym.as_usize()] = i;
+    }
+
+    module_type_lookups.sort_unstable_by_key(|lookup| rank[lookup.module.as_usize()]);
+    module_type_annot_lookups.sort_unstable_by_key(|lookup| rank[lookup.module.as_usize()]);
+
+    let module_type_orders = lookup_module_types(
+        &mut modules,
+        &module_type_lookups,
+        &module_type_annot_lookups,
+        &mut IndexMap::new(), // TODO: this should be part of discovery probably
+        report,
+    );
 
     if !report.is_empty() {
         return Ok(Db {
@@ -217,11 +218,14 @@ pub fn resolve(
         });
     }
 
-    let TypeResolution { type_orders } = resolve_types(
+    type_lookups.sort_unstable_by_key(|lookup| rank[lookup.module.as_usize()]);
+    type_annot_lookups.sort_unstable_by_key(|lookup| rank[lookup.module.as_usize()]);
+
+    let type_orders = lookup_types(
         &mut modules,
-        type_graph_map,
-        &local_cons_map,
-        &module_order,
+        &type_lookups,
+        &type_annot_lookups,
+        &mut type_graph_map,
         report,
     );
 
@@ -243,13 +247,9 @@ pub fn resolve(
         });
     }
 
-    let ValueResolution { value_orders } = resolve_values(
-        &mut modules,
-        value_graph_map,
-        &local_cons_map,
-        &module_order,
-        report,
-    );
+    value_lookups.sort_unstable_by_key(|lookup| rank[lookup.module.as_usize()]);
+
+    let value_orders = lookup_values(&mut modules, &value_lookups, &mut value_graph_map, report);
 
     if !report.is_empty() {
         return Ok(Db {
@@ -292,32 +292,6 @@ pub fn resolve(
         "Module Graph".bold().bright_white(),
         module_graph.to_dot()
     );
-
-    let module_order = match module_graph.topological_sort() {
-        Ok(order) => order,
-        Err(cycle) => {
-            report.add_issue(
-                Issue::error(cycle.to_string(), 0)
-                    .with_help("Check for circular dependencies in module definitions."),
-            );
-            return Ok(Db {
-                root,
-                source_manager,
-                tree_map,
-                loc_map,
-                files,
-                modules,
-                defs,
-                functors,
-                module_graph,
-                entry_points,
-                module_type_orders,
-                type_orders,
-                value_orders,
-                ..Default::default()
-            });
-        }
-    };
 
     Ok(Db {
         root,

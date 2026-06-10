@@ -6,11 +6,13 @@
 #![feature(never_type)]
 #![feature(exhaustive_patterns)]
 
-pub mod constraints;
 pub mod db;
 pub mod def;
+pub mod discover;
+pub mod elaborate;
 pub mod env;
 pub mod error;
+pub mod lookup;
 pub mod name;
 pub mod phase;
 pub mod print;
