@@ -10,8 +10,9 @@ use kola_tree::{
 };
 
 use crate::{
-    def::{AnyDef, Def, DefMap, ModuleDef},
+    def::{AnyDef, DefMap, ModuleDef},
     env::{Functor, FunctorMap, Module, ModuleMap},
+    name::Binding,
     phase::ResolvePhase,
     symbol::{
         AnySym, FileMap, FunctorSym, ModuleGraph, ModuleSym, ModuleTypeOrders, ModuleTypeSym,
@@ -160,7 +161,7 @@ impl Db {
 // ── helpers ──
 
 impl ModuleView<'_> {
-    pub fn lookup(&self, name: impl Into<node::AnyName>) -> Option<AnySym> {
+    pub fn lookup(&self, name: impl Into<node::AnyName>) -> Option<Binding<AnySym>> {
         self.module.names.get(name)
     }
 
@@ -182,14 +183,14 @@ impl ModuleView<'_> {
     }
 
     pub fn value_node(&self, sym: ValueSym) -> (Id<node::ValueBind>, &Tree, &LocVec) {
-        let Def { loc, id, .. } = self.defs[sym];
+        let (id, loc) = self.defs[sym];
         let tree = &self.tree_map[&loc.path];
         let spans = &self.loc_map[&loc.path];
         (id, tree, spans)
     }
 
     pub fn type_node(&self, sym: TypeSym) -> (Id<node::TypeBind>, &Tree, &LocVec) {
-        let Def { loc, id, .. } = self.defs[sym];
+        let (id, loc) = self.defs[sym];
         let tree = &self.tree_map[&loc.path];
         let spans = &self.loc_map[&loc.path];
         (id, tree, spans)
@@ -199,14 +200,14 @@ impl ModuleView<'_> {
         &self,
         sym: ModuleTypeSym,
     ) -> (Id<node::ModuleTypeBind>, &Tree, &LocVec) {
-        let Def { loc, id, .. } = self.defs[sym];
+        let (id, loc) = self.defs[sym];
         let tree = &self.tree_map[&loc.path];
         let spans = &self.loc_map[&loc.path];
         (id, tree, spans)
     }
 
     pub fn functor_node(&self, sym: FunctorSym) -> (Id<node::FunctorBind>, &Tree, &LocVec) {
-        let Def { loc, id, .. } = self.defs[sym];
+        let (id, loc) = self.defs[sym];
         let tree = &self.tree_map[&loc.path];
         let spans = &self.loc_map[&loc.path];
         (id, tree, spans)

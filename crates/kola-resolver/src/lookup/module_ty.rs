@@ -124,8 +124,8 @@ pub fn lookup_module_types(
     {
         let module = &mut modules[&module_sym];
         if let Some(target) = module.names.get_module_type(name) {
-            module_type_graph_map[&module_sym].add_dependency(source, target);
-            module.nodes.insert_meta(id, ResolvedModuleType(target));
+            module_type_graph_map[&module_sym].add_dependency(source, target.sym);
+            module.nodes.insert_meta(id, ResolvedModuleType(target.sym));
         } else {
             report.add_diagnostic(
                 Diagnostic::error(loc, "Module type not found")
@@ -143,10 +143,10 @@ pub fn lookup_module_types(
     } in annot_queries
     {
         let module = &mut modules[&module_sym];
-        if let Some(module_type_sym) = module.names.get_module_type(name) {
+        if let Some(binding) = module.names.get_module_type(name) {
             module
                 .nodes
-                .insert_meta(id, ResolvedModuleType(module_type_sym));
+                .insert_meta(id, ResolvedModuleType(binding.sym));
         } else {
             report.add_diagnostic(
                 Diagnostic::error(loc, "Module type not found in annotation")

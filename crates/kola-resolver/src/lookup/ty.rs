@@ -117,10 +117,10 @@ pub fn lookup_types(
     {
         let module = &mut modules[&module_sym];
         if let Some(target) = module.names.get_type(name) {
-            type_graph_map[&module_sym].add_dependency(source, target);
+            type_graph_map[&module_sym].add_dependency(source, target.sym);
             module
                 .nodes
-                .insert_meta(id, ResolvedType::Reference(target));
+                .insert_meta(id, ResolvedType::Reference(target.sym));
         } else {
             report.add_diagnostic(
                 Diagnostic::error(loc, "Type not found").with_help(
@@ -139,10 +139,10 @@ pub fn lookup_types(
     } in annot_queries
     {
         let module = &mut modules[&module_sym];
-        if let Some(type_sym) = module.names.get_type(name) {
+        if let Some(binding) = module.names.get_type(name) {
             module
                 .nodes
-                .insert_meta(id, ResolvedType::Reference(type_sym));
+                .insert_meta(id, ResolvedType::Reference(binding.sym));
         } else {
             report.add_diagnostic(
                 Diagnostic::error(loc, "Type not found in annotation")

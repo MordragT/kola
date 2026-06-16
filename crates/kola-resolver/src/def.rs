@@ -1,13 +1,13 @@
-use std::{fmt, hash::Hash, ops::Index};
+use std::{hash::Hash, ops::Index};
 
 use derive_more::From;
 use kola_collections::{HashMap, hash_map};
-use kola_span::Loc;
+use kola_span::{Loc, Located};
 use kola_tree::{
     id::Id,
     node::{
         self, FunctorNamespace, ModuleNamespace, ModuleTypeNamespace, Namespace, NamespaceKind,
-        TypeNamespace, ValueNamespace, Vis,
+        TypeNamespace, ValueNamespace,
     },
 };
 
@@ -15,83 +15,11 @@ use crate::symbol::{
     AnySym, FunctorSym, ModuleSym, ModuleTypeSym, Substitute, Sym, TypeSym, ValueSym, merge5,
 };
 
-pub struct Def<T> {
-    pub loc: Loc,
-    pub vis: Vis,
-    pub id: Id<T>,
-}
-
-impl<T> Def<T> {
-    pub const fn new(id: Id<T>, vis: Vis, loc: Loc) -> Self {
-        Self { loc, vis, id }
-    }
-
-    pub const fn loc(self) -> Loc {
-        self.loc
-    }
-
-    pub const fn vis(self) -> Vis {
-        self.vis
-    }
-
-    pub fn id(self) -> Id<T> {
-        self.id
-    }
-}
-
-impl<T> fmt::Debug for Def<T> {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        f.debug_struct("BindInfo")
-            .field("id", &self.id)
-            .field("loc", &self.loc)
-            .field("vis", &self.vis)
-            .finish()
-    }
-}
-
-impl<T> Clone for Def<T> {
-    fn clone(&self) -> Self {
-        Self {
-            loc: self.loc,
-            vis: self.vis,
-            id: self.id,
-        }
-    }
-}
-
-impl<T> Copy for Def<T> {}
-
-impl<T> PartialEq for Def<T> {
-    fn eq(&self, other: &Self) -> bool {
-        self.loc == other.loc
-    }
-}
-
-impl<T> Eq for Def<T> {}
-
-impl<T> PartialOrd for Def<T> {
-    fn partial_cmp(&self, other: &Self) -> Option<std::cmp::Ordering> {
-        Some(self.cmp(other))
-    }
-}
-
-impl<T> Ord for Def<T> {
-    fn cmp(&self, other: &Self) -> std::cmp::Ordering {
-        self.loc.cmp(&other.loc)
-    }
-}
-
-impl<T> Hash for Def<T> {
-    fn hash<H: std::hash::Hasher>(&self, state: &mut H) {
-        self.loc.hash(state);
-    }
-}
-
-pub type FunctorDef = Def<node::FunctorBind>;
-pub type ModuleTypeDef = Def<node::ModuleTypeBind>;
-pub type ModuleDef = Def<node::ModuleBind>;
-pub type TypeDef = Def<node::TypeBind>;
-pub type ValueDef = Def<node::ValueBind>;
+pub type FunctorDef = Located<Id<node::FunctorBind>>;
+pub type ModuleTypeDef = Located<Id<node::ModuleTypeBind>>;
+pub type ModuleDef = Located<Id<node::ModuleBind>>;
+pub type TypeDef = Located<Id<node::TypeBind>>;
+pub type ValueDef = Located<Id<node::ValueBind>>;
 
 #[derive(Debug, From, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum AnyDef {
@@ -115,27 +43,17 @@ impl AnyDef {
 
     pub const fn loc(&self) -> Loc {
         match self {
-            AnyDef::Functor(info) => info.loc,
-            AnyDef::ModuleType(info) => info.loc,
-            AnyDef::Module(info) => info.loc,
-            AnyDef::Type(info) => info.loc,
-            AnyDef::Value(info) => info.loc,
-        }
-    }
-
-    pub const fn vis(&self) -> Vis {
-        match self {
-            AnyDef::Functor(info) => info.vis,
-            AnyDef::ModuleType(info) => info.vis,
-            AnyDef::Module(info) => info.vis,
-            AnyDef::Type(info) => info.vis,
-            AnyDef::Value(info) => info.vis,
+            AnyDef::Functor(info) => info.1,
+            AnyDef::ModuleType(info) => info.1,
+            AnyDef::Module(info) => info.1,
+            AnyDef::Type(info) => info.1,
+            AnyDef::Value(info) => info.1,
         }
     }
 }
 
 #[derive(Debug)]
-pub struct Defs<N: Namespace, T>(HashMap<Sym<N>, Def<T>>);
+pub struct Defs<N: Namespace, T>(HashMap<Sym<N>, Located<Id<T>>>);
 
 impl<N: Namespace, T> Defs<N, T> {
     #[inline]
@@ -144,20 +62,20 @@ impl<N: Namespace, T> Defs<N, T> {
     }
 
     #[inline]
-    pub fn insert(&mut self, symbol: Sym<N>, info: Def<T>) {
-        self.0.insert(symbol, info);
+    pub fn insert(&mut self, symbol: Sym<N>, id: Id<T>, loc: Loc) {
+        self.0.insert(symbol, (id, loc));
     }
 
     #[inline]
-    pub fn get(&self, symbol: Sym<N>) -> Option<Def<T>>
+    pub fn get(&self, symbol: Sym<N>) -> Option<Located<Id<T>>>
     where
-        Def<T>: Copy,
+        Id<T>: Copy,
     {
         self.0.get(&symbol).copied()
     }
 
     #[inline]
-    pub fn iter(&self) -> hash_map::Iter<'_, Sym<N>, Def<T>> {
+    pub fn iter(&self) -> hash_map::Iter<'_, Sym<N>, Located<Id<T>>> {
         self.0.iter()
     }
 }
@@ -176,8 +94,8 @@ impl<N: Namespace, T> Default for Defs<N, T> {
 }
 
 impl<N: Namespace, T> IntoIterator for Defs<N, T> {
-    type Item = (Sym<N>, Def<T>);
-    type IntoIter = hash_map::IntoIter<Sym<N>, Def<T>>;
+    type Item = (Sym<N>, Located<Id<T>>);
+    type IntoIter = hash_map::IntoIter<Sym<N>, Located<Id<T>>>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.0.into_iter()
@@ -185,8 +103,8 @@ impl<N: Namespace, T> IntoIterator for Defs<N, T> {
 }
 
 impl<'a, N: Namespace, T> IntoIterator for &'a Defs<N, T> {
-    type Item = (&'a Sym<N>, &'a Def<T>);
-    type IntoIter = hash_map::Iter<'a, Sym<N>, Def<T>>;
+    type Item = (&'a Sym<N>, &'a Located<Id<T>>);
+    type IntoIter = hash_map::Iter<'a, Sym<N>, Located<Id<T>>>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.0.iter()
@@ -194,8 +112,8 @@ impl<'a, N: Namespace, T> IntoIterator for &'a Defs<N, T> {
 }
 
 impl<'a, N: Namespace, T> IntoIterator for &'a mut Defs<N, T> {
-    type Item = (&'a Sym<N>, &'a mut Def<T>);
-    type IntoIter = hash_map::IterMut<'a, Sym<N>, Def<T>>;
+    type Item = (&'a Sym<N>, &'a mut Located<Id<T>>);
+    type IntoIter = hash_map::IterMut<'a, Sym<N>, Located<Id<T>>>;
 
     fn into_iter(self) -> Self::IntoIter {
         self.0.iter_mut()
@@ -203,7 +121,7 @@ impl<'a, N: Namespace, T> IntoIterator for &'a mut Defs<N, T> {
 }
 
 impl<N: Namespace, T> Index<Sym<N>> for Defs<N, T> {
-    type Output = Def<T>;
+    type Output = Located<Id<T>>;
 
     fn index(&self, sym: Sym<N>) -> &Self::Output {
         self.0.get(&sym).expect("Bind not found")
@@ -220,10 +138,10 @@ impl Substitute for Defs<FunctorNamespace, node::FunctorBind> {
         for (from, to) in s {
             if let &AnySym::Functor(from) = from
                 && let &AnySym::Functor(to) = to
-                && let Some(value) = self.get(from)
+                && let Some((id, loc)) = self.get(from)
             {
                 result.get_or_insert_with(|| self.clone()).0.remove(&from);
-                result.as_mut().unwrap().insert(to, value);
+                result.as_mut().unwrap().insert(to, id, loc);
             }
         }
 
@@ -255,10 +173,10 @@ impl Substitute for Defs<ModuleTypeNamespace, node::ModuleTypeBind> {
         for (from, to) in s {
             if let &AnySym::ModuleType(from) = from
                 && let &AnySym::ModuleType(to) = to
-                && let Some(value) = self.get(from)
+                && let Some((id, loc)) = self.get(from)
             {
                 result.get_or_insert_with(|| self.clone()).0.remove(&from);
-                result.as_mut().unwrap().insert(to, value);
+                result.as_mut().unwrap().insert(to, id, loc);
             }
         }
 
@@ -290,10 +208,10 @@ impl Substitute for Defs<ModuleNamespace, node::ModuleBind> {
         for (from, to) in s {
             if let &AnySym::Module(from) = from
                 && let &AnySym::Module(to) = to
-                && let Some(value) = self.get(from)
+                && let Some((id, loc)) = self.get(from)
             {
                 result.get_or_insert_with(|| self.clone()).0.remove(&from);
-                result.as_mut().unwrap().insert(to, value);
+                result.as_mut().unwrap().insert(to, id, loc);
             }
         }
 
@@ -325,10 +243,10 @@ impl Substitute for Defs<TypeNamespace, node::TypeBind> {
         for (from, to) in s {
             if let &AnySym::Type(from) = from
                 && let &AnySym::Type(to) = to
-                && let Some(value) = self.get(from)
+                && let Some((id, loc)) = self.get(from)
             {
                 result.get_or_insert_with(|| self.clone()).0.remove(&from);
-                result.as_mut().unwrap().insert(to, value);
+                result.as_mut().unwrap().insert(to, id, loc);
             }
         }
 
@@ -360,10 +278,10 @@ impl Substitute for Defs<ValueNamespace, node::ValueBind> {
         for (from, to) in s {
             if let &AnySym::Value(from) = from
                 && let &AnySym::Value(to) = to
-                && let Some(value) = self.get(from)
+                && let Some((id, loc)) = self.get(from)
             {
                 result.get_or_insert_with(|| self.clone()).0.remove(&from);
-                result.as_mut().unwrap().insert(to, value);
+                result.as_mut().unwrap().insert(to, id, loc);
             }
         }
 
@@ -401,28 +319,33 @@ impl DefMap {
     }
 
     #[inline]
-    pub fn insert_functor(&mut self, sym: FunctorSym, def: FunctorDef) {
-        self.functors.insert(sym, def);
+    pub fn insert_functor(&mut self, sym: FunctorSym, id: Id<node::FunctorBind>, loc: Loc) {
+        self.functors.insert(sym, id, loc);
     }
 
     #[inline]
-    pub fn insert_module_type(&mut self, sym: ModuleTypeSym, def: ModuleTypeDef) {
-        self.module_types.insert(sym, def);
+    pub fn insert_module_type(
+        &mut self,
+        sym: ModuleTypeSym,
+        id: Id<node::ModuleTypeBind>,
+        loc: Loc,
+    ) {
+        self.module_types.insert(sym, id, loc);
     }
 
     #[inline]
-    pub fn insert_module(&mut self, sym: ModuleSym, def: ModuleDef) {
-        self.modules.insert(sym, def);
+    pub fn insert_module(&mut self, sym: ModuleSym, id: Id<node::ModuleBind>, loc: Loc) {
+        self.modules.insert(sym, id, loc);
     }
 
     #[inline]
-    pub fn insert_type(&mut self, sym: TypeSym, def: TypeDef) {
-        self.types.insert(sym, def);
+    pub fn insert_type(&mut self, sym: TypeSym, id: Id<node::TypeBind>, loc: Loc) {
+        self.types.insert(sym, id, loc);
     }
 
     #[inline]
-    pub fn insert_value(&mut self, sym: ValueSym, def: ValueDef) {
-        self.values.insert(sym, def);
+    pub fn insert_value(&mut self, sym: ValueSym, id: Id<node::ValueBind>, loc: Loc) {
+        self.values.insert(sym, id, loc);
     }
 
     #[inline]

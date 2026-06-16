@@ -1,34 +1,3 @@
-/**
-Let’s define:
-
-- **Modules**: Each module is a node in a dependency graph.
-- **Visiting State**: Each module can be in one of three states:
-  - **Unvisited**: Not yet started.
-  - **Visiting**: Currently being resolved (on the call stack).
-  - **Visited**: Fully resolved.
-
-### Algorithm Steps
-
-1. **Start** at the root module.
-2. For each submodule or inline module definition:
-   - If the module is **Unvisited**, begin resolving it (mark as Visiting).
-   - If the module is **Visiting**, report a cycle error and abort.
-   - If the module is **Visited**, do nothing (already resolved).
-3. **When resolving a module**:
-   - For each reference to another module (e.g., `super::a`):
-     - If the referenced module is **Unvisited**, recursively resolve it first.
-     - If the referenced module is **Visiting**, report a cycle error.
-     - If the referenced module is **Visited**, continue.
-   - Once all dependencies are resolved, mark the current module as **Visited**.
-
----
-
-## When Does This Algorithm Reject Sibling/Cousin References?
-
-- **It only rejects a reference if it would create a cycle in the current call stack.**
-- **Sibling/cousin references are accepted as long as they do not create a cycle.**
-- **Mutual recursion is not allowed**: If two modules reference each other (directly or indirectly), a cycle is detected.
-*/
 use std::ops::ControlFlow;
 
 use indexmap::IndexMap;
@@ -36,21 +5,21 @@ use kola_builtins::{BuiltinType, find_builtin_id};
 use kola_span::{Loc, Report};
 use kola_syntax::prelude::*;
 use kola_tree::{
-    node::{FunctorName, ModuleName, ModuleTypeName, TypeName, ValueName},
+    node::{FunctorName, ModuleName, ModuleTypeName, TypeName, ValueName, Vis},
     prelude::*,
 };
 use kola_utils::{interner::StrInterner, scope::LinearScope};
 
 use crate::{
-    def::{AnyDef, Def, DefMap, FunctorDef, ModuleDef, ModuleTypeDef, TypeDef, ValueDef},
-    elaborate::{ElabJob, ElabJobs},
+    def::{AnyDef, DefMap},
+    elaborate::{ElabJob, ElabJobs, ElabPath},
     env::{Functor, FunctorMap, Module, ModuleMap},
     error::name_collision,
     lookup::{
         Lookups, ModuleLookup, ModuleTypeAnnotLookup, ModuleTypeLookup, TypeAnnotLookup,
         TypeLookup, ValueLookup,
     },
-    phase::{ResolvePhase, ResolvedModule, ResolvedModuleType, ResolvedType, ResolvedValue},
+    phase::{ResolvePhase, ResolvedModuleType, ResolvedType, ResolvedValue},
     symbol::{
         FileMap, FunctorSym, ModuleGraph, ModuleSym, ModuleTypeGraph, ModuleTypeSym, TypeGraph,
         TypeSym, ValueGraph, ValueSym,
@@ -222,84 +191,114 @@ impl<'a> Discoverer<'a> {
         self.scope.nodes.insert(id.as_usize(), T::upcast(sym));
     }
 
-    pub fn insert_functor(&mut self, name: FunctorName, sym: FunctorSym, def: FunctorDef) {
-        if let Some(bind) = self
-            .scope
-            .names
-            .get(name)
-            .and_then(|sym| self.defs.get(sym))
-        {
-            self.name_collision(def, bind);
-            return;
-        }
-
-        self.scope.names.insert_functor(name, sym);
-        self.defs.insert_functor(sym, def);
-    }
-
-    pub fn insert_module_type(
+    pub fn insert_functor(
         &mut self,
-        name: ModuleTypeName,
-        sym: ModuleTypeSym,
-        def: ModuleTypeDef,
+        id: Id<node::FunctorBind>,
+        loc: Loc,
+        vis: node::Vis,
+        name: FunctorName,
+        sym: FunctorSym,
     ) {
         if let Some(bind) = self
             .scope
             .names
             .get(name)
-            .and_then(|sym| self.defs.get(sym))
+            .and_then(|binding| self.defs.get(binding.sym))
         {
-            self.name_collision(def, bind);
+            self.name_collision((id, loc), bind);
             return;
         }
 
-        self.scope.names.insert_module_type(name, sym);
-        self.defs.insert_module_type(sym, def);
+        self.scope.names.insert_functor(name, vis, sym);
+        self.defs.insert_functor(sym, id, loc);
     }
 
-    pub fn insert_module(&mut self, name: ModuleName, sym: ModuleSym, def: ModuleDef) {
+    pub fn insert_module_type(
+        &mut self,
+        id: Id<node::ModuleTypeBind>,
+        loc: Loc,
+        vis: node::Vis,
+        name: ModuleTypeName,
+        sym: ModuleTypeSym,
+    ) {
         if let Some(bind) = self
             .scope
             .names
             .get(name)
-            .and_then(|sym| self.defs.get(sym))
+            .and_then(|binding| self.defs.get(binding.sym))
         {
-            self.name_collision(def, bind);
+            self.name_collision((id, loc), bind);
             return;
         }
 
-        self.scope.names.insert_module(name, sym);
-        self.defs.insert_module(sym, def);
+        self.scope.names.insert_module_type(name, vis, sym);
+        self.defs.insert_module_type(sym, id, loc);
     }
 
-    pub fn insert_type(&mut self, name: TypeName, sym: TypeSym, def: TypeDef) {
+    pub fn insert_module(
+        &mut self,
+        id: Id<node::ModuleBind>,
+        loc: Loc,
+        vis: node::Vis,
+        name: ModuleName,
+        sym: ModuleSym,
+    ) {
         if let Some(bind) = self
             .scope
             .names
             .get(name)
-            .and_then(|sym| self.defs.get(sym))
+            .and_then(|binding| self.defs.get(binding.sym))
         {
-            self.name_collision(def, bind);
+            self.name_collision((id, loc), bind);
             return;
         }
 
-        self.scope.names.insert_type(name, sym);
-        self.defs.insert_type(sym, def);
+        self.scope.names.insert_module(name, vis, sym);
+        self.defs.insert_module(sym, id, loc);
     }
 
-    pub fn insert_value(&mut self, name: ValueName, sym: ValueSym, def: ValueDef) {
+    pub fn insert_type(
+        &mut self,
+        id: Id<node::TypeBind>,
+        loc: Loc,
+        vis: node::Vis,
+        name: TypeName,
+        sym: TypeSym,
+    ) {
         if let Some(bind) = self
             .scope
             .names
             .get(name)
-            .and_then(|sym| self.defs.get(sym))
+            .and_then(|binding| self.defs.get(binding.sym))
         {
-            self.name_collision(def, bind);
+            self.name_collision((id, loc), bind);
             return;
         }
 
-        self.scope.names.insert_value(name, sym);
-        self.defs.insert_value(sym, def);
+        self.scope.names.insert_type(name, vis, sym);
+        self.defs.insert_type(sym, id, loc);
+    }
+
+    pub fn insert_value(
+        &mut self,
+        id: Id<node::ValueBind>,
+        loc: Loc,
+        vis: node::Vis,
+        name: ValueName,
+        sym: ValueSym,
+    ) {
+        if let Some(bind) = self
+            .scope
+            .names
+            .get(name)
+            .and_then(|binding| self.defs.get(binding.sym))
+        {
+            self.name_collision((id, loc), bind);
+            return;
+        }
+
+        self.scope.names.insert_value(name, vis, sym);
+        self.defs.insert_value(sym, id, loc);
     }
 
     fn with_fresh_scope<T, F>(&mut self, child: ModuleSym, loc: Loc, f: F) -> (T, Module)
@@ -311,7 +310,6 @@ impl<'a> Discoverer<'a> {
         // Skip adding dependencies if child is the same as parent,
         // which should only happen in the root module
         if child != parent {
-            self.module_graph.add_dependency(parent, child);
             self.value_graph_map.insert(child, ValueGraph::new());
             self.type_graph_map.insert(child, TypeGraph::new());
             self.module_type_graph_map
@@ -371,7 +369,9 @@ where
                 let param_name = *param_name.get(tree);
                 let param_sym = ModuleSym::new();
 
-                this.scope.names.insert_module(param_name, param_sym);
+                this.scope
+                    .names
+                    .insert_module(param_name, Vis::None, param_sym);
                 param_syms.push(param_sym);
             }
 
@@ -383,67 +383,13 @@ where
 
         let sym = FunctorSym::new();
         self.insert_symbol(id, sym);
-        self.insert_functor(name, sym, Def::new(id, *vis.get(tree), loc));
+        self.insert_functor(id, loc, *vis.get(tree), name, sym);
 
         let lookups = std::mem::replace(self.lookups, lookups);
         let elab_jobs = std::mem::replace(self.elab_jobs, elab_jobs);
 
         let functor = Functor::new(prototype, param_syms, body_scope, lookups, elab_jobs);
         self.functors.insert(sym, functor);
-        ControlFlow::Continue(())
-    }
-
-    fn visit_functor_args(
-        &mut self,
-        id: Id<node::FunctorArgs>,
-        tree: &T,
-    ) -> ControlFlow<Self::BreakValue> {
-        let args = id.get(tree);
-
-        let mut arg_syms = Vec::with_capacity(args.0.len());
-
-        for arg_id in args {
-            let arg_sym = ModuleSym::new();
-            self.bindings.module = Some(arg_sym);
-
-            self.visit_module_path(*arg_id, tree)?;
-            arg_syms.push(arg_sym);
-        }
-        self.insert_symbol(id, arg_syms);
-
-        ControlFlow::Continue(())
-    }
-
-    fn visit_functor_app(
-        &mut self,
-        id: Id<node::FunctorApp>,
-        tree: &T,
-    ) -> ControlFlow<Self::BreakValue> {
-        let node::FunctorApp { path, func, args } = *tree.node(id);
-
-        let name = *func.get(tree);
-        let loc = self.span(id);
-
-        let bind = self.bindings.module.take().unwrap();
-        self.scope.nodes.insert_meta(id, bind);
-
-        let path = if let Some(path) = path {
-            let bind = ModuleSym::new();
-            self.bindings.module = Some(bind);
-
-            self.visit_module_path(path, tree)?;
-
-            Some(bind)
-        } else {
-            None
-        };
-
-        self.visit_functor_args(args, tree)?;
-        let arg_syms = self.scope.nodes.meta(args).clone();
-
-        let job = ElabJob::functor(id, self.root, bind, path, loc, name, arg_syms);
-        self.elab_jobs.push_back(job);
-
         ControlFlow::Continue(())
     }
 
@@ -457,14 +403,14 @@ where
         let vis = *tree.node(vis);
         let name = *tree.node(name);
 
-        let span = self.span(id);
+        let loc = self.span(id);
 
         let module_type_sym = ModuleTypeSym::new();
         self.insert_symbol(id, module_type_sym);
         self.bindings.module_type = Some(module_type_sym);
 
         // Register the module type binding in the current scope
-        self.insert_module_type(name, module_type_sym, Def::new(id, vis, span));
+        self.insert_module_type(id, loc, vis, name, module_type_sym);
         self.walk_module_type_bind(id, tree)?;
 
         self.bindings.module_type = None;
@@ -485,17 +431,17 @@ where
         if let Some(path) = path {
             // Module Type defined in another module - Just visit the module path if it exists
             self.visit_module_path(path, tree)?;
-        } else if let Some(sym) = self.scope.names.get_module_type(name) {
+        } else if let Some(binding) = self.scope.names.get_module_type(name) {
             // Found a module type binding in the current module scope
             // which was defined before this reference to it (no forward reference)
 
-            self.insert_symbol(id, ResolvedModuleType(sym));
+            self.insert_symbol(id, ResolvedModuleType(binding.sym));
 
             // Qualified Module Types can occur in both module type binds and module type annotations.
             // Only in the former case we need to add a dependency.
             if let Some(current_sym) = self.bindings.module_type {
                 // Add dependency from the current type bind to this type
-                self.module_type_graph_map[&self.root].add_dependency(current_sym, sym);
+                self.module_type_graph_map[&self.root].add_dependency(current_sym, binding.sym);
             }
         }
         // Either a forward reference or not found in the current module scope
@@ -520,28 +466,96 @@ where
 
         let name = *tree.node(name);
         let vis = tree.node(vis);
-        let span = self.span(id);
+        let loc = self.span(id);
 
-        // If this is an import of another file, we can skip creating a new module and just reference the imported module's symbol
-        if let node::ModuleExpr::Import(import_id) = *tree.node(value) {
-            let target = import_id.get(tree).0;
-            let sym = self.files[&target];
+        match *tree.node(value) {
+            node::ModuleExpr::Import(import_id) => {
+                // If this is an import of another file, we can skip creating a new module and just reference the imported module's symbol
+                let target = import_id.get(tree).0;
+                let sym = self.files[&target];
 
-            self.insert_symbol(id, sym);
-            self.insert_symbol(import_id, sym);
-            self.insert_module(name, sym, Def::new(id, *vis, span));
-            self.module_graph.add_dependency(self.root, sym);
+                self.insert_symbol(id, sym);
+                self.insert_symbol(import_id, sym);
+                self.insert_module(id, loc, *vis, name, sym);
+                self.module_graph.add_dependency(self.root, sym);
 
-            ControlFlow::Continue(())
-        } else {
-            let module_sym = ModuleSym::new();
-            self.bindings.module = Some(module_sym);
+                ControlFlow::Continue(())
+            }
+            node::ModuleExpr::Path(path_id) => {
+                let path = tree
+                    .node(path_id)
+                    .0
+                    .iter()
+                    .copied()
+                    .map(|id| *tree.node(id))
+                    .collect();
 
-            self.insert_symbol(id, module_sym);
+                let job = ElabJob::path(id, loc, *vis, name, self.root, path_id, loc, path);
+                self.elab_jobs.push_back(job);
 
-            // Register the module binding in the current scope
-            self.insert_module(name, module_sym, Def::new(id, *vis, span));
-            self.walk_module_bind(id, tree)
+                ControlFlow::Continue(())
+            }
+            node::ModuleExpr::FunctorApp(appl_id) => {
+                let node::FunctorApp { path, func, args } = *tree.node(appl_id);
+
+                let functor_name = *func.get(tree);
+
+                let path = if let Some(path_id) = path {
+                    let path = tree
+                        .node(path_id)
+                        .0
+                        .iter()
+                        .copied()
+                        .map(|id| *tree.node(id))
+                        .collect();
+                    let expr = ElabPath::new(path_id, self.span(path_id), self.root, path).into();
+                    Some(Box::new(expr))
+                } else {
+                    None
+                };
+
+                let args = args.get(tree);
+                let mut arg_exprs = Vec::with_capacity(args.0.len());
+
+                for &path_id in args {
+                    let path = tree
+                        .node(path_id)
+                        .0
+                        .iter()
+                        .copied()
+                        .map(|id| *tree.node(id))
+                        .collect();
+                    let expr = ElabPath::new(path_id, self.span(path_id), self.root, path).into();
+
+                    arg_exprs.push(expr);
+                }
+
+                let job = ElabJob::functor_appl(
+                    id,
+                    loc,
+                    *vis,
+                    name,
+                    self.root,
+                    appl_id,
+                    self.span(appl_id),
+                    path,
+                    functor_name,
+                    arg_exprs,
+                );
+                self.elab_jobs.push_back(job);
+
+                ControlFlow::Continue(())
+            }
+            _ => {
+                let module_sym = ModuleSym::new();
+                self.bindings.module = Some(module_sym);
+
+                self.insert_symbol(id, module_sym);
+
+                // Register the module binding in the current scope
+                self.insert_module(id, loc, *vis, name, module_sym);
+                self.walk_module_bind(id, tree)
+            }
         }
     }
 
@@ -549,6 +563,11 @@ where
         // Either inline module or root module
         let sym = self.bindings.module.take().unwrap_or(self.root);
         let loc = self.span(id);
+
+        if sym != self.root {
+            // Only add dependency if this is not the root module
+            self.module_graph.add_dependency(self.root, sym);
+        }
 
         let (_, module) = self.with_fresh_scope(sym, loc, |this| {
             let _ = this.walk_module(id, tree);
@@ -574,21 +593,9 @@ where
 
         let loc = self.span(id);
 
-        if let Some(bind) = self.bindings.module.take() {
-            // If this is called from a module bind, we can insert the module path
-            // module a = b::c
-
-            self.insert_symbol(id, ResolvedModule(bind));
-
-            let job = ElabJob::path(id, self.root, bind, loc, path);
-            self.elab_jobs.push_back(job);
-        } else {
-            // If we don't have a current module bind, we need to create a reference
-            // module::record.field
-
-            self.lookups
-                .insert_module(ModuleLookup::new(path, id, self.root, loc));
-        }
+        // This visit method will only be called from module path's in value position
+        self.lookups
+            .insert_module(ModuleLookup::new(path, id, self.root, loc));
 
         ControlFlow::Continue(())
     }
@@ -608,7 +615,7 @@ where
         let name = *tree.node(name);
         let vis = tree.node(vis);
 
-        let span = self.span(id);
+        let loc = self.span(id);
 
         let value_sym = ValueSym::new();
         self.insert_symbol(id, value_sym);
@@ -621,7 +628,7 @@ where
         }
 
         // Register the value binding in the current scope
-        self.insert_value(name, value_sym, Def::new(id, *vis, span));
+        self.insert_value(id, loc, *vis, name, value_sym);
 
         // Intuitively I would guess that this is always 0
         // and I could just create a fresh type scope for every type and value bind.
@@ -819,14 +826,14 @@ where
             // Local binding will not create value bind cycle either
             self.insert_symbol(id, ResolvedValue::Reference(*value_sym));
             ControlFlow::Continue(())
-        } else if let Some(value_sym) = self.scope.names.get_value(name) {
+        } else if let Some(binding) = self.scope.names.get_value(name) {
             // Found a value binding in the current module scope
             // which was defined before this path expression (no forward reference)
 
-            self.insert_symbol(id, ResolvedValue::Reference(value_sym));
+            self.insert_symbol(id, ResolvedValue::Reference(binding.sym));
 
             let current_sym = self.bindings.value.unwrap();
-            self.value_graph_map[&self.root].add_dependency(current_sym, value_sym);
+            self.value_graph_map[&self.root].add_dependency(current_sym, binding.sym);
 
             ControlFlow::Continue(())
         } else if let Some(builtin) = self.interner.get(name.0).and_then(find_builtin_id) {
@@ -858,7 +865,7 @@ where
 
         let vis = *vis.get(tree);
         let name = *tree.node(name);
-        let span = self.span(id);
+        let loc = self.span(id);
 
         let type_sym = TypeSym::new();
         self.insert_symbol(id, type_sym);
@@ -866,7 +873,7 @@ where
         self.type_graph_map[&self.root].add_node(type_sym);
 
         // Register the type binding in the current scope
-        self.insert_type(name, type_sym, Def::new(id, vis, span));
+        self.insert_type(id, loc, vis, name, type_sym);
 
         // Intuitively I would guess that this is always 0
         // and I could just create a fresh type scope for every type and value bind.
@@ -911,17 +918,17 @@ where
         if let Some(path) = path {
             // Just visit the module path if it exists
             self.visit_module_path(path, tree)
-        } else if let Some(type_sym) = self.scope.names.get_type(name) {
+        } else if let Some(binding) = self.scope.names.get_type(name) {
             // Found a type binding in the current module scope
             // which was defined before this type path (no forward reference)
 
-            self.insert_symbol(id, ResolvedType::Reference(type_sym));
+            self.insert_symbol(id, ResolvedType::Reference(binding.sym));
 
             // Type Path's can occur in both type binds and type annotations.
             // Only in the former case we need to add a dependency.
             if let Some(current_sym) = self.bindings.type_ {
                 // Add dependency from the current type bind to this type
-                self.type_graph_map[&self.root].add_dependency(current_sym, type_sym);
+                self.type_graph_map[&self.root].add_dependency(current_sym, binding.sym);
             }
 
             ControlFlow::Continue(())

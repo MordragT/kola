@@ -28,12 +28,13 @@ impl<'a> Decorator<'a> for ResolutionDecorator<'a> {
             | Meta::TypeBind(type_sym)
             | Meta::OpaqueTypeBind(type_sym) => type_sym.red().display_in(arena),
 
-            Meta::FunctorArgs(_) => return notation,
+            // TODO: only really contain resolved module in value position
+            Meta::ModulePath(_) => return notation,
+
 
             Meta::Module(module_sym)
-            | Meta::ModulePath(ResolvedModule(module_sym))
+            // | Meta::ModulePath(ResolvedModule(module_sym))
             | Meta::ModuleImport(module_sym)
-            | Meta::FunctorApp(module_sym)
             | Meta::ModuleBind(module_sym) => module_sym.red().display_in(arena),
 
             Meta::ModuleTypeBind(mt_sym)

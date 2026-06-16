@@ -80,10 +80,10 @@ pub fn lookup_values(
         let module = &mut modules[&module_sym];
 
         if let Some(target) = module.names.get_value(name) {
-            value_graph_map[&module_sym].add_dependency(source, target);
+            value_graph_map[&module_sym].add_dependency(source, target.sym);
             module
                 .nodes
-                .insert_meta(id, ResolvedValue::Reference(target));
+                .insert_meta(id, ResolvedValue::Reference(target.sym));
         } else {
             report.add_diagnostic(Diagnostic::error(loc, "Value not found").with_help(
                 "Check that the value is defined in this module or has been brought into scope.",

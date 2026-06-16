@@ -3,15 +3,57 @@ use std::{collections::HashMap, ops::Index};
 use crate::symbol::{
     AnySym, FunctorSym, ModuleSym, ModuleTypeSym, Substitute, TypeSym, ValueSym, merge5,
 };
-use kola_tree::node::{AnyName, FunctorName, ModuleName, ModuleTypeName, TypeName, ValueName};
+use kola_tree::node::{AnyName, FunctorName, ModuleName, ModuleTypeName, TypeName, ValueName, Vis};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
+pub struct Binding<S> {
+    pub sym: S,
+    pub vis: Vis,
+}
+
+impl<S> Binding<S> {
+    pub fn new(vis: Vis, sym: S) -> Self {
+        Self { sym, vis }
+    }
+
+    pub fn map_sym<T>(self, f: impl FnOnce(S) -> T) -> Binding<T> {
+        Binding {
+            sym: f(self.sym),
+            vis: self.vis,
+        }
+    }
+}
+
+impl<S> Substitute for Binding<S>
+where
+    S: Substitute,
+{
+    fn try_subst(&self, s: &HashMap<AnySym, AnySym>) -> Option<Self>
+    where
+        Self: Sized,
+    {
+        if let Some(sym) = self.sym.try_subst(s) {
+            Some(Self::new(self.vis, sym))
+        } else {
+            None
+        }
+    }
+
+    fn subst_mut(&mut self, s: &HashMap<AnySym, AnySym>)
+    where
+        Self: Sized,
+    {
+        self.sym.subst_mut(s);
+    }
+}
 
 #[derive(Debug, Clone, Default)]
 pub struct NameMap {
-    functors: HashMap<FunctorName, FunctorSym>,
-    module_types: HashMap<ModuleTypeName, ModuleTypeSym>,
-    modules: HashMap<ModuleName, ModuleSym>,
-    types: HashMap<TypeName, TypeSym>,
-    values: HashMap<ValueName, ValueSym>,
+    functors: HashMap<FunctorName, Binding<FunctorSym>>,
+    module_types: HashMap<ModuleTypeName, Binding<ModuleTypeSym>>,
+    modules: HashMap<ModuleName, Binding<ModuleSym>>,
+    types: HashMap<TypeName, Binding<TypeSym>>,
+    values: HashMap<ValueName, Binding<ValueSym>>,
 }
 
 impl NameMap {
@@ -21,32 +63,53 @@ impl NameMap {
     }
 
     #[inline]
-    pub fn insert_functor(&mut self, name: FunctorName, sym: FunctorSym) -> Option<FunctorSym> {
-        self.functors.insert(name, sym)
+    pub fn insert_functor(
+        &mut self,
+        name: FunctorName,
+        vis: Vis,
+        sym: FunctorSym,
+    ) -> Option<Binding<FunctorSym>> {
+        self.functors.insert(name, Binding::new(vis, sym))
     }
 
     #[inline]
     pub fn insert_module_type(
         &mut self,
         name: ModuleTypeName,
+        vis: Vis,
         sym: ModuleTypeSym,
-    ) -> Option<ModuleTypeSym> {
-        self.module_types.insert(name, sym)
+    ) -> Option<Binding<ModuleTypeSym>> {
+        self.module_types.insert(name, Binding::new(vis, sym))
     }
 
     #[inline]
-    pub fn insert_module(&mut self, name: ModuleName, sym: ModuleSym) -> Option<ModuleSym> {
-        self.modules.insert(name, sym)
+    pub fn insert_module(
+        &mut self,
+        name: ModuleName,
+        vis: Vis,
+        sym: ModuleSym,
+    ) -> Option<Binding<ModuleSym>> {
+        self.modules.insert(name, Binding::new(vis, sym))
     }
 
     #[inline]
-    pub fn insert_type(&mut self, name: TypeName, sym: TypeSym) -> Option<TypeSym> {
-        self.types.insert(name, sym)
+    pub fn insert_type(
+        &mut self,
+        name: TypeName,
+        vis: Vis,
+        sym: TypeSym,
+    ) -> Option<Binding<TypeSym>> {
+        self.types.insert(name, Binding::new(vis, sym))
     }
 
     #[inline]
-    pub fn insert_value(&mut self, name: ValueName, sym: ValueSym) -> Option<ValueSym> {
-        self.values.insert(name, sym)
+    pub fn insert_value(
+        &mut self,
+        name: ValueName,
+        vis: Vis,
+        sym: ValueSym,
+    ) -> Option<Binding<ValueSym>> {
+        self.values.insert(name, Binding::new(vis, sym))
     }
 
     #[inline]
@@ -62,75 +125,87 @@ impl NameMap {
     }
 
     #[inline]
-    pub fn get_functor(&self, name: FunctorName) -> Option<FunctorSym> {
+    pub fn get_functor(&self, name: FunctorName) -> Option<Binding<FunctorSym>> {
         self.functors.get(&name).copied()
     }
 
     #[inline]
-    pub fn get_module_type(&self, name: ModuleTypeName) -> Option<ModuleTypeSym> {
+    pub fn get_module_type(&self, name: ModuleTypeName) -> Option<Binding<ModuleTypeSym>> {
         self.module_types.get(&name).copied()
     }
 
     #[inline]
-    pub fn get_module(&self, name: ModuleName) -> Option<ModuleSym> {
+    pub fn get_module(&self, name: ModuleName) -> Option<Binding<ModuleSym>> {
         self.modules.get(&name).copied()
     }
 
     #[inline]
-    pub fn get_type(&self, name: TypeName) -> Option<TypeSym> {
+    pub fn get_type(&self, name: TypeName) -> Option<Binding<TypeSym>> {
         self.types.get(&name).copied()
     }
 
     #[inline]
-    pub fn get_value(&self, name: ValueName) -> Option<ValueSym> {
+    pub fn get_value(&self, name: ValueName) -> Option<Binding<ValueSym>> {
         self.values.get(&name).copied()
     }
 
     #[inline]
-    pub fn get(&self, name: impl Into<AnyName>) -> Option<AnySym> {
+    pub fn get(&self, name: impl Into<AnyName>) -> Option<Binding<AnySym>> {
         match name.into() {
-            AnyName::Functor(name) => self.get_functor(name).map(AnySym::Functor),
-            AnyName::ModuleType(name) => self.get_module_type(name).map(AnySym::ModuleType),
-            AnyName::Module(name) => self.get_module(name).map(AnySym::Module),
-            AnyName::Type(name) => self.get_type(name).map(AnySym::Type),
-            AnyName::Value(name) => self.get_value(name).map(AnySym::Value),
+            AnyName::Functor(name) => self.get_functor(name).map(|b| b.map_sym(AnySym::Functor)),
+            AnyName::ModuleType(name) => self
+                .get_module_type(name)
+                .map(|b| b.map_sym(AnySym::ModuleType)),
+            AnyName::Module(name) => self.get_module(name).map(|b| b.map_sym(AnySym::Module)),
+            AnyName::Type(name) => self.get_type(name).map(|b| b.map_sym(AnySym::Type)),
+            AnyName::Value(name) => self.get_value(name).map(|b| b.map_sym(AnySym::Value)),
             _ => None,
         }
     }
 
     #[inline]
-    pub fn iter_functors(&self) -> impl Iterator<Item = (FunctorName, FunctorSym)> {
-        self.functors.iter().map(|(&name, &sym)| (name, sym))
+    pub fn iter_functors(&self) -> impl Iterator<Item = (FunctorName, Vis, FunctorSym)> {
+        self.functors
+            .iter()
+            .map(|(&name, binding)| (name, binding.vis, binding.sym))
     }
 
     #[inline]
-    pub fn iter_module_types(&self) -> impl Iterator<Item = (ModuleTypeName, ModuleTypeSym)> {
-        self.module_types.iter().map(|(&name, &sym)| (name, sym))
+    pub fn iter_module_types(&self) -> impl Iterator<Item = (ModuleTypeName, Vis, ModuleTypeSym)> {
+        self.module_types
+            .iter()
+            .map(|(&name, binding)| (name, binding.vis, binding.sym))
     }
 
     #[inline]
-    pub fn iter_modules(&self) -> impl Iterator<Item = (ModuleName, ModuleSym)> {
-        self.modules.iter().map(|(&name, &sym)| (name, sym))
+    pub fn iter_modules(&self) -> impl Iterator<Item = (ModuleName, Vis, ModuleSym)> {
+        self.modules
+            .iter()
+            .map(|(&name, binding)| (name, binding.vis, binding.sym))
     }
 
     #[inline]
-    pub fn iter_types(&self) -> impl Iterator<Item = (TypeName, TypeSym)> {
-        self.types.iter().map(|(&name, &sym)| (name, sym))
+    pub fn iter_types(&self) -> impl Iterator<Item = (TypeName, Vis, TypeSym)> {
+        self.types
+            .iter()
+            .map(|(&name, binding)| (name, binding.vis, binding.sym))
     }
 
     #[inline]
-    pub fn iter_values(&self) -> impl Iterator<Item = (ValueName, ValueSym)> {
-        self.values.iter().map(|(&name, &sym)| (name, sym))
+    pub fn iter_values(&self) -> impl Iterator<Item = (ValueName, Vis, ValueSym)> {
+        self.values
+            .iter()
+            .map(|(&name, binding)| (name, binding.vis, binding.sym))
     }
 
     pub fn into_raw(
         self,
     ) -> (
-        HashMap<FunctorName, FunctorSym>,
-        HashMap<ModuleTypeName, ModuleTypeSym>,
-        HashMap<ModuleName, ModuleSym>,
-        HashMap<TypeName, TypeSym>,
-        HashMap<ValueName, ValueSym>,
+        HashMap<FunctorName, Binding<FunctorSym>>,
+        HashMap<ModuleTypeName, Binding<ModuleTypeSym>>,
+        HashMap<ModuleName, Binding<ModuleSym>>,
+        HashMap<TypeName, Binding<TypeSym>>,
+        HashMap<ValueName, Binding<ValueSym>>,
     ) {
         (
             self.functors,
@@ -143,7 +218,7 @@ impl NameMap {
 }
 
 impl Index<FunctorName> for NameMap {
-    type Output = FunctorSym;
+    type Output = Binding<FunctorSym>;
 
     fn index(&self, index: FunctorName) -> &Self::Output {
         &self.functors[&index]
@@ -151,7 +226,7 @@ impl Index<FunctorName> for NameMap {
 }
 
 impl Index<ModuleTypeName> for NameMap {
-    type Output = ModuleTypeSym;
+    type Output = Binding<ModuleTypeSym>;
 
     fn index(&self, index: ModuleTypeName) -> &Self::Output {
         &self.module_types[&index]
@@ -159,7 +234,7 @@ impl Index<ModuleTypeName> for NameMap {
 }
 
 impl Index<ModuleName> for NameMap {
-    type Output = ModuleSym;
+    type Output = Binding<ModuleSym>;
 
     fn index(&self, index: ModuleName) -> &Self::Output {
         &self.modules[&index]
@@ -167,7 +242,7 @@ impl Index<ModuleName> for NameMap {
 }
 
 impl Index<TypeName> for NameMap {
-    type Output = TypeSym;
+    type Output = Binding<TypeSym>;
 
     fn index(&self, index: TypeName) -> &Self::Output {
         &self.types[&index]
@@ -175,7 +250,7 @@ impl Index<TypeName> for NameMap {
 }
 
 impl Index<ValueName> for NameMap {
-    type Output = ValueSym;
+    type Output = Binding<ValueSym>;
 
     fn index(&self, index: ValueName) -> &Self::Output {
         &self.values[&index]

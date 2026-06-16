@@ -11,6 +11,7 @@ use kola_tree::{
 use crate::{
     def::DefMap,
     env::ModuleMap,
+    name::Binding,
     phase::ResolvedModule,
     symbol::{AnySym, ModuleGraph, ModuleSym, Substitute},
 };
@@ -78,13 +79,13 @@ pub fn lookup_modules(
             // Safe to direct index because the macro-structure is fully resolved!
             let current_module = &modules[&current_sym];
 
-            if let Some(next_sym) = current_module.names.get_module(*name) {
-                let def = defs[next_sym];
-
+            if let Some(Binding { sym: next_sym, vis }) = current_module.names.get_module(*name) {
                 // 3. Enforce export visibility rules
-                if def.vis != Vis::Export && current_sym != *source {
+                if vis != Vis::Export && current_sym != *source {
+                    let (_, def_loc) = defs[next_sym];
+
                     report.add_diagnostic(
-                        Diagnostic::error(def.loc, "Module not exported")
+                        Diagnostic::error(def_loc, "Module not exported")
                             .with_help("Only exported modules can be used in paths.")
                             .with_trace([("Within this module path".into(), *loc)]),
                     );

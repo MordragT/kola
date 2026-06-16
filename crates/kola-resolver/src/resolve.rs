@@ -95,6 +95,12 @@ pub fn resolve(
         }
     }
 
+    debug!(
+        "{} Module Graph:\n{}",
+        "Module Graph".bold().bright_white(),
+        module_graph.to_dot()
+    );
+
     elaborate_modules(
         elab_jobs,
         &mut lookups,

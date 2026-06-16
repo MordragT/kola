@@ -373,21 +373,22 @@ where
             let module_def = &self.defs[module_sym];
             let module = &self.modules[&module_sym];
 
-            let Some(type_sym) = module.names.get_type(type_name) else {
+            let Some(binding) = module.names.get_type(type_name) else {
                 return ControlFlow::Break(
                     Diagnostic::error(span, "Type not found")
-                        .with_trace([("In this module".to_owned(), module_def.loc)]),
+                        .with_trace([("In this module".to_owned(), module_def.1)]),
                 );
             };
 
-            let poly_t = &self.global_env[type_sym];
-            let type_def = self.defs[type_sym];
+            let poly_t = &self.global_env[binding.sym];
 
-            if type_def.vis != Vis::Export {
+            if binding.vis != Vis::Export {
+                let type_def = self.defs[binding.sym];
+
                 return ControlFlow::Break(
                     Diagnostic::error(span, "Type is not exported from the module").with_trace([
-                        ("In this module".to_owned(), module_def.loc),
-                        ("Declared here".to_owned(), type_def.loc),
+                        ("In this module".to_owned(), module_def.1),
+                        ("Declared here".to_owned(), type_def.1),
                     ]),
                 );
             }
@@ -981,21 +982,22 @@ where
             let module_def = &self.defs[module_sym];
             let module = &self.modules[&module_sym];
 
-            let Some(value_sym) = module.names.get_value(name) else {
+            let Some(binding) = module.names.get_value(name) else {
                 return ControlFlow::Break(
                     Diagnostic::error(span, "Value not found")
-                        .with_trace([("In this module".to_owned(), module_def.loc)]),
+                        .with_trace([("In this module".to_owned(), module_def.1)]),
                 );
             };
 
-            let poly_t = &self.global_env[value_sym];
-            let value_def = self.defs[value_sym];
+            let poly_t = &self.global_env[binding.sym];
 
-            if value_def.vis != Vis::Export {
+            if binding.vis != Vis::Export {
+                let value_def = self.defs[binding.sym];
+
                 return ControlFlow::Break(
                     Diagnostic::error(span, "Value is not exported from the module").with_trace([
-                        ("In this module".to_owned(), module_def.loc),
-                        ("Declared here".to_owned(), value_def.loc),
+                        ("In this module".to_owned(), module_def.1),
+                        ("Declared here".to_owned(), value_def.1),
                     ]),
                 );
             }
