@@ -82,7 +82,6 @@ impl Phase for TypePhase {
     type Vis = !;
     type ValueBind = types::PolyType; // is a MonoType for the typer but a PolyType for the Printer (after generalization)
     type TypeBind = types::PolyType;
-    type OpaqueTypeBind = !;
     type ModuleBind = !;
     type ModuleTypeBind = !;
     type FunctorParam = !;
@@ -90,7 +89,7 @@ impl Phase for TypePhase {
     type Bind = !;
 
     type ModuleError = !;
-    type Module = !;
+    type ModuleBody = !;
     type ModulePath = !;
     type ModuleImport = !;
     type FunctorArgs = !;
@@ -99,7 +98,6 @@ impl Phase for TypePhase {
 
     type SpecError = !;
     type ValueSpec = !;
-    type OpaqueTypeSpec = !;
     type ModuleSpec = !;
     type Spec = !;
     type ConcreteModuleType = !;

@@ -376,7 +376,7 @@ where
             }
 
             // Walk the body in the fresh scope
-            let _ = this.walk_module(*body, tree);
+            let _ = this.walk_module_body(*body, tree);
 
             param_syms
         });
@@ -559,7 +559,11 @@ where
         }
     }
 
-    fn visit_module(&mut self, id: Id<node::Module>, tree: &T) -> ControlFlow<Self::BreakValue> {
+    fn visit_module_body(
+        &mut self,
+        id: Id<node::ModuleBody>,
+        tree: &T,
+    ) -> ControlFlow<Self::BreakValue> {
         // Either inline module or root module
         let sym = self.bindings.module.take().unwrap_or(self.root);
         let loc = self.span(id);
@@ -570,7 +574,7 @@ where
         }
 
         let (_, module) = self.with_fresh_scope(sym, loc, |this| {
-            let _ = this.walk_module(id, tree);
+            let _ = this.walk_module_body(id, tree);
         });
 
         self.modules.insert(sym, module);

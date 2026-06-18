@@ -1,27 +1,3 @@
-//! # Module and Functor Abstract Syntax Tree (AST) Nodes
-//!
-//! This module defines the Abstract Syntax Tree (AST) nodes that compose Kola's module system,
-//! including explicit support for SML-style functors. The design within this layer is structured
-//! to enable first-class module expressions and integrate functor constructs into the existing
-//! module binding mechanisms.
-//!
-//! A `Functor` definition is implemented as a direct variant of `ModuleExpr`. This design treats
-//! functors as first-class entities within the module system, allowing them to be bound to names
-//! via `ModuleBind` or used directly as expressions. The `body` of a `Functor` is also a
-//! `ModuleExpr`, which inherently supports curried, multi-argument functors through nested
-//! `Functor` expressions.
-//!
-//! `FunctorCall` is similarly defined as a `ModuleExpr`. This represents the application of a
-//! functor as an expression, where its evaluation during a later compilation phase yields a
-//! concrete module.
-//!
-//! The `Functor` struct includes a `param_ty` field of type `Id<ModuleType>`. This structural
-//! constraint requires all functor definitions to explicitly declare the concrete `ModuleType`
-//! (signature) expected for their input module parameter. This mandates a clear interface
-//! specification for functor arguments at the AST level. This means that there is no module-level
-//! polymorphism. Functor types are implicitly modeled as transformations from one concrete
-//! `ModuleType` to another, with their precise semantic representation and inference handled
-//! in subsequent type checking stages.
 use derive_more::{From, IntoIterator};
 use enum_as_inner::EnumAsInner;
 use kola_macros::{Inspector, Notate};
@@ -68,7 +44,6 @@ impl BindError {
 pub enum Bind {
     Value(Id<ValueBind>),
     Type(Id<TypeBind>),
-    OpaqueType(Id<OpaqueTypeBind>),
     Module(Id<ModuleBind>),
     ModuleType(Id<ModuleTypeBind>),
     Functor(Id<FunctorBind>),
@@ -80,7 +55,6 @@ impl<'a> Notate<'a> for NodePrinter<'a, Bind> {
         match *self.value {
             Bind::Value(v) => self.to(v).notate(arena),
             Bind::Type(t) => self.to(t).notate(arena),
-            Bind::OpaqueType(o) => self.to(o).notate(arena),
             Bind::Module(m) => self.to(m).notate(arena),
             Bind::ModuleType(mt) => self.to(mt).notate(arena),
             Bind::Functor(f) => self.to(f).notate(arena),
@@ -162,26 +136,6 @@ impl ValueBind {
     }
 }
 
-// #[derive(
-//     Debug,
-//     Notate,
-//     Inspector,
-//     Clone,
-//     Copy,
-//     PartialEq,
-//     Eq,
-//     PartialOrd,
-//     Ord,
-//     Hash,
-//     Serialize,
-//     Deserialize,
-// )]
-// #[notate(color = "green")]
-// pub struct TypeAlias {
-//     pub name: Id<TypeName>,
-//     pub ty: Id<QualifiedType>,
-// }
-
 #[derive(
     Debug,
     Notate,
@@ -202,48 +156,6 @@ pub struct TypeBind {
     pub name: Id<TypeName>,
     pub ty_scheme: Id<TypeScheme>,
 }
-
-#[derive(
-    Debug,
-    Notate,
-    Inspector,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    Hash,
-    Serialize,
-    Deserialize,
-)]
-#[notate(color = "green")]
-pub struct OpaqueTypeBind {
-    // Opaque types are always public,
-    // because opaque private types do not make sense
-    pub name: Id<TypeName>,
-    pub ty_scheme: Id<TypeScheme>,
-}
-
-// #[derive(
-//     Debug,
-//     Notate,
-//     Inspector,
-//     Clone,
-//     Copy,
-//     PartialEq,
-//     Eq,
-//     PartialOrd,
-//     Ord,
-//     Hash,
-//     Serialize,
-//     Deserialize,
-// )]
-// #[notate(color = "green")]
-// pub struct ModuleAlias {
-//     pub name: Id<ModuleName>,
-//     pub ty: Id<ModulePath>,
-// }
 
 #[derive(
     Debug,
@@ -317,7 +229,7 @@ pub struct FunctorBind {
     pub vis: Id<Vis>,
     pub name: Id<FunctorName>,
     pub params: Vec<Id<FunctorParam>>,
-    pub body: Id<Module>,
+    pub body: Id<ModuleBody>,
 }
 
 impl FunctorBind {
@@ -325,7 +237,7 @@ impl FunctorBind {
         vis: Vis,
         name: FunctorName,
         params: impl IntoIterator<Item = FunctorParam>,
-        body: Module,
+        body: ModuleBody,
         builder: &mut TreeBuilder,
     ) -> Id<Self> {
         let vis = builder.insert(vis);
@@ -362,7 +274,7 @@ impl FunctorBind {
 )]
 pub enum ModuleExpr {
     Error(Id<ModuleError>),
-    Module(Id<Module>),
+    Body(Id<ModuleBody>),
     Import(Id<ModuleImport>),
     Path(Id<ModulePath>),
     FunctorApp(Id<FunctorApp>),
@@ -372,7 +284,7 @@ impl<'a> Notate<'a> for NodePrinter<'a, ModuleExpr> {
     fn notate(&self, arena: &'a Bump) -> Notation<'a> {
         match *self.value {
             ModuleExpr::Error(id) => self.to(id).notate(arena),
-            ModuleExpr::Module(id) => self.to(id).notate(arena),
+            ModuleExpr::Body(id) => self.to(id).notate(arena),
             ModuleExpr::Import(id) => self.to(id).notate(arena),
             ModuleExpr::Path(id) => self.to(id).notate(arena),
             ModuleExpr::FunctorApp(id) => self.to(id).notate(arena),
@@ -404,7 +316,7 @@ pub struct ModuleError;
 )]
 #[notate(color = "green")]
 #[into_iterator(owned, ref)]
-pub struct Module(pub Vec<Id<Bind>>);
+pub struct ModuleBody(pub Vec<Id<Bind>>);
 
 #[derive(
     Debug,
@@ -478,7 +390,6 @@ pub struct FunctorApp {
     pub args: Id<FunctorArgs>,
 }
 
-// TODO should I only allow ModuleTypes to be bound or should I change this to a ModuleSigBind ?
 #[derive(
     Debug,
     Notate,
@@ -584,7 +495,6 @@ pub struct ConcreteModuleType(pub Vec<Id<Spec>>);
 )]
 pub enum Spec {
     Value(Id<ValueSpec>),
-    OpaqueType(Id<OpaqueTypeSpec>),
     Module(Id<ModuleSpec>),
     Error(Id<SpecError>),
 }
@@ -593,7 +503,6 @@ impl<'a> Notate<'a> for NodePrinter<'a, Spec> {
     fn notate(&self, arena: &'a Bump) -> Notation<'a> {
         match *self.value {
             Spec::Value(v) => self.to(v).notate(arena),
-            Spec::OpaqueType(o) => self.to(o).notate(arena),
             Spec::Module(m) => self.to(m).notate(arena),
             Spec::Error(e) => self.to(e).notate(arena),
         }
@@ -625,26 +534,6 @@ pub struct SpecError;
 pub struct ValueSpec {
     pub name: Id<ValueName>,
     pub ty: Id<TypeScheme>,
-}
-
-// opaque type T : * -> *
-#[derive(
-    Debug,
-    Notate,
-    Inspector,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    Hash,
-    Serialize,
-    Deserialize,
-)]
-#[notate(color = "green")]
-pub struct OpaqueTypeSpec {
-    pub name: Id<TypeName>,
 }
 
 // module M : { ... }

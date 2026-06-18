@@ -207,7 +207,6 @@ impl Phase for ResolvePhase {
     type Vis = !; // Visibility modifiers don't need symbols
     type ValueBind = ValueSym; // Creates symbol for the bound value
     type TypeBind = TypeSym; // Creates symbol for the bound type
-    type OpaqueTypeBind = TypeSym; // Creates symbol for the opaque type
     type ModuleBind = ModuleSym; // Creates symbol for the module alias
     type ModuleTypeBind = ModuleTypeSym; // Module type bindings - future feature
     type FunctorParam = !;
@@ -217,7 +216,7 @@ impl Phase for ResolvePhase {
     // ===== MODULES =====
     // Module constructs - create or reference module symbols
     type ModuleError = !;
-    type Module = ModuleSym; // Creates symbol for the module definition
+    type ModuleBody = ModuleSym; // Creates symbol for the module definition
     type ModulePath = ResolvedModule; // Resolves to the referenced module symbol
     type ModuleImport = ModuleSym; // Creates symbol for the imported module binding
     type FunctorArgs = !;
@@ -230,7 +229,6 @@ impl Phase for ResolvePhase {
     // These define names in their respective namespaces but don't need resolver symbols yet
     type SpecError = !;
     type ValueSpec = !; // Future: Could get ValueSym for signature checking
-    type OpaqueTypeSpec = !; // Future: Opaque type specifications
     type ModuleSpec = !; // Future: Module signature specifications
     type Spec = !; // Future: Generic specification wrapper
     type ConcreteModuleType = !;

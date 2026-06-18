@@ -7,7 +7,7 @@ use kola_utils::{
 use crate::{
     id::Id,
     meta::{Meta, Phase},
-    node::{Module, Node},
+    node::{ModuleBody, Node},
 };
 
 pub type TreeMap = IndexMap<PathKey, Tree>;
@@ -157,7 +157,7 @@ impl TreeBuilder {
         self.nodes.truncate(len);
     }
 
-    pub fn finish(self, root: Id<Module>) -> Tree {
+    pub fn finish(self, root: Id<ModuleBody>) -> Tree {
         let Self { nodes } = self;
 
         Tree { nodes, root }
@@ -223,7 +223,7 @@ impl TreeView for TreeBuilder {
 #[derive(Debug, Clone)]
 pub struct Tree {
     nodes: Vec<Node>,
-    root: Id<Module>,
+    root: Id<ModuleBody>,
 }
 
 impl TreeView for Tree {
@@ -277,7 +277,7 @@ impl TreeView for Tree {
 }
 
 impl Tree {
-    pub fn root_id(&self) -> Id<Module> {
+    pub fn root_id(&self) -> Id<ModuleBody> {
         self.root
     }
 }

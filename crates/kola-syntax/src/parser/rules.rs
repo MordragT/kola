@@ -105,15 +105,15 @@ where
         )
 }
 
-pub const fn module_parser<'t>() -> OpaqueFn<ParseInput<'t>, Id<node::Module>> {
-    lazy::<ParseInput<'t>, Id<node::Module>, ModuleCombinator>()
+pub const fn module_parser<'t>() -> OpaqueFn<ParseInput<'t>, Id<node::ModuleBody>> {
+    lazy::<ParseInput<'t>, Id<node::ModuleBody>, ModuleCombinator>()
 }
 
 #[derive(Debug, Clone, Copy)]
 pub struct ModuleCombinator;
 
-impl<'t> Lazy<ParseInput<'t>, Id<node::Module>> for ModuleCombinator {
-    type Combinator = impl const KolaCombinator<'t, Id<node::Module>>;
+impl<'t> Lazy<ParseInput<'t>, Id<node::ModuleBody>> for ModuleCombinator {
+    type Combinator = impl const KolaCombinator<'t, Id<node::ModuleBody>>;
     const COMBINATOR: Self::Combinator = {
         let module = module_parser();
 
@@ -239,7 +239,7 @@ impl<'t> Lazy<ParseInput<'t>, Id<node::Module>> for ModuleCombinator {
                 },
             )
             .collect()
-            .map_to_node(node::Module)
+            .map_to_node(node::ModuleBody)
             .delimited_by(open_delim(OpenT::BRACE), close_delim(CloseT::BRACE))
     };
 }
@@ -264,18 +264,13 @@ impl<'t> Lazy<ParseInput<'t>, Id<node::ModuleType>> for ModuleTypeCombinator {
             .map_to_node(|(name, ty)| node::ValueSpec { name, ty })
             .to_spec();
 
-        let type_spec = kw(KwT::TYPE)
-            .ignore_then(type_name_parser().throw("Expected type name after 'type'"))
-            .map_to_node(|name| node::OpaqueTypeSpec { name })
-            .to_spec();
-
         let module_spec = kw(KwT::MODULE)
             .ignore_then(module_name_parser().throw("Expected module name after 'module'"))
             .then(ctrl(CtrlT::COLON).ignore_then(module_type))
             .map_to_node(|(name, ty)| node::ModuleSpec { name, ty })
             .to_spec();
 
-        let spec = choice((value_spec, type_spec, module_spec));
+        let spec = choice((value_spec, module_spec));
 
         let concrete = spec
             .separated_by(ctrl(CtrlT::COMMA))
@@ -1902,12 +1897,12 @@ mod tests {
         let mut interner = StrInterner::default();
 
         let ParseResult { node, builder, .. } =
-            try_parse_str_with("{ x : Num, type T }", module_type_parser(), &mut interner);
+            try_parse_str_with("{ x : Num }", module_type_parser(), &mut interner);
 
         let inspector = NodeInspector::new(node, &builder, &interner);
         inspector
             .to_concrete()
-            .has_inner_count(2)
+            .has_inner_count(1)
             .inner_at(0)
             .to_value()
             .name()
@@ -1921,12 +1916,6 @@ mod tests {
             .to_qualified()
             .ty()
             .has_name("Num");
-        inspector
-            .to_concrete()
-            .inner_at(1)
-            .to_opaque_type()
-            .name()
-            .has_name("T");
     }
 
     #[test]
@@ -1948,7 +1937,7 @@ mod tests {
             .inner_at(0)
             .to_module()
             .value()
-            .to_module()
+            .to_body()
             .has_inner_count(1)
             .inner_at(0)
             .to_value()
@@ -1958,7 +1947,7 @@ mod tests {
             .inner_at(0)
             .to_module()
             .value()
-            .to_module()
+            .to_body()
             .inner_at(0)
             .to_value()
             .value()
@@ -2013,7 +2002,7 @@ mod tests {
             .inner_at(0)
             .to_module()
             .value()
-            .to_module()
+            .to_body()
             .has_inner_count(1)
             .inner_at(0)
             .to_value()
@@ -2023,7 +2012,7 @@ mod tests {
             .inner_at(0)
             .to_module()
             .value()
-            .to_module()
+            .to_body()
             .inner_at(0)
             .to_value()
             .value()

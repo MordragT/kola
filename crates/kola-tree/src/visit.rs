@@ -93,20 +93,18 @@ impl_visitable!(
     Vis,
     ValueBind,
     TypeBind,
-    OpaqueTypeBind,
     ModuleBind,
     ModuleTypeBind,
     FunctorBind,
     Bind,
     ModuleError,
-    Module,
+    ModuleBody,
     ModulePath,
     ModuleImport,
     FunctorApp,
     ModuleExpr,
     SpecError,
     ValueSpec,
-    OpaqueTypeSpec,
     ModuleSpec,
     Spec,
     ConcreteModuleType,
@@ -1279,7 +1277,11 @@ pub trait Visitor<T: TreeView> {
         ControlFlow::Continue(())
     }
 
-    fn walk_module(&mut self, id: Id<node::Module>, tree: &T) -> ControlFlow<Self::BreakValue> {
+    fn walk_module_body(
+        &mut self,
+        id: Id<node::ModuleBody>,
+        tree: &T,
+    ) -> ControlFlow<Self::BreakValue> {
         let module = id.get(tree);
 
         for id in module {
@@ -1289,8 +1291,12 @@ pub trait Visitor<T: TreeView> {
         ControlFlow::Continue(())
     }
 
-    fn visit_module(&mut self, id: Id<node::Module>, tree: &T) -> ControlFlow<Self::BreakValue> {
-        self.walk_module(id, tree)
+    fn visit_module_body(
+        &mut self,
+        id: Id<node::ModuleBody>,
+        tree: &T,
+    ) -> ControlFlow<Self::BreakValue> {
+        self.walk_module_body(id, tree)
     }
 
     fn walk_module_path(
@@ -1378,7 +1384,7 @@ pub trait Visitor<T: TreeView> {
         match *id.get(tree) {
             Error(id) => self.visit_module_error(id, tree),
             Import(id) => self.visit_module_import(id, tree),
-            Module(id) => self.visit_module(id, tree),
+            Body(id) => self.visit_module_body(id, tree),
             Path(id) => self.visit_module_path(id, tree),
             FunctorApp(id) => self.visit_functor_app(id, tree),
         }
@@ -1450,27 +1456,6 @@ pub trait Visitor<T: TreeView> {
         tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
         self.walk_type_bind(id, tree)
-    }
-
-    fn walk_opaque_type_bind(
-        &mut self,
-        id: Id<node::OpaqueTypeBind>,
-        tree: &T,
-    ) -> ControlFlow<Self::BreakValue> {
-        let node::OpaqueTypeBind { name, ty_scheme } = *id.get(tree);
-
-        self.visit_type_name(name, tree)?;
-        self.visit_type_scheme(ty_scheme, tree)?;
-
-        ControlFlow::Continue(())
-    }
-
-    fn visit_opaque_type_bind(
-        &mut self,
-        id: Id<node::OpaqueTypeBind>,
-        tree: &T,
-    ) -> ControlFlow<Self::BreakValue> {
-        self.walk_opaque_type_bind(id, tree)
     }
 
     fn walk_module_bind(
@@ -1565,7 +1550,7 @@ pub trait Visitor<T: TreeView> {
             self.visit_functor_param(*param, tree)?;
         }
 
-        self.visit_module(*body, tree)?;
+        self.visit_module_body(*body, tree)?;
 
         ControlFlow::Continue(())
     }
@@ -1592,7 +1577,6 @@ pub trait Visitor<T: TreeView> {
         match *id.get(tree) {
             Value(id) => self.visit_value_bind(id, tree),
             Type(id) => self.visit_type_bind(id, tree),
-            OpaqueType(id) => self.visit_opaque_type_bind(id, tree),
             Module(id) => self.visit_module_bind(id, tree),
             ModuleType(id) => self.visit_module_type_bind(id, tree),
             Functor(id) => self.visit_functor_bind(id, tree),
@@ -1633,26 +1617,6 @@ pub trait Visitor<T: TreeView> {
         self.walk_value_spec(id, tree)
     }
 
-    fn walk_opaque_type_spec(
-        &mut self,
-        id: Id<node::OpaqueTypeSpec>,
-        tree: &T,
-    ) -> ControlFlow<Self::BreakValue> {
-        let node::OpaqueTypeSpec { name } = *id.get(tree);
-
-        self.visit_type_name(name, tree)?;
-
-        ControlFlow::Continue(())
-    }
-
-    fn visit_opaque_type_spec(
-        &mut self,
-        id: Id<node::OpaqueTypeSpec>,
-        tree: &T,
-    ) -> ControlFlow<Self::BreakValue> {
-        self.walk_opaque_type_spec(id, tree)
-    }
-
     fn walk_module_spec(
         &mut self,
         id: Id<node::ModuleSpec>,
@@ -1679,7 +1643,6 @@ pub trait Visitor<T: TreeView> {
 
         match *id.get(tree) {
             Value(id) => self.visit_value_spec(id, tree),
-            OpaqueType(id) => self.visit_opaque_type_spec(id, tree),
             Module(id) => self.visit_module_spec(id, tree),
             Error(id) => self.visit_spec_error(id, tree),
         }
