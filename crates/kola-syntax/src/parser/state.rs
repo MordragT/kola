@@ -1,19 +1,22 @@
 use std::borrow::Cow;
 
 use kola_span::{Loc, Report, ReportCheckpoint};
-use kola_tree::prelude::*;
+use kola_tree::{
+    node::{StorageCheckpoint, UniversalStorage},
+    prelude::*,
+};
 use kola_utils::interner::{StrInterner, StrKey};
 
 use crate::{
-    loc::{LocPhase, LocVec},
+    loc::LocVec,
     token::{SemanticToken, SemanticTokens},
 };
 
 #[derive(Debug, Clone, Copy)]
 pub struct StateCheckpoint {
-    pub tokens_len: usize,
-    pub nodes_len: usize,
-    pub spans_len: usize,
+    pub tokens: usize,
+    pub builder: StorageCheckpoint,
+    pub spans: StorageCheckpoint,
     pub recovered: ReportCheckpoint,
 }
 
@@ -39,27 +42,26 @@ impl<'t> State<'t> {
 
     pub fn span<T>(&self, id: Id<T>) -> Loc
     where
-        T: MetaCast<LocPhase, Meta = Loc>,
+        UniversalStorage<Loc>: Column<T, Item = Loc>,
     {
-        *self.spans.meta(id)
+        *self.spans.get(id)
     }
 
     pub fn insert<T>(&mut self, node: T, meta: Loc) -> Id<T>
     where
-        Node: From<T>,
-        T: MetaCast<LocPhase, Meta = Loc>,
+        NodeStorage: Column<T, Item = T>,
+        UniversalStorage<Loc>: Column<T, Item = Loc>,
     {
-        let id = self.builder.insert(node);
-        self.spans.push(T::upcast(meta));
-
+        let id = self.builder.alloc(node);
+        self.spans.vec_mut().push(meta);
         id
     }
 
     pub fn insert_as<U, T>(&mut self, node: T, meta: Loc) -> Id<U>
     where
-        Node: From<T> + From<U>,
-        T: MetaCast<LocPhase, Meta = Loc>,
-        U: From<Id<T>> + MetaCast<LocPhase, Meta = Loc>,
+        NodeStorage: Column<T, Item = T> + Column<U, Item = U>,
+        UniversalStorage<Loc>: Column<T, Item = Loc> + Column<U, Item = Loc>,
+        U: From<Id<T>>,
     {
         let id = self.insert(node, meta.clone());
         let u = U::from(id);
@@ -77,18 +79,18 @@ impl<'t> State<'t> {
     #[inline]
     pub fn checkpoint(&self) -> StateCheckpoint {
         StateCheckpoint {
-            tokens_len: self.tokens.len(),
-            nodes_len: self.builder.count(),
-            spans_len: self.spans.len(),
+            tokens: self.tokens.len(),
+            builder: self.builder.checkpoint(),
+            spans: self.spans.checkpoint(),
             recovered: self.recovered.checkpoint(),
         }
     }
 
     #[inline]
-    pub fn reset(&mut self, checkpoint: StateCheckpoint) {
-        self.tokens.truncate(checkpoint.tokens_len);
-        self.builder.truncate(checkpoint.nodes_len);
-        self.spans.truncate(checkpoint.spans_len);
-        self.recovered.reset(checkpoint.recovered);
+    pub fn reset(&mut self, cp: StateCheckpoint) {
+        self.tokens.truncate(cp.tokens);
+        self.builder.restore(&cp.builder);
+        self.spans.restore(&cp.spans);
+        self.recovered.reset(cp.recovered);
     }
 }

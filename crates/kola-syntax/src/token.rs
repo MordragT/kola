@@ -1,6 +1,6 @@
 use derive_more::Display;
 use indexmap::IndexMap;
-use paste::paste;
+use pastey::paste;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
@@ -160,7 +160,7 @@ macro_rules! define_token_type {
             }
 
             // Implement conversion from wrapper to semantic type
-            impl<'t> const From<[<$name T>]<'t>> for $name {
+            const impl<'t> From<[<$name T>]<'t>> for $name {
                 fn from(value: [<$name T>]<'t>) -> Self {
                     match value {
                         $(v if v == [<$name T>]::[<$variant:snake:upper>] => $name::$variant,)*
@@ -170,14 +170,14 @@ macro_rules! define_token_type {
             }
 
             // Implement conversion from semantic type to SemanticToken
-            impl<'t> const From<$name> for SemanticToken {
+            const impl<'t> From<$name> for SemanticToken {
                 fn from(value: $name) -> Self {
                     Self::$name(value)
                 }
             }
 
             // Implement conversion from wrapper to SemanticToken
-            impl<'t> const From<[<$name T>]<'t>> for SemanticToken {
+            const impl<'t> From<[<$name T>]<'t>> for SemanticToken {
                 fn from(value: [<$name T>]<'t>) -> Self {
                     Self::$name(value.into())
                 }

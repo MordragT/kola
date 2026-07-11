@@ -239,7 +239,7 @@ pub const trait Combinator<I: Input, O: Debug>: Parser<I, O> + Copy {
     }
 }
 
-impl<I, O, P> const Combinator<I, O> for P
+const impl<I, O, P> Combinator<I, O> for P
 where
     O: Debug,
     I: Input,
@@ -297,7 +297,7 @@ pub const trait IterCombinator<I: Input, O>: IterParser<I, O> + Copy {
     // count
 }
 
-impl<I, O, IP> const IterCombinator<I, O> for IP
+const impl<I, O, IP> IterCombinator<I, O> for IP
 where
     I: Input,
     IP: IterParser<I, O> + Copy,

@@ -1,4 +1,4 @@
-use derive_more::{From, IntoIterator};
+use derive_more::From;
 use enum_as_inner::EnumAsInner;
 use kola_macros::{Inspector, Notate};
 use kola_utils::interner::PathKey;
@@ -6,12 +6,13 @@ use serde::{Deserialize, Serialize};
 
 use kola_print::prelude::*;
 
-use super::{Expr, ModuleName, TypeScheme};
+use super::{
+    Expr, FunctorName, ModuleName, ModuleTypeName, NodeStorage, TypeName, TypeScheme, ValueName,
+};
 use crate::{
-    id::Id,
-    node::{FunctorName, ModuleTypeName, TypeName, ValueName},
+    id::{Id, SliceId},
     print::NodePrinter,
-    tree::{TreeBuilder, TreeView},
+    tree::TreeBuilder,
 };
 
 #[derive(
@@ -22,7 +23,7 @@ pub struct BindError;
 
 impl BindError {
     pub fn new_in(builder: &mut TreeBuilder) -> Id<Self> {
-        builder.insert(Self)
+        builder.alloc(Self)
     }
 }
 
@@ -73,7 +74,7 @@ impl Bind {
     ) -> Id<Self> {
         let bind = ValueBind::new_in(vis, name, ty_scheme, value, builder);
 
-        builder.insert(Self::Value(bind))
+        builder.alloc(Self::Value(bind))
     }
 }
 
@@ -122,12 +123,12 @@ impl ValueBind {
         value: Expr,
         builder: &mut TreeBuilder,
     ) -> Id<Self> {
-        let vis = builder.insert(vis);
-        let name = builder.insert(name);
-        let ty_scheme = ty_scheme.map(|ty| builder.insert(ty));
-        let value = builder.insert(value);
+        let vis = builder.alloc(vis);
+        let name = builder.alloc(name);
+        let ty_scheme = ty_scheme.map(|ty| builder.alloc(ty));
+        let value = builder.alloc(value);
 
-        builder.insert(Self {
+        builder.alloc(Self {
             vis,
             name,
             ty_scheme,
@@ -187,12 +188,12 @@ impl ModuleBind {
         value: ModuleExpr,
         builder: &mut TreeBuilder,
     ) -> Id<Self> {
-        let vis = builder.insert(vis);
-        let name = builder.insert(name);
-        let ty = ty.map(|sig| builder.insert(sig));
-        let value = builder.insert(value);
+        let vis = builder.alloc(vis);
+        let name = builder.alloc(name);
+        let ty = ty.map(|sig| builder.alloc(sig));
+        let value = builder.alloc(value);
 
-        builder.insert(Self {
+        builder.alloc(Self {
             vis,
             name,
             ty,
@@ -228,7 +229,7 @@ pub struct FunctorParam {
 pub struct FunctorBind {
     pub vis: Id<Vis>,
     pub name: Id<FunctorName>,
-    pub params: Vec<Id<FunctorParam>>,
+    pub params: SliceId<FunctorParam>,
     pub body: Id<ModuleBody>,
 }
 
@@ -240,15 +241,17 @@ impl FunctorBind {
         body: ModuleBody,
         builder: &mut TreeBuilder,
     ) -> Id<Self> {
-        let vis = builder.insert(vis);
-        let name = builder.insert(name);
+        let vis = builder.alloc(vis);
+        let name = builder.alloc(name);
+
         let params = params
             .into_iter()
-            .map(|param| builder.insert(param))
-            .collect();
-        let body = builder.insert(body);
+            .map(|param| builder.alloc(param))
+            .collect::<Vec<_>>();
+        let params = builder.alloc_slice(params);
+        let body = builder.alloc(body);
 
-        builder.insert(Self {
+        builder.alloc(Self {
             vis,
             name,
             params,
@@ -304,7 +307,6 @@ pub struct ModuleError;
     Notate,
     Inspector,
     From,
-    IntoIterator,
     Clone,
     PartialEq,
     Eq,
@@ -315,15 +317,13 @@ pub struct ModuleError;
     Deserialize,
 )]
 #[notate(color = "green")]
-#[into_iterator(owned, ref)]
-pub struct ModuleBody(pub Vec<Id<Bind>>);
+pub struct ModuleBody(pub SliceId<Bind>);
 
 #[derive(
     Debug,
     Notate,
     Inspector,
     From,
-    IntoIterator,
     Clone,
     PartialEq,
     Eq,
@@ -334,12 +334,11 @@ pub struct ModuleBody(pub Vec<Id<Bind>>);
     Deserialize,
 )]
 #[notate(color = "cyan")]
-#[into_iterator(owned, ref)]
-pub struct ModulePath(pub Vec<Id<ModuleName>>);
+pub struct ModulePath(pub SliceId<ModuleName>);
 
 impl ModulePath {
-    pub fn get(&self, index: usize, tree: &impl TreeView) -> ModuleName {
-        *self.0[index].get(tree)
+    pub fn get(&self, index: usize, arena: &NodeStorage) -> ModuleName {
+        *self.0.iter(arena).nth(index).unwrap().get(arena)
     }
 }
 
@@ -366,7 +365,6 @@ pub struct ModuleImport(pub PathKey);
     Notate,
     Inspector,
     From,
-    IntoIterator,
     Clone,
     PartialEq,
     Eq,
@@ -377,8 +375,7 @@ pub struct ModuleImport(pub PathKey);
     Deserialize,
 )]
 #[notate(color = "green")]
-#[into_iterator(owned, ref)]
-pub struct FunctorArgs(pub Vec<Id<ModulePath>>);
+pub struct FunctorArgs(pub SliceId<ModulePath>);
 
 #[derive(
     Debug, Notate, Inspector, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
@@ -464,7 +461,6 @@ pub struct QualifiedModuleType {
     Notate,
     Inspector,
     From,
-    IntoIterator,
     Clone,
     PartialEq,
     Eq,
@@ -475,8 +471,7 @@ pub struct QualifiedModuleType {
     Deserialize,
 )]
 #[notate(color = "green")]
-#[into_iterator(owned, ref)]
-pub struct ConcreteModuleType(pub Vec<Id<Spec>>);
+pub struct ConcreteModuleType(pub SliceId<Spec>);
 
 #[derive(
     Debug,

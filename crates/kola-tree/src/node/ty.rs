@@ -1,4 +1,4 @@
-use derive_more::{From, IntoIterator};
+use derive_more::From;
 use enum_as_inner::EnumAsInner;
 use kola_macros::{Inspector, Notate};
 use serde::{Deserialize, Serialize};
@@ -7,11 +7,11 @@ use std::{borrow::Borrow, ops::Deref};
 use kola_print::prelude::*;
 use kola_utils::interner::StrKey;
 
+use super::{KindName, ModulePath, NodeStorage, TypeName, ValueName};
+
 use crate::{
-    id::Id,
-    node::{KindName, ModulePath, TypeName, ValueName},
+    id::{Id, SliceId},
     print::NodePrinter,
-    tree::TreeView,
 };
 
 #[derive(
@@ -31,7 +31,7 @@ use crate::{
 #[notate(color = "green")]
 pub struct EffectOpType {
     pub name: Id<ValueName>,
-    pub ty: Id<Type>,
+    pub ty: Id<TypeExpr>,
 }
 
 #[derive(
@@ -39,7 +39,6 @@ pub struct EffectOpType {
     Notate,
     Inspector,
     From,
-    IntoIterator,
     Clone,
     PartialEq,
     Eq,
@@ -50,8 +49,7 @@ pub struct EffectOpType {
     Deserialize,
 )]
 #[notate(color = "green")]
-#[into_iterator(owned, ref)]
-pub struct EffectType(pub Vec<Id<EffectOpType>>);
+pub struct EffectType(pub SliceId<EffectOpType>);
 
 #[derive(
     Debug,
@@ -69,7 +67,7 @@ pub struct EffectType(pub Vec<Id<EffectOpType>>);
 )]
 #[notate(color = "cyan")]
 pub struct CompType {
-    pub ty: Id<Type>,
+    pub ty: Id<TypeExpr>,
     pub effect: Option<Id<EffectType>>,
 }
 
@@ -194,7 +192,7 @@ pub enum LabelOrVar {
 #[notate(color = "cyan")]
 pub struct RecordFieldType {
     pub label_or_var: Id<LabelOrVar>,
-    pub ty: Id<Type>,
+    pub ty: Id<TypeExpr>,
 }
 
 #[derive(
@@ -213,13 +211,13 @@ pub struct RecordFieldType {
 )]
 #[notate(color = "blue")]
 pub struct RecordType {
-    pub fields: Vec<Id<RecordFieldType>>,
+    pub fields: SliceId<RecordFieldType>,
     pub extension: Option<Id<TypeName>>,
 }
 
 impl RecordType {
-    pub fn get(&self, index: usize, tree: &impl TreeView) -> RecordFieldType {
-        *self.fields[index].get(tree)
+    pub fn get(&self, index: usize, arena: &NodeStorage) -> RecordFieldType {
+        *self.fields.iter(arena).nth(index).unwrap().get(arena)
     }
 }
 
@@ -240,7 +238,7 @@ impl RecordType {
 #[notate(color = "cyan")]
 pub struct TagType {
     pub name: Id<ValueName>, // These are data constructors, therefore ValueName is used
-    pub ty: Option<Id<Type>>,
+    pub ty: Option<Id<TypeExpr>>,
 }
 
 #[derive(
@@ -259,13 +257,13 @@ pub struct TagType {
 )]
 #[notate(color = "blue")]
 pub struct VariantType {
-    pub tags: Vec<Id<TagType>>,
+    pub tags: SliceId<TagType>,
     pub extension: Option<Id<TypeName>>,
 }
 
 impl VariantType {
-    pub fn get(&self, index: usize, tree: &impl TreeView) -> TagType {
-        *self.tags[index].get(tree)
+    pub fn get(&self, index: usize, arena: &NodeStorage) -> TagType {
+        *self.tags.iter(arena).nth(index).unwrap().get(arena)
     }
 }
 
@@ -286,7 +284,7 @@ impl VariantType {
 )]
 #[notate(color = "cyan")]
 pub struct FuncType {
-    pub input: Id<Type>,
+    pub input: Id<TypeExpr>,
     pub output: Id<CompType>,
 }
 
@@ -306,8 +304,8 @@ pub struct FuncType {
 )]
 #[notate(color = "cyan")]
 pub struct TypeApplication {
-    pub constructor: Id<Type>,
-    pub arg: Id<Type>,
+    pub constructor: Id<TypeExpr>,
+    pub arg: Id<TypeExpr>,
 }
 
 #[derive(
@@ -325,7 +323,7 @@ pub struct TypeApplication {
     Serialize,
     Deserialize,
 )]
-pub enum Type {
+pub enum TypeExpr {
     Error(Id<TypeError>),
     Qualified(Id<QualifiedType>),
     // TODO put a TypeVar here as variant
@@ -335,15 +333,15 @@ pub enum Type {
     Application(Id<TypeApplication>),
 }
 
-impl<'a> Notate<'a> for NodePrinter<'a, Type> {
+impl<'a> Notate<'a> for NodePrinter<'a, TypeExpr> {
     fn notate(&self, arena: &'a Bump) -> Notation<'a> {
         match *self.value {
-            Type::Error(e) => self.to(e).notate(arena),
-            Type::Qualified(p) => self.to(p).notate(arena),
-            Type::Record(r) => self.to(r).notate(arena),
-            Type::Variant(v) => self.to(v).notate(arena),
-            Type::Func(f) => self.to(f).notate(arena),
-            Type::Application(a) => self.to(a).notate(arena),
+            TypeExpr::Error(e) => self.to(e).notate(arena),
+            TypeExpr::Qualified(p) => self.to(p).notate(arena),
+            TypeExpr::Record(r) => self.to(r).notate(arena),
+            TypeExpr::Variant(v) => self.to(v).notate(arena),
+            TypeExpr::Func(f) => self.to(f).notate(arena),
+            TypeExpr::Application(a) => self.to(a).notate(arena),
         }
     }
 }
@@ -373,7 +371,6 @@ pub struct TypeVarBind {
     Notate,
     Inspector,
     From,
-    IntoIterator,
     Clone,
     PartialEq,
     Eq,
@@ -384,8 +381,7 @@ pub struct TypeVarBind {
     Deserialize,
 )]
 #[notate(color = "cyan")]
-#[into_iterator(owned, ref)]
-pub struct ForallBinder(pub Vec<Id<TypeVarBind>>);
+pub struct ForallBinder(pub SliceId<TypeVarBind>);
 
 #[derive(
     Debug,
@@ -404,5 +400,5 @@ pub struct ForallBinder(pub Vec<Id<TypeVarBind>>);
 #[notate(color = "green")]
 pub struct TypeScheme {
     pub forall: Option<Id<ForallBinder>>,
-    pub ty: Id<Type>,
+    pub ty: Id<TypeExpr>,
 }

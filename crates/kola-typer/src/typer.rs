@@ -308,18 +308,18 @@ where
         ControlFlow::Continue(())
     }
 
-    fn visit_type(&mut self, id: Id<node::Type>, tree: &T) -> ControlFlow<Self::BreakValue> {
+    fn visit_type(&mut self, id: Id<node::TypeExpr>, tree: &T) -> ControlFlow<Self::BreakValue> {
         self.walk_type(id, tree)?;
 
         let poly_t = match *id.get(tree) {
-            node::Type::Error(_) => todo!(),
-            node::Type::Qualified(path_id) => self.types.meta(path_id).clone(),
-            node::Type::Func(func_id) => PolyType::from_mono(self.types.meta(func_id).clone()),
-            node::Type::Application(app_id) => self.types.meta(app_id).clone(),
-            node::Type::Record(record_id) => {
+            node::TypeExpr::Error(_) => todo!(),
+            node::TypeExpr::Qualified(path_id) => self.types.meta(path_id).clone(),
+            node::TypeExpr::Func(func_id) => PolyType::from_mono(self.types.meta(func_id).clone()),
+            node::TypeExpr::Application(app_id) => self.types.meta(app_id).clone(),
+            node::TypeExpr::Record(record_id) => {
                 PolyType::from_mono(self.types.meta(record_id).clone())
             }
-            node::Type::Variant(variant_id) => {
+            node::TypeExpr::Variant(variant_id) => {
                 PolyType::from_mono(self.types.meta(variant_id).clone())
             }
         };

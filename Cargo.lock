@@ -245,6 +245,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "convert_case"
+version = "0.11.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "affbf0190ed2caf063e3def54ff444b449371d55c58e513a95ab98eca50adb49"
+dependencies = [
+ "unicode-segmentation",
+]
+
+[[package]]
 name = "crc32fast"
 version = "1.5.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -322,7 +331,7 @@ version = "2.1.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "799a97264921d8623a957f6c3b9011f3b5492f557bbb7a5a19b7fa6d06ba8dcb"
 dependencies = [
- "convert_case",
+ "convert_case 0.10.0",
  "proc-macro2",
  "quote",
  "rustc_version",
@@ -792,6 +801,27 @@ dependencies = [
 ]
 
 [[package]]
+name = "kinded"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "53c48b3aa70f02a317f180f7d4e0834bbd2ffa293e352a132bb2ac9351736635"
+dependencies = [
+ "kinded_macros",
+]
+
+[[package]]
+name = "kinded_macros"
+version = "0.5.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "feeb717349480c3d8125f84afdd78e9d7128004d8e2a561c35b3bbd76363d085"
+dependencies = [
+ "convert_case 0.11.0",
+ "proc-macro2",
+ "quote",
+ "syn",
+]
+
+[[package]]
 name = "kola"
 version = "0.1.0"
 dependencies = [
@@ -967,7 +997,7 @@ dependencies = [
  "kola-span",
  "kola-tree",
  "kola-utils",
- "paste",
+ "pastey",
  "serde",
  "thiserror",
  "unescaper",
@@ -981,10 +1011,11 @@ dependencies = [
  "derive_more",
  "enum-as-inner",
  "indexmap",
+ "kinded",
  "kola-macros",
  "kola-print",
  "kola-utils",
- "paste",
+ "pastey",
  "serde",
 ]
 
@@ -1189,10 +1220,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "paste"
-version = "1.0.15"
+name = "pastey"
+version = "0.2.3"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "57c0d7b74b563b49d38dae00a0c37d4d6de9b432382b2892f0574ddcae73fd0a"
+checksum = "2ee67f1008b1ba2321834326597b8e186293b049a023cdef258527550b9935b4"
 
 [[package]]
 name = "pathdiff"

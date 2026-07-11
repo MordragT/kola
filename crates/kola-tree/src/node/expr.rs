@@ -1,16 +1,15 @@
-use derive_more::{Display, From, IntoIterator};
+use derive_more::{Display, From};
 use enum_as_inner::EnumAsInner;
 use kola_macros::{Inspector, Notate};
 use kola_print::prelude::*;
 use kola_utils::interner::StrKey;
 use serde::{Deserialize, Serialize};
 
-use super::{ModulePath, Pat, Type, ValueName};
+use super::{ModulePath, NodeStorage, Pat, QualifiedType, TypeExpr, ValueName};
 use crate::{
-    id::Id,
-    node::QualifiedType,
+    id::{Id, SliceId},
     print::NodePrinter,
-    tree::{TreeBuilder, TreeView},
+    tree::TreeBuilder,
 };
 
 #[derive(
@@ -21,7 +20,7 @@ pub struct ExprError;
 
 impl ExprError {
     pub fn new_in(builder: &mut TreeBuilder) -> Id<Self> {
-        builder.insert(Self)
+        builder.alloc(Self)
     }
 }
 
@@ -36,7 +35,7 @@ pub enum LiteralExpr {
 
 impl LiteralExpr {
     pub fn new_in(value: impl Into<Self>, builder: &mut TreeBuilder) -> Id<Self> {
-        builder.insert(value.into())
+        builder.alloc(value.into())
     }
 }
 
@@ -69,9 +68,8 @@ impl<'a> Notate<'a> for NodePrinter<'a, LiteralExpr> {
     Debug,
     Notate,
     Inspector,
-    From,
-    IntoIterator,
     Clone,
+    Copy,
     PartialEq,
     Eq,
     PartialOrd,
@@ -81,12 +79,11 @@ impl<'a> Notate<'a> for NodePrinter<'a, LiteralExpr> {
     Deserialize,
 )]
 #[notate(color = "blue")]
-#[into_iterator(owned, ref)]
-pub struct ListExpr(pub Vec<Id<Expr>>);
+pub struct ListExpr(pub SliceId<Expr>);
 
 impl ListExpr {
     pub fn empty_in(builder: &mut TreeBuilder) -> Id<Self> {
-        builder.insert(Self(Vec::new()))
+        builder.alloc(Self(SliceId::empty()))
     }
 
     pub fn new_in<I>(elements: I, builder: &mut TreeBuilder) -> Id<Self>
@@ -94,11 +91,12 @@ impl ListExpr {
         I: IntoIterator,
         I::Item: Into<Expr>,
     {
-        let elements = elements
+        let ids: Vec<Id<Expr>> = elements
             .into_iter()
-            .map(|e| builder.insert(e.into()))
+            .map(|e| builder.alloc(e.into()))
             .collect();
-        builder.insert(Self(elements))
+        let slice = builder.alloc_slice(ids);
+        builder.alloc(Self(slice))
     }
 }
 
@@ -119,34 +117,34 @@ impl ListExpr {
 #[notate(color = "blue")]
 pub struct RecordField {
     pub label: Id<ValueName>,
-    pub ty: Option<Id<Type>>,
+    pub ty: Option<Id<TypeExpr>>,
     pub value: Id<Expr>,
 }
 
 impl RecordField {
     pub fn new_in(
         label: impl Into<ValueName>,
-        ty: Option<Type>,
+        ty: Option<TypeExpr>,
         value: impl Into<Expr>,
         builder: &mut TreeBuilder,
     ) -> Id<Self> {
-        let label = builder.insert(label.into());
-        let ty = ty.map(|t| builder.insert(t));
-        let value = builder.insert(value.into());
+        let label = builder.alloc(label.into());
+        let ty = ty.map(|t| builder.alloc(t));
+        let value = builder.alloc(value.into());
 
-        builder.insert(Self { label, ty, value })
+        builder.alloc(Self { label, ty, value })
     }
 
-    pub fn label(self, tree: &impl TreeView) -> ValueName {
-        *self.label.get(tree)
+    pub fn label(self, arena: &NodeStorage) -> ValueName {
+        *self.label.get(arena)
     }
 
-    pub fn type_(self, tree: &impl TreeView) -> Option<Type> {
-        self.ty.map(|t| *t.get(tree))
+    pub fn type_(self, arena: &NodeStorage) -> Option<TypeExpr> {
+        self.ty.map(|t| *t.get(arena))
     }
 
-    pub fn value(self, tree: &impl TreeView) -> Expr {
-        *self.value.get(tree)
+    pub fn value(self, arena: &NodeStorage) -> Expr {
+        *self.value.get(arena)
     }
 }
 
@@ -155,9 +153,8 @@ impl RecordField {
     Debug,
     Notate,
     Inspector,
-    From,
-    IntoIterator,
     Clone,
+    Copy,
     PartialEq,
     Eq,
     PartialOrd,
@@ -167,16 +164,15 @@ impl RecordField {
     Deserialize,
 )]
 #[notate(color = "blue")]
-#[into_iterator(owned, ref)]
-pub struct RecordExpr(pub Vec<Id<RecordField>>);
+pub struct RecordExpr(pub SliceId<RecordField>);
 
 impl RecordExpr {
     pub fn new_in<I>(fields: I, builder: &mut TreeBuilder) -> Id<Self>
     where
         I: IntoIterator<Item = Id<RecordField>>,
     {
-        let fields = fields.into_iter().collect();
-        builder.insert(Self(fields))
+        let slice = builder.alloc_slice(fields);
+        builder.alloc(Self(slice))
     }
 }
 
@@ -198,28 +194,28 @@ impl RecordExpr {
 #[notate(color = "blue")]
 pub struct RecordExtendExpr {
     pub source: Id<Expr>,
-    pub source_type: Option<Id<Type>>,
+    pub source_type: Option<Id<TypeExpr>>,
     pub field_path: Id<FieldPath>,
     pub value: Id<Expr>,
-    pub value_type: Option<Id<Type>>,
+    pub value_type: Option<Id<TypeExpr>>,
 }
 
 impl RecordExtendExpr {
     pub fn new_in(
         source: impl Into<Expr>,
-        source_type: Option<Type>,
+        source_type: Option<TypeExpr>,
         field_path: impl Into<FieldPath>,
         value: impl Into<Expr>,
-        value_type: Option<Type>,
+        value_type: Option<TypeExpr>,
         builder: &mut TreeBuilder,
     ) -> Id<Self> {
-        let source = builder.insert(source.into());
-        let source_type = source_type.map(|t| builder.insert(t));
-        let field_path = builder.insert(field_path.into());
-        let value = builder.insert(value.into());
-        let value_type = value_type.map(|t| builder.insert(t));
+        let source = builder.alloc(source.into());
+        let source_type = source_type.map(|t| builder.alloc(t));
+        let field_path = builder.alloc(field_path.into());
+        let value = builder.alloc(value.into());
+        let value_type = value_type.map(|t| builder.alloc(t));
 
-        builder.insert(Self {
+        builder.alloc(Self {
             source,
             source_type,
             field_path,
@@ -228,24 +224,24 @@ impl RecordExtendExpr {
         })
     }
 
-    pub fn source(self, tree: &impl TreeView) -> Expr {
-        *self.source.get(tree)
+    pub fn source(self, arena: &NodeStorage) -> Expr {
+        *self.source.get(arena)
     }
 
-    pub fn source_type(self, tree: &impl TreeView) -> Option<Type> {
-        self.source_type.map(|t| *t.get(tree))
+    pub fn source_type(self, arena: &NodeStorage) -> Option<TypeExpr> {
+        self.source_type.map(|t| *t.get(arena))
     }
 
-    pub fn field_path(self, tree: &impl TreeView) -> &FieldPath {
-        self.field_path.get(tree)
+    pub fn field_path(self, arena: &NodeStorage) -> &FieldPath {
+        self.field_path.get(arena)
     }
 
-    pub fn value(self, tree: &impl TreeView) -> Expr {
-        *self.value.get(tree)
+    pub fn value(self, arena: &NodeStorage) -> Expr {
+        *self.value.get(arena)
     }
 
-    pub fn value_type(self, tree: &impl TreeView) -> Option<Type> {
-        self.value_type.map(|t| *t.get(tree))
+    pub fn value_type(self, arena: &NodeStorage) -> Option<TypeExpr> {
+        self.value_type.map(|t| *t.get(arena))
     }
 }
 
@@ -267,25 +263,25 @@ impl RecordExtendExpr {
 #[notate(color = "blue")]
 pub struct RecordRestrictExpr {
     pub source: Id<Expr>,
-    pub source_type: Option<Id<Type>>,
+    pub source_type: Option<Id<TypeExpr>>,
     pub field_path: Id<FieldPath>,
-    pub value_type: Option<Id<Type>>,
+    pub value_type: Option<Id<TypeExpr>>,
 }
 
 impl RecordRestrictExpr {
     pub fn new_in(
         source: impl Into<Expr>,
-        source_type: Option<Type>,
+        source_type: Option<TypeExpr>,
         field_path: impl Into<FieldPath>,
-        value_type: Option<Type>,
+        value_type: Option<TypeExpr>,
         builder: &mut TreeBuilder,
     ) -> Id<Self> {
-        let source = builder.insert(source.into());
-        let source_type = source_type.map(|t| builder.insert(t));
-        let field_path = builder.insert(field_path.into());
-        let value_type = value_type.map(|t| builder.insert(t));
+        let source = builder.alloc(source.into());
+        let source_type = source_type.map(|t| builder.alloc(t));
+        let field_path = builder.alloc(field_path.into());
+        let value_type = value_type.map(|t| builder.alloc(t));
 
-        builder.insert(Self {
+        builder.alloc(Self {
             source,
             source_type,
             field_path,
@@ -293,20 +289,20 @@ impl RecordRestrictExpr {
         })
     }
 
-    pub fn source(self, tree: &impl TreeView) -> Expr {
-        *self.source.get(tree)
+    pub fn source(self, arena: &NodeStorage) -> Expr {
+        *self.source.get(arena)
     }
 
-    pub fn source_type(self, tree: &impl TreeView) -> Option<Type> {
-        self.source_type.map(|t| *t.get(tree))
+    pub fn source_type(self, arena: &NodeStorage) -> Option<TypeExpr> {
+        self.source_type.map(|t| *t.get(arena))
     }
 
-    pub fn field_path(self, tree: &impl TreeView) -> &FieldPath {
-        self.field_path.get(tree)
+    pub fn field_path(self, arena: &NodeStorage) -> &FieldPath {
+        self.field_path.get(arena)
     }
 
-    pub fn value_type(self, tree: &impl TreeView) -> Option<Type> {
-        self.value_type.map(|t| *t.get(tree))
+    pub fn value_type(self, arena: &NodeStorage) -> Option<TypeExpr> {
+        self.value_type.map(|t| *t.get(arena))
     }
 }
 
@@ -346,31 +342,31 @@ impl<'a> Notate<'a> for NodePrinter<'a, RecordUpdateOp> {
 #[notate(color = "blue")]
 pub struct RecordUpdateExpr {
     pub source: Id<Expr>,
-    pub source_type: Option<Id<Type>>,
+    pub source_type: Option<Id<TypeExpr>>,
     pub field_path: Id<FieldPath>,
     pub op: Id<RecordUpdateOp>,
     pub value: Id<Expr>,
-    pub value_type: Option<Id<Type>>,
+    pub value_type: Option<Id<TypeExpr>>,
 }
 
 impl RecordUpdateExpr {
     pub fn new_in(
         source: impl Into<Expr>,
-        source_type: Option<Type>,
+        source_type: Option<TypeExpr>,
         field_path: impl Into<FieldPath>,
         op: RecordUpdateOp,
         value: impl Into<Expr>,
-        value_type: Option<Type>,
+        value_type: Option<TypeExpr>,
         builder: &mut TreeBuilder,
     ) -> Id<Self> {
-        let source = builder.insert(source.into());
-        let source_type = source_type.map(|t| builder.insert(t));
-        let field_path = builder.insert(field_path.into());
-        let op = builder.insert(op);
-        let value = builder.insert(value.into());
-        let value_type = value_type.map(|t| builder.insert(t));
+        let source = builder.alloc(source.into());
+        let source_type = source_type.map(|t| builder.alloc(t));
+        let field_path = builder.alloc(field_path.into());
+        let op = builder.alloc(op);
+        let value = builder.alloc(value.into());
+        let value_type = value_type.map(|t| builder.alloc(t));
 
-        builder.insert(Self {
+        builder.alloc(Self {
             source,
             source_type,
             field_path,
@@ -380,28 +376,28 @@ impl RecordUpdateExpr {
         })
     }
 
-    pub fn source(self, tree: &impl TreeView) -> Expr {
-        *self.source.get(tree)
+    pub fn source(self, arena: &NodeStorage) -> Expr {
+        *self.source.get(arena)
     }
 
-    pub fn source_type(self, tree: &impl TreeView) -> Option<Type> {
-        self.source_type.map(|t| *t.get(tree))
+    pub fn source_type(self, arena: &NodeStorage) -> Option<TypeExpr> {
+        self.source_type.map(|t| *t.get(arena))
     }
 
-    pub fn field_path(self, tree: &impl TreeView) -> &FieldPath {
-        self.field_path.get(tree)
+    pub fn field_path(self, arena: &NodeStorage) -> &FieldPath {
+        self.field_path.get(arena)
     }
 
-    pub fn op(self, tree: &impl TreeView) -> RecordUpdateOp {
-        *self.op.get(tree)
+    pub fn op(self, arena: &NodeStorage) -> RecordUpdateOp {
+        *self.op.get(arena)
     }
 
-    pub fn value(self, tree: &impl TreeView) -> Expr {
-        *self.value.get(tree)
+    pub fn value(self, arena: &NodeStorage) -> Expr {
+        *self.value.get(arena)
     }
 
-    pub fn value_type(self, tree: &impl TreeView) -> Option<Type> {
-        self.value_type.map(|t| *t.get(tree))
+    pub fn value_type(self, arena: &NodeStorage) -> Option<TypeExpr> {
+        self.value_type.map(|t| *t.get(arena))
     }
 }
 
@@ -431,10 +427,10 @@ impl RecordMergeExpr {
         rhs: impl Into<Expr>,
         builder: &mut TreeBuilder,
     ) -> Id<Self> {
-        let lhs = builder.insert(lhs.into());
-        let rhs = builder.insert(rhs.into());
+        let lhs = builder.alloc(lhs.into());
+        let rhs = builder.alloc(rhs.into());
 
-        builder.insert(Self { lhs, rhs })
+        builder.alloc(Self { lhs, rhs })
     }
 }
 
@@ -442,10 +438,8 @@ impl RecordMergeExpr {
     Debug,
     Notate,
     Inspector,
-    From,
-    IntoIterator,
-    Default,
     Clone,
+    Copy,
     PartialEq,
     Eq,
     PartialOrd,
@@ -455,9 +449,7 @@ impl RecordMergeExpr {
     Deserialize,
 )]
 #[notate(color = "blue")]
-#[from(forward)]
-#[into_iterator(owned, ref)]
-pub struct FieldPath(pub Vec<Id<ValueName>>);
+pub struct FieldPath(pub SliceId<ValueName>);
 
 impl FieldPath {
     pub fn new_in<I>(fields: I, builder: &mut TreeBuilder) -> Id<Self>
@@ -465,19 +457,20 @@ impl FieldPath {
         I: IntoIterator,
         I::Item: Into<ValueName>,
     {
-        let fields = fields
+        let ids: Vec<Id<ValueName>> = fields
             .into_iter()
-            .map(|f| builder.insert(f.into()))
+            .map(|f| builder.alloc(f.into()))
             .collect();
-        builder.insert(Self(fields))
+        let slice = builder.alloc_slice(ids);
+        builder.alloc(Self(slice))
     }
 
-    pub fn get(&self, index: usize, tree: &impl TreeView) -> ValueName {
-        *self.0[index].get(tree)
+    pub fn get(&self, index: usize, arena: &NodeStorage) -> ValueName {
+        *self.0.iter(arena).nth(index).unwrap().get(arena)
     }
 
-    pub fn iter(&self) -> std::slice::Iter<'_, Id<ValueName>> {
-        (&self).into_iter()
+    pub fn iter<'a>(&'a self, arena: &'a NodeStorage) -> impl Iterator<Item = Id<ValueName>> + 'a {
+        self.0.iter(arena)
     }
 }
 
@@ -509,9 +502,9 @@ impl QualifiedExpr {
         field_path: Option<Id<FieldPath>>,
         builder: &mut TreeBuilder,
     ) -> Id<Self> {
-        let source = builder.insert(source.into());
+        let source = builder.alloc(source.into());
 
-        builder.insert(Self {
+        builder.alloc(Self {
             module_path,
             source,
             field_path,
@@ -555,18 +548,18 @@ pub struct UnaryExpr {
 
 impl UnaryExpr {
     pub fn new_in(op: UnaryOp, operand: impl Into<Expr>, builder: &mut TreeBuilder) -> Id<Self> {
-        let op = builder.insert(op);
-        let operand = builder.insert(operand.into());
+        let op = builder.alloc(op);
+        let operand = builder.alloc(operand.into());
 
-        builder.insert(Self { op, operand })
+        builder.alloc(Self { op, operand })
     }
 
-    pub fn op(self, tree: &impl TreeView) -> UnaryOp {
-        *self.op.get(tree)
+    pub fn op(self, arena: &NodeStorage) -> UnaryOp {
+        *self.op.get(arena)
     }
 
-    pub fn operand(self, tree: &impl TreeView) -> Expr {
-        *self.operand.get(tree)
+    pub fn operand(self, arena: &NodeStorage) -> Expr {
+        *self.operand.get(arena)
     }
 }
 
@@ -579,18 +572,14 @@ pub enum BinaryOp {
     Mul,
     Div,
     Rem,
-    // Comparison
     Less,
     Greater,
     LessEq,
     GreaterEq,
-    // Logical
     And,
     Or,
-    // Equality
     Eq,
     NotEq,
-    // ?
     Concat,
 }
 
@@ -628,23 +617,23 @@ impl BinaryExpr {
         rhs: impl Into<Expr>,
         builder: &mut TreeBuilder,
     ) -> Id<Self> {
-        let op = builder.insert(op);
-        let lhs = builder.insert(lhs.into());
-        let rhs = builder.insert(rhs.into());
+        let op = builder.alloc(op);
+        let lhs = builder.alloc(lhs.into());
+        let rhs = builder.alloc(rhs.into());
 
-        builder.insert(Self { op, lhs, rhs })
+        builder.alloc(Self { op, lhs, rhs })
     }
 
-    pub fn op(self, tree: &impl TreeView) -> BinaryOp {
-        *self.op.get(tree)
+    pub fn op(self, arena: &NodeStorage) -> BinaryOp {
+        *self.op.get(arena)
     }
 
-    pub fn lhs(self, tree: &impl TreeView) -> Expr {
-        *self.lhs.get(tree)
+    pub fn lhs(self, arena: &NodeStorage) -> Expr {
+        *self.lhs.get(arena)
     }
 
-    pub fn rhs(self, tree: &impl TreeView) -> Expr {
-        *self.rhs.get(tree)
+    pub fn rhs(self, arena: &NodeStorage) -> Expr {
+        *self.rhs.get(arena)
     }
 }
 
@@ -665,7 +654,7 @@ impl BinaryExpr {
 #[notate(color = "blue")]
 pub struct LetExpr {
     pub name: Id<ValueName>,
-    pub value_type: Option<Id<Type>>,
+    pub value_type: Option<Id<TypeExpr>>,
     pub value: Id<Expr>,
     pub body: Id<Expr>,
 }
@@ -673,17 +662,17 @@ pub struct LetExpr {
 impl LetExpr {
     pub fn new_in(
         name: impl Into<ValueName>,
-        value_type: Option<Type>,
+        value_type: Option<TypeExpr>,
         value: impl Into<Expr>,
         body: impl Into<Expr>,
         builder: &mut TreeBuilder,
     ) -> Id<Self> {
-        let name = builder.insert(name.into());
-        let value_type = value_type.map(|t| builder.insert(t));
-        let value = builder.insert(value.into());
-        let body = builder.insert(body.into());
+        let name = builder.alloc(name.into());
+        let value_type = value_type.map(|t| builder.alloc(t));
+        let value = builder.alloc(value.into());
+        let body = builder.alloc(body.into());
 
-        builder.insert(Self {
+        builder.alloc(Self {
             name,
             value_type,
             value,
@@ -691,20 +680,20 @@ impl LetExpr {
         })
     }
 
-    pub fn name(self, tree: &impl TreeView) -> ValueName {
-        *self.name.get(tree)
+    pub fn name(self, arena: &NodeStorage) -> ValueName {
+        *self.name.get(arena)
     }
 
-    pub fn value_type(self, tree: &impl TreeView) -> Option<&Type> {
-        self.value_type.map(|t| t.get(tree))
+    pub fn value_type(self, arena: &NodeStorage) -> Option<&TypeExpr> {
+        self.value_type.map(|t| t.get(arena))
     }
 
-    pub fn value(self, tree: &impl TreeView) -> Expr {
-        *self.value.get(tree)
+    pub fn value(self, arena: &NodeStorage) -> Expr {
+        *self.value.get(arena)
     }
 
-    pub fn body(self, tree: &impl TreeView) -> Expr {
-        *self.body.get(tree)
+    pub fn body(self, arena: &NodeStorage) -> Expr {
+        *self.body.get(arena)
     }
 }
 
@@ -736,27 +725,27 @@ impl IfExpr {
         or_else: impl Into<Expr>,
         builder: &mut TreeBuilder,
     ) -> Id<Self> {
-        let pred = builder.insert(pred.into());
-        let then = builder.insert(then.into());
-        let or_else = builder.insert(or_else.into());
+        let pred = builder.alloc(pred.into());
+        let then = builder.alloc(then.into());
+        let or_else = builder.alloc(or_else.into());
 
-        builder.insert(Self {
+        builder.alloc(Self {
             pred,
             then,
             or_else,
         })
     }
 
-    pub fn pred(self, tree: &impl TreeView) -> Expr {
-        *self.pred.get(tree)
+    pub fn pred(self, arena: &NodeStorage) -> Expr {
+        *self.pred.get(arena)
     }
 
-    pub fn then(self, tree: &impl TreeView) -> Expr {
-        *self.then.get(tree)
+    pub fn then(self, arena: &NodeStorage) -> Expr {
+        *self.then.get(arena)
     }
 
-    pub fn or_else(self, tree: &impl TreeView) -> Expr {
-        *self.or_else.get(tree)
+    pub fn or_else(self, arena: &NodeStorage) -> Expr {
+        *self.or_else.get(arena)
     }
 }
 
@@ -786,18 +775,18 @@ impl CaseBranch {
         body: impl Into<Expr>,
         builder: &mut TreeBuilder,
     ) -> Id<Self> {
-        let pat = builder.insert(pat.into());
-        let body = builder.insert(body.into());
+        let pat = builder.alloc(pat.into());
+        let body = builder.alloc(body.into());
 
-        builder.insert(Self { pat, body })
+        builder.alloc(Self { pat, body })
     }
 
-    pub fn pat(self, tree: &impl TreeView) -> Pat {
-        *self.pat.get(tree)
+    pub fn pat(self, arena: &NodeStorage) -> Pat {
+        *self.pat.get(arena)
     }
 
-    pub fn body(self, tree: &impl TreeView) -> Expr {
-        *self.body.get(tree)
+    pub fn body(self, arena: &NodeStorage) -> Expr {
+        *self.body.get(arena)
     }
 }
 
@@ -807,7 +796,7 @@ impl CaseBranch {
 #[notate(color = "blue")]
 pub struct CaseExpr {
     pub source: Id<Expr>,
-    pub branches: Vec<Id<CaseBranch>>,
+    pub branches: SliceId<CaseBranch>,
 }
 
 impl CaseExpr {
@@ -815,14 +804,14 @@ impl CaseExpr {
     where
         I: IntoIterator<Item = Id<CaseBranch>>,
     {
-        let source = builder.insert(source.into());
-        let branches = branches.into_iter().collect();
+        let source = builder.alloc(source.into());
+        let branches = builder.alloc_slice(branches);
 
-        builder.insert(Self { source, branches })
+        builder.alloc(Self { source, branches })
     }
 
-    pub fn source(&self, tree: &impl TreeView) -> Expr {
-        *self.source.get(tree)
+    pub fn source(&self, arena: &NodeStorage) -> Expr {
+        *self.source.get(arena)
     }
 }
 
@@ -852,18 +841,18 @@ impl CallExpr {
         arg: impl Into<Expr>,
         builder: &mut TreeBuilder,
     ) -> Id<Self> {
-        let func = builder.insert(func.into());
-        let arg = builder.insert(arg.into());
+        let func = builder.alloc(func.into());
+        let arg = builder.alloc(arg.into());
 
-        builder.insert(Self { func, arg })
+        builder.alloc(Self { func, arg })
     }
 
-    pub fn func(self, tree: &impl TreeView) -> Expr {
-        *self.func.get(tree)
+    pub fn func(self, arena: &NodeStorage) -> Expr {
+        *self.func.get(arena)
     }
 
-    pub fn arg(self, tree: &impl TreeView) -> Expr {
-        *self.arg.get(tree)
+    pub fn arg(self, arena: &NodeStorage) -> Expr {
+        *self.arg.get(arena)
     }
 }
 
@@ -883,35 +872,35 @@ impl CallExpr {
 )]
 #[notate(color = "blue")]
 pub struct LambdaExpr {
-    pub param: Id<ValueName>, // TODO pattern
-    pub param_type: Option<Id<Type>>,
+    pub param: Id<ValueName>,
+    pub param_type: Option<Id<TypeExpr>>,
     pub body: Id<Expr>,
 }
 
 impl LambdaExpr {
     pub fn new_in(
         param: impl Into<ValueName>,
-        param_type: Option<Type>,
+        param_type: Option<TypeExpr>,
         body: impl Into<Expr>,
         builder: &mut TreeBuilder,
     ) -> Id<Self> {
-        let param = builder.insert(param.into());
-        let param_type = param_type.map(|t| builder.insert(t));
-        let body = builder.insert(body.into());
+        let param = builder.alloc(param.into());
+        let param_type = param_type.map(|t| builder.alloc(t));
+        let body = builder.alloc(body.into());
 
-        builder.insert(Self {
+        builder.alloc(Self {
             param,
             param_type,
             body,
         })
     }
 
-    pub fn param(self, tree: &impl TreeView) -> ValueName {
-        *self.param.get(tree)
+    pub fn param(self, arena: &NodeStorage) -> ValueName {
+        *self.param.get(arena)
     }
 
-    pub fn body(self, tree: &impl TreeView) -> Expr {
-        *self.body.get(tree)
+    pub fn body(self, arena: &NodeStorage) -> Expr {
+        *self.body.get(arena)
     }
 }
 
@@ -954,7 +943,7 @@ pub struct HandlerClause {
 #[notate(color = "blue")]
 pub struct HandleExpr {
     pub source: Id<Expr>,
-    pub clauses: Vec<Id<HandlerClause>>,
+    pub clauses: SliceId<HandlerClause>,
 }
 
 #[derive(
@@ -963,6 +952,7 @@ pub struct HandleExpr {
     Inspector,
     From,
     Clone,
+    Copy,
     PartialEq,
     Eq,
     PartialOrd,
@@ -997,9 +987,8 @@ pub struct TagExpr(pub Id<ValueName>);
 
 impl TagExpr {
     pub fn new_in(tag: impl Into<ValueName>, builder: &mut TreeBuilder) -> Id<Self> {
-        let tag = builder.insert(tag.into());
-
-        builder.insert(Self(tag))
+        let tag = builder.alloc(tag.into());
+        builder.alloc(Self(tag))
     }
 }
 

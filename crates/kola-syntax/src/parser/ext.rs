@@ -6,13 +6,12 @@ use kola_tree::prelude::*;
 
 use super::ParseInput;
 use super::state::State;
-use crate::loc::LocPhase;
 
 pub const trait KolaCombinator<'t, T: Debug>: const Combinator<ParseInput<'t>, T> {
     fn to_node(self) -> impl const Combinator<ParseInput<'t>, Id<T>>
     where
-        Node: From<T>,
-        T: MetaCast<LocPhase, Meta = Loc>,
+        NodeStorage: Column<T, Item = T>,
+        UniversalStorage<Loc>: Column<T, Item = Loc>,
     {
         self.map_with(|node, loc, input| {
             let state: &mut State = input.state();
@@ -24,8 +23,8 @@ pub const trait KolaCombinator<'t, T: Debug>: const Combinator<ParseInput<'t>, T
     where
         U: Debug,
         F: Fn(T) -> U + Copy,
-        U: MetaCast<LocPhase, Meta = Loc>,
-        Node: From<U>,
+        NodeStorage: Column<U, Item = U>,
+        UniversalStorage<Loc>: Column<U, Item = Loc>,
     {
         self.map(f).to_node()
     }
@@ -44,11 +43,11 @@ pub const trait KolaCombinator<'t, T: Debug>: const Combinator<ParseInput<'t>, T
         self.map(node::Pat::from).to_node()
     }
 
-    fn to_type(self) -> impl const Combinator<ParseInput<'t>, Id<node::Type>>
+    fn to_type(self) -> impl const Combinator<ParseInput<'t>, Id<node::TypeExpr>>
     where
-        node::Type: From<T>,
+        node::TypeExpr: From<T>,
     {
-        self.map(node::Type::from).to_node()
+        self.map(node::TypeExpr::from).to_node()
     }
 
     fn to_module_expr(self) -> impl const Combinator<ParseInput<'t>, Id<node::ModuleExpr>>
@@ -80,7 +79,7 @@ pub const trait KolaCombinator<'t, T: Debug>: const Combinator<ParseInput<'t>, T
     }
 }
 
-impl<'t, T, P> const KolaCombinator<'t, T> for P
+const impl<'t, T, P> KolaCombinator<'t, T> for P
 where
     T: Debug,
     P: const Combinator<ParseInput<'t>, T>,

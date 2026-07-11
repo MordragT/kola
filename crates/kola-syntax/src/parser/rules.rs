@@ -11,7 +11,6 @@ use kola_tree::{node::ValueName, prelude::*};
 use super::ParseInput;
 use super::ext::KolaCombinator;
 use super::state::State;
-use crate::loc::LocPhase;
 use crate::token::{CloseT, CtrlT, Delim, KwT, LiteralT, OpT, OpenT, Symbol, Token};
 
 use super::primitives::*;
@@ -79,9 +78,10 @@ pub const fn nested_parser<'t, T, U>(
     fallback: U,
 ) -> impl const KolaCombinator<'t, Id<T>>
 where
-    Node: From<T> + From<U>,
-    U: Copy + MetaCast<LocPhase, Meta = Loc> + 't,
-    T: From<Id<U>> + MetaCast<LocPhase, Meta = Loc> + 't,
+    NodeStorage: Column<T, Item = T> + Column<U, Item = U>,
+    UniversalStorage<Loc>: Column<T, Item = Loc> + Column<U, Item = Loc>,
+    T: From<Id<U>>,
+    U: Copy,
 {
     let index = match delim {
         Delim::Paren => 0,
@@ -432,11 +432,15 @@ impl<'t> Lazy<ParseInput<'t>, Id<node::Expr>> for ExprAtomCombinator {
 
         #[derive(Debug)]
         enum RecordOp {
-            Extend(Id<node::FieldPath>, Option<Id<node::Type>>, Id<node::Expr>),
-            Restrict(Id<node::FieldPath>, Option<Id<node::Type>>),
+            Extend(
+                Id<node::FieldPath>,
+                Option<Id<node::TypeExpr>>,
+                Id<node::Expr>,
+            ),
+            Restrict(Id<node::FieldPath>, Option<Id<node::TypeExpr>>),
             Update(
                 Id<node::FieldPath>,
-                Option<Id<node::Type>>,
+                Option<Id<node::TypeExpr>>,
                 Id<node::RecordUpdateOp>,
                 Id<node::Expr>,
             ),
@@ -923,15 +927,15 @@ impl<'t> Lazy<ParseInput<'t>, Id<node::Expr>> for ExprCombinator {
 ///
 /// type_path       ::= name ('.' name)*  // Path to a type (like Num or std.List)
 /// ```
-pub const fn type_parser<'t>() -> OpaqueFn<ParseInput<'t>, Id<node::Type>> {
-    lazy::<ParseInput<'t>, Id<node::Type>, TypeCombinator>()
+pub const fn type_parser<'t>() -> OpaqueFn<ParseInput<'t>, Id<node::TypeExpr>> {
+    lazy::<ParseInput<'t>, Id<node::TypeExpr>, TypeCombinator>()
 }
 
 #[derive(Debug, Clone, Copy)]
 pub struct TypeCombinator;
 
-impl<'t> Lazy<ParseInput<'t>, Id<node::Type>> for TypeCombinator {
-    type Combinator = impl const KolaCombinator<'t, Id<node::Type>>;
+impl<'t> Lazy<ParseInput<'t>, Id<node::TypeExpr>> for TypeCombinator {
+    type Combinator = impl const KolaCombinator<'t, Id<node::TypeExpr>>;
     const COMBINATOR: Self::Combinator = {
         let ty = type_parser();
 
@@ -1023,7 +1027,10 @@ impl<'t> Lazy<ParseInput<'t>, Id<node::Type>> for TypeCombinator {
             atom.repeated(),
             |constructor, arg, span, input: &mut ParseInput<'t>| {
                 let tree: &mut State = input.state();
-                tree.insert_as::<node::Type, _>(node::TypeApplication { constructor, arg }, span)
+                tree.insert_as::<node::TypeExpr, _>(
+                    node::TypeApplication { constructor, arg },
+                    span,
+                )
             },
         );
 
@@ -1047,7 +1054,7 @@ impl<'t> Lazy<ParseInput<'t>, Id<node::Type>> for TypeCombinator {
             |input_ty, output, span, input: &mut ParseInput<'t>| {
                 let tree: &mut State = input.state();
 
-                tree.insert_as::<node::Type, _>(
+                tree.insert_as::<node::TypeExpr, _>(
                     node::FuncType {
                         input: input_ty,
                         output,

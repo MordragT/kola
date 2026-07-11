@@ -1,4 +1,4 @@
-use derive_more::{From, IntoIterator};
+use derive_more::From;
 use enum_as_inner::EnumAsInner;
 use kola_macros::{Inspector, Notate};
 use serde::{Deserialize, Serialize};
@@ -6,12 +6,11 @@ use serde::{Deserialize, Serialize};
 use kola_print::prelude::*;
 use kola_utils::interner::StrKey;
 
-use super::LiteralExpr;
+use super::{LiteralExpr, NodeStorage, ValueName};
 use crate::{
-    id::Id,
-    node::ValueName,
+    id::{Id, SliceId},
     print::NodePrinter,
-    tree::{TreeBuilder, TreeView},
+    tree::TreeBuilder,
 };
 
 #[derive(
@@ -88,8 +87,8 @@ pub struct BindPat(pub Id<ValueName>);
 
 impl BindPat {
     pub fn new_in(name: impl Into<ValueName>, builder: &mut TreeBuilder) -> Id<Self> {
-        let name_id = builder.insert(name.into());
-        builder.insert(Self(name_id))
+        let name_id = builder.alloc(name.into());
+        builder.alloc(Self(name_id))
     }
 }
 
@@ -114,13 +113,13 @@ pub enum ListElPat {
 
 impl ListElPat {
     pub fn pat(pat: impl Into<Pat>, builder: &mut TreeBuilder) -> Id<Self> {
-        let pat_id = builder.insert(pat.into());
-        builder.insert(Self::Pat(pat_id))
+        let pat_id = builder.alloc(pat.into());
+        builder.alloc(Self::Pat(pat_id))
     }
 
     pub fn spread(name: Option<ValueName>, builder: &mut TreeBuilder) -> Id<Self> {
-        let name = name.map(|n| builder.insert(n));
-        builder.insert(Self::Spread(name))
+        let name = name.map(|n| builder.alloc(n));
+        builder.alloc(Self::Spread(name))
     }
 }
 
@@ -173,7 +172,21 @@ impl<'a> Notate<'a> for NodePrinter<'a, ListElPat> {
     Deserialize,
 )]
 #[notate(color = "magenta")]
-pub struct ListPat(pub Vec<Id<ListElPat>>);
+pub struct ListPat(pub SliceId<ListElPat>);
+
+impl ListPat {
+    pub fn new_in(
+        items: impl IntoIterator<Item = ListElPat>,
+        builder: &mut TreeBuilder,
+    ) -> Id<Self> {
+        let ids = items
+            .into_iter()
+            .map(|item| builder.alloc(item))
+            .collect::<Vec<_>>();
+        let slice_id = builder.alloc_slice(ids);
+        builder.alloc(Self(slice_id))
+    }
+}
 
 #[derive(
     Debug,
@@ -196,11 +209,11 @@ pub struct RecordFieldPat {
 }
 
 impl RecordFieldPat {
-    pub fn field(self, tree: &impl TreeView) -> ValueName {
+    pub fn field(self, tree: &NodeStorage) -> ValueName {
         *self.field.get(tree)
     }
 
-    pub fn pat(self, tree: &impl TreeView) -> Option<Pat> {
+    pub fn pat(self, tree: &NodeStorage) -> Option<Pat> {
         self.pat.map(|id| id.get(tree)).copied()
     }
 }
@@ -209,7 +222,7 @@ impl RecordFieldPat {
     Debug, Inspector, From, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
 )]
 pub struct RecordPat {
-    pub fields: Vec<Id<RecordFieldPat>>,
+    pub fields: SliceId<RecordFieldPat>,
     pub polymorph: bool,
 }
 
@@ -218,11 +231,14 @@ impl RecordPat {
     where
         I: IntoIterator<Item = RecordFieldPat>,
     {
-        let fields = fields
+        let ids = fields
             .into_iter()
-            .map(|field| builder.insert(field))
-            .collect();
-        builder.insert(Self { fields, polymorph })
+            .map(|field| builder.alloc(field))
+            .collect::<Vec<_>>();
+
+        let fields = builder.alloc_slice(ids);
+
+        builder.alloc(Self { fields, polymorph })
     }
 }
 
@@ -230,7 +246,9 @@ impl<'a> Notate<'a> for NodePrinter<'a, RecordPat> {
     fn notate(&self, arena: &'a Bump) -> Notation<'a> {
         let head = "RecordPat".magenta().display_in(arena);
 
-        let fields = self.to_slice(&self.value.fields).gather(arena);
+        let fields = self
+            .to_slice(&self.value.fields.get(self.tree.arena()))
+            .gather(arena);
         let polymorph = self.value.polymorph;
 
         let single = [
@@ -280,11 +298,11 @@ pub struct VariantTagPat {
 }
 
 impl VariantTagPat {
-    pub fn case(self, tree: &impl TreeView) -> ValueName {
+    pub fn case(self, tree: &NodeStorage) -> ValueName {
         *self.tag.get(tree)
     }
 
-    pub fn pat(self, tree: &impl TreeView) -> Option<Pat> {
+    pub fn pat(self, tree: &NodeStorage) -> Option<Pat> {
         self.pat.map(|id| id.get(tree)).copied()
     }
 }
@@ -294,7 +312,6 @@ impl VariantTagPat {
     Notate,
     Inspector,
     From,
-    IntoIterator,
     Clone,
     PartialEq,
     Eq,
@@ -305,8 +322,22 @@ impl VariantTagPat {
     Deserialize,
 )]
 #[notate(color = "blue")]
-#[into_iterator(owned, ref)]
-pub struct VariantPat(pub Vec<Id<VariantTagPat>>);
+pub struct VariantPat(pub SliceId<VariantTagPat>);
+
+impl VariantPat {
+    pub fn new_in(
+        items: impl IntoIterator<Item = VariantTagPat>,
+        builder: &mut TreeBuilder,
+    ) -> Id<Self> {
+        let ids = items
+            .into_iter()
+            .map(|item| builder.alloc(item))
+            .collect::<Vec<_>>();
+
+        let slice_id = builder.alloc_slice(ids);
+        builder.alloc(Self(slice_id))
+    }
+}
 
 #[derive(
     Debug, EnumAsInner, Inspector, From, Clone, Copy, PartialEq, PartialOrd, Serialize, Deserialize,

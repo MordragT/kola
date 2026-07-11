@@ -1,16 +1,16 @@
 use std::convert::identity;
 
 use kola_print::prelude::*;
-use kola_utils::{convert::TryAsRef, interner::StrInterner};
+use kola_utils::interner::StrInterner;
 
 use crate::{
     id::Id,
-    node::Node,
-    tree::{Tree, TreeView},
+    node::{AnyId, Column, NodeStorage},
+    tree::Tree,
 };
 
 pub trait Decorator<'a> {
-    fn decorate(&self, notation: Notation<'a>, with: usize, arena: &'a Bump) -> Notation<'a>;
+    fn decorate(&self, notation: Notation<'a>, with: AnyId, arena: &'a Bump) -> Notation<'a>;
 }
 
 #[derive(Clone, Copy)]
@@ -28,13 +28,12 @@ impl<'a> Decorators<'a> {
                 return self;
             }
         }
-
         panic!("No available slot for decorator");
     }
 }
 
 impl<'a> Decorator<'a> for Decorators<'a> {
-    fn decorate(&self, notation: Notation<'a>, with: usize, arena: &'a Bump) -> Notation<'a> {
+    fn decorate(&self, notation: Notation<'a>, with: AnyId, arena: &'a Bump) -> Notation<'a> {
         self.0
             .into_iter()
             .filter_map(identity)
@@ -119,23 +118,24 @@ impl<'a, T> TreePrinter<'a, T> {
 
 impl<'a, T> Notate<'a> for IdPrinter<'a, T>
 where
-    Node: TryAsRef<T>,
     NodePrinter<'a, T>: Notate<'a>,
     T: 'a,
+    NodeStorage: Column<T, Item = T>,
+    AnyId: From<Id<T>>,
 {
     fn notate(&self, arena: &'a Bump) -> Notation<'a> {
-        let node = self.tree.node(self.value);
+        let node = self.tree.get(self.value);
         let notation = self.to(node).notate(arena);
-        self.decorators
-            .decorate(notation, self.value.as_usize(), arena)
+        self.decorators.decorate(notation, self.value.into(), arena)
     }
 }
 
 impl<'a, T> Gather<'a> for SlicePrinter<'a, T>
 where
-    Node: TryAsRef<T>,
     NodePrinter<'a, T>: Notate<'a>,
     T: 'a,
+    NodeStorage: Column<T, Item = T>,
+    AnyId: From<Id<T>>,
 {
     fn gather(self, arena: &'a Bump) -> BumpVec<'a, Notation<'a>> {
         self.value

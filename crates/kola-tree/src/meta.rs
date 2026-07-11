@@ -1,287 +1,99 @@
-use crate::{id::Id, node};
-use std::{collections::HashMap, fmt::Debug};
+use std::marker::PhantomData;
 
-pub type MetaVec<P> = Vec<Meta<P>>;
-pub type MetaMap<P> = HashMap<usize, Meta<P>>;
+use crate::{
+    id::Id,
+    node::{AnyId, Column, StorageCheckpoint, UniversalStorage},
+};
 
-pub trait MetaMapExt<P: Phase> {
-    fn insert_meta<T>(&mut self, id: Id<T>, meta: T::Meta)
+/// A side-table where every column holds the same type `M`.
+/// Derefs to `Storage<M, M, ..., M>` for column access via `Column<T>`.
+#[derive(Debug, Clone)]
+pub struct UniversalTable<M>(UniversalStorage<M>);
+
+impl<M> UniversalTable<M> {
+    pub fn new(cp: StorageCheckpoint) -> Self
     where
-        T: MetaCast<P>;
-}
-
-impl<P: Phase> MetaMapExt<P> for MetaMap<P> {
-    fn insert_meta<T>(&mut self, id: Id<T>, meta: T::Meta)
-    where
-        T: MetaCast<P>,
+        M: Default + Clone,
     {
-        let meta = T::upcast(meta);
-        self.insert(id.as_usize(), meta);
+        Self(UniversalStorage::from_checkpoint(cp))
     }
-}
 
-pub trait MetaView<P: Phase>: Sized {
-    fn get(&self, id: usize) -> &Meta<P>;
-    fn get_mut(&mut self, id: usize) -> &mut Meta<P>;
+    pub fn get_any(&self, id: AnyId) -> &M {
+        self.0.get_any(id)
+    }
 
-    fn meta<T>(&self, id: Id<T>) -> &T::Meta
+    pub fn get<T>(&self, id: Id<T>) -> &M
     where
-        T: MetaCast<P>,
+        UniversalStorage<M>: Column<T, Item = M>,
     {
-        let meta = self.get(id.as_usize());
-        T::try_downcast_ref(meta).unwrap()
+        self.0.get(id)
     }
 
-    fn meta_mut<T>(&mut self, id: Id<T>) -> &mut T::Meta
+    pub fn set<T>(&mut self, id: Id<T>, value: M) -> M
     where
-        T: MetaCast<P>,
+        UniversalStorage<M>: Column<T, Item = M>,
+        M: Clone,
     {
-        let meta = self.get_mut(id.as_usize());
-        T::try_downcast_mut(meta).unwrap()
+        std::mem::replace(self.0.get_mut(id), value)
     }
 
-    fn update_meta<T>(&mut self, id: Id<T>, meta: T::Meta) -> T::Meta
-    where
-        T: MetaCast<P>,
-    {
-        std::mem::replace(self.meta_mut(id), meta)
-    }
-}
-
-impl<P: Phase> MetaView<P> for MetaVec<P> {
-    fn get(&self, id: usize) -> &Meta<P> {
-        &self[id]
+    pub fn checkpoint(&self) -> UniversalTableCheckpoint {
+        UniversalTableCheckpoint(self.0.checkpoint())
     }
 
-    fn get_mut(&mut self, id: usize) -> &mut Meta<P> {
-        &mut self[id]
+    pub fn restore(&mut self, cp: &UniversalTableCheckpoint) {
+        self.0.restore(&cp.0);
     }
 }
 
-impl<P: Phase> MetaView<P> for MetaMap<P> {
-    fn get(&self, id: usize) -> &Meta<P> {
-        self.get(&id).unwrap()
+#[derive(Debug, Clone, Copy)]
+pub struct UniversalTableCheckpoint(StorageCheckpoint);
+
+// ── SecondaryTable ─────────────────────────────────────────────────────────────
+
+/// A simple `Vec<M>` indexed by `Id<T>.as_usize()`, with the node type
+/// tracked via `PhantomData<T>`.
+#[derive(Debug, Clone)]
+pub struct SecondaryTable<T, M> {
+    data: Vec<M>,
+    _marker: PhantomData<T>,
+}
+
+impl<T, M> SecondaryTable<T, M> {
+    pub fn new() -> Self {
+        Self {
+            data: Vec::new(),
+            _marker: PhantomData,
+        }
     }
 
-    fn get_mut(&mut self, id: usize) -> &mut Meta<P> {
-        self.get_mut(&id).unwrap()
+    pub fn get(&self, id: Id<T>) -> &M {
+        &self.data[id.as_usize()]
+    }
+
+    pub fn get_mut(&mut self, id: Id<T>) -> &mut M {
+        &mut self.data[id.as_usize()]
+    }
+
+    pub fn set(&mut self, id: Id<T>, value: M) {
+        self.data[id.as_usize()] = value;
+    }
+
+    pub fn push(&mut self, value: M) {
+        self.data.push(value);
+    }
+
+    pub fn len(&self) -> usize {
+        self.data.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.data.is_empty()
     }
 }
 
-pub trait MetaCast<P: Phase> {
-    type Meta;
-
-    fn upcast(attached: Self::Meta) -> Meta<P>;
-    fn try_downcast_ref(meta: &Meta<P>) -> Option<&Self::Meta>;
-    fn try_downcast_mut(meta: &mut Meta<P>) -> Option<&mut Self::Meta>;
+impl<T, M> Default for SecondaryTable<T, M> {
+    fn default() -> Self {
+        Self::new()
+    }
 }
-
-macro_rules! define {
-    ($($node:ident),*) => {
-        pub trait Phase: 'static + Debug + Copy {
-            $(type $node: Debug + Clone;)*
-        }
-
-        pub trait UniformPhase: 'static + Debug + Copy {
-            type Meta: Debug + Clone;
-        }
-
-        impl<T: UniformPhase> Phase for T {
-            $(type $node = T::Meta;)*
-        }
-
-        $(
-            impl<P: Phase> MetaCast<P> for node::$node {
-                type Meta = P::$node;
-
-                fn upcast(this: Self::Meta) -> Meta<P> {
-                    Meta::$node(this)
-                }
-
-                fn try_downcast_ref(meta: &Meta<P>) -> Option<&Self::Meta> {
-                    match meta {
-                        Meta::$node(val) => Some(val),
-                        _ => None,
-                    }
-                }
-
-                fn try_downcast_mut(meta: &mut Meta<P>) -> Option<&mut Self::Meta> {
-                    match meta {
-                        Meta::$node(val) => Some(val),
-                        _ => None,
-                    }
-                }
-            }
-        )*
-
-        #[derive(Clone, Debug)]
-        pub enum Meta<P: Phase> {
-            $($node(<node::$node as MetaCast<P>>::Meta),)*
-        }
-
-        impl<P: Phase> Meta<P> {
-            pub fn kind(&self) -> node::NodeKind {
-                match self {
-                    $(
-                        Self::$node(_) => node::NodeKind::$node,
-                    )*
-                }
-            }
-        }
-
-        impl<P> Meta<P>
-        where
-            P: Phase<$($node: Default,)*>,
-        {
-            pub fn default_for(kind: node::NodeKind) -> Self {
-                match kind {
-                    $(
-                        node::NodeKind::$node => Self::$node(Default::default()),
-                    )*
-                }
-            }
-        }
-
-        impl<P, M> Meta<P>
-        where
-            M: Clone + Debug,
-            P: Phase<$($node = M,)*>,
-        {
-            pub fn default_with( m: M, kind: node::NodeKind) -> Self {
-                match kind {
-                    $(
-                        node::NodeKind::$node => Self::$node(m),
-                    )*
-                }
-            }
-
-            pub fn inner_ref(&self) -> &M {
-                match self {
-                    $(Self::$node(m) => m,)*
-                }
-            }
-
-            pub fn inner_mut(&mut self) -> &mut M {
-                match self {
-                    $(Self::$node(m) => m,)*
-                }
-            }
-
-            pub fn inner_copied(&self) -> M
-            where
-                M: Copy,
-            {
-                match self {
-                    $(Self::$node(m) => *m,)*
-                }
-            }
-
-            pub fn inner_cloned(&self) -> M
-            where
-                M: Clone,
-            {
-                match self {
-                    $(Self::$node(m) => m.clone(),)*
-                }
-            }
-
-            pub fn into_inner(self) -> M {
-                match self {
-                    $(Self::$node(m) => m,)*
-                }
-            }
-        }
-    };
-}
-
-define!(
-    FunctorName,
-    ModuleTypeName,
-    ModuleName,
-    KindName,
-    TypeName,
-    ValueName,
-    // Patterns
-    AnyPat,
-    LiteralPat,
-    BindPat,
-    ListElPat,
-    ListPat,
-    RecordFieldPat,
-    RecordPat,
-    VariantTagPat,
-    VariantPat,
-    PatError,
-    Pat,
-    // Expressions
-    LiteralExpr,
-    ListExpr,
-    RecordField,
-    RecordExpr,
-    RecordExtendExpr,
-    RecordRestrictExpr,
-    RecordUpdateOp,
-    RecordUpdateExpr,
-    RecordMergeExpr,
-    FieldPath,
-    QualifiedExpr,
-    UnaryOp,
-    UnaryExpr,
-    BinaryOp,
-    BinaryExpr,
-    LetExpr,
-    CaseBranch,
-    CaseExpr,
-    IfExpr,
-    LambdaExpr,
-    CallExpr,
-    HandlerClause,
-    HandleExpr,
-    DoExpr,
-    TagExpr,
-    TypeWitnessExpr,
-    ExprError,
-    Expr,
-    // Types
-    EffectOpType,
-    EffectType,
-    QualifiedType,
-    TypeVar,
-    LabelOrVar,
-    RecordFieldType,
-    RecordType,
-    TagType,
-    VariantType,
-    FuncType,
-    TypeApplication,
-    CompType,
-    Type,
-    TypeError,
-    TypeVarBind,
-    ForallBinder,
-    TypeScheme,
-    // Modules
-    BindError,
-    Vis,
-    ValueBind,
-    TypeBind,
-    ModuleBind,
-    ModuleTypeBind,
-    FunctorParam,
-    FunctorBind,
-    Bind,
-    ModuleError,
-    ModuleBody,
-    ModulePath,
-    ModuleImport,
-    FunctorArgs,
-    FunctorApp,
-    ModuleExpr,
-    SpecError,
-    ValueSpec,
-    ModuleSpec,
-    Spec,
-    ConcreteModuleType,
-    QualifiedModuleType,
-    ModuleType
-);
