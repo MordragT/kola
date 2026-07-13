@@ -5,11 +5,12 @@ use kola_print::prelude::*;
 use kola_utils::interner::StrKey;
 use serde::{Deserialize, Serialize};
 
-use super::{ModulePath, NodeStorage, Pat, QualifiedType, TypeExpr, ValueName};
+use super::{ModulePath, Pat, QualifiedType, TypeExpr, ValueName};
 use crate::{
-    id::{Id, SliceId},
+    id::Id,
     print::NodePrinter,
-    tree::TreeBuilder,
+    slice::SliceId,
+    tree::{TreeBuilder, TreeView},
 };
 
 #[derive(
@@ -91,11 +92,8 @@ impl ListExpr {
         I: IntoIterator,
         I::Item: Into<Expr>,
     {
-        let ids: Vec<Id<Expr>> = elements
-            .into_iter()
-            .map(|e| builder.alloc(e.into()))
-            .collect();
-        let slice = builder.alloc_slice(ids);
+        let ids = elements.into_iter().map(|e| builder.nodes.alloc(e.into()));
+        let slice = builder.slices.alloc(ids);
         builder.alloc(Self(slice))
     }
 }
@@ -135,16 +133,16 @@ impl RecordField {
         builder.alloc(Self { label, ty, value })
     }
 
-    pub fn label(self, arena: &NodeStorage) -> ValueName {
-        *self.label.get(arena)
+    pub fn label(self, storage: &impl TreeView) -> ValueName {
+        *self.label.get(storage)
     }
 
-    pub fn type_(self, arena: &NodeStorage) -> Option<TypeExpr> {
-        self.ty.map(|t| *t.get(arena))
+    pub fn type_(self, storage: &impl TreeView) -> Option<TypeExpr> {
+        self.ty.map(|t| *t.get(storage))
     }
 
-    pub fn value(self, arena: &NodeStorage) -> Expr {
-        *self.value.get(arena)
+    pub fn value(self, storage: &impl TreeView) -> Expr {
+        *self.value.get(storage)
     }
 }
 
@@ -224,24 +222,24 @@ impl RecordExtendExpr {
         })
     }
 
-    pub fn source(self, arena: &NodeStorage) -> Expr {
-        *self.source.get(arena)
+    pub fn source(self, storage: &impl TreeView) -> Expr {
+        *self.source.get(storage)
     }
 
-    pub fn source_type(self, arena: &NodeStorage) -> Option<TypeExpr> {
-        self.source_type.map(|t| *t.get(arena))
+    pub fn source_type(self, storage: &impl TreeView) -> Option<TypeExpr> {
+        self.source_type.map(|t| *t.get(storage))
     }
 
-    pub fn field_path(self, arena: &NodeStorage) -> &FieldPath {
-        self.field_path.get(arena)
+    pub fn field_path(self, storage: &impl TreeView) -> &FieldPath {
+        self.field_path.get(storage)
     }
 
-    pub fn value(self, arena: &NodeStorage) -> Expr {
-        *self.value.get(arena)
+    pub fn value(self, storage: &impl TreeView) -> Expr {
+        *self.value.get(storage)
     }
 
-    pub fn value_type(self, arena: &NodeStorage) -> Option<TypeExpr> {
-        self.value_type.map(|t| *t.get(arena))
+    pub fn value_type(self, storage: &impl TreeView) -> Option<TypeExpr> {
+        self.value_type.map(|t| *t.get(storage))
     }
 }
 
@@ -289,20 +287,20 @@ impl RecordRestrictExpr {
         })
     }
 
-    pub fn source(self, arena: &NodeStorage) -> Expr {
-        *self.source.get(arena)
+    pub fn source(self, storage: &impl TreeView) -> Expr {
+        *self.source.get(storage)
     }
 
-    pub fn source_type(self, arena: &NodeStorage) -> Option<TypeExpr> {
-        self.source_type.map(|t| *t.get(arena))
+    pub fn source_type(self, storage: &impl TreeView) -> Option<TypeExpr> {
+        self.source_type.map(|t| *t.get(storage))
     }
 
-    pub fn field_path(self, arena: &NodeStorage) -> &FieldPath {
-        self.field_path.get(arena)
+    pub fn field_path(self, storage: &impl TreeView) -> &FieldPath {
+        self.field_path.get(storage)
     }
 
-    pub fn value_type(self, arena: &NodeStorage) -> Option<TypeExpr> {
-        self.value_type.map(|t| *t.get(arena))
+    pub fn value_type(self, storage: &impl TreeView) -> Option<TypeExpr> {
+        self.value_type.map(|t| *t.get(storage))
     }
 }
 
@@ -376,28 +374,28 @@ impl RecordUpdateExpr {
         })
     }
 
-    pub fn source(self, arena: &NodeStorage) -> Expr {
-        *self.source.get(arena)
+    pub fn source(self, storage: &impl TreeView) -> Expr {
+        *self.source.get(storage)
     }
 
-    pub fn source_type(self, arena: &NodeStorage) -> Option<TypeExpr> {
-        self.source_type.map(|t| *t.get(arena))
+    pub fn source_type(self, storage: &impl TreeView) -> Option<TypeExpr> {
+        self.source_type.map(|t| *t.get(storage))
     }
 
-    pub fn field_path(self, arena: &NodeStorage) -> &FieldPath {
-        self.field_path.get(arena)
+    pub fn field_path(self, storage: &impl TreeView) -> &FieldPath {
+        self.field_path.get(storage)
     }
 
-    pub fn op(self, arena: &NodeStorage) -> RecordUpdateOp {
-        *self.op.get(arena)
+    pub fn op(self, storage: &impl TreeView) -> RecordUpdateOp {
+        *self.op.get(storage)
     }
 
-    pub fn value(self, arena: &NodeStorage) -> Expr {
-        *self.value.get(arena)
+    pub fn value(self, storage: &impl TreeView) -> Expr {
+        *self.value.get(storage)
     }
 
-    pub fn value_type(self, arena: &NodeStorage) -> Option<TypeExpr> {
-        self.value_type.map(|t| *t.get(arena))
+    pub fn value_type(self, storage: &impl TreeView) -> Option<TypeExpr> {
+        self.value_type.map(|t| *t.get(storage))
     }
 }
 
@@ -457,20 +455,20 @@ impl FieldPath {
         I: IntoIterator,
         I::Item: Into<ValueName>,
     {
-        let ids: Vec<Id<ValueName>> = fields
-            .into_iter()
-            .map(|f| builder.alloc(f.into()))
-            .collect();
-        let slice = builder.alloc_slice(ids);
+        let ids = fields.into_iter().map(|f| builder.nodes.alloc(f.into()));
+        let slice = builder.slices.alloc(ids);
         builder.alloc(Self(slice))
     }
 
-    pub fn get(&self, index: usize, arena: &NodeStorage) -> ValueName {
-        *self.0.iter(arena).nth(index).unwrap().get(arena)
+    pub fn get(&self, index: usize, storage: &impl TreeView) -> ValueName {
+        *self.0.iter(storage).nth(index).unwrap().get(storage)
     }
 
-    pub fn iter<'a>(&'a self, arena: &'a NodeStorage) -> impl Iterator<Item = Id<ValueName>> + 'a {
-        self.0.iter(arena)
+    pub fn iter<'a>(
+        &'a self,
+        storage: &'a impl TreeView,
+    ) -> impl Iterator<Item = Id<ValueName>> + 'a {
+        self.0.iter(storage)
     }
 }
 
@@ -554,12 +552,12 @@ impl UnaryExpr {
         builder.alloc(Self { op, operand })
     }
 
-    pub fn op(self, arena: &NodeStorage) -> UnaryOp {
-        *self.op.get(arena)
+    pub fn op(self, storage: &impl TreeView) -> UnaryOp {
+        *self.op.get(storage)
     }
 
-    pub fn operand(self, arena: &NodeStorage) -> Expr {
-        *self.operand.get(arena)
+    pub fn operand(self, storage: &impl TreeView) -> Expr {
+        *self.operand.get(storage)
     }
 }
 
@@ -624,16 +622,16 @@ impl BinaryExpr {
         builder.alloc(Self { op, lhs, rhs })
     }
 
-    pub fn op(self, arena: &NodeStorage) -> BinaryOp {
-        *self.op.get(arena)
+    pub fn op(self, storage: &impl TreeView) -> BinaryOp {
+        *self.op.get(storage)
     }
 
-    pub fn lhs(self, arena: &NodeStorage) -> Expr {
-        *self.lhs.get(arena)
+    pub fn lhs(self, storage: &impl TreeView) -> Expr {
+        *self.lhs.get(storage)
     }
 
-    pub fn rhs(self, arena: &NodeStorage) -> Expr {
-        *self.rhs.get(arena)
+    pub fn rhs(self, storage: &impl TreeView) -> Expr {
+        *self.rhs.get(storage)
     }
 }
 
@@ -680,20 +678,20 @@ impl LetExpr {
         })
     }
 
-    pub fn name(self, arena: &NodeStorage) -> ValueName {
-        *self.name.get(arena)
+    pub fn name(self, storage: &impl TreeView) -> ValueName {
+        *self.name.get(storage)
     }
 
-    pub fn value_type(self, arena: &NodeStorage) -> Option<&TypeExpr> {
-        self.value_type.map(|t| t.get(arena))
+    pub fn value_type(self, storage: &impl TreeView) -> Option<&TypeExpr> {
+        self.value_type.map(|t| t.get(storage))
     }
 
-    pub fn value(self, arena: &NodeStorage) -> Expr {
-        *self.value.get(arena)
+    pub fn value(self, storage: &impl TreeView) -> Expr {
+        *self.value.get(storage)
     }
 
-    pub fn body(self, arena: &NodeStorage) -> Expr {
-        *self.body.get(arena)
+    pub fn body(self, storage: &impl TreeView) -> Expr {
+        *self.body.get(storage)
     }
 }
 
@@ -736,16 +734,16 @@ impl IfExpr {
         })
     }
 
-    pub fn pred(self, arena: &NodeStorage) -> Expr {
-        *self.pred.get(arena)
+    pub fn pred(self, storage: &impl TreeView) -> Expr {
+        *self.pred.get(storage)
     }
 
-    pub fn then(self, arena: &NodeStorage) -> Expr {
-        *self.then.get(arena)
+    pub fn then(self, storage: &impl TreeView) -> Expr {
+        *self.then.get(storage)
     }
 
-    pub fn or_else(self, arena: &NodeStorage) -> Expr {
-        *self.or_else.get(arena)
+    pub fn or_else(self, storage: &impl TreeView) -> Expr {
+        *self.or_else.get(storage)
     }
 }
 
@@ -781,12 +779,12 @@ impl CaseBranch {
         builder.alloc(Self { pat, body })
     }
 
-    pub fn pat(self, arena: &NodeStorage) -> Pat {
-        *self.pat.get(arena)
+    pub fn pat(self, storage: &impl TreeView) -> Pat {
+        *self.pat.get(storage)
     }
 
-    pub fn body(self, arena: &NodeStorage) -> Expr {
-        *self.body.get(arena)
+    pub fn body(self, storage: &impl TreeView) -> Expr {
+        *self.body.get(storage)
     }
 }
 
@@ -810,8 +808,8 @@ impl CaseExpr {
         builder.alloc(Self { source, branches })
     }
 
-    pub fn source(&self, arena: &NodeStorage) -> Expr {
-        *self.source.get(arena)
+    pub fn source(&self, storage: &impl TreeView) -> Expr {
+        *self.source.get(storage)
     }
 }
 
@@ -847,12 +845,12 @@ impl CallExpr {
         builder.alloc(Self { func, arg })
     }
 
-    pub fn func(self, arena: &NodeStorage) -> Expr {
-        *self.func.get(arena)
+    pub fn func(self, storage: &impl TreeView) -> Expr {
+        *self.func.get(storage)
     }
 
-    pub fn arg(self, arena: &NodeStorage) -> Expr {
-        *self.arg.get(arena)
+    pub fn arg(self, storage: &impl TreeView) -> Expr {
+        *self.arg.get(storage)
     }
 }
 
@@ -895,12 +893,12 @@ impl LambdaExpr {
         })
     }
 
-    pub fn param(self, arena: &NodeStorage) -> ValueName {
-        *self.param.get(arena)
+    pub fn param(self, storage: &impl TreeView) -> ValueName {
+        *self.param.get(storage)
     }
 
-    pub fn body(self, arena: &NodeStorage) -> Expr {
-        *self.body.get(arena)
+    pub fn body(self, storage: &impl TreeView) -> Expr {
+        *self.body.get(storage)
     }
 }
 

@@ -1,11 +1,43 @@
 use std::fmt::Debug;
 
-use kola_span::Loc;
-use kola_span::combinator::Combinator;
+use kola_span::{Collection, Loc, combinator::Combinator};
 use kola_tree::prelude::*;
 
 use super::ParseInput;
 use super::state::State;
+
+pub struct Slice<T>(SliceBuilder<T>);
+
+impl<T> Clone for Slice<T> {
+    fn clone(&self) -> Self {
+        Self(self.0.clone())
+    }
+}
+
+impl<T> Copy for Slice<T> {}
+
+impl<T> Debug for Slice<T> {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Slice({:?})", self.0)
+    }
+}
+
+impl<'t, T> Collection<ParseInput<'t>, Id<T>> for Slice<T> {
+    type Output = SliceId<T>;
+
+    fn new_with(input: &mut ParseInput) -> Self {
+        let builder = input.state.builder.slices.builder();
+        Self(builder)
+    }
+
+    fn push_with(&mut self, item: Id<T>, input: &mut ParseInput) {
+        self.0.push(item, &mut input.state.builder.slices);
+    }
+
+    fn finish_with(self, input: &mut ParseInput<'t>) -> Self::Output {
+        self.0.finish(&input.state.builder.slices)
+    }
+}
 
 pub const trait KolaCombinator<'t, T: Debug>: const Combinator<ParseInput<'t>, T> {
     fn to_node(self) -> impl const Combinator<ParseInput<'t>, Id<T>>

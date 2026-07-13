@@ -1,27 +1,24 @@
 use pastey::paste;
 use std::ops::ControlFlow;
 
-use crate::{
-    id::Id,
-    node::{self, NodeStorage},
-};
+use crate::{id::Id, node, tree::TreeView};
 
-pub trait Visitable {
-    fn visit_by<V>(&self, visitor: &mut V, arena: &NodeStorage) -> ControlFlow<V::BreakValue>
+pub trait Visitable<T: TreeView> {
+    fn visit_by<V>(&self, visitor: &mut V, storage: &T) -> ControlFlow<V::BreakValue>
     where
-        V: Visitor;
+        V: Visitor<T>;
 }
 
 macro_rules! impl_visitable {
     ($($variant:ident),* $(,)?) => {
         paste!{
             $(
-                impl Visitable for Id<node::$variant> {
-                    fn visit_by<V>(&self, visitor: &mut V, arena: &NodeStorage) -> ControlFlow<V::BreakValue>
+                impl<T: TreeView> Visitable<T> for Id<node::$variant> {
+                    fn visit_by<V>(&self, visitor: &mut V, storage: &T) -> ControlFlow<V::BreakValue>
                     where
-                        V: Visitor,
+                        V: Visitor<T>,
                     {
-                        visitor.[<visit_ $variant:snake:lower>](*self, arena)
+                        visitor.[<visit_ $variant:snake:lower>](*self, storage)
                     }
                 }
             )*
@@ -117,48 +114,48 @@ impl_visitable!(
     ModuleType,
 );
 
-pub trait Visitor {
+pub trait Visitor<S: TreeView> {
     type BreakValue;
 
     fn visit_functor_name(
         &mut self,
         _id: Id<node::FunctorName>,
-        _arena: &NodeStorage,
+        _arena: &S,
     ) -> ControlFlow<Self::BreakValue> {
         ControlFlow::Continue(())
     }
     fn visit_module_type_name(
         &mut self,
         _id: Id<node::ModuleTypeName>,
-        _arena: &NodeStorage,
+        _arena: &S,
     ) -> ControlFlow<Self::BreakValue> {
         ControlFlow::Continue(())
     }
     fn visit_module_name(
         &mut self,
         _id: Id<node::ModuleName>,
-        _arena: &NodeStorage,
+        _arena: &S,
     ) -> ControlFlow<Self::BreakValue> {
         ControlFlow::Continue(())
     }
     fn visit_kind_name(
         &mut self,
         _id: Id<node::KindName>,
-        _arena: &NodeStorage,
+        _arena: &S,
     ) -> ControlFlow<Self::BreakValue> {
         ControlFlow::Continue(())
     }
     fn visit_type_name(
         &mut self,
         _id: Id<node::TypeName>,
-        _arena: &NodeStorage,
+        _arena: &S,
     ) -> ControlFlow<Self::BreakValue> {
         ControlFlow::Continue(())
     }
     fn visit_value_name(
         &mut self,
         _id: Id<node::ValueName>,
-        _arena: &NodeStorage,
+        _arena: &S,
     ) -> ControlFlow<Self::BreakValue> {
         ControlFlow::Continue(())
     }
@@ -166,21 +163,21 @@ pub trait Visitor {
     fn visit_any_pat(
         &mut self,
         _id: Id<node::AnyPat>,
-        _arena: &NodeStorage,
+        _arena: &S,
     ) -> ControlFlow<Self::BreakValue> {
         ControlFlow::Continue(())
     }
     fn visit_literal_pat(
         &mut self,
         _id: Id<node::LiteralPat>,
-        _arena: &NodeStorage,
+        _arena: &S,
     ) -> ControlFlow<Self::BreakValue> {
         ControlFlow::Continue(())
     }
     fn visit_bind_pat(
         &mut self,
         _id: Id<node::BindPat>,
-        _arena: &NodeStorage,
+        _arena: &S,
     ) -> ControlFlow<Self::BreakValue> {
         ControlFlow::Continue(())
     }
@@ -188,7 +185,7 @@ pub trait Visitor {
     fn walk_list_el_pat(
         &mut self,
         id: Id<node::ListElPat>,
-        arena: &NodeStorage,
+        arena: &S,
     ) -> ControlFlow<Self::BreakValue> {
         match *arena.get(id) {
             node::ListElPat::Pat(pat_id) => self.visit_pat(pat_id, arena),
@@ -203,16 +200,12 @@ pub trait Visitor {
     fn visit_list_el_pat(
         &mut self,
         id: Id<node::ListElPat>,
-        arena: &NodeStorage,
+        arena: &S,
     ) -> ControlFlow<Self::BreakValue> {
         self.walk_list_el_pat(id, arena)
     }
 
-    fn walk_list_pat(
-        &mut self,
-        id: Id<node::ListPat>,
-        arena: &NodeStorage,
-    ) -> ControlFlow<Self::BreakValue> {
+    fn walk_list_pat(&mut self, id: Id<node::ListPat>, arena: &S) -> ControlFlow<Self::BreakValue> {
         for element_id in id.get(arena).0.iter(arena) {
             self.visit_list_el_pat(element_id, arena)?;
         }
@@ -221,7 +214,7 @@ pub trait Visitor {
     fn visit_list_pat(
         &mut self,
         id: Id<node::ListPat>,
-        arena: &NodeStorage,
+        arena: &S,
     ) -> ControlFlow<Self::BreakValue> {
         self.walk_list_pat(id, arena)
     }
@@ -229,7 +222,7 @@ pub trait Visitor {
     fn walk_record_field_pat(
         &mut self,
         id: Id<node::RecordFieldPat>,
-        arena: &NodeStorage,
+        arena: &S,
     ) -> ControlFlow<Self::BreakValue> {
         let node::RecordFieldPat { field, pat } = arena.get(id);
         self.visit_value_name(*field, arena)?;
@@ -241,7 +234,7 @@ pub trait Visitor {
     fn visit_record_field_pat(
         &mut self,
         id: Id<node::RecordFieldPat>,
-        arena: &NodeStorage,
+        arena: &S,
     ) -> ControlFlow<Self::BreakValue> {
         self.walk_record_field_pat(id, arena)
     }
@@ -249,7 +242,7 @@ pub trait Visitor {
     fn walk_record_pat(
         &mut self,
         id: Id<node::RecordPat>,
-        arena: &NodeStorage,
+        arena: &S,
     ) -> ControlFlow<Self::BreakValue> {
         for field_id in id.get(arena).fields.iter(arena) {
             self.visit_record_field_pat(field_id, arena)?;
@@ -259,7 +252,7 @@ pub trait Visitor {
     fn visit_record_pat(
         &mut self,
         id: Id<node::RecordPat>,
-        arena: &NodeStorage,
+        arena: &S,
     ) -> ControlFlow<Self::BreakValue> {
         self.walk_record_pat(id, arena)
     }
@@ -267,7 +260,7 @@ pub trait Visitor {
     fn walk_variant_tag_pat(
         &mut self,
         id: Id<node::VariantTagPat>,
-        arena: &NodeStorage,
+        arena: &S,
     ) -> ControlFlow<Self::BreakValue> {
         let node::VariantTagPat { tag, pat } = arena.get(id);
         self.visit_value_name(*tag, arena)?;
@@ -279,7 +272,7 @@ pub trait Visitor {
     fn visit_variant_tag_pat(
         &mut self,
         id: Id<node::VariantTagPat>,
-        arena: &NodeStorage,
+        arena: &S,
     ) -> ControlFlow<Self::BreakValue> {
         self.walk_variant_tag_pat(id, arena)
     }
@@ -287,7 +280,7 @@ pub trait Visitor {
     fn walk_variant_pat(
         &mut self,
         id: Id<node::VariantPat>,
-        arena: &NodeStorage,
+        arena: &S,
     ) -> ControlFlow<Self::BreakValue> {
         for tag_id in id.get(arena).0.iter(arena) {
             self.visit_variant_tag_pat(tag_id, arena)?;
@@ -297,7 +290,7 @@ pub trait Visitor {
     fn visit_variant_pat(
         &mut self,
         id: Id<node::VariantPat>,
-        arena: &NodeStorage,
+        arena: &S,
     ) -> ControlFlow<Self::BreakValue> {
         self.walk_variant_pat(id, arena)
     }
@@ -305,16 +298,12 @@ pub trait Visitor {
     fn visit_pat_error(
         &mut self,
         _id: Id<node::PatError>,
-        _arena: &NodeStorage,
+        _arena: &S,
     ) -> ControlFlow<Self::BreakValue> {
         ControlFlow::Continue(())
     }
 
-    fn walk_pat(
-        &mut self,
-        id: Id<node::Pat>,
-        arena: &NodeStorage,
-    ) -> ControlFlow<Self::BreakValue> {
+    fn walk_pat(&mut self, id: Id<node::Pat>, arena: &S) -> ControlFlow<Self::BreakValue> {
         use node::Pat::*;
         match *arena.get(id) {
             Error(id) => self.visit_pat_error(id, arena),
@@ -326,53 +315,49 @@ pub trait Visitor {
             Variant(id) => self.visit_variant_pat(id, arena),
         }
     }
-    fn visit_pat(
-        &mut self,
-        id: Id<node::Pat>,
-        arena: &NodeStorage,
-    ) -> ControlFlow<Self::BreakValue> {
+    fn visit_pat(&mut self, id: Id<node::Pat>, arena: &S) -> ControlFlow<Self::BreakValue> {
         self.walk_pat(id, arena)
     }
 
     fn visit_literal_expr(
         &mut self,
         _id: Id<node::LiteralExpr>,
-        _arena: &NodeStorage,
+        _arena: &S,
     ) -> ControlFlow<Self::BreakValue> {
         ControlFlow::Continue(())
     }
     fn visit_unary_op(
         &mut self,
         _id: Id<node::UnaryOp>,
-        _arena: &NodeStorage,
+        _arena: &S,
     ) -> ControlFlow<Self::BreakValue> {
         ControlFlow::Continue(())
     }
     fn visit_binary_op(
         &mut self,
         _id: Id<node::BinaryOp>,
-        _arena: &NodeStorage,
+        _arena: &S,
     ) -> ControlFlow<Self::BreakValue> {
         ControlFlow::Continue(())
     }
     fn visit_record_update_op(
         &mut self,
         _id: Id<node::RecordUpdateOp>,
-        _arena: &NodeStorage,
+        _arena: &S,
     ) -> ControlFlow<Self::BreakValue> {
         ControlFlow::Continue(())
     }
     fn visit_expr_error(
         &mut self,
         _id: Id<node::ExprError>,
-        _arena: &NodeStorage,
+        _arena: &S,
     ) -> ControlFlow<Self::BreakValue> {
         ControlFlow::Continue(())
     }
     fn visit_type_error(
         &mut self,
         _id: Id<node::TypeError>,
-        _arena: &NodeStorage,
+        _arena: &S,
     ) -> ControlFlow<Self::BreakValue> {
         ControlFlow::Continue(())
     }
@@ -380,7 +365,7 @@ pub trait Visitor {
     fn walk_list_expr(
         &mut self,
         id: Id<node::ListExpr>,
-        arena: &NodeStorage,
+        arena: &S,
     ) -> ControlFlow<Self::BreakValue> {
         for element_id in id.get(arena).0.iter(arena) {
             self.visit_expr(element_id, arena)?;
@@ -390,7 +375,7 @@ pub trait Visitor {
     fn visit_list_expr(
         &mut self,
         id: Id<node::ListExpr>,
-        arena: &NodeStorage,
+        arena: &S,
     ) -> ControlFlow<Self::BreakValue> {
         self.walk_list_expr(id, arena)
     }
@@ -398,7 +383,7 @@ pub trait Visitor {
     fn walk_record_field(
         &mut self,
         id: Id<node::RecordField>,
-        arena: &NodeStorage,
+        arena: &S,
     ) -> ControlFlow<Self::BreakValue> {
         let node::RecordField { label, ty, value } = arena.get(id);
         self.visit_value_name(*label, arena)?;
@@ -411,7 +396,7 @@ pub trait Visitor {
     fn visit_record_field(
         &mut self,
         id: Id<node::RecordField>,
-        arena: &NodeStorage,
+        arena: &S,
     ) -> ControlFlow<Self::BreakValue> {
         self.walk_record_field(id, arena)
     }
@@ -419,7 +404,7 @@ pub trait Visitor {
     fn walk_record_expr(
         &mut self,
         id: Id<node::RecordExpr>,
-        arena: &NodeStorage,
+        arena: &S,
     ) -> ControlFlow<Self::BreakValue> {
         for field_id in id.get(arena).0.iter(arena) {
             self.visit_record_field(field_id, arena)?;
@@ -429,7 +414,7 @@ pub trait Visitor {
     fn visit_record_expr(
         &mut self,
         id: Id<node::RecordExpr>,
-        arena: &NodeStorage,
+        arena: &S,
     ) -> ControlFlow<Self::BreakValue> {
         self.walk_record_expr(id, arena)
     }
@@ -437,7 +422,7 @@ pub trait Visitor {
     fn walk_record_extend_expr(
         &mut self,
         id: Id<node::RecordExtendExpr>,
-        arena: &NodeStorage,
+        arena: &S,
     ) -> ControlFlow<Self::BreakValue> {
         let node::RecordExtendExpr {
             source,
@@ -460,7 +445,7 @@ pub trait Visitor {
     fn visit_record_extend_expr(
         &mut self,
         id: Id<node::RecordExtendExpr>,
-        arena: &NodeStorage,
+        arena: &S,
     ) -> ControlFlow<Self::BreakValue> {
         self.walk_record_extend_expr(id, arena)
     }
@@ -468,7 +453,7 @@ pub trait Visitor {
     fn walk_record_restrict_expr(
         &mut self,
         id: Id<node::RecordRestrictExpr>,
-        arena: &NodeStorage,
+        arena: &S,
     ) -> ControlFlow<Self::BreakValue> {
         let node::RecordRestrictExpr {
             source,
@@ -489,7 +474,7 @@ pub trait Visitor {
     fn visit_record_restrict_expr(
         &mut self,
         id: Id<node::RecordRestrictExpr>,
-        arena: &NodeStorage,
+        arena: &S,
     ) -> ControlFlow<Self::BreakValue> {
         self.walk_record_restrict_expr(id, arena)
     }
@@ -497,7 +482,7 @@ pub trait Visitor {
     fn walk_record_update_expr(
         &mut self,
         id: Id<node::RecordUpdateExpr>,
-        arena: &NodeStorage,
+        arena: &S,
     ) -> ControlFlow<Self::BreakValue> {
         let node::RecordUpdateExpr {
             source,
@@ -522,7 +507,7 @@ pub trait Visitor {
     fn visit_record_update_expr(
         &mut self,
         id: Id<node::RecordUpdateExpr>,
-        arena: &NodeStorage,
+        arena: &S,
     ) -> ControlFlow<Self::BreakValue> {
         self.walk_record_update_expr(id, arena)
     }
@@ -530,7 +515,7 @@ pub trait Visitor {
     fn walk_record_merge_expr(
         &mut self,
         id: Id<node::RecordMergeExpr>,
-        arena: &NodeStorage,
+        arena: &S,
     ) -> ControlFlow<Self::BreakValue> {
         let node::RecordMergeExpr { lhs, rhs } = *arena.get(id);
         self.visit_expr(lhs, arena)?;
@@ -540,7 +525,7 @@ pub trait Visitor {
     fn visit_record_merge_expr(
         &mut self,
         id: Id<node::RecordMergeExpr>,
-        arena: &NodeStorage,
+        arena: &S,
     ) -> ControlFlow<Self::BreakValue> {
         self.walk_record_merge_expr(id, arena)
     }
@@ -548,7 +533,7 @@ pub trait Visitor {
     fn walk_field_path(
         &mut self,
         id: Id<node::FieldPath>,
-        arena: &NodeStorage,
+        arena: &S,
     ) -> ControlFlow<Self::BreakValue> {
         for field_id in id.get(arena).0.iter(arena) {
             self.visit_value_name(field_id, arena)?;
@@ -558,7 +543,7 @@ pub trait Visitor {
     fn visit_field_path(
         &mut self,
         id: Id<node::FieldPath>,
-        arena: &NodeStorage,
+        arena: &S,
     ) -> ControlFlow<Self::BreakValue> {
         self.walk_field_path(id, arena)
     }
@@ -566,7 +551,7 @@ pub trait Visitor {
     fn walk_qualified_expr(
         &mut self,
         id: Id<node::QualifiedExpr>,
-        arena: &NodeStorage,
+        arena: &S,
     ) -> ControlFlow<Self::BreakValue> {
         let node::QualifiedExpr {
             module_path,
@@ -585,7 +570,7 @@ pub trait Visitor {
     fn visit_qualified_expr(
         &mut self,
         id: Id<node::QualifiedExpr>,
-        arena: &NodeStorage,
+        arena: &S,
     ) -> ControlFlow<Self::BreakValue> {
         self.walk_qualified_expr(id, arena)
     }
@@ -593,7 +578,7 @@ pub trait Visitor {
     fn walk_unary_expr(
         &mut self,
         id: Id<node::UnaryExpr>,
-        arena: &NodeStorage,
+        arena: &S,
     ) -> ControlFlow<Self::BreakValue> {
         let node::UnaryExpr { op, operand } = *arena.get(id);
         self.visit_unary_op(op, arena)?;
@@ -603,7 +588,7 @@ pub trait Visitor {
     fn visit_unary_expr(
         &mut self,
         id: Id<node::UnaryExpr>,
-        arena: &NodeStorage,
+        arena: &S,
     ) -> ControlFlow<Self::BreakValue> {
         self.walk_unary_expr(id, arena)
     }
@@ -611,7 +596,7 @@ pub trait Visitor {
     fn walk_binary_expr(
         &mut self,
         id: Id<node::BinaryExpr>,
-        arena: &NodeStorage,
+        arena: &S,
     ) -> ControlFlow<Self::BreakValue> {
         let node::BinaryExpr { op, lhs, rhs } = *arena.get(id);
         self.visit_binary_op(op, arena)?;
@@ -622,16 +607,12 @@ pub trait Visitor {
     fn visit_binary_expr(
         &mut self,
         id: Id<node::BinaryExpr>,
-        arena: &NodeStorage,
+        arena: &S,
     ) -> ControlFlow<Self::BreakValue> {
         self.walk_binary_expr(id, arena)
     }
 
-    fn walk_let_expr(
-        &mut self,
-        id: Id<node::LetExpr>,
-        arena: &NodeStorage,
-    ) -> ControlFlow<Self::BreakValue> {
+    fn walk_let_expr(&mut self, id: Id<node::LetExpr>, arena: &S) -> ControlFlow<Self::BreakValue> {
         let node::LetExpr {
             name,
             value_type,
@@ -649,7 +630,7 @@ pub trait Visitor {
     fn visit_let_expr(
         &mut self,
         id: Id<node::LetExpr>,
-        arena: &NodeStorage,
+        arena: &S,
     ) -> ControlFlow<Self::BreakValue> {
         self.walk_let_expr(id, arena)
     }
@@ -657,7 +638,7 @@ pub trait Visitor {
     fn walk_case_branch(
         &mut self,
         id: Id<node::CaseBranch>,
-        arena: &NodeStorage,
+        arena: &S,
     ) -> ControlFlow<Self::BreakValue> {
         let node::CaseBranch { pat, body } = *arena.get(id);
         self.visit_pat(pat, arena)?;
@@ -667,7 +648,7 @@ pub trait Visitor {
     fn visit_case_branch(
         &mut self,
         id: Id<node::CaseBranch>,
-        arena: &NodeStorage,
+        arena: &S,
     ) -> ControlFlow<Self::BreakValue> {
         self.walk_case_branch(id, arena)
     }
@@ -675,7 +656,7 @@ pub trait Visitor {
     fn walk_case_expr(
         &mut self,
         id: Id<node::CaseExpr>,
-        arena: &NodeStorage,
+        arena: &S,
     ) -> ControlFlow<Self::BreakValue> {
         let node::CaseExpr { source, branches } = arena.get(id);
         self.visit_expr(*source, arena)?;
@@ -687,16 +668,12 @@ pub trait Visitor {
     fn visit_case_expr(
         &mut self,
         id: Id<node::CaseExpr>,
-        arena: &NodeStorage,
+        arena: &S,
     ) -> ControlFlow<Self::BreakValue> {
         self.walk_case_expr(id, arena)
     }
 
-    fn walk_if_expr(
-        &mut self,
-        id: Id<node::IfExpr>,
-        arena: &NodeStorage,
-    ) -> ControlFlow<Self::BreakValue> {
+    fn walk_if_expr(&mut self, id: Id<node::IfExpr>, arena: &S) -> ControlFlow<Self::BreakValue> {
         let node::IfExpr {
             pred,
             then,
@@ -707,18 +684,14 @@ pub trait Visitor {
         self.visit_expr(or_else, arena)?;
         ControlFlow::Continue(())
     }
-    fn visit_if_expr(
-        &mut self,
-        id: Id<node::IfExpr>,
-        arena: &NodeStorage,
-    ) -> ControlFlow<Self::BreakValue> {
+    fn visit_if_expr(&mut self, id: Id<node::IfExpr>, arena: &S) -> ControlFlow<Self::BreakValue> {
         self.walk_if_expr(id, arena)
     }
 
     fn walk_lambda_expr(
         &mut self,
         id: Id<node::LambdaExpr>,
-        arena: &NodeStorage,
+        arena: &S,
     ) -> ControlFlow<Self::BreakValue> {
         let node::LambdaExpr {
             param,
@@ -735,7 +708,7 @@ pub trait Visitor {
     fn visit_lambda_expr(
         &mut self,
         id: Id<node::LambdaExpr>,
-        arena: &NodeStorage,
+        arena: &S,
     ) -> ControlFlow<Self::BreakValue> {
         self.walk_lambda_expr(id, arena)
     }
@@ -743,7 +716,7 @@ pub trait Visitor {
     fn walk_call_expr(
         &mut self,
         id: Id<node::CallExpr>,
-        arena: &NodeStorage,
+        arena: &S,
     ) -> ControlFlow<Self::BreakValue> {
         let node::CallExpr { func, arg } = arena.get(id);
         self.visit_expr(*func, arena)?;
@@ -753,7 +726,7 @@ pub trait Visitor {
     fn visit_call_expr(
         &mut self,
         id: Id<node::CallExpr>,
-        arena: &NodeStorage,
+        arena: &S,
     ) -> ControlFlow<Self::BreakValue> {
         self.walk_call_expr(id, arena)
     }
@@ -761,7 +734,7 @@ pub trait Visitor {
     fn walk_handler_clause(
         &mut self,
         id: Id<node::HandlerClause>,
-        arena: &NodeStorage,
+        arena: &S,
     ) -> ControlFlow<Self::BreakValue> {
         let node::HandlerClause { op, param, body } = *arena.get(id);
         self.visit_value_name(op, arena)?;
@@ -772,7 +745,7 @@ pub trait Visitor {
     fn visit_handler_clause(
         &mut self,
         id: Id<node::HandlerClause>,
-        arena: &NodeStorage,
+        arena: &S,
     ) -> ControlFlow<Self::BreakValue> {
         self.walk_handler_clause(id, arena)
     }
@@ -780,7 +753,7 @@ pub trait Visitor {
     fn walk_handle_expr(
         &mut self,
         id: Id<node::HandleExpr>,
-        arena: &NodeStorage,
+        arena: &S,
     ) -> ControlFlow<Self::BreakValue> {
         let node::HandleExpr { source, clauses } = arena.get(id);
         self.visit_expr(*source, arena)?;
@@ -792,34 +765,22 @@ pub trait Visitor {
     fn visit_handle_expr(
         &mut self,
         id: Id<node::HandleExpr>,
-        arena: &NodeStorage,
+        arena: &S,
     ) -> ControlFlow<Self::BreakValue> {
         self.walk_handle_expr(id, arena)
     }
 
-    fn walk_do_expr(
-        &mut self,
-        id: Id<node::DoExpr>,
-        arena: &NodeStorage,
-    ) -> ControlFlow<Self::BreakValue> {
+    fn walk_do_expr(&mut self, id: Id<node::DoExpr>, arena: &S) -> ControlFlow<Self::BreakValue> {
         let node::DoExpr { op, arg } = *arena.get(id);
         self.visit_value_name(op, arena)?;
         self.visit_expr(arg, arena)?;
         ControlFlow::Continue(())
     }
-    fn visit_do_expr(
-        &mut self,
-        id: Id<node::DoExpr>,
-        arena: &NodeStorage,
-    ) -> ControlFlow<Self::BreakValue> {
+    fn visit_do_expr(&mut self, id: Id<node::DoExpr>, arena: &S) -> ControlFlow<Self::BreakValue> {
         self.walk_do_expr(id, arena)
     }
 
-    fn walk_tag_expr(
-        &mut self,
-        id: Id<node::TagExpr>,
-        arena: &NodeStorage,
-    ) -> ControlFlow<Self::BreakValue> {
+    fn walk_tag_expr(&mut self, id: Id<node::TagExpr>, arena: &S) -> ControlFlow<Self::BreakValue> {
         let tag = arena.get(id).0;
         self.visit_value_name(tag, arena)?;
         ControlFlow::Continue(())
@@ -827,7 +788,7 @@ pub trait Visitor {
     fn visit_tag_expr(
         &mut self,
         id: Id<node::TagExpr>,
-        arena: &NodeStorage,
+        arena: &S,
     ) -> ControlFlow<Self::BreakValue> {
         self.walk_tag_expr(id, arena)
     }
@@ -835,7 +796,7 @@ pub trait Visitor {
     fn walk_type_witness_expr(
         &mut self,
         id: Id<node::TypeWitnessExpr>,
-        arena: &NodeStorage,
+        arena: &S,
     ) -> ControlFlow<Self::BreakValue> {
         match *arena.get(id) {
             node::TypeWitnessExpr::Qualified(id) => self.visit_qualified_type(id, arena),
@@ -845,16 +806,12 @@ pub trait Visitor {
     fn visit_type_witness_expr(
         &mut self,
         id: Id<node::TypeWitnessExpr>,
-        arena: &NodeStorage,
+        arena: &S,
     ) -> ControlFlow<Self::BreakValue> {
         self.walk_type_witness_expr(id, arena)
     }
 
-    fn walk_expr(
-        &mut self,
-        id: Id<node::Expr>,
-        arena: &NodeStorage,
-    ) -> ControlFlow<Self::BreakValue> {
+    fn walk_expr(&mut self, id: Id<node::Expr>, arena: &S) -> ControlFlow<Self::BreakValue> {
         use node::Expr::*;
         match *arena.get(id) {
             Error(id) => self.visit_expr_error(id, arena),
@@ -879,18 +836,14 @@ pub trait Visitor {
             TypeWitness(id) => self.visit_type_witness_expr(id, arena),
         }
     }
-    fn visit_expr(
-        &mut self,
-        id: Id<node::Expr>,
-        arena: &NodeStorage,
-    ) -> ControlFlow<Self::BreakValue> {
+    fn visit_expr(&mut self, id: Id<node::Expr>, arena: &S) -> ControlFlow<Self::BreakValue> {
         self.walk_expr(id, arena)
     }
 
     fn walk_effect_op_type(
         &mut self,
         id: Id<node::EffectOpType>,
-        arena: &NodeStorage,
+        arena: &S,
     ) -> ControlFlow<Self::BreakValue> {
         let node::EffectOpType { name, ty } = *arena.get(id);
         self.visit_value_name(name, arena)?;
@@ -900,7 +853,7 @@ pub trait Visitor {
     fn visit_effect_op_type(
         &mut self,
         id: Id<node::EffectOpType>,
-        arena: &NodeStorage,
+        arena: &S,
     ) -> ControlFlow<Self::BreakValue> {
         self.walk_effect_op_type(id, arena)
     }
@@ -908,7 +861,7 @@ pub trait Visitor {
     fn walk_effect_type(
         &mut self,
         id: Id<node::EffectType>,
-        arena: &NodeStorage,
+        arena: &S,
     ) -> ControlFlow<Self::BreakValue> {
         for op_id in id.get(arena).0.iter(arena) {
             self.visit_effect_op_type(op_id, arena)?;
@@ -918,7 +871,7 @@ pub trait Visitor {
     fn visit_effect_type(
         &mut self,
         id: Id<node::EffectType>,
-        arena: &NodeStorage,
+        arena: &S,
     ) -> ControlFlow<Self::BreakValue> {
         self.walk_effect_type(id, arena)
     }
@@ -926,7 +879,7 @@ pub trait Visitor {
     fn walk_qualified_type(
         &mut self,
         id: Id<node::QualifiedType>,
-        arena: &NodeStorage,
+        arena: &S,
     ) -> ControlFlow<Self::BreakValue> {
         let node::QualifiedType { path, ty } = arena.get(id);
         if let Some(p) = path {
@@ -938,7 +891,7 @@ pub trait Visitor {
     fn visit_qualified_type(
         &mut self,
         id: Id<node::QualifiedType>,
-        arena: &NodeStorage,
+        arena: &S,
     ) -> ControlFlow<Self::BreakValue> {
         self.walk_qualified_type(id, arena)
     }
@@ -946,7 +899,7 @@ pub trait Visitor {
     fn visit_type_var(
         &mut self,
         _id: Id<node::TypeVar>,
-        _arena: &NodeStorage,
+        _arena: &S,
     ) -> ControlFlow<Self::BreakValue> {
         ControlFlow::Continue(())
     }
@@ -954,7 +907,7 @@ pub trait Visitor {
     fn walk_label_or_var(
         &mut self,
         id: Id<node::LabelOrVar>,
-        arena: &NodeStorage,
+        arena: &S,
     ) -> ControlFlow<Self::BreakValue> {
         match *arena.get(id) {
             node::LabelOrVar::Label(id) => self.visit_value_name(id, arena),
@@ -964,7 +917,7 @@ pub trait Visitor {
     fn visit_label_or_var(
         &mut self,
         id: Id<node::LabelOrVar>,
-        arena: &NodeStorage,
+        arena: &S,
     ) -> ControlFlow<Self::BreakValue> {
         self.walk_label_or_var(id, arena)
     }
@@ -972,7 +925,7 @@ pub trait Visitor {
     fn walk_record_field_type(
         &mut self,
         id: Id<node::RecordFieldType>,
-        arena: &NodeStorage,
+        arena: &S,
     ) -> ControlFlow<Self::BreakValue> {
         let node::RecordFieldType { label_or_var, ty } = *arena.get(id);
         self.visit_label_or_var(label_or_var, arena)?;
@@ -982,7 +935,7 @@ pub trait Visitor {
     fn visit_record_field_type(
         &mut self,
         id: Id<node::RecordFieldType>,
-        arena: &NodeStorage,
+        arena: &S,
     ) -> ControlFlow<Self::BreakValue> {
         self.walk_record_field_type(id, arena)
     }
@@ -990,7 +943,7 @@ pub trait Visitor {
     fn walk_record_type(
         &mut self,
         id: Id<node::RecordType>,
-        arena: &NodeStorage,
+        arena: &S,
     ) -> ControlFlow<Self::BreakValue> {
         let node::RecordType { fields, extension } = arena.get(id);
         for field_id in fields.iter(arena) {
@@ -1004,16 +957,12 @@ pub trait Visitor {
     fn visit_record_type(
         &mut self,
         id: Id<node::RecordType>,
-        arena: &NodeStorage,
+        arena: &S,
     ) -> ControlFlow<Self::BreakValue> {
         self.walk_record_type(id, arena)
     }
 
-    fn walk_tag_type(
-        &mut self,
-        id: Id<node::TagType>,
-        arena: &NodeStorage,
-    ) -> ControlFlow<Self::BreakValue> {
+    fn walk_tag_type(&mut self, id: Id<node::TagType>, arena: &S) -> ControlFlow<Self::BreakValue> {
         let node::TagType { name, ty } = arena.get(id);
         self.visit_value_name(*name, arena)?;
         if let Some(t) = ty {
@@ -1024,7 +973,7 @@ pub trait Visitor {
     fn visit_tag_type(
         &mut self,
         id: Id<node::TagType>,
-        arena: &NodeStorage,
+        arena: &S,
     ) -> ControlFlow<Self::BreakValue> {
         self.walk_tag_type(id, arena)
     }
@@ -1032,7 +981,7 @@ pub trait Visitor {
     fn walk_variant_type(
         &mut self,
         id: Id<node::VariantType>,
-        arena: &NodeStorage,
+        arena: &S,
     ) -> ControlFlow<Self::BreakValue> {
         let node::VariantType { tags, extension } = arena.get(id);
         for tag_id in tags.iter(arena) {
@@ -1046,7 +995,7 @@ pub trait Visitor {
     fn visit_variant_type(
         &mut self,
         id: Id<node::VariantType>,
-        arena: &NodeStorage,
+        arena: &S,
     ) -> ControlFlow<Self::BreakValue> {
         self.walk_variant_type(id, arena)
     }
@@ -1054,7 +1003,7 @@ pub trait Visitor {
     fn walk_func_type(
         &mut self,
         id: Id<node::FuncType>,
-        arena: &NodeStorage,
+        arena: &S,
     ) -> ControlFlow<Self::BreakValue> {
         let node::FuncType { input, output } = arena.get(id);
         self.visit_type_expr(*input, arena)?;
@@ -1064,7 +1013,7 @@ pub trait Visitor {
     fn visit_func_type(
         &mut self,
         id: Id<node::FuncType>,
-        arena: &NodeStorage,
+        arena: &S,
     ) -> ControlFlow<Self::BreakValue> {
         self.walk_func_type(id, arena)
     }
@@ -1072,7 +1021,7 @@ pub trait Visitor {
     fn walk_type_application(
         &mut self,
         id: Id<node::TypeApplication>,
-        arena: &NodeStorage,
+        arena: &S,
     ) -> ControlFlow<Self::BreakValue> {
         let node::TypeApplication { constructor, arg } = arena.get(id);
         self.visit_type_expr(*constructor, arena)?;
@@ -1082,7 +1031,7 @@ pub trait Visitor {
     fn visit_type_application(
         &mut self,
         id: Id<node::TypeApplication>,
-        arena: &NodeStorage,
+        arena: &S,
     ) -> ControlFlow<Self::BreakValue> {
         self.walk_type_application(id, arena)
     }
@@ -1090,7 +1039,7 @@ pub trait Visitor {
     fn walk_comp_type(
         &mut self,
         id: Id<node::CompType>,
-        arena: &NodeStorage,
+        arena: &S,
     ) -> ControlFlow<Self::BreakValue> {
         let node::CompType { ty, effect } = *arena.get(id);
         if let Some(e) = effect {
@@ -1102,7 +1051,7 @@ pub trait Visitor {
     fn visit_comp_type(
         &mut self,
         id: Id<node::CompType>,
-        arena: &NodeStorage,
+        arena: &S,
     ) -> ControlFlow<Self::BreakValue> {
         self.walk_comp_type(id, arena)
     }
@@ -1110,7 +1059,7 @@ pub trait Visitor {
     fn walk_type_expr(
         &mut self,
         id: Id<node::TypeExpr>,
-        arena: &NodeStorage,
+        arena: &S,
     ) -> ControlFlow<Self::BreakValue> {
         use node::TypeExpr::*;
         match *arena.get(id) {
@@ -1125,7 +1074,7 @@ pub trait Visitor {
     fn visit_type_expr(
         &mut self,
         id: Id<node::TypeExpr>,
-        arena: &NodeStorage,
+        arena: &S,
     ) -> ControlFlow<Self::BreakValue> {
         self.walk_type_expr(id, arena)
     }
@@ -1133,7 +1082,7 @@ pub trait Visitor {
     fn walk_type_var_bind(
         &mut self,
         id: Id<node::TypeVarBind>,
-        arena: &NodeStorage,
+        arena: &S,
     ) -> ControlFlow<Self::BreakValue> {
         let node::TypeVarBind { var, kind } = *arena.get(id);
         if let Some(k) = kind {
@@ -1145,7 +1094,7 @@ pub trait Visitor {
     fn visit_type_var_bind(
         &mut self,
         id: Id<node::TypeVarBind>,
-        arena: &NodeStorage,
+        arena: &S,
     ) -> ControlFlow<Self::BreakValue> {
         self.walk_type_var_bind(id, arena)
     }
@@ -1153,7 +1102,7 @@ pub trait Visitor {
     fn walk_forall_binder(
         &mut self,
         id: Id<node::ForallBinder>,
-        arena: &NodeStorage,
+        arena: &S,
     ) -> ControlFlow<Self::BreakValue> {
         for bind_id in id.get(arena).0.iter(arena) {
             self.visit_type_var_bind(bind_id, arena)?;
@@ -1163,7 +1112,7 @@ pub trait Visitor {
     fn visit_forall_binder(
         &mut self,
         id: Id<node::ForallBinder>,
-        arena: &NodeStorage,
+        arena: &S,
     ) -> ControlFlow<Self::BreakValue> {
         self.walk_forall_binder(id, arena)
     }
@@ -1171,7 +1120,7 @@ pub trait Visitor {
     fn walk_type_scheme(
         &mut self,
         id: Id<node::TypeScheme>,
-        arena: &NodeStorage,
+        arena: &S,
     ) -> ControlFlow<Self::BreakValue> {
         let node::TypeScheme { forall, ty } = *arena.get(id);
         if let Some(f) = forall {
@@ -1183,7 +1132,7 @@ pub trait Visitor {
     fn visit_type_scheme(
         &mut self,
         id: Id<node::TypeScheme>,
-        arena: &NodeStorage,
+        arena: &S,
     ) -> ControlFlow<Self::BreakValue> {
         self.walk_type_scheme(id, arena)
     }
@@ -1191,7 +1140,7 @@ pub trait Visitor {
     fn visit_module_error(
         &mut self,
         _id: Id<node::ModuleError>,
-        _arena: &NodeStorage,
+        _arena: &S,
     ) -> ControlFlow<Self::BreakValue> {
         ControlFlow::Continue(())
     }
@@ -1199,7 +1148,7 @@ pub trait Visitor {
     fn walk_module_body(
         &mut self,
         id: Id<node::ModuleBody>,
-        arena: &NodeStorage,
+        arena: &S,
     ) -> ControlFlow<Self::BreakValue> {
         for bind_id in id.get(arena).0.iter(arena) {
             self.visit_bind(bind_id, arena)?;
@@ -1209,7 +1158,7 @@ pub trait Visitor {
     fn visit_module_body(
         &mut self,
         id: Id<node::ModuleBody>,
-        arena: &NodeStorage,
+        arena: &S,
     ) -> ControlFlow<Self::BreakValue> {
         self.walk_module_body(id, arena)
     }
@@ -1217,7 +1166,7 @@ pub trait Visitor {
     fn walk_module_path(
         &mut self,
         id: Id<node::ModulePath>,
-        arena: &NodeStorage,
+        arena: &S,
     ) -> ControlFlow<Self::BreakValue> {
         for name_id in id.get(arena).0.iter(arena) {
             self.visit_module_name(name_id, arena)?;
@@ -1227,7 +1176,7 @@ pub trait Visitor {
     fn visit_module_path(
         &mut self,
         id: Id<node::ModulePath>,
-        arena: &NodeStorage,
+        arena: &S,
     ) -> ControlFlow<Self::BreakValue> {
         self.walk_module_path(id, arena)
     }
@@ -1235,7 +1184,7 @@ pub trait Visitor {
     fn visit_module_import(
         &mut self,
         _id: Id<node::ModuleImport>,
-        _arena: &NodeStorage,
+        _arena: &S,
     ) -> ControlFlow<Self::BreakValue> {
         ControlFlow::Continue(())
     }
@@ -1243,7 +1192,7 @@ pub trait Visitor {
     fn walk_functor_args(
         &mut self,
         id: Id<node::FunctorArgs>,
-        arena: &NodeStorage,
+        arena: &S,
     ) -> ControlFlow<Self::BreakValue> {
         for arg_id in id.get(arena).0.iter(arena) {
             self.visit_module_path(arg_id, arena)?;
@@ -1253,7 +1202,7 @@ pub trait Visitor {
     fn visit_functor_args(
         &mut self,
         id: Id<node::FunctorArgs>,
-        arena: &NodeStorage,
+        arena: &S,
     ) -> ControlFlow<Self::BreakValue> {
         self.walk_functor_args(id, arena)
     }
@@ -1261,7 +1210,7 @@ pub trait Visitor {
     fn walk_functor_app(
         &mut self,
         id: Id<node::FunctorApp>,
-        arena: &NodeStorage,
+        arena: &S,
     ) -> ControlFlow<Self::BreakValue> {
         let node::FunctorApp { path, func, args } = arena.get(id);
         if let Some(p) = path {
@@ -1274,7 +1223,7 @@ pub trait Visitor {
     fn visit_functor_app(
         &mut self,
         id: Id<node::FunctorApp>,
-        arena: &NodeStorage,
+        arena: &S,
     ) -> ControlFlow<Self::BreakValue> {
         self.walk_functor_app(id, arena)
     }
@@ -1282,7 +1231,7 @@ pub trait Visitor {
     fn walk_module_expr(
         &mut self,
         id: Id<node::ModuleExpr>,
-        arena: &NodeStorage,
+        arena: &S,
     ) -> ControlFlow<Self::BreakValue> {
         use node::ModuleExpr::*;
         match *arena.get(id) {
@@ -1296,23 +1245,19 @@ pub trait Visitor {
     fn visit_module_expr(
         &mut self,
         id: Id<node::ModuleExpr>,
-        arena: &NodeStorage,
+        arena: &S,
     ) -> ControlFlow<Self::BreakValue> {
         self.walk_module_expr(id, arena)
     }
 
-    fn visit_vis(
-        &mut self,
-        _id: Id<node::Vis>,
-        _arena: &NodeStorage,
-    ) -> ControlFlow<Self::BreakValue> {
+    fn visit_vis(&mut self, _id: Id<node::Vis>, _arena: &S) -> ControlFlow<Self::BreakValue> {
         ControlFlow::Continue(())
     }
 
     fn walk_value_bind(
         &mut self,
         id: Id<node::ValueBind>,
-        arena: &NodeStorage,
+        arena: &S,
     ) -> ControlFlow<Self::BreakValue> {
         let node::ValueBind {
             vis,
@@ -1331,7 +1276,7 @@ pub trait Visitor {
     fn visit_value_bind(
         &mut self,
         id: Id<node::ValueBind>,
-        arena: &NodeStorage,
+        arena: &S,
     ) -> ControlFlow<Self::BreakValue> {
         self.walk_value_bind(id, arena)
     }
@@ -1339,7 +1284,7 @@ pub trait Visitor {
     fn walk_type_bind(
         &mut self,
         id: Id<node::TypeBind>,
-        arena: &NodeStorage,
+        arena: &S,
     ) -> ControlFlow<Self::BreakValue> {
         let node::TypeBind {
             vis,
@@ -1354,7 +1299,7 @@ pub trait Visitor {
     fn visit_type_bind(
         &mut self,
         id: Id<node::TypeBind>,
-        arena: &NodeStorage,
+        arena: &S,
     ) -> ControlFlow<Self::BreakValue> {
         self.walk_type_bind(id, arena)
     }
@@ -1362,7 +1307,7 @@ pub trait Visitor {
     fn walk_module_bind(
         &mut self,
         id: Id<node::ModuleBind>,
-        arena: &NodeStorage,
+        arena: &S,
     ) -> ControlFlow<Self::BreakValue> {
         let node::ModuleBind {
             vis,
@@ -1381,7 +1326,7 @@ pub trait Visitor {
     fn visit_module_bind(
         &mut self,
         id: Id<node::ModuleBind>,
-        arena: &NodeStorage,
+        arena: &S,
     ) -> ControlFlow<Self::BreakValue> {
         self.walk_module_bind(id, arena)
     }
@@ -1389,7 +1334,7 @@ pub trait Visitor {
     fn walk_module_type_bind(
         &mut self,
         id: Id<node::ModuleTypeBind>,
-        arena: &NodeStorage,
+        arena: &S,
     ) -> ControlFlow<Self::BreakValue> {
         let node::ModuleTypeBind { vis, name, ty } = *arena.get(id);
         self.visit_vis(vis, arena)?;
@@ -1400,7 +1345,7 @@ pub trait Visitor {
     fn visit_module_type_bind(
         &mut self,
         id: Id<node::ModuleTypeBind>,
-        arena: &NodeStorage,
+        arena: &S,
     ) -> ControlFlow<Self::BreakValue> {
         self.walk_module_type_bind(id, arena)
     }
@@ -1408,7 +1353,7 @@ pub trait Visitor {
     fn walk_functor_param(
         &mut self,
         id: Id<node::FunctorParam>,
-        arena: &NodeStorage,
+        arena: &S,
     ) -> ControlFlow<Self::BreakValue> {
         let node::FunctorParam { name, ty } = *arena.get(id);
         self.visit_module_name(name, arena)?;
@@ -1418,7 +1363,7 @@ pub trait Visitor {
     fn visit_functor_param(
         &mut self,
         id: Id<node::FunctorParam>,
-        arena: &NodeStorage,
+        arena: &S,
     ) -> ControlFlow<Self::BreakValue> {
         self.walk_functor_param(id, arena)
     }
@@ -1426,7 +1371,7 @@ pub trait Visitor {
     fn walk_functor_bind(
         &mut self,
         id: Id<node::FunctorBind>,
-        arena: &NodeStorage,
+        arena: &S,
     ) -> ControlFlow<Self::BreakValue> {
         let node::FunctorBind {
             vis,
@@ -1445,7 +1390,7 @@ pub trait Visitor {
     fn visit_functor_bind(
         &mut self,
         id: Id<node::FunctorBind>,
-        arena: &NodeStorage,
+        arena: &S,
     ) -> ControlFlow<Self::BreakValue> {
         self.walk_functor_bind(id, arena)
     }
@@ -1453,16 +1398,12 @@ pub trait Visitor {
     fn visit_bind_error(
         &mut self,
         _id: Id<node::BindError>,
-        _arena: &NodeStorage,
+        _arena: &S,
     ) -> ControlFlow<Self::BreakValue> {
         ControlFlow::Continue(())
     }
 
-    fn walk_bind(
-        &mut self,
-        id: Id<node::Bind>,
-        arena: &NodeStorage,
-    ) -> ControlFlow<Self::BreakValue> {
+    fn walk_bind(&mut self, id: Id<node::Bind>, arena: &S) -> ControlFlow<Self::BreakValue> {
         use node::Bind::*;
         match *arena.get(id) {
             Value(id) => self.visit_value_bind(id, arena),
@@ -1473,18 +1414,14 @@ pub trait Visitor {
             Error(id) => self.visit_bind_error(id, arena),
         }
     }
-    fn visit_bind(
-        &mut self,
-        id: Id<node::Bind>,
-        arena: &NodeStorage,
-    ) -> ControlFlow<Self::BreakValue> {
+    fn visit_bind(&mut self, id: Id<node::Bind>, arena: &S) -> ControlFlow<Self::BreakValue> {
         self.walk_bind(id, arena)
     }
 
     fn visit_spec_error(
         &mut self,
         _id: Id<node::SpecError>,
-        _arena: &NodeStorage,
+        _arena: &S,
     ) -> ControlFlow<Self::BreakValue> {
         ControlFlow::Continue(())
     }
@@ -1492,7 +1429,7 @@ pub trait Visitor {
     fn walk_value_spec(
         &mut self,
         id: Id<node::ValueSpec>,
-        arena: &NodeStorage,
+        arena: &S,
     ) -> ControlFlow<Self::BreakValue> {
         let node::ValueSpec { name, ty } = *arena.get(id);
         self.visit_value_name(name, arena)?;
@@ -1502,7 +1439,7 @@ pub trait Visitor {
     fn visit_value_spec(
         &mut self,
         id: Id<node::ValueSpec>,
-        arena: &NodeStorage,
+        arena: &S,
     ) -> ControlFlow<Self::BreakValue> {
         self.walk_value_spec(id, arena)
     }
@@ -1510,7 +1447,7 @@ pub trait Visitor {
     fn walk_module_spec(
         &mut self,
         id: Id<node::ModuleSpec>,
-        arena: &NodeStorage,
+        arena: &S,
     ) -> ControlFlow<Self::BreakValue> {
         let node::ModuleSpec { name, ty } = *arena.get(id);
         self.visit_module_name(name, arena)?;
@@ -1520,16 +1457,12 @@ pub trait Visitor {
     fn visit_module_spec(
         &mut self,
         id: Id<node::ModuleSpec>,
-        arena: &NodeStorage,
+        arena: &S,
     ) -> ControlFlow<Self::BreakValue> {
         self.walk_module_spec(id, arena)
     }
 
-    fn walk_spec(
-        &mut self,
-        id: Id<node::Spec>,
-        arena: &NodeStorage,
-    ) -> ControlFlow<Self::BreakValue> {
+    fn walk_spec(&mut self, id: Id<node::Spec>, arena: &S) -> ControlFlow<Self::BreakValue> {
         use node::Spec::*;
         match *arena.get(id) {
             Value(id) => self.visit_value_spec(id, arena),
@@ -1537,18 +1470,14 @@ pub trait Visitor {
             Error(id) => self.visit_spec_error(id, arena),
         }
     }
-    fn visit_spec(
-        &mut self,
-        id: Id<node::Spec>,
-        arena: &NodeStorage,
-    ) -> ControlFlow<Self::BreakValue> {
+    fn visit_spec(&mut self, id: Id<node::Spec>, arena: &S) -> ControlFlow<Self::BreakValue> {
         self.walk_spec(id, arena)
     }
 
     fn walk_concrete_module_type(
         &mut self,
         id: Id<node::ConcreteModuleType>,
-        arena: &NodeStorage,
+        arena: &S,
     ) -> ControlFlow<Self::BreakValue> {
         for spec_id in id.get(arena).0.iter(arena) {
             self.visit_spec(spec_id, arena)?;
@@ -1558,7 +1487,7 @@ pub trait Visitor {
     fn visit_concrete_module_type(
         &mut self,
         id: Id<node::ConcreteModuleType>,
-        arena: &NodeStorage,
+        arena: &S,
     ) -> ControlFlow<Self::BreakValue> {
         self.walk_concrete_module_type(id, arena)
     }
@@ -1566,7 +1495,7 @@ pub trait Visitor {
     fn walk_qualified_module_type(
         &mut self,
         id: Id<node::QualifiedModuleType>,
-        arena: &NodeStorage,
+        arena: &S,
     ) -> ControlFlow<Self::BreakValue> {
         let node::QualifiedModuleType { path, ty } = *arena.get(id);
         if let Some(p) = path {
@@ -1578,7 +1507,7 @@ pub trait Visitor {
     fn visit_qualified_module_type(
         &mut self,
         id: Id<node::QualifiedModuleType>,
-        arena: &NodeStorage,
+        arena: &S,
     ) -> ControlFlow<Self::BreakValue> {
         self.walk_qualified_module_type(id, arena)
     }
@@ -1586,7 +1515,7 @@ pub trait Visitor {
     fn walk_module_type(
         &mut self,
         id: Id<node::ModuleType>,
-        arena: &NodeStorage,
+        arena: &S,
     ) -> ControlFlow<Self::BreakValue> {
         use node::ModuleType::*;
         match *arena.get(id) {
@@ -1597,7 +1526,7 @@ pub trait Visitor {
     fn visit_module_type(
         &mut self,
         id: Id<node::ModuleType>,
-        arena: &NodeStorage,
+        arena: &S,
     ) -> ControlFlow<Self::BreakValue> {
         self.walk_module_type(id, arena)
     }

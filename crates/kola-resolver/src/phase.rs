@@ -3,7 +3,6 @@
 use std::{collections::HashMap, fmt};
 
 use kola_builtins::{BuiltinId, BuiltinType};
-use kola_tree::meta::{MetaMap, Phase};
 use kola_utils::as_variant;
 
 use crate::symbol::{AnySym, FunctorSym, ModuleSym, ModuleTypeSym, Substitute, TypeSym, ValueSym};

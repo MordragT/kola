@@ -6,13 +6,12 @@ use serde::{Deserialize, Serialize};
 
 use kola_print::prelude::*;
 
-use super::{
-    Expr, FunctorName, ModuleName, ModuleTypeName, NodeStorage, TypeName, TypeScheme, ValueName,
-};
+use super::{Expr, FunctorName, ModuleName, ModuleTypeName, TypeName, TypeScheme, ValueName};
 use crate::{
-    id::{Id, SliceId},
+    id::Id,
     print::NodePrinter,
-    tree::TreeBuilder,
+    slice::SliceId,
+    tree::{TreeBuilder, TreeView},
 };
 
 #[derive(
@@ -244,11 +243,8 @@ impl FunctorBind {
         let vis = builder.alloc(vis);
         let name = builder.alloc(name);
 
-        let params = params
-            .into_iter()
-            .map(|param| builder.alloc(param))
-            .collect::<Vec<_>>();
-        let params = builder.alloc_slice(params);
+        let params = params.into_iter().map(|param| builder.nodes.alloc(param));
+        let params = builder.slices.alloc(params);
         let body = builder.alloc(body);
 
         builder.alloc(Self {
@@ -337,8 +333,8 @@ pub struct ModuleBody(pub SliceId<Bind>);
 pub struct ModulePath(pub SliceId<ModuleName>);
 
 impl ModulePath {
-    pub fn get(&self, index: usize, arena: &NodeStorage) -> ModuleName {
-        *self.0.iter(arena).nth(index).unwrap().get(arena)
+    pub fn get(&self, index: usize, storage: &impl TreeView) -> ModuleName {
+        *self.0.iter(storage).nth(index).unwrap().get(storage)
     }
 }
 

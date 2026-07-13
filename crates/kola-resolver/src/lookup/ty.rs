@@ -4,7 +4,6 @@ use indexmap::IndexMap;
 use kola_span::{Diagnostic, Issue, Loc, Report};
 use kola_tree::{
     id::Id,
-    meta::MetaMapExt,
     node::{self, TypeName},
 };
 use log::debug;

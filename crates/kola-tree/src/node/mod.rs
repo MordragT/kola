@@ -12,7 +12,7 @@ pub use ty::*;
 
 use pastey::paste;
 
-use crate::id::{Id, SliceId};
+use crate::id::Id;
 
 /// Columnar access to a `Vec<Item>` inside a `Storage`.
 pub trait Column<T> {
@@ -95,14 +95,12 @@ macro_rules! define_node_family {
         paste! {
             #[derive(Debug, Clone)]
             pub struct Storage< $([< $Name T >],)+ > {
-                pub slice_data: Vec<u32>,
                 $(pub [< $Name:snake:lower >]: Vec<[< $Name T >]>,)+
             }
 
             impl< $([< $Name T >],)+ > Default for Storage< $([< $Name T >],)+ > {
                 fn default() -> Self {
                     Self {
-                        slice_data: Vec::new(),
                         $([< $Name:snake:lower >]: Vec::new(),)+
                     }
                 }
@@ -110,20 +108,17 @@ macro_rules! define_node_family {
 
             #[derive(Debug, Clone, Copy)]
             pub struct StorageCheckpoint {
-                pub slice_data: usize,
                 $(pub [< $Name:snake:lower >]: usize,)+
             }
 
             impl< $([< $Name T>],)+ > Storage< $([< $Name T >],)+ > {
                 pub fn checkpoint(&self) -> StorageCheckpoint {
                     StorageCheckpoint {
-                        slice_data: self.slice_data.len(),
                         $([< $Name:snake:lower >]: self.[< $Name:snake:lower >].len(),)+
                     }
                 }
 
                 pub fn restore(&mut self, cp: &StorageCheckpoint) {
-                    self.slice_data.truncate(cp.slice_data);
                     $(self.[< $Name:snake:lower >].truncate(cp.[< $Name:snake:lower >]);)+
                 }
             }
@@ -148,27 +143,6 @@ macro_rules! define_node_family {
                             AnyId::$Name(id) => Node::$Name(&self.[< $Name:snake:lower >][id.as_usize()]),
                         )*
                     }
-                }
-
-                pub fn alloc_slice<T>(&mut self, slice: impl IntoIterator<Item = Id<T>>) -> SliceId<T> {
-                    let start = self.slice_data.len() as u32;
-                    self.slice_data.extend(slice.into_iter().map(|id| id.id()));
-                    let length = self.slice_data.len() as u32;
-                    SliceId::new(start, length)
-                }
-
-                pub fn get_slice<T>(&self, slice_id: SliceId<T>) -> &[Id<T>] {
-                    let start = slice_id.start();
-                    let end = slice_id.end();
-                    let slice_data = &self.slice_data[start..end];
-                    unsafe { std::slice::from_raw_parts(slice_data.as_ptr() as *const Id<T>, slice_data.len()) }
-                }
-
-                pub fn get_slice_mut<T>(&mut self, slice_id: SliceId<T>) -> &mut [Id<T>] {
-                    let start = slice_id.start();
-                    let end = slice_id.end();
-                    let slice_data = &mut self.slice_data[start..end];
-                    unsafe { std::slice::from_raw_parts_mut(slice_data.as_mut_ptr() as *mut Id<T>, slice_data.len()) }
                 }
 
                 pub fn get<T>(&self, id: Id<T>) -> &T
@@ -212,7 +186,6 @@ macro_rules! define_node_family {
                 pub fn from_checkpoint(cp: StorageCheckpoint) -> Self
                 where M: Default + Clone {
                     Self {
-                        slice_data: vec![0; cp.slice_data],
                         $([< $Name:snake:lower >]: vec![M::default(); cp.[< $Name:snake:lower >]],)+
                     }
                 }

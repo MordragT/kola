@@ -9,7 +9,7 @@ use kola_span::{
 use kola_tree::{node::ValueName, prelude::*};
 
 use super::ParseInput;
-use super::ext::KolaCombinator;
+use super::ext::{KolaCombinator, Slice};
 use super::state::State;
 use crate::token::{CloseT, CtrlT, Delim, KwT, LiteralT, OpT, OpenT, Symbol, Token};
 
@@ -124,7 +124,7 @@ impl<'t> Lazy<ParseInput<'t>, Id<node::ModuleBody>> for ModuleCombinator {
         let functor_args = module_path_parser()
             .separated_by(ctrl(CtrlT::COMMA))
             .at_least(1)
-            .collect()
+            .collect::<Slice<_>>()
             .map_to_node(node::FunctorArgs);
 
         let module_path = module_name_parser()
@@ -132,7 +132,7 @@ impl<'t> Lazy<ParseInput<'t>, Id<node::ModuleBody>> for ModuleCombinator {
             .then_ignore(ctrl(CtrlT::DOUBLE_COLON))
             .repeated()
             .at_least(1)
-            .collect::<Vec<_>>()
+            .collect::<Slice<_>>()
             .map_to_node(node::ModulePath)
             .or_not();
 
@@ -209,7 +209,7 @@ impl<'t> Lazy<ParseInput<'t>, Id<node::ModuleBody>> for ModuleCombinator {
             kw(KwT::MODULE).ignore_then(kw(KwT::FUNCTOR).ignore_then(
                 functor_name_parser().throw("Expected functor name after 'module functor'"),
             )),
-            functor_param.repeated().at_least(1).collect(),
+            functor_param.repeated().at_least(1).collect::<Slice<_>>(),
             ctrl(CtrlT::DOUBLE_ARROW).ignore_then(module.throw("Expected functor body after '=>'")),
         ))
         .map_to_node(|(vis, name, params, body)| node::FunctorBind {
@@ -238,7 +238,7 @@ impl<'t> Lazy<ParseInput<'t>, Id<node::ModuleBody>> for ModuleCombinator {
                     state.insert_as::<node::Bind, _>(node::BindError, loc)
                 },
             )
-            .collect()
+            .collect::<Slice<_>>()
             .map_to_node(node::ModuleBody)
             .delimited_by(open_delim(OpenT::BRACE), close_delim(CloseT::BRACE))
     };
@@ -283,7 +283,7 @@ impl<'t> Lazy<ParseInput<'t>, Id<node::ModuleType>> for ModuleTypeCombinator {
                     state.insert_as::<node::Spec, _>(node::SpecError, loc)
                 },
             )
-            .collect()
+            .collect::<Slice<_>>()
             .map_to_node(node::ConcreteModuleType)
             .delimited_by(open_delim(OpenT::BRACE), close_delim(CloseT::BRACE))
             .to_module_type();
@@ -292,7 +292,7 @@ impl<'t> Lazy<ParseInput<'t>, Id<node::ModuleType>> for ModuleTypeCombinator {
             .then_ignore(ctrl(CtrlT::DOUBLE_COLON))
             .repeated()
             .at_least(1)
-            .collect()
+            .collect::<Slice<_>>()
             .map_to_node(node::ModulePath)
             .or_not()
             .then(module_type_name_parser())
@@ -356,7 +356,7 @@ impl<'t> Lazy<ParseInput<'t>, Id<node::Pat>> for PatCombinator {
             list_element
                 .separated_by(ctrl(CtrlT::COMMA))
                 .allow_trailing()
-                .collect()
+                .collect::<Slice<_>>()
                 .throw("Expected pattern or spread in list pattern")
                 .map_to_node(node::ListPat)
                 .to_pat(),
@@ -372,7 +372,7 @@ impl<'t> Lazy<ParseInput<'t>, Id<node::Pat>> for PatCombinator {
         let record = nested_parser(
             field
                 .separated_by(ctrl(CtrlT::COMMA))
-                .collect()
+                .collect::<Slice<_>>()
                 .throw("Expected field pattern in record pattern")
                 .then(ctrl(CtrlT::COMMA).then(ctrl(CtrlT::TRIPLE_DOT)).or_not())
                 .map_to_node(|(fields, spread)| node::RecordPat {
@@ -410,7 +410,7 @@ impl<'t> Lazy<ParseInput<'t>, Id<node::Pat>> for PatCombinator {
                 .or(case)
                 .separated_by(ctrl(CtrlT::COMMA))
                 .allow_trailing()
-                .collect()
+                .collect::<Slice<_>>()
                 .throw("Expected variant case pattern")
                 .map_to_node(node::VariantPat)
                 .to_pat(),
@@ -551,7 +551,7 @@ impl<'t> Lazy<ParseInput<'t>, Id<node::Expr>> for ExprAtomCombinator {
             .then_ignore(ctrl(CtrlT::DOUBLE_COLON))
             .repeated()
             .at_least(1)
-            .collect::<Vec<_>>()
+            .collect::<Slice<_>>()
             .map_to_node(node::ModulePath)
             .or_not();
 
@@ -574,7 +574,7 @@ impl<'t> Lazy<ParseInput<'t>, Id<node::Expr>> for ExprAtomCombinator {
         let list = nested_parser(
             expr.separated_by(ctrl(CtrlT::COMMA))
                 .allow_trailing()
-                .collect()
+                .collect::<Slice<_>>()
                 .throw("Expected expression in list literal")
                 .map_to_node(node::ListExpr)
                 .to_expr(),
@@ -593,7 +593,7 @@ impl<'t> Lazy<ParseInput<'t>, Id<node::Expr>> for ExprAtomCombinator {
         let instantiate = field
             .separated_by(ctrl(CtrlT::COMMA))
             .allow_trailing()
-            .collect()
+            .collect::<Slice<_>>()
             .map_to_node(node::RecordExpr)
             .to_expr();
 
@@ -643,7 +643,7 @@ impl<'t> Lazy<ParseInput<'t>, Id<node::Expr>> for ExprAtomCombinator {
             .ignore_then(branch)
             .repeated()
             .at_least(1)
-            .collect();
+            .collect::<Slice<_>>();
 
         let case = kw(KwT::CASE)
             .ignore_then(qualified_parser().throw("Expected qualified name after 'case'"))
@@ -687,7 +687,7 @@ impl<'t> Lazy<ParseInput<'t>, Id<node::Expr>> for ExprAtomCombinator {
             .ignore_then(clause)
             .repeated()
             .at_least(1)
-            .collect();
+            .collect::<Slice<_>>();
 
         let handle = kw(KwT::HANDLE)
             .ignore_then(
@@ -944,7 +944,7 @@ impl<'t> Lazy<ParseInput<'t>, Id<node::TypeExpr>> for TypeCombinator {
             .then_ignore(ctrl(CtrlT::DOUBLE_COLON))
             .repeated()
             .at_least(1)
-            .collect::<Vec<_>>()
+            .collect::<Slice<_>>()
             .map_to_node(node::ModulePath)
             .or_not();
 
@@ -970,7 +970,7 @@ impl<'t> Lazy<ParseInput<'t>, Id<node::TypeExpr>> for TypeCombinator {
             field
                 .separated_by(ctrl(CtrlT::COMMA))
                 .allow_trailing()
-                .collect()
+                .collect::<Slice<_>>()
                 .throw("Expected field in record type")
                 .then(row_var_parser())
                 .map_to_node(|(fields, extension)| node::RecordType { fields, extension })
@@ -1007,7 +1007,7 @@ impl<'t> Lazy<ParseInput<'t>, Id<node::TypeExpr>> for TypeCombinator {
                 .or(tag)
                 .separated_by(ctrl(CtrlT::COMMA))
                 .allow_trailing()
-                .collect()
+                .collect::<Slice<_>>()
                 .throw("Expected tag in variant type")
                 .then(row_var_parser())
                 .map_to_node(|(tags, extension)| node::VariantType { tags, extension })
@@ -1041,7 +1041,7 @@ impl<'t> Lazy<ParseInput<'t>, Id<node::TypeExpr>> for TypeCombinator {
         let effect = effect_op
             .separated_by(ctrl(CtrlT::COMMA))
             .allow_trailing()
-            .collect()
+            .collect::<Slice<_>>()
             .delimited_by(open_delim(OpenT::BRACE), close_delim(CloseT::BRACE))
             .map_to_node(node::EffectType);
 
@@ -1085,14 +1085,14 @@ const fn vis_parser<'t>() -> impl const KolaCombinator<'t, Id<node::Vis>> {
 const fn module_path_parser<'t>() -> impl const KolaCombinator<'t, Id<node::ModulePath>> {
     module_name_parser()
         .separated_by(ctrl(CtrlT::DOUBLE_COLON))
-        .collect()
+        .collect::<Slice<_>>()
         .map_to_node(node::ModulePath)
 }
 
 const fn field_path_parser<'t>() -> impl const KolaCombinator<'t, Id<node::FieldPath>> {
     value_name_parser()
         .separated_by(ctrl(CtrlT::DOT))
-        .collect()
+        .collect::<Slice<_>>()
         .map_to_node(node::FieldPath)
 }
 
@@ -1103,7 +1103,7 @@ const fn qualified_parser<'t>() -> impl const KolaCombinator<'t, Id<node::Expr>>
         .then_ignore(ctrl(CtrlT::DOUBLE_COLON))
         .repeated()
         .at_least(1)
-        .collect::<Vec<_>>()
+        .collect::<Slice<_>>()
         .map_to_node(node::ModulePath)
         .or_not();
 
@@ -1111,7 +1111,7 @@ const fn qualified_parser<'t>() -> impl const KolaCombinator<'t, Id<node::Expr>>
         .ignore_then(value_name_parser())
         .repeated()
         .at_least(1)
-        .collect()
+        .collect::<Slice<_>>()
         .map_to_node(node::FieldPath)
         .or_not();
 
@@ -1191,7 +1191,7 @@ pub const fn type_scheme_parser<'t>() -> impl const KolaCombinator<'t, Id<node::
             type_var_bind()
                 .repeated()
                 .at_least(1)
-                .collect()
+                .collect::<Slice<_>>()
                 .throw("Expected at least one type variable after 'forall'"),
         )
         .then_ignore(ctrl(CtrlT::DOT))

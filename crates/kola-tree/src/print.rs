@@ -6,7 +6,7 @@ use kola_utils::interner::StrInterner;
 use crate::{
     id::Id,
     node::{AnyId, Column, NodeStorage},
-    tree::Tree,
+    tree::{Tree, TreeView},
 };
 
 pub trait Decorator<'a> {

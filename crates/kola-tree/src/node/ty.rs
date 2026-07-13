@@ -7,12 +7,9 @@ use std::{borrow::Borrow, ops::Deref};
 use kola_print::prelude::*;
 use kola_utils::interner::StrKey;
 
-use super::{KindName, ModulePath, NodeStorage, TypeName, ValueName};
+use super::{KindName, ModulePath, TypeName, ValueName};
 
-use crate::{
-    id::{Id, SliceId},
-    print::NodePrinter,
-};
+use crate::{id::Id, print::NodePrinter, slice::SliceId, tree::TreeView};
 
 #[derive(
     Debug,
@@ -216,8 +213,8 @@ pub struct RecordType {
 }
 
 impl RecordType {
-    pub fn get(&self, index: usize, arena: &NodeStorage) -> RecordFieldType {
-        *self.fields.iter(arena).nth(index).unwrap().get(arena)
+    pub fn get(&self, index: usize, storage: &impl TreeView) -> RecordFieldType {
+        *self.fields.iter(storage).nth(index).unwrap().get(storage)
     }
 }
 
@@ -262,8 +259,8 @@ pub struct VariantType {
 }
 
 impl VariantType {
-    pub fn get(&self, index: usize, arena: &NodeStorage) -> TagType {
-        *self.tags.iter(arena).nth(index).unwrap().get(arena)
+    pub fn get(&self, index: usize, storage: &impl TreeView) -> TagType {
+        *self.tags.iter(storage).nth(index).unwrap().get(storage)
     }
 }
 

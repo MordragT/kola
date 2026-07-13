@@ -1,7 +1,7 @@
 use std::{fmt::Debug, marker::PhantomData};
 
 use crate::{
-    Report,
+    Collection, Report,
     input::Input,
     parser::{Failure, IterParser, Parser},
 };
@@ -43,24 +43,25 @@ where
 
 impl<IP, O, C> Copy for Collect<IP, O, C> where IP: Copy {}
 
-impl<I, O, C, IP> Parser<I, C> for Collect<IP, O, C>
+impl<I, O, C, IP> Parser<I, C::Output> for Collect<IP, O, C>
 where
     I: Input,
     O: Debug,
     IP: IterParser<I, O>,
-    C: Debug + Default + Extend<O>,
+    C: Collection<I, O>,
 {
-    fn parse(&self, input: &mut I, report: &mut Report) -> Result<C, Failure> {
+    fn parse(&self, input: &mut I, report: &mut Report) -> Result<C::Output, Failure> {
         let mut state = IP::State::default();
-        let mut items = C::default();
+        let mut items = C::new_with(input);
 
         loop {
             match self.iter.drive(&mut state, input, report)? {
-                Some(o) => items.extend(std::iter::once(o)),
+                Some(o) => items.push_with(o, input),
                 None => break,
             }
         }
 
-        Ok(items)
+        let output = items.finish_with(input);
+        Ok(output)
     }
 }

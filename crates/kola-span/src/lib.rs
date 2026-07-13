@@ -8,6 +8,7 @@
 //! - the *span*, represented by [`Span`] and related types;
 //! - source code as represented by a [`Source`];
 
+mod collection;
 mod diag;
 mod loc;
 mod source;
@@ -20,6 +21,7 @@ pub mod pratt;
 pub mod primitive;
 pub mod skip;
 
+pub use collection::Collection;
 pub use diag::{Diagnostic, IntoDiagnostic, IntoIssue, Issue, Report, ReportCheckpoint, Severity};
 pub use loc::{Loc, Located};
 pub use source::{Source, SourceId, SourceManager};

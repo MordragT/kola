@@ -3,7 +3,6 @@ use std::collections::HashMap;
 use kola_span::{Diagnostic, Loc, Report};
 use kola_tree::{
     id::Id,
-    meta::MetaMapExt,
     node::Vis,
     node::{self, ModuleName},
 };
