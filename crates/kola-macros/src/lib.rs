@@ -92,7 +92,7 @@ pub fn derive_notate(input: TokenStream) -> TokenStream {
 #[derive(Debug, Clone)]
 enum FieldTypeClass {
     SingleId(proc_macro2::TokenStream),
-    VecId(proc_macro2::TokenStream),
+    SliceId(proc_macro2::TokenStream),
     OptionId(proc_macro2::TokenStream),
     Other,
 }
@@ -115,13 +115,11 @@ fn classify_field_type(ty: &Type) -> FieldTypeClass {
     };
 
     match segment.ident.to_string().as_str() {
-        "Vec" => extract_id_inner_type(inner_ty)
-            .map(FieldTypeClass::VecId)
-            .unwrap_or(FieldTypeClass::Other),
+        "SliceId" => FieldTypeClass::SliceId(quote!(#inner_ty)),
+        "Id" => FieldTypeClass::SingleId(quote!(#inner_ty)),
         "Option" => extract_id_inner_type(inner_ty)
             .map(FieldTypeClass::OptionId)
             .unwrap_or(FieldTypeClass::Other),
-        "Id" => FieldTypeClass::SingleId(quote!(#inner_ty)),
         _ => FieldTypeClass::Other,
     }
 }

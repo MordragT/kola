@@ -241,9 +241,7 @@ impl<'a> Notate<'a> for NodePrinter<'a, RecordPat> {
     fn notate(&self, arena: &'a Bump) -> Notation<'a> {
         let head = "RecordPat".magenta().display_in(arena);
 
-        let fields = self
-            .to_slice(&self.value.fields.get(self.tree))
-            .gather(arena);
+        let fields = self.to_slice(self.value.fields).gather(arena);
         let polymorph = self.value.polymorph;
 
         let single = [

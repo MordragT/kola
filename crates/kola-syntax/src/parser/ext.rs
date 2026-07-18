@@ -14,8 +14,6 @@ impl<T> Clone for Slice<T> {
     }
 }
 
-impl<T> Copy for Slice<T> {}
-
 impl<T> Debug for Slice<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         write!(f, "Slice({:?})", self.0)
@@ -25,25 +23,25 @@ impl<T> Debug for Slice<T> {
 impl<'t, T> Collection<ParseInput<'t>, Id<T>> for Slice<T> {
     type Output = SliceId<T>;
 
-    fn new_with(input: &mut ParseInput) -> Self {
-        let builder = input.state.builder.slices.builder();
+    fn new_with(_input: &mut ParseInput) -> Self {
+        let builder = SliceStorage::builder();
         Self(builder)
     }
 
-    fn push_with(&mut self, item: Id<T>, input: &mut ParseInput) {
-        self.0.push(item, &mut input.state.builder.slices);
+    fn push_with(&mut self, item: Id<T>, _input: &mut ParseInput) {
+        self.0.push(item);
     }
 
     fn finish_with(self, input: &mut ParseInput<'t>) -> Self::Output {
-        self.0.finish(&input.state.builder.slices)
+        self.0.finish(&mut input.state.builder.slices)
     }
 }
 
 pub const trait KolaCombinator<'t, T: Debug>: const Combinator<ParseInput<'t>, T> {
     fn to_node(self) -> impl const Combinator<ParseInput<'t>, Id<T>>
     where
-        NodeStorage: Column<T, Item = T>,
-        UniversalStorage<Loc>: Column<T, Item = Loc>,
+        NodeStorage: Col<T, Item = T>,
+        UniversalStorage<Loc>: Col<T, Item = Loc>,
     {
         self.map_with(|node, loc, input| {
             let state: &mut State = input.state();
@@ -55,8 +53,8 @@ pub const trait KolaCombinator<'t, T: Debug>: const Combinator<ParseInput<'t>, T
     where
         U: Debug,
         F: Fn(T) -> U + Copy,
-        NodeStorage: Column<U, Item = U>,
-        UniversalStorage<Loc>: Column<U, Item = Loc>,
+        NodeStorage: Col<U, Item = U>,
+        UniversalStorage<Loc>: Col<U, Item = Loc>,
     {
         self.map(f).to_node()
     }

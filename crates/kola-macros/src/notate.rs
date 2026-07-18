@@ -77,7 +77,7 @@ fn generate_struct_notate(
                 FieldTypeClass::SingleId(_) | FieldTypeClass::Other => {
                     quote! { arena.just(' ').then(#field_binding.clone().flatten(arena), arena) }
                 }
-                FieldTypeClass::VecId(_) => {
+                FieldTypeClass::SliceId(_) => {
                     quote! { arena.just(' ').then(#field_binding.clone().concat_by(arena.just(' '), arena).flatten(arena), arena) }
                 }
                 FieldTypeClass::OptionId(_) => {
@@ -89,7 +89,7 @@ fn generate_struct_notate(
                 FieldTypeClass::SingleId(_) | FieldTypeClass::Other => {
                     quote! { arena.newline().then(#field_binding, arena).indent(arena) }
                 }
-                FieldTypeClass::VecId(_) => {
+                FieldTypeClass::SliceId(_) => {
                     quote! { arena.newline().then(#field_binding.concat_by(arena.newline(), arena), arena).indent(arena) }
                 }
                 FieldTypeClass::OptionId(_) => {
@@ -165,8 +165,8 @@ fn generate_single_field_binding(
         FieldTypeClass::SingleId(_) => Ok(quote! {
             self.to_id(*field_value).notate(arena)
         }),
-        FieldTypeClass::VecId(_) => Ok(quote! {
-            self.to_slice(field_value).gather(arena)
+        FieldTypeClass::SliceId(_) => Ok(quote! {
+            self.to_slice(*field_value).gather(arena)
         }),
         FieldTypeClass::OptionId(_) => Ok(quote! {
             field_value.map(|id| self.to_id(id).notate(arena))
@@ -205,7 +205,7 @@ fn generate_single_representation(fields: &FieldsNamed) -> syn::Result<proc_macr
                 parts.push(quote! { format_args!("{} = ", #field_name_str).display_in(arena) });
                 parts.push(quote! { #binding_name.clone() });
             }
-            FieldTypeClass::VecId(_) => parts.push(quote! {
+            FieldTypeClass::SliceId(_) => parts.push(quote! {
                 [
                     arena.just(' '),
                     format_args!("{} = ", #field_name_str).display_in(arena),
@@ -247,7 +247,7 @@ fn generate_multi_representation(fields: &FieldsNamed) -> syn::Result<proc_macro
                 parts.push(quote! { format_args!("{} = ", #field_name_str).display_in(arena) });
                 parts.push(quote! { #binding_name });
             }
-            FieldTypeClass::VecId(_) => parts.push(quote! {
+            FieldTypeClass::SliceId(_) => parts.push(quote! {
                 [
                     arena.newline(),
                     format_args!("{} = ", #field_name_str).display_in(arena),

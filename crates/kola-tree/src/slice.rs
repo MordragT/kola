@@ -1,8 +1,8 @@
 use std::{fmt::Debug, marker::PhantomData};
 
 use crate::{
-    id::Id,
-    node::{Column, NodeStorage},
+    id::{Col, Id},
+    node::NodeStorage,
     tree::TreeView,
 };
 
@@ -105,14 +105,14 @@ impl<T> SliceId<T> {
 
     pub fn get<'a>(self, storage: &'a impl TreeView) -> &'a [Id<T>]
     where
-        NodeStorage: Column<T, Item = T>,
+        NodeStorage: Col<T, Item = T>,
     {
         storage.slices().get(self)
     }
 
     pub fn iter<'a>(self, storage: &'a impl TreeView) -> impl Iterator<Item = Id<T>> + 'a
     where
-        NodeStorage: Column<T, Item = T>,
+        NodeStorage: Col<T, Item = T>,
         T: 'a,
     {
         let slice = self.get(storage);
@@ -157,33 +157,29 @@ impl SliceStorage {
         unsafe { std::slice::from_raw_parts_mut(ids.as_mut_ptr() as *mut Id<T>, ids.len()) }
     }
 
-    pub fn builder<T>(&self) -> SliceBuilder<T> {
-        let start = self.0.len() as u32;
+    pub fn builder<T>() -> SliceBuilder<T> {
         SliceBuilder {
-            start,
+            buffer: Vec::new(),
             t: PhantomData,
         }
-    }
-
-    fn push<T>(&mut self, id: Id<T>) {
-        self.0.push(id.id());
     }
 }
 
 pub struct SliceBuilder<T> {
-    start: u32,
+    buffer: Vec<u32>,
     t: PhantomData<T>,
 }
 
 impl<T> SliceBuilder<T> {
-    pub fn push(self, id: Id<T>, storage: &mut SliceStorage) {
-        storage.push(id);
+    pub fn push(&mut self, id: Id<T>) {
+        self.buffer.push(id.id());
     }
 
     #[must_use]
-    pub fn finish(self, storage: &SliceStorage) -> SliceId<T> {
-        let start = self.start;
-        let len = (storage.0.len() as u32) - start;
+    pub fn finish(mut self, storage: &mut SliceStorage) -> SliceId<T> {
+        let start = storage.0.len() as u32;
+        let len = self.buffer.len() as u32;
+        storage.0.append(&mut self.buffer);
         SliceId::new(start, len)
     }
 }
@@ -191,13 +187,11 @@ impl<T> SliceBuilder<T> {
 impl<T> Clone for SliceBuilder<T> {
     fn clone(&self) -> Self {
         Self {
-            start: self.start,
+            buffer: self.buffer.clone(),
             t: PhantomData,
         }
     }
 }
-
-impl<T> Copy for SliceBuilder<T> {}
 
 impl<T> Debug for SliceBuilder<T> {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
@@ -205,7 +199,7 @@ impl<T> Debug for SliceBuilder<T> {
             f,
             "SliceBuilder<{}>({})",
             std::any::type_name::<T>(),
-            self.start
+            self.buffer.len()
         )
     }
 }

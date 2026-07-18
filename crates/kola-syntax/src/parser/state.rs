@@ -42,15 +42,15 @@ impl<'t> State<'t> {
 
     pub fn span<T>(&self, id: Id<T>) -> Loc
     where
-        UniversalStorage<Loc>: Column<T, Item = Loc>,
+        UniversalStorage<Loc>: Col<T, Item = Loc>,
     {
         *self.spans.get(id)
     }
 
     pub fn insert<T>(&mut self, node: T, meta: Loc) -> Id<T>
     where
-        NodeStorage: Column<T, Item = T>,
-        UniversalStorage<Loc>: Column<T, Item = Loc>,
+        NodeStorage: Col<T, Item = T>,
+        UniversalStorage<Loc>: Col<T, Item = Loc>,
     {
         let id = self.builder.alloc(node);
         self.spans.vec_mut().push(meta);
@@ -59,8 +59,8 @@ impl<'t> State<'t> {
 
     pub fn insert_as<U, T>(&mut self, node: T, meta: Loc) -> Id<U>
     where
-        NodeStorage: Column<T, Item = T> + Column<U, Item = U>,
-        UniversalStorage<Loc>: Column<T, Item = Loc> + Column<U, Item = Loc>,
+        NodeStorage: Col<T, Item = T> + Col<U, Item = U>,
+        UniversalStorage<Loc>: Col<T, Item = Loc> + Col<U, Item = Loc>,
         U: From<Id<T>>,
     {
         let id = self.insert(node, meta.clone());

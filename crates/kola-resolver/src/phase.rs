@@ -1,9 +1,10 @@
-// use std::ops::Index;
-
 use std::{collections::HashMap, fmt};
 
 use kola_builtins::{BuiltinId, BuiltinType};
+use kola_tree::prelude::*;
 use kola_utils::as_variant;
+
+use pastey::paste;
 
 use crate::symbol::{AnySym, FunctorSym, ModuleSym, ModuleTypeSym, Substitute, TypeSym, ValueSym};
 
@@ -99,6 +100,12 @@ impl Substitute for ResolvedModule {
     }
 }
 
+impl fmt::Display for ResolvedModule {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.fmt(f)
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ResolvedModuleType(pub ModuleTypeSym);
 
@@ -111,126 +118,95 @@ impl Substitute for ResolvedModuleType {
     }
 }
 
-pub type NodeMap = MetaMap<ResolvePhase>;
+impl fmt::Display for ResolvedModuleType {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        self.0.fmt(f)
+    }
+}
 
-#[derive(Debug, Clone, Copy)]
-pub struct ResolvePhase;
-impl Phase for ResolvePhase {
-    // ===== NAMES =====
-    // Names are the source of symbols, not targets of resolution
-    type FunctorName = !;
-    type ModuleTypeName = !;
-    type ModuleName = !;
-    type KindName = !;
-    type TypeName = !;
-    type ValueName = !;
+macro_rules! define_node_map {
+    (
+        $(
+            $field:ident : MetaVec<$node:ty, $value:ty>
+        ),* $(,)?
+    ) => {
+        #[derive(Debug, Clone)]
+        pub struct NodeMap {
+            $(
+                pub $field: MetaVec<$node, $value>,
+            )*
+        }
 
-    // ===== PATTERNS =====
-    // TODO: Pattern matching will need symbols for bindings like `let {x, y} = record`
-    type AnyPat = !;
-    type LiteralPat = !;
-    type BindPat = ValueSym;
-    type ListElPat = ValueSym;
-    type ListPat = !;
-    type RecordFieldPat = ValueSym; // Future: ValueSym for destructured fields
-    type RecordPat = !;
-    type VariantTagPat = !;
-    type VariantPat = !;
-    type PatError = !;
-    type Pat = !;
+        $(
+          impl Col<$node> for NodeMap {
+              type Item = $value;
 
-    // ===== EXPRESSIONS =====
+              #[inline]
+              fn vec(&self) -> &Vec<Self::Item> {
+                  self.$field.vec()
+              }
 
-    // Basic expressions - no symbols needed
-    type LiteralExpr = !; // Constants don't need symbols
-    type ListExpr = !; // List construction is structural
-    type UnaryOp = !;
-    type UnaryExpr = !;
-    type BinaryOp = !;
-    type BinaryExpr = !;
-    type CaseBranch = !;
-    type CaseExpr = !;
-    type IfExpr = !;
-    type CallExpr = !;
-    type ExprError = !;
-    type Expr = !;
+              #[inline]
+              fn vec_mut(&mut self) -> &mut Vec<Self::Item> {
+                  self.$field.vec_mut()
+              }
+          }
+        )*
 
-    type QualifiedExpr = ResolvedValue;
-    type HandleExpr = !;
-    type DoExpr = !;
-    type TagExpr = !;
-    type FieldPath = !;
+        impl Substitute for NodeMap {
+            fn try_subst(&self, s: &HashMap<AnySym, AnySym>) -> Option<Self> {
+                let mut changed = false;
 
-    // Record operations - structural, no new symbols needed
-    type RecordField = !;
-    type RecordExpr = !; // TODO: Could introduce field symbols for dependent fields
-    // e.g., { a: 1, b: a + 2 } where b references a
-    type RecordExtendExpr = !; // { r | +field = value } - field is just a label
-    type RecordRestrictExpr = !; // { r | -field } - no new symbols
-    type RecordUpdateOp = !; // Update operations are structural
-    type RecordUpdateExpr = !; // { r | field = value } - no new symbols
-    type RecordMergeExpr = !;
+                $(
+                    let $field = match self.$field.try_subst(s) {
+                        Some(x) => {
+                            changed = true;
+                            x
+                        }
+                        None => self.$field.clone(),
+                    };
+                )*
 
-    // Binding expressions - create new symbols
-    type LetExpr = ValueSym; // Creates symbol for the bound variable
-    type LambdaExpr = ValueSym; // Creates symbol for the parameter binding
-    type HandlerClause = ValueSym; // Creates symbol for the handler parameter
+                changed.then_some(Self {
+                    $(
+                        $field,
+                    )*
+                })
+            }
+        }
 
-    type TypeWitnessExpr = !;
+        paste!{
+            impl NodeMap {
+                pub fn new(cp: StorageCheckpoint) -> Self {
+                    Self {
+                        $(
+                            $field: MetaVec::new(cp.$field),
+                        )*
+                    }
+                }
+            }
+        }
+    };
+}
 
-    // ===== TYPES =====
-    // Type expressions are not needed for the untyped lowerer phase
-    // Future: When adding typed IR, these could get ModuleSym for qualified types
-    type EffectOpType = !;
-    type EffectType = !;
-
-    type QualifiedType = ResolvedType;
-    type TypeVar = TypeSym; // Type variables only occur in forall quantifier definitions
-    type LabelOrVar = !;
-    type RecordFieldType = !; // Field names exist in value namespace but no symbols needed here
-    type RecordType = !; // Structural type, no symbols
-    type TagType = !; // Variant tags exist in value namespace
-    type VariantType = !; // Structural type, no symbols
-    type FuncType = !;
-    type TypeApplication = !;
-    type CompType = !;
-    type Type = !;
-    type TypeError = !;
-    type TypeVarBind = TypeSym;
-    type ForallBinder = !;
-    type TypeScheme = !;
-
-    // ===== BINDINGS =====
-    // Top-level binding constructs - create symbols for what they bind
-    type BindError = !;
-    type Vis = !; // Visibility modifiers don't need symbols
-    type ValueBind = ValueSym; // Creates symbol for the bound value
-    type TypeBind = TypeSym; // Creates symbol for the bound type
-    type ModuleBind = ModuleSym; // Creates symbol for the module alias
-    type ModuleTypeBind = ModuleTypeSym; // Module type bindings - future feature
-    type FunctorParam = !;
-    type FunctorBind = FunctorSym; // Creates symbol for the functor binding
-    type Bind = !; // Generic bind wrapper - symbols handled by specific binds
-
-    // ===== MODULES =====
-    // Module constructs - create or reference module symbols
-    type ModuleError = !;
-    type ModuleBody = ModuleSym; // Creates symbol for the module definition
-    type ModulePath = ResolvedModule; // Resolves to the referenced module symbol
-    type ModuleImport = ModuleSym; // Creates symbol for the imported module binding
-    type FunctorArgs = !;
-    type FunctorApp = !;
-    type ModuleExpr = !; // Future: First-class modules could get ModuleSym
-
-    // TODO maybe these should have a own ModuleTypeSym
-    // ===== SPECIFICATIONS =====
-    // Module signatures and specs - future feature for module system
-    // These define names in their respective namespaces but don't need resolver symbols yet
-    type SpecError = !;
-    type ValueSpec = !; // Future: Could get ValueSym for signature checking
-    type ModuleSpec = !; // Future: Module signature specifications
-    type Spec = !; // Future: Generic specification wrapper
-    type ConcreteModuleType = !;
-    type QualifiedModuleType = ResolvedModuleType;
-    type ModuleType = !; // Future: Module type expressions
+define_node_map! {
+    bind_pats: MetaVec<node::BindPat, ValueSym>,
+    list_el_pats: MetaVec<node::ListElPat, ValueSym>,
+    record_field_pats: MetaVec<node::RecordFieldPat, ValueSym>,
+    qualified_exprs: MetaVec<node::QualifiedExpr, ResolvedValue>,
+    let_exprs: MetaVec<node::LetExpr, ValueSym>,
+    lambda_exprs: MetaVec<node::LambdaExpr, ValueSym>,
+    handler_clauses: MetaVec<node::HandlerClause, ValueSym>,
+    qualified_types: MetaVec<node::QualifiedType, ResolvedType>,
+    type_vars: MetaVec<node::TypeVar, TypeSym>,
+    type_var_binds: MetaVec<node::TypeVarBind, TypeSym>,
+    value_binds: MetaVec<node::ValueBind, ValueSym>,
+    type_binds: MetaVec<node::TypeBind, TypeSym>,
+    module_binds: MetaVec<node::ModuleBind, ModuleSym>,
+    module_type_binds: MetaVec<node::ModuleTypeBind, ModuleTypeSym>,
+    functor_binds: MetaVec<node::FunctorBind, FunctorSym>,
+    module_bodies: MetaVec<node::ModuleBody, ModuleSym>,
+    module_paths: MetaVec<node::ModulePath, ResolvedModule>,
+    module_imports: MetaVec<node::ModuleImport, ModuleSym>,
+    qualified_module_types: MetaVec<node::QualifiedModuleType, ResolvedModuleType>,
 }

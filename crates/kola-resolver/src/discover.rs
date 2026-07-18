@@ -19,7 +19,7 @@ use crate::{
         Lookups, ModuleLookup, ModuleTypeAnnotLookup, ModuleTypeLookup, TypeAnnotLookup,
         TypeLookup, ValueLookup,
     },
-    phase::{ResolvePhase, ResolvedModuleType, ResolvedType, ResolvedValue},
+    phase::{NodeMap, ResolvedModuleType, ResolvedType, ResolvedValue},
     symbol::{
         FileMap, FunctorSym, ModuleGraph, ModuleSym, ModuleTypeGraph, ModuleTypeSym, TypeGraph,
         TypeSym, ValueGraph, ValueSym,
@@ -48,7 +48,7 @@ pub fn discover(
     lookups: &mut Lookups,
     elab_jobs: &mut ElabJobs,
 ) -> DiscoverOutput {
-    let loc = *locs.meta(tree.root_id());
+    let loc = *locs.get(tree.root_id());
 
     value_graph_map.insert(sym, ValueGraph::new());
     type_graph_map.insert(sym, TypeGraph::new());
@@ -179,16 +179,16 @@ impl<'a> Discoverer<'a> {
     #[inline]
     fn span<T>(&self, id: Id<T>) -> Loc
     where
-        T: MetaCast<LocPhase, Meta = Loc>,
+        LocVec: Col<T, Item = Loc>,
     {
-        *self.locs.meta(id)
+        *self.locs.get(id)
     }
 
-    fn insert_symbol<T>(&mut self, id: Id<T>, sym: T::Meta)
+    fn insert_symbol<T, S>(&mut self, id: Id<T>, sym: S)
     where
-        T: MetaCast<ResolvePhase>,
+        NodeMap: Col<T, Item = S>,
     {
-        self.scope.nodes.insert(id.as_usize(), T::upcast(sym));
+        self.scope.nodes.set(id, sym);
     }
 
     pub fn insert_functor(
@@ -344,14 +344,14 @@ where
             name,
             params,
             body,
-        } = tree.node(id);
+        } = tree.get(id);
 
         let loc = self.span(id);
         let name = *name.get(tree);
 
         // Visit parameter types in parent scope
-        for param in params {
-            self.visit_module_type(tree.node(*param).ty, tree)?;
+        for param in params.iter(tree) {
+            self.visit_module_type(tree.get(param).ty, tree)?;
         }
 
         // Functor body gets its own fresh scope
@@ -362,10 +362,10 @@ where
             // Insert parameter modules into the fresh scope
             let mut param_syms = Vec::with_capacity(params.len());
 
-            for param in params {
+            for param in params.iter(tree) {
                 let node::FunctorParam {
                     name: param_name, ..
-                } = *tree.node(*param);
+                } = *tree.get(param);
                 let param_name = *param_name.get(tree);
                 let param_sym = ModuleSym::new();
 
@@ -398,10 +398,10 @@ where
         id: Id<node::ModuleTypeBind>,
         tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
-        let node::ModuleTypeBind { vis, name, .. } = *tree.node(id);
+        let node::ModuleTypeBind { vis, name, .. } = *tree.get(id);
 
-        let vis = *tree.node(vis);
-        let name = *tree.node(name);
+        let vis = *tree.get(vis);
+        let name = *tree.get(name);
 
         let loc = self.span(id);
 
@@ -423,7 +423,7 @@ where
         id: Id<node::QualifiedModuleType>,
         tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
-        let node::QualifiedModuleType { path, ty } = *tree.node(id);
+        let node::QualifiedModuleType { path, ty } = *tree.get(id);
 
         let name = *ty.get(tree);
         let loc = self.span(id);
@@ -462,13 +462,13 @@ where
     ) -> ControlFlow<Self::BreakValue> {
         let node::ModuleBind {
             vis, name, value, ..
-        } = *tree.node(id);
+        } = *tree.get(id);
 
-        let name = *tree.node(name);
-        let vis = tree.node(vis);
+        let name = *tree.get(name);
+        let vis = tree.get(vis);
         let loc = self.span(id);
 
-        match *tree.node(value) {
+        match *tree.get(value) {
             node::ModuleExpr::Import(import_id) => {
                 // If this is an import of another file, we can skip creating a new module and just reference the imported module's symbol
                 let target = import_id.get(tree).0;
@@ -483,11 +483,10 @@ where
             }
             node::ModuleExpr::Path(path_id) => {
                 let path = tree
-                    .node(path_id)
+                    .get(path_id)
                     .0
-                    .iter()
-                    .copied()
-                    .map(|id| *tree.node(id))
+                    .iter(tree)
+                    .map(|id| *tree.get(id))
                     .collect();
 
                 let job = ElabJob::path(id, loc, *vis, name, self.root, path_id, loc, path);
@@ -496,17 +495,16 @@ where
                 ControlFlow::Continue(())
             }
             node::ModuleExpr::FunctorApp(appl_id) => {
-                let node::FunctorApp { path, func, args } = *tree.node(appl_id);
+                let node::FunctorApp { path, func, args } = *tree.get(appl_id);
 
                 let functor_name = *func.get(tree);
 
                 let path = if let Some(path_id) = path {
                     let path = tree
-                        .node(path_id)
+                        .get(path_id)
                         .0
-                        .iter()
-                        .copied()
-                        .map(|id| *tree.node(id))
+                        .iter(tree)
+                        .map(|id| *tree.get(id))
                         .collect();
                     let expr = ElabPath::new(path_id, self.span(path_id), self.root, path).into();
                     Some(Box::new(expr))
@@ -517,13 +515,12 @@ where
                 let args = args.get(tree);
                 let mut arg_exprs = Vec::with_capacity(args.0.len());
 
-                for &path_id in args {
+                for path_id in args.0.iter(tree) {
                     let path = tree
-                        .node(path_id)
+                        .get(path_id)
                         .0
-                        .iter()
-                        .copied()
-                        .map(|id| *tree.node(id))
+                        .iter(tree)
+                        .map(|id| *tree.get(id))
                         .collect();
                     let expr = ElabPath::new(path_id, self.span(path_id), self.root, path).into();
 
@@ -588,11 +585,10 @@ where
         tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
         let path = tree
-            .node(id)
+            .get(id)
             .0
-            .iter()
-            .copied()
-            .map(|id| *tree.node(id))
+            .iter(tree)
+            .map(|id| *tree.get(id))
             .collect::<Vec<_>>();
 
         let loc = self.span(id);
@@ -614,10 +610,10 @@ where
             name,
             ty_scheme,
             value,
-        } = *tree.node(id);
+        } = *tree.get(id);
 
-        let name = *tree.node(name);
-        let vis = tree.node(vis);
+        let name = *tree.get(name);
+        let vis = tree.get(vis);
 
         let loc = self.span(id);
 
@@ -657,12 +653,12 @@ where
             value_type,
             value,
             body,
-        } = *tree.node(id);
+        } = *tree.get(id);
 
-        let name = *tree.node(name);
+        let name = *tree.get(name);
 
         if let Some(type_) = value_type {
-            self.visit_type(type_, tree)?;
+            self.visit_type_expr(type_, tree)?;
         }
 
         ValueSym::enter();
@@ -688,15 +684,15 @@ where
             param,
             param_type,
             body,
-        } = *tree.node(id);
+        } = *tree.get(id);
 
-        let name = *tree.node(param);
+        let name = *tree.get(param);
 
         let sym = ValueSym::new();
         self.insert_symbol(id, sym);
 
         if let Some(param_type) = param_type {
-            self.visit_type(param_type, tree)?;
+            self.visit_type_expr(param_type, tree)?;
         }
 
         self.scopes.value.enter(name, sym);
@@ -723,7 +719,7 @@ where
         id: Id<node::HandlerClause>,
         tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
-        let node::HandlerClause { op: _, param, body } = *tree.node(id);
+        let node::HandlerClause { op: _, param, body } = *tree.get(id);
 
         let param_name = *param.get(tree);
         let param_sym = ValueSym::new();
@@ -750,7 +746,7 @@ where
     fn visit_list_pat(&mut self, id: Id<node::ListPat>, tree: &T) -> ControlFlow<Self::BreakValue> {
         let elements = &id.get(tree).0;
 
-        for &el in elements {
+        for el in elements.iter(tree) {
             match *el.get(tree) {
                 node::ListElPat::Pat(pat) => self.visit_pat(pat, tree)?,
                 node::ListElPat::Spread(Some(name_id)) => {
@@ -774,9 +770,9 @@ where
         id: Id<node::RecordPat>,
         tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
-        let node::RecordPat { fields, .. } = tree.node(id);
+        let node::RecordPat { fields, .. } = tree.get(id);
 
-        for &field_id in fields {
+        for field_id in fields.iter(tree) {
             let node::RecordFieldPat { field, pat } = *field_id.get(tree);
 
             if let Some(pat) = pat {
@@ -819,7 +815,7 @@ where
             module_path,
             source,
             ..
-        } = *tree.node(id);
+        } = *tree.get(id);
 
         let name = *source.get(tree);
 
@@ -865,10 +861,10 @@ where
             vis,
             name,
             ty_scheme,
-        } = *tree.node(id);
+        } = *tree.get(id);
 
         let vis = *vis.get(tree);
-        let name = *tree.node(name);
+        let name = *tree.get(name);
         let loc = self.span(id);
 
         let type_sym = TypeSym::new();
@@ -913,7 +909,7 @@ where
         id: Id<node::QualifiedType>,
         tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
-        let node::QualifiedType { path, ty } = *tree.node(id);
+        let node::QualifiedType { path, ty } = *tree.get(id);
 
         let name = *ty.get(tree);
 

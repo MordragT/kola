@@ -78,8 +78,8 @@ pub const fn nested_parser<'t, T, U>(
     fallback: U,
 ) -> impl const KolaCombinator<'t, Id<T>>
 where
-    NodeStorage: Column<T, Item = T> + Column<U, Item = U>,
-    UniversalStorage<Loc>: Column<T, Item = Loc> + Column<U, Item = Loc>,
+    NodeStorage: Col<T, Item = T> + Col<U, Item = U>,
+    UniversalStorage<Loc>: Col<T, Item = Loc> + Col<U, Item = Loc>,
     T: From<Id<U>>,
     U: Copy,
 {

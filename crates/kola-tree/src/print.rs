@@ -4,8 +4,9 @@ use kola_print::prelude::*;
 use kola_utils::interner::StrInterner;
 
 use crate::{
-    id::Id,
-    node::{AnyId, Column, NodeStorage},
+    id::{Col, Id},
+    node::{AnyId, NodeStorage},
+    slice::SliceId,
     tree::{Tree, TreeView},
 };
 
@@ -51,7 +52,7 @@ pub struct TreePrinter<'a, T> {
 
 pub type NodePrinter<'a, T> = TreePrinter<'a, &'a T>;
 pub type IdPrinter<'a, T> = TreePrinter<'a, Id<T>>;
-pub type SlicePrinter<'a, T> = TreePrinter<'a, &'a [Id<T>]>;
+pub type SlicePrinter<'a, T> = TreePrinter<'a, SliceId<T>>;
 
 impl<'a> IdPrinter<'a, crate::node::ModuleBody> {
     pub fn root(tree: &'a Tree, interner: &'a StrInterner, decorators: Decorators<'a>) -> Self {
@@ -106,7 +107,7 @@ impl<'a, T> TreePrinter<'a, T> {
         }
     }
 
-    pub fn to_slice<U>(self, slice: &'a [Id<U>]) -> SlicePrinter<'a, U> {
+    pub fn to_slice<U>(self, slice: SliceId<U>) -> SlicePrinter<'a, U> {
         SlicePrinter {
             tree: self.tree,
             interner: self.interner,
@@ -120,7 +121,7 @@ impl<'a, T> Notate<'a> for IdPrinter<'a, T>
 where
     NodePrinter<'a, T>: Notate<'a>,
     T: 'a,
-    NodeStorage: Column<T, Item = T>,
+    NodeStorage: Col<T, Item = T>,
     AnyId: From<Id<T>>,
 {
     fn notate(&self, arena: &'a Bump) -> Notation<'a> {
@@ -134,13 +135,13 @@ impl<'a, T> Gather<'a> for SlicePrinter<'a, T>
 where
     NodePrinter<'a, T>: Notate<'a>,
     T: 'a,
-    NodeStorage: Column<T, Item = T>,
+    NodeStorage: Col<T, Item = T>,
     AnyId: From<Id<T>>,
 {
     fn gather(self, arena: &'a Bump) -> BumpVec<'a, Notation<'a>> {
         self.value
-            .iter()
-            .map(|id| self.to_id(*id).notate(arena))
+            .iter(self.tree)
+            .map(|id| self.to_id(id).notate(arena))
             .collect_in(arena)
     }
 }

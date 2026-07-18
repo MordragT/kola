@@ -3,9 +3,12 @@ use enum_as_inner::EnumAsInner;
 use indexmap::IndexMap;
 use kola_collections::HashMap;
 use kola_span::SourceId;
-use kola_tree::node::{
-    FunctorNamespace, ModuleNamespace, ModuleTypeNamespace, NamespaceKind, TypeNamespace,
-    ValueNamespace,
+use kola_tree::{
+    meta::MetaVec,
+    node::{
+        FunctorNamespace, ModuleNamespace, ModuleTypeNamespace, NamespaceKind, TypeNamespace,
+        ValueNamespace,
+    },
 };
 use kola_utils::dependency::DependencyGraph;
 use std::{
@@ -568,112 +571,28 @@ where
     }
 }
 
-macro_rules! impl_meta_substitute {
-    ($($variant:ident),* $(,)?) => {
-        impl<P> Substitute for kola_tree::meta::Meta<P>
-        where
-        P: kola_tree::meta::Phase<
-            $($variant: Substitute),*
-        >,
-        {
-            fn try_subst(&self, s: &HashMap<AnySym, AnySym>) -> Option<Self> {
-                match self {
-                    $(Self::$variant(t) => t.try_subst(s).map(Self::$variant)),*
-                }
+impl<T, M> Substitute for MetaVec<T, M>
+where
+    M: Substitute + Clone,
+{
+    fn try_subst(&self, s: &HashMap<AnySym, AnySym>) -> Option<Self>
+    where
+        Self: Sized,
+    {
+        let mut result: Option<Self> = None;
+
+        for (i, el) in self.iter().enumerate() {
+            if let Some(el) = el.try_subst(s) {
+                result.get_or_insert_with(|| self.clone()).vec_mut()[i] = el;
             }
-
         }
-    };
-}
 
-impl_meta_substitute!(
-    FunctorName,
-    ModuleTypeName,
-    ModuleName,
-    KindName,
-    TypeName,
-    ValueName,
-    // Patterns
-    AnyPat,
-    LiteralPat,
-    BindPat,
-    ListElPat,
-    ListPat,
-    RecordFieldPat,
-    RecordPat,
-    VariantTagPat,
-    VariantPat,
-    PatError,
-    Pat,
-    // Expressions
-    LiteralExpr,
-    ListExpr,
-    RecordField,
-    RecordExpr,
-    RecordExtendExpr,
-    RecordRestrictExpr,
-    RecordUpdateOp,
-    RecordUpdateExpr,
-    RecordMergeExpr,
-    FieldPath,
-    QualifiedExpr,
-    UnaryOp,
-    UnaryExpr,
-    BinaryOp,
-    BinaryExpr,
-    LetExpr,
-    CaseBranch,
-    CaseExpr,
-    IfExpr,
-    LambdaExpr,
-    CallExpr,
-    HandlerClause,
-    HandleExpr,
-    DoExpr,
-    TagExpr,
-    TypeWitnessExpr,
-    ExprError,
-    Expr,
-    // Types
-    EffectOpType,
-    EffectType,
-    QualifiedType,
-    TypeVar,
-    LabelOrVar,
-    RecordFieldType,
-    RecordType,
-    TagType,
-    VariantType,
-    FuncType,
-    TypeApplication,
-    CompType,
-    Type,
-    TypeError,
-    TypeVarBind,
-    ForallBinder,
-    TypeScheme,
-    // Modules
-    BindError,
-    Vis,
-    ValueBind,
-    TypeBind,
-    ModuleBind,
-    ModuleTypeBind,
-    FunctorParam,
-    FunctorBind,
-    Bind,
-    ModuleError,
-    ModuleBody,
-    ModulePath,
-    ModuleImport,
-    FunctorArgs,
-    FunctorApp,
-    ModuleExpr,
-    SpecError,
-    ValueSpec,
-    ModuleSpec,
-    Spec,
-    ConcreteModuleType,
-    QualifiedModuleType,
-    ModuleType,
-);
+        result
+    }
+
+    fn subst_mut(&mut self, s: &HashMap<AnySym, AnySym>) {
+        for el in self.iter_mut() {
+            el.subst_mut(s);
+        }
+    }
+}

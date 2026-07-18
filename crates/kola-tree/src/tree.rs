@@ -2,8 +2,8 @@ use indexmap::IndexMap;
 use kola_utils::interner::PathKey;
 
 use crate::{
-    id::Id,
-    node::{Column, ModuleBody, NodeStorage, StorageCheckpoint},
+    id::{Col, Id},
+    node::{ModuleBody, NodeStorage, StorageCheckpoint},
     slice::{SliceId, SliceStorage},
 };
 
@@ -15,14 +15,14 @@ pub trait TreeView {
 
     fn get<T>(&self, id: Id<T>) -> &T
     where
-        NodeStorage: Column<T, Item = T>,
+        NodeStorage: Col<T, Item = T>,
     {
         self.nodes().get(id)
     }
 
     fn get_slice<T>(&self, slice_id: SliceId<T>) -> &[Id<T>]
     where
-        NodeStorage: Column<T, Item = T>,
+        NodeStorage: Col<T, Item = T>,
     {
         self.slices().get(slice_id)
     }
@@ -49,28 +49,28 @@ impl TreeBuilder {
 
     pub fn alloc<T>(&mut self, val: T) -> Id<T>
     where
-        NodeStorage: Column<T, Item = T>,
+        NodeStorage: Col<T, Item = T>,
     {
         self.nodes.alloc(val)
     }
 
     pub fn alloc_slice<T>(&mut self, values: impl IntoIterator<Item = Id<T>>) -> SliceId<T>
     where
-        NodeStorage: Column<T, Item = T>,
+        NodeStorage: Col<T, Item = T>,
     {
         self.slices.alloc(values)
     }
 
     pub fn get<T>(&self, id: Id<T>) -> &T
     where
-        NodeStorage: Column<T, Item = T>,
+        NodeStorage: Col<T, Item = T>,
     {
         self.nodes.get(id)
     }
 
     pub fn get_slice_mut<T>(&mut self, slice_id: SliceId<T>) -> &mut [Id<T>]
     where
-        NodeStorage: Column<T, Item = T>,
+        NodeStorage: Col<T, Item = T>,
     {
         self.slices.get_mut(slice_id)
     }

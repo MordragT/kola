@@ -112,14 +112,15 @@ fn generate_field_method(
                 crate::inspector::NodeInspector::new(node.#field_name, self.tree, self.interner)
             }
         }),
-        FieldTypeClass::VecId(inner_type) => {
+        FieldTypeClass::SliceId(inner_type) => {
             let has_name_count = quote::format_ident!("has_{}_count", name);
             let name_at = quote::format_ident!("{}_at", name);
 
             Ok(quote! {
                 pub fn #has_name_count(self, expected: usize) -> Self {
                     let node = self.node.get(self.tree);
-                    let actual = node.#field_name.len();
+                    let slice = node.#field_name.get(self.tree);
+                    let actual = slice.len();
                     assert_eq!(
                         actual, expected,
                         "Expected {} {} but found {}",
@@ -130,13 +131,14 @@ fn generate_field_method(
 
                 pub fn #name_at(self, index: usize) -> crate::inspector::NodeInspector<'t, crate::id::Id<#inner_type>, S> {
                     let node = self.node.get(self.tree);
+                    let slice = node.#field_name.get(self.tree);
                     assert!(
-                        index < node.#field_name.len(),
+                        index < slice.len(),
                         "{} index {} out of bounds (max {})",
                         stringify!(#field_name), index,
-                        node.#field_name.len().saturating_sub(1)
+                        slice.len().saturating_sub(1)
                     );
-                    let item_id = node.#field_name[index];
+                    let item_id = slice[index];
                     crate::inspector::NodeInspector::new(item_id, self.tree, self.interner)
                 }
             })

@@ -3,7 +3,7 @@ use std::ops::Index;
 use kola_span::{SourceId, SourceManager};
 use kola_syntax::loc::{LocMap, LocVec};
 use kola_tree::{
-    id::Id,
+    id::{Col, Id},
     node,
     tree::{Tree, TreeMap},
 };
@@ -12,7 +12,7 @@ use crate::{
     def::{AnyDef, DefMap, ModuleDef},
     env::{Functor, FunctorMap, Module, ModuleMap},
     name::Binding,
-    phase::ResolvePhase,
+    phase::NodeMap,
     symbol::{
         AnySym, FileMap, FunctorSym, ModuleGraph, ModuleSym, ModuleTypeOrders, ModuleTypeSym,
         TypeOrders, TypeSym, ValueOrders, ValueSym,
@@ -113,22 +113,6 @@ impl Db {
     }
 }
 
-// ── by-id ──
-
-impl Db {
-    pub fn meta_of<T>(&self, id: Id<T>) -> &T::Meta
-    where
-        T: MetaCast<ResolvePhase>,
-    {
-        for m in self.modules.values() {
-            if m.nodes.contains_key(&id.as_usize()) {
-                return m.nodes.meta(id);
-            }
-        }
-        panic!("meta_of: no module contains node id {id:?}")
-    }
-}
-
 // ── symbol lookups ──
 
 impl Db {
@@ -164,11 +148,11 @@ impl ModuleView<'_> {
         self.module.names.get(name)
     }
 
-    pub fn meta<T>(&self, id: Id<T>) -> &T::Meta
+    pub fn meta<T, M>(&self, id: Id<T>) -> &M
     where
-        T: MetaCast<ResolvePhase>,
+        NodeMap: Col<T, Item = M>,
     {
-        self.module.nodes.meta(id)
+        self.module.nodes.get(id)
     }
 
     /// Get the module definition for this module,

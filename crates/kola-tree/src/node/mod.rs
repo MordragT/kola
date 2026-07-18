@@ -12,26 +12,7 @@ pub use ty::*;
 
 use pastey::paste;
 
-use crate::id::Id;
-
-/// Columnar access to a `Vec<Item>` inside a `Storage`.
-pub trait Column<T> {
-    type Item;
-    fn vec(&self) -> &Vec<Self::Item>;
-    fn vec_mut(&mut self) -> &mut Vec<Self::Item>;
-
-    fn get(&self, id: Id<T>) -> &Self::Item {
-        &self.vec()[id.as_usize()]
-    }
-
-    fn get_mut(&mut self, id: Id<T>) -> &mut Self::Item {
-        &mut self.vec_mut()[id.as_usize()]
-    }
-
-    fn len(&self) -> usize {
-        self.vec().len()
-    }
-}
+use crate::id::{Col, Id};
 
 macro_rules! repeat_ty {
     ($_name:ident $ty:ty) => {
@@ -129,7 +110,7 @@ macro_rules! define_node_family {
             >;
 
             $(
-                impl Column<$Name> for NodeStorage {
+                impl Col<$Name> for NodeStorage {
                     type Item = $Name;
                     fn vec(&self) -> &Vec<$Name> { &self.[< $Name:snake:lower >] }
                     fn vec_mut(&mut self) -> &mut Vec<$Name> { &mut self.[< $Name:snake:lower >] }
@@ -147,21 +128,21 @@ macro_rules! define_node_family {
 
                 pub fn get<T>(&self, id: Id<T>) -> &T
                 where
-                    NodeStorage: Column<T, Item = T>,
+                    NodeStorage: Col<T, Item = T>,
                 {
-                    <NodeStorage as Column<T>>::get(self, id)
+                    <NodeStorage as Col<T>>::get(self, id)
                 }
 
                 pub fn get_mut<T>(&mut self, id: Id<T>) -> &mut T
                 where
-                    NodeStorage: Column<T, Item = T>,
+                    NodeStorage: Col<T, Item = T>,
                 {
-                    <NodeStorage as Column<T>>::get_mut(self, id)
+                    <NodeStorage as Col<T>>::get_mut(self, id)
                 }
 
                 pub fn alloc<T>(&mut self, val: T) -> Id<T>
                 where
-                    NodeStorage: Column<T, Item = T>,
+                    NodeStorage: Col<T, Item = T>,
                 {
                     let id = self.vec().len() as u32;
                     self.vec_mut().push(val);
@@ -175,7 +156,7 @@ macro_rules! define_node_family {
             >;
 
             $(
-                impl<M> Column<$Name> for UniversalStorage<M> {
+                impl<M> Col<$Name> for UniversalStorage<M> {
                     type Item = M;
                     fn vec(&self) -> &Vec<M> { &self.[< $Name:snake:lower >] }
                     fn vec_mut(&mut self) -> &mut Vec<M> { &mut self.[< $Name:snake:lower >] }

@@ -2,8 +2,8 @@ use kola_utils::interner::Interner;
 use std::{fmt::Debug, hash::BuildHasher};
 
 use crate::{
-    id::Id,
-    node::{Column, Name, Namespace, NodeStorage},
+    id::{Col, Id},
+    node::{Name, Namespace, NodeStorage},
     tree::TreeBuilder,
 };
 
@@ -86,7 +86,7 @@ impl<'t, T, S: BuildHasher> NodeInspector<'t, T, S> {
 impl<'t, T, S> NodeInspector<'t, Id<T>, S>
 where
     S: BuildHasher,
-    NodeStorage: Column<T, Item = T>,
+    NodeStorage: Col<T, Item = T>,
 {
     /// Assert that the current node is equal to another node
     pub fn assert_eq<U>(self, other: &U) -> Self
@@ -136,7 +136,7 @@ where
 impl<'t, T, S> NodeInspector<'t, Option<Id<T>>, S>
 where
     S: BuildHasher,
-    NodeStorage: Column<T, Item = T>,
+    NodeStorage: Col<T, Item = T>,
 {
     /// Assert that the current node is `Some` and equal to another node
     pub fn assert_some_eq<U: PartialEq>(self, other: &U) -> Self
@@ -155,7 +155,7 @@ where
 
 impl<'t, S: BuildHasher, N: Namespace> NodeInspector<'t, Id<Name<N>>, S>
 where
-    NodeStorage: Column<Name<N>, Item = Name<N>>,
+    NodeStorage: Col<Name<N>, Item = Name<N>>,
 {
     pub fn has_name(self, expected: &str) -> Self {
         let name = self.node.get(self.tree);

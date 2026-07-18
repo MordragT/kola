@@ -1,9 +1,29 @@
 use std::marker::PhantomData;
 
-use crate::{
-    node::{Column, NodeStorage},
-    tree::TreeView,
-};
+use crate::{node::NodeStorage, tree::TreeView};
+
+/// Columnar access to a `Vec<Item>` inside a storage.
+pub trait Col<T> {
+    type Item;
+    fn vec(&self) -> &Vec<Self::Item>;
+    fn vec_mut(&mut self) -> &mut Vec<Self::Item>;
+
+    fn get(&self, id: Id<T>) -> &Self::Item {
+        &self.vec()[id.as_usize()]
+    }
+
+    fn get_mut(&mut self, id: Id<T>) -> &mut Self::Item {
+        &mut self.vec_mut()[id.as_usize()]
+    }
+
+    fn set(&mut self, id: Id<T>, value: Self::Item) -> Self::Item {
+        std::mem::replace(self.get_mut(id), value)
+    }
+
+    fn len(&self) -> usize {
+        self.vec().len()
+    }
+}
 
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct Id<T: ?Sized> {
@@ -78,7 +98,7 @@ impl<T> Id<T> {
 
     pub fn get<'a>(self, storage: &'a impl TreeView) -> &'a T
     where
-        NodeStorage: Column<T, Item = T>,
+        NodeStorage: Col<T, Item = T>,
     {
         storage.nodes().get(self)
     }
