@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use indexmap::IndexMap;
 use kola_span::{Diagnostic, Issue, Loc, Report};
 use kola_tree::{
+    col::GetOpt,
     id::Id,
     node::{self, TypeName},
 };
@@ -117,9 +118,7 @@ pub fn lookup_types(
         let module = &mut modules[&module_sym];
         if let Some(target) = module.names.get_type(name) {
             type_graph_map[&module_sym].add_dependency(source, target.sym);
-            module
-                .nodes
-                .insert_meta(id, ResolvedType::Reference(target.sym));
+            module.nodes.set(id, ResolvedType::Reference(target.sym));
         } else {
             report.add_diagnostic(
                 Diagnostic::error(loc, "Type not found").with_help(
@@ -139,9 +138,7 @@ pub fn lookup_types(
     {
         let module = &mut modules[&module_sym];
         if let Some(binding) = module.names.get_type(name) {
-            module
-                .nodes
-                .insert_meta(id, ResolvedType::Reference(binding.sym));
+            module.nodes.set(id, ResolvedType::Reference(binding.sym));
         } else {
             report.add_diagnostic(
                 Diagnostic::error(loc, "Type not found in annotation")

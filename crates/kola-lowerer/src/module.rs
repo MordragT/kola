@@ -111,7 +111,7 @@ use kola_resolver::{
     db::{Db, ModuleView},
     symbol::{ModuleSym, ValueSym},
 };
-use kola_tree::meta::MetaView;
+use kola_tree::col::GetOpt;
 use kola_utils::interner::StrInterner;
 use log::trace;
 
@@ -191,7 +191,7 @@ pub fn lower_module(
     for &value_sym in view.value_order {
         let (id, tree, _) = view.value_node(value_sym);
         let label = id.get(tree).name.get(tree).0;
-        let hole = Symbol::new(view.module.nodes.meta(id).id());
+        let hole = Symbol::new(view.module.nodes.get_unchecked(id).id());
         fields.add_field((label, ir::Atom::Symbol(hole)), builder);
     }
 
@@ -204,7 +204,7 @@ pub fn lower_module(
     for &value_sym in view.value_order.iter().rev() {
         let (id, tree, _) = view.value_node(value_sym);
         let value_bind = id.get(tree);
-        let hole = Symbol::new(view.module.nodes.meta(id).id());
+        let hole = Symbol::new(view.module.nodes.get_unchecked(id).id());
 
         let normalizer = Normalizer::new(value_bind.value, next, hole, &view.module.nodes, builder);
         next = normalizer.run(tree);

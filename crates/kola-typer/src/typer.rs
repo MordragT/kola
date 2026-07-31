@@ -23,7 +23,7 @@ use crate::{
     builtins::builtin_type,
     constraints::{Constraints, MergeKind},
     pattern_typer::PatternTyper,
-    phase::{TypePhase, TypedNodes},
+    phase::TypedNodes,
 };
 
 // https://blog.stimsina.com/post/implementing-a-hindley-milner-type-system-part-2
@@ -108,19 +108,19 @@ impl<'a, N> Typer<'a, N> {
     }
 
     #[inline]
-    fn insert_type<T>(&mut self, id: Id<T>, t: T::Meta)
+    fn insert_type<T, S>(&mut self, id: Id<T>, t: S)
     where
-        T: MetaCast<TypePhase>,
+        TypedNodes: GetOpt<T, Item = S>,
     {
-        self.types.insert_meta(id, t)
+        self.types.set(id, t);
     }
 
     #[inline]
     fn span<T>(&self, id: Id<T>) -> Loc
     where
-        T: MetaCast<LocPhase, Meta = Loc>,
+        LocVec: Get<T, Item = Loc>,
     {
-        *self.spans.meta(id)
+        *self.spans.get(id)
     }
 }
 
@@ -136,13 +136,13 @@ where
         id: Id<node::EffectType>,
         tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
-        let effects = &id.get(tree).0;
+        let effects = id.get(tree).0;
 
         let mut row_t = Row::var();
 
-        for effect in effects {
-            self.visit_effect_op_type(*effect, tree)?;
-            let effect_t = self.types.meta(*effect).clone();
+        for effect in effects.iter(tree) {
+            self.visit_effect_op_type(effect, tree)?;
+            let effect_t = self.types.get_unchecked(effect).clone();
             row_t = row_t.extend(effect_t);
         }
 
@@ -159,8 +159,8 @@ where
 
         let label = Label(name.get(tree).0);
 
-        self.visit_type(ty, tree)?;
-        let ty = match self.types.meta(ty).to_mono() {
+        self.visit_type_expr(ty, tree)?;
+        let ty = match self.types.get_unchecked(ty).to_mono() {
             Ok(t) => t,
             Err(e) => return ControlFlow::Break(e.into_diagnostic(self.span(id))),
         };
@@ -193,7 +193,7 @@ where
         let depth = self.local_env.depth();
 
         self.visit_type_scheme(ty_scheme, tree)?;
-        let poly_t = self.types.meta(ty_scheme).clone();
+        let poly_t = self.types.get_unchecked(ty_scheme).clone();
 
         // Restore depth so that type variables are not left in scope
         self.local_env.restore_depth(depth);
@@ -250,9 +250,9 @@ where
     ) -> ControlFlow<Self::BreakValue> {
         let mut vars = Vec::new();
 
-        for &bind_id in id.get(tree) {
+        for bind_id in id.get(tree).0.iter(tree) {
             self.visit_type_var_bind(bind_id, tree)?;
-            let kinded_var = self.types.meta(bind_id).clone();
+            let kinded_var = self.types.get_unchecked(bind_id).clone();
             vars.push(kinded_var);
         }
 
@@ -289,13 +289,13 @@ where
         let forall = if let Some(forall) = forall {
             // Visit forall binder to enter type variables into local scope
             self.visit_forall_binder(forall, tree)?;
-            self.types.meta(forall).clone()
+            self.types.get_unchecked(forall).clone()
         } else {
             Vec::new()
         };
 
-        self.visit_type(ty, tree)?;
-        let mono_t = match self.types.meta(ty).to_mono() {
+        self.visit_type_expr(ty, tree)?;
+        let mono_t = match self.types.get_unchecked(ty).to_mono() {
             Ok(t) => t,
             Err(e) => return ControlFlow::Break(e.into_diagnostic(self.span(id))),
         };
@@ -308,19 +308,25 @@ where
         ControlFlow::Continue(())
     }
 
-    fn visit_type(&mut self, id: Id<node::TypeExpr>, tree: &T) -> ControlFlow<Self::BreakValue> {
-        self.walk_type(id, tree)?;
+    fn visit_type_expr(
+        &mut self,
+        id: Id<node::TypeExpr>,
+        tree: &T,
+    ) -> ControlFlow<Self::BreakValue> {
+        self.walk_type_expr(id, tree)?;
 
         let poly_t = match *id.get(tree) {
             node::TypeExpr::Error(_) => todo!(),
-            node::TypeExpr::Qualified(path_id) => self.types.meta(path_id).clone(),
-            node::TypeExpr::Func(func_id) => PolyType::from_mono(self.types.meta(func_id).clone()),
-            node::TypeExpr::Application(app_id) => self.types.meta(app_id).clone(),
+            node::TypeExpr::Qualified(path_id) => self.types.get_unchecked(path_id).clone(),
+            node::TypeExpr::Func(func_id) => {
+                PolyType::from_mono(self.types.get_unchecked(func_id).clone())
+            }
+            node::TypeExpr::Application(app_id) => self.types.get_unchecked(app_id).clone(),
             node::TypeExpr::Record(record_id) => {
-                PolyType::from_mono(self.types.meta(record_id).clone())
+                PolyType::from_mono(self.types.get_unchecked(record_id).clone())
             }
             node::TypeExpr::Variant(variant_id) => {
-                PolyType::from_mono(self.types.meta(variant_id).clone())
+                PolyType::from_mono(self.types.get_unchecked(variant_id).clone())
             }
         };
 
@@ -368,7 +374,7 @@ where
 
         let poly_t = if let Some(path) = path {
             // Module-qualified path
-            let ResolvedModule(module_sym) = *self.nodes.meta(path);
+            let ResolvedModule(module_sym) = *self.nodes.get_unchecked(path);
 
             let module_def = &self.defs[module_sym];
             let module = &self.modules[&module_sym];
@@ -399,13 +405,13 @@ where
             PolyType::from_mono(local_t.clone())
         } else if let Some(poly_t) = self
             .nodes
-            .meta(id)
+            .get_unchecked(id)
             .into_reference()
             .and_then(|sym| self.module_env.get_type(sym))
         {
             // Module-level type definition (like 'Person')
             poly_t.clone()
-        } else if let Some(builtin_t) = self.nodes.meta(id).into_builtin() {
+        } else if let Some(builtin_t) = self.nodes.get_unchecked(id).into_builtin() {
             match builtin_t {
                 BuiltinType::Unit => PolyType::from_mono(MonoType::UNIT),
                 BuiltinType::Bool => PolyType::from_mono(MonoType::BOOL),
@@ -452,15 +458,15 @@ where
     ) -> ControlFlow<Self::BreakValue> {
         let node::CompType { ty, effect } = *id.get(tree);
 
-        self.visit_type(ty, tree)?;
-        let ty = match self.types.meta(ty).to_mono() {
+        self.visit_type_expr(ty, tree)?;
+        let ty = match self.types.get_unchecked(ty).to_mono() {
             Ok(t) => t,
             Err(e) => return ControlFlow::Break(e.into_diagnostic(self.span(id))),
         };
 
         let effect = if let Some(effect) = effect {
             self.visit_effect_type(effect, tree)?;
-            self.types.meta(effect).clone()
+            self.types.get_unchecked(effect).clone()
         } else {
             Row::Empty
         };
@@ -492,14 +498,14 @@ where
     ) -> ControlFlow<Self::BreakValue> {
         let node::FuncType { input, output } = *id.get(tree);
 
-        self.visit_type(input, tree)?;
-        let input_t = match self.types.meta(input).to_mono() {
+        self.visit_type_expr(input, tree)?;
+        let input_t = match self.types.get_unchecked(input).to_mono() {
             Ok(t) => t,
             Err(e) => return ControlFlow::Break(e.into_diagnostic(self.span(id))),
         };
 
         self.visit_comp_type(output, tree)?;
-        let output_t = self.types.meta(output).clone();
+        let output_t = self.types.get_unchecked(output).clone();
 
         let func_t = MonoType::func(input_t, output_t);
 
@@ -533,14 +539,14 @@ where
     ) -> ControlFlow<Self::BreakValue> {
         let node::TypeApplication { constructor, arg } = *id.get(tree);
 
-        self.visit_type(arg, tree)?;
-        let arg_t = match self.types.meta(arg).to_mono() {
+        self.visit_type_expr(arg, tree)?;
+        let arg_t = match self.types.get_unchecked(arg).to_mono() {
             Ok(t) => t,
             Err(e) => return ControlFlow::Break(e.into_diagnostic(self.span(id))),
         };
 
-        self.visit_type(constructor, tree)?;
-        let PolyType { mut forall, mut ty } = self.types.meta(constructor).clone();
+        self.visit_type_expr(constructor, tree)?;
+        let PolyType { mut forall, mut ty } = self.types.get_unchecked(constructor).clone();
 
         if forall.is_empty() {
             return ControlFlow::Break(Diagnostic::error(
@@ -616,8 +622,8 @@ where
             Row::Empty
         };
 
-        let fields = fields.iter().fold(tail_t, |acc_t, &field| {
-            let head_t = self.types.meta(field).clone();
+        let fields = fields.iter(tree).fold(tail_t, |acc_t, field| {
+            let head_t = self.types.get_unchecked(field).clone();
             acc_t.extend(head_t)
         });
 
@@ -676,10 +682,10 @@ where
         let node::RecordFieldType { label_or_var, ty } = *id.get(tree);
 
         self.visit_label_or_var(label_or_var, tree)?;
-        let label = self.types.meta(label_or_var).clone();
+        let label = self.types.get_unchecked(label_or_var).clone();
 
-        self.visit_type(ty, tree)?;
-        let value_t = match self.types.meta(ty).to_mono() {
+        self.visit_type_expr(ty, tree)?;
+        let value_t = match self.types.get_unchecked(ty).to_mono() {
             Ok(t) => t,
             Err(e) => return ControlFlow::Break(e.into_diagnostic(self.span(id))),
         };
@@ -746,8 +752,8 @@ where
             Row::Empty
         };
 
-        let cases = tags.iter().fold(tail_t, |acc_t, &case| {
-            let head_t = self.types.meta(case).clone();
+        let cases = tags.iter(tree).fold(tail_t, |acc_t, case| {
+            let head_t = self.types.get_unchecked(case).clone();
             acc_t.extend(head_t)
         });
 
@@ -783,8 +789,8 @@ where
         let label = Label(name.get(tree).0);
 
         let value_t = if let Some(payload_ty) = ty {
-            self.visit_type(payload_ty, tree)?;
-            match self.types.meta(payload_ty).to_mono() {
+            self.visit_type_expr(payload_ty, tree)?;
+            match self.types.get_unchecked(payload_ty).to_mono() {
                 Ok(t) => t,
                 Err(e) => return ControlFlow::Break(e.into_diagnostic(self.span(id))),
             }
@@ -822,7 +828,7 @@ where
         } = *id.get(tree);
 
         // TODO: instead of these entrypoint hacks it would be nicer if main would just be an own node maybe ?
-        let is_entrypoint = self.entry_points.contains(self.nodes.meta(id));
+        let is_entrypoint = self.entry_points.contains(self.nodes.get_unchecked(id));
 
         if is_entrypoint {
             self.effects_stack.push(Row::var());
@@ -838,12 +844,12 @@ where
         }
 
         self.visit_expr(value, tree)?;
-        let mut value_t = self.types.meta(value).clone();
+        let mut value_t = self.types.get_unchecked(value).clone();
 
         if let Some(ty_scheme) = ty_scheme {
             let expected_t = self
                 .types
-                .meta(ty_scheme)
+                .get_unchecked(ty_scheme)
                 .instantiate(|from, to| self.cons.constrain_inst(from, to));
             self.cons.constrain_equal(expected_t, value_t.clone(), span);
         }
@@ -920,14 +926,14 @@ where
 
         let node::ListExpr(list) = id.get(tree);
 
-        if let Some(&first_elem) = list.first() {
-            let first_t = self.types.meta(first_elem).clone();
+        if let Some(first_elem) = list.first(tree) {
+            let first_t = self.types.get_unchecked(first_elem).clone();
 
             self.insert_type(id, MonoType::list(first_t.clone()));
 
-            for &elem in list {
+            for elem in list.iter(tree) {
                 let span = self.span(id);
-                let elem_t = self.types.meta(elem).clone();
+                let elem_t = self.types.get_unchecked(elem).clone();
 
                 self.cons.constrain_equal(first_t.clone(), elem_t, span);
             }
@@ -977,7 +983,7 @@ where
 
         let base_t = if let Some(path) = module_path {
             // Module-qualified path
-            let ResolvedModule(module_sym) = *self.nodes.meta(path);
+            let ResolvedModule(module_sym) = *self.nodes.get_unchecked(path);
 
             let module_def = &self.defs[module_sym];
             let module = &self.modules[&module_sym];
@@ -1008,13 +1014,13 @@ where
             local_t.clone()
         } else if let Some(poly_t) = self
             .nodes
-            .meta(id)
+            .get_unchecked(id)
             .into_reference()
             .and_then(|sym| self.module_env.get_value(sym))
         {
             // Module-level value definition
             poly_t.instantiate(|from, to| self.cons.constrain_inst(from, to))
-        } else if let Some(builtin_id) = self.nodes.meta(id).into_builtin() {
+        } else if let Some(builtin_id) = self.nodes.get_unchecked(id).into_builtin() {
             let pt = builtin_type(builtin_id, &self.lexicon);
 
             pt.instantiate(|from, to| self.cons.constrain_inst(from, to))
@@ -1030,7 +1036,7 @@ where
 
         let mut result_t = base_t;
 
-        for field in field_path.get(tree) {
+        for field in field_path.get(tree).0.iter(tree) {
             let value_t = MonoType::var();
             let label = Label(field.get(tree).0.clone());
 
@@ -1073,12 +1079,12 @@ where
         let node::RecordField { label, ty, value } = *id.get(tree);
 
         let label = Label(label.get(tree).0.clone());
-        let value_t = self.types.meta(value).clone();
+        let value_t = self.types.get_unchecked(value).clone();
 
         if let Some(ty) = ty {
-            self.visit_type(ty, tree)?;
+            self.visit_type_expr(ty, tree)?;
 
-            let expected_t = match self.types.meta(ty).to_mono() {
+            let expected_t = match self.types.get_unchecked(ty).to_mono() {
                 Ok(t) => t,
                 Err(e) => return ControlFlow::Break(e.into_diagnostic(self.span(id))),
             };
@@ -1113,8 +1119,8 @@ where
 
         let mut fields = Row::Empty;
 
-        for &field in id.get(tree) {
-            let head_t = self.types.meta(field).clone();
+        for field in id.get(tree).0.iter(tree) {
+            let head_t = self.types.get_unchecked(field).clone();
             fields = fields.extend(head_t);
         }
 
@@ -1150,11 +1156,11 @@ where
             value_type,
         } = *id.get(tree);
 
-        let mut source_t = self.types.meta(source).clone();
+        let mut source_t = self.types.get_unchecked(source).clone();
 
         if let Some(type_) = source_type {
-            self.visit_type(type_, tree)?;
-            let expected_t = match self.types.meta(type_).to_mono() {
+            self.visit_type_expr(type_, tree)?;
+            let expected_t = match self.types.get_unchecked(type_).to_mono() {
                 Ok(t) => t,
                 Err(e) => return ControlFlow::Break(e.into_diagnostic(span)),
             };
@@ -1165,7 +1171,7 @@ where
 
         // Split path into navigation fields and final extension field
         // Safety: `field_path` is always non-empty
-        let (field, fields) = field_path.get(tree).0.as_slice().split_last().unwrap();
+        let (field, fields) = field_path.get(tree).0.get(tree).split_last().unwrap();
 
         for field in fields {
             let value_t = MonoType::var();
@@ -1190,10 +1196,10 @@ where
             span,
         );
 
-        let value_t = self.types.meta(value);
+        let value_t = self.types.get_unchecked(value);
 
         if let Some(type_) = value_type {
-            let expected_t = match self.types.meta(type_).to_mono() {
+            let expected_t = match self.types.get_unchecked(type_).to_mono() {
                 Ok(t) => t,
                 Err(e) => return ControlFlow::Break(e.into_diagnostic(span)),
             };
@@ -1244,11 +1250,11 @@ where
             value_type,
         } = *id.get(tree);
 
-        let mut source_t = self.types.meta(source).clone();
+        let mut source_t = self.types.get_unchecked(source).clone();
 
         if let Some(type_) = source_type {
-            self.visit_type(type_, tree)?;
-            let expected_t = match self.types.meta(type_).to_mono() {
+            self.visit_type_expr(type_, tree)?;
+            let expected_t = match self.types.get_unchecked(type_).to_mono() {
                 Ok(t) => t,
                 Err(e) => return ControlFlow::Break(e.into_diagnostic(span)),
             };
@@ -1259,7 +1265,7 @@ where
 
         // Split path into navigation fields and final restriction field
         // Safety: `field_path` is always non-empty
-        let (field, fields) = field_path.get(tree).0.as_slice().split_last().unwrap();
+        let (field, fields) = field_path.get(tree).0.get(tree).split_last().unwrap();
 
         // Navigate through all fields except the last
         for field_id in fields {
@@ -1281,8 +1287,8 @@ where
         let value_t = MonoType::var();
 
         if let Some(type_) = value_type {
-            self.visit_type(type_, tree)?;
-            let expected_t = match self.types.meta(type_).to_mono() {
+            self.visit_type_expr(type_, tree)?;
+            let expected_t = match self.types.get_unchecked(type_).to_mono() {
                 Ok(t) => t,
                 Err(e) => return ControlFlow::Break(e.into_diagnostic(span)),
             };
@@ -1377,11 +1383,11 @@ where
             value_type,
         } = *id.get(tree);
 
-        let mut source_t = self.types.meta(source).clone();
+        let mut source_t = self.types.get_unchecked(source).clone();
 
         if let Some(type_) = source_type {
-            self.visit_type(type_, tree)?;
-            let expected_t = match self.types.meta(type_).to_mono() {
+            self.visit_type_expr(type_, tree)?;
+            let expected_t = match self.types.get_unchecked(type_).to_mono() {
                 Ok(t) => t,
                 Err(e) => return ControlFlow::Break(e.into_diagnostic(span)),
             };
@@ -1392,7 +1398,7 @@ where
 
         // Split path into navigation fields and final update field
         // Safety: `field_path` is always non-empty
-        let (field, fields) = field_path.get(tree).0.as_slice().split_last().unwrap();
+        let (field, fields) = field_path.get(tree).0.get(tree).split_last().unwrap();
 
         // Navigate through all fields except the last
         for field_id in fields {
@@ -1422,11 +1428,11 @@ where
             span,
         );
 
-        let new_value_t = self.types.meta(value).clone();
+        let new_value_t = self.types.get_unchecked(value).clone();
 
         if let Some(type_) = value_type {
-            self.visit_type(type_, tree)?;
-            let expected_t = match self.types.meta(type_).to_mono() {
+            self.visit_type_expr(type_, tree)?;
+            let expected_t = match self.types.get_unchecked(type_).to_mono() {
                 Ok(t) => t,
                 Err(e) => return ControlFlow::Break(e.into_diagnostic(span)),
             };
@@ -1436,7 +1442,7 @@ where
         }
 
         // Treat the update operation as a function: old_value_t -> new_value_t
-        let op_t = self.types.meta(op).clone();
+        let op_t = self.types.get_unchecked(op).clone();
         self.cons.constrain_equal(
             op_t,
             MonoType::func(old_value_t.clone(), new_value_t.clone()),
@@ -1462,8 +1468,8 @@ where
         self.visit_expr(lhs, tree)?;
         self.visit_expr(rhs, tree)?;
 
-        let lhs_t = self.types.meta(lhs).clone();
-        let rhs_t = self.types.meta(rhs).clone();
+        let lhs_t = self.types.get_unchecked(lhs).clone();
+        let rhs_t = self.types.get_unchecked(rhs).clone();
 
         // self.cons
         //     .check_class(TypeClass::Record, lhs_t.clone(), span);
@@ -1518,8 +1524,8 @@ where
 
         let node::UnaryExpr { op, operand } = *id.get(tree);
 
-        let op_t = self.types.meta(op).clone();
-        let operand_t = self.types.meta(operand).clone();
+        let op_t = self.types.get_unchecked(op).clone();
+        let operand_t = self.types.get_unchecked(operand).clone();
 
         let result_t = MonoType::var();
 
@@ -1614,9 +1620,9 @@ where
 
         let node::BinaryExpr { lhs, op, rhs } = *id.get(tree);
 
-        let op_t = self.types.meta(op).clone();
-        let left_t = self.types.meta(lhs).clone();
-        let right_t = self.types.meta(rhs).clone();
+        let op_t = self.types.get_unchecked(op).clone();
+        let left_t = self.types.get_unchecked(lhs).clone();
+        let right_t = self.types.get_unchecked(rhs).clone();
 
         let result_t = MonoType::var();
 
@@ -1653,12 +1659,12 @@ where
 
         self.visit_expr(value, tree)?;
 
-        let value_t = self.types.meta(value).clone();
+        let value_t = self.types.get_unchecked(value).clone();
 
         // First: Handle type annotation constraint if present
         if let Some(type_) = value_type {
-            self.visit_type(type_, tree)?;
-            let expected_t = match self.types.meta(type_).to_mono() {
+            self.visit_type_expr(type_, tree)?;
+            let expected_t = match self.types.get_unchecked(type_).to_mono() {
                 Ok(t) => t,
                 Err(e) => return ControlFlow::Break(e.into_diagnostic(self.span(id))),
             };
@@ -1672,7 +1678,7 @@ where
         self.visit_expr(body, tree)?;
         self.local_env.exit(&name);
 
-        let result_t = self.types.meta(body).clone();
+        let result_t = self.types.get_unchecked(body).clone();
         self.insert_type(id, result_t);
 
         ControlFlow::Continue(())
@@ -1711,12 +1717,12 @@ where
 
         // Step 1: Type the source expression to get discriminant type
         self.visit_expr(*source, tree)?;
-        let source_t = self.types.meta(*source).clone();
+        let source_t = self.types.get_unchecked(*source).clone();
 
         // Step 2: Process each branch
         let mut result_types = Vec::new();
 
-        for &branch_id in branches {
+        for branch_id in branches.iter(tree) {
             let node::CaseBranch { pat, body } = *branch_id.get(tree);
 
             // TODO: Implement proper pattern typing that:
@@ -1743,7 +1749,7 @@ where
             // TODO use better mechanism to restore the env
             self.local_env = env;
 
-            let branch_t = self.types.meta(body).clone();
+            let branch_t = self.types.get_unchecked(body).clone();
             result_types.push(branch_t);
         }
 
@@ -1791,12 +1797,12 @@ where
             or_else,
         } = *id.get(tree);
 
-        let pred_t = self.types.meta(pred).clone();
+        let pred_t = self.types.get_unchecked(pred).clone();
 
         self.cons.constrain_equal(MonoType::BOOL, pred_t, span);
 
-        let then_t = self.types.meta(then).clone();
-        let else_t = self.types.meta(or_else).clone();
+        let then_t = self.types.get_unchecked(then).clone();
+        let else_t = self.types.get_unchecked(or_else).clone();
 
         self.cons.constrain_equal(then_t.clone(), else_t, span);
 
@@ -1828,9 +1834,9 @@ where
         let param_t = MonoType::var();
 
         if let Some(param_type) = param_type {
-            self.visit_type(param_type, tree)?;
+            self.visit_type_expr(param_type, tree)?;
 
-            let expected_param_t = match self.types.meta(param_type).to_mono() {
+            let expected_param_t = match self.types.get_unchecked(param_type).to_mono() {
                 Ok(t) => t,
                 Err(e) => return ControlFlow::Break(e.into_diagnostic(self.span(id))),
             };
@@ -1848,7 +1854,7 @@ where
         self.local_env.exit(&name);
         let effects = self.effects_stack.pop().unwrap();
 
-        let body_t = self.types.meta(body).clone();
+        let body_t = self.types.get_unchecked(body).clone();
         let comp_t = CompType::new(body_t, effects);
         let lambda_t = MonoType::func(param_t, comp_t);
 
@@ -1879,8 +1885,8 @@ where
 
         let node::CallExpr { func, arg } = id.get(tree);
 
-        let func_t = self.types.meta(*func).clone();
-        let arg_t = self.types.meta(*arg).clone();
+        let func_t = self.types.get_unchecked(*func).clone();
+        let arg_t = self.types.get_unchecked(*arg).clone();
 
         let effect_t = self.effects_stack.last().cloned().unwrap_or(Row::Empty);
         let result_t = CompType::new(MonoType::var(), effect_t);
@@ -1921,7 +1927,7 @@ where
         self.local_env.enter(name, param_t.clone());
         self.visit_expr(*body, tree)?;
         self.local_env.exit(&name);
-        let body_t = self.types.meta(*body).clone();
+        let body_t = self.types.get_unchecked(*body).clone();
 
         // The handler clause function itself is pure because its effects
         // are already accounted for in the ambient row.
@@ -1960,14 +1966,14 @@ where
         self.effects_stack.push(Row::var());
         self.visit_expr(*source, tree)?;
         let source_effect = self.effects_stack.pop().unwrap();
-        let source_t = self.types.meta(*source).clone();
+        let source_t = self.types.get_unchecked(*source).clone();
 
         // 2. Peel handled labels off the source's effect row
         let mut remaining_effect = source_effect.clone();
 
-        for &clause_id in clauses {
+        for clause_id in clauses.iter(tree) {
             self.visit_handler_clause(clause_id, tree)?;
-            let head = self.types.meta(clause_id).clone();
+            let head = self.types.get_unchecked(clause_id).clone();
 
             // Fresh tail for what's left after peeling this label
             let tail = Row::var();
@@ -2005,7 +2011,7 @@ where
         let name = op.get(tree).0;
 
         self.visit_expr(arg, tree)?;
-        let arg_t = self.types.meta(arg).clone();
+        let arg_t = self.types.get_unchecked(arg).clone();
 
         let result_t = MonoType::var();
 
@@ -2060,7 +2066,7 @@ where
         let t = match *id.get(tree) {
             node::TypeWitnessExpr::Qualified(qual_id) => self
                 .types
-                .meta(qual_id)
+                .get_unchecked(qual_id)
                 .instantiate(|from, to| self.cons.constrain_inst(from, to)),
             node::TypeWitnessExpr::Label(label_id) => MonoType::label(Label(label_id.get(tree).0)),
         };
@@ -2075,25 +2081,25 @@ where
 
         let expr_t = match *id.get(tree) {
             node::Expr::Error(_) => todo!(),
-            node::Expr::Literal(id) => self.types.meta(id),
-            node::Expr::Qualified(id) => self.types.meta(id),
-            node::Expr::List(id) => self.types.meta(id),
-            node::Expr::Record(id) => self.types.meta(id),
-            node::Expr::RecordExtend(id) => self.types.meta(id),
-            node::Expr::RecordRestrict(id) => self.types.meta(id),
-            node::Expr::RecordUpdate(id) => self.types.meta(id),
-            node::Expr::RecordMerge(id) => self.types.meta(id),
-            node::Expr::Unary(id) => self.types.meta(id),
-            node::Expr::Binary(id) => self.types.meta(id),
-            node::Expr::Let(id) => self.types.meta(id),
-            node::Expr::If(id) => self.types.meta(id),
-            node::Expr::Case(id) => self.types.meta(id),
-            node::Expr::Lambda(id) => self.types.meta(id),
-            node::Expr::Call(id) => &self.types.meta(id).ty, // TODO this discards the effect
-            node::Expr::Handle(id) => &self.types.meta(id).ty, // TODO this discards the effect
-            node::Expr::Do(id) => &self.types.meta(id).ty,   // TODO this discards the effect
-            node::Expr::Tag(id) => self.types.meta(id),
-            node::Expr::TypeWitness(id) => self.types.meta(id),
+            node::Expr::Literal(id) => self.types.get_unchecked(id),
+            node::Expr::Qualified(id) => self.types.get_unchecked(id),
+            node::Expr::List(id) => self.types.get_unchecked(id),
+            node::Expr::Record(id) => self.types.get_unchecked(id),
+            node::Expr::RecordExtend(id) => self.types.get_unchecked(id),
+            node::Expr::RecordRestrict(id) => self.types.get_unchecked(id),
+            node::Expr::RecordUpdate(id) => self.types.get_unchecked(id),
+            node::Expr::RecordMerge(id) => self.types.get_unchecked(id),
+            node::Expr::Unary(id) => self.types.get_unchecked(id),
+            node::Expr::Binary(id) => self.types.get_unchecked(id),
+            node::Expr::Let(id) => self.types.get_unchecked(id),
+            node::Expr::If(id) => self.types.get_unchecked(id),
+            node::Expr::Case(id) => self.types.get_unchecked(id),
+            node::Expr::Lambda(id) => self.types.get_unchecked(id),
+            node::Expr::Call(id) => &self.types.get_unchecked(id).ty, // TODO this discards the effect
+            node::Expr::Handle(id) => &self.types.get_unchecked(id).ty, // TODO this discards the effect
+            node::Expr::Do(id) => &self.types.get_unchecked(id).ty, // TODO this discards the effect
+            node::Expr::Tag(id) => self.types.get_unchecked(id),
+            node::Expr::TypeWitness(id) => self.types.get_unchecked(id),
         }
         .clone();
 
@@ -2114,30 +2120,30 @@ mod tests {
     #[test]
     fn literal() {
         let mut builder = TreeBuilder::new();
-        let lit = builder.insert(node::LiteralExpr::Num(10.0));
+        let lit = builder.alloc(node::LiteralExpr::Num(10.0));
 
         let types = run_typer(builder, lit).unwrap();
 
-        assert_eq!(types.meta(lit), &MonoType::NUM);
+        assert_eq!(types.get_unchecked(lit), &MonoType::NUM);
     }
 
     #[test]
     fn unary() {
         let mut builder = TreeBuilder::new();
 
-        let target = builder.insert(node::LiteralExpr::Num(10.0));
+        let target = builder.alloc(node::LiteralExpr::Num(10.0));
         let unary = node::UnaryExpr::new_in(node::UnaryOp::Neg, target, &mut builder);
 
         let types = run_typer(builder, unary).unwrap();
 
-        assert_eq!(types.meta(unary), &MonoType::NUM);
+        assert_eq!(types.get_unchecked(unary), &MonoType::NUM);
     }
 
     #[test]
     fn unary_err() {
         let mut builder = TreeBuilder::new();
 
-        let target = builder.insert(node::LiteralExpr::Num(10.0));
+        let target = builder.alloc(node::LiteralExpr::Num(10.0));
         let unary = node::UnaryExpr::new_in(node::UnaryOp::Not, target, &mut builder);
 
         let (errors, _) = run_typer(builder, unary).unwrap_err();
@@ -2155,8 +2161,8 @@ mod tests {
     fn binary_err() {
         let mut builder = TreeBuilder::new();
 
-        let left = builder.insert(node::LiteralExpr::Bool(true));
-        let right = builder.insert(node::LiteralExpr::Num(10.0));
+        let left = builder.alloc(node::LiteralExpr::Bool(true));
+        let right = builder.alloc(node::LiteralExpr::Num(10.0));
         let binary = node::BinaryExpr::new_in(node::BinaryOp::Eq, left, right, &mut builder);
 
         let (errors, _) = run_typer(builder, binary).unwrap_err();
@@ -2175,37 +2181,37 @@ mod tests {
         let mut interner = StrInterner::default();
         let mut builder = TreeBuilder::new();
 
-        let value = builder.insert(node::LiteralExpr::Num(10.0));
+        let value = builder.alloc(node::LiteralExpr::Num(10.0));
         let x = interner.intern("x");
         let inside = node::QualifiedExpr::new_in(None, x, None, &mut builder);
         let let_ = node::LetExpr::new_in(x, None, value, inside, &mut builder);
 
         let types = run_typer(builder, let_).unwrap();
 
-        assert_eq!(types.meta(let_), &MonoType::NUM);
+        assert_eq!(types.get_unchecked(let_), &MonoType::NUM);
     }
 
     #[test]
     fn if_() {
         let mut builder = TreeBuilder::new();
 
-        let predicate = builder.insert(node::LiteralExpr::Bool(true));
-        let then = builder.insert(node::LiteralExpr::Num(5.0));
-        let or = builder.insert(node::LiteralExpr::Num(10.0));
+        let predicate = builder.alloc(node::LiteralExpr::Bool(true));
+        let then = builder.alloc(node::LiteralExpr::Num(5.0));
+        let or = builder.alloc(node::LiteralExpr::Num(10.0));
         let if_ = node::IfExpr::new_in(predicate, then, or, &mut builder);
 
         let types = run_typer(builder, if_).unwrap();
 
-        assert_eq!(types.meta(if_), &MonoType::NUM);
+        assert_eq!(types.get_unchecked(if_), &MonoType::NUM);
     }
 
     #[test]
     fn if_err() {
         let mut builder = TreeBuilder::new();
 
-        let predicate = builder.insert(node::LiteralExpr::Bool(true));
-        let then = builder.insert(node::LiteralExpr::Num(5.0));
-        let or = builder.insert(node::LiteralExpr::Char('x'));
+        let predicate = builder.alloc(node::LiteralExpr::Bool(true));
+        let then = builder.alloc(node::LiteralExpr::Num(5.0));
+        let or = builder.alloc(node::LiteralExpr::Char('x'));
         let if_ = node::IfExpr::new_in(predicate, then, or, &mut builder);
 
         let (errors, _) = run_typer(builder, if_).unwrap_err();

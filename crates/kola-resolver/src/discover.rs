@@ -179,14 +179,14 @@ impl<'a> Discoverer<'a> {
     #[inline]
     fn span<T>(&self, id: Id<T>) -> Loc
     where
-        LocVec: Col<T, Item = Loc>,
+        LocVec: Get<T, Item = Loc>,
     {
         *self.locs.get(id)
     }
 
     fn insert_symbol<T, S>(&mut self, id: Id<T>, sym: S)
     where
-        NodeMap: Col<T, Item = S>,
+        NodeMap: GetOpt<T, Item = S>,
     {
         self.scope.nodes.set(id, sym);
     }

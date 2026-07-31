@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use indexmap::IndexMap;
 use kola_span::{Diagnostic, Issue, Loc, Report};
 use kola_tree::{
+    col::GetOpt,
     id::Id,
     node::{self, ValueName},
 };
@@ -80,9 +81,7 @@ pub fn lookup_values(
 
         if let Some(target) = module.names.get_value(name) {
             value_graph_map[&module_sym].add_dependency(source, target.sym);
-            module
-                .nodes
-                .insert_meta(id, ResolvedValue::Reference(target.sym));
+            module.nodes.set(id, ResolvedValue::Reference(target.sym));
         } else {
             report.add_diagnostic(Diagnostic::error(loc, "Value not found").with_help(
                 "Check that the value is defined in this module or has been brought into scope.",

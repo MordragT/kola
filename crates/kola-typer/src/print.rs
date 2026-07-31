@@ -1,5 +1,5 @@
 use kola_print::prelude::*;
-use kola_tree::prelude::*;
+use kola_tree::{col::GetOpt, node::AnyId, print::Decorator};
 use owo_colors::OwoColorize;
 
 use crate::phase::TypedNodes;
@@ -8,73 +8,283 @@ use crate::phase::TypedNodes;
 pub struct TypeDecorator<'a>(pub &'a TypedNodes);
 
 impl<'a> Decorator<'a> for TypeDecorator<'a> {
-    fn decorate(&self, notation: Notation<'a>, with: usize, arena: &'a Bump) -> Notation<'a> {
-        let Some(meta) = self.0.get(&with) else {
-            return notation;
-        };
-
-        let ty = match meta {
+    fn decorate(&self, notation: Notation<'a>, with: AnyId, arena: &'a Bump) -> Notation<'a> {
+        let ty = match with {
             // Patterns
-            Meta::AnyPat(t)
-            | Meta::LiteralPat(t)
-            | Meta::BindPat(t)
-            | Meta::ListElPat(t)
-            | Meta::ListPat(t)
-            | Meta::RecordPat(t)
-            | Meta::VariantPat(t)
-            | Meta::Pat(t) => t.green().display_in(arena),
-            Meta::RecordFieldPat(lt) | Meta::VariantTagPat(lt) => lt.green().display_in(arena),
+            AnyId::AnyPat(id) => self.0.any_pats.get_unchecked(id).green().display_in(arena),
+            AnyId::LiteralPat(id) => self
+                .0
+                .literal_pats
+                .get_unchecked(id)
+                .green()
+                .display_in(arena),
+            AnyId::BindPat(id) => self.0.bind_pats.get_unchecked(id).green().display_in(arena),
+            AnyId::ListElPat(id) => self
+                .0
+                .list_el_pats
+                .get_unchecked(id)
+                .green()
+                .display_in(arena),
+            AnyId::ListPat(id) => self.0.list_pats.get_unchecked(id).green().display_in(arena),
+            AnyId::RecordFieldPat(id) => self
+                .0
+                .record_field_pats
+                .get_unchecked(id)
+                .green()
+                .display_in(arena),
+            AnyId::RecordPat(id) => self
+                .0
+                .record_pats
+                .get_unchecked(id)
+                .green()
+                .display_in(arena),
+            AnyId::VariantTagPat(id) => self
+                .0
+                .variant_tag_pats
+                .get_unchecked(id)
+                .green()
+                .display_in(arena),
+            AnyId::VariantPat(id) => self
+                .0
+                .variant_pats
+                .get_unchecked(id)
+                .green()
+                .display_in(arena),
+            AnyId::Pat(id) => self.0.pats.get_unchecked(id).green().display_in(arena),
 
             // Expressions
-            Meta::LiteralExpr(t)
-            | Meta::ListExpr(t)
-            | Meta::RecordExpr(t)
-            | Meta::RecordExtendExpr(t)
-            | Meta::RecordRestrictExpr(t)
-            | Meta::RecordUpdateOp(t)
-            | Meta::RecordUpdateExpr(t)
-            | Meta::RecordMergeExpr(t)
-            | Meta::QualifiedExpr(t)
-            | Meta::UnaryOp(t)
-            | Meta::UnaryExpr(t)
-            | Meta::BinaryOp(t)
-            | Meta::BinaryExpr(t)
-            | Meta::LetExpr(t)
-            | Meta::CaseBranch(t)
-            | Meta::CaseExpr(t)
-            | Meta::IfExpr(t)
-            | Meta::LambdaExpr(t)
-            | Meta::TagExpr(t)
-            | Meta::TypeWitnessExpr(t)
-            | Meta::Expr(t) => t.green().display_in(arena),
-            Meta::HandleExpr(ct) | Meta::DoExpr(ct) | Meta::CallExpr(ct) => {
-                ct.green().display_in(arena)
-            }
-            Meta::HandlerClause(lt) => lt.green().display_in(arena),
-            Meta::RecordField(lt) => lt.green().display_in(arena),
+            AnyId::LiteralExpr(id) => self
+                .0
+                .literal_exprs
+                .get_unchecked(id)
+                .green()
+                .display_in(arena),
+            AnyId::ListExpr(id) => self
+                .0
+                .list_exprs
+                .get_unchecked(id)
+                .green()
+                .display_in(arena),
+            AnyId::RecordField(id) => self
+                .0
+                .record_fields
+                .get_unchecked(id)
+                .green()
+                .display_in(arena),
+            AnyId::RecordExpr(id) => self
+                .0
+                .record_exprs
+                .get_unchecked(id)
+                .green()
+                .display_in(arena),
+            AnyId::RecordExtendExpr(id) => self
+                .0
+                .record_extend_exprs
+                .get_unchecked(id)
+                .green()
+                .display_in(arena),
+            AnyId::RecordRestrictExpr(id) => self
+                .0
+                .record_restrict_exprs
+                .get_unchecked(id)
+                .green()
+                .display_in(arena),
+            AnyId::RecordUpdateOp(id) => self
+                .0
+                .record_update_ops
+                .get_unchecked(id)
+                .green()
+                .display_in(arena),
+            AnyId::RecordUpdateExpr(id) => self
+                .0
+                .record_update_exprs
+                .get_unchecked(id)
+                .green()
+                .display_in(arena),
+            AnyId::RecordMergeExpr(id) => self
+                .0
+                .record_merge_exprs
+                .get_unchecked(id)
+                .green()
+                .display_in(arena),
+            AnyId::QualifiedExpr(id) => self
+                .0
+                .qualified_exprs
+                .get_unchecked(id)
+                .green()
+                .display_in(arena),
+            AnyId::UnaryOp(id) => self.0.unary_ops.get_unchecked(id).green().display_in(arena),
+            AnyId::UnaryExpr(id) => self
+                .0
+                .unary_exprs
+                .get_unchecked(id)
+                .green()
+                .display_in(arena),
+            AnyId::BinaryOp(id) => self
+                .0
+                .binary_ops
+                .get_unchecked(id)
+                .green()
+                .display_in(arena),
+            AnyId::BinaryExpr(id) => self
+                .0
+                .binary_exprs
+                .get_unchecked(id)
+                .green()
+                .display_in(arena),
+            AnyId::LetExpr(id) => self.0.let_exprs.get_unchecked(id).green().display_in(arena),
+            AnyId::CaseBranch(id) => self
+                .0
+                .case_branches
+                .get_unchecked(id)
+                .green()
+                .display_in(arena),
+            AnyId::CaseExpr(id) => self
+                .0
+                .case_exprs
+                .get_unchecked(id)
+                .green()
+                .display_in(arena),
+            AnyId::IfExpr(id) => self.0.if_exprs.get_unchecked(id).green().display_in(arena),
+            AnyId::LambdaExpr(id) => self
+                .0
+                .lambda_exprs
+                .get_unchecked(id)
+                .green()
+                .display_in(arena),
+            AnyId::CallExpr(id) => self
+                .0
+                .call_exprs
+                .get_unchecked(id)
+                .green()
+                .display_in(arena),
+            AnyId::HandlerClause(id) => self
+                .0
+                .handler_clauses
+                .get_unchecked(id)
+                .green()
+                .display_in(arena),
+            AnyId::HandleExpr(id) => self
+                .0
+                .handle_exprs
+                .get_unchecked(id)
+                .green()
+                .display_in(arena),
+            AnyId::DoExpr(id) => self.0.do_exprs.get_unchecked(id).green().display_in(arena),
+            AnyId::TagExpr(id) => self.0.tag_exprs.get_unchecked(id).green().display_in(arena),
+            AnyId::TypeWitnessExpr(id) => self
+                .0
+                .type_witness_exprs
+                .get_unchecked(id)
+                .green()
+                .display_in(arena),
+            AnyId::Expr(id) => self.0.exprs.get_unchecked(id).green().display_in(arena),
 
             // Effects
-            Meta::EffectOpType(lt) => lt.green().display_in(arena),
-            Meta::EffectType(rt) => rt.green().display_in(arena),
+            AnyId::EffectOpType(id) => self
+                .0
+                .effect_op_types
+                .get_unchecked(id)
+                .green()
+                .display_in(arena),
+            AnyId::EffectType(id) => self
+                .0
+                .effect_types
+                .get_unchecked(id)
+                .green()
+                .display_in(arena),
 
             // Types
-            Meta::TypeVarBind(kv) => kv.green().display_in(arena),
-            Meta::ForallBinder(_vars) => return notation,
-            Meta::LabelOrVar(l) => l.green().display_in(arena),
-            Meta::RecordFieldType(lt) | Meta::TagType(lt) => lt.green().display_in(arena),
-            Meta::RecordType(t) | Meta::VariantType(t) | Meta::FuncType(t) => {
-                t.green().display_in(arena)
-            }
-            Meta::CompType(ct) => ct.green().display_in(arena),
-            Meta::QualifiedType(pt)
-            | Meta::TypeApplication(pt)
-            | Meta::Type(pt)
-            | Meta::TypeScheme(pt)
-            | Meta::TypeVar(pt) => pt.green().display_in(arena),
+            AnyId::QualifiedType(id) => self
+                .0
+                .qualified_types
+                .get_unchecked(id)
+                .green()
+                .display_in(arena),
+            AnyId::TypeVar(id) => self.0.type_vars.get_unchecked(id).green().display_in(arena),
+            AnyId::LabelOrVar(id) => self
+                .0
+                .label_or_vars
+                .get_unchecked(id)
+                .green()
+                .display_in(arena),
+            AnyId::RecordFieldType(id) => self
+                .0
+                .record_field_types
+                .get_unchecked(id)
+                .green()
+                .display_in(arena),
+            AnyId::RecordType(id) => self
+                .0
+                .record_types
+                .get_unchecked(id)
+                .green()
+                .display_in(arena),
+            AnyId::TagType(id) => self.0.tag_types.get_unchecked(id).green().display_in(arena),
+            AnyId::VariantType(id) => self
+                .0
+                .variant_types
+                .get_unchecked(id)
+                .green()
+                .display_in(arena),
+            AnyId::FuncType(id) => self
+                .0
+                .func_types
+                .get_unchecked(id)
+                .green()
+                .display_in(arena),
+            AnyId::TypeApplication(id) => self
+                .0
+                .type_applications
+                .get_unchecked(id)
+                .green()
+                .display_in(arena),
+            AnyId::CompType(id) => self
+                .0
+                .comp_types
+                .get_unchecked(id)
+                .green()
+                .display_in(arena),
+            AnyId::TypeExpr(id) => self
+                .0
+                .type_exprs
+                .get_unchecked(id)
+                .green()
+                .display_in(arena),
+            AnyId::TypeVarBind(id) => self
+                .0
+                .type_var_binds
+                .get_unchecked(id)
+                .green()
+                .display_in(arena),
+            // AnyId::ForallBinder(id) => self
+            //     .0
+            //     .forall_binders
+            //     .get_unchecked(id)
+            //     .green()
+            //     .display_in(arena),
+            AnyId::TypeScheme(id) => self
+                .0
+                .type_schemes
+                .get_unchecked(id)
+                .green()
+                .display_in(arena),
 
-            // Modules
-            Meta::TypeBind(pt) => pt.green().display_in(arena),
-            Meta::ValueBind(t) => t.green().display_in(arena),
+            // Binds
+            AnyId::ValueBind(id) => self
+                .0
+                .value_binds
+                .get_unchecked(id)
+                .green()
+                .display_in(arena),
+            AnyId::TypeBind(id) => self
+                .0
+                .type_binds
+                .get_unchecked(id)
+                .green()
+                .display_in(arena),
+
+            _ => return notation,
         };
 
         let single = [notation.clone(), arena.notate(" : "), ty.clone()]

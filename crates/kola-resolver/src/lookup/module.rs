@@ -2,9 +2,9 @@ use std::collections::HashMap;
 
 use kola_span::{Diagnostic, Loc, Report};
 use kola_tree::{
+    col::GetOpt,
     id::Id,
-    node::Vis,
-    node::{self, ModuleName},
+    node::{self, ModuleName, Vis},
 };
 
 use crate::{
@@ -105,9 +105,7 @@ pub fn lookup_modules(
 
         // Mutate the source module to cache the resolution metadata for downstream passes
         if let Some(source_module) = modules.get_mut(source) {
-            source_module
-                .nodes
-                .insert_meta(*id, ResolvedModule(current_sym));
+            source_module.nodes.set(*id, ResolvedModule(current_sym));
         }
     }
 }

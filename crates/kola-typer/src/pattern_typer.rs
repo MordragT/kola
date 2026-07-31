@@ -136,7 +136,7 @@ where
     /// ```
     fn visit_list_pat(&mut self, id: Id<node::ListPat>, tree: &T) -> ControlFlow<Self::BreakValue> {
         // Get the list elements from the pattern
-        let elements = &id.get(tree).0;
+        let elements = id.get(tree).0;
 
         // Create a fresh type variable for the element type
         let element_type = MonoType::var();
@@ -148,7 +148,7 @@ where
             .constrain_equal(self.source.clone(), expected_list_type, self.span);
 
         // Process each element in the list pattern
-        for &element_id in elements {
+        for element_id in elements.iter(tree) {
             match *element_id.get(tree) {
                 node::ListElPat::Pat(pat_id) => {
                     // Regular pattern element - type it against the element type
@@ -189,7 +189,7 @@ where
         let mut expected = if *polymorph { Row::var() } else { Row::Empty };
 
         // Process fields in reverse to build the row type correctly // TODO probably not necessary ?
-        for &field_id in fields.iter().rev() {
+        for field_id in fields.iter(tree).rev() {
             let node::RecordFieldPat { field, pat } = *field_id.get(tree);
             let field_name = field.get(tree).0;
 
@@ -229,7 +229,7 @@ where
         id: Id<node::VariantPat>,
         tree: &T,
     ) -> ControlFlow<Self::BreakValue> {
-        let cases = &id.get(tree).0;
+        let cases = id.get(tree).0;
 
         // Build the expected variant type by processing each case pattern
         // This creates: < case₁ : τ₁, case₂ : τ₂, ... | ρ >
@@ -239,7 +239,7 @@ where
         let mut expected = Row::var();
 
         // Process cases in reverse to build the row type correctly (inside-out)
-        for &case_id in cases.iter().rev() {
+        for case_id in cases.iter(tree).rev() {
             let node::VariantTagPat { tag, pat } = *case_id.get(tree);
             let tag_name = tag.get(tree).0;
 
@@ -291,21 +291,21 @@ mod tests {
         let mut builder = TreeBuilder::new();
 
         // case 42 of 42 => true, _ => false
-        let source = builder.insert(node::LiteralExpr::Num(42.0));
+        let source = builder.alloc(node::LiteralExpr::Num(42.0));
 
-        let pat1 = builder.insert(node::LiteralPat::Num(42.0));
-        let expr1 = builder.insert(node::LiteralExpr::Bool(true));
+        let pat1 = builder.alloc(node::LiteralPat::Num(42.0));
+        let expr1 = builder.alloc(node::LiteralExpr::Bool(true));
         let branch1 = node::CaseBranch::new_in(pat1, expr1, &mut builder);
 
-        let pat2 = builder.insert(node::AnyPat);
-        let expr2 = builder.insert(node::LiteralExpr::Bool(false));
+        let pat2 = builder.alloc(node::AnyPat);
+        let expr2 = builder.alloc(node::LiteralExpr::Bool(false));
         let branch2 = node::CaseBranch::new_in(pat2, expr2, &mut builder);
 
         let case_expr = node::CaseExpr::new_in(source, vec![branch1, branch2], &mut builder);
 
         let types = run_typer(builder, case_expr).unwrap();
 
-        assert_eq!(types.meta(case_expr), &MonoType::BOOL);
+        assert_eq!(types.get_unchecked(case_expr), &MonoType::BOOL);
     }
 
     #[test]
@@ -314,10 +314,10 @@ mod tests {
         let mut builder = TreeBuilder::new();
 
         // case "hello" of 42 => true, _ => false (should fail: string vs number)
-        let source = builder.insert(node::LiteralExpr::Str(interner.intern("hello")));
+        let source = builder.alloc(node::LiteralExpr::Str(interner.intern("hello")));
 
-        let pat1 = builder.insert(node::LiteralPat::Num(42.0));
-        let expr1 = builder.insert(node::LiteralExpr::Bool(true));
+        let pat1 = builder.alloc(node::LiteralPat::Num(42.0));
+        let expr1 = builder.alloc(node::LiteralExpr::Bool(true));
         let branch1 = node::CaseBranch::new_in(pat1, expr1, &mut builder);
 
         let case_expr = node::CaseExpr::new_in(source, vec![branch1], &mut builder);
@@ -339,16 +339,16 @@ mod tests {
         let mut builder = TreeBuilder::new();
 
         // case 42 of _ => "anything"
-        let source = builder.insert(node::LiteralExpr::Num(42.0));
-        let pat = builder.insert(node::AnyPat);
-        let expr = builder.insert(node::LiteralExpr::Str(interner.intern("anything")));
+        let source = builder.alloc(node::LiteralExpr::Num(42.0));
+        let pat = builder.alloc(node::AnyPat);
+        let expr = builder.alloc(node::LiteralExpr::Str(interner.intern("anything")));
         let branch = node::CaseBranch::new_in(pat, expr, &mut builder);
 
         let case_expr = node::CaseExpr::new_in(source, vec![branch], &mut builder);
 
         let types = run_typer(builder, case_expr).unwrap();
 
-        assert_eq!(types.meta(case_expr), &MonoType::STR);
+        assert_eq!(types.get_unchecked(case_expr), &MonoType::STR);
     }
 
     #[test]
@@ -357,7 +357,7 @@ mod tests {
         let mut builder = TreeBuilder::new();
 
         // case 42 of x => x
-        let source = builder.insert(node::LiteralExpr::Num(42.0));
+        let source = builder.alloc(node::LiteralExpr::Num(42.0));
 
         let x = interner.intern("x");
         let pat = node::BindPat::new_in(x, &mut builder);
@@ -368,7 +368,7 @@ mod tests {
 
         let types = run_typer(builder, case_expr).unwrap();
 
-        assert_eq!(types.meta(case_expr), &MonoType::NUM);
+        assert_eq!(types.get_unchecked(case_expr), &MonoType::NUM);
     }
 
     #[test]
@@ -379,19 +379,19 @@ mod tests {
         // case [] of [] => "empty", _ => "not empty"
         let source = node::ListExpr::empty_in(&mut builder);
 
-        let pat1 = builder.insert(node::ListPat(vec![]));
-        let expr1 = builder.insert(node::LiteralExpr::Str(interner.intern("empty")));
+        let pat1 = builder.alloc(node::ListPat(SliceId::empty()));
+        let expr1 = builder.alloc(node::LiteralExpr::Str(interner.intern("empty")));
         let branch1 = node::CaseBranch::new_in(pat1, expr1, &mut builder);
 
-        let pat2 = builder.insert(node::AnyPat);
-        let expr2 = builder.insert(node::LiteralExpr::Str(interner.intern("not empty")));
+        let pat2 = builder.alloc(node::AnyPat);
+        let expr2 = builder.alloc(node::LiteralExpr::Str(interner.intern("not empty")));
         let branch2 = node::CaseBranch::new_in(pat2, expr2, &mut builder);
 
         let case_expr = node::CaseExpr::new_in(source, vec![branch1, branch2], &mut builder);
 
         let types = run_typer(builder, case_expr).unwrap();
 
-        assert_eq!(types.meta(case_expr), &MonoType::STR);
+        assert_eq!(types.get_unchecked(case_expr), &MonoType::STR);
     }
 
     #[test]
@@ -400,9 +400,9 @@ mod tests {
         let mut builder = TreeBuilder::new();
 
         // case [1, 2, 3] of [x, y, z] => x
-        let elem1 = builder.insert(node::LiteralExpr::Num(1.0));
-        let elem2 = builder.insert(node::LiteralExpr::Num(2.0));
-        let elem3 = builder.insert(node::LiteralExpr::Num(3.0));
+        let elem1 = builder.alloc(node::LiteralExpr::Num(1.0));
+        let elem2 = builder.alloc(node::LiteralExpr::Num(2.0));
+        let elem3 = builder.alloc(node::LiteralExpr::Num(3.0));
         let source = node::ListExpr::new_in(vec![elem1, elem2, elem3], &mut builder);
 
         let x = interner.intern("x");
@@ -417,7 +417,8 @@ mod tests {
         let el_y = node::ListElPat::pat(pat_y, &mut builder);
         let el_z = node::ListElPat::pat(pat_z, &mut builder);
 
-        let list_pat = builder.insert(node::ListPat(vec![el_x, el_y, el_z]));
+        let list_pat_slice = builder.alloc_slice([el_x, el_y, el_z]);
+        let list_pat = builder.alloc(node::ListPat(list_pat_slice));
         let expr = node::QualifiedExpr::new_in(None, x, None, &mut builder);
         let branch = node::CaseBranch::new_in(list_pat, expr, &mut builder);
 
@@ -425,7 +426,7 @@ mod tests {
 
         let types = run_typer(builder, case_expr).unwrap();
 
-        assert_eq!(types.meta(case_expr), &MonoType::NUM);
+        assert_eq!(types.get_unchecked(case_expr), &MonoType::NUM);
     }
 
     #[test]
@@ -434,9 +435,9 @@ mod tests {
         let mut builder = TreeBuilder::new();
 
         // case [1, 2, 3] of [head, ...tail] => head
-        let elem1 = builder.insert(node::LiteralExpr::Num(1.0));
-        let elem2 = builder.insert(node::LiteralExpr::Num(2.0));
-        let elem3 = builder.insert(node::LiteralExpr::Num(3.0));
+        let elem1 = builder.alloc(node::LiteralExpr::Num(1.0));
+        let elem2 = builder.alloc(node::LiteralExpr::Num(2.0));
+        let elem3 = builder.alloc(node::LiteralExpr::Num(3.0));
         let source = node::ListExpr::new_in(vec![elem1, elem2, elem3], &mut builder);
 
         let head = interner.intern("head");
@@ -447,7 +448,8 @@ mod tests {
 
         let el_spread = node::ListElPat::spread(Some(tail.into()), &mut builder);
 
-        let list_pat = builder.insert(node::ListPat(vec![el_head, el_spread]));
+        let list_pat_slice = builder.alloc_slice([el_head, el_spread]);
+        let list_pat = builder.alloc(node::ListPat(list_pat_slice));
         let expr = node::QualifiedExpr::new_in(None, head, None, &mut builder);
         let branch = node::CaseBranch::new_in(list_pat, expr, &mut builder);
 
@@ -455,7 +457,7 @@ mod tests {
 
         let types = run_typer(builder, case_expr).unwrap();
 
-        assert_eq!(types.meta(case_expr), &MonoType::NUM);
+        assert_eq!(types.get_unchecked(case_expr), &MonoType::NUM);
     }
 
     #[test]
@@ -467,8 +469,8 @@ mod tests {
         let x_field = interner.intern("x");
         let y_field = interner.intern("y");
 
-        let val_x = builder.insert(node::LiteralExpr::Num(10.0));
-        let val_y = builder.insert(node::LiteralExpr::Num(20.0));
+        let val_x = builder.alloc(node::LiteralExpr::Num(10.0));
+        let val_y = builder.alloc(node::LiteralExpr::Num(20.0));
 
         let field_x = node::RecordField::new_in(x_field, None, val_x, &mut builder);
         let field_y = node::RecordField::new_in(y_field, None, val_y, &mut builder);
@@ -476,11 +478,11 @@ mod tests {
 
         // Pattern: {x, y} (shorthand for {x: x, y: y})
         let pat_field_x = node::RecordFieldPat {
-            field: builder.insert(x_field.into()),
+            field: builder.alloc(x_field.into()),
             pat: None,
         };
         let pat_field_y = node::RecordFieldPat {
-            field: builder.insert(y_field.into()),
+            field: builder.alloc(y_field.into()),
             pat: None,
         };
 
@@ -493,7 +495,7 @@ mod tests {
 
         let types = run_typer(builder, case_expr).unwrap();
 
-        assert_eq!(types.meta(case_expr), &MonoType::NUM);
+        assert_eq!(types.get_unchecked(case_expr), &MonoType::NUM);
     }
 
     #[test]
@@ -506,9 +508,9 @@ mod tests {
         let y_field = interner.intern("y");
         let z_field = interner.intern("z");
 
-        let val_x = builder.insert(node::LiteralExpr::Num(10.0));
-        let val_y = builder.insert(node::LiteralExpr::Num(20.0));
-        let val_z = builder.insert(node::LiteralExpr::Str(interner.intern("hello")));
+        let val_x = builder.alloc(node::LiteralExpr::Num(10.0));
+        let val_y = builder.alloc(node::LiteralExpr::Num(20.0));
+        let val_z = builder.alloc(node::LiteralExpr::Str(interner.intern("hello")));
 
         let field_x = node::RecordField::new_in(x_field, None, val_x, &mut builder);
         let field_y = node::RecordField::new_in(y_field, None, val_y, &mut builder);
@@ -517,11 +519,11 @@ mod tests {
 
         // Pattern: {x, y, ...} (polymorphic - allows extra fields)
         let pat_field_x = node::RecordFieldPat {
-            field: builder.insert(x_field.into()),
+            field: builder.alloc(x_field.into()),
             pat: None,
         };
         let pat_field_y = node::RecordFieldPat {
-            field: builder.insert(y_field.into()),
+            field: builder.alloc(y_field.into()),
             pat: None,
         };
 
@@ -538,7 +540,7 @@ mod tests {
 
         let types = run_typer(builder, case_expr).unwrap();
 
-        assert_eq!(types.meta(case_expr), &MonoType::NUM);
+        assert_eq!(types.get_unchecked(case_expr), &MonoType::NUM);
     }
 
     #[test]
@@ -549,15 +551,15 @@ mod tests {
         // case 42 of
         //   x => 10,     // returns Num
         //   _ => "hello" // returns Str - should fail!
-        let source = builder.insert(node::LiteralExpr::Num(42.0));
+        let source = builder.alloc(node::LiteralExpr::Num(42.0));
 
         let x = interner.intern("x");
         let pat1 = node::BindPat::new_in(x, &mut builder);
-        let expr1 = builder.insert(node::LiteralExpr::Num(10.0));
+        let expr1 = builder.alloc(node::LiteralExpr::Num(10.0));
         let branch1 = node::CaseBranch::new_in(pat1, expr1, &mut builder);
 
-        let pat2 = builder.insert(node::AnyPat);
-        let expr2 = builder.insert(node::LiteralExpr::Str(interner.intern("hello")));
+        let pat2 = builder.alloc(node::AnyPat);
+        let expr2 = builder.alloc(node::LiteralExpr::Str(interner.intern("hello")));
         let branch2 = node::CaseBranch::new_in(pat2, expr2, &mut builder);
 
         let case_expr = node::CaseExpr::new_in(source, vec![branch1, branch2], &mut builder);

@@ -1,29 +1,6 @@
 use std::marker::PhantomData;
 
-use crate::{node::NodeStorage, tree::TreeView};
-
-/// Columnar access to a `Vec<Item>` inside a storage.
-pub trait Col<T> {
-    type Item;
-    fn vec(&self) -> &Vec<Self::Item>;
-    fn vec_mut(&mut self) -> &mut Vec<Self::Item>;
-
-    fn get(&self, id: Id<T>) -> &Self::Item {
-        &self.vec()[id.as_usize()]
-    }
-
-    fn get_mut(&mut self, id: Id<T>) -> &mut Self::Item {
-        &mut self.vec_mut()[id.as_usize()]
-    }
-
-    fn set(&mut self, id: Id<T>, value: Self::Item) -> Self::Item {
-        std::mem::replace(self.get_mut(id), value)
-    }
-
-    fn len(&self) -> usize {
-        self.vec().len()
-    }
-}
+use crate::{col::Get, node::NodeStorage, tree::TreeView};
 
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct Id<T: ?Sized> {
@@ -98,8 +75,38 @@ impl<T> Id<T> {
 
     pub fn get<'a>(self, storage: &'a impl TreeView) -> &'a T
     where
-        NodeStorage: Col<T, Item = T>,
+        NodeStorage: Get<T, Item = T>,
     {
         storage.nodes().get(self)
+    }
+}
+
+pub struct IdIter<T> {
+    current: u32,
+    end: u32,
+    t: PhantomData<T>,
+}
+
+impl<T> IdIter<T> {
+    pub(crate) fn new(start: u32, end: u32) -> Self {
+        Self {
+            current: start,
+            end,
+            t: PhantomData,
+        }
+    }
+}
+
+impl<T> Iterator for IdIter<T> {
+    type Item = Id<T>;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        if self.current < self.end {
+            let id = Id::new(self.current);
+            self.current += 1;
+            Some(id)
+        } else {
+            None
+        }
     }
 }

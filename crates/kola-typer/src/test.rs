@@ -19,8 +19,8 @@ pub fn mocked_source() -> SourceId {
 }
 
 pub fn mocked_spans(source_id: SourceId, tree: &impl TreeView) -> LocVec {
-    let span = Loc::new(source_id, Span::new(0, 0));
-    tree.metadata_with(|node| Meta::default_with(span, node.kind()))
+    let loc = Loc::new(source_id, Span::new(0, 0));
+    LocVec::from_checkpoint_with(tree.nodes().checkpoint(), loc)
 }
 
 pub fn run_typer<T>(tree: TreeBuilder, root_id: Id<T>) -> Result<TypedNodes, Located<TypeErrors>>

@@ -12,7 +12,10 @@ pub use ty::*;
 
 use pastey::paste;
 
-use crate::id::{Col, Id};
+use crate::{
+    col::{Col, Get},
+    id::{Id, IdIter},
+};
 
 macro_rules! repeat_ty {
     ($_name:ident $ty:ty) => {
@@ -92,6 +95,22 @@ macro_rules! define_node_family {
                 $(pub [< $Name:snake:lower >]: usize,)+
             }
 
+            $(
+                impl Col<$Name> for StorageCheckpoint {
+                    type Column = usize;
+                    type Ids<'a> = IdIter<$Name>
+                    where Self: 'a;
+
+                    fn col(&self) -> &usize { &self.[< $Name:snake:lower >] }
+                    fn col_mut(&mut self) -> &mut usize { &mut self.[< $Name:snake:lower >] }
+
+                    fn ids<'a>(&'a self) -> IdIter<$Name> {
+                        let len = self.[< $Name:snake:lower >] as u32;
+                        IdIter::new(0, len)
+                    }
+                }
+            )*
+
             impl< $([< $Name T>],)+ > Storage< $([< $Name T >],)+ > {
                 pub fn checkpoint(&self) -> StorageCheckpoint {
                     StorageCheckpoint {
@@ -110,10 +129,24 @@ macro_rules! define_node_family {
             >;
 
             $(
-                impl Col<$Name> for NodeStorage {
+                impl Get<$Name> for NodeStorage {
                     type Item = $Name;
-                    fn vec(&self) -> &Vec<$Name> { &self.[< $Name:snake:lower >] }
-                    fn vec_mut(&mut self) -> &mut Vec<$Name> { &mut self.[< $Name:snake:lower >] }
+                    fn get(&self, id: Id<$Name>) -> &$Name { &self.[< $Name:snake:lower >][id.as_usize()] }
+                    fn get_mut(&mut self, id: Id<$Name>) -> &mut $Name { &mut self.[< $Name:snake:lower >][id.as_usize()] }
+                }
+
+                impl Col<$Name> for NodeStorage {
+                    type Column = Vec<$Name>;
+                    type Ids<'a> = IdIter<$Name>
+                    where Self: 'a;
+
+                    fn col(&self) -> &Vec<$Name> { &self.[< $Name:snake:lower >] }
+                    fn col_mut(&mut self) -> &mut Vec<$Name> { &mut self.[< $Name:snake:lower >] }
+
+                    fn ids<'a>(&'a self) -> IdIter<$Name> {
+                        let len = self.[< $Name:snake:lower >].len() as u32;
+                        IdIter::new(0, len)
+                    }
                 }
             )+
 
@@ -128,24 +161,24 @@ macro_rules! define_node_family {
 
                 pub fn get<T>(&self, id: Id<T>) -> &T
                 where
-                    NodeStorage: Col<T, Item = T>,
+                    NodeStorage: Get<T, Item = T>,
                 {
-                    <NodeStorage as Col<T>>::get(self, id)
+                    <NodeStorage as Get<T>>::get(self, id)
                 }
 
                 pub fn get_mut<T>(&mut self, id: Id<T>) -> &mut T
                 where
-                    NodeStorage: Col<T, Item = T>,
+                    NodeStorage: Get<T, Item = T>,
                 {
-                    <NodeStorage as Col<T>>::get_mut(self, id)
+                    <NodeStorage as Get<T>>::get_mut(self, id)
                 }
 
                 pub fn alloc<T>(&mut self, val: T) -> Id<T>
                 where
-                    NodeStorage: Col<T, Item = T>,
+                    NodeStorage: Col<T, Column = Vec<T>>,
                 {
-                    let id = self.vec().len() as u32;
-                    self.vec_mut().push(val);
+                    let id = self.col().len() as u32;
+                    self.col_mut().push(val);
                     Id::new(id)
                 }
             }
@@ -156,10 +189,25 @@ macro_rules! define_node_family {
             >;
 
             $(
-                impl<M> Col<$Name> for UniversalStorage<M> {
+                impl<M> Get<$Name> for UniversalStorage<M> {
                     type Item = M;
-                    fn vec(&self) -> &Vec<M> { &self.[< $Name:snake:lower >] }
-                    fn vec_mut(&mut self) -> &mut Vec<M> { &mut self.[< $Name:snake:lower >] }
+                    fn get(&self, id: Id<$Name>) -> &M { &self.[< $Name:snake:lower >][id.as_usize()] }
+                    fn get_mut(&mut self, id: Id<$Name>) -> &mut M { &mut self.[< $Name:snake:lower >][id.as_usize()] }
+                }
+
+
+                impl<M> Col<$Name> for UniversalStorage<M> {
+                    type Column = Vec<M>;
+                    type Ids<'a> = IdIter<$Name>
+                    where Self: 'a;
+
+                    fn col(&self) -> &Vec<M> { &self.[< $Name:snake:lower >] }
+                    fn col_mut(&mut self) -> &mut Vec<M> { &mut self.[< $Name:snake:lower >] }
+
+                    fn ids<'a>(&'a self) -> IdIter<$Name> {
+                        let len = self.[< $Name:snake:lower >].len() as u32;
+                        IdIter::new(0, len)
+                    }
                 }
             )+
 
@@ -168,6 +216,15 @@ macro_rules! define_node_family {
                 where M: Default + Clone {
                     Self {
                         $([< $Name:snake:lower >]: vec![M::default(); cp.[< $Name:snake:lower >]],)+
+                    }
+                }
+
+                pub fn from_checkpoint_with(cp: StorageCheckpoint, value: M) -> Self
+                where
+                    M: Clone,
+                {
+                    Self {
+                        $([< $Name:snake:lower >]: vec![value.clone(); cp.[< $Name:snake:lower >]],)+
                     }
                 }
 

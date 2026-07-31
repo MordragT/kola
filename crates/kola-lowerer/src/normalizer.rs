@@ -2,7 +2,7 @@ use std::ops::ControlFlow;
 
 use kola_ir::prelude::{Id as InstrId, instr as ir, *};
 use kola_resolver::{
-    phase::{NodeMap, ResolvePhase, ResolvedModule, ResolvedType, ResolvedValue},
+    phase::{NodeMap, ResolvedModule, ResolvedType, ResolvedValue},
     symbol::{Sym, ValueSym},
 };
 use kola_tree::{
@@ -47,9 +47,9 @@ impl<'a, Node> Normalizer<'a, Node> {
     pub fn symbol_of<T, N>(&self, id: TreeId<T>) -> ir::Symbol
     where
         N: Namespace,
-        T: MetaCast<ResolvePhase, Meta = Sym<N>>, // TODO maybe ValueSym ??
+        NodeMap: GetOpt<T, Item = Sym<N>>,
     {
-        let sym = self.nodes.meta(id);
+        let sym = self.nodes.get_unchecked(id);
         ir::Symbol::new(sym.id())
     }
 
@@ -163,7 +163,7 @@ where
         } = *id.get(tree);
 
         if let Some(path) = module_path {
-            let ResolvedModule(sym) = *self.nodes.meta(path);
+            let ResolvedModule(sym) = *self.nodes.get_unchecked(path);
             let module_atom = self
                 .builder
                 .add(ir::Atom::Symbol(ir::Symbol::new(sym.id())));
@@ -184,14 +184,14 @@ where
         }
 
         // Create atom
-        let source_atom = match *self.nodes.meta(id) {
+        let source_atom = match *self.nodes.get_unchecked(id) {
             ResolvedValue::Reference(sym) => ir::Atom::Symbol(ir::Symbol::new(sym.id())),
             ResolvedValue::Builtin(b) => ir::Atom::Builtin(b),
         }; // This is only defined if path is None so be careful about moving this
         let source_atom = self.builder.add(source_atom);
 
         if let Some(field_path) = field_path {
-            let field_path = &field_path.get(tree).0;
+            let field_path = field_path.get(tree).0;
 
             // The final field access in the chain always binds to self.hole
             let mut current_sym = self.hole;
@@ -200,7 +200,7 @@ where
             // This ensures proper execution order
             let mut continuation = self.next;
 
-            for (i, field_id) in field_path.iter().enumerate().rev() {
+            for (i, field_id) in field_path.iter(tree).enumerate().rev() {
                 let field_label = field_id.get(tree).0;
                 let bind_sym = current_sym;
 
@@ -259,7 +259,7 @@ where
                 let label = l.get(tree).0;
                 ir::Atom::Label(ir::Label(label))
             }
-            node::TypeWitnessExpr::Qualified(t) => match self.nodes.meta(t) {
+            node::TypeWitnessExpr::Qualified(t) => match self.nodes.get_unchecked(t) {
                 ResolvedType::Builtin(bt) => ir::Atom::BuiltinWitness(*bt),
                 ResolvedType::Reference(ts) => {
                     ir::Atom::Witness(ir::Witness(ir::Symbol::new(ts.id())))
@@ -352,7 +352,7 @@ where
 
         let mut next = None;
 
-        for &clause_id in clauses.iter().rev() {
+        for clause_id in clauses.iter(tree).rev() {
             let node::HandlerClause { op, body, .. } = *clause_id.get(tree);
 
             // Get the operation name as StrKey
@@ -557,7 +557,7 @@ where
         self.next = self.builder.add(ir::Expr::List(list_expr));
 
         // Normalize expressions in reverse order (CPS style)
-        for (&expr, sym) in items.iter().rev().zip(item_syms) {
+        for (expr, sym) in items.iter(tree).rev().zip(item_syms) {
             self.hole = sym;
             self.visit_expr(expr, tree)?;
         }
@@ -579,7 +579,7 @@ where
         // We use a stable sort to preserve original shadowing order if duplicate keys exist
         // and reverse the order because the ir builder prepends fields to the head of the list.
         let mut field_pairs: Vec<_> = fields
-            .iter()
+            .iter(tree)
             .zip(&field_value_syms)
             .map(|(field_id, &value_sym)| {
                 let field = field_id.get(tree);
@@ -599,7 +599,7 @@ where
         self.next = self.builder.add(ir::Expr::Record(record_expr));
 
         // Normalize field values in reverse order (CPS style)
-        for (field_id, &value_sym) in fields.iter().rev().zip(field_value_syms.iter().rev()) {
+        for (field_id, &value_sym) in fields.iter(tree).rev().zip(field_value_syms.iter().rev()) {
             let field = field_id.get(tree);
             self.hole = value_sym;
             self.visit_expr(field.value, tree)?;
@@ -628,7 +628,7 @@ where
         let source_atom = self.builder.add(ir::Atom::Symbol(source_sym));
 
         // Build FieldPath from AST field path
-        let field_path = field_path.get(tree).0.as_slice();
+        let field_path = field_path.get(tree).0.get(tree);
         let path = self.build_field_path(field_path, tree);
 
         // Create the record extend expression context and set continuation
@@ -667,7 +667,7 @@ where
         let source_atom = self.builder.add(ir::Atom::Symbol(source_sym));
 
         // Build FieldPath from AST field path
-        let field_path = field_path.get(tree).0.as_slice();
+        let field_path = field_path.get(tree).0.get(tree);
         let path = self.build_field_path(field_path, tree);
 
         // Create the record restrict expression context and set continuation
@@ -709,7 +709,7 @@ where
         let source_atom = self.builder.add(ir::Atom::Symbol(source_sym));
 
         // Build FieldPath from AST field path
-        let field_path = field_path.get(tree).0.as_slice();
+        let field_path = field_path.get(tree).0.get(tree);
         let path = self.build_field_path(field_path, tree);
 
         let op = match *op.get(tree) {
@@ -795,7 +795,7 @@ where
             .builder
             .add(ir::PatternMatcher::Failure(ir::PatternFailure));
 
-        for branch_id in branches.iter().rev() {
+        for branch_id in branches.iter(tree).rev() {
             let node::CaseBranch { pat, body } = *branch_id.get(tree);
 
             // Save the current continuation
@@ -851,7 +851,7 @@ pub struct PatternNormalizer<'a> {
     source: ir::Symbol, // What we're matching against
     on_success: InstrId<ir::PatternMatcher>,
     on_failure: InstrId<ir::PatternMatcher>,
-    resolved: &'a NodeMap,
+    nodes: &'a NodeMap,
     builder: &'a mut IrBuilder,
 }
 
@@ -861,7 +861,7 @@ impl<'a> PatternNormalizer<'a> {
         source: ir::Symbol,
         on_success: InstrId<ir::PatternMatcher>,
         on_failure: InstrId<ir::PatternMatcher>,
-        resolved: &'a NodeMap,
+        nodes: &'a NodeMap,
         builder: &'a mut IrBuilder,
     ) -> Self {
         Self {
@@ -869,7 +869,7 @@ impl<'a> PatternNormalizer<'a> {
             source,
             on_success,
             on_failure,
-            resolved,
+            nodes,
             builder,
         }
     }
@@ -883,9 +883,9 @@ impl<'a> PatternNormalizer<'a> {
     pub fn symbol_of<T, N>(&self, id: TreeId<T>) -> ir::Symbol
     where
         N: Namespace,
-        T: MetaCast<ResolvePhase, Meta = Sym<N>>, // TODO maybe ValueSym ??
+        NodeMap: GetOpt<T, Item = Sym<N>>,
     {
-        let sym = self.resolved.meta(id);
+        let sym = self.nodes.get_unchecked(id);
         ir::Symbol::new(sym.id())
     }
 }
@@ -988,7 +988,7 @@ where
     ) -> ControlFlow<Self::BreakValue> {
         let elements = &id.get(tree).0;
 
-        let mut iter = elements.iter();
+        let mut iter = elements.iter(tree);
         let mut source = self.source;
         let mut spread_sym = None;
 
@@ -1021,7 +1021,7 @@ where
                 }
                 node::ListElPat::Spread(name) => {
                     if name.is_some() {
-                        spread_sym = Some(self.symbol_of(*el));
+                        spread_sym = Some(self.symbol_of(el));
                     } else {
                         spread_sym = Some(self.next_symbol());
                     }
@@ -1079,7 +1079,7 @@ where
                 tail,
                 self.on_success,
                 self.on_failure,
-                self.resolved,
+                self.nodes,
                 self.builder,
             );
 
@@ -1111,7 +1111,7 @@ where
                 head,
                 self.on_success,
                 self.on_failure,
-                self.resolved,
+                self.nodes,
                 self.builder,
             );
 
@@ -1176,7 +1176,7 @@ where
         let mut current_success = self.on_success;
 
         // Process fields in reverse order to build the chain backwards
-        for &field_id in fields.iter().rev() {
+        for field_id in fields.iter(tree).rev() {
             let node::RecordFieldPat { pat, field } = *field_id.get(tree);
 
             let field = field.get(tree).0;
@@ -1191,7 +1191,7 @@ where
                     field_sym,
                     current_success,
                     self.on_failure,
-                    self.resolved,
+                    self.nodes,
                     self.builder,
                 );
 
@@ -1265,7 +1265,7 @@ where
         // Build the chain from right to left (last tag to first tag)
         let mut current_failure = self.on_failure;
 
-        for &tag_id in tags.iter().rev() {
+        for tag_id in tags.iter(tree).rev() {
             let tag_pat = tag_id.get(tree);
             let tag_name = tag_pat.tag.get(tree).0;
 
@@ -1282,7 +1282,7 @@ where
                     pat_sym, // Variant value is in here after VariantGet extraction
                     tag_success,
                     current_failure,
-                    self.resolved,
+                    self.nodes,
                     self.builder,
                 );
 

@@ -3,6 +3,7 @@ use std::collections::HashMap;
 use indexmap::IndexMap;
 use kola_span::{Diagnostic, Issue, Loc, Report};
 use kola_tree::{
+    col::GetOpt,
     id::Id,
     node::{self, ModuleTypeName},
 };
@@ -124,7 +125,7 @@ pub fn lookup_module_types(
         let module = &mut modules[&module_sym];
         if let Some(target) = module.names.get_module_type(name) {
             module_type_graph_map[&module_sym].add_dependency(source, target.sym);
-            module.nodes.insert_meta(id, ResolvedModuleType(target.sym));
+            module.nodes.set(id, ResolvedModuleType(target.sym));
         } else {
             report.add_diagnostic(
                 Diagnostic::error(loc, "Module type not found")
@@ -143,9 +144,7 @@ pub fn lookup_module_types(
     {
         let module = &mut modules[&module_sym];
         if let Some(binding) = module.names.get_module_type(name) {
-            module
-                .nodes
-                .insert_meta(id, ResolvedModuleType(binding.sym));
+            module.nodes.set(id, ResolvedModuleType(binding.sym));
         } else {
             report.add_diagnostic(
                 Diagnostic::error(loc, "Module type not found in annotation")

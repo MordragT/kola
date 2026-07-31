@@ -40,8 +40,8 @@ impl<'t, T> Collection<ParseInput<'t>, Id<T>> for Slice<T> {
 pub const trait KolaCombinator<'t, T: Debug>: const Combinator<ParseInput<'t>, T> {
     fn to_node(self) -> impl const Combinator<ParseInput<'t>, Id<T>>
     where
-        NodeStorage: Col<T, Item = T>,
-        UniversalStorage<Loc>: Col<T, Item = Loc>,
+        NodeStorage: Col<T, Column = Vec<T>>,
+        UniversalStorage<Loc>: Col<T, Column = Vec<Loc>>,
     {
         self.map_with(|node, loc, input| {
             let state: &mut State = input.state();
@@ -53,8 +53,8 @@ pub const trait KolaCombinator<'t, T: Debug>: const Combinator<ParseInput<'t>, T
     where
         U: Debug,
         F: Fn(T) -> U + Copy,
-        NodeStorage: Col<U, Item = U>,
-        UniversalStorage<Loc>: Col<U, Item = Loc>,
+        NodeStorage: Col<U, Column = Vec<U>>,
+        UniversalStorage<Loc>: Col<U, Column = Vec<Loc>>,
     {
         self.map(f).to_node()
     }

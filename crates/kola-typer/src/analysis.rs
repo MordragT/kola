@@ -93,7 +93,7 @@ pub fn exhaust_check_all<T: TreeView>(
     let mut errors = Errors::new();
 
     for &case_id in cases {
-        let loc = *spans.meta(case_id);
+        let loc = *spans.get(case_id);
         let checker = ExhaustChecker::new(case_id, tree, types, loc);
         if let Err(error) = checker.check() {
             errors.push(error);
@@ -613,7 +613,7 @@ impl ActualSet for Id<node::LiteralPat> {
 
 impl ActualSet for Id<node::ListPat> {
     fn actual_set(&self, tree: &impl TreeView) -> CoverSet {
-        let elements = &self.get(tree).0;
+        let elements = self.get(tree).0;
 
         if elements.is_empty() {
             // Empty list pattern: [] - covers only the empty list
@@ -624,7 +624,7 @@ impl ActualSet for Id<node::ListPat> {
         let mut non_spread_count = 0u32;
         let mut has_spread = false;
 
-        for el_id in elements {
+        for el_id in elements.iter(tree) {
             match el_id.get(tree) {
                 node::ListElPat::Spread(_) => {
                     has_spread = true;
@@ -658,7 +658,7 @@ impl ActualSet for Id<node::RecordPat> {
         };
 
         // Process fields in reverse order to build the row set correctly
-        let row_set = fields.iter().rev().fold(tail, |accu, field| {
+        let row_set = fields.iter(tree).rev().fold(tail, |accu, field| {
             let node::RecordFieldPat { field, pat } = field.get(tree);
             let label = Label(field.get(tree).0);
             let set = pat
@@ -680,9 +680,9 @@ impl ActualSet for Id<node::RecordPat> {
 
 impl ActualSet for Id<node::VariantPat> {
     fn actual_set(&self, tree: &impl TreeView) -> CoverSet {
-        let tags = &self.get(tree).0;
+        let tags = self.get(tree).0;
 
-        let row_set = tags.iter().rev().fold(RowSet::Empty, |accu, tag| {
+        let row_set = tags.iter(tree).rev().fold(RowSet::Empty, |accu, tag| {
             let node::VariantTagPat { tag, pat } = tag.get(tree);
             let label = Label(tag.get(tree).0);
             let set = pat
@@ -736,11 +736,11 @@ impl<'a, T: TreeView> ExhaustChecker<'a, T> {
 
     pub fn check(&self) -> ExhaustResult<()> {
         let node::CaseExpr { source, branches } = self.case_id.get(self.tree);
-        let source_type = self.types.meta(*source);
+        let source_type = self.types.get_unchecked(*source);
 
         let actual_set = branches
-            .iter()
-            .map(|&branch_id| {
+            .iter(self.tree)
+            .map(|branch_id| {
                 let branch = branch_id.get(self.tree);
                 branch.pat.actual_set(self.tree)
             })

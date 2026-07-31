@@ -37,7 +37,7 @@ mod test;
 pub mod prelude {
     pub use crate::constraints::{Constraint, Constraints};
     pub use crate::error::{TypeError, TypeErrors};
-    pub use crate::phase::{TypeAnnotations, TypePhase};
+    pub use crate::phase::{TypeAnnotations, TypedNodes};
     pub use crate::print::TypeDecorator;
     pub use crate::typer::Typer;
     pub use crate::unify::Unifiable;

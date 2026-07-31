@@ -4,7 +4,8 @@ use kola_print::prelude::*;
 use kola_utils::interner::StrInterner;
 
 use crate::{
-    id::{Col, Id},
+    col::Get,
+    id::Id,
     node::{AnyId, NodeStorage},
     slice::SliceId,
     tree::{Tree, TreeView},
@@ -121,7 +122,7 @@ impl<'a, T> Notate<'a> for IdPrinter<'a, T>
 where
     NodePrinter<'a, T>: Notate<'a>,
     T: 'a,
-    NodeStorage: Col<T, Item = T>,
+    NodeStorage: Get<T, Item = T>,
     AnyId: From<Id<T>>,
 {
     fn notate(&self, arena: &'a Bump) -> Notation<'a> {
@@ -135,7 +136,7 @@ impl<'a, T> Gather<'a> for SlicePrinter<'a, T>
 where
     NodePrinter<'a, T>: Notate<'a>,
     T: 'a,
-    NodeStorage: Col<T, Item = T>,
+    NodeStorage: Get<T, Item = T>,
     AnyId: From<Id<T>>,
 {
     fn gather(self, arena: &'a Bump) -> BumpVec<'a, Notation<'a>> {

@@ -1,10 +1,6 @@
-use std::{fmt::Debug, marker::PhantomData};
+use std::{fmt::Debug, iter::Copied, marker::PhantomData, slice};
 
-use crate::{
-    id::{Col, Id},
-    node::NodeStorage,
-    tree::TreeView,
-};
+use crate::{col::Get, id::Id, node::NodeStorage, tree::TreeView};
 
 /// A typed range into the `slice_data` vector of a `Storage`.
 ///
@@ -71,6 +67,7 @@ impl<T: ?Sized> std::fmt::Debug for SliceId<T> {
 }
 
 impl<T> SliceId<T> {
+    #[inline]
     pub(crate) fn new(start: u32, length: u32) -> Self {
         Self {
             start,
@@ -79,6 +76,7 @@ impl<T> SliceId<T> {
         }
     }
 
+    #[inline]
     pub fn empty() -> Self {
         Self {
             start: 0,
@@ -87,36 +85,60 @@ impl<T> SliceId<T> {
         }
     }
 
+    #[inline]
     pub fn start(&self) -> usize {
         self.start as usize
     }
 
+    #[inline]
     pub fn end(&self) -> usize {
         (self.start + self.length) as usize
     }
 
+    #[inline]
     pub fn len(&self) -> usize {
         self.length as usize
     }
 
+    #[inline]
     pub fn is_empty(&self) -> bool {
         self.length == 0
     }
 
+    #[inline]
     pub fn get<'a>(self, storage: &'a impl TreeView) -> &'a [Id<T>]
     where
-        NodeStorage: Col<T, Item = T>,
+        NodeStorage: Get<T, Item = T>,
     {
         storage.slices().get(self)
     }
 
-    pub fn iter<'a>(self, storage: &'a impl TreeView) -> impl Iterator<Item = Id<T>> + 'a
+    #[inline]
+    pub fn iter<'a>(self, storage: &'a impl TreeView) -> Copied<slice::Iter<'a, Id<T>>>
     where
-        NodeStorage: Col<T, Item = T>,
+        NodeStorage: Get<T, Item = T>,
         T: 'a,
     {
         let slice = self.get(storage);
         slice.iter().copied()
+    }
+
+    #[inline]
+    pub fn first<'a>(self, storage: &'a impl TreeView) -> Option<Id<T>>
+    where
+        NodeStorage: Get<T, Item = T>,
+    {
+        let slice = self.get(storage);
+        slice.first().copied()
+    }
+
+    #[inline]
+    pub fn last<'a>(self, storage: &'a impl TreeView) -> Option<Id<T>>
+    where
+        NodeStorage: Get<T, Item = T>,
+    {
+        let slice = self.get(storage);
+        slice.last().copied()
     }
 }
 

@@ -2,7 +2,10 @@ use std::{borrow::Cow, fmt, hash::Hash};
 
 use kola_collections::{HashMap, ImHashMap, ImOrdMap, ImVec, OrdMap};
 use kola_print::prelude::OwoColorize;
-use kola_tree::prelude::*;
+use kola_tree::{
+    col::GetOpt,
+    meta::{MetaMap, MetaVec},
+};
 
 use crate::{
     env::BoundVars,
@@ -281,115 +284,57 @@ where
     }
 }
 
-macro_rules! impl_meta_substitutable {
-    ($($variant:ident),* $(,)?) => {
-        impl<P> Substitutable for Meta<P>
-        where
-        P: Phase<
-            $($variant: Substitutable),*
-        >,
-        {
-            fn try_apply(&self, s: &mut Substitution) -> Option<Self> {
-                match self {
-                    $(Self::$variant(t) => t.try_apply(s).map(Self::$variant)),*
-                }
-            }
+impl<T, M> Substitutable for MetaVec<T, M>
+where
+    M: Substitutable + Clone,
+{
+    fn try_apply(&self, s: &mut Substitution) -> Option<Self>
+    where
+        Self: Sized,
+    {
+        let mut result: Option<Self> = None;
 
+        for (i, el) in self.iter().enumerate() {
+            if let Some(el) = el.try_apply(s) {
+                result.get_or_insert_with(|| self.clone()).as_mut_slice()[i] = el;
+            }
         }
-    };
+
+        result
+    }
+
+    fn apply_mut(&mut self, s: &mut Substitution) {
+        for el in self.iter_mut() {
+            el.apply_mut(s);
+        }
+    }
 }
 
-impl_meta_substitutable!(
-    FunctorName,
-    ModuleTypeName,
-    ModuleName,
-    KindName,
-    TypeName,
-    ValueName,
-    // Patterns
-    AnyPat,
-    LiteralPat,
-    BindPat,
-    ListElPat,
-    ListPat,
-    RecordFieldPat,
-    RecordPat,
-    VariantTagPat,
-    VariantPat,
-    PatError,
-    Pat,
-    // Expressions
-    LiteralExpr,
-    ListExpr,
-    RecordField,
-    RecordExpr,
-    RecordExtendExpr,
-    RecordRestrictExpr,
-    RecordUpdateOp,
-    RecordUpdateExpr,
-    RecordMergeExpr,
-    FieldPath,
-    QualifiedExpr,
-    UnaryOp,
-    UnaryExpr,
-    BinaryOp,
-    BinaryExpr,
-    LetExpr,
-    CaseBranch,
-    CaseExpr,
-    IfExpr,
-    LambdaExpr,
-    CallExpr,
-    HandlerClause,
-    HandleExpr,
-    DoExpr,
-    TagExpr,
-    TypeWitnessExpr,
-    ExprError,
-    Expr,
-    // Types
-    EffectOpType,
-    EffectType,
-    QualifiedType,
-    TypeVar,
-    LabelOrVar,
-    RecordFieldType,
-    RecordType,
-    TagType,
-    VariantType,
-    FuncType,
-    TypeApplication,
-    CompType,
-    Type,
-    TypeError,
-    TypeVarBind,
-    ForallBinder,
-    TypeScheme,
-    // Modules
-    BindError,
-    Vis,
-    ValueBind,
-    TypeBind,
-    ModuleBind,
-    ModuleTypeBind,
-    FunctorParam,
-    FunctorBind,
-    Bind,
-    ModuleError,
-    ModuleBody,
-    ModulePath,
-    ModuleImport,
-    FunctorArgs,
-    FunctorApp,
-    ModuleExpr,
-    SpecError,
-    ValueSpec,
-    ModuleSpec,
-    Spec,
-    ConcreteModuleType,
-    QualifiedModuleType,
-    ModuleType,
-);
+impl<T, M> Substitutable for MetaMap<T, M>
+where
+    M: Substitutable + Clone,
+{
+    fn try_apply(&self, s: &mut Substitution) -> Option<Self>
+    where
+        Self: Sized,
+    {
+        let mut result: Option<Self> = None;
+
+        for (key, value) in self.iter() {
+            if let Some(value) = value.try_apply(s) {
+                result.get_or_insert_with(|| self.clone()).set(*key, value);
+            }
+        }
+
+        result
+    }
+
+    fn apply_mut(&mut self, s: &mut Substitution) {
+        for (_id, value) in self.iter_mut() {
+            value.apply_mut(s);
+        }
+    }
+}
 
 pub fn merge<A, B, DA, DB>(
     a: Option<A>,

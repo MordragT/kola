@@ -1,10 +1,7 @@
 use std::borrow::Cow;
 
 use kola_span::{Loc, Report, ReportCheckpoint};
-use kola_tree::{
-    node::{StorageCheckpoint, UniversalStorage},
-    prelude::*,
-};
+use kola_tree::prelude::*;
 use kola_utils::interner::{StrInterner, StrKey};
 
 use crate::{
@@ -15,7 +12,7 @@ use crate::{
 #[derive(Debug, Clone, Copy)]
 pub struct StateCheckpoint {
     pub tokens: usize,
-    pub builder: StorageCheckpoint,
+    pub builder: TreeCheckpoint,
     pub spans: StorageCheckpoint,
     pub recovered: ReportCheckpoint,
 }
@@ -42,25 +39,25 @@ impl<'t> State<'t> {
 
     pub fn span<T>(&self, id: Id<T>) -> Loc
     where
-        UniversalStorage<Loc>: Col<T, Item = Loc>,
+        UniversalStorage<Loc>: Get<T, Item = Loc>,
     {
         *self.spans.get(id)
     }
 
     pub fn insert<T>(&mut self, node: T, meta: Loc) -> Id<T>
     where
-        NodeStorage: Col<T, Item = T>,
-        UniversalStorage<Loc>: Col<T, Item = Loc>,
+        NodeStorage: Col<T, Column = Vec<T>>,
+        UniversalStorage<Loc>: Col<T, Column = Vec<Loc>>,
     {
         let id = self.builder.alloc(node);
-        self.spans.vec_mut().push(meta);
+        self.spans.col_mut().push(meta);
         id
     }
 
     pub fn insert_as<U, T>(&mut self, node: T, meta: Loc) -> Id<U>
     where
-        NodeStorage: Col<T, Item = T> + Col<U, Item = U>,
-        UniversalStorage<Loc>: Col<T, Item = Loc> + Col<U, Item = Loc>,
+        NodeStorage: Col<T, Column = Vec<T>> + Col<U, Column = Vec<U>>,
+        UniversalStorage<Loc>: Col<T, Column = Vec<Loc>> + Col<U, Column = Vec<Loc>>,
         U: From<Id<T>>,
     {
         let id = self.insert(node, meta.clone());

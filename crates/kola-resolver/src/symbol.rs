@@ -4,7 +4,8 @@ use indexmap::IndexMap;
 use kola_collections::HashMap;
 use kola_span::SourceId;
 use kola_tree::{
-    meta::MetaVec,
+    col::GetOpt,
+    meta::{MetaMap, MetaVec},
     node::{
         FunctorNamespace, ModuleNamespace, ModuleTypeNamespace, NamespaceKind, TypeNamespace,
         ValueNamespace,
@@ -583,7 +584,7 @@ where
 
         for (i, el) in self.iter().enumerate() {
             if let Some(el) = el.try_subst(s) {
-                result.get_or_insert_with(|| self.clone()).vec_mut()[i] = el;
+                result.get_or_insert_with(|| self.clone()).as_mut_slice()[i] = el;
             }
         }
 
@@ -593,6 +594,32 @@ where
     fn subst_mut(&mut self, s: &HashMap<AnySym, AnySym>) {
         for el in self.iter_mut() {
             el.subst_mut(s);
+        }
+    }
+}
+
+impl<T, M> Substitute for MetaMap<T, M>
+where
+    M: Substitute + Clone,
+{
+    fn try_subst(&self, s: &HashMap<AnySym, AnySym>) -> Option<Self>
+    where
+        Self: Sized,
+    {
+        let mut result: Option<Self> = None;
+
+        for (key, value) in self.iter() {
+            if let Some(value) = value.try_subst(s) {
+                result.get_or_insert_with(|| self.clone()).set(*key, value);
+            }
+        }
+
+        result
+    }
+
+    fn subst_mut(&mut self, s: &HashMap<AnySym, AnySym>) {
+        for (_id, value) in self.iter_mut() {
+            value.subst_mut(s);
         }
     }
 }

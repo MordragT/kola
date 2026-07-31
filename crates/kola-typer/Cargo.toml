@@ -19,6 +19,7 @@ derive_more.workspace = true
 log.workspace = true
 camino.workspace = true
 enumset.workspace = true
+pastey.workspace = true
 
 # This should be removed as soon as the unfification is rewritten to an iterative algorithm.
 stacker = "0.1"

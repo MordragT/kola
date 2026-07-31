@@ -2,27 +2,41 @@ use indexmap::IndexMap;
 use kola_utils::interner::PathKey;
 
 use crate::{
-    id::{Col, Id},
+    col::{Col, Get},
+    id::Id,
     node::{ModuleBody, NodeStorage, StorageCheckpoint},
     slice::{SliceId, SliceStorage},
 };
 
 pub type TreeMap = IndexMap<PathKey, Tree>;
 
+#[derive(Debug, Clone, Copy)]
+pub struct TreeCheckpoint {
+    pub nodes: StorageCheckpoint,
+    pub slices: usize,
+}
+
 pub trait TreeView {
     fn nodes(&self) -> &NodeStorage;
     fn slices(&self) -> &SliceStorage;
 
+    fn checkpoint(&self) -> TreeCheckpoint {
+        TreeCheckpoint {
+            nodes: self.nodes().checkpoint(),
+            slices: self.slices().checkpoint(),
+        }
+    }
+
     fn get<T>(&self, id: Id<T>) -> &T
     where
-        NodeStorage: Col<T, Item = T>,
+        NodeStorage: Get<T, Item = T>,
     {
         self.nodes().get(id)
     }
 
     fn get_slice<T>(&self, slice_id: SliceId<T>) -> &[Id<T>]
     where
-        NodeStorage: Col<T, Item = T>,
+        NodeStorage: Get<T, Item = T>,
     {
         self.slices().get(slice_id)
     }
@@ -39,38 +53,35 @@ impl TreeBuilder {
         Self::default()
     }
 
-    pub fn checkpoint(&self) -> StorageCheckpoint {
-        self.nodes.checkpoint()
-    }
-
-    pub fn restore(&mut self, cp: &StorageCheckpoint) {
-        self.nodes.restore(cp);
+    pub fn restore(&mut self, cp: &TreeCheckpoint) {
+        self.nodes.restore(&cp.nodes);
+        self.slices.restore(cp.slices);
     }
 
     pub fn alloc<T>(&mut self, val: T) -> Id<T>
     where
-        NodeStorage: Col<T, Item = T>,
+        NodeStorage: Col<T, Column = Vec<T>>,
     {
         self.nodes.alloc(val)
     }
 
     pub fn alloc_slice<T>(&mut self, values: impl IntoIterator<Item = Id<T>>) -> SliceId<T>
     where
-        NodeStorage: Col<T, Item = T>,
+        NodeStorage: Get<T, Item = T>,
     {
         self.slices.alloc(values)
     }
 
     pub fn get<T>(&self, id: Id<T>) -> &T
     where
-        NodeStorage: Col<T, Item = T>,
+        NodeStorage: Get<T, Item = T>,
     {
         self.nodes.get(id)
     }
 
     pub fn get_slice_mut<T>(&mut self, slice_id: SliceId<T>) -> &mut [Id<T>]
     where
-        NodeStorage: Col<T, Item = T>,
+        NodeStorage: Get<T, Item = T>,
     {
         self.slices.get_mut(slice_id)
     }

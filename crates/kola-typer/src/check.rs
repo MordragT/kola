@@ -41,7 +41,7 @@ use kola_print::prelude::*;
 use kola_resolver::{db::Db, print::ResolutionDecorator};
 use kola_span::{IntoDiagnostic, Report};
 use kola_tree::{
-    meta::MetaView,
+    col::GetOpt,
     print::{Decorators, TreePrinter},
 };
 use kola_types::{
@@ -128,7 +128,7 @@ pub fn type_check(
                 break;
             }
 
-            let type_ = typed_nodes.meta(id).clone().apply(&mut subs);
+            let type_ = typed_nodes.get_unchecked(id).clone().apply(&mut subs);
 
             // TODO generalize ?
 
@@ -181,12 +181,12 @@ pub fn type_check(
             }
 
             // Generalize immediately (making it available for subsequent binds)
-            let actual_t = typed_nodes.meta(id).to_mono().unwrap();
+            let actual_t = typed_nodes.get_unchecked(id).to_mono().unwrap();
             let poly_type = actual_t.generalize(&[]); // TODO should bound be something ? &type_env.bound_vars()
             module_env.insert_value(value_sym, poly_type.clone());
 
             // Update annotations with the final type
-            *typed_nodes.meta_mut(id) = poly_type;
+            *typed_nodes.get_unchecked_mut(id) = poly_type;
             module_annotations.extend(typed_nodes);
         }
 
