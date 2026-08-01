@@ -2,9 +2,9 @@ use kola_utils::interner::Interner;
 use std::{fmt::Debug, hash::BuildHasher};
 
 use crate::{
-    col::Get,
     id::Id,
     node::{Name, Namespace, NodeStorage},
+    query::Get,
     tree::TreeBuilder,
 };
 

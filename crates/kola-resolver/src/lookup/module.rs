@@ -3,9 +3,9 @@ use std::collections::HashMap;
 use kola_span::{Diagnostic, Loc, Report};
 use kola_subst::Substitutable;
 use kola_tree::{
-    col::GetOpt,
     id::Id,
     node::{self, ModuleName, Vis},
+    query::GetOpt,
 };
 
 use crate::{

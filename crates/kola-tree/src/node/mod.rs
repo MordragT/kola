@@ -13,8 +13,8 @@ pub use ty::*;
 use pastey::paste;
 
 use crate::{
-    col::{Col, Get},
     id::{Id, IdIter},
+    query::{Col, Get},
 };
 
 macro_rules! repeat_ty {

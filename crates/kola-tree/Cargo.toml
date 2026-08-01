@@ -4,14 +4,13 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+kola-tree-macro = { path = "./macro" }
 kola-subst.workspace = true
 kola-utils.workspace = true
 kola-print.workspace = true
-kola-macros.workspace = true
 serde.workspace = true
 derive_more.workspace = true
 pastey.workspace = true
-# stacker = "0.1"                  # TODO use for visitor recursion
 enum-as-inner.workspace = true
 kinded.workspace = true
 indexmap.workspace = true

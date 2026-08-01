@@ -3,9 +3,9 @@ use std::ops::Index;
 use kola_span::{SourceId, SourceManager};
 use kola_syntax::loc::{LocMap, LocVec};
 use kola_tree::{
-    col::GetOpt,
     id::Id,
     node,
+    query::GetOpt,
     tree::{Tree, TreeMap},
 };
 

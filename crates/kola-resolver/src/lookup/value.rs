@@ -4,9 +4,9 @@ use indexmap::IndexMap;
 use kola_span::{Diagnostic, Issue, Loc, Report};
 use kola_subst::{Substitutable, merge};
 use kola_tree::{
-    col::GetOpt,
     id::Id,
     node::{self, ValueName},
+    query::GetOpt,
 };
 use log::debug;
 

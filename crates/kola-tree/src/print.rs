@@ -4,9 +4,9 @@ use kola_print::prelude::*;
 use kola_utils::interner::StrInterner;
 
 use crate::{
-    col::Get,
     id::Id,
     node::{AnyId, NodeStorage},
+    query::Get,
     slice::SliceId,
     tree::{Tree, TreeView},
 };

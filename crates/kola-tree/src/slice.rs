@@ -1,6 +1,6 @@
 use std::{fmt::Debug, iter::Copied, marker::PhantomData, slice};
 
-use crate::{col::Get, id::Id, node::NodeStorage, tree::TreeView};
+use crate::{id::Id, node::NodeStorage, query::Get, tree::TreeView};
 
 /// A typed range into the `slice_data` vector of a `Storage`.
 ///

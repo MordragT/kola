@@ -1231,7 +1231,7 @@ mod tests {
 
     use kola_span::SourceManager;
     use kola_span::parser::Parser;
-    use kola_tree::{inspector::NodeInspector, prelude::*};
+    use kola_tree::{inspect::NodeInspector, prelude::*};
     use kola_utils::interner::StrInterner;
     use kola_utils::io::MockFileSystem;
 

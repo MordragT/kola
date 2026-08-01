@@ -10,7 +10,6 @@ kola-ir = { path = "crates/kola-ir" }
 kola-lowerer = { path = "crates/kola-lowerer" }
 kola-ls = { path = "crates/kola-ls" }
 kola-machine = { path = "crates/kola-machine" }
-kola-macros = { path = "crates/kola-macros" }
 kola-print = { path = "crates/kola-print" }
 kola-resolver = { path = "crates/kola-resolver" }
 kola-runtime = { path = "crates/kola-runtime" }

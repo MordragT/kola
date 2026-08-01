@@ -1,5 +1,5 @@
 use kola_print::prelude::*;
-use kola_tree::{col::GetOpt, node::AnyId, print::Decorator};
+use kola_tree::{node::AnyId, print::Decorator, query::GetOpt};
 
 use crate::phase::NodeMap;
 

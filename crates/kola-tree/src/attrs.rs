@@ -9,16 +9,16 @@ use std::{
 use kola_subst::Substitutable;
 
 use crate::{
-    col::{Col, Get, GetOpt},
     id::{Id, IdIter},
     node::{AnyId, StorageCheckpoint, UniversalStorage},
+    query::{Col, Get, GetOpt},
 };
 
 /// A side-table where every column holds the same type `M`.
 #[derive(Debug, Clone)]
-pub struct MetaSet<M>(UniversalStorage<M>);
+pub struct NodeAttrs<M>(UniversalStorage<M>);
 
-impl<M> MetaSet<M> {
+impl<M> NodeAttrs<M> {
     pub fn new(cp: StorageCheckpoint) -> Self
     where
         M: Default + Clone,
@@ -45,28 +45,28 @@ impl<M> MetaSet<M> {
         std::mem::replace(self.0.get_mut(id), value)
     }
 
-    pub fn checkpoint(&self) -> MetaSetCheckpoint {
-        MetaSetCheckpoint(self.0.checkpoint())
+    pub fn checkpoint(&self) -> NodeAttrsCheckpoint {
+        NodeAttrsCheckpoint(self.0.checkpoint())
     }
 
-    pub fn restore(&mut self, cp: &MetaSetCheckpoint) {
+    pub fn restore(&mut self, cp: &NodeAttrsCheckpoint) {
         self.0.restore(&cp.0);
     }
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct MetaSetCheckpoint(StorageCheckpoint);
+pub struct NodeAttrsCheckpoint(StorageCheckpoint);
 
 /// A simple `Vec<M>` indexed by `Id<T>.as_usize()`, with the node type
 /// tracked via `PhantomData<T>`.
 /// Used for densely populated metadata associated with nodes of type `T`.
 #[derive(Debug)]
-pub struct MetaVec<T, M> {
+pub struct SideVec<T, M> {
     data: Vec<M>,
     _marker: PhantomData<T>,
 }
 
-impl<T, M> MetaVec<T, M> {
+impl<T, M> SideVec<T, M> {
     pub fn new(cp: usize) -> Self
     where
         M: Default + Clone,
@@ -108,7 +108,7 @@ impl<T, M> MetaVec<T, M> {
     }
 }
 
-impl<T, M> Col<T> for MetaVec<T, M> {
+impl<T, M> Col<T> for SideVec<T, M> {
     type Column = Self;
     type Ids<'a>
         = IdIter<T>
@@ -128,7 +128,7 @@ impl<T, M> Col<T> for MetaVec<T, M> {
     }
 }
 
-impl<T, M> Get<T> for MetaVec<T, M> {
+impl<T, M> Get<T> for SideVec<T, M> {
     type Item = M;
 
     fn get(&self, id: Id<T>) -> &M {
@@ -140,7 +140,7 @@ impl<T, M> Get<T> for MetaVec<T, M> {
     }
 }
 
-impl<T, M> Index<Id<T>> for MetaVec<T, M> {
+impl<T, M> Index<Id<T>> for SideVec<T, M> {
     type Output = M;
 
     fn index(&self, id: Id<T>) -> &Self::Output {
@@ -148,13 +148,13 @@ impl<T, M> Index<Id<T>> for MetaVec<T, M> {
     }
 }
 
-impl<T, M> IndexMut<Id<T>> for MetaVec<T, M> {
+impl<T, M> IndexMut<Id<T>> for SideVec<T, M> {
     fn index_mut(&mut self, id: Id<T>) -> &mut Self::Output {
         &mut self.data[id.as_usize()]
     }
 }
 
-impl<T, M> Clone for MetaVec<T, M>
+impl<T, M> Clone for SideVec<T, M>
 where
     M: Clone,
 {
@@ -166,7 +166,7 @@ where
     }
 }
 
-impl<T, M> Extend<(Id<T>, M)> for MetaVec<T, M> {
+impl<T, M> Extend<(Id<T>, M)> for SideVec<T, M> {
     fn extend<I: IntoIterator<Item = (Id<T>, M)>>(&mut self, iter: I) {
         for (id, value) in iter {
             self.data[id.as_usize()] = value;
@@ -174,7 +174,7 @@ impl<T, M> Extend<(Id<T>, M)> for MetaVec<T, M> {
     }
 }
 
-impl<S, T, M> Substitutable<S> for MetaVec<T, M>
+impl<S, T, M> Substitutable<S> for SideVec<T, M>
 where
     M: Substitutable<S> + Clone,
 {
@@ -200,9 +200,9 @@ where
 /// A simple `HashMap` indexed by `Id<T>`.
 /// Used for sparsely populated metadata associated with nodes of type `T`.
 #[derive(Debug)]
-pub struct MetaMap<T, M>(HashMap<Id<T>, M>);
+pub struct SideMap<T, M>(HashMap<Id<T>, M>);
 
-impl<T, M> MetaMap<T, M> {
+impl<T, M> SideMap<T, M> {
     pub fn new() -> Self {
         Self(HashMap::new())
     }
@@ -232,7 +232,7 @@ impl<T, M> MetaMap<T, M> {
     }
 }
 
-impl<T, M> Clone for MetaMap<T, M>
+impl<T, M> Clone for SideMap<T, M>
 where
     M: Clone,
 {
@@ -241,13 +241,13 @@ where
     }
 }
 
-impl<T, M> Extend<(Id<T>, M)> for MetaMap<T, M> {
+impl<T, M> Extend<(Id<T>, M)> for SideMap<T, M> {
     fn extend<I: IntoIterator<Item = (Id<T>, M)>>(&mut self, iter: I) {
         self.0.extend(iter);
     }
 }
 
-impl<T, M> Col<T> for MetaMap<T, M> {
+impl<T, M> Col<T> for SideMap<T, M> {
     type Column = Self;
     type Ids<'a>
         = Copied<hash_map::Keys<'a, Id<T>, M>>
@@ -267,7 +267,7 @@ impl<T, M> Col<T> for MetaMap<T, M> {
     }
 }
 
-impl<T, M> GetOpt<T> for MetaMap<T, M> {
+impl<T, M> GetOpt<T> for SideMap<T, M> {
     type Item = M;
 
     fn get_opt(&self, id: Id<T>) -> Option<&M> {
@@ -283,7 +283,7 @@ impl<T, M> GetOpt<T> for MetaMap<T, M> {
     }
 }
 
-impl<S, T, M> Substitutable<S> for MetaMap<T, M>
+impl<S, T, M> Substitutable<S> for SideMap<T, M>
 where
     M: Substitutable<S> + Clone,
 {
@@ -304,4 +304,126 @@ where
             value.apply_mut(s);
         }
     }
+}
+
+/// Defines a side-table struct: a collection of [`SideMap`]s, one per node
+/// type, that can be queried via [`GetOpt`]/[`Col`] and substituted via
+/// [`Substitutable`].
+///
+/// The generated struct is generic over the substitution type `S`, so it can
+/// be shared between crates that use different substitutions (e.g. the
+/// resolver's symbol substitution and the typer's type substitution).
+///
+/// # Example
+///
+/// ```
+/// define_side_table!(NodeMap {
+///     exprs: SideMap<node::Expr, MonoType>,
+///     binds: SideMap<node::ValueBind, PolyType>,
+/// });
+/// ```
+#[macro_export]
+macro_rules! define_side_table {
+    (
+        $name:ident {
+            $(
+                $field:ident : SideMap<$node:ty, $value:ty>
+            ),* $(,)?
+        }
+    ) => {
+        #[derive(Debug, Clone)]
+        pub struct $name {
+            $(
+                pub $field: SideMap<$node, $value>,
+            )*
+        }
+
+        $(
+            impl $crate::query::GetOpt<$node> for $name {
+                type Item = $value;
+
+                fn get_opt(&self, id: $crate::id::Id<$node>) -> Option<&Self::Item> {
+                    self.$field.get_opt(id)
+                }
+
+                fn get_opt_mut(&mut self, id: $crate::id::Id<$node>) -> Option<&mut Self::Item> {
+                    self.$field.get_opt_mut(id)
+                }
+
+                fn set(&mut self, id: $crate::id::Id<$node>, value: Self::Item) -> Option<Self::Item> {
+                    self.$field.set(id, value)
+                }
+            }
+
+            impl $crate::query::Col<$node> for $name {
+                type Column = SideMap<$node, $value>;
+                type Ids<'a> = <SideMap<$node, $value> as $crate::query::Col<$node>>::Ids<'a>;
+
+                #[inline]
+                fn col(&self) -> &Self::Column {
+                    &self.$field
+                }
+
+                #[inline]
+                fn col_mut(&mut self) -> &mut Self::Column {
+                    &mut self.$field
+                }
+
+                #[inline]
+                fn ids<'a>(&'a self) -> Self::Ids<'a> {
+                    self.$field.ids()
+                }
+            }
+        )*
+
+        impl<S> $crate::subst::Substitutable<S> for $name
+        where
+            $(
+                SideMap<$node, $value>: $crate::subst::Substitutable<S> + Clone,
+            )*
+        {
+            fn try_apply(&self, s: &mut S) -> Option<Self> {
+                let mut changed = false;
+
+                $(
+                    let $field = match self.$field.try_apply(s) {
+                        Some(x) => {
+                            changed = true;
+                            x
+                        }
+                        None => self.$field.clone(),
+                    };
+                )*
+
+                changed.then_some(Self {
+                    $(
+                        $field,
+                    )*
+                })
+            }
+        }
+
+        impl Default for $name {
+            fn default() -> Self {
+                Self {
+                    $(
+                        $field: SideMap::new(),
+                    )*
+                }
+            }
+        }
+
+        impl $name {
+            pub fn new() -> Self {
+                Self::default()
+            }
+
+            /// Merge the entries of `other` into this table.
+            pub fn extend(&mut self, other: Self) {
+                $(
+                    self.$field.extend(other.$field.into_iter());
+                )*
+            }
+        }
+    };
 }

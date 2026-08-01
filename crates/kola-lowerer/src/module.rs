@@ -111,7 +111,7 @@ use kola_resolver::{
     db::{Db, ModuleView},
     symbol::{ModuleSym, ValueSym},
 };
-use kola_tree::col::GetOpt;
+use kola_tree::query::GetOpt;
 use kola_utils::interner::StrInterner;
 use log::trace;
 

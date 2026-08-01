@@ -1,6 +1,6 @@
 use std::marker::PhantomData;
 
-use crate::{col::Get, node::NodeStorage, tree::TreeView};
+use crate::{node::NodeStorage, query::Get, tree::TreeView};
 
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct Id<T: ?Sized> {

@@ -1,4 +1,4 @@
-//! Procedural macros for the kola compiler
+//! Procedural macros for the kola tree
 //!
 //! This crate provides traits and derive macros to automatically generate
 //! NodeInspector implementations based on struct/enum field introspection.
@@ -7,7 +7,7 @@ use proc_macro::TokenStream;
 use quote::quote;
 use syn::{DeriveInput, Type, parse_macro_input};
 
-mod inspector;
+mod inspect;
 
 /// Derive macro that automatically generates NodeInspector methods
 /// based on the structure of the AST nodes.
@@ -36,7 +36,7 @@ mod inspector;
 pub fn derive_inspector(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
 
-    match inspector::generate_inspector_impl(&input) {
+    match inspect::generate_inspector_impl(&input) {
         Ok(tokens) => tokens,
         Err(err) => err.to_compile_error().into(),
     }

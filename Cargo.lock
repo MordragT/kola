@@ -932,15 +932,6 @@ dependencies = [
 ]
 
 [[package]]
-name = "kola-macros"
-version = "0.1.0"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 2.0.119",
-]
-
-[[package]]
 name = "kola-print"
 version = "0.1.0"
 dependencies = [
@@ -976,7 +967,6 @@ dependencies = [
  "kola-utils",
  "log",
  "owo-colors",
- "pastey",
  "serde",
 ]
 
@@ -1039,12 +1029,21 @@ dependencies = [
  "enum-as-inner",
  "indexmap",
  "kinded",
- "kola-macros",
  "kola-print",
  "kola-subst",
+ "kola-tree-macro",
  "kola-utils",
  "pastey",
  "serde",
+]
+
+[[package]]
+name = "kola-tree-macro"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 3.0.3",
 ]
 
 [[package]]
@@ -1065,7 +1064,6 @@ dependencies = [
  "kola-types",
  "kola-utils",
  "log",
- "pastey",
  "serde",
  "stacker",
  "thiserror",

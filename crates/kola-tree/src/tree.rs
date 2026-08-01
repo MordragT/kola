@@ -2,9 +2,9 @@ use indexmap::IndexMap;
 use kola_utils::interner::PathKey;
 
 use crate::{
-    col::{Col, Get},
     id::Id,
     node::{ModuleBody, NodeStorage, StorageCheckpoint},
+    query::{Col, Get},
     slice::{SliceId, SliceStorage},
 };
 

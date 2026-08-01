@@ -23,7 +23,7 @@ pub fn generate_inspector_impl(input: &DeriveInput) -> syn::Result<TokenStream> 
     };
 
     Ok(quote! {
-        impl<'t, S: std::hash::BuildHasher> crate::inspector::NodeInspector<'t, crate::id::Id<#name>, S> {
+        impl<'t, S: std::hash::BuildHasher> crate::inspect::NodeInspector<'t, crate::id::Id<#name>, S> {
             #(#methods)*
         }
     }.into())
@@ -107,9 +107,9 @@ fn generate_field_method(
 
     match classify_field_type(field_type) {
         FieldTypeClass::SingleId(inner_type) => Ok(quote! {
-            pub fn #name(self) -> crate::inspector::NodeInspector<'t, crate::id::Id<#inner_type>, S> {
+            pub fn #name(self) -> crate::inspect::NodeInspector<'t, crate::id::Id<#inner_type>, S> {
                 let node = self.node.get(self.tree);
-                crate::inspector::NodeInspector::new(node.#field_name, self.tree, self.interner)
+                crate::inspect::NodeInspector::new(node.#field_name, self.tree, self.interner)
             }
         }),
         FieldTypeClass::SliceId(inner_type) => {
@@ -129,7 +129,7 @@ fn generate_field_method(
                     self
                 }
 
-                pub fn #name_at(self, index: usize) -> crate::inspector::NodeInspector<'t, crate::id::Id<#inner_type>, S> {
+                pub fn #name_at(self, index: usize) -> crate::inspect::NodeInspector<'t, crate::id::Id<#inner_type>, S> {
                     let node = self.node.get(self.tree);
                     let slice = node.#field_name.get(self.tree);
                     assert!(
@@ -139,7 +139,7 @@ fn generate_field_method(
                         slice.len().saturating_sub(1)
                     );
                     let item_id = slice[index];
-                    crate::inspector::NodeInspector::new(item_id, self.tree, self.interner)
+                    crate::inspect::NodeInspector::new(item_id, self.tree, self.interner)
                 }
             })
         }
@@ -149,15 +149,15 @@ fn generate_field_method(
             let has_none_name = quote::format_ident!("has_none_{}", name);
 
             Ok(quote! {
-                pub fn #name(self) -> crate::inspector::NodeInspector<'t, crate::id::Id<#inner_type>, S> {
+                pub fn #name(self) -> crate::inspect::NodeInspector<'t, crate::id::Id<#inner_type>, S> {
                     let node = self.node.get(self.tree);
                     let id = node.#field_name.expect(&format!("Expected {} to be Some", stringify!(#field_name)));
-                    crate::inspector::NodeInspector::new(id, self.tree, self.interner)
+                    crate::inspect::NodeInspector::new(id, self.tree, self.interner)
                 }
 
-                pub fn #try_name(self) -> Option<crate::inspector::NodeInspector<'t, crate::id::Id<#inner_type>, S>> {
+                pub fn #try_name(self) -> Option<crate::inspect::NodeInspector<'t, crate::id::Id<#inner_type>, S>> {
                     let node = self.node.get(self.tree);
-                    node.#field_name.map(|id| crate::inspector::NodeInspector::new(id, self.tree, self.interner))
+                    node.#field_name.map(|id| crate::inspect::NodeInspector::new(id, self.tree, self.interner))
                 }
 
                 pub fn #has_some_name(self) -> Self {
@@ -233,16 +233,16 @@ fn generate_enum_variant_method(
 
             Some(quote! {
                 #[inline]
-                pub fn #as_name(self) -> Option<crate::inspector::NodeInspector<'t, crate::id::Id<#inner_type>, S>> {
+                pub fn #as_name(self) -> Option<crate::inspect::NodeInspector<'t, crate::id::Id<#inner_type>, S>> {
                     let node = self.node.get(self.tree);
                     match node {
-                        #enum_name::#variant_name(id) => Some(crate::inspector::NodeInspector::new(*id, self.tree, self.interner)),
+                        #enum_name::#variant_name(id) => Some(crate::inspect::NodeInspector::new(*id, self.tree, self.interner)),
                         _ => None,
                     }
                 }
 
                 #[inline]
-                pub fn #to_name(self) -> crate::inspector::NodeInspector<'t, crate::id::Id<#inner_type>, S> {
+                pub fn #to_name(self) -> crate::inspect::NodeInspector<'t, crate::id::Id<#inner_type>, S> {
                     self.#as_name()
                         .expect(&format!("Expected enum to be {}", stringify!(#variant_name)))
                 }
@@ -274,16 +274,16 @@ fn generate_enum_variant_method(
 
             Some(quote! {
                 #[inline]
-                pub fn #as_some_name(self) -> Option<crate::inspector::NodeInspector<'t, crate::id::Id<#inner_type>, S>> {
+                pub fn #as_some_name(self) -> Option<crate::inspect::NodeInspector<'t, crate::id::Id<#inner_type>, S>> {
                     let node = self.node.get(self.tree);
                     match node {
-                        #enum_name::#variant_name(Some(id)) => Some(crate::inspector::NodeInspector::new(*id, self.tree, self.interner)),
+                        #enum_name::#variant_name(Some(id)) => Some(crate::inspect::NodeInspector::new(*id, self.tree, self.interner)),
                         _ => None,
                     }
                 }
 
                 #[inline]
-                pub fn #to_some_name(self) -> crate::inspector::NodeInspector<'t, crate::id::Id<#inner_type>, S> {
+                pub fn #to_some_name(self) -> crate::inspect::NodeInspector<'t, crate::id::Id<#inner_type>, S> {
                     self.#as_some_name()
                         .expect(&format!("Expected enum to be {} and some value", stringify!(#variant_name)))
                 }

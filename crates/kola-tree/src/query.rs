@@ -12,6 +12,7 @@ pub trait Get<T> {
     }
 }
 
+/// Access to an optional `Item` inside a storage.
 pub trait GetOpt<T> {
     type Item;
 

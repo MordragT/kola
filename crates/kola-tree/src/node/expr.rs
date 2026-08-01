@@ -1,7 +1,7 @@
 use derive_more::{Display, From};
 use enum_as_inner::EnumAsInner;
-use kola_macros::Inspector;
 use kola_print::prelude::*;
+use kola_tree_macro::Inspector;
 use kola_utils::interner::StrKey;
 use serde::{Deserialize, Serialize};
 

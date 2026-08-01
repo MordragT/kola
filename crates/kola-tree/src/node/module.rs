@@ -1,6 +1,6 @@
 use derive_more::From;
 use enum_as_inner::EnumAsInner;
-use kola_macros::Inspector;
+use kola_tree_macro::Inspector;
 use kola_utils::interner::PathKey;
 use serde::{Deserialize, Serialize};
 
