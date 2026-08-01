@@ -210,7 +210,7 @@ impl From<StrKey> for ValueName {
 }
 
 impl<'a, N> Notate<'a, Name<N>> for TreePrinter<'a> {
-    fn notate(&self, value: &Name<N>, arena: &'a Bump) -> Notation<'a> {
+    fn notate(self, value: &Name<N>, arena: &'a Bump) -> Notation<'a> {
         let head = "Name".cyan().display_in(arena);
 
         let name = self

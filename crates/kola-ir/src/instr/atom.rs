@@ -34,7 +34,7 @@ impl Func {
 // fn <param>
 //      => <body>;
 impl<'a> Notate<'a, Func> for IrPrinter<'a> {
-    fn notate(&self, node: &Func, arena: &'a Bump) -> Notation<'a> {
+    fn notate(self, node: &Func, arena: &'a Bump) -> Notation<'a> {
         let Func { param, body } = node;
 
         let param = param.display_in(arena);
@@ -141,7 +141,7 @@ impl_try_as!(
 );
 
 impl<'a> Notate<'a, Id<Atom>> for IrPrinter<'a> {
-    fn notate(&self, node: &Id<Atom>, arena: &'a Bump) -> Notation<'a> {
+    fn notate(self, node: &Id<Atom>, arena: &'a Bump) -> Notation<'a> {
         let notation = match self.ir.instr(*node) {
             Atom::Noop => "noop".red().display_in(arena),
             Atom::Bool(b) => b.green().display_in(arena),

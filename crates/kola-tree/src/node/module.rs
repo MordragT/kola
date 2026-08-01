@@ -51,7 +51,7 @@ pub enum Bind {
 }
 
 impl<'a> Notate<'a, Bind> for TreePrinter<'a> {
-    fn notate(&self, value: &Bind, arena: &'a Bump) -> Notation<'a> {
+    fn notate(self, value: &Bind, arena: &'a Bump) -> Notation<'a> {
         match value {
             Bind::Value(v) => self.notate(v, arena),
             Bind::Type(t) => self.notate(t, arena),
@@ -84,7 +84,7 @@ pub enum Vis {
 }
 
 impl<'a> Notate<'a, Vis> for TreePrinter<'a> {
-    fn notate(&self, value: &Vis, arena: &'a Bump) -> Notation<'a> {
+    fn notate(self, value: &Vis, arena: &'a Bump) -> Notation<'a> {
         match value {
             Vis::Export => "Export".purple().display_in(arena),
             Vis::None => arena.empty(),
@@ -280,7 +280,7 @@ pub enum ModuleExpr {
 }
 
 impl<'a> Notate<'a, ModuleExpr> for TreePrinter<'a> {
-    fn notate(&self, value: &ModuleExpr, arena: &'a Bump) -> Notation<'a> {
+    fn notate(self, value: &ModuleExpr, arena: &'a Bump) -> Notation<'a> {
         match value {
             ModuleExpr::Error(id) => self.notate(id, arena),
             ModuleExpr::Body(id) => self.notate(id, arena),
@@ -424,7 +424,7 @@ pub enum ModuleType {
 }
 
 impl<'a> Notate<'a, ModuleType> for TreePrinter<'a> {
-    fn notate(&self, value: &ModuleType, arena: &'a Bump) -> Notation<'a> {
+    fn notate(self, value: &ModuleType, arena: &'a Bump) -> Notation<'a> {
         match value {
             ModuleType::Qualified(q) => self.notate(q, arena),
             ModuleType::Concrete(c) => self.notate(c, arena),
@@ -491,7 +491,7 @@ pub enum Spec {
 }
 
 impl<'a> Notate<'a, Spec> for TreePrinter<'a> {
-    fn notate(&self, value: &Spec, arena: &'a Bump) -> Notation<'a> {
+    fn notate(self, value: &Spec, arena: &'a Bump) -> Notation<'a> {
         match value {
             Spec::Value(v) => self.notate(v, arena),
             Spec::Module(m) => self.notate(m, arena),

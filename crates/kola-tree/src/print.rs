@@ -67,7 +67,7 @@ where
     NodeStorage: Get<T, Item = T>,
     AnyId: From<Id<T>>,
 {
-    fn notate(&self, value: &Id<T>, arena: &'a Bump) -> Notation<'a> {
+    fn notate(self, value: &Id<T>, arena: &'a Bump) -> Notation<'a> {
         let node = self.tree.get(*value);
         let notation = self.notate(node, arena);
         self.decorators.decorate(notation, (*value).into(), arena)
@@ -80,7 +80,7 @@ where
     T: 'a,
     NodeStorage: Get<T, Item = T>,
 {
-    fn notate(&self, value: &SliceId<T>, arena: &'a Bump) -> Notation<'a> {
+    fn notate(self, value: &SliceId<T>, arena: &'a Bump) -> Notation<'a> {
         let ids = value.iter(self.tree);
         let notations = ids
             .map(|id| self.notate(&id, arena))
@@ -100,7 +100,7 @@ where
     TreePrinter<'a>: Notate<'a, T>,
     T: 'a,
 {
-    fn notate(&self, value: &Option<T>, arena: &'a Bump) -> Notation<'a> {
+    fn notate(self, value: &Option<T>, arena: &'a Bump) -> Notation<'a> {
         match value {
             Some(v) => self.notate(v, arena),
             None => arena.empty(),

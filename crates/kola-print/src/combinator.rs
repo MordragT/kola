@@ -5,10 +5,7 @@ use bumpalo::{
 use owo_colors::{OwoColorize, Style};
 use std::fmt::{self, Write};
 
-use crate::{
-    notate::Notate,
-    notation::{Arena, Notation},
-};
+use crate::notation::{Arena, Notation};
 
 pub trait Repeat<'a> {
     fn repeat(self, n: usize, arena: &'a Bump) -> Notation<'a>;

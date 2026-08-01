@@ -32,7 +32,7 @@ pub fn generate_notate_impl(input: &DeriveInput) -> syn::Result<TokenStream> {
 
     Ok(quote! {
         impl<'a> kola_print::Notate<'a, #name> for #printer {
-            fn notate(&self, value: &#name, arena: &'a kola_print::bumpalo::Bump) -> kola_print::Notation<'a> {
+            fn notate(self, value: &#name, arena: &'a kola_print::bumpalo::Bump) -> kola_print::Notation<'a> {
                 use kola_print::prelude::*;
                 #implementation
             }

@@ -1,4 +1,5 @@
 use derive_more::From;
+use kinded::Kinded;
 use kola_utils::impl_try_as;
 use std::{fmt, mem, num::NonZeroU32};
 
@@ -26,7 +27,7 @@ impl fmt::Display for Symbol {
     }
 }
 
-#[derive(Debug, From, Clone, Copy, PartialEq)]
+#[derive(Debug, From, Clone, Copy, PartialEq, Kinded)]
 pub enum Instr {
     Atom(Atom),
     Expr(Expr),

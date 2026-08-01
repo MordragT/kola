@@ -23,6 +23,7 @@ https://en.wikipedia.org/wiki/A-normal_form
 https://matt.might.net/articles/a-normalization/
 */
 
+pub mod attrs;
 pub mod id;
 pub mod instr;
 pub mod ir;

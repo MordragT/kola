@@ -1,5 +1,5 @@
 {
-    main =
+    main = let data = 42 in
         case data
         | () => "unit"
         | true => "bool true"
@@ -10,9 +10,8 @@
         | [a, b, ...rest] => "list with spread"
         | [head, ...] => "list anonymous spread"
         | [] => "empty list"
-        | { name, age: years, ... } => "record with spread"
+        | { name, age: years } => "record with spread"
         | { x, y } => "simple record"
-        | {} => "empty record"
         | < Some : value > => "variant some"
         | < None > => "variant none"
         | < Ok : result, Err : error > => "multiple variants"

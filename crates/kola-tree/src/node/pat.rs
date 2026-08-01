@@ -48,7 +48,7 @@ impl From<LiteralExpr> for LiteralPat {
 }
 
 impl<'a> Notate<'a, LiteralPat> for TreePrinter<'a> {
-    fn notate(&self, value: &LiteralPat, arena: &'a Bump) -> Notation<'a> {
+    fn notate(self, value: &LiteralPat, arena: &'a Bump) -> Notation<'a> {
         let kind = "LiteralPat".magenta().display_in(arena);
 
         let lit = match *value {
@@ -125,7 +125,7 @@ impl ListElPat {
 }
 
 impl<'a> Notate<'a, ListElPat> for TreePrinter<'a> {
-    fn notate(&self, value: &ListElPat, arena: &'a Bump) -> Notation<'a> {
+    fn notate(self, value: &ListElPat, arena: &'a Bump) -> Notation<'a> {
         match value {
             ListElPat::Pat(pat) => {
                 let head = "ListElPat".magenta().display_in(arena);
@@ -238,7 +238,7 @@ impl RecordPat {
 }
 
 impl<'a> Notate<'a, RecordPat> for TreePrinter<'a> {
-    fn notate(&self, value: &RecordPat, arena: &'a Bump) -> Notation<'a> {
+    fn notate(self, value: &RecordPat, arena: &'a Bump) -> Notation<'a> {
         let head = "RecordPat".magenta().display_in(arena);
 
         let fields = value
@@ -349,7 +349,7 @@ pub enum Pat {
 }
 
 impl<'a> Notate<'a, Pat> for TreePrinter<'a> {
-    fn notate(&self, value: &Pat, arena: &'a Bump) -> Notation<'a> {
+    fn notate(self, value: &Pat, arena: &'a Bump) -> Notation<'a> {
         match value {
             Pat::Error(e) => self.notate(e, arena),
             Pat::Any(w) => self.notate(w, arena),

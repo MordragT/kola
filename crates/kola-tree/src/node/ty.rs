@@ -136,7 +136,7 @@ impl PartialEq<StrKey> for TypeVar {
 }
 
 impl<'a> Notate<'a, TypeVar> for TreePrinter<'a> {
-    fn notate(&self, value: &TypeVar, arena: &'a Bump) -> Notation<'a> {
+    fn notate(self, value: &TypeVar, arena: &'a Bump) -> Notation<'a> {
         let head = "TypeVar".cyan().display_in(arena);
         let value = self
             .interner
@@ -331,7 +331,7 @@ pub enum TypeExpr {
 }
 
 impl<'a> Notate<'a, TypeExpr> for TreePrinter<'a> {
-    fn notate(&self, value: &TypeExpr, arena: &'a Bump) -> Notation<'a> {
+    fn notate(self, value: &TypeExpr, arena: &'a Bump) -> Notation<'a> {
         match value {
             TypeExpr::Error(e) => self.notate(e, arena),
             TypeExpr::Qualified(p) => self.notate(p, arena),

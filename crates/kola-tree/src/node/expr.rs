@@ -41,7 +41,7 @@ impl LiteralExpr {
 }
 
 impl<'a> Notate<'a, LiteralExpr> for TreePrinter<'a> {
-    fn notate(&self, value: &LiteralExpr, arena: &'a Bump) -> Notation<'a> {
+    fn notate(self, value: &LiteralExpr, arena: &'a Bump) -> Notation<'a> {
         let head = "LiteralExpr".purple().display_in(arena);
 
         let lit = match *value {
@@ -317,7 +317,7 @@ pub enum RecordUpdateOp {
 }
 
 impl<'a> Notate<'a, RecordUpdateOp> for TreePrinter<'a> {
-    fn notate(&self, value: &RecordUpdateOp, arena: &'a Bump) -> Notation<'a> {
+    fn notate(self, value: &RecordUpdateOp, arena: &'a Bump) -> Notation<'a> {
         value.red().display_in(arena)
     }
 }
@@ -519,7 +519,7 @@ pub enum UnaryOp {
 }
 
 impl<'a> Notate<'a, UnaryOp> for TreePrinter<'a> {
-    fn notate(&self, value: &UnaryOp, arena: &'a Bump) -> Notation<'a> {
+    fn notate(self, value: &UnaryOp, arena: &'a Bump) -> Notation<'a> {
         value.red().display_in(arena)
     }
 }
@@ -582,7 +582,7 @@ pub enum BinaryOp {
 }
 
 impl<'a> Notate<'a, BinaryOp> for TreePrinter<'a> {
-    fn notate(&self, value: &BinaryOp, arena: &'a Bump) -> Notation<'a> {
+    fn notate(self, value: &BinaryOp, arena: &'a Bump) -> Notation<'a> {
         value.red().display_in(arena)
     }
 }
@@ -1050,7 +1050,7 @@ pub enum Expr {
 }
 
 impl<'a> Notate<'a, Expr> for TreePrinter<'a> {
-    fn notate(&self, value: &Expr, arena: &'a Bump) -> Notation<'a> {
+    fn notate(self, value: &Expr, arena: &'a Bump) -> Notation<'a> {
         match value {
             Expr::Error(e) => self.notate(e, arena),
             Expr::Literal(l) => self.notate(l, arena),

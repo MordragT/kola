@@ -10,7 +10,7 @@ use kola_span::{Located, SourceId};
 pub struct TokenPrinter(pub PrintOptions);
 
 impl<'a> Notate<'a, Tokens<'a>> for TokenPrinter {
-    fn notate(&self, tokens: &Tokens<'a>, arena: &'a Bump) -> Notation<'a> {
+    fn notate(self, tokens: &Tokens<'a>, arena: &'a Bump) -> Notation<'a> {
         let tokens = tokens
             .iter()
             .map(|(token, span)| {

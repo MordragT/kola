@@ -11,10 +11,10 @@ use super::{
 /// value being printed. This lets a single context render many different value
 /// types, and lets the derive macro generate `impl Notate<'a, T> for Cx`
 /// without needing to know what `Cx` is.
-pub trait Notate<'a, T> {
-    fn notate(&self, value: &T, arena: &'a Bump) -> Notation<'a>;
+pub trait Notate<'a, T>: Sized {
+    fn notate(self, value: &T, arena: &'a Bump) -> Notation<'a>;
 
-    fn render(&self, value: &T, options: PrintOptions, arena: &'a Bump) -> std::string::String {
+    fn render(self, value: &T, options: PrintOptions, arena: &'a Bump) -> std::string::String {
         let notation = self.notate(value, arena);
         let mut printer = Printer::new(&notation, options, arena);
 
@@ -24,7 +24,7 @@ pub trait Notate<'a, T> {
         output
     }
 
-    fn print(&self, value: &T, options: PrintOptions, arena: &'a Bump) {
+    fn print(self, value: &T, options: PrintOptions, arena: &'a Bump) {
         let rendered = self.render(value, options, arena);
         println!("{rendered}");
     }

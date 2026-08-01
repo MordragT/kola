@@ -8,3 +8,4 @@ kola-builtins.workspace = true
 kola-print.workspace = true
 kola-utils.workspace = true
 derive_more.workspace = true
+kinded.workspace = true

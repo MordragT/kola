@@ -279,7 +279,7 @@ impl IrView for IrBuilder {
 
 #[derive(Debug, Clone)]
 pub struct Ir {
-    instructions: Vec<Instr>,
+    pub(crate) instructions: Vec<Instr>,
     root: Id<Expr>,
 }
 

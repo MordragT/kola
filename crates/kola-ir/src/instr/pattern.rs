@@ -34,22 +34,8 @@ impl IsUnit {
 
 // Unit -> <on_success>
 impl<'a> Notate<'a, IsUnit> for IrPrinter<'a> {
-    fn notate(&self, node: &IsUnit, arena: &'a Bump) -> Notation<'a> {
-        let IsUnit {
-            on_success,
-            on_failure,
-            ..
-        } = node;
-
-        let success = self.notate(on_success, arena);
-        let failure = [
-            arena.newline(),
-            arena.notate("| "),
-            self.notate(on_failure, arena),
-        ]
-        .concat_in(arena);
-
-        [arena.notate("Unit -> "), success, failure].concat_in(arena)
+    fn notate(self, node: &IsUnit, arena: &'a Bump) -> Notation<'a> {
+        self.test("Unit -> ", None, node.on_success, node.on_failure, arena)
     }
 }
 
@@ -82,31 +68,15 @@ impl IsBool {
 
 // Bool <payload> -> <on_success>
 impl<'a> Notate<'a, IsBool> for IrPrinter<'a> {
-    fn notate(&self, node: &IsBool, arena: &'a Bump) -> Notation<'a> {
-        let IsBool {
-            payload,
-            on_success,
-            on_failure,
-            ..
-        } = node;
-
-        let payload = payload.display_in(arena);
-        let success = self.notate(on_success, arena);
-        let failure = [
-            arena.newline(),
-            arena.notate("| "),
-            self.notate(on_failure, arena),
-        ]
-        .concat_in(arena);
-
-        [
-            arena.notate("Bool "),
-            payload,
-            arena.notate(" -> "),
-            success,
-            failure,
-        ]
-        .concat_in(arena)
+    fn notate(self, node: &IsBool, arena: &'a Bump) -> Notation<'a> {
+        let payload = node.payload.display_in(arena);
+        self.test(
+            "Bool ",
+            Some(payload),
+            node.on_success,
+            node.on_failure,
+            arena,
+        )
     }
 }
 
@@ -139,31 +109,15 @@ impl IsNum {
 
 // Num <payload> -> <on_success>
 impl<'a> Notate<'a, IsNum> for IrPrinter<'a> {
-    fn notate(&self, node: &IsNum, arena: &'a Bump) -> Notation<'a> {
-        let IsNum {
-            payload,
-            on_success,
-            on_failure,
-            ..
-        } = node;
-
-        let payload = payload.display_in(arena);
-        let success = self.notate(on_success, arena);
-        let failure = [
-            arena.newline(),
-            arena.notate("| "),
-            self.notate(on_failure, arena),
-        ]
-        .concat_in(arena);
-
-        [
-            arena.notate("Num "),
-            payload,
-            arena.notate(" -> "),
-            success,
-            failure,
-        ]
-        .concat_in(arena)
+    fn notate(self, node: &IsNum, arena: &'a Bump) -> Notation<'a> {
+        let payload = node.payload.display_in(arena);
+        self.test(
+            "Num ",
+            Some(payload),
+            node.on_success,
+            node.on_failure,
+            arena,
+        )
     }
 }
 
@@ -196,31 +150,15 @@ impl IsChar {
 
 // Char <payload> -> <on_success>
 impl<'a> Notate<'a, IsChar> for IrPrinter<'a> {
-    fn notate(&self, node: &IsChar, arena: &'a Bump) -> Notation<'a> {
-        let IsChar {
-            payload,
-            on_success,
-            on_failure,
-            ..
-        } = node;
-
-        let payload = payload.display_in(arena);
-        let success = self.notate(on_success, arena);
-        let failure = [
-            arena.newline(),
-            arena.notate("| "),
-            self.notate(on_failure, arena),
-        ]
-        .concat_in(arena);
-
-        [
-            arena.notate("Char "),
-            payload,
-            arena.notate(" -> "),
-            success,
-            failure,
-        ]
-        .concat_in(arena)
+    fn notate(self, node: &IsChar, arena: &'a Bump) -> Notation<'a> {
+        let payload = node.payload.display_in(arena);
+        self.test(
+            "Char ",
+            Some(payload),
+            node.on_success,
+            node.on_failure,
+            arena,
+        )
     }
 }
 
@@ -253,31 +191,15 @@ impl IsStr {
 
 // Str <payload> -> <on_success>
 impl<'a> Notate<'a, IsStr> for IrPrinter<'a> {
-    fn notate(&self, node: &IsStr, arena: &'a Bump) -> Notation<'a> {
-        let IsStr {
-            payload,
-            on_success,
-            on_failure,
-            ..
-        } = node;
-
-        let payload = payload.display_in(arena);
-        let success = self.notate(on_success, arena);
-        let failure = [
-            arena.newline(),
-            arena.notate("| "),
-            self.notate(on_failure, arena),
-        ]
-        .concat_in(arena);
-
-        [
-            arena.notate("Str "),
-            payload,
-            arena.notate(" -> "),
-            success,
-            failure,
-        ]
-        .concat_in(arena)
+    fn notate(self, node: &IsStr, arena: &'a Bump) -> Notation<'a> {
+        let payload = node.payload.display_in(arena);
+        self.test(
+            "Str ",
+            Some(payload),
+            node.on_success,
+            node.on_failure,
+            arena,
+        )
     }
 }
 
@@ -310,31 +232,9 @@ impl IsVariant {
 
 // Tag <payload> -> <on_success>
 impl<'a> Notate<'a, IsVariant> for IrPrinter<'a> {
-    fn notate(&self, node: &IsVariant, arena: &'a Bump) -> Notation<'a> {
-        let IsVariant {
-            tag,
-            on_success,
-            on_failure,
-            ..
-        } = node;
-
-        let tag = self.interner[*tag].display_in(arena);
-        let success = self.notate(on_success, arena);
-        let failure = [
-            arena.newline(),
-            arena.notate("| "),
-            self.notate(on_failure, arena),
-        ]
-        .concat_in(arena);
-
-        [
-            arena.notate("Tag "),
-            tag,
-            arena.notate(" -> "),
-            success,
-            failure,
-        ]
-        .concat_in(arena)
+    fn notate(self, node: &IsVariant, arena: &'a Bump) -> Notation<'a> {
+        let tag = self.interner[node.tag].display_in(arena);
+        self.test("Tag ", Some(tag), node.on_success, node.on_failure, arena)
     }
 }
 
@@ -364,22 +264,8 @@ impl IsList {
 
 // List -> <on_success>
 impl<'a> Notate<'a, IsList> for IrPrinter<'a> {
-    fn notate(&self, node: &IsList, arena: &'a Bump) -> Notation<'a> {
-        let IsList {
-            on_success,
-            on_failure,
-            ..
-        } = node;
-
-        let success = self.notate(on_success, arena);
-        let failure = [
-            arena.newline(),
-            arena.notate("| "),
-            self.notate(on_failure, arena),
-        ]
-        .concat_in(arena);
-
-        [arena.notate("List -> "), success, failure].concat_in(arena)
+    fn notate(self, node: &IsList, arena: &'a Bump) -> Notation<'a> {
+        self.test("List -> ", None, node.on_success, node.on_failure, arena)
     }
 }
 
@@ -412,31 +298,15 @@ impl ListIsExact {
 
 // ListExact <length> -> <on_success>
 impl<'a> Notate<'a, ListIsExact> for IrPrinter<'a> {
-    fn notate(&self, node: &ListIsExact, arena: &'a Bump) -> Notation<'a> {
-        let ListIsExact {
-            length,
-            on_success,
-            on_failure,
-            ..
-        } = node;
-
-        let length = length.display_in(arena);
-        let success = self.notate(on_success, arena);
-        let failure = [
-            arena.newline(),
-            arena.notate("| "),
-            self.notate(on_failure, arena),
-        ]
-        .concat_in(arena);
-
-        [
-            arena.notate("ListExact "),
-            length,
-            arena.notate(" -> "),
-            success,
-            failure,
-        ]
-        .concat_in(arena)
+    fn notate(self, node: &ListIsExact, arena: &'a Bump) -> Notation<'a> {
+        let length = node.length.display_in(arena);
+        self.test(
+            "ListExact ",
+            Some(length),
+            node.on_success,
+            node.on_failure,
+            arena,
+        )
     }
 }
 
@@ -469,31 +339,15 @@ impl ListIsAtLeast {
 
 // ListAtLeast <min_length> -> <on_success>
 impl<'a> Notate<'a, ListIsAtLeast> for IrPrinter<'a> {
-    fn notate(&self, node: &ListIsAtLeast, arena: &'a Bump) -> Notation<'a> {
-        let ListIsAtLeast {
-            min_length,
-            on_success,
-            on_failure,
-            ..
-        } = node;
-
-        let min_length = min_length.display_in(arena);
-        let success = self.notate(on_success, arena);
-        let failure = [
-            arena.newline(),
-            arena.notate("| "),
-            self.notate(on_failure, arena),
-        ]
-        .concat_in(arena);
-
-        [
-            arena.notate("ListAtLeast "),
-            min_length,
-            arena.notate(" -> "),
-            success,
-            failure,
-        ]
-        .concat_in(arena)
+    fn notate(self, node: &ListIsAtLeast, arena: &'a Bump) -> Notation<'a> {
+        let min_length = node.min_length.display_in(arena);
+        self.test(
+            "ListAtLeast ",
+            Some(min_length),
+            node.on_success,
+            node.on_failure,
+            arena,
+        )
     }
 }
 
@@ -523,22 +377,8 @@ impl IsRecord {
 
 // Record -> <on_success>
 impl<'a> Notate<'a, IsRecord> for IrPrinter<'a> {
-    fn notate(&self, node: &IsRecord, arena: &'a Bump) -> Notation<'a> {
-        let IsRecord {
-            on_success,
-            on_failure,
-            ..
-        } = node;
-
-        let success = self.notate(on_success, arena);
-        let failure = [
-            arena.newline(),
-            arena.notate("| "),
-            self.notate(on_failure, arena),
-        ]
-        .concat_in(arena);
-
-        [arena.notate("Record -> "), success, failure].concat_in(arena)
+    fn notate(self, node: &IsRecord, arena: &'a Bump) -> Notation<'a> {
+        self.test("Record -> ", None, node.on_success, node.on_failure, arena)
     }
 }
 
@@ -571,31 +411,15 @@ impl RecordHasField {
 
 // RecordField <field> -> <on_success>
 impl<'a> Notate<'a, RecordHasField> for IrPrinter<'a> {
-    fn notate(&self, node: &RecordHasField, arena: &'a Bump) -> Notation<'a> {
-        let RecordHasField {
-            field,
-            on_success,
-            on_failure,
-            ..
-        } = node;
-
-        let field = field.display_in(arena);
-        let success = self.notate(on_success, arena);
-        let failure = [
-            arena.newline(),
-            arena.notate("| "),
-            self.notate(on_failure, arena),
-        ]
-        .concat_in(arena);
-
-        [
-            arena.notate("RecordField "),
-            field,
-            arena.notate(" -> "),
-            success,
-            failure,
-        ]
-        .concat_in(arena)
+    fn notate(self, node: &RecordHasField, arena: &'a Bump) -> Notation<'a> {
+        let field = node.field.display_in(arena);
+        self.test(
+            "RecordField ",
+            Some(field),
+            node.on_success,
+            node.on_failure,
+            arena,
+        )
     }
 }
 
@@ -613,36 +437,10 @@ pub struct Identity {
 //    id <source>
 //    => <next>
 impl<'a> Notate<'a, Identity> for IrPrinter<'a> {
-    fn notate(&self, node: &Identity, arena: &'a Bump) -> Notation<'a> {
-        let Identity { bind, source, next } = node;
-
-        let bind = bind.display_in(arena);
-        let source = source.display_in(arena);
-        let next = self.notate(next, arena);
-
-        let head = bind.then(arena.notate(" ="), arena);
-
-        let single = [
-            arena.notate(" id "),
-            source.clone(),
-            arena.notate(" => "),
-            next.clone(),
-        ]
-        .concat_in(arena)
-        .flatten(arena);
-
-        let multi = [
-            arena.newline(),
-            arena.notate("id "),
-            source,
-            arena.newline(),
-            "=> ".display_in(arena),
-            next,
-        ]
-        .concat_in(arena)
-        .indent(arena);
-
-        head.then(single.or(multi, arena), arena)
+    fn notate(self, node: &Identity, arena: &'a Bump) -> Notation<'a> {
+        let bind = node.bind.display_in(arena);
+        let source = node.source.display_in(arena);
+        self.extractor(bind, "id", &[source], node.next, arena)
     }
 }
 
@@ -671,42 +469,12 @@ pub struct ListSplitHead {
 //    extract_list_head <source>
 //    => <next>
 impl<'a> Notate<'a, ListSplitHead> for IrPrinter<'a> {
-    fn notate(&self, node: &ListSplitHead, arena: &'a Bump) -> Notation<'a> {
-        let ListSplitHead {
-            head,
-            tail_list,
-            source,
-            next,
-        } = node;
-
-        let head = head.display_in(arena);
-        let tail_list = tail_list.display_in(arena);
-        let source = source.display_in(arena);
-        let next = self.notate(next, arena);
-
-        let head = [head, arena.notate(", "), tail_list, arena.notate(" =")].concat_in(arena);
-
-        let single = [
-            arena.notate(" split_head "),
-            source.clone(),
-            arena.notate(" => "),
-            next.clone(),
-        ]
-        .concat_in(arena)
-        .flatten(arena);
-
-        let multi = [
-            arena.newline(),
-            arena.notate("split_head "),
-            source,
-            arena.newline(),
-            "=> ".display_in(arena),
-            next,
-        ]
-        .concat_in(arena)
-        .indent(arena);
-
-        head.then(single.or(multi, arena), arena)
+    fn notate(self, node: &ListSplitHead, arena: &'a Bump) -> Notation<'a> {
+        let head = node.head.display_in(arena);
+        let tail_list = node.tail_list.display_in(arena);
+        let source = node.source.display_in(arena);
+        let bind = [head, arena.notate(", "), tail_list].concat_in(arena);
+        self.extractor(bind, "split_head", &[source], node.next, arena)
     }
 }
 
@@ -741,42 +509,12 @@ pub struct ListSplitTail {
 //    extract_list_tail <source>
 //    => <next>
 impl<'a> Notate<'a, ListSplitTail> for IrPrinter<'a> {
-    fn notate(&self, node: &ListSplitTail, arena: &'a Bump) -> Notation<'a> {
-        let ListSplitTail {
-            head_list,
-            tail,
-            source,
-            next,
-        } = node;
-
-        let head_list = head_list.display_in(arena);
-        let tail = tail.display_in(arena);
-        let source = source.display_in(arena);
-        let next = self.notate(next, arena);
-
-        let head = [head_list, arena.notate(", "), tail, arena.notate(" =")].concat_in(arena);
-
-        let single = [
-            arena.notate(" split_tail "),
-            source.clone(),
-            arena.notate(" => "),
-            next.clone(),
-        ]
-        .concat_in(arena)
-        .flatten(arena);
-
-        let multi = [
-            arena.newline(),
-            arena.notate("split_tail "),
-            source,
-            arena.newline(),
-            "=> ".display_in(arena),
-            next,
-        ]
-        .concat_in(arena)
-        .indent(arena);
-
-        head.then(single.or(multi, arena), arena)
+    fn notate(self, node: &ListSplitTail, arena: &'a Bump) -> Notation<'a> {
+        let head_list = node.head_list.display_in(arena);
+        let tail = node.tail.display_in(arena);
+        let source = node.source.display_in(arena);
+        let bind = [head_list, arena.notate(", "), tail].concat_in(arena);
+        self.extractor(bind, "split_tail", &[source], node.next, arena)
     }
 }
 
@@ -811,46 +549,11 @@ pub struct ListGetAt {
 //    extract_list_at <source> <index>
 //    => <next>
 impl<'a> Notate<'a, ListGetAt> for IrPrinter<'a> {
-    fn notate(&self, node: &ListGetAt, arena: &'a Bump) -> Notation<'a> {
-        let ListGetAt {
-            bind,
-            source,
-            index,
-            next,
-        } = node;
-
-        let bind = bind.display_in(arena);
-        let source = source.display_in(arena);
-        let index = index.display_in(arena);
-        let next = self.notate(next, arena);
-
-        let head = bind.then(arena.notate(" ="), arena);
-
-        let single = [
-            arena.notate(" get_at "),
-            source.clone(),
-            arena.notate(" "),
-            index.clone(),
-            arena.notate(" => "),
-            next.clone(),
-        ]
-        .concat_in(arena)
-        .flatten(arena);
-
-        let multi = [
-            arena.newline(),
-            arena.notate("get_at "),
-            source,
-            arena.notate(" "),
-            index,
-            arena.newline(),
-            "=> ".display_in(arena),
-            next,
-        ]
-        .concat_in(arena)
-        .indent(arena);
-
-        head.then(single.or(multi, arena), arena)
+    fn notate(self, node: &ListGetAt, arena: &'a Bump) -> Notation<'a> {
+        let bind = node.bind.display_in(arena);
+        let source = node.source.display_in(arena);
+        let index = node.index.display_in(arena);
+        self.extractor(bind, "get_at", &[source, index], node.next, arena)
     }
 }
 
@@ -886,48 +589,13 @@ pub struct ListSplitAt {
 //    extract_list_slice_from <source> <start_index>
 //    => <next>
 impl<'a> Notate<'a, ListSplitAt> for IrPrinter<'a> {
-    fn notate(&self, node: &ListSplitAt, arena: &'a Bump) -> Notation<'a> {
-        let ListSplitAt {
-            head,
-            tail,
-            source,
-            index,
-            next,
-        } = node;
-
-        let head = head.display_in(arena);
-        let tail = tail.display_in(arena);
-        let source = source.display_in(arena);
-        let start_index = index.display_in(arena);
-        let next = self.notate(next, arena);
-
-        let head = [head, arena.notate(", "), tail, arena.notate(" =")].concat_in(arena);
-
-        let single = [
-            arena.notate(" split_at "),
-            source.clone(),
-            arena.notate(" "),
-            start_index.clone(),
-            arena.notate(" => "),
-            next.clone(),
-        ]
-        .concat_in(arena)
-        .flatten(arena);
-
-        let multi = [
-            arena.newline(),
-            arena.notate("split_at "),
-            source,
-            arena.notate(" "),
-            start_index,
-            arena.newline(),
-            "=> ".display_in(arena),
-            next,
-        ]
-        .concat_in(arena)
-        .indent(arena);
-
-        head.then(single.or(multi, arena), arena)
+    fn notate(self, node: &ListSplitAt, arena: &'a Bump) -> Notation<'a> {
+        let head = node.head.display_in(arena);
+        let tail = node.tail.display_in(arena);
+        let source = node.source.display_in(arena);
+        let index = node.index.display_in(arena);
+        let bind = [head, arena.notate(", "), tail].concat_in(arena);
+        self.extractor(bind, "split_at", &[source, index], node.next, arena)
     }
 }
 
@@ -964,46 +632,11 @@ pub struct RecordGetAt {
 //    extract_record_field <source> <field>
 //    => <next>
 impl<'a> Notate<'a, RecordGetAt> for IrPrinter<'a> {
-    fn notate(&self, node: &RecordGetAt, arena: &'a Bump) -> Notation<'a> {
-        let RecordGetAt {
-            bind,
-            source,
-            field,
-            next,
-        } = node;
-
-        let bind = bind.display_in(arena);
-        let source = source.display_in(arena);
-        let field = field.display_in(arena);
-        let next = self.notate(next, arena);
-
-        let head = bind.then(arena.notate(" ="), arena);
-
-        let single = [
-            arena.notate(" get_at "),
-            source.clone(),
-            arena.notate(" "),
-            field.clone(),
-            arena.notate(" => "),
-            next.clone(),
-        ]
-        .concat_in(arena)
-        .flatten(arena);
-
-        let multi = [
-            arena.newline(),
-            arena.notate("get_at "),
-            source,
-            arena.notate(" "),
-            field,
-            arena.newline(),
-            "=> ".display_in(arena),
-            next,
-        ]
-        .concat_in(arena)
-        .indent(arena);
-
-        head.then(single.or(multi, arena), arena)
+    fn notate(self, node: &RecordGetAt, arena: &'a Bump) -> Notation<'a> {
+        let bind = node.bind.display_in(arena);
+        let source = node.source.display_in(arena);
+        let field = node.field.display_in(arena);
+        self.extractor(bind, "get_at", &[source, field], node.next, arena)
     }
 }
 
@@ -1037,36 +670,10 @@ pub struct VariantGet {
 //    get <source>
 //    => <next>
 impl<'a> Notate<'a, VariantGet> for IrPrinter<'a> {
-    fn notate(&self, node: &VariantGet, arena: &'a Bump) -> Notation<'a> {
-        let VariantGet { bind, source, next } = node;
-
-        let bind = bind.display_in(arena);
-        let source = source.display_in(arena);
-        let next = self.notate(next, arena);
-
-        let head = bind.then(arena.notate(" ="), arena);
-
-        let single = [
-            arena.notate(" get "),
-            source.clone(),
-            arena.notate(" => "),
-            next.clone(),
-        ]
-        .concat_in(arena)
-        .flatten(arena);
-
-        let multi = [
-            arena.newline(),
-            arena.notate("get "),
-            source,
-            arena.newline(),
-            "=> ".display_in(arena),
-            next,
-        ]
-        .concat_in(arena)
-        .indent(arena);
-
-        head.then(single.or(multi, arena), arena)
+    fn notate(self, node: &VariantGet, arena: &'a Bump) -> Notation<'a> {
+        let bind = node.bind.display_in(arena);
+        let source = node.source.display_in(arena);
+        self.extractor(bind, "get", &[source], node.next, arena)
     }
 }
 
@@ -1090,10 +697,10 @@ pub struct PatternSuccess {
 }
 
 impl<'a> Notate<'a, PatternSuccess> for IrPrinter<'a> {
-    fn notate(&self, node: &PatternSuccess, arena: &'a Bump) -> Notation<'a> {
+    fn notate(self, node: &PatternSuccess, arena: &'a Bump) -> Notation<'a> {
         arena
             .just('!')
-            .then(self.labels[node.next.as_usize()].display_in(arena), arena)
+            .then(self.attrs.label_of(node.next).display_in(arena), arena)
     }
 }
 
@@ -1107,7 +714,7 @@ impl PatternSuccess {
 pub struct PatternFailure;
 
 impl<'a> Notate<'a, PatternFailure> for IrPrinter<'a> {
-    fn notate(&self, _node: &PatternFailure, arena: &'a Bump) -> Notation<'a> {
+    fn notate(self, _node: &PatternFailure, arena: &'a Bump) -> Notation<'a> {
         arena.notate("failure")
     }
 }
@@ -1144,11 +751,11 @@ pub enum PatternMatcher {
 }
 
 impl<'a> Notate<'a, Id<PatternMatcher>> for IrPrinter<'a> {
-    fn notate(&self, node: &Id<PatternMatcher>, arena: &'a Bump) -> Notation<'a> {
-        if self.shared[node.as_usize()] {
+    fn notate(self, node: &Id<PatternMatcher>, arena: &'a Bump) -> Notation<'a> {
+        if self.attrs.is_shared(*node) {
             return arena
                 .just('@')
-                .then(self.labels[node.as_usize()].display_in(arena), arena);
+                .then(self.attrs.label_of(*node).display_in(arena), arena);
         }
 
         match self.ir.instr(*node) {
