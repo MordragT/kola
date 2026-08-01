@@ -104,15 +104,15 @@ pub trait Gather<'a> {
     fn gather(self, arena: &'a Bump) -> Vec<'a, Notation<'a>>;
 }
 
-impl<'a, I, T> Gather<'a> for I
-where
-    T: Notate<'a> + 'a,
-    I: IntoIterator<Item = &'a T>,
-{
-    fn gather(self, arena: &'a Bump) -> Vec<'a, Notation<'a>> {
-        self.into_iter().map(|p| p.notate(arena)).collect_in(arena)
-    }
-}
+// impl<'a, I, T> Gather<'a> for I
+// where
+//     T: Notate<'a> + 'a,
+//     I: IntoIterator<Item = &'a T>,
+// {
+//     fn gather(self, arena: &'a Bump) -> Vec<'a, Notation<'a>> {
+//         self.into_iter().map(|p| p.notate(arena)).collect_in(arena)
+//     }
+// }
 
 pub trait DisplayIn {
     fn display_in<'a>(&self, arena: &'a Bump) -> Notation<'a>

@@ -1,11 +1,11 @@
 use std::{collections::HashSet, fmt::Write};
 
 use kola_print::prelude::*;
-use kola_utils::{convert::TryAsRef, interner::StrInterner};
+use kola_utils::interner::StrInterner;
 
 use crate::{
     id::Id,
-    instr::{self, Instr},
+    instr,
     ir::{Ir, IrView},
     visit::IrVisitor,
 };
@@ -16,19 +16,19 @@ pub fn render_ir(ir: &Ir, arena: &Bump, interner: &StrInterner, options: PrintOp
     let mut labeller = IrLabeller::new(ir.count());
     let Ok(()) = labeller.visit_expr(root, ir);
 
-    let printer = IrPrinter::new(root, ir, &labeller.labels, &labeller.shared, interner);
-    let mut result = printer.render(options, arena);
+    let printer = IrPrinter::new(ir, &labeller.labels, &labeller.shared, interner);
+    let mut result = printer.render(&root, options, arena);
 
     result.push_str(&format!("\n\n{}\n\n", "With:".bold().bright_white()));
 
     let mut shared = vec![false; ir.count()];
 
     for matcher in labeller.defered_patterns {
-        let matcher_printer = IrPrinter::new(matcher, ir, &labeller.labels, &shared, interner);
+        let matcher_printer = IrPrinter::new(ir, &labeller.labels, &shared, interner);
         result
             .write_fmt(format_args!("{}: ", matcher.as_usize().bold()))
             .unwrap();
-        result.push_str(&matcher_printer.render(options, arena));
+        result.push_str(&matcher_printer.render(&matcher, options, arena));
         result.push('\n');
         result.push('\n');
 
@@ -36,8 +36,7 @@ pub fn render_ir(ir: &Ir, arena: &Bump, interner: &StrInterner, options: PrintOp
     }
 
     for expr in labeller.defered_expr {
-        let expr_printer = printer.to(expr);
-        result.push_str(&expr_printer.render(options, arena));
+        result.push_str(&printer.render(&expr, options, arena));
         result.push('\n');
         result.push('\n');
     }
@@ -46,62 +45,26 @@ pub fn render_ir(ir: &Ir, arena: &Bump, interner: &StrInterner, options: PrintOp
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct IrPrinter<'a, T> {
-    pub node: T,
+pub struct IrPrinter<'a> {
     pub ir: &'a Ir,
     pub labels: &'a [u32],
     pub shared: &'a [bool],
     pub interner: &'a StrInterner,
 }
 
-impl<'a, T> IrPrinter<'a, T> {
+impl<'a> IrPrinter<'a> {
     pub fn new(
-        node: T,
         ir: &'a Ir,
         labels: &'a [u32],
         shared: &'a [bool],
         interner: &'a StrInterner,
     ) -> Self {
         Self {
-            node,
             ir,
             labels,
             shared,
             interner,
         }
-    }
-
-    pub fn map<U>(self, f: impl FnOnce(T, &'a Ir) -> U) -> IrPrinter<'a, U> {
-        IrPrinter {
-            node: f(self.node, self.ir),
-            ir: self.ir,
-            labels: self.labels,
-            shared: self.shared,
-            interner: self.interner,
-        }
-    }
-
-    pub fn to<U>(self, node: U) -> IrPrinter<'a, U> {
-        IrPrinter {
-            node,
-            ir: self.ir,
-            labels: self.labels,
-            shared: self.shared,
-            interner: self.interner,
-        }
-    }
-}
-
-impl<'a, T> IrPrinter<'a, Id<T>>
-where
-    Instr: TryAsRef<T>,
-{
-    pub fn node_label(&self) -> u32 {
-        self.labels[self.node.as_usize()]
-    }
-
-    pub fn is_node_shared(&self) -> bool {
-        self.shared[self.node.as_usize()]
     }
 }
 

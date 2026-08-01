@@ -282,14 +282,14 @@ pub fn resolve(
         let resolution_decorator = ResolutionDecorator(&modules[sym].nodes);
         let decorators = Decorators::new().with(&resolution_decorator);
 
-        let tree_printer = TreePrinter::new(tree, interner, decorators, tree.root_id());
+        let tree_printer = TreePrinter::new(tree, interner, decorators);
 
         trace!(
             "{} SourceId {}, ModuleSym {}\n{}",
             "Resolved Abstract Syntax Tree".bold().bright_white(),
             source_id,
             sym,
-            tree_printer.render(print_options, arena)
+            tree_printer.render(&tree.root_id(), print_options, arena)
         );
     }
 

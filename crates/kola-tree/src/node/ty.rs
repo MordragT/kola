@@ -1,6 +1,6 @@
 use derive_more::From;
 use enum_as_inner::EnumAsInner;
-use kola_macros::{Inspector, Notate};
+use kola_macros::Inspector;
 use serde::{Deserialize, Serialize};
 use std::{borrow::Borrow, ops::Deref};
 
@@ -9,7 +9,7 @@ use kola_utils::interner::StrKey;
 
 use super::{KindName, ModulePath, TypeName, ValueName};
 
-use crate::{id::Id, print::NodePrinter, slice::SliceId, tree::TreeView};
+use crate::{id::Id, print::TreePrinter, slice::SliceId, tree::TreeView};
 
 #[derive(
     Debug,
@@ -25,7 +25,7 @@ use crate::{id::Id, print::NodePrinter, slice::SliceId, tree::TreeView};
     Serialize,
     Deserialize,
 )]
-#[notate(color = "green")]
+#[notate(with = TreePrinter<'a>, color = "green")]
 pub struct EffectOpType {
     pub name: Id<ValueName>,
     pub ty: Id<TypeExpr>,
@@ -45,7 +45,7 @@ pub struct EffectOpType {
     Serialize,
     Deserialize,
 )]
-#[notate(color = "green")]
+#[notate(with = TreePrinter<'a>, color = "green")]
 pub struct EffectType(pub SliceId<EffectOpType>);
 
 #[derive(
@@ -62,7 +62,7 @@ pub struct EffectType(pub SliceId<EffectOpType>);
     Serialize,
     Deserialize,
 )]
-#[notate(color = "cyan")]
+#[notate(with = TreePrinter<'a>, color = "cyan")]
 pub struct CompType {
     pub ty: Id<TypeExpr>,
     pub effect: Option<Id<EffectType>>,
@@ -71,7 +71,7 @@ pub struct CompType {
 #[derive(
     Debug, Notate, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
 )]
-#[notate(color = "red")]
+#[notate(with = TreePrinter<'a>, color = "red")]
 pub struct TypeError;
 
 #[derive(
@@ -88,7 +88,7 @@ pub struct TypeError;
     Serialize,
     Deserialize,
 )]
-#[notate(color = "cyan")]
+#[notate(with = TreePrinter<'a>, color = "cyan")]
 pub struct QualifiedType {
     pub path: Option<Id<ModulePath>>,
     pub ty: Id<TypeName>, // TODO This also includes type variables which is a bit surprising
@@ -135,12 +135,12 @@ impl PartialEq<StrKey> for TypeVar {
     }
 }
 
-impl<'a> Notate<'a> for NodePrinter<'a, TypeVar> {
-    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
+impl<'a> Notate<'a, TypeVar> for TreePrinter<'a> {
+    fn notate(&self, value: &TypeVar, arena: &'a Bump) -> Notation<'a> {
         let head = "TypeVar".cyan().display_in(arena);
         let value = self
             .interner
-            .get(self.value.0)
+            .get(value.0)
             .expect("Symbol not found")
             .magenta()
             .display_in(arena);
@@ -166,7 +166,7 @@ impl<'a> Notate<'a> for NodePrinter<'a, TypeVar> {
     Serialize,
     Deserialize,
 )]
-#[notate(color = "cyan")]
+#[notate(with = TreePrinter<'a>, color = "cyan")]
 pub enum LabelOrVar {
     Var(Id<TypeVar>),
     Label(Id<ValueName>),
@@ -186,7 +186,7 @@ pub enum LabelOrVar {
     Serialize,
     Deserialize,
 )]
-#[notate(color = "cyan")]
+#[notate(with = TreePrinter<'a>, color = "cyan")]
 pub struct RecordFieldType {
     pub label_or_var: Id<LabelOrVar>,
     pub ty: Id<TypeExpr>,
@@ -206,7 +206,7 @@ pub struct RecordFieldType {
     Serialize,
     Deserialize,
 )]
-#[notate(color = "blue")]
+#[notate(with = TreePrinter<'a>, color = "blue")]
 pub struct RecordType {
     pub fields: SliceId<RecordFieldType>,
     pub extension: Option<Id<TypeName>>,
@@ -232,7 +232,7 @@ impl RecordType {
     Serialize,
     Deserialize,
 )]
-#[notate(color = "cyan")]
+#[notate(with = TreePrinter<'a>, color = "cyan")]
 pub struct TagType {
     pub name: Id<ValueName>, // These are data constructors, therefore ValueName is used
     pub ty: Option<Id<TypeExpr>>,
@@ -252,7 +252,7 @@ pub struct TagType {
     Serialize,
     Deserialize,
 )]
-#[notate(color = "blue")]
+#[notate(with = TreePrinter<'a>, color = "blue")]
 pub struct VariantType {
     pub tags: SliceId<TagType>,
     pub extension: Option<Id<TypeName>>,
@@ -279,7 +279,7 @@ impl VariantType {
     Serialize,
     Deserialize,
 )]
-#[notate(color = "cyan")]
+#[notate(with = TreePrinter<'a>, color = "cyan")]
 pub struct FuncType {
     pub input: Id<TypeExpr>,
     pub output: Id<CompType>,
@@ -299,7 +299,7 @@ pub struct FuncType {
     Serialize,
     Deserialize,
 )]
-#[notate(color = "cyan")]
+#[notate(with = TreePrinter<'a>, color = "cyan")]
 pub struct TypeApplication {
     pub constructor: Id<TypeExpr>,
     pub arg: Id<TypeExpr>,
@@ -330,15 +330,15 @@ pub enum TypeExpr {
     Application(Id<TypeApplication>),
 }
 
-impl<'a> Notate<'a> for NodePrinter<'a, TypeExpr> {
-    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
-        match *self.value {
-            TypeExpr::Error(e) => self.to(e).notate(arena),
-            TypeExpr::Qualified(p) => self.to(p).notate(arena),
-            TypeExpr::Record(r) => self.to(r).notate(arena),
-            TypeExpr::Variant(v) => self.to(v).notate(arena),
-            TypeExpr::Func(f) => self.to(f).notate(arena),
-            TypeExpr::Application(a) => self.to(a).notate(arena),
+impl<'a> Notate<'a, TypeExpr> for TreePrinter<'a> {
+    fn notate(&self, value: &TypeExpr, arena: &'a Bump) -> Notation<'a> {
+        match value {
+            TypeExpr::Error(e) => self.notate(e, arena),
+            TypeExpr::Qualified(p) => self.notate(p, arena),
+            TypeExpr::Record(r) => self.notate(r, arena),
+            TypeExpr::Variant(v) => self.notate(v, arena),
+            TypeExpr::Func(f) => self.notate(f, arena),
+            TypeExpr::Application(a) => self.notate(a, arena),
         }
     }
 }
@@ -357,7 +357,7 @@ impl<'a> Notate<'a> for NodePrinter<'a, TypeExpr> {
     Serialize,
     Deserialize,
 )]
-#[notate(color = "cyan")]
+#[notate(with = TreePrinter<'a>, color = "cyan")]
 pub struct TypeVarBind {
     pub kind: Option<Id<KindName>>,
     pub var: Id<TypeVar>,
@@ -377,7 +377,7 @@ pub struct TypeVarBind {
     Serialize,
     Deserialize,
 )]
-#[notate(color = "cyan")]
+#[notate(with = TreePrinter<'a>, color = "cyan")]
 pub struct ForallBinder(pub SliceId<TypeVarBind>);
 
 #[derive(
@@ -394,7 +394,7 @@ pub struct ForallBinder(pub SliceId<TypeVarBind>);
     Serialize,
     Deserialize,
 )]
-#[notate(color = "green")]
+#[notate(with = TreePrinter<'a>, color = "green")]
 pub struct TypeScheme {
     pub forall: Option<Id<ForallBinder>>,
     pub ty: Id<TypeExpr>,

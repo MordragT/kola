@@ -205,14 +205,14 @@ pub fn type_check(
         let tree = &view.tree_map[&source_id];
 
         // TODO: tree.root_id() is wrong, need to find the correct root id for the module (should be the id of the module def)
-        let tree_printer = TreePrinter::new(tree, &str_interner, decorators, tree.root_id());
+        let tree_printer = TreePrinter::new(tree, &str_interner, decorators);
 
         trace!(
             "{} SourceId {}, ModuleSym {}\n{}",
             "Typed Abstract Syntax Tree".bold().bright_white(),
             source_id,
             view.sym,
-            tree_printer.render(print_options, arena)
+            tree_printer.render(&tree.root_id(), print_options, arena)
         );
 
         type_annotations.insert(view.sym, module_annotations);

@@ -6,7 +6,7 @@ use std::{borrow::Borrow, marker::PhantomData, ops::Deref};
 use kola_print::prelude::*;
 use kola_utils::interner::StrKey;
 
-use crate::print::NodePrinter;
+use crate::print::TreePrinter;
 
 #[derive(
     Debug, Display, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
@@ -209,13 +209,13 @@ impl From<StrKey> for ValueName {
     }
 }
 
-impl<'a, N> Notate<'a> for NodePrinter<'a, Name<N>> {
-    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
+impl<'a, N> Notate<'a, Name<N>> for TreePrinter<'a> {
+    fn notate(&self, value: &Name<N>, arena: &'a Bump) -> Notation<'a> {
         let head = "Name".cyan().display_in(arena);
 
         let name = self
             .interner
-            .get(self.value.0)
+            .get(value.0)
             .unwrap()
             .yellow()
             .display_in(arena)

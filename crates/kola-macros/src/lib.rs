@@ -8,7 +8,6 @@ use quote::quote;
 use syn::{DeriveInput, Type, parse_macro_input};
 
 mod inspector;
-mod notate;
 
 /// Derive macro that automatically generates NodeInspector methods
 /// based on the structure of the AST nodes.
@@ -38,52 +37,6 @@ pub fn derive_inspector(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
 
     match inspector::generate_inspector_impl(&input) {
-        Ok(tokens) => tokens,
-        Err(err) => err.to_compile_error().into(),
-    }
-}
-
-/// Derive macro that automatically generates Notate implementations
-/// for AST nodes with customizable formatting and colors.
-///
-/// # Example
-///
-/// ```rust
-/// #[derive(Notate)]
-/// #[notate(color = "bright_green", name = "MyStruct")]
-/// struct ExampleStruct {
-///     #[notate(skip)]
-///     internal_field: u32,          // Skipped - not displayed
-///
-///     id_field: Id<SomeType>,       // Auto-handled as ID reference
-///
-///     #[notate(display)]
-///     name: String,                 // Uses Display instead of Debug
-///
-///     optional_id: Option<Id<Type>>, // Auto-handled with .or_not()
-///
-///     id_list: Vec<Id<Expr>>,       // Auto-handled with .gather()
-///
-///     #[notate(custom = "custom_formatter")]
-///     special_field: ComplexType,   // Uses custom function
-/// }
-/// ```
-///
-/// # Type Attributes
-///
-/// - `#[notate(color = "red")]` - Set the head color (default: "bright_blue")
-/// - `#[notate(name = "CustomName")]` - Custom display name
-///
-/// # Field Attributes
-///
-/// - `#[notate(skip)]` - Skip this field in output
-/// - `#[notate(display)]` - Use Display trait instead of Debug
-/// - `#[notate(custom = "function_name")]` - Use custom formatter function
-#[proc_macro_derive(Notate, attributes(notate))]
-pub fn derive_notate(input: TokenStream) -> TokenStream {
-    let input = parse_macro_input!(input as DeriveInput);
-
-    match notate::generate_notate_impl(&input) {
         Ok(tokens) => tokens,
         Err(err) => err.to_compile_error().into(),
     }

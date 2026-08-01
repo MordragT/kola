@@ -4,5 +4,6 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+kola-print-macro = { path = "./macro" }
 owo-colors.workspace = true
 bumpalo = { version = "3", features = ["allocator_api", "collections"] }

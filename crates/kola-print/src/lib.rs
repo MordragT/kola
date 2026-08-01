@@ -4,6 +4,7 @@ pub use bumpalo;
 pub use notate::Notate;
 pub use notation::{Arena, Notation};
 pub use printer::{PrintOptions, Printer};
+pub use kola_print_macro::Notate;
 
 pub mod combinator;
 mod notate;
@@ -11,6 +12,7 @@ mod notation;
 mod printer;
 
 pub mod prelude {
+    pub use kola_print_macro::Notate;
     pub use crate::combinator::{ConcatBy, ConcatIn, ConcatMap, DisplayIn, Gather, OrNot, Repeat};
     pub use crate::layout;
     pub use crate::notate::Notate;

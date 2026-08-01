@@ -73,8 +73,8 @@ impl Driver {
 
         if print {
             for tokens in token_map.values() {
-                let printer = TokenPrinter(tokens, self.print_options);
-                printer.print(self.print_options, &self.arena);
+                let printer = TokenPrinter(self.print_options);
+                printer.print(&tokens, self.print_options, &self.arena);
             }
         }
 
@@ -97,8 +97,8 @@ impl Driver {
             if let Some(tree) = tree {
                 if print {
                     let decorators = Decorators::new();
-                    let printer = TreePrinter::root(&tree, &self.str_interner, decorators);
-                    printer.print(self.print_options, &self.arena);
+                    let printer = TreePrinter::new(&tree, &self.str_interner, decorators);
+                    printer.print(&tree.root_id(), self.print_options, &self.arena);
                 }
                 tree_map.insert(source_id, tree);
             }
@@ -156,15 +156,14 @@ impl Driver {
                 let tree = &view.tree_map[&source_id];
 
                 // TODO: tree.root_id() is wrong, need to find the correct root id for the module (should be the id of the module def)
-                let tree_printer =
-                    TreePrinter::new(tree, &self.str_interner, decorators, tree.root_id());
+                let tree_printer = TreePrinter::new(tree, &self.str_interner, decorators);
 
                 println!(
                     "{} SourceId {}, ModuleSym {}\n{}",
                     "Resolved Abstract Syntax Tree".bold().bright_white(),
                     source_id,
                     view.sym,
-                    tree_printer.render(self.print_options, &self.arena)
+                    tree_printer.render(&tree.root_id(), self.print_options, &self.arena)
                 );
             }
 
@@ -221,15 +220,14 @@ impl Driver {
                 let tree = &view.tree_map[&source_id];
 
                 // TODO: tree.root_id() is wrong, need to find the correct root id for the module (should be the id of the module def)
-                let tree_printer =
-                    TreePrinter::new(&tree, &self.str_interner, decorators, tree.root_id());
+                let tree_printer = TreePrinter::new(&tree, &self.str_interner, decorators);
 
                 println!(
                     "{} SourceId {}, ModuleSym {}\n{}",
                     "Typed Abstract Syntax Tree".bold().bright_white(),
                     source_id,
                     view.sym,
-                    tree_printer.render(self.print_options, &self.arena)
+                    tree_printer.render(&tree.root_id(), self.print_options, &self.arena)
                 );
             }
         }

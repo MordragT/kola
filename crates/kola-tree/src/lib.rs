@@ -15,9 +15,7 @@ pub mod prelude {
     pub use crate::node::{
         self, AnyId, Node, NodeKind, NodeStorage, StorageCheckpoint, UniversalStorage,
     };
-    pub use crate::print::{
-        Decorator, Decorators, IdPrinter, NodePrinter, SlicePrinter, TreePrinter,
-    };
+    pub use crate::print::{Decorator, Decorators, TreePrinter};
     pub use crate::slice::{SliceBuilder, SliceId, SliceStorage};
     pub use crate::tree::{Tree, TreeBuilder, TreeCheckpoint, TreeView};
     pub use crate::visit::{Visitable, Visitor};

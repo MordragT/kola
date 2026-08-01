@@ -1,6 +1,6 @@
 use derive_more::From;
 use enum_as_inner::EnumAsInner;
-use kola_macros::{Inspector, Notate};
+use kola_macros::Inspector;
 use kola_utils::interner::PathKey;
 use serde::{Deserialize, Serialize};
 
@@ -9,7 +9,7 @@ use kola_print::prelude::*;
 use super::{Expr, FunctorName, ModuleName, ModuleTypeName, TypeName, TypeScheme, ValueName};
 use crate::{
     id::Id,
-    print::NodePrinter,
+    print::TreePrinter,
     slice::SliceId,
     tree::{TreeBuilder, TreeView},
 };
@@ -17,7 +17,7 @@ use crate::{
 #[derive(
     Debug, Notate, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
 )]
-#[notate(color = "red")]
+#[notate(with = TreePrinter<'a>, color = "red")]
 pub struct BindError;
 
 impl BindError {
@@ -50,15 +50,15 @@ pub enum Bind {
     Error(Id<BindError>),
 }
 
-impl<'a> Notate<'a> for NodePrinter<'a, Bind> {
-    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
-        match *self.value {
-            Bind::Value(v) => self.to(v).notate(arena),
-            Bind::Type(t) => self.to(t).notate(arena),
-            Bind::Module(m) => self.to(m).notate(arena),
-            Bind::ModuleType(mt) => self.to(mt).notate(arena),
-            Bind::Functor(f) => self.to(f).notate(arena),
-            Bind::Error(e) => self.to(e).notate(arena),
+impl<'a> Notate<'a, Bind> for TreePrinter<'a> {
+    fn notate(&self, value: &Bind, arena: &'a Bump) -> Notation<'a> {
+        match value {
+            Bind::Value(v) => self.notate(v, arena),
+            Bind::Type(t) => self.notate(t, arena),
+            Bind::Module(m) => self.notate(m, arena),
+            Bind::ModuleType(mt) => self.notate(mt, arena),
+            Bind::Functor(f) => self.notate(f, arena),
+            Bind::Error(e) => self.notate(e, arena),
         }
     }
 }
@@ -83,9 +83,9 @@ pub enum Vis {
     None,
 }
 
-impl<'a> Notate<'a> for NodePrinter<'a, Vis> {
-    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
-        match *self.value {
+impl<'a> Notate<'a, Vis> for TreePrinter<'a> {
+    fn notate(&self, value: &Vis, arena: &'a Bump) -> Notation<'a> {
+        match value {
             Vis::Export => "Export".purple().display_in(arena),
             Vis::None => arena.empty(),
         }
@@ -106,7 +106,7 @@ impl<'a> Notate<'a> for NodePrinter<'a, Vis> {
     Serialize,
     Deserialize,
 )]
-#[notate(color = "green")]
+#[notate(with = TreePrinter<'a>, color = "green")]
 pub struct ValueBind {
     pub vis: Id<Vis>,
     pub name: Id<ValueName>,
@@ -150,7 +150,7 @@ impl ValueBind {
     Serialize,
     Deserialize,
 )]
-#[notate(color = "green")]
+#[notate(with = TreePrinter<'a>, color = "green")]
 pub struct TypeBind {
     pub vis: Id<Vis>,
     pub name: Id<TypeName>,
@@ -171,7 +171,7 @@ pub struct TypeBind {
     Serialize,
     Deserialize,
 )]
-#[notate(color = "green")]
+#[notate(with = TreePrinter<'a>, color = "green")]
 pub struct ModuleBind {
     pub vis: Id<Vis>,
     pub name: Id<ModuleName>,
@@ -215,7 +215,7 @@ impl ModuleBind {
     Serialize,
     Deserialize,
 )]
-#[notate(color = "green")]
+#[notate(with = TreePrinter<'a>, color = "green")]
 pub struct FunctorParam {
     pub name: Id<ModuleName>,
     pub ty: Id<ModuleType>,
@@ -224,7 +224,7 @@ pub struct FunctorParam {
 #[derive(
     Debug, Notate, Inspector, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
 )]
-#[notate(color = "green")]
+#[notate(with = TreePrinter<'a>, color = "green")]
 pub struct FunctorBind {
     pub vis: Id<Vis>,
     pub name: Id<FunctorName>,
@@ -279,14 +279,14 @@ pub enum ModuleExpr {
     FunctorApp(Id<FunctorApp>),
 }
 
-impl<'a> Notate<'a> for NodePrinter<'a, ModuleExpr> {
-    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
-        match *self.value {
-            ModuleExpr::Error(id) => self.to(id).notate(arena),
-            ModuleExpr::Body(id) => self.to(id).notate(arena),
-            ModuleExpr::Import(id) => self.to(id).notate(arena),
-            ModuleExpr::Path(id) => self.to(id).notate(arena),
-            ModuleExpr::FunctorApp(id) => self.to(id).notate(arena),
+impl<'a> Notate<'a, ModuleExpr> for TreePrinter<'a> {
+    fn notate(&self, value: &ModuleExpr, arena: &'a Bump) -> Notation<'a> {
+        match value {
+            ModuleExpr::Error(id) => self.notate(id, arena),
+            ModuleExpr::Body(id) => self.notate(id, arena),
+            ModuleExpr::Import(id) => self.notate(id, arena),
+            ModuleExpr::Path(id) => self.notate(id, arena),
+            ModuleExpr::FunctorApp(id) => self.notate(id, arena),
         }
     }
 }
@@ -294,7 +294,7 @@ impl<'a> Notate<'a> for NodePrinter<'a, ModuleExpr> {
 #[derive(
     Debug, Notate, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
 )]
-#[notate(color = "red")]
+#[notate(with = TreePrinter<'a>, color = "red")]
 pub struct ModuleError;
 
 // TODO rename to ModuleBody ?
@@ -312,7 +312,7 @@ pub struct ModuleError;
     Serialize,
     Deserialize,
 )]
-#[notate(color = "green")]
+#[notate(with = TreePrinter<'a>, color = "green")]
 pub struct ModuleBody(pub SliceId<Bind>);
 
 #[derive(
@@ -329,7 +329,7 @@ pub struct ModuleBody(pub SliceId<Bind>);
     Serialize,
     Deserialize,
 )]
-#[notate(color = "cyan")]
+#[notate(with = TreePrinter<'a>, color = "cyan")]
 pub struct ModulePath(pub SliceId<ModuleName>);
 
 impl ModulePath {
@@ -353,8 +353,8 @@ impl ModulePath {
     Serialize,
     Deserialize,
 )]
-#[notate(color = "green")]
-pub struct ModuleImport(pub PathKey);
+#[notate(with = TreePrinter<'a>, color = "green")]
+pub struct ModuleImport(#[notate(display)] pub PathKey);
 
 #[derive(
     Debug,
@@ -370,13 +370,13 @@ pub struct ModuleImport(pub PathKey);
     Serialize,
     Deserialize,
 )]
-#[notate(color = "green")]
+#[notate(with = TreePrinter<'a>, color = "green")]
 pub struct FunctorArgs(pub SliceId<ModulePath>);
 
 #[derive(
     Debug, Notate, Inspector, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
 )]
-#[notate(color = "green")]
+#[notate(with = TreePrinter<'a>, color = "green")]
 pub struct FunctorApp {
     pub path: Option<Id<ModulePath>>,
     pub func: Id<FunctorName>,
@@ -397,7 +397,7 @@ pub struct FunctorApp {
     Serialize,
     Deserialize,
 )]
-#[notate(color = "green")]
+#[notate(with = TreePrinter<'a>, color = "green")]
 pub struct ModuleTypeBind {
     pub vis: Id<Vis>,
     pub name: Id<ModuleTypeName>,
@@ -423,11 +423,11 @@ pub enum ModuleType {
     Concrete(Id<ConcreteModuleType>),
 }
 
-impl<'a> Notate<'a> for NodePrinter<'a, ModuleType> {
-    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
-        match *self.value {
-            ModuleType::Qualified(q) => self.to(q).notate(arena),
-            ModuleType::Concrete(c) => self.to(c).notate(arena),
+impl<'a> Notate<'a, ModuleType> for TreePrinter<'a> {
+    fn notate(&self, value: &ModuleType, arena: &'a Bump) -> Notation<'a> {
+        match value {
+            ModuleType::Qualified(q) => self.notate(q, arena),
+            ModuleType::Concrete(c) => self.notate(c, arena),
         }
     }
 }
@@ -446,7 +446,7 @@ impl<'a> Notate<'a> for NodePrinter<'a, ModuleType> {
     Serialize,
     Deserialize,
 )]
-#[notate(color = "green")]
+#[notate(with = TreePrinter<'a>, color = "green")]
 pub struct QualifiedModuleType {
     pub path: Option<Id<ModulePath>>,
     pub ty: Id<ModuleTypeName>,
@@ -466,7 +466,7 @@ pub struct QualifiedModuleType {
     Serialize,
     Deserialize,
 )]
-#[notate(color = "green")]
+#[notate(with = TreePrinter<'a>, color = "green")]
 pub struct ConcreteModuleType(pub SliceId<Spec>);
 
 #[derive(
@@ -490,12 +490,12 @@ pub enum Spec {
     Error(Id<SpecError>),
 }
 
-impl<'a> Notate<'a> for NodePrinter<'a, Spec> {
-    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
-        match *self.value {
-            Spec::Value(v) => self.to(v).notate(arena),
-            Spec::Module(m) => self.to(m).notate(arena),
-            Spec::Error(e) => self.to(e).notate(arena),
+impl<'a> Notate<'a, Spec> for TreePrinter<'a> {
+    fn notate(&self, value: &Spec, arena: &'a Bump) -> Notation<'a> {
+        match value {
+            Spec::Value(v) => self.notate(v, arena),
+            Spec::Module(m) => self.notate(m, arena),
+            Spec::Error(e) => self.notate(e, arena),
         }
     }
 }
@@ -503,7 +503,7 @@ impl<'a> Notate<'a> for NodePrinter<'a, Spec> {
 #[derive(
     Debug, Notate, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
 )]
-#[notate(color = "red")]
+#[notate(with = TreePrinter<'a>, color = "red")]
 pub struct SpecError;
 
 // f : Num -> Num
@@ -521,7 +521,7 @@ pub struct SpecError;
     Serialize,
     Deserialize,
 )]
-#[notate(color = "green")]
+#[notate(with = TreePrinter<'a>, color = "green")]
 pub struct ValueSpec {
     pub name: Id<ValueName>,
     pub ty: Id<TypeScheme>,
@@ -542,7 +542,7 @@ pub struct ValueSpec {
     Serialize,
     Deserialize,
 )]
-#[notate(color = "green")]
+#[notate(with = TreePrinter<'a>, color = "green")]
 pub struct ModuleSpec {
     pub name: Id<ModuleName>,
     pub ty: Id<ModuleType>,

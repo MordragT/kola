@@ -945,7 +945,17 @@ name = "kola-print"
 version = "0.1.0"
 dependencies = [
  "bumpalo",
+ "kola-print-macro",
  "owo-colors",
+]
+
+[[package]]
+name = "kola-print-macro"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.119",
 ]
 
 [[package]]

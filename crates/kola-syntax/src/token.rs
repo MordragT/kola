@@ -7,12 +7,11 @@ use std::fmt;
 use kola_print::prelude::*;
 use kola_span::{Located, SourceId};
 
-pub struct TokenPrinter<'t>(pub &'t Tokens<'t>, pub PrintOptions);
+pub struct TokenPrinter(pub PrintOptions);
 
-impl<'a> Notate<'a> for TokenPrinter<'a> {
-    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
-        let tokens = self
-            .0
+impl<'a> Notate<'a, Tokens<'a>> for TokenPrinter {
+    fn notate(&self, tokens: &Tokens<'a>, arena: &'a Bump) -> Notation<'a> {
+        let tokens = tokens
             .iter()
             .map(|(token, span)| {
                 let head_str = format!("\"{token}\"");
@@ -32,7 +31,7 @@ impl<'a> Notate<'a> for TokenPrinter<'a> {
                     .concat_in(arena)
                     .enclose(arena.just('('), arena.just(')'), arena);
 
-                let spacing_width = (self.1.width as usize / 3)
+                let spacing_width = (self.0.width as usize / 3)
                     .checked_sub(head_str.len())
                     .unwrap_or(1);
                 let spacing = arena.just(' ').repeat(spacing_width, arena);

@@ -1,6 +1,6 @@
 use derive_more::{Display, From};
 use enum_as_inner::EnumAsInner;
-use kola_macros::{Inspector, Notate};
+use kola_macros::Inspector;
 use kola_print::prelude::*;
 use kola_utils::interner::StrKey;
 use serde::{Deserialize, Serialize};
@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 use super::{ModulePath, Pat, QualifiedType, TypeExpr, ValueName};
 use crate::{
     id::Id,
-    print::NodePrinter,
+    print::TreePrinter,
     slice::SliceId,
     tree::{TreeBuilder, TreeView},
 };
@@ -16,7 +16,7 @@ use crate::{
 #[derive(
     Debug, Notate, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
 )]
-#[notate(color = "red")]
+#[notate(with = TreePrinter<'a>, color = "red")]
 pub struct ExprError;
 
 impl ExprError {
@@ -40,11 +40,11 @@ impl LiteralExpr {
     }
 }
 
-impl<'a> Notate<'a> for NodePrinter<'a, LiteralExpr> {
-    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
+impl<'a> Notate<'a, LiteralExpr> for TreePrinter<'a> {
+    fn notate(&self, value: &LiteralExpr, arena: &'a Bump) -> Notation<'a> {
         let head = "LiteralExpr".purple().display_in(arena);
 
-        let lit = match *self.value {
+        let lit = match *value {
             LiteralExpr::Unit => "Unit".yellow().display_in(arena),
             LiteralExpr::Bool(b) => b.yellow().display_in(arena),
             LiteralExpr::Num(n) => n.yellow().display_in(arena),
@@ -79,7 +79,7 @@ impl<'a> Notate<'a> for NodePrinter<'a, LiteralExpr> {
     Serialize,
     Deserialize,
 )]
-#[notate(color = "blue")]
+#[notate(with = TreePrinter<'a>, color = "blue")]
 pub struct ListExpr(pub SliceId<Expr>);
 
 impl ListExpr {
@@ -112,7 +112,7 @@ impl ListExpr {
     Serialize,
     Deserialize,
 )]
-#[notate(color = "blue")]
+#[notate(with = TreePrinter<'a>, color = "blue")]
 pub struct RecordField {
     pub label: Id<ValueName>,
     pub ty: Option<Id<TypeExpr>>,
@@ -161,7 +161,7 @@ impl RecordField {
     Serialize,
     Deserialize,
 )]
-#[notate(color = "blue")]
+#[notate(with = TreePrinter<'a>, color = "blue")]
 pub struct RecordExpr(pub SliceId<RecordField>);
 
 impl RecordExpr {
@@ -189,7 +189,7 @@ impl RecordExpr {
     Serialize,
     Deserialize,
 )]
-#[notate(color = "blue")]
+#[notate(with = TreePrinter<'a>, color = "blue")]
 pub struct RecordExtendExpr {
     pub source: Id<Expr>,
     pub source_type: Option<Id<TypeExpr>>,
@@ -258,7 +258,7 @@ impl RecordExtendExpr {
     Serialize,
     Deserialize,
 )]
-#[notate(color = "blue")]
+#[notate(with = TreePrinter<'a>, color = "blue")]
 pub struct RecordRestrictExpr {
     pub source: Id<Expr>,
     pub source_type: Option<Id<TypeExpr>>,
@@ -316,9 +316,9 @@ pub enum RecordUpdateOp {
     RemAssign,
 }
 
-impl<'a> Notate<'a> for NodePrinter<'a, RecordUpdateOp> {
-    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
-        self.value.red().display_in(arena)
+impl<'a> Notate<'a, RecordUpdateOp> for TreePrinter<'a> {
+    fn notate(&self, value: &RecordUpdateOp, arena: &'a Bump) -> Notation<'a> {
+        value.red().display_in(arena)
     }
 }
 
@@ -337,7 +337,7 @@ impl<'a> Notate<'a> for NodePrinter<'a, RecordUpdateOp> {
     Serialize,
     Deserialize,
 )]
-#[notate(color = "blue")]
+#[notate(with = TreePrinter<'a>, color = "blue")]
 pub struct RecordUpdateExpr {
     pub source: Id<Expr>,
     pub source_type: Option<Id<TypeExpr>>,
@@ -413,7 +413,7 @@ impl RecordUpdateExpr {
     Serialize,
     Deserialize,
 )]
-#[notate(color = "blue")]
+#[notate(with = TreePrinter<'a>, color = "blue")]
 pub struct RecordMergeExpr {
     pub lhs: Id<Expr>,
     pub rhs: Id<Expr>,
@@ -446,7 +446,7 @@ impl RecordMergeExpr {
     Serialize,
     Deserialize,
 )]
-#[notate(color = "blue")]
+#[notate(with = TreePrinter<'a>, color = "blue")]
 pub struct FieldPath(pub SliceId<ValueName>);
 
 impl FieldPath {
@@ -486,7 +486,7 @@ impl FieldPath {
     Serialize,
     Deserialize,
 )]
-#[notate(color = "cyan")]
+#[notate(with = TreePrinter<'a>, color = "cyan")]
 pub struct QualifiedExpr {
     pub module_path: Option<Id<ModulePath>>,
     pub source: Id<ValueName>,
@@ -518,9 +518,9 @@ pub enum UnaryOp {
     Not,
 }
 
-impl<'a> Notate<'a> for NodePrinter<'a, UnaryOp> {
-    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
-        self.value.red().display_in(arena)
+impl<'a> Notate<'a, UnaryOp> for TreePrinter<'a> {
+    fn notate(&self, value: &UnaryOp, arena: &'a Bump) -> Notation<'a> {
+        value.red().display_in(arena)
     }
 }
 
@@ -538,7 +538,7 @@ impl<'a> Notate<'a> for NodePrinter<'a, UnaryOp> {
     Serialize,
     Deserialize,
 )]
-#[notate(color = "blue")]
+#[notate(with = TreePrinter<'a>, color = "blue")]
 pub struct UnaryExpr {
     pub op: Id<UnaryOp>,
     pub operand: Id<Expr>,
@@ -581,9 +581,9 @@ pub enum BinaryOp {
     Concat,
 }
 
-impl<'a> Notate<'a> for NodePrinter<'a, BinaryOp> {
-    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
-        self.value.red().display_in(arena)
+impl<'a> Notate<'a, BinaryOp> for TreePrinter<'a> {
+    fn notate(&self, value: &BinaryOp, arena: &'a Bump) -> Notation<'a> {
+        value.red().display_in(arena)
     }
 }
 
@@ -601,7 +601,7 @@ impl<'a> Notate<'a> for NodePrinter<'a, BinaryOp> {
     Serialize,
     Deserialize,
 )]
-#[notate(color = "blue")]
+#[notate(with = TreePrinter<'a>, color = "blue")]
 pub struct BinaryExpr {
     pub op: Id<BinaryOp>,
     pub lhs: Id<Expr>,
@@ -649,7 +649,7 @@ impl BinaryExpr {
     Serialize,
     Deserialize,
 )]
-#[notate(color = "blue")]
+#[notate(with = TreePrinter<'a>, color = "blue")]
 pub struct LetExpr {
     pub name: Id<ValueName>,
     pub value_type: Option<Id<TypeExpr>>,
@@ -709,7 +709,7 @@ impl LetExpr {
     Serialize,
     Deserialize,
 )]
-#[notate(color = "blue")]
+#[notate(with = TreePrinter<'a>, color = "blue")]
 pub struct IfExpr {
     pub pred: Id<Expr>,
     pub then: Id<Expr>,
@@ -761,7 +761,7 @@ impl IfExpr {
     Serialize,
     Deserialize,
 )]
-#[notate(color = "blue")]
+#[notate(with = TreePrinter<'a>, color = "blue")]
 pub struct CaseBranch {
     pub pat: Id<Pat>,
     pub body: Id<Expr>,
@@ -791,7 +791,7 @@ impl CaseBranch {
 #[derive(
     Debug, Notate, Inspector, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
 )]
-#[notate(color = "blue")]
+#[notate(with = TreePrinter<'a>, color = "blue")]
 pub struct CaseExpr {
     pub source: Id<Expr>,
     pub branches: SliceId<CaseBranch>,
@@ -827,7 +827,7 @@ impl CaseExpr {
     Serialize,
     Deserialize,
 )]
-#[notate(color = "blue")]
+#[notate(with = TreePrinter<'a>, color = "blue")]
 pub struct CallExpr {
     pub func: Id<Expr>,
     pub arg: Id<Expr>,
@@ -868,7 +868,7 @@ impl CallExpr {
     Serialize,
     Deserialize,
 )]
-#[notate(color = "blue")]
+#[notate(with = TreePrinter<'a>, color = "blue")]
 pub struct LambdaExpr {
     pub param: Id<ValueName>,
     pub param_type: Option<Id<TypeExpr>>,
@@ -917,7 +917,7 @@ impl LambdaExpr {
     Serialize,
     Deserialize,
 )]
-#[notate(color = "blue")]
+#[notate(with = TreePrinter<'a>, color = "blue")]
 pub struct HandlerClause {
     pub op: Id<ValueName>,
     pub param: Id<ValueName>,
@@ -938,7 +938,7 @@ pub struct HandlerClause {
     Serialize,
     Deserialize,
 )]
-#[notate(color = "blue")]
+#[notate(with = TreePrinter<'a>, color = "blue")]
 pub struct HandleExpr {
     pub source: Id<Expr>,
     pub clauses: SliceId<HandlerClause>,
@@ -959,7 +959,7 @@ pub struct HandleExpr {
     Serialize,
     Deserialize,
 )]
-#[notate(color = "blue")]
+#[notate(with = TreePrinter<'a>, color = "blue")]
 pub struct DoExpr {
     pub op: Id<ValueName>,
     pub arg: Id<Expr>,
@@ -980,7 +980,7 @@ pub struct DoExpr {
     Serialize,
     Deserialize,
 )]
-#[notate(color = "blue")]
+#[notate(with = TreePrinter<'a>, color = "blue")]
 pub struct TagExpr(pub Id<ValueName>);
 
 impl TagExpr {
@@ -1005,7 +1005,7 @@ impl TagExpr {
     Serialize,
     Deserialize,
 )]
-#[notate(color = "blue")]
+#[notate(with = TreePrinter<'a>, color = "blue")]
 pub enum TypeWitnessExpr {
     Qualified(Id<QualifiedType>),
     Label(Id<ValueName>),
@@ -1049,29 +1049,29 @@ pub enum Expr {
     TypeWitness(Id<TypeWitnessExpr>),
 }
 
-impl<'a> Notate<'a> for NodePrinter<'a, Expr> {
-    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
-        match *self.value {
-            Expr::Error(e) => self.to_id(e).notate(arena),
-            Expr::Literal(l) => self.to_id(l).notate(arena),
-            Expr::Qualified(q) => self.to_id(q).notate(arena),
-            Expr::List(l) => self.to_id(l).notate(arena),
-            Expr::Record(r) => self.to_id(r).notate(arena),
-            Expr::RecordExtend(r) => self.to_id(r).notate(arena),
-            Expr::RecordRestrict(r) => self.to_id(r).notate(arena),
-            Expr::RecordUpdate(r) => self.to_id(r).notate(arena),
-            Expr::RecordMerge(r) => self.to_id(r).notate(arena),
-            Expr::Unary(u) => self.to_id(u).notate(arena),
-            Expr::Binary(b) => self.to_id(b).notate(arena),
-            Expr::Let(l) => self.to_id(l).notate(arena),
-            Expr::If(i) => self.to_id(i).notate(arena),
-            Expr::Case(c) => self.to_id(c).notate(arena),
-            Expr::Call(c) => self.to_id(c).notate(arena),
-            Expr::Lambda(f) => self.to_id(f).notate(arena),
-            Expr::Handle(h) => self.to_id(h).notate(arena),
-            Expr::Do(d) => self.to_id(d).notate(arena),
-            Expr::Tag(t) => self.to_id(t).notate(arena),
-            Expr::TypeWitness(t) => self.to_id(t).notate(arena),
+impl<'a> Notate<'a, Expr> for TreePrinter<'a> {
+    fn notate(&self, value: &Expr, arena: &'a Bump) -> Notation<'a> {
+        match value {
+            Expr::Error(e) => self.notate(e, arena),
+            Expr::Literal(l) => self.notate(l, arena),
+            Expr::Qualified(q) => self.notate(q, arena),
+            Expr::List(l) => self.notate(l, arena),
+            Expr::Record(r) => self.notate(r, arena),
+            Expr::RecordExtend(r) => self.notate(r, arena),
+            Expr::RecordRestrict(r) => self.notate(r, arena),
+            Expr::RecordUpdate(r) => self.notate(r, arena),
+            Expr::RecordMerge(r) => self.notate(r, arena),
+            Expr::Unary(u) => self.notate(u, arena),
+            Expr::Binary(b) => self.notate(b, arena),
+            Expr::Let(l) => self.notate(l, arena),
+            Expr::If(i) => self.notate(i, arena),
+            Expr::Case(c) => self.notate(c, arena),
+            Expr::Call(c) => self.notate(c, arena),
+            Expr::Lambda(f) => self.notate(f, arena),
+            Expr::Handle(h) => self.notate(h, arena),
+            Expr::Do(d) => self.notate(d, arena),
+            Expr::Tag(t) => self.notate(t, arena),
+            Expr::TypeWitness(t) => self.notate(t, arena),
         }
     }
 }

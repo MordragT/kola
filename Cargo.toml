@@ -1,5 +1,5 @@
 [workspace]
-members = ["crates/*"]
+members = ["crates/*", "crates/kola-print/macro"]
 
 [workspace.dependencies]
 # Kola Crates

@@ -33,12 +33,12 @@ impl Func {
 // fn <param> => <body>
 // fn <param>
 //      => <body>;
-impl<'a> Notate<'a> for IrPrinter<'a, Func> {
-    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
-        let Func { param, body } = self.node;
+impl<'a> Notate<'a, Func> for IrPrinter<'a> {
+    fn notate(&self, node: &Func, arena: &'a Bump) -> Notation<'a> {
+        let Func { param, body } = node;
 
         let param = param.display_in(arena);
-        let body = self.to(body).notate(arena);
+        let body = self.notate(body, arena);
 
         // let single = arena
         //     .just(' ')
@@ -140,15 +140,15 @@ impl_try_as!(
     Witness(Witness)
 );
 
-impl<'a> Notate<'a> for IrPrinter<'a, Id<Atom>> {
-    fn notate(&self, arena: &'a Bump) -> Notation<'a> {
-        let notation = match self.ir.instr(self.node) {
+impl<'a> Notate<'a, Id<Atom>> for IrPrinter<'a> {
+    fn notate(&self, node: &Id<Atom>, arena: &'a Bump) -> Notation<'a> {
+        let notation = match self.ir.instr(*node) {
             Atom::Noop => "noop".red().display_in(arena),
             Atom::Bool(b) => b.green().display_in(arena),
             Atom::Char(c) => format!("'{}'", c.green()).display_in(arena),
             Atom::Num(n) => n.green().display_in(arena),
             Atom::Str(s) => format_args!("\"{}\"", self.interner[s].green()).display_in(arena),
-            Atom::Func(f) => self.to(f).notate(arena),
+            Atom::Func(f) => self.notate(&f, arena),
             Atom::Symbol(s) => s.display_in(arena),
             Atom::Builtin(b) => b.display_in(arena),
             Atom::Tag(t) => self.interner.with(&t).display_in(arena),
