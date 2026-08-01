@@ -1,3 +1,4 @@
+use kola_subst::Substitutable;
 use serde::{Deserialize, Serialize};
 use std::{
     fmt,
@@ -8,7 +9,7 @@ use super::{MonoType, Typed};
 use crate::{
     class::{CheckClass, TypeClass, TypeClassEnv, TypeClassError},
     kind::{CheckKind, Kind},
-    substitute::{Substitutable, Substitution},
+    subst::Substitution,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
@@ -21,7 +22,7 @@ pub struct TypeVar {
 // This should be removed and handled in some better way, but is required,
 // because TypeVar is inside the TypePhase and therefore to implement Substitutable for TypedNodes
 // this is also required.
-impl Substitutable for TypeVar {
+impl Substitutable<Substitution> for TypeVar {
     fn try_apply(&self, _s: &mut Substitution) -> Option<Self> {
         None
     }

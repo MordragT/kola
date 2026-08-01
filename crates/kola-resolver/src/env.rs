@@ -2,13 +2,14 @@ use std::collections::HashMap;
 
 use indexmap::IndexMap;
 use kola_span::Loc;
+use kola_subst::{Substitutable, merge};
 
 use crate::{
     elaborate::ElabJobs,
     lookup::Lookups,
     name::NameMap,
     phase::NodeMap,
-    symbol::{AnySym, FunctorSym, ModuleSym, Substitute, merge2},
+    symbol::{AnySym, FunctorSym, ModuleSym, Substitution},
 };
 
 pub type ModuleMap = IndexMap<ModuleSym, Module>;
@@ -31,24 +32,18 @@ impl Module {
     }
 }
 
-impl Substitute for Module {
-    fn try_subst(&self, s: &HashMap<AnySym, AnySym>) -> Option<Self> {
+impl Substitutable<Substitution> for Module {
+    fn try_apply(&self, s: &mut HashMap<AnySym, AnySym>) -> Option<Self> {
         let Self { loc, names, nodes } = self;
 
-        let names_opt = names.try_subst(s);
-        let nodes_opt = nodes.try_subst(s);
+        let names_opt = names.try_apply(s);
+        let nodes_opt = nodes.try_apply(s);
 
-        if let Some((names, nodes)) =
-            merge2(names_opt, || names.clone(), nodes_opt, || nodes.clone())
-        {
-            Some(Self {
-                loc: *loc,
-                names,
-                nodes,
-            })
-        } else {
-            None
-        }
+        merge(names_opt, || names.clone(), nodes_opt, || nodes.clone()).map(|(names, nodes)| Self {
+            loc: *loc,
+            names,
+            nodes,
+        })
     }
 }
 
@@ -95,9 +90,9 @@ impl Functor {
             s.insert(AnySym::Module(param), AnySym::Module(arg));
         }
 
-        body.subst_mut(&mut s);
-        lookups.subst_mut(&mut s);
-        elab_jobs.subst_mut(&mut s);
+        body.apply_mut(&mut s);
+        lookups.apply_mut(&mut s);
+        elab_jobs.apply_mut(&mut s);
 
         (body, lookups, elab_jobs)
     }

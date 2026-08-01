@@ -1,9 +1,10 @@
 use std::fmt::{self};
 
+use kola_subst::{Substitutable, merge};
 use serde::{Deserialize, Serialize};
 
 use super::{MonoType, Row};
-use crate::substitute::{Substitutable, Substitution, merge};
+use crate::subst::Substitution;
 
 /// Computation type
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -39,7 +40,7 @@ impl fmt::Display for CompType {
     }
 }
 
-impl Substitutable for CompType {
+impl Substitutable<Substitution> for CompType {
     fn try_apply(&self, s: &mut Substitution) -> Option<Self> {
         let ty = self.ty.try_apply(s);
         let effect = self.effect.try_apply(s);

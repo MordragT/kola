@@ -1,9 +1,11 @@
 use std::{collections::HashMap, ops::Index};
 
-use crate::symbol::{
-    AnySym, FunctorSym, ModuleSym, ModuleTypeSym, Substitute, TypeSym, ValueSym, merge5,
-};
+use kola_subst::{Substitutable, merge5};
 use kola_tree::node::{AnyName, FunctorName, ModuleName, ModuleTypeName, TypeName, ValueName, Vis};
+
+use crate::symbol::{
+    AnySym, FunctorSym, ModuleSym, ModuleTypeSym, Substitution, TypeSym, ValueSym,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Binding<S> {
@@ -24,26 +26,20 @@ impl<S> Binding<S> {
     }
 }
 
-impl<S> Substitute for Binding<S>
+impl<S> Substitutable<Substitution> for Binding<S>
 where
-    S: Substitute,
+    S: Substitutable<Substitution>,
 {
-    fn try_subst(&self, s: &HashMap<AnySym, AnySym>) -> Option<Self>
-    where
-        Self: Sized,
-    {
-        if let Some(sym) = self.sym.try_subst(s) {
+    fn try_apply(&self, s: &mut HashMap<AnySym, AnySym>) -> Option<Self> {
+        if let Some(sym) = self.sym.try_apply(s) {
             Some(Self::new(self.vis, sym))
         } else {
             None
         }
     }
 
-    fn subst_mut(&mut self, s: &HashMap<AnySym, AnySym>)
-    where
-        Self: Sized,
-    {
-        self.sym.subst_mut(s);
+    fn apply_mut(&mut self, s: &mut HashMap<AnySym, AnySym>) {
+        self.sym.apply_mut(s);
     }
 }
 
@@ -257,16 +253,13 @@ impl Index<ValueName> for NameMap {
     }
 }
 
-impl Substitute for NameMap {
-    fn try_subst(&self, s: &HashMap<AnySym, AnySym>) -> Option<Self>
-    where
-        Self: Sized,
-    {
-        let functors = self.functors.try_subst(s);
-        let module_types = self.module_types.try_subst(s);
-        let modules = self.modules.try_subst(s);
-        let types = self.types.try_subst(s);
-        let values = self.values.try_subst(s);
+impl Substitutable<Substitution> for NameMap {
+    fn try_apply(&self, s: &mut HashMap<AnySym, AnySym>) -> Option<Self> {
+        let functors = self.functors.try_apply(s);
+        let module_types = self.module_types.try_apply(s);
+        let modules = self.modules.try_apply(s);
+        let types = self.types.try_apply(s);
+        let values = self.values.try_apply(s);
 
         merge5(
             functors,
@@ -289,14 +282,11 @@ impl Substitute for NameMap {
         })
     }
 
-    fn subst_mut(&mut self, s: &HashMap<AnySym, AnySym>)
-    where
-        Self: Sized,
-    {
-        self.functors.subst_mut(s);
-        self.module_types.subst_mut(s);
-        self.modules.subst_mut(s);
-        self.types.subst_mut(s);
-        self.values.subst_mut(s);
+    fn apply_mut(&mut self, s: &mut HashMap<AnySym, AnySym>) {
+        self.functors.apply_mut(s);
+        self.module_types.apply_mut(s);
+        self.modules.apply_mut(s);
+        self.types.apply_mut(s);
+        self.values.apply_mut(s);
     }
 }

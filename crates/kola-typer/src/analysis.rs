@@ -39,11 +39,10 @@
 //! - Row polymorphism (`{x: Bool, ...}`) requires universal tail coverage
 //! - Labels can appear in any order due to reordering semantics
 
-use std::fmt;
+use std::{collections::BTreeSet, fmt};
 
 use derive_more::Display;
 use enumset::{EnumSet, EnumSetType};
-use kola_collections::OrdSet;
 use kola_span::{Diagnostic, Loc};
 use kola_syntax::loc::LocVec;
 use kola_tree::prelude::*;
@@ -124,11 +123,11 @@ pub enum ListSet {
     /// Matches all possible lists
     Universal,
     /// Matches lists with specific exact lengths
-    Exact(OrdSet<u32>),
+    Exact(BTreeSet<u32>),
     /// Matches lists with length >= n
     AtLeast(u32),
     /// Matches both exact lengths and lengths >= n
-    Combined { exact: OrdSet<u32>, at_least: u32 },
+    Combined { exact: BTreeSet<u32>, at_least: u32 },
 }
 
 impl ListSet {
@@ -259,12 +258,12 @@ impl ListSet {
         }
     }
 
-    fn to_parts(self) -> (OrdSet<u32>, Option<u32>) {
+    fn to_parts(self) -> (BTreeSet<u32>, Option<u32>) {
         match self {
-            Self::Empty => (OrdSet::new(), None),
-            Self::Universal => (OrdSet::new(), Some(0)),
+            Self::Empty => (BTreeSet::new(), None),
+            Self::Universal => (BTreeSet::new(), Some(0)),
             Self::Exact(set) => (set, None),
-            Self::AtLeast(min) => (OrdSet::new(), Some(min)),
+            Self::AtLeast(min) => (BTreeSet::new(), Some(min)),
             Self::Combined { exact, at_least } => (exact, Some(at_least)),
         }
     }

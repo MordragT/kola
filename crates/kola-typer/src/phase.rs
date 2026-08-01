@@ -1,12 +1,11 @@
+use std::collections::HashMap;
+
 use pastey::paste;
 
-use kola_collections::HashMap;
 use kola_resolver::symbol::ModuleSym;
+use kola_subst::Substitutable;
 use kola_tree::prelude::*;
-use kola_types::{
-    substitute::{Substitutable, Substitution},
-    types,
-};
+use kola_types::{subst::Substitution, types};
 
 pub type TypeAnnotations = HashMap<ModuleSym, TypedNodes>;
 
@@ -62,7 +61,7 @@ macro_rules! define_typed_nodes {
           }
         )*
 
-        impl Substitutable for TypedNodes {
+        impl Substitutable<Substitution> for TypedNodes {
             fn try_apply(&self, s: &mut Substitution) -> Option<Self> {
                 let mut changed = false;
 

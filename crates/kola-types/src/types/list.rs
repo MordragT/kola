@@ -1,10 +1,11 @@
+use kola_subst::Substitutable;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
 use crate::{
     class::{CheckClass, TypeClass, TypeClassEnv, TypeClassError},
     kind::{CheckKind, Kind},
-    substitute::{Substitutable, Substitution},
+    subst::Substitution,
 };
 
 use super::{MonoType, Typed};
@@ -38,7 +39,7 @@ impl CheckClass for ListType {
 
 impl Typed for ListType {}
 
-impl Substitutable for ListType {
+impl Substitutable<Substitution> for ListType {
     fn try_apply(&self, s: &mut Substitution) -> Option<Self> {
         self.0.try_apply(s).map(Self)
     }

@@ -1,12 +1,10 @@
 use std::fmt;
 
+use kola_subst::Substitutable;
 use serde::{Deserialize, Serialize};
 
 use super::{LabelOrVar, MonoType, Row, TypeConversionError, TypeVar, Typed};
-use crate::{
-    kind::Kind,
-    substitute::{Substitutable, Substitution},
-};
+use crate::{kind::Kind, subst::Substitution};
 
 /// Polytype
 /// Types that contains variable bound by zero or more forall
@@ -129,7 +127,7 @@ impl fmt::Display for PolyType {
 /// 1. Apply substitution to the inner monotype
 /// 2. Remove quantified variables that are resolved by the substitution
 /// 3. Keep only variables that remain truly quantified
-impl Substitutable for PolyType {
+impl Substitutable<Substitution> for PolyType {
     fn try_apply(&self, s: &mut Substitution) -> Option<Self> {
         self.ty.try_apply(s).map(|ty| {
             // Remove quantified variables that have been resolved by substitution

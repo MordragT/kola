@@ -1,5 +1,6 @@
 use derive_more::From;
 use enum_as_inner::EnumAsInner;
+use kola_subst::Substitutable;
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
@@ -10,7 +11,7 @@ use super::{
 use crate::{
     class::{CheckClass, TypeClass, TypeClassEnv, TypeClassError},
     kind::{CheckKind, Kind},
-    substitute::{Substitutable, Substitution},
+    subst::Substitution,
 };
 
 /// MonoType
@@ -117,7 +118,7 @@ impl CheckClass for MonoType {
 
 impl Typed for MonoType {}
 
-impl Substitutable for MonoType {
+impl Substitutable<Substitution> for MonoType {
     fn try_apply(&self, s: &mut Substitution) -> Option<Self> {
         match self {
             Self::Primitive(_) => None,

@@ -8,13 +8,14 @@ use kola_resolver::{
     symbol::ValueSym,
 };
 use kola_span::{Diagnostic, IntoDiagnostic, Loc, Report};
+use kola_subst::Substitutable;
 use kola_syntax::prelude::*;
 use kola_tree::{node::Vis, prelude::*};
 use kola_types::{
     class::TypeClass,
     env::{LocalTypeEnv, TypeEnv},
     kind::Kind,
-    substitute::{Substitutable, Substitution},
+    subst::Substitution,
     types::{CompType, Label, LabelOrVar, LabeledType, MonoType, PolyType, Row, TypeVar},
 };
 use kola_utils::interner::StrInterner;

@@ -1,8 +1,13 @@
-use std::{hash::Hash, ops::Index};
+use std::{
+    collections::{HashMap, hash_map},
+    hash::Hash,
+    ops::Index,
+};
 
 use derive_more::From;
-use kola_collections::{HashMap, hash_map};
 use kola_span::{Loc, Located};
+use kola_subst::Substitutable;
+use kola_subst::merge5;
 use kola_tree::{
     id::Id,
     node::{
@@ -12,7 +17,7 @@ use kola_tree::{
 };
 
 use crate::symbol::{
-    AnySym, FunctorSym, ModuleSym, ModuleTypeSym, Substitute, Sym, TypeSym, ValueSym, merge5,
+    AnySym, FunctorSym, ModuleSym, ModuleTypeSym, Substitution, Sym, TypeSym, ValueSym,
 };
 
 pub type FunctorDef = Located<Id<node::FunctorBind>>;
@@ -128,14 +133,11 @@ impl<N: Namespace, T> Index<Sym<N>> for Defs<N, T> {
     }
 }
 
-impl Substitute for Defs<FunctorNamespace, node::FunctorBind> {
-    fn try_subst(&self, s: &HashMap<AnySym, AnySym>) -> Option<Self>
-    where
-        Self: Sized,
-    {
+impl Substitutable<Substitution> for Defs<FunctorNamespace, node::FunctorBind> {
+    fn try_apply(&self, s: &mut HashMap<AnySym, AnySym>) -> Option<Self> {
         let mut result = None;
 
-        for (from, to) in s {
+        for (from, to) in s.iter() {
             if let &AnySym::Functor(from) = from
                 && let &AnySym::Functor(to) = to
                 && let Some((id, loc)) = self.get(from)
@@ -148,10 +150,7 @@ impl Substitute for Defs<FunctorNamespace, node::FunctorBind> {
         result
     }
 
-    fn subst_mut(&mut self, s: &HashMap<AnySym, AnySym>)
-    where
-        Self: Sized,
-    {
+    fn apply_mut(&mut self, s: &mut HashMap<AnySym, AnySym>) {
         for (from, to) in s {
             if let AnySym::Functor(from) = from
                 && let AnySym::Functor(to) = to
@@ -163,14 +162,11 @@ impl Substitute for Defs<FunctorNamespace, node::FunctorBind> {
     }
 }
 
-impl Substitute for Defs<ModuleTypeNamespace, node::ModuleTypeBind> {
-    fn try_subst(&self, s: &HashMap<AnySym, AnySym>) -> Option<Self>
-    where
-        Self: Sized,
-    {
+impl Substitutable<Substitution> for Defs<ModuleTypeNamespace, node::ModuleTypeBind> {
+    fn try_apply(&self, s: &mut HashMap<AnySym, AnySym>) -> Option<Self> {
         let mut result = None;
 
-        for (from, to) in s {
+        for (from, to) in s.iter() {
             if let &AnySym::ModuleType(from) = from
                 && let &AnySym::ModuleType(to) = to
                 && let Some((id, loc)) = self.get(from)
@@ -183,10 +179,7 @@ impl Substitute for Defs<ModuleTypeNamespace, node::ModuleTypeBind> {
         result
     }
 
-    fn subst_mut(&mut self, s: &HashMap<AnySym, AnySym>)
-    where
-        Self: Sized,
-    {
+    fn apply_mut(&mut self, s: &mut HashMap<AnySym, AnySym>) {
         for (from, to) in s {
             if let AnySym::ModuleType(from) = from
                 && let AnySym::ModuleType(to) = to
@@ -198,14 +191,11 @@ impl Substitute for Defs<ModuleTypeNamespace, node::ModuleTypeBind> {
     }
 }
 
-impl Substitute for Defs<ModuleNamespace, node::ModuleBind> {
-    fn try_subst(&self, s: &HashMap<AnySym, AnySym>) -> Option<Self>
-    where
-        Self: Sized,
-    {
+impl Substitutable<Substitution> for Defs<ModuleNamespace, node::ModuleBind> {
+    fn try_apply(&self, s: &mut HashMap<AnySym, AnySym>) -> Option<Self> {
         let mut result = None;
 
-        for (from, to) in s {
+        for (from, to) in s.iter() {
             if let &AnySym::Module(from) = from
                 && let &AnySym::Module(to) = to
                 && let Some((id, loc)) = self.get(from)
@@ -218,10 +208,7 @@ impl Substitute for Defs<ModuleNamespace, node::ModuleBind> {
         result
     }
 
-    fn subst_mut(&mut self, s: &HashMap<AnySym, AnySym>)
-    where
-        Self: Sized,
-    {
+    fn apply_mut(&mut self, s: &mut HashMap<AnySym, AnySym>) {
         for (from, to) in s {
             if let AnySym::Module(from) = from
                 && let AnySym::Module(to) = to
@@ -233,14 +220,11 @@ impl Substitute for Defs<ModuleNamespace, node::ModuleBind> {
     }
 }
 
-impl Substitute for Defs<TypeNamespace, node::TypeBind> {
-    fn try_subst(&self, s: &HashMap<AnySym, AnySym>) -> Option<Self>
-    where
-        Self: Sized,
-    {
+impl Substitutable<Substitution> for Defs<TypeNamespace, node::TypeBind> {
+    fn try_apply(&self, s: &mut HashMap<AnySym, AnySym>) -> Option<Self> {
         let mut result = None;
 
-        for (from, to) in s {
+        for (from, to) in s.iter() {
             if let &AnySym::Type(from) = from
                 && let &AnySym::Type(to) = to
                 && let Some((id, loc)) = self.get(from)
@@ -253,10 +237,7 @@ impl Substitute for Defs<TypeNamespace, node::TypeBind> {
         result
     }
 
-    fn subst_mut(&mut self, s: &HashMap<AnySym, AnySym>)
-    where
-        Self: Sized,
-    {
+    fn apply_mut(&mut self, s: &mut HashMap<AnySym, AnySym>) {
         for (from, to) in s {
             if let AnySym::Type(from) = from
                 && let AnySym::Type(to) = to
@@ -268,14 +249,11 @@ impl Substitute for Defs<TypeNamespace, node::TypeBind> {
     }
 }
 
-impl Substitute for Defs<ValueNamespace, node::ValueBind> {
-    fn try_subst(&self, s: &HashMap<AnySym, AnySym>) -> Option<Self>
-    where
-        Self: Sized,
-    {
+impl Substitutable<Substitution> for Defs<ValueNamespace, node::ValueBind> {
+    fn try_apply(&self, s: &mut HashMap<AnySym, AnySym>) -> Option<Self> {
         let mut result = None;
 
-        for (from, to) in s {
+        for (from, to) in s.iter() {
             if let &AnySym::Value(from) = from
                 && let &AnySym::Value(to) = to
                 && let Some((id, loc)) = self.get(from)
@@ -288,10 +266,7 @@ impl Substitute for Defs<ValueNamespace, node::ValueBind> {
         result
     }
 
-    fn subst_mut(&mut self, s: &HashMap<AnySym, AnySym>)
-    where
-        Self: Sized,
-    {
+    fn apply_mut(&mut self, s: &mut HashMap<AnySym, AnySym>) {
         for (from, to) in s {
             if let AnySym::Value(from) = from
                 && let AnySym::Value(to) = to
@@ -450,16 +425,13 @@ impl Index<ValueSym> for DefMap {
     }
 }
 
-impl Substitute for DefMap {
-    fn try_subst(&self, s: &HashMap<AnySym, AnySym>) -> Option<Self>
-    where
-        Self: Sized,
-    {
-        let functors = self.functors.try_subst(s);
-        let module_types = self.module_types.try_subst(s);
-        let modules = self.modules.try_subst(s);
-        let types = self.types.try_subst(s);
-        let values = self.values.try_subst(s);
+impl Substitutable<Substitution> for DefMap {
+    fn try_apply(&self, s: &mut HashMap<AnySym, AnySym>) -> Option<Self> {
+        let functors = self.functors.try_apply(s);
+        let module_types = self.module_types.try_apply(s);
+        let modules = self.modules.try_apply(s);
+        let types = self.types.try_apply(s);
+        let values = self.values.try_apply(s);
 
         merge5(
             functors,
@@ -482,14 +454,11 @@ impl Substitute for DefMap {
         })
     }
 
-    fn subst_mut(&mut self, s: &HashMap<AnySym, AnySym>)
-    where
-        Self: Sized,
-    {
-        self.functors.subst_mut(s);
-        self.module_types.subst_mut(s);
-        self.modules.subst_mut(s);
-        self.types.subst_mut(s);
-        self.values.subst_mut(s);
+    fn apply_mut(&mut self, s: &mut HashMap<AnySym, AnySym>) {
+        self.functors.apply_mut(s);
+        self.module_types.apply_mut(s);
+        self.modules.apply_mut(s);
+        self.types.apply_mut(s);
+        self.values.apply_mut(s);
     }
 }

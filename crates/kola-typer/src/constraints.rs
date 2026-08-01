@@ -1,8 +1,9 @@
 use derive_more::Display;
 use kola_span::{Loc, Located};
+use kola_subst::Substitutable;
 use kola_types::{
     class::{CheckClass, TypeClass, TypeClassEnv},
-    substitute::{Substitutable, Substitution},
+    subst::Substitution,
     types::{MonoType, TypeVar},
 };
 use kola_utils::errors::Errors;

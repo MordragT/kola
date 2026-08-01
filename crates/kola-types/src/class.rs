@@ -1,11 +1,12 @@
 use std::fmt;
 
 use indexmap::IndexMap;
+use kola_subst::Substitutable;
 use serde::{Deserialize, Serialize};
 use thiserror::Error;
 
 use crate::{
-    substitute::{Substitutable, Substitution},
+    subst::Substitution,
     types::{MonoType, TypeVar},
 };
 
@@ -20,7 +21,7 @@ pub enum TypeClass {
     Stringable,
 }
 
-impl Substitutable for TypeClass {
+impl Substitutable<Substitution> for TypeClass {
     fn try_apply(&self, _s: &mut Substitution) -> Option<Self> {
         None
     }

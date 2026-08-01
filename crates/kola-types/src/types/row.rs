@@ -1,3 +1,4 @@
+use kola_subst::{Substitutable, merge};
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
@@ -5,7 +6,7 @@ use super::{LabelOrVar, MergeError, MonoType, TypeVar, Typed};
 use crate::{
     class::{CheckClass, TypeClass, TypeClassEnv, TypeClassError},
     kind::{CheckKind, Kind},
-    substitute::{Substitutable, Substitution, merge},
+    subst::Substitution,
 };
 
 /// A key-value pair representing a property type in a record.
@@ -58,7 +59,7 @@ impl fmt::Display for LabeledType {
     }
 }
 
-impl Substitutable for LabeledType {
+impl Substitutable<Substitution> for LabeledType {
     fn try_apply(&self, s: &mut Substitution) -> Option<Self> {
         let label = self.label.try_apply(s);
         let ty = self.ty.try_apply(s);
@@ -249,7 +250,7 @@ impl CheckClass for Row {
 
 impl Typed for Row {}
 
-impl Substitutable for Row {
+impl Substitutable<Substitution> for Row {
     fn try_apply(&self, s: &mut Substitution) -> Option<Self> {
         match self {
             Self::Empty => None,

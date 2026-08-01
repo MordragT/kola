@@ -1,12 +1,13 @@
 use std::fmt;
 
+use kola_subst::Substitutable;
 use serde::{Deserialize, Serialize};
 
 use super::{MonoType, Typed};
 use crate::{
     class::{CheckClass, TypeClass, TypeClassEnv, TypeClassError},
     kind::{CheckKind, Kind},
-    substitute::{Substitutable, Substitution},
+    subst::Substitution,
 };
 
 /// Represents a type representation in the system
@@ -37,7 +38,7 @@ impl CheckClass for WitType {
 
 impl Typed for WitType {}
 
-impl Substitutable for WitType {
+impl Substitutable<Substitution> for WitType {
     fn try_apply(&self, s: &mut Substitution) -> Option<Self> {
         self.0.try_apply(s).map(Self)
     }

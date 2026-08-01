@@ -1,6 +1,7 @@
 use std::collections::{HashMap, HashSet, VecDeque};
 
 use kola_span::{Diagnostic, Loc};
+use kola_subst::{Substitutable, merge};
 use kola_tree::{
     id::Id,
     node::{self, FunctorName, ModuleName, Vis},
@@ -10,7 +11,7 @@ use crate::{
     env::{FunctorMap, ModuleMap},
     lookup::Lookups,
     name::Binding,
-    symbol::{AnySym, ModuleGraph, ModuleSym, Substitute, merge2},
+    symbol::{AnySym, ModuleGraph, ModuleSym, Substitution},
 };
 
 /// A work list of pending elaboration jobs.
@@ -110,8 +111,8 @@ impl ElabJob {
     }
 }
 
-impl Substitute for ElabJob {
-    fn try_subst(&self, s: &HashMap<AnySym, AnySym>) -> Option<Self> {
+impl Substitutable<Substitution> for ElabJob {
+    fn try_apply(&self, s: &mut HashMap<AnySym, AnySym>) -> Option<Self> {
         let Self {
             id,
             loc,
@@ -121,10 +122,10 @@ impl Substitute for ElabJob {
             expr,
         } = self;
 
-        let definition_scope_opt = definition_scope.try_subst(s);
-        let expr_opt = expr.try_subst(s);
+        let definition_scope_opt = definition_scope.try_apply(s);
+        let expr_opt = expr.try_apply(s);
 
-        merge2(
+        merge(
             definition_scope_opt,
             || definition_scope.clone(),
             expr_opt,
@@ -133,9 +134,9 @@ impl Substitute for ElabJob {
         .map(|(definition_scope, expr)| Self::new(*id, *loc, *vis, *name, definition_scope, expr))
     }
 
-    fn subst_mut(&mut self, s: &HashMap<AnySym, AnySym>) {
-        self.definition_scope.subst_mut(s);
-        self.expr.subst_mut(s);
+    fn apply_mut(&mut self, s: &mut HashMap<AnySym, AnySym>) {
+        self.definition_scope.apply_mut(s);
+        self.expr.apply_mut(s);
     }
 }
 
@@ -203,11 +204,8 @@ impl ElabPath {
     }
 }
 
-impl Substitute for ElabPath {
-    fn try_subst(&self, s: &HashMap<AnySym, AnySym>) -> Option<Self>
-    where
-        Self: Sized,
-    {
+impl Substitutable<Substitution> for ElabPath {
+    fn try_apply(&self, s: &mut HashMap<AnySym, AnySym>) -> Option<Self> {
         let Self {
             id,
             loc,
@@ -215,15 +213,15 @@ impl Substitute for ElabPath {
             remaining_path: path,
         } = self;
 
-        if let Some(current_scope) = current_scope.try_subst(s) {
+        if let Some(current_scope) = current_scope.try_apply(s) {
             Some(Self::new(*id, *loc, current_scope, path.clone()))
         } else {
             None
         }
     }
 
-    fn subst_mut(&mut self, s: &HashMap<AnySym, AnySym>) {
-        self.current_scope.subst_mut(s);
+    fn apply_mut(&mut self, s: &mut HashMap<AnySym, AnySym>) {
+        self.current_scope.apply_mut(s);
     }
 }
 
@@ -327,11 +325,8 @@ impl ElabFunctorAppl {
     }
 }
 
-impl Substitute for ElabFunctorAppl {
-    fn try_subst(&self, s: &HashMap<AnySym, AnySym>) -> Option<Self>
-    where
-        Self: Sized,
-    {
+impl Substitutable<Substitution> for ElabFunctorAppl {
+    fn try_apply(&self, s: &mut HashMap<AnySym, AnySym>) -> Option<Self> {
         let Self {
             id,
             loc,
@@ -340,21 +335,18 @@ impl Substitute for ElabFunctorAppl {
             args,
         } = self;
 
-        let path_opt = path.as_ref().map(|p| p.try_subst(s).map(Box::new));
-        let args_opt = args.try_subst(s);
+        let path_opt = path.as_ref().map(|p| p.try_apply(s).map(Box::new));
+        let args_opt = args.try_apply(s);
 
-        merge2(path_opt, || path.clone(), args_opt, || args.clone())
+        merge(path_opt, || path.clone(), args_opt, || args.clone())
             .map(|(path, args)| Self::new(*id, *loc, path, *functor, args))
     }
 
-    fn subst_mut(&mut self, s: &HashMap<AnySym, AnySym>)
-    where
-        Self: Sized,
-    {
+    fn apply_mut(&mut self, s: &mut HashMap<AnySym, AnySym>) {
         if let Some(ref mut path) = self.path {
-            path.subst_mut(s);
+            path.apply_mut(s);
         }
-        self.args.subst_mut(s);
+        self.args.apply_mut(s);
     }
 }
 
@@ -405,20 +397,20 @@ impl From<ElabPath> for ElabExpr {
     }
 }
 
-impl Substitute for ElabExpr {
-    fn try_subst(&self, s: &HashMap<AnySym, AnySym>) -> Option<Self> {
+impl Substitutable<Substitution> for ElabExpr {
+    fn try_apply(&self, s: &mut HashMap<AnySym, AnySym>) -> Option<Self> {
         match self {
-            Self::FunctorAppl(job) => job.try_subst(s).map(Self::FunctorAppl),
-            Self::Path(job) => job.try_subst(s).map(Self::Path),
-            Self::Done(sym) => sym.try_subst(s).map(Self::Done),
+            Self::FunctorAppl(job) => job.try_apply(s).map(Self::FunctorAppl),
+            Self::Path(job) => job.try_apply(s).map(Self::Path),
+            Self::Done(sym) => sym.try_apply(s).map(Self::Done),
         }
     }
 
-    fn subst_mut(&mut self, s: &HashMap<AnySym, AnySym>) {
+    fn apply_mut(&mut self, s: &mut HashMap<AnySym, AnySym>) {
         match self {
-            Self::FunctorAppl(job) => job.subst_mut(s),
-            Self::Path(job) => job.subst_mut(s),
-            Self::Done(sym) => sym.subst_mut(s),
+            Self::FunctorAppl(job) => job.apply_mut(s),
+            Self::Path(job) => job.apply_mut(s),
+            Self::Done(sym) => sym.apply_mut(s),
         }
     }
 }

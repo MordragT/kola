@@ -4,6 +4,7 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
+kola-subst.workspace = true
 kola-utils.workspace = true
 kola-print.workspace = true
 kola-macros.workspace = true

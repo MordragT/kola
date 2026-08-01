@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 
 use kola_span::{Diagnostic, Loc, Report};
+use kola_subst::Substitutable;
 use kola_tree::{
     col::GetOpt,
     id::Id,
@@ -12,7 +13,7 @@ use crate::{
     env::ModuleMap,
     name::Binding,
     phase::ResolvedModule,
-    symbol::{AnySym, ModuleGraph, ModuleSym, Substitute},
+    symbol::{AnySym, ModuleGraph, ModuleSym, Substitution},
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -43,17 +44,17 @@ impl ModuleLookup {
     }
 }
 
-impl Substitute for ModuleLookup {
-    fn try_subst(&self, s: &HashMap<AnySym, AnySym>) -> Option<Self> {
-        if let Some(source) = self.source.try_subst(s) {
+impl Substitutable<Substitution> for ModuleLookup {
+    fn try_apply(&self, s: &mut HashMap<AnySym, AnySym>) -> Option<Self> {
+        if let Some(source) = self.source.try_apply(s) {
             Some(Self::new(self.path.clone(), self.id, source, self.loc))
         } else {
             None
         }
     }
 
-    fn subst_mut(&mut self, s: &HashMap<AnySym, AnySym>) {
-        self.source.subst_mut(s);
+    fn apply_mut(&mut self, s: &mut HashMap<AnySym, AnySym>) {
+        self.source.apply_mut(s);
     }
 }
 

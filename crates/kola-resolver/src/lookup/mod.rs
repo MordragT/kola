@@ -3,6 +3,7 @@ mod module_ty;
 mod ty;
 mod value;
 
+use kola_subst::{Substitutable, merge6};
 use std::collections::HashMap;
 
 pub use module::{ModuleLookup, lookup_modules};
@@ -10,7 +11,7 @@ pub use module_ty::{ModuleTypeAnnotLookup, ModuleTypeLookup, lookup_module_types
 pub use ty::{TypeAnnotLookup, TypeLookup, lookup_types};
 pub use value::{ValueLookup, lookup_values};
 
-use crate::symbol::{AnySym, Substitute, merge6};
+use crate::symbol::{AnySym, Substitution};
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct Lookups {
@@ -99,8 +100,8 @@ impl Lookups {
     }
 }
 
-impl Substitute for Lookups {
-    fn try_subst(&self, s: &HashMap<AnySym, AnySym>) -> Option<Self> {
+impl Substitutable<Substitution> for Lookups {
+    fn try_apply(&self, s: &mut HashMap<AnySym, AnySym>) -> Option<Self> {
         let Self {
             module_types,
             module_type_annots,
@@ -110,12 +111,12 @@ impl Substitute for Lookups {
             values,
         } = self;
 
-        let module_types_opt = module_types.try_subst(s);
-        let module_type_annots_opt = module_type_annots.try_subst(s);
-        let modules_opt = modules.try_subst(s);
-        let types_opt = types.try_subst(s);
-        let type_annots_opt = type_annots.try_subst(s);
-        let values_opt = values.try_subst(s);
+        let module_types_opt = module_types.try_apply(s);
+        let module_type_annots_opt = module_type_annots.try_apply(s);
+        let modules_opt = modules.try_apply(s);
+        let types_opt = types.try_apply(s);
+        let type_annots_opt = type_annots.try_apply(s);
+        let values_opt = values.try_apply(s);
 
         merge6(
             module_types_opt,
@@ -143,12 +144,12 @@ impl Substitute for Lookups {
         )
     }
 
-    fn subst_mut(&mut self, s: &HashMap<AnySym, AnySym>) {
-        self.module_types.subst_mut(s);
-        self.module_type_annots.subst_mut(s);
-        self.modules.subst_mut(s);
-        self.types.subst_mut(s);
-        self.type_annots.subst_mut(s);
-        self.values.subst_mut(s);
+    fn apply_mut(&mut self, s: &mut HashMap<AnySym, AnySym>) {
+        self.module_types.apply_mut(s);
+        self.module_type_annots.apply_mut(s);
+        self.modules.apply_mut(s);
+        self.types.apply_mut(s);
+        self.type_annots.apply_mut(s);
+        self.values.apply_mut(s);
     }
 }

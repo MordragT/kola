@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 use indexmap::IndexMap;
 use kola_span::{Diagnostic, Issue, Loc, Report};
+use kola_subst::{Substitutable, merge};
 use kola_tree::{
     col::GetOpt,
     id::Id,
@@ -12,9 +13,7 @@ use log::debug;
 use crate::{
     env::ModuleMap,
     phase::ResolvedModuleType,
-    symbol::{
-        AnySym, ModuleSym, ModuleTypeGraph, ModuleTypeOrders, ModuleTypeSym, Substitute, merge2,
-    },
+    symbol::{AnySym, ModuleSym, ModuleTypeGraph, ModuleTypeOrders, ModuleTypeSym, Substitution},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -49,18 +48,18 @@ impl ModuleTypeLookup {
     }
 }
 
-impl Substitute for ModuleTypeLookup {
-    fn try_subst(&self, s: &HashMap<AnySym, AnySym>) -> Option<Self> {
-        let source_opt = self.source.try_subst(s);
-        let module_opt = self.module.try_subst(s);
+impl Substitutable<Substitution> for ModuleTypeLookup {
+    fn try_apply(&self, s: &mut HashMap<AnySym, AnySym>) -> Option<Self> {
+        let source_opt = self.source.try_apply(s);
+        let module_opt = self.module.try_apply(s);
 
-        merge2(source_opt, || self.source, module_opt, || self.module)
+        merge(source_opt, || self.source, module_opt, || self.module)
             .map(|(source, module)| Self::new(self.name, self.id, source, self.loc, module))
     }
 
-    fn subst_mut(&mut self, s: &HashMap<AnySym, AnySym>) {
-        self.source.subst_mut(s);
-        self.module.subst_mut(s);
+    fn apply_mut(&mut self, s: &mut HashMap<AnySym, AnySym>) {
+        self.source.apply_mut(s);
+        self.module.apply_mut(s);
     }
 }
 
@@ -92,17 +91,17 @@ impl ModuleTypeAnnotLookup {
     }
 }
 
-impl Substitute for ModuleTypeAnnotLookup {
-    fn try_subst(&self, _s: &HashMap<AnySym, AnySym>) -> Option<Self> {
-        if let Some(module) = self.module.try_subst(_s) {
+impl Substitutable<Substitution> for ModuleTypeAnnotLookup {
+    fn try_apply(&self, s: &mut HashMap<AnySym, AnySym>) -> Option<Self> {
+        if let Some(module) = self.module.try_apply(s) {
             Some(Self::new(self.name, self.id, self.loc, module))
         } else {
             None
         }
     }
 
-    fn subst_mut(&mut self, s: &HashMap<AnySym, AnySym>) {
-        self.module.subst_mut(s);
+    fn apply_mut(&mut self, s: &mut HashMap<AnySym, AnySym>) {
+        self.module.apply_mut(s);
     }
 }
 

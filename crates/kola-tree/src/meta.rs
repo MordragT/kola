@@ -6,6 +6,8 @@ use std::{
     slice, vec,
 };
 
+use kola_subst::Substitutable;
+
 use crate::{
     col::{Col, Get, GetOpt},
     id::{Id, IdIter},
@@ -172,6 +174,29 @@ impl<T, M> Extend<(Id<T>, M)> for MetaVec<T, M> {
     }
 }
 
+impl<S, T, M> Substitutable<S> for MetaVec<T, M>
+where
+    M: Substitutable<S> + Clone,
+{
+    fn try_apply(&self, s: &mut S) -> Option<Self> {
+        let mut result: Option<Self> = None;
+
+        for (i, el) in self.iter().enumerate() {
+            if let Some(el) = el.try_apply(s) {
+                result.get_or_insert_with(|| self.clone()).as_mut_slice()[i] = el;
+            }
+        }
+
+        result
+    }
+
+    fn apply_mut(&mut self, s: &mut S) {
+        for el in self.iter_mut() {
+            el.apply_mut(s);
+        }
+    }
+}
+
 /// A simple `HashMap` indexed by `Id<T>`.
 /// Used for sparsely populated metadata associated with nodes of type `T`.
 #[derive(Debug)]
@@ -255,5 +280,28 @@ impl<T, M> GetOpt<T> for MetaMap<T, M> {
 
     fn set(&mut self, id: Id<T>, value: M) -> Option<M> {
         self.0.insert(id, value)
+    }
+}
+
+impl<S, T, M> Substitutable<S> for MetaMap<T, M>
+where
+    M: Substitutable<S> + Clone,
+{
+    fn try_apply(&self, s: &mut S) -> Option<Self> {
+        let mut result: Option<Self> = None;
+
+        for (key, value) in self.iter() {
+            if let Some(value) = value.try_apply(s) {
+                result.get_or_insert_with(|| self.clone()).set(*key, value);
+            }
+        }
+
+        result
+    }
+
+    fn apply_mut(&mut self, s: &mut S) {
+        for (_id, value) in self.iter_mut() {
+            value.apply_mut(s);
+        }
     }
 }

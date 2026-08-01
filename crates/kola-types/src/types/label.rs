@@ -1,6 +1,7 @@
 use std::fmt;
 
 use derive_more::{Display, From};
+use kola_subst::Substitutable;
 use kola_utils::{
     display::DisplayWith,
     interner::{StrInterner, StrKey},
@@ -10,7 +11,7 @@ use serde::{Deserialize, Serialize};
 use crate::{
     class::{CheckClass, TypeClass, TypeClassEnv, TypeClassError},
     kind::{CheckKind, Kind},
-    substitute::{Substitutable, Substitution},
+    subst::Substitution,
     types::TypeVar,
 };
 
@@ -31,7 +32,7 @@ impl DisplayWith<StrInterner> for Label {
     }
 }
 
-impl Substitutable for Label {
+impl Substitutable<Substitution> for Label {
     fn try_apply(&self, _s: &mut Substitution) -> Option<Self> {
         None
     }
@@ -92,7 +93,7 @@ impl CheckClass for LabelOrVar {
 
 impl Typed for LabelOrVar {}
 
-impl Substitutable for LabelOrVar {
+impl Substitutable<Substitution> for LabelOrVar {
     fn try_apply(&self, s: &mut Substitution) -> Option<Self> {
         if let Self::Var(var) = self
             && let Some(mono) = var.try_apply(s)

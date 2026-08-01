@@ -40,15 +40,12 @@ use kola_builtins::BuiltinLexicon;
 use kola_print::prelude::*;
 use kola_resolver::{db::Db, print::ResolutionDecorator};
 use kola_span::{IntoDiagnostic, Report};
+use kola_subst::Substitutable;
 use kola_tree::{
     col::GetOpt,
     print::{Decorators, TreePrinter},
 };
-use kola_types::{
-    class::TypeClassEnv,
-    env::TypeEnv,
-    substitute::{Substitutable, Substitution},
-};
+use kola_types::{class::TypeClassEnv, env::TypeEnv, subst::Substitution};
 use kola_utils::{interner::StrInterner, interner_ext::InternerExt};
 use log::trace;
 

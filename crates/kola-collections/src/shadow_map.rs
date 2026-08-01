@@ -362,6 +362,26 @@ where
     }
 }
 
+impl<S, K, V> kola_subst::Substitutable<S> for ShadowMap<K, V>
+where
+    K: Ord + Clone + std::hash::Hash,
+    V: kola_subst::Substitutable<S> + Clone,
+{
+    fn try_apply(&self, s: &mut S) -> Option<Self> {
+        let mut result = None;
+
+        for (key, value) in self.iter() {
+            if let Some(next) = value.try_apply(s) {
+                result
+                    .get_or_insert_with(|| self.clone())
+                    .insert(key.clone(), next);
+            }
+        }
+
+        result
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

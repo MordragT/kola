@@ -2,6 +2,7 @@ use std::collections::HashMap;
 
 use indexmap::IndexMap;
 use kola_span::{Diagnostic, Issue, Loc, Report};
+use kola_subst::{Substitutable, merge};
 use kola_tree::{
     col::GetOpt,
     id::Id,
@@ -12,7 +13,7 @@ use log::debug;
 use crate::{
     env::ModuleMap,
     phase::ResolvedValue,
-    symbol::{AnySym, ModuleSym, Substitute, ValueGraph, ValueOrders, ValueSym, merge2},
+    symbol::{AnySym, ModuleSym, Substitution, ValueGraph, ValueOrders, ValueSym},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
@@ -47,18 +48,18 @@ impl ValueLookup {
     }
 }
 
-impl Substitute for ValueLookup {
-    fn try_subst(&self, s: &HashMap<AnySym, AnySym>) -> Option<Self> {
-        let source_opt = self.source.try_subst(s);
-        let module_opt = self.module.try_subst(s);
+impl Substitutable<Substitution> for ValueLookup {
+    fn try_apply(&self, s: &mut HashMap<AnySym, AnySym>) -> Option<Self> {
+        let source_opt = self.source.try_apply(s);
+        let module_opt = self.module.try_apply(s);
 
-        merge2(source_opt, || self.source, module_opt, || self.module)
+        merge(source_opt, || self.source, module_opt, || self.module)
             .map(|(source, module)| Self::new(self.name, self.id, source, self.loc, module))
     }
 
-    fn subst_mut(&mut self, s: &HashMap<AnySym, AnySym>) {
-        self.source.subst_mut(s);
-        self.module.subst_mut(s);
+    fn apply_mut(&mut self, s: &mut HashMap<AnySym, AnySym>) {
+        self.source.apply_mut(s);
+        self.module.apply_mut(s);
     }
 }
 

@@ -385,3 +385,27 @@ impl<K, V> Extend<(K, V)> for StackMap<K, V> {
         self.0.extend(iter);
     }
 }
+
+impl<S, K, V> kola_subst::Substitutable<S> for StackMap<K, V>
+where
+    K: Eq + Clone + std::hash::Hash,
+    V: kola_subst::Substitutable<S> + Clone,
+{
+    fn try_apply(&self, s: &mut S) -> Option<Self> {
+        let mut result = None;
+
+        for (i, (_key, value)) in self.iter().enumerate() {
+            if let Some(next) = value.try_apply(s) {
+                result.get_or_insert_with(|| self.clone()).0[i].1 = next;
+            }
+        }
+
+        result
+    }
+
+    fn apply_mut(&mut self, s: &mut S) {
+        for (_, value) in self.iter_mut() {
+            value.apply_mut(s);
+        }
+    }
+}

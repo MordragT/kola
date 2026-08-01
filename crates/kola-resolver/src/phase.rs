@@ -1,12 +1,15 @@
 use std::{collections::HashMap, fmt};
 
 use kola_builtins::{BuiltinId, BuiltinType};
+use kola_subst::Substitutable;
 use kola_tree::prelude::*;
 use kola_utils::as_variant;
 
 use pastey::paste;
 
-use crate::symbol::{AnySym, FunctorSym, ModuleSym, ModuleTypeSym, Substitute, TypeSym, ValueSym};
+use crate::symbol::{
+    AnySym, FunctorSym, ModuleSym, ModuleTypeSym, Substitution, TypeSym, ValueSym,
+};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum ResolvedValue {
@@ -33,13 +36,10 @@ impl fmt::Display for ResolvedValue {
     }
 }
 
-impl Substitute for ResolvedValue {
-    fn try_subst(&self, s: &HashMap<AnySym, AnySym>) -> Option<Self>
-    where
-        Self: Sized,
-    {
+impl Substitutable<Substitution> for ResolvedValue {
+    fn try_apply(&self, s: &mut HashMap<AnySym, AnySym>) -> Option<Self> {
         if let Self::Reference(sym) = self
-            && let Some(to) = sym.try_subst(s)
+            && let Some(to) = sym.try_apply(s)
         {
             Some(Self::Reference(to))
         } else {
@@ -73,13 +73,10 @@ impl fmt::Display for ResolvedType {
     }
 }
 
-impl Substitute for ResolvedType {
-    fn try_subst(&self, s: &HashMap<AnySym, AnySym>) -> Option<Self>
-    where
-        Self: Sized,
-    {
+impl Substitutable<Substitution> for ResolvedType {
+    fn try_apply(&self, s: &mut HashMap<AnySym, AnySym>) -> Option<Self> {
         if let Self::Reference(sym) = self
-            && let Some(to) = sym.try_subst(s)
+            && let Some(to) = sym.try_apply(s)
         {
             Some(Self::Reference(to))
         } else {
@@ -91,12 +88,9 @@ impl Substitute for ResolvedType {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ResolvedModule(pub ModuleSym);
 
-impl Substitute for ResolvedModule {
-    fn try_subst(&self, s: &HashMap<AnySym, AnySym>) -> Option<Self>
-    where
-        Self: Sized,
-    {
-        self.0.try_subst(s).map(Self)
+impl Substitutable<Substitution> for ResolvedModule {
+    fn try_apply(&self, s: &mut HashMap<AnySym, AnySym>) -> Option<Self> {
+        self.0.try_apply(s).map(Self)
     }
 }
 
@@ -109,12 +103,9 @@ impl fmt::Display for ResolvedModule {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ResolvedModuleType(pub ModuleTypeSym);
 
-impl Substitute for ResolvedModuleType {
-    fn try_subst(&self, s: &HashMap<AnySym, AnySym>) -> Option<Self>
-    where
-        Self: Sized,
-    {
-        self.0.try_subst(s).map(Self)
+impl Substitutable<Substitution> for ResolvedModuleType {
+    fn try_apply(&self, s: &mut HashMap<AnySym, AnySym>) -> Option<Self> {
+        self.0.try_apply(s).map(Self)
     }
 }
 
@@ -176,12 +167,12 @@ macro_rules! define_node_map {
           }
         )*
 
-        impl Substitute for NodeMap {
-            fn try_subst(&self, s: &HashMap<AnySym, AnySym>) -> Option<Self> {
+        impl Substitutable<Substitution> for NodeMap {
+            fn try_apply(&self, s: &mut HashMap<AnySym, AnySym>) -> Option<Self> {
                 let mut changed = false;
 
                 $(
-                    let $field = match self.$field.try_subst(s) {
+                    let $field = match self.$field.try_apply(s) {
                         Some(x) => {
                             changed = true;
                             x

@@ -1,22 +1,16 @@
 use derive_more::From;
 use enum_as_inner::EnumAsInner;
 use indexmap::IndexMap;
-use kola_collections::HashMap;
 use kola_span::SourceId;
-use kola_tree::{
-    col::GetOpt,
-    meta::{MetaMap, MetaVec},
-    node::{
-        FunctorNamespace, ModuleNamespace, ModuleTypeNamespace, NamespaceKind, TypeNamespace,
-        ValueNamespace,
-    },
+use kola_subst::Substitutable;
+use kola_tree::node::{
+    FunctorNamespace, ModuleNamespace, ModuleTypeNamespace, NamespaceKind, TypeNamespace,
+    ValueNamespace,
 };
 use kola_utils::dependency::DependencyGraph;
 use std::{
-    borrow::Cow,
-    collections::VecDeque,
+    collections::HashMap,
     fmt,
-    hash::Hash,
     marker::PhantomData,
     num::NonZeroU32,
     sync::atomic::{AtomicU32, Ordering},
@@ -231,182 +225,10 @@ impl fmt::Display for AnySym {
     }
 }
 
-pub fn merge2<A, B, DA, DB>(
-    a: Option<A>,
-    default_a: DA,
-    b: Option<B>,
-    default_b: DB,
-) -> Option<(A, B)>
-where
-    DA: FnOnce() -> A,
-    DB: FnOnce() -> B,
-{
-    match (a, b) {
-        (Some(a), Some(b)) => Some((a, b)),
-        (Some(a), None) => Some((a, default_b())),
-        (None, Some(b)) => Some((default_a(), b)),
-        (None, None) => None,
-    }
-}
+pub type Substitution = HashMap<AnySym, AnySym>;
 
-pub fn merge3<A, B, C, DA, DB, DC>(
-    a: Option<A>,
-    default_a: DA,
-    b: Option<B>,
-    default_b: DB,
-    c: Option<C>,
-    default_c: DC,
-) -> Option<(A, B, C)>
-where
-    DA: Fn() -> A,
-    DB: Fn() -> B,
-    DC: Fn() -> C,
-{
-    merge2(a, &default_a, b, &default_b).and_then(|(a, b)| {
-        merge2(Some((a, b)), || (default_a(), default_b()), c, default_c)
-            .map(|((a, b), c)| (a, b, c))
-    })
-}
-
-pub fn merge4<A, B, C, D, DA, DB, DC, DD>(
-    a: Option<A>,
-    default_a: DA,
-    b: Option<B>,
-    default_b: DB,
-    c: Option<C>,
-    default_c: DC,
-    d: Option<D>,
-    default_d: DD,
-) -> Option<(A, B, C, D)>
-where
-    DA: Fn() -> A,
-    DB: Fn() -> B,
-    DC: Fn() -> C,
-    DD: Fn() -> D,
-{
-    merge3(a, &default_a, b, &default_b, c, &default_c).and_then(|(a, b, c)| {
-        merge2(
-            Some((a, b, c)),
-            || (default_a(), default_b(), default_c()),
-            d,
-            default_d,
-        )
-        .map(|((a, b, c), d)| (a, b, c, d))
-    })
-}
-
-pub fn merge5<A, B, C, D, E, DA, DB, DC, DD, DE>(
-    a: Option<A>,
-    default_a: DA,
-    b: Option<B>,
-    default_b: DB,
-    c: Option<C>,
-    default_c: DC,
-    d: Option<D>,
-    default_d: DD,
-    e: Option<E>,
-    default_e: DE,
-) -> Option<(A, B, C, D, E)>
-where
-    DA: Fn() -> A,
-    DB: Fn() -> B,
-    DC: Fn() -> C,
-    DD: Fn() -> D,
-    DE: Fn() -> E,
-{
-    merge4(a, &default_a, b, &default_b, c, &default_c, d, &default_d).and_then(|(a, b, c, d)| {
-        merge2(
-            Some((a, b, c, d)),
-            || (default_a(), default_b(), default_c(), default_d()),
-            e,
-            default_e,
-        )
-        .map(|((a, b, c, d), e)| (a, b, c, d, e))
-    })
-}
-
-pub fn merge6<A, B, C, D, E, F, DA, DB, DC, DD, DE, DF>(
-    a: Option<A>,
-    default_a: DA,
-    b: Option<B>,
-    default_b: DB,
-    c: Option<C>,
-    default_c: DC,
-    d: Option<D>,
-    default_d: DD,
-    e: Option<E>,
-    default_e: DE,
-    f: Option<F>,
-    default_f: DF,
-) -> Option<(A, B, C, D, E, F)>
-where
-    DA: Fn() -> A,
-    DB: Fn() -> B,
-    DC: Fn() -> C,
-    DD: Fn() -> D,
-    DE: Fn() -> E,
-    DF: Fn() -> F,
-{
-    merge5(
-        a, &default_a, b, &default_b, c, &default_c, d, &default_d, e, &default_e,
-    )
-    .and_then(|(a, b, c, d, e)| {
-        merge2(
-            Some((a, b, c, d, e)),
-            || {
-                (
-                    default_a(),
-                    default_b(),
-                    default_c(),
-                    default_d(),
-                    default_e(),
-                )
-            },
-            f,
-            default_f,
-        )
-        .map(|((a, b, c, d, e), f)| (a, b, c, d, e, f))
-    })
-}
-
-pub trait Substitute {
-    fn try_subst(&self, s: &HashMap<AnySym, AnySym>) -> Option<Self>
-    where
-        Self: Sized;
-
-    #[inline]
-    fn subst_cow(&self, s: &HashMap<AnySym, AnySym>) -> Cow<'_, Self>
-    where
-        Self: Clone,
-    {
-        match self.try_subst(s) {
-            Some(new_self) => Cow::Owned(new_self),
-            None => Cow::Borrowed(self),
-        }
-    }
-
-    #[inline]
-    fn subst_mut(&mut self, s: &HashMap<AnySym, AnySym>)
-    where
-        Self: Sized,
-    {
-        if let Some(new_self) = self.try_subst(s) {
-            *self = new_self;
-        }
-    }
-
-    #[inline]
-    fn subst(mut self, s: &HashMap<AnySym, AnySym>) -> Self
-    where
-        Self: Sized,
-    {
-        self.subst_mut(s);
-        self
-    }
-}
-
-impl Substitute for FunctorSym {
-    fn try_subst(&self, s: &HashMap<AnySym, AnySym>) -> Option<Self> {
+impl Substitutable<Substitution> for FunctorSym {
+    fn try_apply(&self, s: &mut HashMap<AnySym, AnySym>) -> Option<Self> {
         let from = AnySym::Functor(*self);
         if let Some(to) = s.get(&from) {
             let to = to.into_functor().unwrap();
@@ -417,8 +239,8 @@ impl Substitute for FunctorSym {
     }
 }
 
-impl Substitute for ModuleTypeSym {
-    fn try_subst(&self, s: &HashMap<AnySym, AnySym>) -> Option<Self> {
+impl Substitutable<Substitution> for ModuleTypeSym {
+    fn try_apply(&self, s: &mut HashMap<AnySym, AnySym>) -> Option<Self> {
         let from = AnySym::ModuleType(*self);
         if let Some(to) = s.get(&from) {
             let to = to.into_module_type().unwrap();
@@ -429,8 +251,8 @@ impl Substitute for ModuleTypeSym {
     }
 }
 
-impl Substitute for ModuleSym {
-    fn try_subst(&self, s: &HashMap<AnySym, AnySym>) -> Option<Self> {
+impl Substitutable<Substitution> for ModuleSym {
+    fn try_apply(&self, s: &mut HashMap<AnySym, AnySym>) -> Option<Self> {
         let from = AnySym::Module(*self);
         if let Some(to) = s.get(&from) {
             let to = to.into_module().unwrap();
@@ -441,8 +263,8 @@ impl Substitute for ModuleSym {
     }
 }
 
-impl Substitute for TypeSym {
-    fn try_subst(&self, s: &HashMap<AnySym, AnySym>) -> Option<Self> {
+impl Substitutable<Substitution> for TypeSym {
+    fn try_apply(&self, s: &mut HashMap<AnySym, AnySym>) -> Option<Self> {
         let from = AnySym::Type(*self);
         if let Some(to) = s.get(&from) {
             let to = to.into_type().unwrap();
@@ -453,8 +275,8 @@ impl Substitute for TypeSym {
     }
 }
 
-impl Substitute for ValueSym {
-    fn try_subst(&self, s: &HashMap<AnySym, AnySym>) -> Option<Self> {
+impl Substitutable<Substitution> for ValueSym {
+    fn try_apply(&self, s: &mut HashMap<AnySym, AnySym>) -> Option<Self> {
         let from = AnySym::Value(*self);
         if let Some(to) = s.get(&from) {
             let to = to.into_value().unwrap();
@@ -465,161 +287,8 @@ impl Substitute for ValueSym {
     }
 }
 
-impl Substitute for AnySym {
-    fn try_subst(&self, s: &HashMap<AnySym, AnySym>) -> Option<Self> {
+impl Substitutable<Substitution> for AnySym {
+    fn try_apply(&self, s: &mut HashMap<AnySym, AnySym>) -> Option<Self> {
         s.get(self).copied()
-    }
-}
-impl Substitute for ! {
-    fn try_subst(&self, _s: &HashMap<AnySym, AnySym>) -> Option<Self> {
-        None
-    }
-}
-
-impl<T> Substitute for Option<T>
-where
-    T: Substitute,
-{
-    fn try_subst(&self, s: &HashMap<AnySym, AnySym>) -> Option<Self> {
-        match self {
-            Some(value) => value.try_subst(s).map(Some),
-            None => Some(None),
-        }
-    }
-
-    fn subst_mut(&mut self, s: &HashMap<AnySym, AnySym>) {
-        if let Some(value) = self {
-            value.subst_mut(s);
-        }
-    }
-}
-
-impl<T> Substitute for Vec<T>
-where
-    T: Substitute + Clone,
-{
-    fn try_subst(&self, s: &HashMap<AnySym, AnySym>) -> Option<Self>
-    where
-        Self: Sized,
-    {
-        let mut result = None;
-
-        for (i, el) in self.iter().enumerate() {
-            if let Some(el) = el.try_subst(s) {
-                result.get_or_insert_with(|| self.clone())[i] = el;
-            }
-        }
-
-        result
-    }
-
-    fn subst_mut(&mut self, s: &HashMap<AnySym, AnySym>) {
-        for el in self.iter_mut() {
-            el.subst_mut(s);
-        }
-    }
-}
-
-impl<T> Substitute for VecDeque<T>
-where
-    T: Substitute + Clone,
-{
-    fn try_subst(&self, s: &HashMap<AnySym, AnySym>) -> Option<Self>
-    where
-        Self: Sized,
-    {
-        let mut result = None;
-
-        for (i, el) in self.iter().enumerate() {
-            if let Some(el) = el.try_subst(s) {
-                result.get_or_insert_with(|| self.clone())[i] = el;
-            }
-        }
-
-        result
-    }
-
-    fn subst_mut(&mut self, s: &HashMap<AnySym, AnySym>) {
-        for el in self.iter_mut() {
-            el.subst_mut(s);
-        }
-    }
-}
-
-impl<K, V> Substitute for HashMap<K, V>
-where
-    K: Eq + Hash + Clone,
-    V: Substitute + Clone,
-{
-    fn try_subst(&self, s: &HashMap<AnySym, AnySym>) -> Option<Self> {
-        let mut result = None;
-
-        for (key, value) in self {
-            if let Some(value) = value.try_subst(s) {
-                result
-                    .get_or_insert_with(|| self.clone())
-                    .insert(key.clone(), value);
-            }
-        }
-
-        result
-    }
-
-    fn subst_mut(&mut self, s: &HashMap<AnySym, AnySym>) {
-        for value in self.values_mut() {
-            value.subst_mut(s);
-        }
-    }
-}
-
-impl<T, M> Substitute for MetaVec<T, M>
-where
-    M: Substitute + Clone,
-{
-    fn try_subst(&self, s: &HashMap<AnySym, AnySym>) -> Option<Self>
-    where
-        Self: Sized,
-    {
-        let mut result: Option<Self> = None;
-
-        for (i, el) in self.iter().enumerate() {
-            if let Some(el) = el.try_subst(s) {
-                result.get_or_insert_with(|| self.clone()).as_mut_slice()[i] = el;
-            }
-        }
-
-        result
-    }
-
-    fn subst_mut(&mut self, s: &HashMap<AnySym, AnySym>) {
-        for el in self.iter_mut() {
-            el.subst_mut(s);
-        }
-    }
-}
-
-impl<T, M> Substitute for MetaMap<T, M>
-where
-    M: Substitute + Clone,
-{
-    fn try_subst(&self, s: &HashMap<AnySym, AnySym>) -> Option<Self>
-    where
-        Self: Sized,
-    {
-        let mut result: Option<Self> = None;
-
-        for (key, value) in self.iter() {
-            if let Some(value) = value.try_subst(s) {
-                result.get_or_insert_with(|| self.clone()).set(*key, value);
-            }
-        }
-
-        result
-    }
-
-    fn subst_mut(&mut self, s: &HashMap<AnySym, AnySym>) {
-        for (_id, value) in self.iter_mut() {
-            value.subst_mut(s);
-        }
     }
 }

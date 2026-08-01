@@ -24,18 +24,6 @@ pub trait OrNot<'a> {
     fn or_not(self, arena: &'a Bump) -> Notation<'a>;
 }
 
-// impl<'a, T> OrNot<'a> for Option<&'a T>
-// where
-//     T: Printable,
-// {
-//     fn or_not(self, arena: &'a Bump) -> Notation<'a> {
-//         match self {
-//             Some(t) => t.notate(arena),
-//             None => arena.empty(),
-//         }
-//     }
-// }
-
 impl<'a> OrNot<'a> for Option<Notation<'a>> {
     fn or_not(self, arena: &'a Bump) -> Notation<'a> {
         match self {
@@ -147,6 +135,3 @@ pub trait DisplayIn {
 }
 
 impl<T> DisplayIn for T where T: fmt::Display {}
-
-// intersperse == separated_by
-// padded

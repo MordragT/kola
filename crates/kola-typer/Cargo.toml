@@ -8,6 +8,7 @@ kola-builtins.workspace = true
 kola-collections.workspace = true
 kola-print.workspace = true
 kola-span.workspace = true
+kola-subst.workspace = true
 kola-tree.workspace = true
 kola-types.workspace = true
 kola-resolver.workspace = true

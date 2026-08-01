@@ -1,3 +1,4 @@
+use kola_subst::{Substitutable, merge};
 use serde::{Deserialize, Serialize};
 use std::fmt;
 
@@ -5,7 +6,7 @@ use super::{CompType, MonoType, Typed};
 use crate::{
     class::{CheckClass, TypeClass, TypeClassEnv, TypeClassError},
     kind::{CheckKind, Kind},
-    substitute::{Substitutable, Substitution, merge},
+    subst::Substitution,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -43,7 +44,7 @@ impl CheckClass for FuncType {
 
 impl Typed for FuncType {}
 
-impl Substitutable for FuncType {
+impl Substitutable<Substitution> for FuncType {
     fn try_apply(&self, s: &mut Substitution) -> Option<Self> {
         let input = self.input.try_apply(s);
         let output = self.output.try_apply(s);

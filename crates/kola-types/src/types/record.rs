@@ -1,11 +1,12 @@
 use std::fmt;
 
+use kola_subst::Substitutable;
 use serde::{Deserialize, Serialize};
 
 use crate::{
     class::{CheckClass, TypeClass, TypeClassEnv, TypeClassError},
     kind::{CheckKind, Kind},
-    substitute::{Substitutable, Substitution},
+    subst::Substitution,
 };
 
 use super::{MergeError, Row, Typed};
@@ -56,7 +57,7 @@ impl CheckClass for RecordType {
 
 impl Typed for RecordType {}
 
-impl Substitutable for RecordType {
+impl Substitutable<Substitution> for RecordType {
     fn try_apply(&self, s: &mut Substitution) -> Option<Self> {
         self.0.try_apply(s).map(Self)
     }

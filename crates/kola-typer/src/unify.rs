@@ -1,6 +1,7 @@
+use kola_subst::Substitutable;
 use kola_types::{
     kind::{CheckKind, Kind},
-    substitute::{Substitutable, Substitution},
+    subst::Substitution,
     types::*,
 };
 
