@@ -1,6 +1,6 @@
+use crate::impl_try_as;
 use derive_more::From;
 use kinded::Kinded;
-use kola_utils::impl_try_as;
 use std::{fmt, mem, num::NonZeroU32};
 
 mod atom;

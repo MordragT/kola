@@ -839,7 +839,7 @@ dependencies = [
  "env_logger",
  "kola-driver",
  "kola-print",
- "kola-utils",
+ "kola-span",
  "log",
 ]
 
@@ -847,7 +847,7 @@ dependencies = [
 name = "kola-builtins"
 version = "0.1.0"
 dependencies = [
- "kola-utils",
+ "kola-interner",
  "strum",
 ]
 
@@ -855,7 +855,20 @@ dependencies = [
 name = "kola-collections"
 version = "0.1.0"
 dependencies = [
+ "derive_more",
+ "graphwiz",
  "kola-subst",
+ "kola-utils",
+]
+
+[[package]]
+name = "kola-combinators"
+version = "0.1.0"
+dependencies = [
+ "camino",
+ "derive_more",
+ "kola-span",
+ "serde",
 ]
 
 [[package]]
@@ -864,6 +877,7 @@ version = "0.1.0"
 dependencies = [
  "camino",
  "kola-builtins",
+ "kola-interner",
  "kola-ir",
  "kola-lowerer",
  "kola-machine",
@@ -874,9 +888,19 @@ dependencies = [
  "kola-syntax",
  "kola-tree",
  "kola-typer",
- "kola-utils",
  "log",
  "owo-colors",
+]
+
+[[package]]
+name = "kola-interner"
+version = "0.1.0"
+dependencies = [
+ "camino",
+ "kola-utils",
+ "rustc-hash",
+ "serde",
+ "serde_json",
 ]
 
 [[package]]
@@ -886,6 +910,7 @@ dependencies = [
  "derive_more",
  "kinded",
  "kola-builtins",
+ "kola-interner",
  "kola-print",
  "kola-utils",
 ]
@@ -896,13 +921,13 @@ version = "0.1.0"
 dependencies = [
  "kola-builtins",
  "kola-collections",
+ "kola-interner",
  "kola-ir",
  "kola-machine",
  "kola-print",
  "kola-resolver",
  "kola-runtime",
  "kola-tree",
- "kola-utils",
  "log",
 ]
 
@@ -912,9 +937,9 @@ version = "0.1.0"
 dependencies = [
  "camino",
  "dashmap",
+ "kola-interner",
  "kola-span",
  "kola-syntax",
- "kola-utils",
  "tokio",
  "tower-lsp-server",
  "tracing-subscriber",
@@ -927,9 +952,9 @@ dependencies = [
  "camino",
  "derive_more",
  "kola-builtins",
+ "kola-interner",
  "kola-ir",
  "kola-runtime",
- "kola-utils",
 ]
 
 [[package]]
@@ -960,6 +985,7 @@ dependencies = [
  "indexmap",
  "kola-builtins",
  "kola-collections",
+ "kola-interner",
  "kola-print",
  "kola-span",
  "kola-subst",
@@ -978,6 +1004,7 @@ dependencies = [
  "derive_more",
  "enum-as-inner",
  "kola-builtins",
+ "kola-interner",
  "kola-ir",
  "kola-utils",
  "serde",
@@ -992,9 +1019,10 @@ dependencies = [
  "ariadne",
  "camino",
  "derive_more",
+ "kola-interner",
  "kola-utils",
- "log",
  "owo-colors",
+ "pathdiff",
 ]
 
 [[package]]
@@ -1011,10 +1039,11 @@ dependencies = [
  "camino",
  "derive_more",
  "indexmap",
+ "kola-combinators",
+ "kola-interner",
  "kola-print",
  "kola-span",
  "kola-tree",
- "kola-utils",
  "pastey",
  "serde",
  "thiserror",
@@ -1030,10 +1059,10 @@ dependencies = [
  "enum-as-inner",
  "indexmap",
  "kinded",
+ "kola-interner",
  "kola-print",
  "kola-subst",
  "kola-tree-macro",
- "kola-utils",
  "pastey",
  "serde",
 ]
@@ -1056,6 +1085,7 @@ dependencies = [
  "enumset",
  "kola-builtins",
  "kola-collections",
+ "kola-interner",
  "kola-print",
  "kola-resolver",
  "kola-span",
@@ -1078,6 +1108,7 @@ dependencies = [
  "enum-as-inner",
  "indexmap",
  "kola-collections",
+ "kola-interner",
  "kola-print",
  "kola-resolver",
  "kola-span",
@@ -1092,16 +1123,7 @@ dependencies = [
 name = "kola-utils"
 version = "0.1.0"
 dependencies = [
- "camino",
- "derive_more",
- "graphwiz",
- "kola-collections",
- "pathdiff",
- "rustc-hash",
  "serde",
- "serde_json",
- "thiserror",
- "typenum",
 ]
 
 [[package]]
@@ -1808,16 +1830,10 @@ dependencies = [
 ]
 
 [[package]]
-name = "typenum"
-version = "1.20.1"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b6f5e870be6c3b371b77fe0ee0bafb859fa4964b4404c27de1d380043c4dda20"
-
-[[package]]
 name = "unescaper"
-version = "0.1.10"
+version = "0.2.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7285e83a80ce76f5e7bce79fa41f68d78ba62d1003cf27bf748ab24413808cf4"
+checksum = "fb78bc2faba43e0b7f2521c78503ad6c6c05fce65b2c593ab8131c24880d8885"
 dependencies = [
  "thiserror",
 ]

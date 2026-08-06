@@ -1,5 +1,5 @@
 use indexmap::IndexMap;
-use kola_utils::interner::PathKey;
+use kola_interner::PathKey;
 
 use crate::{
     id::Id,

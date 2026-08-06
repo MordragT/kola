@@ -2,6 +2,7 @@ use std::io;
 
 use indexmap::IndexMap;
 
+use kola_interner::StrInterner;
 use kola_print::prelude::*;
 use kola_span::{Issue, Report, SourceManager};
 use kola_syntax::loc::LocMap;
@@ -9,7 +10,6 @@ use kola_tree::{
     print::{Decorators, TreePrinter},
     tree::TreeMap,
 };
-use kola_utils::interner::StrInterner;
 use log::{debug, trace};
 
 use crate::{

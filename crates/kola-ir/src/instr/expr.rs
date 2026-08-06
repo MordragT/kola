@@ -1,8 +1,9 @@
 use derive_more::{Display, From};
 use std::fmt;
 
+use crate::impl_try_as;
+use kola_interner::StrKey;
 use kola_print::prelude::*;
-use kola_utils::{impl_try_as, interner::StrKey};
 
 use super::{Atom, PatternMatcher, Symbol};
 use crate::{

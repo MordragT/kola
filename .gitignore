@@ -5,3 +5,4 @@ thesis/
 test/
 extension.wasm
 profile.json.gz
+.env

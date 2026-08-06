@@ -1,16 +1,14 @@
-#![feature(const_cmp)]
-#![feature(const_trait_impl)]
+use std::fmt;
 
-pub mod convert;
-pub mod dependency;
-pub mod display;
-pub mod errors;
-pub mod interner;
-pub mod interner_ext;
-pub mod io;
-pub mod scope;
-pub mod serde;
-pub mod visit;
+pub trait DisplayWith<T> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>, t: &T) -> fmt::Result;
+}
+
+pub trait SerializeWith<T> {
+    fn serialize<S>(&self, serializer: S, t: &T) -> Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer;
+}
 
 #[macro_export]
 macro_rules! as_variant {

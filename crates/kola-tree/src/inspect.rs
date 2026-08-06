@@ -1,4 +1,4 @@
-use kola_utils::interner::Interner;
+use kola_interner::Interner;
 use std::{fmt::Debug, hash::BuildHasher};
 
 use crate::{

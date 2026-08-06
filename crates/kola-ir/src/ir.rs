@@ -1,7 +1,5 @@
-use kola_utils::{
-    convert::{TryAsMut, TryAsRef},
-    interner::StrKey,
-};
+use crate::convert::{TryAsMut, TryAsRef};
+use kola_interner::StrKey;
 
 use crate::{
     id::Id,

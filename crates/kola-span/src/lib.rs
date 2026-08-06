@@ -1,6 +1,3 @@
-#![feature(const_trait_impl)]
-#![feature(array_try_from_fn)]
-
 //! Source positions and related helper functions.
 //!
 //! Important concepts in this module include:
@@ -8,20 +5,13 @@
 //! - the *span*, represented by [`Span`] and related types;
 //! - source code as represented by a [`Source`];
 
-mod collection;
+pub mod io;
+
 mod diag;
 mod loc;
 mod source;
 mod span;
 
-pub mod combinator;
-pub mod input;
-pub mod parser;
-pub mod pratt;
-pub mod primitive;
-pub mod skip;
-
-pub use collection::Collection;
 pub use diag::{Diagnostic, IntoDiagnostic, IntoIssue, Issue, Report, ReportCheckpoint, Severity};
 pub use loc::{Loc, Located};
 pub use source::{Source, SourceId, SourceManager};

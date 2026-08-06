@@ -11,6 +11,7 @@ kola-span.workspace = true
 kola-subst.workspace = true
 kola-tree.workspace = true
 kola-utils.workspace = true
+kola-interner.workspace = true
 serde.workspace = true
 derive_more.workspace = true
 indexmap.workspace = true

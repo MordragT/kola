@@ -1,6 +1,7 @@
 use std::fmt;
 
-use kola_utils::{display::DisplayWith, interner::StrInterner, serde::SerializeWith};
+use kola_interner::StrInterner;
+use kola_utils::{DisplayWith, SerializeWith};
 use serde::Serialize;
 
 use crate::{

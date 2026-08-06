@@ -1,13 +1,13 @@
 use derive_more::From;
 use enum_as_inner::EnumAsInner;
 use indexmap::IndexMap;
+use kola_collections::DependencyGraph;
 use kola_span::SourceId;
 use kola_subst::Substitutable;
 use kola_tree::node::{
     FunctorNamespace, ModuleNamespace, ModuleTypeNamespace, NamespaceKind, TypeNamespace,
     ValueNamespace,
 };
-use kola_utils::dependency::DependencyGraph;
 use std::{
     collections::HashMap,
     fmt,

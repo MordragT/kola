@@ -5,9 +5,9 @@ edition = "2024"
 
 [dependencies]
 kola-utils.workspace = true
+kola-interner.workspace = true
 camino.workspace = true
 derive_more.workspace = true
 owo-colors.workspace = true
-log.workspace = true
 ariadne = { version = "0.6", features = ["concolor"] }
-# ariadne = "0.6"
+pathdiff = { version = "0.2.3", features = ["camino"] }

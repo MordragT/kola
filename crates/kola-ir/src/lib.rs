@@ -24,6 +24,7 @@ https://matt.might.net/articles/a-normalization/
 */
 
 pub mod attrs;
+pub mod convert;
 pub mod id;
 pub mod instr;
 pub mod ir;

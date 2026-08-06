@@ -1,0 +1,10 @@
+[package]
+name = "kola-combinators"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+kola-span.workspace = true
+camino.workspace = true
+derive_more.workspace = true
+serde.workspace = true

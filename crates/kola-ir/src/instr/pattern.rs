@@ -1,5 +1,5 @@
+use kola_interner::StrKey;
 use kola_print::prelude::*;
-use kola_utils::interner::StrKey;
 
 use super::{Expr, Symbol};
 use crate::{

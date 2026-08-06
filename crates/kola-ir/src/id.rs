@@ -1,4 +1,4 @@
-use kola_utils::convert::TryAsRef;
+use crate::convert::TryAsRef;
 use std::{fmt, hash::Hash, marker::PhantomData, mem, num::NonZeroU32};
 
 use crate::{

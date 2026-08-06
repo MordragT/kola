@@ -7,5 +7,6 @@ edition = "2024"
 kola-builtins.workspace = true
 kola-print.workspace = true
 kola-utils.workspace = true
+kola-interner.workspace = true
 derive_more.workspace = true
 kinded.workspace = true

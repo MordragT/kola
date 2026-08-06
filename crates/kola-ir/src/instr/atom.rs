@@ -1,14 +1,11 @@
 use derive_more::From;
 use std::fmt;
 
+use crate::impl_try_as;
 use kola_builtins::{BuiltinId, BuiltinType};
+use kola_interner::{StrInterner, StrKey, ext::InternerExt};
 use kola_print::prelude::*;
-use kola_utils::{
-    display::DisplayWith,
-    impl_try_as,
-    interner::{StrInterner, StrKey},
-    interner_ext::InternerExt,
-};
+use kola_utils::DisplayWith;
 
 use super::{Expr, Symbol};
 use crate::{

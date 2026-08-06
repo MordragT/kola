@@ -1,4 +1,5 @@
 use derive_more::Display;
+use kola_collections::Errors;
 use kola_span::{Loc, Located};
 use kola_subst::Substitutable;
 use kola_types::{
@@ -6,7 +7,6 @@ use kola_types::{
     subst::Substitution,
     types::{MonoType, TypeVar},
 };
-use kola_utils::errors::Errors;
 use log::trace;
 
 use crate::{

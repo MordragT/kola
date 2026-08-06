@@ -19,7 +19,9 @@ kola-syntax = { path = "crates/kola-syntax" }
 kola-tree = { path = "crates/kola-tree" }
 kola-typer = { path = "crates/kola-typer" }
 kola-types = { path = "crates/kola-types" }
+kola-combinators = { path = "crates/kola-combinators" }
 kola-utils = { path = "crates/kola-utils" }
+kola-interner = { path = "crates/kola-interner" }
 
 camino = "1.2"
 indexmap = "2.14"
@@ -53,7 +55,7 @@ edition = "2024"
 [dependencies]
 kola-print.workspace = true
 kola-driver.workspace = true
-kola-utils.workspace = true
+kola-span.workspace = true
 
 camino.workspace = true
 log.workspace = true

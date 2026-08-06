@@ -1,11 +1,9 @@
 use std::fmt;
 
 use derive_more::{Display, From};
+use kola_interner::{StrInterner, StrKey};
 use kola_subst::Substitutable;
-use kola_utils::{
-    display::DisplayWith,
-    interner::{StrInterner, StrKey},
-};
+use kola_utils::DisplayWith;
 use serde::{Deserialize, Serialize};
 
 use crate::{

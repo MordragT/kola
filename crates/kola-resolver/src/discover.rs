@@ -2,13 +2,14 @@ use std::ops::ControlFlow;
 
 use indexmap::IndexMap;
 use kola_builtins::{BuiltinType, find_builtin_id};
+use kola_collections::scope::LinearScope;
+use kola_interner::StrInterner;
 use kola_span::{Loc, Report};
 use kola_syntax::prelude::*;
 use kola_tree::{
     node::{FunctorName, ModuleName, ModuleTypeName, TypeName, ValueName, Vis},
     prelude::*,
 };
-use kola_utils::{interner::StrInterner, scope::LinearScope};
 
 use crate::{
     def::{AnyDef, DefMap},

@@ -490,8 +490,8 @@ mod test {
     use std::sync::Arc;
 
     use camino::Utf8Path;
+    use kola_span::io::MockFileSystem;
     use kola_span::{Report, SourceManager, Span};
-    use kola_utils::io::MockFileSystem;
 
     use super::lex;
     use crate::token::{CommentT, LiteralT, Token, Tokens};

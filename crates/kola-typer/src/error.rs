@@ -1,16 +1,14 @@
 use std::fmt::Pointer;
 
-use kola_utils::{
-    display::DisplayWith,
-    errors::Errors,
-    interner::{StrInterner, StrKey},
-};
+use kola_collections::Errors;
 
+use kola_interner::{StrInterner, StrKey};
 use kola_types::{
     class::TypeClassError,
     kind::{Kind, KindError},
     types::{LabelOrVar, MergeError, MonoType, TypeVar},
 };
+use kola_utils::DisplayWith;
 
 pub type TypeErrors = Errors<TypeError>;
 

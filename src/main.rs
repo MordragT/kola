@@ -1,5 +1,5 @@
 use camino::Utf8PathBuf;
-use kola_utils::io::RealFileSystem;
+use kola_span::io::RealFileSystem;
 use std::io;
 
 use kola_driver::Driver;

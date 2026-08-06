@@ -1,6 +1,6 @@
 use std::{fmt, num::NonZeroU32};
 
-use kola_utils::{display::DisplayWith, serde::SerializeWith};
+use kola_utils::{DisplayWith, SerializeWith};
 use serde::ser::SerializeSeq;
 
 use crate::{heap::Heap, value::Value};

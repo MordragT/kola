@@ -1,11 +1,11 @@
 use std::sync::Arc;
 
+use kola_interner::StrInterner;
 use kola_span::{Report, Source};
 use kola_syntax::{
     lexer::{LexInput, tokenize},
     parser::{ParseInput, parse},
 };
-use kola_utils::interner::StrInterner;
 use tower_lsp_server::ls_types as ls;
 
 use crate::{server::Server, utils};

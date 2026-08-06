@@ -1,6 +1,7 @@
 use std::ops::ControlFlow;
 
 use kola_builtins::{BuiltinLexicon, BuiltinType};
+use kola_interner::StrInterner;
 use kola_resolver::{
     def::DefMap,
     env::ModuleMap,
@@ -18,7 +19,6 @@ use kola_types::{
     subst::Substitution,
     types::{CompType, Label, LabelOrVar, LabeledType, MonoType, PolyType, Row, TypeVar},
 };
-use kola_utils::interner::StrInterner;
 
 use crate::{
     builtins::builtin_type,
@@ -2112,9 +2112,9 @@ where
 #[cfg(test)]
 mod tests {
 
+    use kola_interner::StrInterner;
     use kola_tree::prelude::*;
     use kola_types::types::*;
-    use kola_utils::interner::StrInterner;
 
     use crate::{error::TypeError, test::run_typer};
 

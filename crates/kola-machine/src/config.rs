@@ -1,10 +1,10 @@
 use derive_more::From;
+use kola_interner::StrKey;
 use kola_ir::{
     id::Id,
     instr::{Atom, Expr, PatternMatcher},
 };
 use kola_runtime::{env::EnvIdx, value::Value};
-use kola_utils::interner::StrKey;
 
 use crate::cont::Cont;
 

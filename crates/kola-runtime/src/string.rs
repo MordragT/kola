@@ -4,11 +4,8 @@ use std::{
     ops::ControlFlow,
 };
 
-use kola_utils::{
-    display::DisplayWith,
-    interner::{StrInterner, StrKey},
-    serde::SerializeWith,
-};
+use kola_interner::{StrInterner, StrKey};
+use kola_utils::{DisplayWith, SerializeWith};
 
 pub const INLINE_CAPACITY: usize = 14;
 

@@ -1,8 +1,8 @@
 use std::borrow::Cow;
 
+use kola_interner::{StrInterner, StrKey};
 use kola_span::{Loc, Report, ReportCheckpoint};
 use kola_tree::prelude::*;
-use kola_utils::interner::{StrInterner, StrKey};
 
 use crate::{
     loc::LocVec,

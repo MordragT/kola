@@ -1,5 +1,5 @@
+use kola_interner::StrInterner;
 use kola_print::prelude::*;
-use kola_utils::interner::StrInterner;
 
 use crate::{
     attrs::IrAttrs,

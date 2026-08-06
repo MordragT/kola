@@ -1,4 +1,5 @@
-use kola_utils::{display::DisplayWith, interner::StrKey, serde::SerializeWith};
+use kola_interner::StrKey;
+use kola_utils::{DisplayWith, SerializeWith};
 use serde::ser::SerializeMap;
 use std::{
     fmt::{self, Debug},

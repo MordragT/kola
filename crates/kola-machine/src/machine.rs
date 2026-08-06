@@ -181,6 +181,7 @@ impl Machine {
 #[cfg(test)]
 mod tests {
     use kola_builtins::BuiltinLexicon;
+    use kola_interner::StrInterner;
     use kola_ir::{
         instr::{
             Atom, BinaryExpr, BinaryOp, CallExpr, Func, LetExpr, PatternFailure, PatternSuccess,
@@ -190,7 +191,6 @@ mod tests {
         ir::{Ir, IrBuilder},
     };
     use kola_runtime::{heap::Heap, value::Value};
-    use kola_utils::interner::StrInterner;
 
     use crate::machine::{Ctx, Machine};
 

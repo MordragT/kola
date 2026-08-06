@@ -452,7 +452,8 @@ impl<'a> Unifier<'a> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use kola_utils::interner::StrInterner;
+    use kola_interner::StrInterner;
+
     #[test]
     fn test_same_row_variable_different_extensions_should_fail() {
         let mut interner = StrInterner::default();

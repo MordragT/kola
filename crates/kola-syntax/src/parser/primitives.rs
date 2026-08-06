@@ -1,14 +1,14 @@
-use kola_span::combinator::Combinator;
-use kola_span::input::Input;
-use kola_span::primitive::just;
-use kola_span::select;
+use kola_combinators::combinator::Combinator;
+use kola_combinators::input::Input;
+use kola_combinators::primitive::just;
+use kola_combinators::select;
+use kola_interner::StrKey;
 
 use super::ParseInput;
 use super::state::State;
 use crate::token::{
     CloseT, Ctrl, CtrlT, Kw, KwT, LiteralT, Op, OpT, OpenT, SemanticToken, Symbol, Token,
 };
-use kola_utils::interner::StrKey;
 
 pub const fn op<'t>(op: OpT<'t>) -> impl const Combinator<ParseInput<'t>, Op> + Clone {
     just(op.0)

@@ -1325,6 +1325,7 @@ where
 mod tests {
 
     use kola_builtins::BuiltinLexicon;
+    use kola_interner::StrInterner;
     use kola_ir::{
         instr::{self as ir, Symbol},
         ir::{Ir, IrBuilder},
@@ -1336,7 +1337,6 @@ mod tests {
     };
     use kola_runtime::{heap::Heap, value::Value};
     use kola_tree::prelude::*;
-    use kola_utils::interner::StrInterner;
 
     use super::Normalizer;
 

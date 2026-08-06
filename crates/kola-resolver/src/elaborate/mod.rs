@@ -1,6 +1,6 @@
+use kola_interner::StrInterner;
 use kola_span::{Diagnostic, Report};
 use kola_tree::node::{ModuleName, Vis};
-use kola_utils::interner::StrInterner;
 
 use crate::{
     def::DefMap,

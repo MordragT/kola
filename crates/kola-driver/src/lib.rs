@@ -4,13 +4,14 @@ use camino::Utf8Path;
 use kola_builtins::BuiltinLexicon;
 use std::io;
 
+use kola_interner::StrInterner;
 use kola_ir::print::render_ir;
 use kola_lowerer::module::{Program, lower};
 use kola_machine::machine::{Ctx, Machine};
 use kola_print::{PrintOptions, prelude::*};
 use kola_resolver::{prelude::*, print::ResolutionDecorator};
 use kola_runtime::heap::Heap;
-use kola_span::{Issue, Report, SourceManager};
+use kola_span::{Issue, Report, SourceManager, io::FileSystem};
 use kola_syntax::{
     lexer::{TokenOutput, tokenize},
     loc::LocMap,
@@ -25,7 +26,6 @@ use kola_typer::{
     check::{TypeCheckOutput, type_check},
     print::TypeDecorator,
 };
-use kola_utils::{interner::StrInterner, io::FileSystem};
 
 pub enum DriverOptions {}
 

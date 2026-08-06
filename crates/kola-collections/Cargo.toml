@@ -5,3 +5,6 @@ edition = "2024"
 
 [dependencies]
 kola-subst.workspace = true
+kola-utils.workspace = true
+derive_more.workspace = true
+graphwiz = "0.5.1"

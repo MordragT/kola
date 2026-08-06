@@ -1,5 +1,6 @@
-use kola_span::{SourceId, Span, input::Input};
-use kola_utils::interner::StrInterner;
+use kola_combinators::input::Input;
+use kola_interner::StrInterner;
+use kola_span::{SourceId, Span};
 
 use super::{State, state::StateCheckpoint};
 use crate::token::{Token, Tokens};

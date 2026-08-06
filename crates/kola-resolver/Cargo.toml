@@ -12,6 +12,7 @@ kola-tree.workspace = true
 kola-syntax.workspace = true
 kola-print.workspace = true
 kola-subst.workspace = true
+kola-interner.workspace = true
 serde.workspace = true
 indexmap.workspace = true
 camino.workspace = true

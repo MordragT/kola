@@ -1,11 +1,12 @@
-use kola_span::input::Input;
-use kola_span::parser::Parser;
-use kola_span::primitive::{Lazy, OpaqueFn, choice, group, lazy};
-use kola_span::{Loc, select};
-use kola_span::{
+use kola_combinators::input::Input;
+use kola_combinators::parser::Parser;
+use kola_combinators::primitive::{Lazy, OpaqueFn, choice, group, lazy};
+use kola_combinators::select;
+use kola_combinators::{
     combinator::{Combinator, IterCombinator},
     skip::{skip_delimiters, skip_until},
 };
+use kola_span::Loc;
 use kola_tree::{node::ValueName, prelude::*};
 
 use super::ParseInput;
@@ -765,7 +766,7 @@ pub struct ExprCombinator;
 impl<'t> Lazy<ParseInput<'t>, Id<node::Expr>> for ExprCombinator {
     type Combinator = impl const KolaCombinator<'t, Id<node::Expr>>;
     const COMBINATOR: Self::Combinator = {
-        use kola_span::pratt::PrattNil;
+        use kola_combinators::pratt::PrattNil;
 
         let atom = lazy::<ParseInput<'t>, Id<node::Expr>, ExprAtomCombinator>();
 
@@ -1229,11 +1230,11 @@ mod tests {
 
     use camino::Utf8PathBuf;
 
+    use kola_combinators::parser::Parser;
+    use kola_interner::StrInterner;
     use kola_span::SourceManager;
-    use kola_span::parser::Parser;
+    use kola_span::io::MockFileSystem;
     use kola_tree::{inspect::NodeInspector, prelude::*};
-    use kola_utils::interner::StrInterner;
-    use kola_utils::io::MockFileSystem;
 
     use super::{
         expr_parser, module_parser, module_type_parser, pat_parser, type_bind_parser, type_parser,

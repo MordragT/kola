@@ -3,8 +3,8 @@ use enum_as_inner::EnumAsInner;
 use serde::{Deserialize, Serialize};
 use std::{borrow::Borrow, marker::PhantomData, ops::Deref};
 
+use kola_interner::StrKey;
 use kola_print::prelude::*;
-use kola_utils::interner::StrKey;
 
 use crate::print::TreePrinter;
 

@@ -1,7 +1,7 @@
 use camino::Utf8PathBuf;
 use dashmap::DashMap;
+use kola_interner::PathInterner;
 use kola_syntax::parser::ParseOutput;
-use kola_utils::interner::PathInterner;
 use tokio::sync::RwLock;
 
 use kola_span::Source;

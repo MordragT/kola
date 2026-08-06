@@ -1,9 +1,6 @@
 use derive_more::Display;
-use kola_utils::{
-    display::DisplayWith,
-    interner::{PathInterner, StrInterner},
-    interner_ext::WithInterner,
-};
+use kola_interner::{PathInterner, StrInterner, ext::WithInterner};
+use kola_utils::DisplayWith;
 use owo_colors::{OwoColorize, Style};
 use std::{
     fmt,

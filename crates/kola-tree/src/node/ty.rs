@@ -4,8 +4,8 @@ use kola_tree_macro::Inspector;
 use serde::{Deserialize, Serialize};
 use std::{borrow::Borrow, ops::Deref};
 
+use kola_interner::StrKey;
 use kola_print::prelude::*;
-use kola_utils::interner::StrKey;
 
 use super::{KindName, ModulePath, TypeName, ValueName};
 

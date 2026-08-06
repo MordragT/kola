@@ -2,11 +2,9 @@ use std::{borrow::Cow, collections::HashMap, fmt, io, ops::Index, sync::Arc};
 
 use ariadne::Cache;
 use camino::Utf8Path;
+use kola_interner::{PathInterner, PathKey};
 
-use kola_utils::{
-    interner::{PathInterner, PathKey},
-    io::{FileSystem, RealFileSystem},
-};
+use crate::io::{FileSystem, RealFileSystem};
 
 pub type SourceId = PathKey;
 pub type Source = ariadne::Source<&'static str>;

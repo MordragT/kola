@@ -3,8 +3,8 @@ use enum_as_inner::EnumAsInner;
 use kola_tree_macro::Inspector;
 use serde::{Deserialize, Serialize};
 
+use kola_interner::StrKey;
 use kola_print::prelude::*;
-use kola_utils::interner::StrKey;
 
 use super::{LiteralExpr, ValueName};
 use crate::{

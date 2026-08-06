@@ -280,9 +280,9 @@ where
 #[cfg(test)]
 mod tests {
 
+    use kola_interner::StrInterner;
     use kola_tree::prelude::*;
     use kola_types::types::*;
-    use kola_utils::interner::StrInterner;
 
     use crate::{error::TypeError, test::run_typer};
 

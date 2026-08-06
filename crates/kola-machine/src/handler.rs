@@ -1,9 +1,9 @@
+use kola_interner::StrKey;
 use kola_ir::{
     id::Id,
     instr::{Func, HandlerClause},
     ir::{Ir, IrView},
 };
-use kola_utils::interner::StrKey;
 
 /// The return clause handles the normal result when no effects are performed.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]

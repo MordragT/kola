@@ -1,7 +1,8 @@
 use std::{collections::HashMap, ops::Index};
 
+use kola_collections::scope::LinearScope;
+use kola_interner::StrKey;
 use kola_resolver::symbol::{TypeSym, ValueSym};
-use kola_utils::{interner::StrKey, scope::LinearScope};
 
 use crate::types::{MonoType, PolyType, TypeVar};
 

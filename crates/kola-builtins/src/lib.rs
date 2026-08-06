@@ -1,4 +1,4 @@
-use kola_utils::interner::{StrInterner, StrKey};
+use kola_interner::{StrInterner, StrKey};
 use std::fmt;
 use strum::{
     AsRefStr, Display, EnumCount, EnumIter, EnumString, FromRepr, IntoStaticStr, VariantNames,

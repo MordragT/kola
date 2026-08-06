@@ -11,8 +11,9 @@ pub mod ext;
 mod input;
 pub mod state;
 
-use kola_span::parser::Parser;
-use kola_span::{Diagnostic, Report, primitive::Lazy};
+use kola_combinators::parser::Parser;
+use kola_combinators::primitive::Lazy;
+use kola_span::{Diagnostic, Report};
 use kola_tree::prelude::*;
 
 use crate::{loc::LocVec, token::SemanticTokens};

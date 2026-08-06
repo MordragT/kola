@@ -43,13 +43,14 @@ use std::{collections::BTreeSet, fmt};
 
 use derive_more::Display;
 use enumset::{EnumSet, EnumSetType};
+use kola_collections::Errors;
 use kola_span::{Diagnostic, Loc};
 use kola_syntax::loc::LocVec;
 use kola_tree::prelude::*;
 use kola_types::types::{
     Label, LabelOrVar, ListType, MonoType, PrimitiveType, RecordType, Row, VariantType,
 };
-use kola_utils::{as_variant, errors::Errors};
+use kola_utils::as_variant;
 
 use crate::phase::TypedNodes;
 

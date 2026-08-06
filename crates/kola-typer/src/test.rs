@@ -1,12 +1,12 @@
 use camino::Utf8PathBuf;
 use kola_builtins::BuiltinLexicon;
+use kola_interner::{PathInterner, StrInterner};
 use kola_resolver::{def::DefMap, env::ModuleMap, phase::NodeMap};
 use kola_span::{Loc, Located, Report, SourceId, Span};
 use kola_subst::Substitutable;
 use kola_syntax::loc::LocVec;
 use kola_tree::prelude::*;
 use kola_types::{class::TypeClassEnv, env::TypeEnv, subst::Substitution};
-use kola_utils::interner::{PathInterner, StrInterner};
 
 use crate::{constraints::Constraints, error::TypeErrors, phase::TypedNodes, typer::Typer};
 

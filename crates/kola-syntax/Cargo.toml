@@ -5,14 +5,15 @@ edition = "2024"
 
 [dependencies]
 kola-tree.workspace = true
-kola-utils.workspace = true
+kola-combinators.workspace = true
 kola-print.workspace = true
 kola-span.workspace = true
+kola-interner.workspace = true
 thiserror.workspace = true
 unscanny.workspace = true
 derive_more.workspace = true
 pastey.workspace = true
 serde.workspace = true
 camino.workspace = true
-unescaper = "0.1"
+unescaper = "0.2"
 indexmap.workspace = true

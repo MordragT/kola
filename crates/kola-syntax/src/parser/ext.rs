@@ -1,6 +1,7 @@
 use std::fmt::Debug;
 
-use kola_span::{Collection, Loc, combinator::Combinator};
+use kola_combinators::{collection::Collection, combinator::Combinator};
+use kola_span::Loc;
 use kola_tree::prelude::*;
 
 use super::ParseInput;

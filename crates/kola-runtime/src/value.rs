@@ -2,7 +2,7 @@ use derive_more::From;
 use enum_as_inner::EnumAsInner;
 use kola_builtins::{BuiltinId, BuiltinType};
 use kola_ir::instr::{Label, Tag, Witness};
-use kola_utils::{display::DisplayWith, serde::SerializeWith};
+use kola_utils::{DisplayWith, SerializeWith};
 use serde::ser::{SerializeMap, SerializeSeq};
 use std::fmt::{self, Pointer};
 
