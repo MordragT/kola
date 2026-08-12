@@ -976,6 +976,24 @@ dependencies = [
 ]
 
 [[package]]
+name = "kola-relations"
+version = "0.1.0"
+dependencies = [
+ "kola-relations-macro",
+ "pastey",
+ "serde",
+]
+
+[[package]]
+name = "kola-relations-macro"
+version = "0.1.0"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 3.0.3",
+]
+
+[[package]]
 name = "kola-resolver"
 version = "0.1.0"
 dependencies = [

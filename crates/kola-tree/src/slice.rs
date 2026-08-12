@@ -1,6 +1,6 @@
 use std::{fmt::Debug, iter::Copied, marker::PhantomData, slice};
 
-use crate::{id::Id, node::NodeStorage, query::Get, tree::TreeView};
+use crate::{id::Id, node::NodeStorage, query::Get, tree::Tree};
 
 /// A typed range into the `slice_data` vector of a `Storage`.
 ///
@@ -106,38 +106,38 @@ impl<T> SliceId<T> {
     }
 
     #[inline]
-    pub fn get<'a>(self, storage: &'a impl TreeView) -> &'a [Id<T>]
+    pub fn get<'a>(self, tree: &'a Tree) -> &'a [Id<T>]
     where
         NodeStorage: Get<T, Item = T>,
     {
-        storage.slices().get(self)
+        tree.slices.get(self)
     }
 
     #[inline]
-    pub fn iter<'a>(self, storage: &'a impl TreeView) -> Copied<slice::Iter<'a, Id<T>>>
+    pub fn iter<'a>(self, tree: &'a Tree) -> Copied<slice::Iter<'a, Id<T>>>
     where
         NodeStorage: Get<T, Item = T>,
         T: 'a,
     {
-        let slice = self.get(storage);
+        let slice = self.get(tree);
         slice.iter().copied()
     }
 
     #[inline]
-    pub fn first<'a>(self, storage: &'a impl TreeView) -> Option<Id<T>>
+    pub fn first<'a>(self, tree: &'a Tree) -> Option<Id<T>>
     where
         NodeStorage: Get<T, Item = T>,
     {
-        let slice = self.get(storage);
+        let slice = self.get(tree);
         slice.first().copied()
     }
 
     #[inline]
-    pub fn last<'a>(self, storage: &'a impl TreeView) -> Option<Id<T>>
+    pub fn last<'a>(self, tree: &'a Tree) -> Option<Id<T>>
     where
         NodeStorage: Get<T, Item = T>,
     {
-        let slice = self.get(storage);
+        let slice = self.get(tree);
         slice.last().copied()
     }
 }

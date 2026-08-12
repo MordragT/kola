@@ -1357,9 +1357,9 @@ mod tests {
         resolved
     }
 
-    fn normalize<T>(tree: TreeBuilder, root_id: Id<T>, resolved: &NodeMap) -> Ir
+    fn normalize<T>(tree: Tree, root_id: Id<T>, resolved: &NodeMap) -> Ir
     where
-        Id<T>: Visitable<TreeBuilder>,
+        Id<T>: Visitable<Tree>,
     {
         let mut builder = IrBuilder::new();
 
@@ -1383,7 +1383,7 @@ mod tests {
 
     #[test]
     fn literal() {
-        let mut builder = TreeBuilder::new();
+        let mut builder = Tree::new();
         let lit = builder.insert(node::LiteralExpr::Num(10.0));
 
         let resolved = mock_resolved(&builder);
@@ -1397,7 +1397,7 @@ mod tests {
     #[test]
     fn qualified_expr_unbound() {
         let mut interner = StrInterner::default();
-        let mut builder = TreeBuilder::new();
+        let mut builder = Tree::new();
 
         let x = interner.intern("x");
 
@@ -1414,7 +1414,7 @@ mod tests {
     #[test]
     fn let_expr() {
         let mut interner = StrInterner::default();
-        let mut builder = TreeBuilder::new();
+        let mut builder = Tree::new();
         let mut resolved = NodeMap::default();
 
         let x = interner.intern("x");
@@ -1440,7 +1440,7 @@ mod tests {
     #[test]
     fn lambda_call_expr() {
         let mut interner = StrInterner::default();
-        let mut builder = TreeBuilder::new();
+        let mut builder = Tree::new();
         let mut resolved = NodeMap::default();
 
         let x = interner.intern("x");
@@ -1475,7 +1475,7 @@ mod tests {
     #[test]
     fn record_expr() {
         let mut interner = StrInterner::default();
-        let mut builder = TreeBuilder::new();
+        let mut builder = Tree::new();
         let resolved = NodeMap::default();
 
         // Build: { a = 42, b = "hello" }
@@ -1506,7 +1506,7 @@ mod tests {
     #[test]
     fn record_access_expr() {
         let mut interner = StrInterner::default();
-        let mut builder = TreeBuilder::new();
+        let mut builder = Tree::new();
         let mut resolved = NodeMap::default();
 
         // Build: let r = { a = { b = { c = "hello" } } } in r.a.b.c

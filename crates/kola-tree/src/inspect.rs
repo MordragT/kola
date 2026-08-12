@@ -5,7 +5,7 @@ use crate::{
     id::Id,
     node::{Name, Namespace, NodeStorage},
     query::Get,
-    tree::TreeBuilder,
+    tree::Tree,
 };
 
 /// A fluent API for inspecting and making assertions about nodes in a syntax tree.
@@ -13,7 +13,7 @@ use crate::{
 #[derive(Debug)]
 pub struct NodeInspector<'t, T, S: BuildHasher> {
     pub node: T,
-    pub tree: &'t TreeBuilder,
+    pub tree: &'t Tree,
     pub interner: &'t Interner<str, S>,
 }
 
@@ -40,7 +40,7 @@ where
 
 impl<'t, T, S: BuildHasher> NodeInspector<'t, T, S> {
     /// Create a new inspector from a node and tree
-    pub fn new(node: T, tree: &'t TreeBuilder, interner: &'t Interner<str, S>) -> Self {
+    pub fn new(node: T, tree: &'t Tree, interner: &'t Interner<str, S>) -> Self {
         Self {
             node,
             tree,
@@ -51,7 +51,7 @@ impl<'t, T, S: BuildHasher> NodeInspector<'t, T, S> {
     /// Map the current node to another node type
     pub fn map<U, F>(self, f: F) -> NodeInspector<'t, U, S>
     where
-        F: FnOnce(T, &'t TreeBuilder) -> U,
+        F: FnOnce(T, &'t Tree) -> U,
     {
         NodeInspector {
             node: f(self.node, self.tree),
@@ -68,7 +68,7 @@ impl<'t, T, S: BuildHasher> NodeInspector<'t, T, S> {
     /// Execute a function with the current node and tree, then return self
     pub fn inspect<F>(self, f: F) -> Self
     where
-        F: FnOnce(&T, &'t TreeBuilder),
+        F: FnOnce(&T, &'t Tree),
     {
         f(&self.node, self.tree);
         self
@@ -77,7 +77,7 @@ impl<'t, T, S: BuildHasher> NodeInspector<'t, T, S> {
     /// Assert a condition on the current node, with a custom message
     pub fn assert_with<F>(self, f: F, message: &str) -> Self
     where
-        F: FnOnce(&T, &'t TreeBuilder) -> bool,
+        F: FnOnce(&T, &'t Tree) -> bool,
     {
         assert!(f(&self.node, self.tree), "{}", message);
         self

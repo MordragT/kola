@@ -2120,7 +2120,7 @@ mod tests {
 
     #[test]
     fn literal() {
-        let mut builder = TreeBuilder::new();
+        let mut builder = Tree::new();
         let lit = builder.alloc(node::LiteralExpr::Num(10.0));
 
         let types = run_typer(builder, lit).unwrap();
@@ -2130,7 +2130,7 @@ mod tests {
 
     #[test]
     fn unary() {
-        let mut builder = TreeBuilder::new();
+        let mut builder = Tree::new();
 
         let target = builder.alloc(node::LiteralExpr::Num(10.0));
         let unary = node::UnaryExpr::new_in(node::UnaryOp::Neg, target, &mut builder);
@@ -2142,7 +2142,7 @@ mod tests {
 
     #[test]
     fn unary_err() {
-        let mut builder = TreeBuilder::new();
+        let mut builder = Tree::new();
 
         let target = builder.alloc(node::LiteralExpr::Num(10.0));
         let unary = node::UnaryExpr::new_in(node::UnaryOp::Not, target, &mut builder);
@@ -2160,7 +2160,7 @@ mod tests {
 
     #[test]
     fn binary_err() {
-        let mut builder = TreeBuilder::new();
+        let mut builder = Tree::new();
 
         let left = builder.alloc(node::LiteralExpr::Bool(true));
         let right = builder.alloc(node::LiteralExpr::Num(10.0));
@@ -2180,7 +2180,7 @@ mod tests {
     #[test]
     fn let_() {
         let mut interner = StrInterner::default();
-        let mut builder = TreeBuilder::new();
+        let mut builder = Tree::new();
 
         let value = builder.alloc(node::LiteralExpr::Num(10.0));
         let x = interner.intern("x");
@@ -2194,7 +2194,7 @@ mod tests {
 
     #[test]
     fn if_() {
-        let mut builder = TreeBuilder::new();
+        let mut builder = Tree::new();
 
         let predicate = builder.alloc(node::LiteralExpr::Bool(true));
         let then = builder.alloc(node::LiteralExpr::Num(5.0));
@@ -2208,7 +2208,7 @@ mod tests {
 
     #[test]
     fn if_err() {
-        let mut builder = TreeBuilder::new();
+        let mut builder = Tree::new();
 
         let predicate = builder.alloc(node::LiteralExpr::Bool(true));
         let then = builder.alloc(node::LiteralExpr::Num(5.0));

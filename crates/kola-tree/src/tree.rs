@@ -16,41 +16,22 @@ pub struct TreeCheckpoint {
     pub slices: usize,
 }
 
-pub trait TreeView {
-    fn nodes(&self) -> &NodeStorage;
-    fn slices(&self) -> &SliceStorage;
-
-    fn checkpoint(&self) -> TreeCheckpoint {
-        TreeCheckpoint {
-            nodes: self.nodes().checkpoint(),
-            slices: self.slices().checkpoint(),
-        }
-    }
-
-    fn get<T>(&self, id: Id<T>) -> &T
-    where
-        NodeStorage: Get<T, Item = T>,
-    {
-        self.nodes().get(id)
-    }
-
-    fn get_slice<T>(&self, slice_id: SliceId<T>) -> &[Id<T>]
-    where
-        NodeStorage: Get<T, Item = T>,
-    {
-        self.slices().get(slice_id)
-    }
-}
-
 #[derive(Debug)]
-pub struct TreeBuilder {
+pub struct Tree {
     pub nodes: NodeStorage,
     pub slices: SliceStorage,
 }
 
-impl TreeBuilder {
+impl Tree {
     pub fn new() -> Self {
         Self::default()
+    }
+
+    pub fn checkpoint(&self) -> TreeCheckpoint {
+        TreeCheckpoint {
+            nodes: self.nodes.checkpoint(),
+            slices: self.slices.checkpoint(),
+        }
     }
 
     pub fn restore(&mut self, cp: &TreeCheckpoint) {
@@ -86,53 +67,18 @@ impl TreeBuilder {
         self.slices.get_mut(slice_id)
     }
 
-    pub fn finish(self, root: Id<ModuleBody>) -> Tree {
-        Tree {
-            nodes: self.nodes,
-            slices: self.slices,
-            root,
-        }
+    pub fn root_id(&self) -> Id<ModuleBody> {
+        <NodeStorage as Col<ModuleBody>>::ids(&self.nodes)
+            .next()
+            .expect("Tree has no root node")
     }
 }
 
-impl Default for TreeBuilder {
+impl Default for Tree {
     fn default() -> Self {
         Self {
             nodes: NodeStorage::default(),
             slices: SliceStorage::default(),
         }
-    }
-}
-
-impl TreeView for TreeBuilder {
-    fn nodes(&self) -> &NodeStorage {
-        &self.nodes
-    }
-
-    fn slices(&self) -> &SliceStorage {
-        &self.slices
-    }
-}
-
-#[derive(Debug, Clone)]
-pub struct Tree {
-    nodes: NodeStorage,
-    slices: SliceStorage,
-    root: Id<ModuleBody>,
-}
-
-impl Tree {
-    pub fn root_id(&self) -> Id<ModuleBody> {
-        self.root
-    }
-}
-
-impl TreeView for Tree {
-    fn nodes(&self) -> &NodeStorage {
-        &self.nodes
-    }
-
-    fn slices(&self) -> &SliceStorage {
-        &self.slices
     }
 }

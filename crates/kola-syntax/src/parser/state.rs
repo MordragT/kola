@@ -20,7 +20,7 @@ pub struct StateCheckpoint {
 #[derive(Debug)]
 pub struct State<'t> {
     pub tokens: SemanticTokens,
-    pub builder: TreeBuilder,
+    pub builder: Tree,
     pub spans: LocVec,
     pub interner: &'t mut StrInterner,
     pub recovered: Report,
@@ -30,7 +30,7 @@ impl<'t> State<'t> {
     pub fn new(interner: &'t mut StrInterner) -> Self {
         Self {
             tokens: SemanticTokens::default(),
-            builder: TreeBuilder::default(),
+            builder: Tree::default(),
             spans: LocVec::default(),
             interner,
             recovered: Report::new(),

@@ -1,8 +1,14 @@
 [workspace]
-members = ["crates/*", "crates/kola-print/macro"]
+members = [
+    "crates/*",
+    "crates/kola-print/macro",
+    "crates/kola-relations/macro",
+]
 
 [workspace.dependencies]
 # Kola Crates
+kola-relations = { path = "crates/kola-relations" }
+kola-relations-macro = { path = "crates/kola-relations/macro" }
 kola-builtins = { path = "crates/kola-builtins" }
 kola-collections = { path = "crates/kola-collections" }
 kola-driver = { path = "crates/kola-driver" }

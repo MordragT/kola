@@ -10,52 +10,8 @@ use kola_subst::Substitutable;
 
 use crate::{
     id::{Id, IdIter},
-    node::{AnyId, StorageCheckpoint, UniversalStorage},
     query::{Col, Get, GetOpt},
 };
-
-/// A side-table where every column holds the same type `M`.
-#[derive(Debug, Clone)]
-pub struct NodeAttrs<M>(UniversalStorage<M>);
-
-impl<M> NodeAttrs<M> {
-    pub fn new(cp: StorageCheckpoint) -> Self
-    where
-        M: Default + Clone,
-    {
-        Self(UniversalStorage::from_checkpoint(cp))
-    }
-
-    pub fn get_any(&self, id: AnyId) -> &M {
-        self.0.get_any(id)
-    }
-
-    pub fn get<T>(&self, id: Id<T>) -> &M
-    where
-        UniversalStorage<M>: Get<T, Item = M>,
-    {
-        self.0.get(id)
-    }
-
-    pub fn set<T>(&mut self, id: Id<T>, value: M) -> M
-    where
-        UniversalStorage<M>: Get<T, Item = M>,
-        M: Clone,
-    {
-        std::mem::replace(self.0.get_mut(id), value)
-    }
-
-    pub fn checkpoint(&self) -> NodeAttrsCheckpoint {
-        NodeAttrsCheckpoint(self.0.checkpoint())
-    }
-
-    pub fn restore(&mut self, cp: &NodeAttrsCheckpoint) {
-        self.0.restore(&cp.0);
-    }
-}
-
-#[derive(Debug, Clone, Copy)]
-pub struct NodeAttrsCheckpoint(StorageCheckpoint);
 
 /// A simple `Vec<M>` indexed by `Id<T>.as_usize()`, with the node type
 /// tracked via `PhantomData<T>`.

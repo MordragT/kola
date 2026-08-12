@@ -6,12 +6,7 @@ use kola_tree_macro::Inspector;
 use serde::{Deserialize, Serialize};
 
 use super::{ModulePath, Pat, QualifiedType, TypeExpr, ValueName};
-use crate::{
-    id::Id,
-    print::TreePrinter,
-    slice::SliceId,
-    tree::{TreeBuilder, TreeView},
-};
+use crate::{id::Id, print::TreePrinter, slice::SliceId, tree::Tree};
 
 #[derive(
     Debug, Notate, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
@@ -20,7 +15,7 @@ use crate::{
 pub struct ExprError;
 
 impl ExprError {
-    pub fn new_in(builder: &mut TreeBuilder) -> Id<Self> {
+    pub fn new_in(builder: &mut Tree) -> Id<Self> {
         builder.alloc(Self)
     }
 }
@@ -35,7 +30,7 @@ pub enum LiteralExpr {
 }
 
 impl LiteralExpr {
-    pub fn new_in(value: impl Into<Self>, builder: &mut TreeBuilder) -> Id<Self> {
+    pub fn new_in(value: impl Into<Self>, builder: &mut Tree) -> Id<Self> {
         builder.alloc(value.into())
     }
 }
@@ -83,11 +78,11 @@ impl<'a> Notate<'a, LiteralExpr> for TreePrinter<'a> {
 pub struct ListExpr(pub SliceId<Expr>);
 
 impl ListExpr {
-    pub fn empty_in(builder: &mut TreeBuilder) -> Id<Self> {
+    pub fn empty_in(builder: &mut Tree) -> Id<Self> {
         builder.alloc(Self(SliceId::empty()))
     }
 
-    pub fn new_in<I>(elements: I, builder: &mut TreeBuilder) -> Id<Self>
+    pub fn new_in<I>(elements: I, builder: &mut Tree) -> Id<Self>
     where
         I: IntoIterator,
         I::Item: Into<Expr>,
@@ -124,7 +119,7 @@ impl RecordField {
         label: impl Into<ValueName>,
         ty: Option<TypeExpr>,
         value: impl Into<Expr>,
-        builder: &mut TreeBuilder,
+        builder: &mut Tree,
     ) -> Id<Self> {
         let label = builder.alloc(label.into());
         let ty = ty.map(|t| builder.alloc(t));
@@ -133,16 +128,16 @@ impl RecordField {
         builder.alloc(Self { label, ty, value })
     }
 
-    pub fn label(self, storage: &impl TreeView) -> ValueName {
-        *self.label.get(storage)
+    pub fn label(self, tree: &Tree) -> ValueName {
+        *self.label.get(tree)
     }
 
-    pub fn type_(self, storage: &impl TreeView) -> Option<TypeExpr> {
-        self.ty.map(|t| *t.get(storage))
+    pub fn type_(self, tree: &Tree) -> Option<TypeExpr> {
+        self.ty.map(|t| *t.get(tree))
     }
 
-    pub fn value(self, storage: &impl TreeView) -> Expr {
-        *self.value.get(storage)
+    pub fn value(self, tree: &Tree) -> Expr {
+        *self.value.get(tree)
     }
 }
 
@@ -165,7 +160,7 @@ impl RecordField {
 pub struct RecordExpr(pub SliceId<RecordField>);
 
 impl RecordExpr {
-    pub fn new_in<I>(fields: I, builder: &mut TreeBuilder) -> Id<Self>
+    pub fn new_in<I>(fields: I, builder: &mut Tree) -> Id<Self>
     where
         I: IntoIterator<Item = Id<RecordField>>,
     {
@@ -205,7 +200,7 @@ impl RecordExtendExpr {
         field_path: impl Into<FieldPath>,
         value: impl Into<Expr>,
         value_type: Option<TypeExpr>,
-        builder: &mut TreeBuilder,
+        builder: &mut Tree,
     ) -> Id<Self> {
         let source = builder.alloc(source.into());
         let source_type = source_type.map(|t| builder.alloc(t));
@@ -222,24 +217,24 @@ impl RecordExtendExpr {
         })
     }
 
-    pub fn source(self, storage: &impl TreeView) -> Expr {
-        *self.source.get(storage)
+    pub fn source(self, tree: &Tree) -> Expr {
+        *self.source.get(tree)
     }
 
-    pub fn source_type(self, storage: &impl TreeView) -> Option<TypeExpr> {
-        self.source_type.map(|t| *t.get(storage))
+    pub fn source_type(self, tree: &Tree) -> Option<TypeExpr> {
+        self.source_type.map(|t| *t.get(tree))
     }
 
-    pub fn field_path(self, storage: &impl TreeView) -> &FieldPath {
-        self.field_path.get(storage)
+    pub fn field_path(self, tree: &Tree) -> &FieldPath {
+        self.field_path.get(tree)
     }
 
-    pub fn value(self, storage: &impl TreeView) -> Expr {
-        *self.value.get(storage)
+    pub fn value(self, tree: &Tree) -> Expr {
+        *self.value.get(tree)
     }
 
-    pub fn value_type(self, storage: &impl TreeView) -> Option<TypeExpr> {
-        self.value_type.map(|t| *t.get(storage))
+    pub fn value_type(self, tree: &Tree) -> Option<TypeExpr> {
+        self.value_type.map(|t| *t.get(tree))
     }
 }
 
@@ -272,7 +267,7 @@ impl RecordRestrictExpr {
         source_type: Option<TypeExpr>,
         field_path: impl Into<FieldPath>,
         value_type: Option<TypeExpr>,
-        builder: &mut TreeBuilder,
+        builder: &mut Tree,
     ) -> Id<Self> {
         let source = builder.alloc(source.into());
         let source_type = source_type.map(|t| builder.alloc(t));
@@ -287,20 +282,20 @@ impl RecordRestrictExpr {
         })
     }
 
-    pub fn source(self, storage: &impl TreeView) -> Expr {
-        *self.source.get(storage)
+    pub fn source(self, tree: &Tree) -> Expr {
+        *self.source.get(tree)
     }
 
-    pub fn source_type(self, storage: &impl TreeView) -> Option<TypeExpr> {
-        self.source_type.map(|t| *t.get(storage))
+    pub fn source_type(self, tree: &Tree) -> Option<TypeExpr> {
+        self.source_type.map(|t| *t.get(tree))
     }
 
-    pub fn field_path(self, storage: &impl TreeView) -> &FieldPath {
-        self.field_path.get(storage)
+    pub fn field_path(self, tree: &Tree) -> &FieldPath {
+        self.field_path.get(tree)
     }
 
-    pub fn value_type(self, storage: &impl TreeView) -> Option<TypeExpr> {
-        self.value_type.map(|t| *t.get(storage))
+    pub fn value_type(self, tree: &Tree) -> Option<TypeExpr> {
+        self.value_type.map(|t| *t.get(tree))
     }
 }
 
@@ -355,7 +350,7 @@ impl RecordUpdateExpr {
         op: RecordUpdateOp,
         value: impl Into<Expr>,
         value_type: Option<TypeExpr>,
-        builder: &mut TreeBuilder,
+        builder: &mut Tree,
     ) -> Id<Self> {
         let source = builder.alloc(source.into());
         let source_type = source_type.map(|t| builder.alloc(t));
@@ -374,28 +369,28 @@ impl RecordUpdateExpr {
         })
     }
 
-    pub fn source(self, storage: &impl TreeView) -> Expr {
-        *self.source.get(storage)
+    pub fn source(self, tree: &Tree) -> Expr {
+        *self.source.get(tree)
     }
 
-    pub fn source_type(self, storage: &impl TreeView) -> Option<TypeExpr> {
-        self.source_type.map(|t| *t.get(storage))
+    pub fn source_type(self, tree: &Tree) -> Option<TypeExpr> {
+        self.source_type.map(|t| *t.get(tree))
     }
 
-    pub fn field_path(self, storage: &impl TreeView) -> &FieldPath {
-        self.field_path.get(storage)
+    pub fn field_path(self, tree: &Tree) -> &FieldPath {
+        self.field_path.get(tree)
     }
 
-    pub fn op(self, storage: &impl TreeView) -> RecordUpdateOp {
-        *self.op.get(storage)
+    pub fn op(self, tree: &Tree) -> RecordUpdateOp {
+        *self.op.get(tree)
     }
 
-    pub fn value(self, storage: &impl TreeView) -> Expr {
-        *self.value.get(storage)
+    pub fn value(self, tree: &Tree) -> Expr {
+        *self.value.get(tree)
     }
 
-    pub fn value_type(self, storage: &impl TreeView) -> Option<TypeExpr> {
-        self.value_type.map(|t| *t.get(storage))
+    pub fn value_type(self, tree: &Tree) -> Option<TypeExpr> {
+        self.value_type.map(|t| *t.get(tree))
     }
 }
 
@@ -420,11 +415,7 @@ pub struct RecordMergeExpr {
 }
 
 impl RecordMergeExpr {
-    pub fn new_in(
-        lhs: impl Into<Expr>,
-        rhs: impl Into<Expr>,
-        builder: &mut TreeBuilder,
-    ) -> Id<Self> {
+    pub fn new_in(lhs: impl Into<Expr>, rhs: impl Into<Expr>, builder: &mut Tree) -> Id<Self> {
         let lhs = builder.alloc(lhs.into());
         let rhs = builder.alloc(rhs.into());
 
@@ -450,7 +441,7 @@ impl RecordMergeExpr {
 pub struct FieldPath(pub SliceId<ValueName>);
 
 impl FieldPath {
-    pub fn new_in<I>(fields: I, builder: &mut TreeBuilder) -> Id<Self>
+    pub fn new_in<I>(fields: I, builder: &mut Tree) -> Id<Self>
     where
         I: IntoIterator,
         I::Item: Into<ValueName>,
@@ -460,15 +451,12 @@ impl FieldPath {
         builder.alloc(Self(slice))
     }
 
-    pub fn get(&self, index: usize, storage: &impl TreeView) -> ValueName {
-        *self.0.iter(storage).nth(index).unwrap().get(storage)
+    pub fn get(&self, index: usize, tree: &Tree) -> ValueName {
+        *self.0.iter(tree).nth(index).unwrap().get(tree)
     }
 
-    pub fn iter<'a>(
-        &'a self,
-        storage: &'a impl TreeView,
-    ) -> impl Iterator<Item = Id<ValueName>> + 'a {
-        self.0.iter(storage)
+    pub fn iter<'a>(&'a self, tree: &'a Tree) -> impl Iterator<Item = Id<ValueName>> + 'a {
+        self.0.iter(tree)
     }
 }
 
@@ -498,7 +486,7 @@ impl QualifiedExpr {
         module_path: Option<Id<ModulePath>>,
         source: impl Into<ValueName>,
         field_path: Option<Id<FieldPath>>,
-        builder: &mut TreeBuilder,
+        builder: &mut Tree,
     ) -> Id<Self> {
         let source = builder.alloc(source.into());
 
@@ -545,19 +533,19 @@ pub struct UnaryExpr {
 }
 
 impl UnaryExpr {
-    pub fn new_in(op: UnaryOp, operand: impl Into<Expr>, builder: &mut TreeBuilder) -> Id<Self> {
+    pub fn new_in(op: UnaryOp, operand: impl Into<Expr>, builder: &mut Tree) -> Id<Self> {
         let op = builder.alloc(op);
         let operand = builder.alloc(operand.into());
 
         builder.alloc(Self { op, operand })
     }
 
-    pub fn op(self, storage: &impl TreeView) -> UnaryOp {
-        *self.op.get(storage)
+    pub fn op(self, tree: &Tree) -> UnaryOp {
+        *self.op.get(tree)
     }
 
-    pub fn operand(self, storage: &impl TreeView) -> Expr {
-        *self.operand.get(storage)
+    pub fn operand(self, tree: &Tree) -> Expr {
+        *self.operand.get(tree)
     }
 }
 
@@ -613,7 +601,7 @@ impl BinaryExpr {
         op: BinaryOp,
         lhs: impl Into<Expr>,
         rhs: impl Into<Expr>,
-        builder: &mut TreeBuilder,
+        builder: &mut Tree,
     ) -> Id<Self> {
         let op = builder.alloc(op);
         let lhs = builder.alloc(lhs.into());
@@ -622,16 +610,16 @@ impl BinaryExpr {
         builder.alloc(Self { op, lhs, rhs })
     }
 
-    pub fn op(self, storage: &impl TreeView) -> BinaryOp {
-        *self.op.get(storage)
+    pub fn op(self, tree: &Tree) -> BinaryOp {
+        *self.op.get(tree)
     }
 
-    pub fn lhs(self, storage: &impl TreeView) -> Expr {
-        *self.lhs.get(storage)
+    pub fn lhs(self, tree: &Tree) -> Expr {
+        *self.lhs.get(tree)
     }
 
-    pub fn rhs(self, storage: &impl TreeView) -> Expr {
-        *self.rhs.get(storage)
+    pub fn rhs(self, tree: &Tree) -> Expr {
+        *self.rhs.get(tree)
     }
 }
 
@@ -663,7 +651,7 @@ impl LetExpr {
         value_type: Option<TypeExpr>,
         value: impl Into<Expr>,
         body: impl Into<Expr>,
-        builder: &mut TreeBuilder,
+        builder: &mut Tree,
     ) -> Id<Self> {
         let name = builder.alloc(name.into());
         let value_type = value_type.map(|t| builder.alloc(t));
@@ -678,20 +666,20 @@ impl LetExpr {
         })
     }
 
-    pub fn name(self, storage: &impl TreeView) -> ValueName {
-        *self.name.get(storage)
+    pub fn name(self, tree: &Tree) -> ValueName {
+        *self.name.get(tree)
     }
 
-    pub fn value_type(self, storage: &impl TreeView) -> Option<&TypeExpr> {
-        self.value_type.map(|t| t.get(storage))
+    pub fn value_type(self, tree: &Tree) -> Option<&TypeExpr> {
+        self.value_type.map(|t| t.get(tree))
     }
 
-    pub fn value(self, storage: &impl TreeView) -> Expr {
-        *self.value.get(storage)
+    pub fn value(self, tree: &Tree) -> Expr {
+        *self.value.get(tree)
     }
 
-    pub fn body(self, storage: &impl TreeView) -> Expr {
-        *self.body.get(storage)
+    pub fn body(self, tree: &Tree) -> Expr {
+        *self.body.get(tree)
     }
 }
 
@@ -721,7 +709,7 @@ impl IfExpr {
         pred: impl Into<Expr>,
         then: impl Into<Expr>,
         or_else: impl Into<Expr>,
-        builder: &mut TreeBuilder,
+        builder: &mut Tree,
     ) -> Id<Self> {
         let pred = builder.alloc(pred.into());
         let then = builder.alloc(then.into());
@@ -734,16 +722,16 @@ impl IfExpr {
         })
     }
 
-    pub fn pred(self, storage: &impl TreeView) -> Expr {
-        *self.pred.get(storage)
+    pub fn pred(self, tree: &Tree) -> Expr {
+        *self.pred.get(tree)
     }
 
-    pub fn then(self, storage: &impl TreeView) -> Expr {
-        *self.then.get(storage)
+    pub fn then(self, tree: &Tree) -> Expr {
+        *self.then.get(tree)
     }
 
-    pub fn or_else(self, storage: &impl TreeView) -> Expr {
-        *self.or_else.get(storage)
+    pub fn or_else(self, tree: &Tree) -> Expr {
+        *self.or_else.get(tree)
     }
 }
 
@@ -768,23 +756,19 @@ pub struct CaseBranch {
 }
 
 impl CaseBranch {
-    pub fn new_in(
-        pat: impl Into<Pat>,
-        body: impl Into<Expr>,
-        builder: &mut TreeBuilder,
-    ) -> Id<Self> {
+    pub fn new_in(pat: impl Into<Pat>, body: impl Into<Expr>, builder: &mut Tree) -> Id<Self> {
         let pat = builder.alloc(pat.into());
         let body = builder.alloc(body.into());
 
         builder.alloc(Self { pat, body })
     }
 
-    pub fn pat(self, storage: &impl TreeView) -> Pat {
-        *self.pat.get(storage)
+    pub fn pat(self, tree: &Tree) -> Pat {
+        *self.pat.get(tree)
     }
 
-    pub fn body(self, storage: &impl TreeView) -> Expr {
-        *self.body.get(storage)
+    pub fn body(self, tree: &Tree) -> Expr {
+        *self.body.get(tree)
     }
 }
 
@@ -798,7 +782,7 @@ pub struct CaseExpr {
 }
 
 impl CaseExpr {
-    pub fn new_in<I>(source: impl Into<Expr>, branches: I, builder: &mut TreeBuilder) -> Id<Self>
+    pub fn new_in<I>(source: impl Into<Expr>, branches: I, builder: &mut Tree) -> Id<Self>
     where
         I: IntoIterator<Item = Id<CaseBranch>>,
     {
@@ -808,8 +792,8 @@ impl CaseExpr {
         builder.alloc(Self { source, branches })
     }
 
-    pub fn source(&self, storage: &impl TreeView) -> Expr {
-        *self.source.get(storage)
+    pub fn source(&self, tree: &Tree) -> Expr {
+        *self.source.get(tree)
     }
 }
 
@@ -834,23 +818,19 @@ pub struct CallExpr {
 }
 
 impl CallExpr {
-    pub fn new_in(
-        func: impl Into<Expr>,
-        arg: impl Into<Expr>,
-        builder: &mut TreeBuilder,
-    ) -> Id<Self> {
+    pub fn new_in(func: impl Into<Expr>, arg: impl Into<Expr>, builder: &mut Tree) -> Id<Self> {
         let func = builder.alloc(func.into());
         let arg = builder.alloc(arg.into());
 
         builder.alloc(Self { func, arg })
     }
 
-    pub fn func(self, storage: &impl TreeView) -> Expr {
-        *self.func.get(storage)
+    pub fn func(self, tree: &Tree) -> Expr {
+        *self.func.get(tree)
     }
 
-    pub fn arg(self, storage: &impl TreeView) -> Expr {
-        *self.arg.get(storage)
+    pub fn arg(self, tree: &Tree) -> Expr {
+        *self.arg.get(tree)
     }
 }
 
@@ -880,7 +860,7 @@ impl LambdaExpr {
         param: impl Into<ValueName>,
         param_type: Option<TypeExpr>,
         body: impl Into<Expr>,
-        builder: &mut TreeBuilder,
+        builder: &mut Tree,
     ) -> Id<Self> {
         let param = builder.alloc(param.into());
         let param_type = param_type.map(|t| builder.alloc(t));
@@ -893,12 +873,12 @@ impl LambdaExpr {
         })
     }
 
-    pub fn param(self, storage: &impl TreeView) -> ValueName {
-        *self.param.get(storage)
+    pub fn param(self, tree: &Tree) -> ValueName {
+        *self.param.get(tree)
     }
 
-    pub fn body(self, storage: &impl TreeView) -> Expr {
-        *self.body.get(storage)
+    pub fn body(self, tree: &Tree) -> Expr {
+        *self.body.get(tree)
     }
 }
 
@@ -984,7 +964,7 @@ pub struct DoExpr {
 pub struct TagExpr(pub Id<ValueName>);
 
 impl TagExpr {
-    pub fn new_in(tag: impl Into<ValueName>, builder: &mut TreeBuilder) -> Id<Self> {
+    pub fn new_in(tag: impl Into<ValueName>, builder: &mut Tree) -> Id<Self> {
         let tag = builder.alloc(tag.into());
         builder.alloc(Self(tag))
     }

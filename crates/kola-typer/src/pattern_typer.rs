@@ -288,7 +288,7 @@ mod tests {
 
     #[test]
     fn case_literal_pattern() {
-        let mut builder = TreeBuilder::new();
+        let mut builder = Tree::new();
 
         // case 42 of 42 => true, _ => false
         let source = builder.alloc(node::LiteralExpr::Num(42.0));
@@ -311,7 +311,7 @@ mod tests {
     #[test]
     fn case_literal_pattern_mismatch() {
         let mut interner = StrInterner::default();
-        let mut builder = TreeBuilder::new();
+        let mut builder = Tree::new();
 
         // case "hello" of 42 => true, _ => false (should fail: string vs number)
         let source = builder.alloc(node::LiteralExpr::Str(interner.intern("hello")));
@@ -336,7 +336,7 @@ mod tests {
     #[test]
     fn case_wildcard_pattern() {
         let mut interner = StrInterner::default();
-        let mut builder = TreeBuilder::new();
+        let mut builder = Tree::new();
 
         // case 42 of _ => "anything"
         let source = builder.alloc(node::LiteralExpr::Num(42.0));
@@ -354,7 +354,7 @@ mod tests {
     #[test]
     fn case_bind_pattern() {
         let mut interner = StrInterner::default();
-        let mut builder = TreeBuilder::new();
+        let mut builder = Tree::new();
 
         // case 42 of x => x
         let source = builder.alloc(node::LiteralExpr::Num(42.0));
@@ -374,7 +374,7 @@ mod tests {
     #[test]
     fn case_list_pattern_empty() {
         let mut interner = StrInterner::default();
-        let mut builder = TreeBuilder::new();
+        let mut builder = Tree::new();
 
         // case [] of [] => "empty", _ => "not empty"
         let source = node::ListExpr::empty_in(&mut builder);
@@ -397,7 +397,7 @@ mod tests {
     #[test]
     fn case_list_pattern_with_elements() {
         let mut interner = StrInterner::default();
-        let mut builder = TreeBuilder::new();
+        let mut builder = Tree::new();
 
         // case [1, 2, 3] of [x, y, z] => x
         let elem1 = builder.alloc(node::LiteralExpr::Num(1.0));
@@ -432,7 +432,7 @@ mod tests {
     #[test]
     fn case_list_pattern_with_spread() {
         let mut interner = StrInterner::default();
-        let mut builder = TreeBuilder::new();
+        let mut builder = Tree::new();
 
         // case [1, 2, 3] of [head, ...tail] => head
         let elem1 = builder.alloc(node::LiteralExpr::Num(1.0));
@@ -463,7 +463,7 @@ mod tests {
     #[test]
     fn case_record_pattern_exact() {
         let mut interner = StrInterner::default();
-        let mut builder = TreeBuilder::new();
+        let mut builder = Tree::new();
 
         // case {x = 10, y = 20} of {x, y} => x
         let x_field = interner.intern("x");
@@ -501,7 +501,7 @@ mod tests {
     #[test]
     fn case_record_pattern_polymorphic() {
         let mut interner = StrInterner::default();
-        let mut builder = TreeBuilder::new();
+        let mut builder = Tree::new();
 
         // case {x = 10, y = 20, z = "hello"} of {x, y, ...} => x
         let x_field = interner.intern("x");
@@ -546,7 +546,7 @@ mod tests {
     #[test]
     fn case_branch_type_mismatch() {
         let mut interner = StrInterner::default();
-        let mut builder = TreeBuilder::new();
+        let mut builder = Tree::new();
 
         // case 42 of
         //   x => 10,     // returns Num

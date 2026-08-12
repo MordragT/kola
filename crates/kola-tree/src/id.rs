@@ -1,6 +1,6 @@
 use std::marker::PhantomData;
 
-use crate::{node::NodeStorage, query::Get, tree::TreeView};
+use crate::{node::NodeStorage, query::Get, tree::Tree};
 
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct Id<T: ?Sized> {
@@ -73,11 +73,11 @@ impl<T> Id<T> {
         Self { id, t: PhantomData }
     }
 
-    pub fn get<'a>(self, storage: &'a impl TreeView) -> &'a T
+    pub fn get<'a>(self, tree: &'a Tree) -> &'a T
     where
         NodeStorage: Get<T, Item = T>,
     {
-        storage.nodes().get(self)
+        tree.nodes.get(self)
     }
 }
 

@@ -7,12 +7,7 @@ use serde::{Deserialize, Serialize};
 use kola_print::prelude::*;
 
 use super::{Expr, FunctorName, ModuleName, ModuleTypeName, TypeName, TypeScheme, ValueName};
-use crate::{
-    id::Id,
-    print::TreePrinter,
-    slice::SliceId,
-    tree::{TreeBuilder, TreeView},
-};
+use crate::{id::Id, print::TreePrinter, slice::SliceId, tree::Tree};
 
 #[derive(
     Debug, Notate, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
@@ -21,7 +16,7 @@ use crate::{
 pub struct BindError;
 
 impl BindError {
-    pub fn new_in(builder: &mut TreeBuilder) -> Id<Self> {
+    pub fn new_in(builder: &mut Tree) -> Id<Self> {
         builder.alloc(Self)
     }
 }
@@ -69,7 +64,7 @@ impl Bind {
         name: ValueName,
         ty_scheme: Option<TypeScheme>,
         value: Expr,
-        builder: &mut TreeBuilder,
+        builder: &mut Tree,
     ) -> Id<Self> {
         let bind = ValueBind::new_in(vis, name, ty_scheme, value, builder);
 
@@ -120,7 +115,7 @@ impl ValueBind {
         name: ValueName,
         ty_scheme: Option<TypeScheme>,
         value: Expr,
-        builder: &mut TreeBuilder,
+        builder: &mut Tree,
     ) -> Id<Self> {
         let vis = builder.alloc(vis);
         let name = builder.alloc(name);
@@ -185,7 +180,7 @@ impl ModuleBind {
         name: ModuleName,
         ty: Option<ModuleType>,
         value: ModuleExpr,
-        builder: &mut TreeBuilder,
+        builder: &mut Tree,
     ) -> Id<Self> {
         let vis = builder.alloc(vis);
         let name = builder.alloc(name);
@@ -238,7 +233,7 @@ impl FunctorBind {
         name: FunctorName,
         params: impl IntoIterator<Item = FunctorParam>,
         body: ModuleBody,
-        builder: &mut TreeBuilder,
+        builder: &mut Tree,
     ) -> Id<Self> {
         let vis = builder.alloc(vis);
         let name = builder.alloc(name);
@@ -333,8 +328,8 @@ pub struct ModuleBody(pub SliceId<Bind>);
 pub struct ModulePath(pub SliceId<ModuleName>);
 
 impl ModulePath {
-    pub fn get(&self, index: usize, storage: &impl TreeView) -> ModuleName {
-        *self.0.iter(storage).nth(index).unwrap().get(storage)
+    pub fn get(&self, index: usize, tree: &Tree) -> ModuleName {
+        *self.0.iter(tree).nth(index).unwrap().get(tree)
     }
 }
 

@@ -8,7 +8,7 @@ use crate::{
     node::{AnyId, NodeStorage},
     query::Get,
     slice::SliceId,
-    tree::{Tree, TreeView},
+    tree::Tree,
 };
 
 pub trait Decorator<'a> {

@@ -67,7 +67,7 @@ pub fn parse<'t>(input: ParseInput<'t>, report: &mut Report) -> ParseOutput {
 pub struct ParseResult<T> {
     pub node: T,
     pub tokens: SemanticTokens,
-    pub builder: TreeBuilder,
+    pub builder: Tree,
     pub spans: LocVec,
     pub recovered: Report,
 }

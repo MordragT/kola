@@ -9,7 +9,7 @@ use kola_print::prelude::*;
 
 use super::{KindName, ModulePath, TypeName, ValueName};
 
-use crate::{id::Id, print::TreePrinter, slice::SliceId, tree::TreeView};
+use crate::{id::Id, print::TreePrinter, slice::SliceId, tree::Tree};
 
 #[derive(
     Debug,
@@ -213,8 +213,8 @@ pub struct RecordType {
 }
 
 impl RecordType {
-    pub fn get(&self, index: usize, storage: &impl TreeView) -> RecordFieldType {
-        *self.fields.iter(storage).nth(index).unwrap().get(storage)
+    pub fn get(&self, index: usize, tree: &Tree) -> RecordFieldType {
+        *self.fields.iter(tree).nth(index).unwrap().get(tree)
     }
 }
 
@@ -259,8 +259,8 @@ pub struct VariantType {
 }
 
 impl VariantType {
-    pub fn get(&self, index: usize, storage: &impl TreeView) -> TagType {
-        *self.tags.iter(storage).nth(index).unwrap().get(storage)
+    pub fn get(&self, index: usize, tree: &Tree) -> TagType {
+        *self.tags.iter(tree).nth(index).unwrap().get(tree)
     }
 }
 

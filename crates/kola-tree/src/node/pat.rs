@@ -7,12 +7,7 @@ use kola_interner::StrKey;
 use kola_print::prelude::*;
 
 use super::{LiteralExpr, ValueName};
-use crate::{
-    id::Id,
-    print::TreePrinter,
-    slice::SliceId,
-    tree::{TreeBuilder, TreeView},
-};
+use crate::{id::Id, print::TreePrinter, slice::SliceId, tree::Tree};
 
 #[derive(
     Debug, Notate, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
@@ -87,7 +82,7 @@ impl<'a> Notate<'a, LiteralPat> for TreePrinter<'a> {
 pub struct BindPat(pub Id<ValueName>);
 
 impl BindPat {
-    pub fn new_in(name: impl Into<ValueName>, builder: &mut TreeBuilder) -> Id<Self> {
+    pub fn new_in(name: impl Into<ValueName>, builder: &mut Tree) -> Id<Self> {
         let name_id = builder.alloc(name.into());
         builder.alloc(Self(name_id))
     }
@@ -113,12 +108,12 @@ pub enum ListElPat {
 }
 
 impl ListElPat {
-    pub fn pat(pat: impl Into<Pat>, builder: &mut TreeBuilder) -> Id<Self> {
+    pub fn pat(pat: impl Into<Pat>, builder: &mut Tree) -> Id<Self> {
         let pat_id = builder.alloc(pat.into());
         builder.alloc(Self::Pat(pat_id))
     }
 
-    pub fn spread(name: Option<ValueName>, builder: &mut TreeBuilder) -> Id<Self> {
+    pub fn spread(name: Option<ValueName>, builder: &mut Tree) -> Id<Self> {
         let name = name.map(|n| builder.alloc(n));
         builder.alloc(Self::Spread(name))
     }
@@ -176,10 +171,7 @@ impl<'a> Notate<'a, ListElPat> for TreePrinter<'a> {
 pub struct ListPat(pub SliceId<ListElPat>);
 
 impl ListPat {
-    pub fn new_in(
-        items: impl IntoIterator<Item = ListElPat>,
-        builder: &mut TreeBuilder,
-    ) -> Id<Self> {
+    pub fn new_in(items: impl IntoIterator<Item = ListElPat>, builder: &mut Tree) -> Id<Self> {
         let ids = items.into_iter().map(|item| builder.nodes.alloc(item));
         let slice_id = builder.slices.alloc(ids);
         builder.alloc(Self(slice_id))
@@ -207,12 +199,12 @@ pub struct RecordFieldPat {
 }
 
 impl RecordFieldPat {
-    pub fn field(self, storage: &impl TreeView) -> ValueName {
-        *self.field.get(storage)
+    pub fn field(self, tree: &Tree) -> ValueName {
+        *self.field.get(tree)
     }
 
-    pub fn pat(self, storage: &impl TreeView) -> Option<Pat> {
-        self.pat.map(|id| id.get(storage)).copied()
+    pub fn pat(self, tree: &Tree) -> Option<Pat> {
+        self.pat.map(|id| id.get(tree)).copied()
     }
 }
 
@@ -225,7 +217,7 @@ pub struct RecordPat {
 }
 
 impl RecordPat {
-    pub fn new_in<I>(fields: I, polymorph: bool, builder: &mut TreeBuilder) -> Id<Self>
+    pub fn new_in<I>(fields: I, polymorph: bool, builder: &mut Tree) -> Id<Self>
     where
         I: IntoIterator<Item = RecordFieldPat>,
     {
@@ -297,12 +289,12 @@ pub struct VariantTagPat {
 }
 
 impl VariantTagPat {
-    pub fn case(self, storage: &impl TreeView) -> ValueName {
-        *self.tag.get(storage)
+    pub fn case(self, tree: &Tree) -> ValueName {
+        *self.tag.get(tree)
     }
 
-    pub fn pat(self, storage: &impl TreeView) -> Option<Pat> {
-        self.pat.map(|id| id.get(storage)).copied()
+    pub fn pat(self, tree: &Tree) -> Option<Pat> {
+        self.pat.map(|id| id.get(tree)).copied()
     }
 }
 
@@ -324,10 +316,7 @@ impl VariantTagPat {
 pub struct VariantPat(pub SliceId<VariantTagPat>);
 
 impl VariantPat {
-    pub fn new_in(
-        items: impl IntoIterator<Item = VariantTagPat>,
-        builder: &mut TreeBuilder,
-    ) -> Id<Self> {
+    pub fn new_in(items: impl IntoIterator<Item = VariantTagPat>, builder: &mut Tree) -> Id<Self> {
         let ids = items.into_iter().map(|item| builder.nodes.alloc(item));
 
         let slice_id = builder.slices.alloc(ids);

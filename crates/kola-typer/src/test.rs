@@ -20,9 +20,9 @@ pub fn mocked_spans(source_id: SourceId, tree: &impl TreeView) -> LocVec {
     LocVec::from_checkpoint_with(tree.nodes().checkpoint(), loc)
 }
 
-pub fn run_typer<T>(tree: TreeBuilder, root_id: Id<T>) -> Result<TypedNodes, Located<TypeErrors>>
+pub fn run_typer<T>(tree: Tree, root_id: Id<T>) -> Result<TypedNodes, Located<TypeErrors>>
 where
-    Id<T>: Visitable<TreeBuilder>,
+    Id<T>: Visitable<Tree>,
 {
     let source_id = mocked_source();
     let spans = mocked_spans(source_id, &tree);

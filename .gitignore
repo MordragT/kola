@@ -6,3 +6,4 @@ test/
 extension.wasm
 profile.json.gz
 .env
+MIGRATION.md
