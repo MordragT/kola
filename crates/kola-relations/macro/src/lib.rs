@@ -19,6 +19,20 @@ fn extract_id_inner_type(ty: &Type) -> Option<Type> {
     Some(inner_ty.clone())
 }
 
+fn extract_vec_inner_type(ty: &Type) -> Option<Type> {
+    let Type::Path(type_path) = ty else {
+        return None;
+    };
+    let segment = type_path.path.segments.last()?;
+    let syn::PathArguments::AngleBracketed(args) = &segment.arguments else {
+        return None;
+    };
+    let syn::GenericArgument::Type(inner_ty) = args.args.first()? else {
+        return None;
+    };
+    Some(inner_ty.clone())
+}
+
 #[proc_macro_derive(TryProject)]
 pub fn derive_try_project(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
@@ -108,9 +122,107 @@ pub fn derive_relation_projections(input: TokenStream) -> TokenStream {
             #(#methods)*
         }
 
-        impl<P> #ext_trait_name<P> for kola_relations::KeyedQuery<P> {
+        impl<P: kola_relations::QueryPlan> #ext_trait_name<P> for kola_relations::KeyedQuery<P> {
             #(#impl_methods)*
         }
+    };
+    expanded.into()
+}
+
+#[proc_macro_derive(RelationStorage, attributes(relation))]
+pub fn derive_relation_storage(input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as DeriveInput);
+    let struct_name = &input.ident;
+    let syn::Data::Struct(data_struct) = &input.data else {
+        return syn::Error::new_spanned(
+            &input.ident,
+            "RelationStorage can only be derived for structs",
+        )
+        .to_compile_error()
+        .into();
+    };
+
+    let mut impls = Vec::new();
+    for field in &data_struct.fields {
+        let Some(field_name) = &field.ident else {
+            continue;
+        };
+
+        let mut has_relation = false;
+        for attr in &field.attrs {
+            if attr.path().is_ident("relation") {
+                has_relation = true;
+                break;
+            }
+        }
+        if !has_relation {
+            continue;
+        }
+
+        let field_type = &field.ty;
+        let Some(inner_type) = extract_vec_inner_type(field_type) else {
+            continue;
+        };
+
+        let impl_block = quote! {
+            impl kola_relations::RelationIds<#inner_type> for #struct_name {
+                type Ids<'a> = <#field_type as kola_relations::RelationIds<#inner_type>>::Ids<'a> where Self: 'a;
+
+                #[inline]
+                fn ids(&self) -> Self::Ids<'_> {
+                    kola_relations::RelationIds::<#inner_type>::ids(&self.#field_name)
+                }
+            }
+
+            impl kola_relations::PartialRelation<#inner_type, #inner_type> for #struct_name {
+                #[inline]
+                fn get_opt(&self, id: kola_relations::Id<#inner_type>) -> Option<&#inner_type> {
+                    kola_relations::PartialRelation::<#inner_type, #inner_type>::get_opt(&self.#field_name, id)
+                }
+            }
+
+            impl kola_relations::TotalRelation<#inner_type, #inner_type> for #struct_name {
+                #[inline]
+                fn get(&self, id: kola_relations::Id<#inner_type>) -> &#inner_type {
+                    kola_relations::TotalRelation::<#inner_type, #inner_type>::get(&self.#field_name, id)
+                }
+
+                type Rows<'a> = <#field_type as kola_relations::TotalRelation<#inner_type, #inner_type>>::Rows<'a> where Self: 'a;
+
+                #[inline]
+                fn rows(&self) -> Self::Rows<'_> {
+                    kola_relations::TotalRelation::<#inner_type, #inner_type>::rows(&self.#field_name)
+                }
+            }
+
+            impl kola_relations::TotalRelationMut<#inner_type, #inner_type> for #struct_name {
+                #[inline]
+                fn get_mut(&mut self, id: kola_relations::Id<#inner_type>) -> &mut #inner_type {
+                    kola_relations::TotalRelationMut::<#inner_type, #inner_type>::get_mut(&mut self.#field_name, id)
+                }
+
+                type RowsMut<'a> = <#field_type as kola_relations::TotalRelationMut<#inner_type, #inner_type>>::RowsMut<'a> where Self: 'a;
+
+                #[inline]
+                fn rows_mut(&mut self) -> Self::RowsMut<'_> {
+                    kola_relations::TotalRelationMut::<#inner_type, #inner_type>::rows_mut(&mut self.#field_name)
+                }
+            }
+
+            impl kola_relations::Allocate<#inner_type> for #struct_name {
+                type Key = <#field_type as kola_relations::Allocate<#inner_type>>::Key;
+
+                #[inline]
+                fn alloc(&mut self, value: #inner_type) -> kola_relations::Id<Self::Key> {
+                    kola_relations::Allocate::<#inner_type>::alloc(&mut self.#field_name, value)
+                }
+            }
+        };
+        impls.push(impl_block);
+    }
+
+    let expanded = quote! {
+        #(#impls)*
     };
     expanded.into()
 }
