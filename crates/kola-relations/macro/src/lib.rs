@@ -19,7 +19,32 @@ fn extract_id_inner_type(ty: &Type) -> Option<Type> {
     Some(inner_ty.clone())
 }
 
-fn extract_vec_inner_type(ty: &Type) -> Option<Type> {
+fn peel_smart_pointers(ty: &Type) -> Type {
+    let Type::Path(type_path) = ty else {
+        return ty.clone();
+    };
+    let Some(segment) = type_path.path.segments.last() else {
+        return ty.clone();
+    };
+    if segment.ident == "Arc" || segment.ident == "Rc" || segment.ident == "Ptr" {
+        let syn::PathArguments::AngleBracketed(args) = &segment.arguments else {
+            return ty.clone();
+        };
+        let Some(syn::GenericArgument::Type(inner_ty)) = args.args.first() else {
+            return ty.clone();
+        };
+        return peel_smart_pointers(inner_ty);
+    }
+    ty.clone()
+}
+
+enum Container {
+    Vec(Type),
+    SideVec(Type, Type),
+    SideMap(Type, Type),
+}
+
+fn classify_container(ty: &Type) -> Option<Container> {
     let Type::Path(type_path) = ty else {
         return None;
     };
@@ -27,10 +52,31 @@ fn extract_vec_inner_type(ty: &Type) -> Option<Type> {
     let syn::PathArguments::AngleBracketed(args) = &segment.arguments else {
         return None;
     };
-    let syn::GenericArgument::Type(inner_ty) = args.args.first()? else {
-        return None;
-    };
-    Some(inner_ty.clone())
+
+    if segment.ident == "Vec" {
+        let syn::GenericArgument::Type(v) = args.args.first()? else {
+            return None;
+        };
+        Some(Container::Vec(v.clone()))
+    } else if segment.ident == "SideVec" {
+        let syn::GenericArgument::Type(k) = args.args.first()? else {
+            return None;
+        };
+        let syn::GenericArgument::Type(v) = args.args.get(1)? else {
+            return None;
+        };
+        Some(Container::SideVec(k.clone(), v.clone()))
+    } else if segment.ident == "SideMap" {
+        let syn::GenericArgument::Type(k) = args.args.first()? else {
+            return None;
+        };
+        let syn::GenericArgument::Type(v) = args.args.get(1)? else {
+            return None;
+        };
+        Some(Container::SideMap(k.clone(), v.clone()))
+    } else {
+        None
+    }
 }
 
 #[proc_macro_derive(TryProject)]
@@ -160,65 +206,138 @@ pub fn derive_relation_storage(input: TokenStream) -> TokenStream {
         }
 
         let field_type = &field.ty;
-        let Some(inner_type) = extract_vec_inner_type(field_type) else {
+        let peeled_type = peel_smart_pointers(field_type);
+        let Some(container) = classify_container(&peeled_type) else {
             continue;
         };
 
-        let impl_block = quote! {
-            impl kola_relations::RelationIds<#inner_type> for #struct_name {
-                type Ids<'a> = <#field_type as kola_relations::RelationIds<#inner_type>>::Ids<'a> where Self: 'a;
+        match container {
+            Container::Vec(v) => {
+                let impl_block = quote! {
+                    impl kola_relations::RelationIds<#v> for #struct_name {
+                        type Ids<'a> = <#field_type as kola_relations::RelationIds<#v>>::Ids<'a> where Self: 'a;
 
-                #[inline]
-                fn ids(&self) -> Self::Ids<'_> {
-                    kola_relations::RelationIds::<#inner_type>::ids(&self.#field_name)
-                }
+                        #[inline]
+                        fn ids(&self) -> Self::Ids<'_> {
+                            kola_relations::RelationIds::<#v>::ids(&self.#field_name)
+                        }
+                    }
+
+                    impl kola_relations::PartialRelation<#v, #v> for #struct_name {
+                        #[inline]
+                        fn get_opt(&self, id: kola_relations::Id<#v>) -> Option<&#v> {
+                            kola_relations::PartialRelation::<#v, #v>::get_opt(&self.#field_name, id)
+                        }
+                    }
+
+                    impl kola_relations::TotalRelation<#v, #v> for #struct_name {
+                        #[inline]
+                        fn get(&self, id: kola_relations::Id<#v>) -> &#v {
+                            kola_relations::TotalRelation::<#v, #v>::get(&self.#field_name, id)
+                        }
+
+                        type Rows<'a> = <#field_type as kola_relations::TotalRelation<#v, #v>>::Rows<'a> where Self: 'a;
+
+                        #[inline]
+                        fn rows(&self) -> Self::Rows<'_> {
+                            kola_relations::TotalRelation::<#v, #v>::rows(&self.#field_name)
+                        }
+                    }
+
+                    impl kola_relations::TotalRelationMut<#v, #v> for #struct_name {
+                        #[inline]
+                        fn get_mut(&mut self, id: kola_relations::Id<#v>) -> &mut #v {
+                            kola_relations::TotalRelationMut::<#v, #v>::get_mut(&mut self.#field_name, id)
+                        }
+
+                        type RowsMut<'a> = <#field_type as kola_relations::TotalRelationMut<#v, #v>>::RowsMut<'a> where Self: 'a;
+
+                        #[inline]
+                        fn rows_mut(&mut self) -> Self::RowsMut<'_> {
+                            kola_relations::TotalRelationMut::<#v, #v>::rows_mut(&mut self.#field_name)
+                        }
+                    }
+
+                    impl kola_relations::Allocate<#v> for #struct_name {
+                        type Key = <#field_type as kola_relations::Allocate<#v>>::Key;
+
+                        #[inline]
+                        fn alloc(&mut self, value: #v) -> kola_relations::Id<Self::Key> {
+                            kola_relations::Allocate::<#v>::alloc(&mut self.#field_name, value)
+                        }
+                    }
+                };
+                impls.push(impl_block);
             }
+            Container::SideVec(k, v) => {
+                let impl_block = quote! {
+                    impl kola_relations::RelationIds<#k> for #struct_name {
+                        type Ids<'a> = <#field_type as kola_relations::RelationIds<#k>>::Ids<'a> where Self: 'a;
 
-            impl kola_relations::PartialRelation<#inner_type, #inner_type> for #struct_name {
-                #[inline]
-                fn get_opt(&self, id: kola_relations::Id<#inner_type>) -> Option<&#inner_type> {
-                    kola_relations::PartialRelation::<#inner_type, #inner_type>::get_opt(&self.#field_name, id)
-                }
+                        #[inline]
+                        fn ids(&self) -> Self::Ids<'_> {
+                            kola_relations::RelationIds::<#k>::ids(&self.#field_name)
+                        }
+                    }
+
+                    impl kola_relations::PartialRelation<#k, #v> for #struct_name {
+                        #[inline]
+                        fn get_opt(&self, id: kola_relations::Id<#k>) -> Option<&#v> {
+                            kola_relations::PartialRelation::<#k, #v>::get_opt(&self.#field_name, id)
+                        }
+                    }
+
+                    impl kola_relations::TotalRelation<#k, #v> for #struct_name {
+                        #[inline]
+                        fn get(&self, id: kola_relations::Id<#k>) -> &#v {
+                            kola_relations::TotalRelation::<#k, #v>::get(&self.#field_name, id)
+                        }
+
+                        type Rows<'a> = <#field_type as kola_relations::TotalRelation<#k, #v>>::Rows<'a> where Self: 'a;
+
+                        #[inline]
+                        fn rows(&self) -> Self::Rows<'_> {
+                            kola_relations::TotalRelation::<#k, #v>::rows(&self.#field_name)
+                        }
+                    }
+
+                    impl kola_relations::TotalRelationMut<#k, #v> for #struct_name {
+                        #[inline]
+                        fn get_mut(&mut self, id: kola_relations::Id<#k>) -> &mut #v {
+                            kola_relations::TotalRelationMut::<#k, #v>::get_mut(&mut self.#field_name, id)
+                        }
+
+                        type RowsMut<'a> = <#field_type as kola_relations::TotalRelationMut<#k, #v>>::RowsMut<'a> where Self: 'a;
+
+                        #[inline]
+                        fn rows_mut(&mut self) -> Self::RowsMut<'_> {
+                            kola_relations::TotalRelationMut::<#k, #v>::rows_mut(&mut self.#field_name)
+                        }
+                    }
+                };
+                impls.push(impl_block);
             }
+            Container::SideMap(k, v) => {
+                let impl_block = quote! {
+                    impl kola_relations::RelationIds<#k> for #struct_name {
+                        type Ids<'a> = <#field_type as kola_relations::RelationIds<#k>>::Ids<'a> where Self: 'a;
 
-            impl kola_relations::TotalRelation<#inner_type, #inner_type> for #struct_name {
-                #[inline]
-                fn get(&self, id: kola_relations::Id<#inner_type>) -> &#inner_type {
-                    kola_relations::TotalRelation::<#inner_type, #inner_type>::get(&self.#field_name, id)
-                }
+                        #[inline]
+                        fn ids(&self) -> Self::Ids<'_> {
+                            kola_relations::RelationIds::<#k>::ids(&self.#field_name)
+                        }
+                    }
 
-                type Rows<'a> = <#field_type as kola_relations::TotalRelation<#inner_type, #inner_type>>::Rows<'a> where Self: 'a;
-
-                #[inline]
-                fn rows(&self) -> Self::Rows<'_> {
-                    kola_relations::TotalRelation::<#inner_type, #inner_type>::rows(&self.#field_name)
-                }
+                    impl kola_relations::PartialRelation<#k, #v> for #struct_name {
+                        #[inline]
+                        fn get_opt(&self, id: kola_relations::Id<#k>) -> Option<&#v> {
+                            kola_relations::PartialRelation::<#k, #v>::get_opt(&self.#field_name, id)
+                        }
+                    }
+                };
+                impls.push(impl_block);
             }
-
-            impl kola_relations::TotalRelationMut<#inner_type, #inner_type> for #struct_name {
-                #[inline]
-                fn get_mut(&mut self, id: kola_relations::Id<#inner_type>) -> &mut #inner_type {
-                    kola_relations::TotalRelationMut::<#inner_type, #inner_type>::get_mut(&mut self.#field_name, id)
-                }
-
-                type RowsMut<'a> = <#field_type as kola_relations::TotalRelationMut<#inner_type, #inner_type>>::RowsMut<'a> where Self: 'a;
-
-                #[inline]
-                fn rows_mut(&mut self) -> Self::RowsMut<'_> {
-                    kola_relations::TotalRelationMut::<#inner_type, #inner_type>::rows_mut(&mut self.#field_name)
-                }
-            }
-
-            impl kola_relations::Allocate<#inner_type> for #struct_name {
-                type Key = <#field_type as kola_relations::Allocate<#inner_type>>::Key;
-
-                #[inline]
-                fn alloc(&mut self, value: #inner_type) -> kola_relations::Id<Self::Key> {
-                    kola_relations::Allocate::<#inner_type>::alloc(&mut self.#field_name, value)
-                }
-            }
-        };
-        impls.push(impl_block);
+        }
     }
 
     let expanded = quote! {

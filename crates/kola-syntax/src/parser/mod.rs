@@ -16,12 +16,11 @@ use kola_combinators::primitive::Lazy;
 use kola_span::{Diagnostic, Report};
 use kola_tree::prelude::*;
 
-use crate::{loc::LocVec, token::SemanticTokens};
+use crate::token::SemanticTokens;
 
 pub struct ParseOutput {
     pub tokens: SemanticTokens,
     pub tree: Option<Tree>,
-    pub spans: LocVec,
     pub recovered: Report,
 }
 
@@ -36,7 +35,6 @@ pub fn parse<'t>(input: ParseInput<'t>, report: &mut Report) -> ParseOutput {
     let State {
         tokens,
         builder,
-        spans,
         recovered,
         ..
     } = input.state;
@@ -47,7 +45,6 @@ pub fn parse<'t>(input: ParseInput<'t>, report: &mut Report) -> ParseOutput {
             ParseOutput {
                 tokens,
                 tree,
-                spans,
                 recovered,
             }
         }
@@ -57,7 +54,6 @@ pub fn parse<'t>(input: ParseInput<'t>, report: &mut Report) -> ParseOutput {
             ParseOutput {
                 tokens,
                 tree: None,
-                spans,
                 recovered,
             }
         }
@@ -68,7 +64,6 @@ pub struct ParseResult<T> {
     pub node: T,
     pub tokens: SemanticTokens,
     pub builder: Tree,
-    pub spans: LocVec,
     pub recovered: Report,
 }
 
@@ -91,7 +86,6 @@ where
     let State {
         tokens,
         builder,
-        spans,
         recovered,
         ..
     } = input.state;
@@ -100,7 +94,6 @@ where
         node,
         tokens,
         builder,
-        spans,
         recovered,
     })
 }

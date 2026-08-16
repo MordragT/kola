@@ -123,7 +123,7 @@ mod tests {
             func: lit1,
             arg: lit2,
         });
-        let expr = store.alloc(MockExpr::Call(call));
+        let _expr = store.alloc(MockExpr::Call(call));
 
         // Let's query MockExpr, cast it to MockCall, project its arg, and verify value
         let results: Vec<_> = query::<MockExpr>()

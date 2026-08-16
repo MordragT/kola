@@ -637,3 +637,211 @@ where
         self.0.get_slice(id)
     }
 }
+
+// ==========================================
+// Blanket Smart Pointer Implementations (Arc and Rc)
+// ==========================================
+
+// --- std::sync::Arc ---
+
+impl<T, K> RelationIds<K> for std::sync::Arc<T>
+where
+    T: RelationIds<K> + ?Sized,
+    K: 'static,
+{
+    type Ids<'a>
+        = T::Ids<'a>
+    where
+        Self: 'a;
+
+    #[inline]
+    fn ids(&self) -> Self::Ids<'_> {
+        (**self).ids()
+    }
+}
+
+impl<T, K, V> PartialRelation<K, V> for std::sync::Arc<T>
+where
+    T: PartialRelation<K, V> + ?Sized,
+    K: 'static,
+    V: 'static,
+{
+    #[inline]
+    fn get_opt(&self, id: Id<K>) -> Option<&V> {
+        (**self).get_opt(id)
+    }
+}
+
+impl<T, K, V> TotalRelation<K, V> for std::sync::Arc<T>
+where
+    T: TotalRelation<K, V> + ?Sized,
+    K: 'static,
+    V: 'static,
+{
+    #[inline]
+    fn get(&self, id: Id<K>) -> &V {
+        (**self).get(id)
+    }
+
+    type Rows<'a>
+        = T::Rows<'a>
+    where
+        Self: 'a,
+        V: 'a;
+
+    #[inline]
+    fn rows(&self) -> Self::Rows<'_> {
+        (**self).rows()
+    }
+}
+
+impl<T, K, V> TotalRelationMut<K, V> for std::sync::Arc<T>
+where
+    T: TotalRelationMut<K, V> + ?Sized,
+    T: Clone,
+    K: 'static,
+    V: 'static,
+{
+    #[inline]
+    fn get_mut(&mut self, id: Id<K>) -> &mut V {
+        std::sync::Arc::make_mut(self).get_mut(id)
+    }
+
+    type RowsMut<'a>
+        = T::RowsMut<'a>
+    where
+        Self: 'a,
+        V: 'a;
+
+    #[inline]
+    fn rows_mut(&mut self) -> Self::RowsMut<'_> {
+        std::sync::Arc::make_mut(self).rows_mut()
+    }
+}
+
+impl<T, V> Allocate<V> for std::sync::Arc<T>
+where
+    T: Allocate<V> + ?Sized,
+    T: Clone,
+    V: 'static,
+{
+    type Key = T::Key;
+
+    #[inline]
+    fn alloc(&mut self, value: V) -> Id<Self::Key> {
+        std::sync::Arc::make_mut(self).alloc(value)
+    }
+}
+
+impl<T, U> SliceRelation<U> for std::sync::Arc<T>
+where
+    T: SliceRelation<U> + ?Sized,
+    U: 'static,
+{
+    #[inline]
+    fn get_slice(&self, id: SliceId<U>) -> &[Id<U>] {
+        (**self).get_slice(id)
+    }
+}
+
+// --- std::rc::Rc ---
+
+impl<T, K> RelationIds<K> for std::rc::Rc<T>
+where
+    T: RelationIds<K> + ?Sized,
+    K: 'static,
+{
+    type Ids<'a>
+        = T::Ids<'a>
+    where
+        Self: 'a;
+
+    #[inline]
+    fn ids(&self) -> Self::Ids<'_> {
+        (**self).ids()
+    }
+}
+
+impl<T, K, V> PartialRelation<K, V> for std::rc::Rc<T>
+where
+    T: PartialRelation<K, V> + ?Sized,
+    K: 'static,
+    V: 'static,
+{
+    #[inline]
+    fn get_opt(&self, id: Id<K>) -> Option<&V> {
+        (**self).get_opt(id)
+    }
+}
+
+impl<T, K, V> TotalRelation<K, V> for std::rc::Rc<T>
+where
+    T: TotalRelation<K, V> + ?Sized,
+    K: 'static,
+    V: 'static,
+{
+    #[inline]
+    fn get(&self, id: Id<K>) -> &V {
+        (**self).get(id)
+    }
+
+    type Rows<'a>
+        = T::Rows<'a>
+    where
+        Self: 'a,
+        V: 'a;
+
+    #[inline]
+    fn rows(&self) -> Self::Rows<'_> {
+        (**self).rows()
+    }
+}
+
+impl<T, K, V> TotalRelationMut<K, V> for std::rc::Rc<T>
+where
+    T: TotalRelationMut<K, V> + ?Sized,
+    T: Clone,
+    K: 'static,
+    V: 'static,
+{
+    #[inline]
+    fn get_mut(&mut self, id: Id<K>) -> &mut V {
+        std::rc::Rc::make_mut(self).get_mut(id)
+    }
+
+    type RowsMut<'a>
+        = T::RowsMut<'a>
+    where
+        Self: 'a,
+        V: 'a;
+
+    #[inline]
+    fn rows_mut(&mut self) -> Self::RowsMut<'_> {
+        std::rc::Rc::make_mut(self).rows_mut()
+    }
+}
+
+impl<T, V> Allocate<V> for std::rc::Rc<T>
+where
+    T: Allocate<V> + ?Sized,
+    T: Clone,
+    V: 'static,
+{
+    type Key = T::Key;
+
+    #[inline]
+    fn alloc(&mut self, value: V) -> Id<Self::Key> {
+        std::rc::Rc::make_mut(self).alloc(value)
+    }
+}
+
+impl<T, U> SliceRelation<U> for std::rc::Rc<T>
+where
+    T: SliceRelation<U> + ?Sized,
+    U: 'static,
+{
+    #[inline]
+    fn get_slice(&self, id: SliceId<U>) -> &[Id<U>] {
+        (**self).get_slice(id)
+    }
+}

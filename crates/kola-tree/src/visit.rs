@@ -1,22 +1,23 @@
 use pastey::paste;
 use std::ops::ControlFlow;
 
-use crate::{id::Id, node, tree::Tree};
+use crate::{id::Id, id::IdExt, node, tree::Tree};
+use kola_relations::{SliceRelation, TotalRelation};
 
-pub trait Visitable {
-    fn visit_by<V>(&self, visitor: &mut V, tree: &Tree) -> ControlFlow<V::BreakValue>
+pub trait Visitable<M> {
+    fn visit_by<V>(&self, visitor: &mut V, tree: &Tree<M>) -> ControlFlow<V::BreakValue>
     where
-        V: Visitor;
+        V: Visitor<M>;
 }
 
 macro_rules! impl_visitable {
     ($($variant:ident),* $(,)?) => {
         paste!{
             $(
-                impl Visitable for Id<node::$variant> {
-                    fn visit_by<V>(&self, visitor: &mut V, tree: &Tree) -> ControlFlow<V::BreakValue>
+                impl<M> Visitable<M> for Id<node::$variant> {
+                    fn visit_by<V>(&self, visitor: &mut V, tree: &Tree<M>) -> ControlFlow<V::BreakValue>
                     where
-                        V: Visitor,
+                        V: Visitor<M>,
                     {
                         visitor.[<visit_ $variant:snake:lower>](*self, tree)
                     }
@@ -114,48 +115,48 @@ impl_visitable!(
     ModuleType,
 );
 
-pub trait Visitor {
+pub trait Visitor<M: 'static> {
     type BreakValue;
 
     fn visit_functor_name(
         &mut self,
         _id: Id<node::FunctorName>,
-        _tree: &Tree,
+        _tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         ControlFlow::Continue(())
     }
     fn visit_module_type_name(
         &mut self,
         _id: Id<node::ModuleTypeName>,
-        _tree: &Tree,
+        _tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         ControlFlow::Continue(())
     }
     fn visit_module_name(
         &mut self,
         _id: Id<node::ModuleName>,
-        _tree: &Tree,
+        _tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         ControlFlow::Continue(())
     }
     fn visit_kind_name(
         &mut self,
         _id: Id<node::KindName>,
-        _tree: &Tree,
+        _tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         ControlFlow::Continue(())
     }
     fn visit_type_name(
         &mut self,
         _id: Id<node::TypeName>,
-        _tree: &Tree,
+        _tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         ControlFlow::Continue(())
     }
     fn visit_value_name(
         &mut self,
         _id: Id<node::ValueName>,
-        _tree: &Tree,
+        _tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         ControlFlow::Continue(())
     }
@@ -163,21 +164,21 @@ pub trait Visitor {
     fn visit_any_pat(
         &mut self,
         _id: Id<node::AnyPat>,
-        _tree: &Tree,
+        _tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         ControlFlow::Continue(())
     }
     fn visit_literal_pat(
         &mut self,
         _id: Id<node::LiteralPat>,
-        _tree: &Tree,
+        _tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         ControlFlow::Continue(())
     }
     fn visit_bind_pat(
         &mut self,
         _id: Id<node::BindPat>,
-        _tree: &Tree,
+        _tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         ControlFlow::Continue(())
     }
@@ -185,7 +186,7 @@ pub trait Visitor {
     fn walk_list_el_pat(
         &mut self,
         id: Id<node::ListElPat>,
-        tree: &Tree,
+        tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         match *tree.get(id) {
             node::ListElPat::Pat(pat_id) => self.visit_pat(pat_id, tree),
@@ -200,7 +201,7 @@ pub trait Visitor {
     fn visit_list_el_pat(
         &mut self,
         id: Id<node::ListElPat>,
-        tree: &Tree,
+        tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         self.walk_list_el_pat(id, tree)
     }
@@ -208,9 +209,9 @@ pub trait Visitor {
     fn walk_list_pat(
         &mut self,
         id: Id<node::ListPat>,
-        tree: &Tree,
+        tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
-        for element_id in id.get(tree).0.iter(tree) {
+        for element_id in tree.get_slice(id.get(tree).0).iter().copied() {
             self.visit_list_el_pat(element_id, tree)?;
         }
         ControlFlow::Continue(())
@@ -218,7 +219,7 @@ pub trait Visitor {
     fn visit_list_pat(
         &mut self,
         id: Id<node::ListPat>,
-        tree: &Tree,
+        tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         self.walk_list_pat(id, tree)
     }
@@ -226,7 +227,7 @@ pub trait Visitor {
     fn walk_record_field_pat(
         &mut self,
         id: Id<node::RecordFieldPat>,
-        tree: &Tree,
+        tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         let node::RecordFieldPat { field, pat } = tree.get(id);
         self.visit_value_name(*field, tree)?;
@@ -238,7 +239,7 @@ pub trait Visitor {
     fn visit_record_field_pat(
         &mut self,
         id: Id<node::RecordFieldPat>,
-        tree: &Tree,
+        tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         self.walk_record_field_pat(id, tree)
     }
@@ -246,9 +247,9 @@ pub trait Visitor {
     fn walk_record_pat(
         &mut self,
         id: Id<node::RecordPat>,
-        tree: &Tree,
+        tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
-        for field_id in id.get(tree).fields.iter(tree) {
+        for field_id in tree.get_slice(id.get(tree).fields).iter().copied() {
             self.visit_record_field_pat(field_id, tree)?;
         }
         ControlFlow::Continue(())
@@ -256,7 +257,7 @@ pub trait Visitor {
     fn visit_record_pat(
         &mut self,
         id: Id<node::RecordPat>,
-        tree: &Tree,
+        tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         self.walk_record_pat(id, tree)
     }
@@ -264,7 +265,7 @@ pub trait Visitor {
     fn walk_variant_tag_pat(
         &mut self,
         id: Id<node::VariantTagPat>,
-        tree: &Tree,
+        tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         let node::VariantTagPat { tag, pat } = tree.get(id);
         self.visit_value_name(*tag, tree)?;
@@ -276,7 +277,7 @@ pub trait Visitor {
     fn visit_variant_tag_pat(
         &mut self,
         id: Id<node::VariantTagPat>,
-        tree: &Tree,
+        tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         self.walk_variant_tag_pat(id, tree)
     }
@@ -284,9 +285,9 @@ pub trait Visitor {
     fn walk_variant_pat(
         &mut self,
         id: Id<node::VariantPat>,
-        tree: &Tree,
+        tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
-        for tag_id in id.get(tree).0.iter(tree) {
+        for tag_id in tree.get_slice(id.get(tree).0).iter().copied() {
             self.visit_variant_tag_pat(tag_id, tree)?;
         }
         ControlFlow::Continue(())
@@ -294,7 +295,7 @@ pub trait Visitor {
     fn visit_variant_pat(
         &mut self,
         id: Id<node::VariantPat>,
-        tree: &Tree,
+        tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         self.walk_variant_pat(id, tree)
     }
@@ -302,12 +303,12 @@ pub trait Visitor {
     fn visit_pat_error(
         &mut self,
         _id: Id<node::PatError>,
-        _tree: &Tree,
+        _tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         ControlFlow::Continue(())
     }
 
-    fn walk_pat(&mut self, id: Id<node::Pat>, tree: &Tree) -> ControlFlow<Self::BreakValue> {
+    fn walk_pat(&mut self, id: Id<node::Pat>, tree: &Tree<M>) -> ControlFlow<Self::BreakValue> {
         use node::Pat::*;
         match *tree.get(id) {
             Error(id) => self.visit_pat_error(id, tree),
@@ -319,49 +320,49 @@ pub trait Visitor {
             Variant(id) => self.visit_variant_pat(id, tree),
         }
     }
-    fn visit_pat(&mut self, id: Id<node::Pat>, tree: &Tree) -> ControlFlow<Self::BreakValue> {
+    fn visit_pat(&mut self, id: Id<node::Pat>, tree: &Tree<M>) -> ControlFlow<Self::BreakValue> {
         self.walk_pat(id, tree)
     }
 
     fn visit_literal_expr(
         &mut self,
         _id: Id<node::LiteralExpr>,
-        _tree: &Tree,
+        _tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         ControlFlow::Continue(())
     }
     fn visit_unary_op(
         &mut self,
         _id: Id<node::UnaryOp>,
-        _tree: &Tree,
+        _tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         ControlFlow::Continue(())
     }
     fn visit_binary_op(
         &mut self,
         _id: Id<node::BinaryOp>,
-        _tree: &Tree,
+        _tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         ControlFlow::Continue(())
     }
     fn visit_record_update_op(
         &mut self,
         _id: Id<node::RecordUpdateOp>,
-        _tree: &Tree,
+        _tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         ControlFlow::Continue(())
     }
     fn visit_expr_error(
         &mut self,
         _id: Id<node::ExprError>,
-        _tree: &Tree,
+        _tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         ControlFlow::Continue(())
     }
     fn visit_type_error(
         &mut self,
         _id: Id<node::TypeError>,
-        _tree: &Tree,
+        _tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         ControlFlow::Continue(())
     }
@@ -369,9 +370,9 @@ pub trait Visitor {
     fn walk_list_expr(
         &mut self,
         id: Id<node::ListExpr>,
-        tree: &Tree,
+        tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
-        for element_id in id.get(tree).0.iter(tree) {
+        for element_id in tree.get_slice(id.get(tree).0).iter().copied() {
             self.visit_expr(element_id, tree)?;
         }
         ControlFlow::Continue(())
@@ -379,7 +380,7 @@ pub trait Visitor {
     fn visit_list_expr(
         &mut self,
         id: Id<node::ListExpr>,
-        tree: &Tree,
+        tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         self.walk_list_expr(id, tree)
     }
@@ -387,7 +388,7 @@ pub trait Visitor {
     fn walk_record_field(
         &mut self,
         id: Id<node::RecordField>,
-        tree: &Tree,
+        tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         let node::RecordField { label, ty, value } = tree.get(id);
         self.visit_value_name(*label, tree)?;
@@ -400,7 +401,7 @@ pub trait Visitor {
     fn visit_record_field(
         &mut self,
         id: Id<node::RecordField>,
-        tree: &Tree,
+        tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         self.walk_record_field(id, tree)
     }
@@ -408,9 +409,9 @@ pub trait Visitor {
     fn walk_record_expr(
         &mut self,
         id: Id<node::RecordExpr>,
-        tree: &Tree,
+        tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
-        for field_id in id.get(tree).0.iter(tree) {
+        for field_id in tree.get_slice(id.get(tree).0).iter().copied() {
             self.visit_record_field(field_id, tree)?;
         }
         ControlFlow::Continue(())
@@ -418,7 +419,7 @@ pub trait Visitor {
     fn visit_record_expr(
         &mut self,
         id: Id<node::RecordExpr>,
-        tree: &Tree,
+        tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         self.walk_record_expr(id, tree)
     }
@@ -426,7 +427,7 @@ pub trait Visitor {
     fn walk_record_extend_expr(
         &mut self,
         id: Id<node::RecordExtendExpr>,
-        tree: &Tree,
+        tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         let node::RecordExtendExpr {
             source,
@@ -449,7 +450,7 @@ pub trait Visitor {
     fn visit_record_extend_expr(
         &mut self,
         id: Id<node::RecordExtendExpr>,
-        tree: &Tree,
+        tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         self.walk_record_extend_expr(id, tree)
     }
@@ -457,7 +458,7 @@ pub trait Visitor {
     fn walk_record_restrict_expr(
         &mut self,
         id: Id<node::RecordRestrictExpr>,
-        tree: &Tree,
+        tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         let node::RecordRestrictExpr {
             source,
@@ -478,7 +479,7 @@ pub trait Visitor {
     fn visit_record_restrict_expr(
         &mut self,
         id: Id<node::RecordRestrictExpr>,
-        tree: &Tree,
+        tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         self.walk_record_restrict_expr(id, tree)
     }
@@ -486,7 +487,7 @@ pub trait Visitor {
     fn walk_record_update_expr(
         &mut self,
         id: Id<node::RecordUpdateExpr>,
-        tree: &Tree,
+        tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         let node::RecordUpdateExpr {
             source,
@@ -511,7 +512,7 @@ pub trait Visitor {
     fn visit_record_update_expr(
         &mut self,
         id: Id<node::RecordUpdateExpr>,
-        tree: &Tree,
+        tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         self.walk_record_update_expr(id, tree)
     }
@@ -519,7 +520,7 @@ pub trait Visitor {
     fn walk_record_merge_expr(
         &mut self,
         id: Id<node::RecordMergeExpr>,
-        tree: &Tree,
+        tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         let node::RecordMergeExpr { lhs, rhs } = *tree.get(id);
         self.visit_expr(lhs, tree)?;
@@ -529,7 +530,7 @@ pub trait Visitor {
     fn visit_record_merge_expr(
         &mut self,
         id: Id<node::RecordMergeExpr>,
-        tree: &Tree,
+        tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         self.walk_record_merge_expr(id, tree)
     }
@@ -537,9 +538,9 @@ pub trait Visitor {
     fn walk_field_path(
         &mut self,
         id: Id<node::FieldPath>,
-        tree: &Tree,
+        tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
-        for field_id in id.get(tree).0.iter(tree) {
+        for field_id in tree.get_slice(id.get(tree).0).iter().copied() {
             self.visit_value_name(field_id, tree)?;
         }
         ControlFlow::Continue(())
@@ -547,7 +548,7 @@ pub trait Visitor {
     fn visit_field_path(
         &mut self,
         id: Id<node::FieldPath>,
-        tree: &Tree,
+        tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         self.walk_field_path(id, tree)
     }
@@ -555,7 +556,7 @@ pub trait Visitor {
     fn walk_qualified_expr(
         &mut self,
         id: Id<node::QualifiedExpr>,
-        tree: &Tree,
+        tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         let node::QualifiedExpr {
             module_path,
@@ -574,7 +575,7 @@ pub trait Visitor {
     fn visit_qualified_expr(
         &mut self,
         id: Id<node::QualifiedExpr>,
-        tree: &Tree,
+        tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         self.walk_qualified_expr(id, tree)
     }
@@ -582,7 +583,7 @@ pub trait Visitor {
     fn walk_unary_expr(
         &mut self,
         id: Id<node::UnaryExpr>,
-        tree: &Tree,
+        tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         let node::UnaryExpr { op, operand } = *tree.get(id);
         self.visit_unary_op(op, tree)?;
@@ -592,7 +593,7 @@ pub trait Visitor {
     fn visit_unary_expr(
         &mut self,
         id: Id<node::UnaryExpr>,
-        tree: &Tree,
+        tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         self.walk_unary_expr(id, tree)
     }
@@ -600,7 +601,7 @@ pub trait Visitor {
     fn walk_binary_expr(
         &mut self,
         id: Id<node::BinaryExpr>,
-        tree: &Tree,
+        tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         let node::BinaryExpr { op, lhs, rhs } = *tree.get(id);
         self.visit_binary_op(op, tree)?;
@@ -611,7 +612,7 @@ pub trait Visitor {
     fn visit_binary_expr(
         &mut self,
         id: Id<node::BinaryExpr>,
-        tree: &Tree,
+        tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         self.walk_binary_expr(id, tree)
     }
@@ -619,7 +620,7 @@ pub trait Visitor {
     fn walk_let_expr(
         &mut self,
         id: Id<node::LetExpr>,
-        tree: &Tree,
+        tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         let node::LetExpr {
             name,
@@ -638,7 +639,7 @@ pub trait Visitor {
     fn visit_let_expr(
         &mut self,
         id: Id<node::LetExpr>,
-        tree: &Tree,
+        tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         self.walk_let_expr(id, tree)
     }
@@ -646,7 +647,7 @@ pub trait Visitor {
     fn walk_case_branch(
         &mut self,
         id: Id<node::CaseBranch>,
-        tree: &Tree,
+        tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         let node::CaseBranch { pat, body } = *tree.get(id);
         self.visit_pat(pat, tree)?;
@@ -656,7 +657,7 @@ pub trait Visitor {
     fn visit_case_branch(
         &mut self,
         id: Id<node::CaseBranch>,
-        tree: &Tree,
+        tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         self.walk_case_branch(id, tree)
     }
@@ -664,11 +665,11 @@ pub trait Visitor {
     fn walk_case_expr(
         &mut self,
         id: Id<node::CaseExpr>,
-        tree: &Tree,
+        tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         let node::CaseExpr { source, branches } = tree.get(id);
         self.visit_expr(*source, tree)?;
-        for branch_id in branches.iter(tree) {
+        for branch_id in tree.get_slice(*branches).iter().copied() {
             self.visit_case_branch(branch_id, tree)?;
         }
         ControlFlow::Continue(())
@@ -676,12 +677,16 @@ pub trait Visitor {
     fn visit_case_expr(
         &mut self,
         id: Id<node::CaseExpr>,
-        tree: &Tree,
+        tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         self.walk_case_expr(id, tree)
     }
 
-    fn walk_if_expr(&mut self, id: Id<node::IfExpr>, tree: &Tree) -> ControlFlow<Self::BreakValue> {
+    fn walk_if_expr(
+        &mut self,
+        id: Id<node::IfExpr>,
+        tree: &Tree<M>,
+    ) -> ControlFlow<Self::BreakValue> {
         let node::IfExpr {
             pred,
             then,
@@ -695,7 +700,7 @@ pub trait Visitor {
     fn visit_if_expr(
         &mut self,
         id: Id<node::IfExpr>,
-        tree: &Tree,
+        tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         self.walk_if_expr(id, tree)
     }
@@ -703,7 +708,7 @@ pub trait Visitor {
     fn walk_lambda_expr(
         &mut self,
         id: Id<node::LambdaExpr>,
-        tree: &Tree,
+        tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         let node::LambdaExpr {
             param,
@@ -720,7 +725,7 @@ pub trait Visitor {
     fn visit_lambda_expr(
         &mut self,
         id: Id<node::LambdaExpr>,
-        tree: &Tree,
+        tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         self.walk_lambda_expr(id, tree)
     }
@@ -728,7 +733,7 @@ pub trait Visitor {
     fn walk_call_expr(
         &mut self,
         id: Id<node::CallExpr>,
-        tree: &Tree,
+        tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         let node::CallExpr { func, arg } = tree.get(id);
         self.visit_expr(*func, tree)?;
@@ -738,7 +743,7 @@ pub trait Visitor {
     fn visit_call_expr(
         &mut self,
         id: Id<node::CallExpr>,
-        tree: &Tree,
+        tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         self.walk_call_expr(id, tree)
     }
@@ -746,7 +751,7 @@ pub trait Visitor {
     fn walk_handler_clause(
         &mut self,
         id: Id<node::HandlerClause>,
-        tree: &Tree,
+        tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         let node::HandlerClause { op, param, body } = *tree.get(id);
         self.visit_value_name(op, tree)?;
@@ -757,7 +762,7 @@ pub trait Visitor {
     fn visit_handler_clause(
         &mut self,
         id: Id<node::HandlerClause>,
-        tree: &Tree,
+        tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         self.walk_handler_clause(id, tree)
     }
@@ -765,11 +770,11 @@ pub trait Visitor {
     fn walk_handle_expr(
         &mut self,
         id: Id<node::HandleExpr>,
-        tree: &Tree,
+        tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         let node::HandleExpr { source, clauses } = tree.get(id);
         self.visit_expr(*source, tree)?;
-        for clause_id in clauses.iter(tree) {
+        for clause_id in tree.get_slice(*clauses).iter().copied() {
             self.visit_handler_clause(clause_id, tree)?;
         }
         ControlFlow::Continue(())
@@ -777,12 +782,16 @@ pub trait Visitor {
     fn visit_handle_expr(
         &mut self,
         id: Id<node::HandleExpr>,
-        tree: &Tree,
+        tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         self.walk_handle_expr(id, tree)
     }
 
-    fn walk_do_expr(&mut self, id: Id<node::DoExpr>, tree: &Tree) -> ControlFlow<Self::BreakValue> {
+    fn walk_do_expr(
+        &mut self,
+        id: Id<node::DoExpr>,
+        tree: &Tree<M>,
+    ) -> ControlFlow<Self::BreakValue> {
         let node::DoExpr { op, arg } = *tree.get(id);
         self.visit_value_name(op, tree)?;
         self.visit_expr(arg, tree)?;
@@ -791,7 +800,7 @@ pub trait Visitor {
     fn visit_do_expr(
         &mut self,
         id: Id<node::DoExpr>,
-        tree: &Tree,
+        tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         self.walk_do_expr(id, tree)
     }
@@ -799,7 +808,7 @@ pub trait Visitor {
     fn walk_tag_expr(
         &mut self,
         id: Id<node::TagExpr>,
-        tree: &Tree,
+        tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         let tag = tree.get(id).0;
         self.visit_value_name(tag, tree)?;
@@ -808,7 +817,7 @@ pub trait Visitor {
     fn visit_tag_expr(
         &mut self,
         id: Id<node::TagExpr>,
-        tree: &Tree,
+        tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         self.walk_tag_expr(id, tree)
     }
@@ -816,7 +825,7 @@ pub trait Visitor {
     fn walk_type_witness_expr(
         &mut self,
         id: Id<node::TypeWitnessExpr>,
-        tree: &Tree,
+        tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         match *tree.get(id) {
             node::TypeWitnessExpr::Qualified(id) => self.visit_qualified_type(id, tree),
@@ -826,12 +835,12 @@ pub trait Visitor {
     fn visit_type_witness_expr(
         &mut self,
         id: Id<node::TypeWitnessExpr>,
-        tree: &Tree,
+        tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         self.walk_type_witness_expr(id, tree)
     }
 
-    fn walk_expr(&mut self, id: Id<node::Expr>, tree: &Tree) -> ControlFlow<Self::BreakValue> {
+    fn walk_expr(&mut self, id: Id<node::Expr>, tree: &Tree<M>) -> ControlFlow<Self::BreakValue> {
         use node::Expr::*;
         match *tree.get(id) {
             Error(id) => self.visit_expr_error(id, tree),
@@ -856,14 +865,14 @@ pub trait Visitor {
             TypeWitness(id) => self.visit_type_witness_expr(id, tree),
         }
     }
-    fn visit_expr(&mut self, id: Id<node::Expr>, tree: &Tree) -> ControlFlow<Self::BreakValue> {
+    fn visit_expr(&mut self, id: Id<node::Expr>, tree: &Tree<M>) -> ControlFlow<Self::BreakValue> {
         self.walk_expr(id, tree)
     }
 
     fn walk_effect_op_type(
         &mut self,
         id: Id<node::EffectOpType>,
-        tree: &Tree,
+        tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         let node::EffectOpType { name, ty } = *tree.get(id);
         self.visit_value_name(name, tree)?;
@@ -873,7 +882,7 @@ pub trait Visitor {
     fn visit_effect_op_type(
         &mut self,
         id: Id<node::EffectOpType>,
-        tree: &Tree,
+        tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         self.walk_effect_op_type(id, tree)
     }
@@ -881,9 +890,9 @@ pub trait Visitor {
     fn walk_effect_type(
         &mut self,
         id: Id<node::EffectType>,
-        tree: &Tree,
+        tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
-        for op_id in id.get(tree).0.iter(tree) {
+        for op_id in tree.get_slice(id.get(tree).0).iter().copied() {
             self.visit_effect_op_type(op_id, tree)?;
         }
         ControlFlow::Continue(())
@@ -891,7 +900,7 @@ pub trait Visitor {
     fn visit_effect_type(
         &mut self,
         id: Id<node::EffectType>,
-        tree: &Tree,
+        tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         self.walk_effect_type(id, tree)
     }
@@ -899,7 +908,7 @@ pub trait Visitor {
     fn walk_qualified_type(
         &mut self,
         id: Id<node::QualifiedType>,
-        tree: &Tree,
+        tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         let node::QualifiedType { path, ty } = tree.get(id);
         if let Some(p) = path {
@@ -911,7 +920,7 @@ pub trait Visitor {
     fn visit_qualified_type(
         &mut self,
         id: Id<node::QualifiedType>,
-        tree: &Tree,
+        tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         self.walk_qualified_type(id, tree)
     }
@@ -919,7 +928,7 @@ pub trait Visitor {
     fn visit_type_var(
         &mut self,
         _id: Id<node::TypeVar>,
-        _tree: &Tree,
+        _tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         ControlFlow::Continue(())
     }
@@ -927,7 +936,7 @@ pub trait Visitor {
     fn walk_label_or_var(
         &mut self,
         id: Id<node::LabelOrVar>,
-        tree: &Tree,
+        tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         match *tree.get(id) {
             node::LabelOrVar::Label(id) => self.visit_value_name(id, tree),
@@ -937,7 +946,7 @@ pub trait Visitor {
     fn visit_label_or_var(
         &mut self,
         id: Id<node::LabelOrVar>,
-        tree: &Tree,
+        tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         self.walk_label_or_var(id, tree)
     }
@@ -945,7 +954,7 @@ pub trait Visitor {
     fn walk_record_field_type(
         &mut self,
         id: Id<node::RecordFieldType>,
-        tree: &Tree,
+        tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         let node::RecordFieldType { label_or_var, ty } = *tree.get(id);
         self.visit_label_or_var(label_or_var, tree)?;
@@ -955,7 +964,7 @@ pub trait Visitor {
     fn visit_record_field_type(
         &mut self,
         id: Id<node::RecordFieldType>,
-        tree: &Tree,
+        tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         self.walk_record_field_type(id, tree)
     }
@@ -963,10 +972,10 @@ pub trait Visitor {
     fn walk_record_type(
         &mut self,
         id: Id<node::RecordType>,
-        tree: &Tree,
+        tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         let node::RecordType { fields, extension } = tree.get(id);
-        for field_id in fields.iter(tree) {
+        for field_id in tree.get_slice(*fields).iter().copied() {
             self.visit_record_field_type(field_id, tree)?;
         }
         if let Some(e) = extension {
@@ -977,7 +986,7 @@ pub trait Visitor {
     fn visit_record_type(
         &mut self,
         id: Id<node::RecordType>,
-        tree: &Tree,
+        tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         self.walk_record_type(id, tree)
     }
@@ -985,7 +994,7 @@ pub trait Visitor {
     fn walk_tag_type(
         &mut self,
         id: Id<node::TagType>,
-        tree: &Tree,
+        tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         let node::TagType { name, ty } = tree.get(id);
         self.visit_value_name(*name, tree)?;
@@ -997,7 +1006,7 @@ pub trait Visitor {
     fn visit_tag_type(
         &mut self,
         id: Id<node::TagType>,
-        tree: &Tree,
+        tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         self.walk_tag_type(id, tree)
     }
@@ -1005,10 +1014,10 @@ pub trait Visitor {
     fn walk_variant_type(
         &mut self,
         id: Id<node::VariantType>,
-        tree: &Tree,
+        tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         let node::VariantType { tags, extension } = tree.get(id);
-        for tag_id in tags.iter(tree) {
+        for tag_id in tree.get_slice(*tags).iter().copied() {
             self.visit_tag_type(tag_id, tree)?;
         }
         if let Some(e) = extension {
@@ -1019,7 +1028,7 @@ pub trait Visitor {
     fn visit_variant_type(
         &mut self,
         id: Id<node::VariantType>,
-        tree: &Tree,
+        tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         self.walk_variant_type(id, tree)
     }
@@ -1027,7 +1036,7 @@ pub trait Visitor {
     fn walk_func_type(
         &mut self,
         id: Id<node::FuncType>,
-        tree: &Tree,
+        tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         let node::FuncType { input, output } = tree.get(id);
         self.visit_type_expr(*input, tree)?;
@@ -1037,7 +1046,7 @@ pub trait Visitor {
     fn visit_func_type(
         &mut self,
         id: Id<node::FuncType>,
-        tree: &Tree,
+        tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         self.walk_func_type(id, tree)
     }
@@ -1045,7 +1054,7 @@ pub trait Visitor {
     fn walk_type_application(
         &mut self,
         id: Id<node::TypeApplication>,
-        tree: &Tree,
+        tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         let node::TypeApplication { constructor, arg } = tree.get(id);
         self.visit_type_expr(*constructor, tree)?;
@@ -1055,7 +1064,7 @@ pub trait Visitor {
     fn visit_type_application(
         &mut self,
         id: Id<node::TypeApplication>,
-        tree: &Tree,
+        tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         self.walk_type_application(id, tree)
     }
@@ -1063,7 +1072,7 @@ pub trait Visitor {
     fn walk_comp_type(
         &mut self,
         id: Id<node::CompType>,
-        tree: &Tree,
+        tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         let node::CompType { ty, effect } = *tree.get(id);
         if let Some(e) = effect {
@@ -1075,7 +1084,7 @@ pub trait Visitor {
     fn visit_comp_type(
         &mut self,
         id: Id<node::CompType>,
-        tree: &Tree,
+        tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         self.walk_comp_type(id, tree)
     }
@@ -1083,7 +1092,7 @@ pub trait Visitor {
     fn walk_type_expr(
         &mut self,
         id: Id<node::TypeExpr>,
-        tree: &Tree,
+        tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         use node::TypeExpr::*;
         match *tree.get(id) {
@@ -1098,7 +1107,7 @@ pub trait Visitor {
     fn visit_type_expr(
         &mut self,
         id: Id<node::TypeExpr>,
-        tree: &Tree,
+        tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         self.walk_type_expr(id, tree)
     }
@@ -1106,7 +1115,7 @@ pub trait Visitor {
     fn walk_type_var_bind(
         &mut self,
         id: Id<node::TypeVarBind>,
-        tree: &Tree,
+        tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         let node::TypeVarBind { var, kind } = *tree.get(id);
         if let Some(k) = kind {
@@ -1118,7 +1127,7 @@ pub trait Visitor {
     fn visit_type_var_bind(
         &mut self,
         id: Id<node::TypeVarBind>,
-        tree: &Tree,
+        tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         self.walk_type_var_bind(id, tree)
     }
@@ -1126,9 +1135,9 @@ pub trait Visitor {
     fn walk_forall_binder(
         &mut self,
         id: Id<node::ForallBinder>,
-        tree: &Tree,
+        tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
-        for bind_id in id.get(tree).0.iter(tree) {
+        for bind_id in tree.get_slice(id.get(tree).0).iter().copied() {
             self.visit_type_var_bind(bind_id, tree)?;
         }
         ControlFlow::Continue(())
@@ -1136,7 +1145,7 @@ pub trait Visitor {
     fn visit_forall_binder(
         &mut self,
         id: Id<node::ForallBinder>,
-        tree: &Tree,
+        tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         self.walk_forall_binder(id, tree)
     }
@@ -1144,7 +1153,7 @@ pub trait Visitor {
     fn walk_type_scheme(
         &mut self,
         id: Id<node::TypeScheme>,
-        tree: &Tree,
+        tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         let node::TypeScheme { forall, ty } = *tree.get(id);
         if let Some(f) = forall {
@@ -1156,7 +1165,7 @@ pub trait Visitor {
     fn visit_type_scheme(
         &mut self,
         id: Id<node::TypeScheme>,
-        tree: &Tree,
+        tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         self.walk_type_scheme(id, tree)
     }
@@ -1164,7 +1173,7 @@ pub trait Visitor {
     fn visit_module_error(
         &mut self,
         _id: Id<node::ModuleError>,
-        _tree: &Tree,
+        _tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         ControlFlow::Continue(())
     }
@@ -1172,9 +1181,9 @@ pub trait Visitor {
     fn walk_module_body(
         &mut self,
         id: Id<node::ModuleBody>,
-        tree: &Tree,
+        tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
-        for bind_id in id.get(tree).0.iter(tree) {
+        for bind_id in tree.get_slice(id.get(tree).0).iter().copied() {
             self.visit_bind(bind_id, tree)?;
         }
         ControlFlow::Continue(())
@@ -1182,7 +1191,7 @@ pub trait Visitor {
     fn visit_module_body(
         &mut self,
         id: Id<node::ModuleBody>,
-        tree: &Tree,
+        tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         self.walk_module_body(id, tree)
     }
@@ -1190,9 +1199,9 @@ pub trait Visitor {
     fn walk_module_path(
         &mut self,
         id: Id<node::ModulePath>,
-        tree: &Tree,
+        tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
-        for name_id in id.get(tree).0.iter(tree) {
+        for name_id in tree.get_slice(id.get(tree).0).iter().copied() {
             self.visit_module_name(name_id, tree)?;
         }
         ControlFlow::Continue(())
@@ -1200,7 +1209,7 @@ pub trait Visitor {
     fn visit_module_path(
         &mut self,
         id: Id<node::ModulePath>,
-        tree: &Tree,
+        tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         self.walk_module_path(id, tree)
     }
@@ -1208,7 +1217,7 @@ pub trait Visitor {
     fn visit_module_import(
         &mut self,
         _id: Id<node::ModuleImport>,
-        _tree: &Tree,
+        _tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         ControlFlow::Continue(())
     }
@@ -1216,9 +1225,9 @@ pub trait Visitor {
     fn walk_functor_args(
         &mut self,
         id: Id<node::FunctorArgs>,
-        tree: &Tree,
+        tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
-        for arg_id in id.get(tree).0.iter(tree) {
+        for arg_id in tree.get_slice(id.get(tree).0).iter().copied() {
             self.visit_module_path(arg_id, tree)?;
         }
         ControlFlow::Continue(())
@@ -1226,7 +1235,7 @@ pub trait Visitor {
     fn visit_functor_args(
         &mut self,
         id: Id<node::FunctorArgs>,
-        tree: &Tree,
+        tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         self.walk_functor_args(id, tree)
     }
@@ -1234,7 +1243,7 @@ pub trait Visitor {
     fn walk_functor_app(
         &mut self,
         id: Id<node::FunctorApp>,
-        tree: &Tree,
+        tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         let node::FunctorApp { path, func, args } = tree.get(id);
         if let Some(p) = path {
@@ -1247,7 +1256,7 @@ pub trait Visitor {
     fn visit_functor_app(
         &mut self,
         id: Id<node::FunctorApp>,
-        tree: &Tree,
+        tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         self.walk_functor_app(id, tree)
     }
@@ -1255,7 +1264,7 @@ pub trait Visitor {
     fn walk_module_expr(
         &mut self,
         id: Id<node::ModuleExpr>,
-        tree: &Tree,
+        tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         use node::ModuleExpr::*;
         match *tree.get(id) {
@@ -1269,19 +1278,19 @@ pub trait Visitor {
     fn visit_module_expr(
         &mut self,
         id: Id<node::ModuleExpr>,
-        tree: &Tree,
+        tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         self.walk_module_expr(id, tree)
     }
 
-    fn visit_vis(&mut self, _id: Id<node::Vis>, _tree: &Tree) -> ControlFlow<Self::BreakValue> {
+    fn visit_vis(&mut self, _id: Id<node::Vis>, _tree: &Tree<M>) -> ControlFlow<Self::BreakValue> {
         ControlFlow::Continue(())
     }
 
     fn walk_value_bind(
         &mut self,
         id: Id<node::ValueBind>,
-        tree: &Tree,
+        tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         let node::ValueBind {
             vis,
@@ -1300,7 +1309,7 @@ pub trait Visitor {
     fn visit_value_bind(
         &mut self,
         id: Id<node::ValueBind>,
-        tree: &Tree,
+        tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         self.walk_value_bind(id, tree)
     }
@@ -1308,7 +1317,7 @@ pub trait Visitor {
     fn walk_type_bind(
         &mut self,
         id: Id<node::TypeBind>,
-        tree: &Tree,
+        tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         let node::TypeBind {
             vis,
@@ -1323,7 +1332,7 @@ pub trait Visitor {
     fn visit_type_bind(
         &mut self,
         id: Id<node::TypeBind>,
-        tree: &Tree,
+        tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         self.walk_type_bind(id, tree)
     }
@@ -1331,7 +1340,7 @@ pub trait Visitor {
     fn walk_module_bind(
         &mut self,
         id: Id<node::ModuleBind>,
-        tree: &Tree,
+        tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         let node::ModuleBind {
             vis,
@@ -1350,7 +1359,7 @@ pub trait Visitor {
     fn visit_module_bind(
         &mut self,
         id: Id<node::ModuleBind>,
-        tree: &Tree,
+        tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         self.walk_module_bind(id, tree)
     }
@@ -1358,7 +1367,7 @@ pub trait Visitor {
     fn walk_module_type_bind(
         &mut self,
         id: Id<node::ModuleTypeBind>,
-        tree: &Tree,
+        tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         let node::ModuleTypeBind { vis, name, ty } = *tree.get(id);
         self.visit_vis(vis, tree)?;
@@ -1369,7 +1378,7 @@ pub trait Visitor {
     fn visit_module_type_bind(
         &mut self,
         id: Id<node::ModuleTypeBind>,
-        tree: &Tree,
+        tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         self.walk_module_type_bind(id, tree)
     }
@@ -1377,7 +1386,7 @@ pub trait Visitor {
     fn walk_functor_param(
         &mut self,
         id: Id<node::FunctorParam>,
-        tree: &Tree,
+        tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         let node::FunctorParam { name, ty } = *tree.get(id);
         self.visit_module_name(name, tree)?;
@@ -1387,7 +1396,7 @@ pub trait Visitor {
     fn visit_functor_param(
         &mut self,
         id: Id<node::FunctorParam>,
-        tree: &Tree,
+        tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         self.walk_functor_param(id, tree)
     }
@@ -1395,7 +1404,7 @@ pub trait Visitor {
     fn walk_functor_bind(
         &mut self,
         id: Id<node::FunctorBind>,
-        tree: &Tree,
+        tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         let node::FunctorBind {
             vis,
@@ -1405,7 +1414,7 @@ pub trait Visitor {
         } = tree.get(id);
         self.visit_vis(*vis, tree)?;
         self.visit_functor_name(*name, tree)?;
-        for param_id in params.iter(tree) {
+        for param_id in tree.get_slice(*params).iter().copied() {
             self.visit_functor_param(param_id, tree)?;
         }
         self.visit_module_body(*body, tree)?;
@@ -1414,7 +1423,7 @@ pub trait Visitor {
     fn visit_functor_bind(
         &mut self,
         id: Id<node::FunctorBind>,
-        tree: &Tree,
+        tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         self.walk_functor_bind(id, tree)
     }
@@ -1422,12 +1431,12 @@ pub trait Visitor {
     fn visit_bind_error(
         &mut self,
         _id: Id<node::BindError>,
-        _tree: &Tree,
+        _tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         ControlFlow::Continue(())
     }
 
-    fn walk_bind(&mut self, id: Id<node::Bind>, tree: &Tree) -> ControlFlow<Self::BreakValue> {
+    fn walk_bind(&mut self, id: Id<node::Bind>, tree: &Tree<M>) -> ControlFlow<Self::BreakValue> {
         use node::Bind::*;
         match *tree.get(id) {
             Value(id) => self.visit_value_bind(id, tree),
@@ -1438,14 +1447,14 @@ pub trait Visitor {
             Error(id) => self.visit_bind_error(id, tree),
         }
     }
-    fn visit_bind(&mut self, id: Id<node::Bind>, tree: &Tree) -> ControlFlow<Self::BreakValue> {
+    fn visit_bind(&mut self, id: Id<node::Bind>, tree: &Tree<M>) -> ControlFlow<Self::BreakValue> {
         self.walk_bind(id, tree)
     }
 
     fn visit_spec_error(
         &mut self,
         _id: Id<node::SpecError>,
-        _tree: &Tree,
+        _tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         ControlFlow::Continue(())
     }
@@ -1453,7 +1462,7 @@ pub trait Visitor {
     fn walk_value_spec(
         &mut self,
         id: Id<node::ValueSpec>,
-        tree: &Tree,
+        tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         let node::ValueSpec { name, ty } = *tree.get(id);
         self.visit_value_name(name, tree)?;
@@ -1463,7 +1472,7 @@ pub trait Visitor {
     fn visit_value_spec(
         &mut self,
         id: Id<node::ValueSpec>,
-        tree: &Tree,
+        tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         self.walk_value_spec(id, tree)
     }
@@ -1471,7 +1480,7 @@ pub trait Visitor {
     fn walk_module_spec(
         &mut self,
         id: Id<node::ModuleSpec>,
-        tree: &Tree,
+        tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         let node::ModuleSpec { name, ty } = *tree.get(id);
         self.visit_module_name(name, tree)?;
@@ -1481,12 +1490,12 @@ pub trait Visitor {
     fn visit_module_spec(
         &mut self,
         id: Id<node::ModuleSpec>,
-        tree: &Tree,
+        tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         self.walk_module_spec(id, tree)
     }
 
-    fn walk_spec(&mut self, id: Id<node::Spec>, tree: &Tree) -> ControlFlow<Self::BreakValue> {
+    fn walk_spec(&mut self, id: Id<node::Spec>, tree: &Tree<M>) -> ControlFlow<Self::BreakValue> {
         use node::Spec::*;
         match *tree.get(id) {
             Value(id) => self.visit_value_spec(id, tree),
@@ -1494,16 +1503,16 @@ pub trait Visitor {
             Error(id) => self.visit_spec_error(id, tree),
         }
     }
-    fn visit_spec(&mut self, id: Id<node::Spec>, tree: &Tree) -> ControlFlow<Self::BreakValue> {
+    fn visit_spec(&mut self, id: Id<node::Spec>, tree: &Tree<M>) -> ControlFlow<Self::BreakValue> {
         self.walk_spec(id, tree)
     }
 
     fn walk_concrete_module_type(
         &mut self,
         id: Id<node::ConcreteModuleType>,
-        tree: &Tree,
+        tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
-        for spec_id in id.get(tree).0.iter(tree) {
+        for spec_id in tree.get_slice(id.get(tree).0).iter().copied() {
             self.visit_spec(spec_id, tree)?;
         }
         ControlFlow::Continue(())
@@ -1511,7 +1520,7 @@ pub trait Visitor {
     fn visit_concrete_module_type(
         &mut self,
         id: Id<node::ConcreteModuleType>,
-        tree: &Tree,
+        tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         self.walk_concrete_module_type(id, tree)
     }
@@ -1519,7 +1528,7 @@ pub trait Visitor {
     fn walk_qualified_module_type(
         &mut self,
         id: Id<node::QualifiedModuleType>,
-        tree: &Tree,
+        tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         let node::QualifiedModuleType { path, ty } = *tree.get(id);
         if let Some(p) = path {
@@ -1531,7 +1540,7 @@ pub trait Visitor {
     fn visit_qualified_module_type(
         &mut self,
         id: Id<node::QualifiedModuleType>,
-        tree: &Tree,
+        tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         self.walk_qualified_module_type(id, tree)
     }
@@ -1539,7 +1548,7 @@ pub trait Visitor {
     fn walk_module_type(
         &mut self,
         id: Id<node::ModuleType>,
-        tree: &Tree,
+        tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         use node::ModuleType::*;
         match *tree.get(id) {
@@ -1550,7 +1559,7 @@ pub trait Visitor {
     fn visit_module_type(
         &mut self,
         id: Id<node::ModuleType>,
-        tree: &Tree,
+        tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         self.walk_module_type(id, tree)
     }

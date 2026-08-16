@@ -1,29 +1,15 @@
+use super::{KindName, ModulePath, TypeName, ValueName};
+use crate::prelude::*;
+use crate::print::TreePrinter;
 use derive_more::From;
 use enum_as_inner::EnumAsInner;
-use kola_tree_macro::Inspector;
+use kola_interner::StrKey;
+use kola_print::prelude::*;
 use serde::{Deserialize, Serialize};
 use std::{borrow::Borrow, ops::Deref};
 
-use kola_interner::StrKey;
-use kola_print::prelude::*;
-
-use super::{KindName, ModulePath, TypeName, ValueName};
-
-use crate::{id::Id, print::TreePrinter, slice::SliceId, tree::Tree};
-
 #[derive(
-    Debug,
-    Notate,
-    Inspector,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    Hash,
-    Serialize,
-    Deserialize,
+    Debug, Notate, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
 )]
 #[notate(with = TreePrinter<'a>, color = "green")]
 pub struct EffectOpType {
@@ -32,35 +18,13 @@ pub struct EffectOpType {
 }
 
 #[derive(
-    Debug,
-    Notate,
-    Inspector,
-    From,
-    Clone,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    Hash,
-    Serialize,
-    Deserialize,
+    Debug, Notate, From, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
 )]
 #[notate(with = TreePrinter<'a>, color = "green")]
 pub struct EffectType(pub SliceId<EffectOpType>);
 
 #[derive(
-    Debug,
-    Notate,
-    Inspector,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    Hash,
-    Serialize,
-    Deserialize,
+    Debug, Notate, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
 )]
 #[notate(with = TreePrinter<'a>, color = "cyan")]
 pub struct CompType {
@@ -75,18 +39,7 @@ pub struct CompType {
 pub struct TypeError;
 
 #[derive(
-    Debug,
-    Notate,
-    Inspector,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    Hash,
-    Serialize,
-    Deserialize,
+    Debug, Notate, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
 )]
 #[notate(with = TreePrinter<'a>, color = "cyan")]
 pub struct QualifiedType {
@@ -153,18 +106,7 @@ impl<'a> Notate<'a, TypeVar> for TreePrinter<'a> {
 }
 
 #[derive(
-    Debug,
-    Notate,
-    Inspector,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    Hash,
-    Serialize,
-    Deserialize,
+    Debug, Notate, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
 )]
 #[notate(with = TreePrinter<'a>, color = "cyan")]
 pub enum LabelOrVar {
@@ -173,18 +115,7 @@ pub enum LabelOrVar {
 }
 
 #[derive(
-    Debug,
-    Notate,
-    Inspector,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    Hash,
-    Serialize,
-    Deserialize,
+    Debug, Notate, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
 )]
 #[notate(with = TreePrinter<'a>, color = "cyan")]
 pub struct RecordFieldType {
@@ -193,18 +124,7 @@ pub struct RecordFieldType {
 }
 
 #[derive(
-    Debug,
-    Notate,
-    Inspector,
-    From,
-    Clone,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    Hash,
-    Serialize,
-    Deserialize,
+    Debug, Notate, From, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
 )]
 #[notate(with = TreePrinter<'a>, color = "blue")]
 pub struct RecordType {
@@ -214,23 +134,12 @@ pub struct RecordType {
 
 impl RecordType {
     pub fn get(&self, index: usize, tree: &Tree) -> RecordFieldType {
-        *self.fields.iter(tree).nth(index).unwrap().get(tree)
+        *tree.get_slice(self.fields).get(index).unwrap().get(tree)
     }
 }
 
 #[derive(
-    Debug,
-    Notate,
-    Inspector,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    Hash,
-    Serialize,
-    Deserialize,
+    Debug, Notate, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
 )]
 #[notate(with = TreePrinter<'a>, color = "cyan")]
 pub struct TagType {
@@ -239,18 +148,7 @@ pub struct TagType {
 }
 
 #[derive(
-    Debug,
-    Notate,
-    Inspector,
-    From,
-    Clone,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    Hash,
-    Serialize,
-    Deserialize,
+    Debug, Notate, From, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
 )]
 #[notate(with = TreePrinter<'a>, color = "blue")]
 pub struct VariantType {
@@ -260,24 +158,13 @@ pub struct VariantType {
 
 impl VariantType {
     pub fn get(&self, index: usize, tree: &Tree) -> TagType {
-        *self.tags.iter(tree).nth(index).unwrap().get(tree)
+        *tree.get_slice(self.tags).get(index).unwrap().get(tree)
     }
 }
 
 // TODO this needs to be disambiguated with parentheses if a function should be one argument
 #[derive(
-    Debug,
-    Notate,
-    Inspector,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    Hash,
-    Serialize,
-    Deserialize,
+    Debug, Notate, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
 )]
 #[notate(with = TreePrinter<'a>, color = "cyan")]
 pub struct FuncType {
@@ -286,18 +173,7 @@ pub struct FuncType {
 }
 
 #[derive(
-    Debug,
-    Notate,
-    Inspector,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    Hash,
-    Serialize,
-    Deserialize,
+    Debug, Notate, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
 )]
 #[notate(with = TreePrinter<'a>, color = "cyan")]
 pub struct TypeApplication {
@@ -308,7 +184,6 @@ pub struct TypeApplication {
 #[derive(
     Debug,
     EnumAsInner,
-    Inspector,
     From,
     Clone,
     Copy,
@@ -344,18 +219,7 @@ impl<'a> Notate<'a, TypeExpr> for TreePrinter<'a> {
 }
 
 #[derive(
-    Debug,
-    Notate,
-    Inspector,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    Hash,
-    Serialize,
-    Deserialize,
+    Debug, Notate, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
 )]
 #[notate(with = TreePrinter<'a>, color = "cyan")]
 pub struct TypeVarBind {
@@ -364,35 +228,13 @@ pub struct TypeVarBind {
 }
 
 #[derive(
-    Debug,
-    Notate,
-    Inspector,
-    From,
-    Clone,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    Hash,
-    Serialize,
-    Deserialize,
+    Debug, Notate, From, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
 )]
 #[notate(with = TreePrinter<'a>, color = "cyan")]
 pub struct ForallBinder(pub SliceId<TypeVarBind>);
 
 #[derive(
-    Debug,
-    Notate,
-    Inspector,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    Hash,
-    Serialize,
-    Deserialize,
+    Debug, Notate, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
 )]
 #[notate(with = TreePrinter<'a>, color = "green")]
 pub struct TypeScheme {

@@ -1,13 +1,11 @@
+use super::{LiteralExpr, ValueName};
+use crate::prelude::*;
+use crate::print::TreePrinter;
 use derive_more::From;
 use enum_as_inner::EnumAsInner;
-use kola_tree_macro::Inspector;
-use serde::{Deserialize, Serialize};
-
 use kola_interner::StrKey;
 use kola_print::prelude::*;
-
-use super::{LiteralExpr, ValueName};
-use crate::{id::Id, print::TreePrinter, slice::SliceId, tree::Tree};
+use serde::{Deserialize, Serialize};
 
 #[derive(
     Debug, Notate, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
@@ -63,44 +61,24 @@ impl<'a> Notate<'a, LiteralPat> for TreePrinter<'a> {
 }
 
 #[derive(
-    Debug,
-    Notate,
-    Inspector,
-    From,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    Hash,
-    Serialize,
-    Deserialize,
+    Debug, Notate, From, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
 )]
 #[notate(with = TreePrinter<'a>, color = "magenta")]
 #[from(forward)]
 pub struct BindPat(pub Id<ValueName>);
 
 impl BindPat {
-    pub fn new_in(name: impl Into<ValueName>, builder: &mut Tree) -> Id<Self> {
+    pub fn new_in<M>(name: impl Into<ValueName>, builder: &mut Tree<M>) -> Id<Self>
+    where
+        M: Clone + Default + 'static,
+    {
         let name_id = builder.alloc(name.into());
         builder.alloc(Self(name_id))
     }
 }
 
 #[derive(
-    Debug,
-    EnumAsInner,
-    Inspector,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    Hash,
-    Serialize,
-    Deserialize,
+    Debug, EnumAsInner, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
 )]
 pub enum ListElPat {
     Pat(Id<Pat>),
@@ -108,12 +86,18 @@ pub enum ListElPat {
 }
 
 impl ListElPat {
-    pub fn pat(pat: impl Into<Pat>, builder: &mut Tree) -> Id<Self> {
+    pub fn pat<M>(pat: impl Into<Pat>, builder: &mut Tree<M>) -> Id<Self>
+    where
+        M: Clone + Default + 'static,
+    {
         let pat_id = builder.alloc(pat.into());
         builder.alloc(Self::Pat(pat_id))
     }
 
-    pub fn spread(name: Option<ValueName>, builder: &mut Tree) -> Id<Self> {
+    pub fn spread<M>(name: Option<ValueName>, builder: &mut Tree<M>) -> Id<Self>
+    where
+        M: Clone + Default + 'static,
+    {
         let name = name.map(|n| builder.alloc(n));
         builder.alloc(Self::Spread(name))
     }
@@ -154,43 +138,24 @@ impl<'a> Notate<'a, ListElPat> for TreePrinter<'a> {
 }
 
 #[derive(
-    Debug,
-    Notate,
-    Inspector,
-    From,
-    Clone,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    Hash,
-    Serialize,
-    Deserialize,
+    Debug, Notate, From, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
 )]
 #[notate(with = TreePrinter<'a>, color = "magenta")]
 pub struct ListPat(pub SliceId<ListElPat>);
 
 impl ListPat {
-    pub fn new_in(items: impl IntoIterator<Item = ListElPat>, builder: &mut Tree) -> Id<Self> {
-        let ids = items.into_iter().map(|item| builder.nodes.alloc(item));
+    pub fn new_in<M>(items: impl IntoIterator<Item = ListElPat>, builder: &mut Tree<M>) -> Id<Self>
+    where
+        M: Clone + Default + 'static,
+    {
+        let ids: Vec<_> = items.into_iter().map(|item| builder.alloc(item)).collect();
         let slice_id = builder.slices.alloc(ids);
         builder.alloc(Self(slice_id))
     }
 }
 
 #[derive(
-    Debug,
-    Notate,
-    Inspector,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    Hash,
-    Serialize,
-    Deserialize,
+    Debug, Notate, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
 )]
 #[notate(with = TreePrinter<'a>, color = "magenta")]
 pub struct RecordFieldPat {
@@ -208,20 +173,22 @@ impl RecordFieldPat {
     }
 }
 
-#[derive(
-    Debug, Inspector, From, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
-)]
+#[derive(Debug, From, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct RecordPat {
     pub fields: SliceId<RecordFieldPat>,
     pub polymorph: bool,
 }
 
 impl RecordPat {
-    pub fn new_in<I>(fields: I, polymorph: bool, builder: &mut Tree) -> Id<Self>
+    pub fn new_in<I, M>(fields: I, polymorph: bool, builder: &mut Tree<M>) -> Id<Self>
     where
+        M: Clone + Default + 'static,
         I: IntoIterator<Item = RecordFieldPat>,
     {
-        let ids = fields.into_iter().map(|field| builder.nodes.alloc(field));
+        let ids: Vec<_> = fields
+            .into_iter()
+            .map(|field| builder.alloc(field))
+            .collect();
 
         let fields = builder.slices.alloc(ids);
 
@@ -233,9 +200,9 @@ impl<'a> Notate<'a, RecordPat> for TreePrinter<'a> {
     fn notate(self, value: &RecordPat, arena: &'a Bump) -> Notation<'a> {
         let head = "RecordPat".magenta().display_in(arena);
 
-        let fields = value
-            .fields
-            .get(self.tree)
+        let fields = self
+            .tree
+            .get_slice(value.fields)
             .iter()
             .map(|field| self.notate(field, arena))
             .collect_in::<BumpVec<_>>(arena);
@@ -269,18 +236,7 @@ impl<'a> Notate<'a, RecordPat> for TreePrinter<'a> {
 }
 
 #[derive(
-    Debug,
-    Notate,
-    Inspector,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    Hash,
-    Serialize,
-    Deserialize,
+    Debug, Notate, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
 )]
 #[notate(with = TreePrinter<'a>)]
 pub struct VariantTagPat {
@@ -299,34 +255,27 @@ impl VariantTagPat {
 }
 
 #[derive(
-    Debug,
-    Notate,
-    Inspector,
-    From,
-    Clone,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    Hash,
-    Serialize,
-    Deserialize,
+    Debug, Notate, From, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
 )]
 #[notate(with = TreePrinter<'a>, color = "blue")]
 pub struct VariantPat(pub SliceId<VariantTagPat>);
 
 impl VariantPat {
-    pub fn new_in(items: impl IntoIterator<Item = VariantTagPat>, builder: &mut Tree) -> Id<Self> {
-        let ids = items.into_iter().map(|item| builder.nodes.alloc(item));
+    pub fn new_in<M>(
+        items: impl IntoIterator<Item = VariantTagPat>,
+        builder: &mut Tree<M>,
+    ) -> Id<Self>
+    where
+        M: Clone + Default + 'static,
+    {
+        let ids: Vec<_> = items.into_iter().map(|item| builder.alloc(item)).collect();
 
         let slice_id = builder.slices.alloc(ids);
         builder.alloc(Self(slice_id))
     }
 }
 
-#[derive(
-    Debug, EnumAsInner, Inspector, From, Clone, Copy, PartialEq, PartialOrd, Serialize, Deserialize,
-)]
+#[derive(Debug, EnumAsInner, From, Clone, Copy, PartialEq, PartialOrd, Serialize, Deserialize)]
 pub enum Pat {
     Error(Id<PatError>),
     Any(Id<AnyPat>),

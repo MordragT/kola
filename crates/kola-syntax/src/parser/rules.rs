@@ -6,7 +6,7 @@ use kola_combinators::{
     combinator::{Combinator, IterCombinator},
     skip::{skip_delimiters, skip_until},
 };
-use kola_span::Loc;
+use kola_span::Located;
 use kola_tree::{node::ValueName, prelude::*};
 
 use super::ParseInput;
@@ -79,10 +79,9 @@ pub const fn nested_parser<'t, T, U>(
     fallback: U,
 ) -> impl const KolaCombinator<'t, Id<T>>
 where
-    NodeStorage: Col<T, Column = Vec<T>> + Col<U, Column = Vec<U>>,
-    UniversalStorage<Loc>: Col<T, Column = Vec<Loc>> + Col<U, Column = Vec<Loc>>,
-    T: From<Id<U>>,
-    U: Copy,
+    Tree: Allocate<Located<T>, Key = T> + Allocate<Located<U>, Key = U>,
+    T: From<Id<U>> + 'static,
+    U: Copy + 'static,
 {
     let index = match delim {
         Delim::Paren => 0,

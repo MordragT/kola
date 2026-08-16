@@ -1079,19 +1079,11 @@ dependencies = [
  "kinded",
  "kola-interner",
  "kola-print",
+ "kola-relations",
+ "kola-span",
  "kola-subst",
- "kola-tree-macro",
  "pastey",
  "serde",
-]
-
-[[package]]
-name = "kola-tree-macro"
-version = "0.1.0"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 3.0.3",
 ]
 
 [[package]]

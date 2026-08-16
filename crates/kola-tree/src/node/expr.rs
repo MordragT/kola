@@ -1,12 +1,11 @@
+use super::{ModulePath, Pat, QualifiedType, TypeExpr, ValueName};
+use crate::prelude::*;
+use crate::print::TreePrinter;
 use derive_more::{Display, From};
 use enum_as_inner::EnumAsInner;
 use kola_interner::StrKey;
 use kola_print::prelude::*;
-use kola_tree_macro::Inspector;
 use serde::{Deserialize, Serialize};
-
-use super::{ModulePath, Pat, QualifiedType, TypeExpr, ValueName};
-use crate::{id::Id, print::TreePrinter, slice::SliceId, tree::Tree};
 
 #[derive(
     Debug, Notate, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
@@ -15,7 +14,10 @@ use crate::{id::Id, print::TreePrinter, slice::SliceId, tree::Tree};
 pub struct ExprError;
 
 impl ExprError {
-    pub fn new_in(builder: &mut Tree) -> Id<Self> {
+    pub fn new_in<M>(builder: &mut Tree<M>) -> Id<Self>
+    where
+        M: Clone + Default + 'static,
+    {
         builder.alloc(Self)
     }
 }
@@ -30,7 +32,10 @@ pub enum LiteralExpr {
 }
 
 impl LiteralExpr {
-    pub fn new_in(value: impl Into<Self>, builder: &mut Tree) -> Id<Self> {
+    pub fn new_in<M>(value: impl Into<Self>, builder: &mut Tree<M>) -> Id<Self>
+    where
+        M: Clone + Default + 'static,
+    {
         builder.alloc(value.into())
     }
 }
@@ -61,51 +66,36 @@ impl<'a> Notate<'a, LiteralExpr> for TreePrinter<'a> {
 }
 
 #[derive(
-    Debug,
-    Notate,
-    Inspector,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    Hash,
-    Serialize,
-    Deserialize,
+    Debug, Notate, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
 )]
 #[notate(with = TreePrinter<'a>, color = "blue")]
 pub struct ListExpr(pub SliceId<Expr>);
 
 impl ListExpr {
-    pub fn empty_in(builder: &mut Tree) -> Id<Self> {
+    pub fn empty_in<M>(builder: &mut Tree<M>) -> Id<Self>
+    where
+        M: Clone + Default + 'static,
+    {
         builder.alloc(Self(SliceId::empty()))
     }
 
-    pub fn new_in<I>(elements: I, builder: &mut Tree) -> Id<Self>
+    pub fn new_in<I, M>(elements: I, builder: &mut Tree<M>) -> Id<Self>
     where
+        M: Clone + Default + 'static,
         I: IntoIterator,
         I::Item: Into<Expr>,
     {
-        let ids = elements.into_iter().map(|e| builder.nodes.alloc(e.into()));
+        let ids: Vec<_> = elements
+            .into_iter()
+            .map(|e| builder.alloc(e.into()))
+            .collect();
         let slice = builder.slices.alloc(ids);
         builder.alloc(Self(slice))
     }
 }
 
 #[derive(
-    Debug,
-    Notate,
-    Inspector,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    Hash,
-    Serialize,
-    Deserialize,
+    Debug, Notate, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
 )]
 #[notate(with = TreePrinter<'a>, color = "blue")]
 pub struct RecordField {
@@ -115,12 +105,15 @@ pub struct RecordField {
 }
 
 impl RecordField {
-    pub fn new_in(
+    pub fn new_in<M>(
         label: impl Into<ValueName>,
         ty: Option<TypeExpr>,
         value: impl Into<Expr>,
-        builder: &mut Tree,
-    ) -> Id<Self> {
+        builder: &mut Tree<M>,
+    ) -> Id<Self>
+    where
+        M: Clone + Default + 'static,
+    {
         let label = builder.alloc(label.into());
         let ty = ty.map(|t| builder.alloc(t));
         let value = builder.alloc(value.into());
@@ -143,25 +136,15 @@ impl RecordField {
 
 // { x = 10, y = 20 }
 #[derive(
-    Debug,
-    Notate,
-    Inspector,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    Hash,
-    Serialize,
-    Deserialize,
+    Debug, Notate, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
 )]
 #[notate(with = TreePrinter<'a>, color = "blue")]
 pub struct RecordExpr(pub SliceId<RecordField>);
 
 impl RecordExpr {
-    pub fn new_in<I>(fields: I, builder: &mut Tree) -> Id<Self>
+    pub fn new_in<I, M>(fields: I, builder: &mut Tree<M>) -> Id<Self>
     where
+        M: Clone + Default + 'static,
         I: IntoIterator<Item = Id<RecordField>>,
     {
         let slice = builder.alloc_slice(fields);
@@ -171,18 +154,7 @@ impl RecordExpr {
 
 // { y [: type] | +x [: type] = 10 }
 #[derive(
-    Debug,
-    Notate,
-    Inspector,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    Hash,
-    Serialize,
-    Deserialize,
+    Debug, Notate, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
 )]
 #[notate(with = TreePrinter<'a>, color = "blue")]
 pub struct RecordExtendExpr {
@@ -194,14 +166,17 @@ pub struct RecordExtendExpr {
 }
 
 impl RecordExtendExpr {
-    pub fn new_in(
+    pub fn new_in<M>(
         source: impl Into<Expr>,
         source_type: Option<TypeExpr>,
         field_path: impl Into<FieldPath>,
         value: impl Into<Expr>,
         value_type: Option<TypeExpr>,
-        builder: &mut Tree,
-    ) -> Id<Self> {
+        builder: &mut Tree<M>,
+    ) -> Id<Self>
+    where
+        M: Clone + Default + 'static,
+    {
         let source = builder.alloc(source.into());
         let source_type = source_type.map(|t| builder.alloc(t));
         let field_path = builder.alloc(field_path.into());
@@ -240,18 +215,7 @@ impl RecordExtendExpr {
 
 // { y [: type] | -x [: type] }
 #[derive(
-    Debug,
-    Notate,
-    Inspector,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    Hash,
-    Serialize,
-    Deserialize,
+    Debug, Notate, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
 )]
 #[notate(with = TreePrinter<'a>, color = "blue")]
 pub struct RecordRestrictExpr {
@@ -262,13 +226,16 @@ pub struct RecordRestrictExpr {
 }
 
 impl RecordRestrictExpr {
-    pub fn new_in(
+    pub fn new_in<M>(
         source: impl Into<Expr>,
         source_type: Option<TypeExpr>,
         field_path: impl Into<FieldPath>,
         value_type: Option<TypeExpr>,
-        builder: &mut Tree,
-    ) -> Id<Self> {
+        builder: &mut Tree<M>,
+    ) -> Id<Self>
+    where
+        M: Clone + Default + 'static,
+    {
         let source = builder.alloc(source.into());
         let source_type = source_type.map(|t| builder.alloc(t));
         let field_path = builder.alloc(field_path.into());
@@ -319,18 +286,7 @@ impl<'a> Notate<'a, RecordUpdateOp> for TreePrinter<'a> {
 
 // { y | x = 10 }
 #[derive(
-    Debug,
-    Notate,
-    Inspector,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    Hash,
-    Serialize,
-    Deserialize,
+    Debug, Notate, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
 )]
 #[notate(with = TreePrinter<'a>, color = "blue")]
 pub struct RecordUpdateExpr {
@@ -343,15 +299,18 @@ pub struct RecordUpdateExpr {
 }
 
 impl RecordUpdateExpr {
-    pub fn new_in(
+    pub fn new_in<M>(
         source: impl Into<Expr>,
         source_type: Option<TypeExpr>,
         field_path: impl Into<FieldPath>,
         op: RecordUpdateOp,
         value: impl Into<Expr>,
         value_type: Option<TypeExpr>,
-        builder: &mut Tree,
-    ) -> Id<Self> {
+        builder: &mut Tree<M>,
+    ) -> Id<Self>
+    where
+        M: Clone + Default + 'static,
+    {
         let source = builder.alloc(source.into());
         let source_type = source_type.map(|t| builder.alloc(t));
         let field_path = builder.alloc(field_path.into());
@@ -395,18 +354,7 @@ impl RecordUpdateExpr {
 }
 
 #[derive(
-    Debug,
-    Notate,
-    Inspector,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    Hash,
-    Serialize,
-    Deserialize,
+    Debug, Notate, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
 )]
 #[notate(with = TreePrinter<'a>, color = "blue")]
 pub struct RecordMergeExpr {
@@ -415,7 +363,10 @@ pub struct RecordMergeExpr {
 }
 
 impl RecordMergeExpr {
-    pub fn new_in(lhs: impl Into<Expr>, rhs: impl Into<Expr>, builder: &mut Tree) -> Id<Self> {
+    pub fn new_in<M>(lhs: impl Into<Expr>, rhs: impl Into<Expr>, builder: &mut Tree<M>) -> Id<Self>
+    where
+        M: Clone + Default + 'static,
+    {
         let lhs = builder.alloc(lhs.into());
         let rhs = builder.alloc(rhs.into());
 
@@ -424,55 +375,37 @@ impl RecordMergeExpr {
 }
 
 #[derive(
-    Debug,
-    Notate,
-    Inspector,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    Hash,
-    Serialize,
-    Deserialize,
+    Debug, Notate, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
 )]
 #[notate(with = TreePrinter<'a>, color = "blue")]
 pub struct FieldPath(pub SliceId<ValueName>);
 
 impl FieldPath {
-    pub fn new_in<I>(fields: I, builder: &mut Tree) -> Id<Self>
+    pub fn new_in<I, M>(fields: I, builder: &mut Tree<M>) -> Id<Self>
     where
+        M: Clone + Default + 'static,
         I: IntoIterator,
         I::Item: Into<ValueName>,
     {
-        let ids = fields.into_iter().map(|f| builder.nodes.alloc(f.into()));
+        let ids: Vec<_> = fields
+            .into_iter()
+            .map(|f| builder.alloc(f.into()))
+            .collect();
         let slice = builder.slices.alloc(ids);
         builder.alloc(Self(slice))
     }
 
     pub fn get(&self, index: usize, tree: &Tree) -> ValueName {
-        *self.0.iter(tree).nth(index).unwrap().get(tree)
+        *tree.get_slice(self.0).get(index).unwrap().get(tree)
     }
 
     pub fn iter<'a>(&'a self, tree: &'a Tree) -> impl Iterator<Item = Id<ValueName>> + 'a {
-        self.0.iter(tree)
+        tree.get_slice(self.0).iter().copied()
     }
 }
 
 #[derive(
-    Debug,
-    Notate,
-    Inspector,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    Hash,
-    Serialize,
-    Deserialize,
+    Debug, Notate, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
 )]
 #[notate(with = TreePrinter<'a>, color = "cyan")]
 pub struct QualifiedExpr {
@@ -482,12 +415,15 @@ pub struct QualifiedExpr {
 }
 
 impl QualifiedExpr {
-    pub fn new_in(
+    pub fn new_in<M>(
         module_path: Option<Id<ModulePath>>,
         source: impl Into<ValueName>,
         field_path: Option<Id<FieldPath>>,
-        builder: &mut Tree,
-    ) -> Id<Self> {
+        builder: &mut Tree<M>,
+    ) -> Id<Self>
+    where
+        M: Clone + Default + 'static,
+    {
         let source = builder.alloc(source.into());
 
         builder.alloc(Self {
@@ -513,18 +449,7 @@ impl<'a> Notate<'a, UnaryOp> for TreePrinter<'a> {
 }
 
 #[derive(
-    Debug,
-    Notate,
-    Inspector,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    Hash,
-    Serialize,
-    Deserialize,
+    Debug, Notate, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
 )]
 #[notate(with = TreePrinter<'a>, color = "blue")]
 pub struct UnaryExpr {
@@ -533,7 +458,10 @@ pub struct UnaryExpr {
 }
 
 impl UnaryExpr {
-    pub fn new_in(op: UnaryOp, operand: impl Into<Expr>, builder: &mut Tree) -> Id<Self> {
+    pub fn new_in<M>(op: UnaryOp, operand: impl Into<Expr>, builder: &mut Tree<M>) -> Id<Self>
+    where
+        M: Clone + Default + 'static,
+    {
         let op = builder.alloc(op);
         let operand = builder.alloc(operand.into());
 
@@ -576,18 +504,7 @@ impl<'a> Notate<'a, BinaryOp> for TreePrinter<'a> {
 }
 
 #[derive(
-    Debug,
-    Notate,
-    Inspector,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    Hash,
-    Serialize,
-    Deserialize,
+    Debug, Notate, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
 )]
 #[notate(with = TreePrinter<'a>, color = "blue")]
 pub struct BinaryExpr {
@@ -597,12 +514,15 @@ pub struct BinaryExpr {
 }
 
 impl BinaryExpr {
-    pub fn new_in(
+    pub fn new_in<M>(
         op: BinaryOp,
         lhs: impl Into<Expr>,
         rhs: impl Into<Expr>,
-        builder: &mut Tree,
-    ) -> Id<Self> {
+        builder: &mut Tree<M>,
+    ) -> Id<Self>
+    where
+        M: Clone + Default + 'static,
+    {
         let op = builder.alloc(op);
         let lhs = builder.alloc(lhs.into());
         let rhs = builder.alloc(rhs.into());
@@ -624,18 +544,7 @@ impl BinaryExpr {
 }
 
 #[derive(
-    Debug,
-    Notate,
-    Inspector,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    Hash,
-    Serialize,
-    Deserialize,
+    Debug, Notate, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
 )]
 #[notate(with = TreePrinter<'a>, color = "blue")]
 pub struct LetExpr {
@@ -646,13 +555,16 @@ pub struct LetExpr {
 }
 
 impl LetExpr {
-    pub fn new_in(
+    pub fn new_in<M>(
         name: impl Into<ValueName>,
         value_type: Option<TypeExpr>,
         value: impl Into<Expr>,
         body: impl Into<Expr>,
-        builder: &mut Tree,
-    ) -> Id<Self> {
+        builder: &mut Tree<M>,
+    ) -> Id<Self>
+    where
+        M: Clone + Default + 'static,
+    {
         let name = builder.alloc(name.into());
         let value_type = value_type.map(|t| builder.alloc(t));
         let value = builder.alloc(value.into());
@@ -684,18 +596,7 @@ impl LetExpr {
 }
 
 #[derive(
-    Debug,
-    Notate,
-    Inspector,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    Hash,
-    Serialize,
-    Deserialize,
+    Debug, Notate, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
 )]
 #[notate(with = TreePrinter<'a>, color = "blue")]
 pub struct IfExpr {
@@ -705,12 +606,15 @@ pub struct IfExpr {
 }
 
 impl IfExpr {
-    pub fn new_in(
+    pub fn new_in<M>(
         pred: impl Into<Expr>,
         then: impl Into<Expr>,
         or_else: impl Into<Expr>,
-        builder: &mut Tree,
-    ) -> Id<Self> {
+        builder: &mut Tree<M>,
+    ) -> Id<Self>
+    where
+        M: Clone + Default + 'static,
+    {
         let pred = builder.alloc(pred.into());
         let then = builder.alloc(then.into());
         let or_else = builder.alloc(or_else.into());
@@ -736,18 +640,7 @@ impl IfExpr {
 }
 
 #[derive(
-    Debug,
-    Notate,
-    Inspector,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    Hash,
-    Serialize,
-    Deserialize,
+    Debug, Notate, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
 )]
 #[notate(with = TreePrinter<'a>, color = "blue")]
 pub struct CaseBranch {
@@ -756,7 +649,10 @@ pub struct CaseBranch {
 }
 
 impl CaseBranch {
-    pub fn new_in(pat: impl Into<Pat>, body: impl Into<Expr>, builder: &mut Tree) -> Id<Self> {
+    pub fn new_in<M>(pat: impl Into<Pat>, body: impl Into<Expr>, builder: &mut Tree<M>) -> Id<Self>
+    where
+        M: Clone + Default + 'static,
+    {
         let pat = builder.alloc(pat.into());
         let body = builder.alloc(body.into());
 
@@ -772,9 +668,7 @@ impl CaseBranch {
     }
 }
 
-#[derive(
-    Debug, Notate, Inspector, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
-)]
+#[derive(Debug, Notate, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 #[notate(with = TreePrinter<'a>, color = "blue")]
 pub struct CaseExpr {
     pub source: Id<Expr>,
@@ -782,8 +676,9 @@ pub struct CaseExpr {
 }
 
 impl CaseExpr {
-    pub fn new_in<I>(source: impl Into<Expr>, branches: I, builder: &mut Tree) -> Id<Self>
+    pub fn new_in<I, M>(source: impl Into<Expr>, branches: I, builder: &mut Tree<M>) -> Id<Self>
     where
+        M: Clone + Default + 'static,
         I: IntoIterator<Item = Id<CaseBranch>>,
     {
         let source = builder.alloc(source.into());
@@ -798,18 +693,7 @@ impl CaseExpr {
 }
 
 #[derive(
-    Debug,
-    Notate,
-    Inspector,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    Hash,
-    Serialize,
-    Deserialize,
+    Debug, Notate, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
 )]
 #[notate(with = TreePrinter<'a>, color = "blue")]
 pub struct CallExpr {
@@ -818,7 +702,10 @@ pub struct CallExpr {
 }
 
 impl CallExpr {
-    pub fn new_in(func: impl Into<Expr>, arg: impl Into<Expr>, builder: &mut Tree) -> Id<Self> {
+    pub fn new_in<M>(func: impl Into<Expr>, arg: impl Into<Expr>, builder: &mut Tree<M>) -> Id<Self>
+    where
+        M: Clone + Default + 'static,
+    {
         let func = builder.alloc(func.into());
         let arg = builder.alloc(arg.into());
 
@@ -835,18 +722,7 @@ impl CallExpr {
 }
 
 #[derive(
-    Debug,
-    Notate,
-    Inspector,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    Hash,
-    Serialize,
-    Deserialize,
+    Debug, Notate, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
 )]
 #[notate(with = TreePrinter<'a>, color = "blue")]
 pub struct LambdaExpr {
@@ -856,12 +732,15 @@ pub struct LambdaExpr {
 }
 
 impl LambdaExpr {
-    pub fn new_in(
+    pub fn new_in<M>(
         param: impl Into<ValueName>,
         param_type: Option<TypeExpr>,
         body: impl Into<Expr>,
-        builder: &mut Tree,
-    ) -> Id<Self> {
+        builder: &mut Tree<M>,
+    ) -> Id<Self>
+    where
+        M: Clone + Default + 'static,
+    {
         let param = builder.alloc(param.into());
         let param_type = param_type.map(|t| builder.alloc(t));
         let body = builder.alloc(body.into());
@@ -883,19 +762,7 @@ impl LambdaExpr {
 }
 
 #[derive(
-    Debug,
-    Notate,
-    Inspector,
-    From,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    Hash,
-    Serialize,
-    Deserialize,
+    Debug, Notate, From, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
 )]
 #[notate(with = TreePrinter<'a>, color = "blue")]
 pub struct HandlerClause {
@@ -905,18 +772,7 @@ pub struct HandlerClause {
 }
 
 #[derive(
-    Debug,
-    Notate,
-    Inspector,
-    From,
-    Clone,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    Hash,
-    Serialize,
-    Deserialize,
+    Debug, Notate, From, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
 )]
 #[notate(with = TreePrinter<'a>, color = "blue")]
 pub struct HandleExpr {
@@ -925,19 +781,7 @@ pub struct HandleExpr {
 }
 
 #[derive(
-    Debug,
-    Notate,
-    Inspector,
-    From,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    Hash,
-    Serialize,
-    Deserialize,
+    Debug, Notate, From, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
 )]
 #[notate(with = TreePrinter<'a>, color = "blue")]
 pub struct DoExpr {
@@ -946,44 +790,23 @@ pub struct DoExpr {
 }
 
 #[derive(
-    Debug,
-    Notate,
-    Inspector,
-    From,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    Hash,
-    Serialize,
-    Deserialize,
+    Debug, Notate, From, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
 )]
 #[notate(with = TreePrinter<'a>, color = "blue")]
 pub struct TagExpr(pub Id<ValueName>);
 
 impl TagExpr {
-    pub fn new_in(tag: impl Into<ValueName>, builder: &mut Tree) -> Id<Self> {
+    pub fn new_in<M>(tag: impl Into<ValueName>, builder: &mut Tree<M>) -> Id<Self>
+    where
+        M: Clone + Default + 'static,
+    {
         let tag = builder.alloc(tag.into());
         builder.alloc(Self(tag))
     }
 }
 
 #[derive(
-    Debug,
-    Notate,
-    Inspector,
-    From,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    Hash,
-    Serialize,
-    Deserialize,
+    Debug, Notate, From, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
 )]
 #[notate(with = TreePrinter<'a>, color = "blue")]
 pub enum TypeWitnessExpr {
@@ -994,7 +817,6 @@ pub enum TypeWitnessExpr {
 #[derive(
     Debug,
     EnumAsInner,
-    Inspector,
     From,
     Clone,
     Copy,

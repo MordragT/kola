@@ -4,7 +4,8 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-kola-tree-macro = { path = "./macro" }
+kola-relations = { path = "../kola-relations" }
+kola-span.workspace = true
 kola-subst.workspace = true
 kola-interner.workspace = true
 kola-print.workspace = true
