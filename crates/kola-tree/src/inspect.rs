@@ -6,41 +6,7 @@ use crate::tree::{TotalSpan, Tree};
 use kola_interner::StrInterner;
 pub use kola_relations::id::{Id, IdIter};
 pub use kola_relations::slice::SliceId;
-use kola_relations::{Inspector, SliceRelation, TotalRelation, TryProject};
-
-pub struct AssertName<'a, M> {
-    pub expected: &'a str,
-    pub tree: &'a Tree<M>,
-    pub interner: &'a StrInterner,
-}
-
-#[inline]
-pub fn assert_name<'a, M>(
-    expected: &'a str,
-    tree: &'a Tree<M>,
-    interner: &'a StrInterner,
-) -> AssertName<'a, M> {
-    AssertName {
-        expected,
-        tree,
-        interner,
-    }
-}
-
-impl<'a, M: 'static, N> Inspector<Name<N>, &'a Name<N>> for AssertName<'a, M> {
-    #[inline]
-    fn inspect(&mut self, _id: Id<Name<N>>, value: &'a Name<N>) {
-        let actual = self
-            .interner
-            .get(value.0)
-            .unwrap_or_else(|| panic!("Interner key {:?} not found", value.0));
-        assert_eq!(
-            actual, self.expected,
-            "AST Name Assertion Failed:\nExpected: '{}'\nActual:   '{}'",
-            self.expected, actual
-        );
-    }
-}
+use kola_relations::{SliceRelation, TotalRelation, TryProject};
 
 pub trait IdExt<T: 'static>: Sized {
     fn get<'a, M>(self, tree: &'a Tree<M>) -> &'a T
@@ -165,21 +131,14 @@ pub trait AssertNameExt<M: 'static> {
 macro_rules! impl_assert_name {
     ($($Namespace:ty),* $(,)?) => {
         $(
-            // Implemented on the raw Name struct
-            impl<M: 'static> AssertNameExt<M> for Name<$Namespace> {
-                fn assert_name(&self, expected: &str, tree: &Tree<M>, interner: &StrInterner) {
-                    let mut inspect = assert_name(expected, tree, interner);
-                    inspect.inspect(Id::new(0), self);
-                }
-            }
-
-            // Implemented on the ID reference (e.g. Id<ValueName>)
+            // Implemented on the ID reference (e.g. Id<Name<Namespace>>)
             impl<M: 'static> AssertNameExt<M> for Id<Name<$Namespace>>
             where
                 Tree<M>: TotalRelation<Name<$Namespace>, Name<$Namespace>>,
             {
+                #[inline]
                 fn assert_name(&self, expected: &str, tree: &Tree<M>, interner: &StrInterner) {
-                    self.get(tree).assert_name(expected, tree, interner);
+                    self.get(tree).assert_name(expected, interner);
                 }
             }
         )*

@@ -6,10 +6,11 @@ pub mod slice;
 
 // Re-exports
 pub use id::{Id, IdIter};
-pub use kola_relations_macro::{Projections, RelationStorage, TryProject};
+pub use kola_relations_macro::{RelationStorage, TryProject};
 pub use query::{
-    Inspector, KeyedQuery, QueryPlan, RelationQuery, TryProject, query, query_items, query_one,
-    query_relation, query_slice,
+    InspectKey, InspectValue, Inspector, IsStaticValue, KeyedQuery, ProjectOpt, ProjectSlice,
+    QueryPlan, RelationQuery, TryProject, query, query_items, query_one, query_relation,
+    query_slice,
 };
 pub use relation::{
     Allocate, PartialRelation, RelationIds, SliceRelation, TotalRelation, TotalRelationMut,

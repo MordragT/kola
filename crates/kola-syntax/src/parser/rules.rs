@@ -1275,29 +1275,33 @@ mod tests {
         let ParseResult { node, builder, .. } =
             try_parse_str_with("{ a: x, b: { y }, c: _, d }", pat_parser(), &mut interner);
 
-        query_one::<node::Pat, node::Pat>(node)
+        query_one::<node::Pat>(node)
             .cast::<node::RecordPat>()
-            .project(|r| r.fields)
+            .project_slice(|r| r.fields)
             .branch(&builder, |fields| {
                 // Field 0: "a: x"
                 fields
                     .get_at(0)
-                    .inspect(|_, f| f.field.assert_name("a", &builder, &interner))
-                    .project_pat()
+                    .inspect_value(|f: &node::RecordFieldPat| {
+                        f.field.assert_name("a", &builder, &interner)
+                    })
+                    .project_opt(|f| f.pat)
                     .cast::<node::BindPat>()
-                    .inspect(|_, b| b.0.assert_name("x", &builder, &interner))
+                    .inspect_value(|b| b.0.assert_name("x", &builder, &interner))
                     .execute(&builder)
                     .next();
 
                 // Field 1: "b: { y }"
                 fields
                     .get_at(1)
-                    .inspect(|_, f| f.field.assert_name("b", &builder, &interner))
-                    .project_pat()
+                    .inspect_value(|f: &node::RecordFieldPat| {
+                        f.field.assert_name("b", &builder, &interner)
+                    })
+                    .project_opt(|f| f.pat)
                     .cast::<node::RecordPat>()
-                    .project(|r| r.fields)
+                    .project_slice(|r| r.fields)
                     .get_at(0)
-                    .inspect(|_, f| {
+                    .inspect_value(|f: &node::RecordFieldPat| {
                         f.field.assert_name("y", &builder, &interner);
                         assert!(f.pat.is_none());
                     })
@@ -1307,8 +1311,10 @@ mod tests {
                 // Field 2: "c: _"
                 fields
                     .get_at(2)
-                    .inspect(|_, f| f.field.assert_name("c", &builder, &interner))
-                    .project_pat()
+                    .inspect_value(|f: &node::RecordFieldPat| {
+                        f.field.assert_name("c", &builder, &interner)
+                    })
+                    .project_opt(|f| f.pat)
                     .cast::<node::AnyPat>()
                     .execute(&builder)
                     .next();
@@ -1316,7 +1322,7 @@ mod tests {
                 // Field 3: "d"
                 fields
                     .get_at(3)
-                    .inspect(|_, f| {
+                    .inspect_value(|f: &node::RecordFieldPat| {
                         f.field.assert_name("d", &builder, &interner);
                         assert!(f.pat.is_none());
                     })
@@ -1325,946 +1331,949 @@ mod tests {
             });
     }
 
-    #[test]
-    fn case_expr() {
-        let mut interner = StrInterner::default();
-
-        let ParseResult { node, builder, .. } = try_parse_str_with(
-            "case x | 1 => true | _ => false",
-            expr_parser(),
-            &mut interner,
-        );
-
-        query_one::<node::Expr, node::Expr>(node)
-            .cast::<node::CaseExpr>()
-            .branch(&builder, |case| {
-                // Assert on source "x"
-                case.project_source()
-                    .cast::<node::QualifiedExpr>()
-                    .inspect(|_, source| source.source.assert_name("x", &builder, &interner))
-                    .execute(&builder)
-                    .next();
-
-                // Assert on branches
-                case.project_branches().branch(&builder, |branches| {
-                    // Branch 0: "1 => true"
-                    branches
-                        .get_at(0)
-                        .inspect(|_, b| {
-                            let pat_0 = b.pat.cast::<node::LiteralPat>(&builder);
-                            pat_0.assert_eq(&node::LiteralPat::Num(1.0));
-                            let expr_0 = b.body.cast::<node::LiteralExpr>(&builder);
-                            expr_0.assert_eq(&node::LiteralExpr::Bool(true));
-                        })
-                        .execute(&builder)
-                        .next();
-
-                    // Branch 1: "_ => false"
-                    branches
-                        .get_at(1)
-                        .inspect(|_, b| {
-                            b.pat.cast::<node::AnyPat>(&builder);
-                            let expr_1 = b.body.cast::<node::LiteralExpr>(&builder);
-                            expr_1.assert_eq(&node::LiteralExpr::Bool(false));
-                        })
-                        .execute(&builder)
-                        .next();
-                });
-            });
-    }
-
-    #[test]
-    fn complex_case_expr() {
-        let mut interner = StrInterner::default();
-
-        let test_case = r#"
-            case data
-            | () => "unit"
-            | true => "bool true"
-            | 42 => "number"
-            | "hello" => "string"
-            | x => "bind pattern"
-            | _ => "wildcard"
-            | [a, b, ...rest] => "list with spread"
-            | [head, ...] => "list anonymous spread"
-            | [] => "empty list"
-            | { name, age: years, ... } => "record with spread"
-            | { x, y } => "simple record"
-            | {} => "empty record"
-            | < Some : value > => "variant some"
-            | < None > => "variant none"
-            | < Ok : result, Err : error > => "multiple variants"
-        "#;
-
-        let ParseResult { node, builder, .. } =
-            try_parse_str_with(test_case, expr_parser(), &mut interner);
-
-        query_one::<node::Expr, node::Expr>(node)
-            .cast::<node::CaseExpr>()
-            .branch(&builder, |case| {
-                case.project_source()
-                    .cast::<node::QualifiedExpr>()
-                    .inspect(|_, s| s.source.assert_name("data", &builder, &interner))
-                    .execute(&builder)
-                    .next();
-
-                case.project_branches().branch(&builder, |branches| {
-                    // Branch 0: "() => "unit""
-                    branches
-                        .get_at(0)
-                        .inspect(|_, b| {
-                            b.pat
-                                .cast::<node::LiteralPat>(&builder)
-                                .assert_eq(&node::LiteralPat::Unit);
-                            b.body
-                                .cast::<node::LiteralExpr>(&builder)
-                                .assert_eq(&node::LiteralExpr::Str(interner["unit"]));
-                        })
-                        .execute(&builder)
-                        .next();
-
-                    // Branch 1: "true => "bool true""
-                    branches
-                        .get_at(1)
-                        .inspect(|_, b| {
-                            b.pat
-                                .cast::<node::LiteralPat>(&builder)
-                                .assert_eq(&node::LiteralPat::Bool(true));
-                            b.body
-                                .cast::<node::LiteralExpr>(&builder)
-                                .assert_eq(&node::LiteralExpr::Str(interner["bool true"]));
-                        })
-                        .execute(&builder)
-                        .next();
-
-                    // Branch 2: "42 => "number""
-                    branches
-                        .get_at(2)
-                        .inspect(|_, b| {
-                            b.pat
-                                .cast::<node::LiteralPat>(&builder)
-                                .assert_eq(&node::LiteralPat::Num(42.0));
-                            b.body
-                                .cast::<node::LiteralExpr>(&builder)
-                                .assert_eq(&node::LiteralExpr::Str(interner["number"]));
-                        })
-                        .execute(&builder)
-                        .next();
-
-                    // Branch 3: ""hello" => "string""
-                    branches
-                        .get_at(3)
-                        .inspect(|_, b| {
-                            b.pat
-                                .cast::<node::LiteralPat>(&builder)
-                                .assert_eq(&node::LiteralPat::Str(interner["hello"]));
-                            b.body
-                                .cast::<node::LiteralExpr>(&builder)
-                                .assert_eq(&node::LiteralExpr::Str(interner["string"]));
-                        })
-                        .execute(&builder)
-                        .next();
-
-                    // Branch 4: "x => "bind pattern""
-                    branches
-                        .get_at(4)
-                        .inspect(|_, b| {
-                            b.pat
-                                .cast::<node::BindPat>(&builder)
-                                .0
-                                .assert_name("x", &builder, &interner);
-                            b.body
-                                .cast::<node::LiteralExpr>(&builder)
-                                .assert_eq(&node::LiteralExpr::Str(interner["bind pattern"]));
-                        })
-                        .execute(&builder)
-                        .next();
-
-                    // Branch 5: "_ => "wildcard""
-                    branches
-                        .get_at(5)
-                        .inspect(|_, b| {
-                            b.pat.cast::<node::AnyPat>(&builder);
-                            b.body
-                                .cast::<node::LiteralExpr>(&builder)
-                                .assert_eq(&node::LiteralExpr::Str(interner["wildcard"]));
-                        })
-                        .execute(&builder)
-                        .next();
-
-                    // Branch 6: "[a, b, ...rest] => "list with spread""
-                    branches
-                        .get_at(6)
-                        .inspect(|_, b| {
-                            let list = b.pat.cast::<node::ListPat>(&builder);
-                            let el = list.0;
-                            assert_eq!(el.get(&builder).len(), 3);
-                            el.get_at(0, &builder)
-                                .cast::<node::Pat>(&builder)
-                                .cast::<node::BindPat>(&builder)
-                                .0
-                                .assert_name("a", &builder, &interner);
-                            el.get_at(1, &builder)
-                                .cast::<node::Pat>(&builder)
-                                .cast::<node::BindPat>(&builder)
-                                .0
-                                .assert_name("b", &builder, &interner);
-                            let node::ListElPat::Spread(some_name) = el.get_at(2, &builder) else {
-                                panic!("expected Spread")
-                            };
-                            some_name.unwrap().assert_name("rest", &builder, &interner);
-                            b.body
-                                .cast::<node::LiteralExpr>(&builder)
-                                .assert_eq(&node::LiteralExpr::Str(interner["list with spread"]));
-                        })
-                        .execute(&builder)
-                        .next();
-
-                    // Branch 7: "[head, ...] => "list anonymous spread""
-                    branches
-                        .get_at(7)
-                        .inspect(|_, b| {
-                            let list = b.pat.cast::<node::ListPat>(&builder);
-                            let el = list.0;
-                            assert_eq!(el.get(&builder).len(), 2);
-                            el.get_at(0, &builder)
-                                .cast::<node::Pat>(&builder)
-                                .cast::<node::BindPat>(&builder)
-                                .0
-                                .assert_name("head", &builder, &interner);
-                            assert!(matches!(
-                                el.get_at(1, &builder),
-                                node::ListElPat::Spread(None)
-                            ));
-                            b.body.cast::<node::LiteralExpr>(&builder).assert_eq(
-                                &node::LiteralExpr::Str(interner["list anonymous spread"]),
-                            );
-                        })
-                        .execute(&builder)
-                        .next();
-
-                    // Branch 8: "[] => "empty list""
-                    branches
-                        .get_at(8)
-                        .inspect(|_, b| {
-                            let list = b.pat.cast::<node::ListPat>(&builder);
-                            assert_eq!(list.0.get(&builder).len(), 0);
-                            b.body
-                                .cast::<node::LiteralExpr>(&builder)
-                                .assert_eq(&node::LiteralExpr::Str(interner["empty list"]));
-                        })
-                        .execute(&builder)
-                        .next();
-
-                    // Branch 9: "{ name, age: years, ... } => "record with spread""
-                    branches
-                        .get_at(9)
-                        .inspect(|_, b| {
-                            let record = b.pat.cast::<node::RecordPat>(&builder);
-                            let f = record.fields;
-                            assert_eq!(f.get(&builder).len(), 2);
-                            f.get_at(0, &builder)
-                                .field
-                                .assert_name("name", &builder, &interner);
-                            assert!(f.get_at(0, &builder).pat.is_none());
-
-                            f.get_at(1, &builder)
-                                .field
-                                .assert_name("age", &builder, &interner);
-                            f.get_at(1, &builder)
-                                .pat
-                                .unwrap()
-                                .cast::<node::BindPat>(&builder)
-                                .0
-                                .assert_name("years", &builder, &interner);
-
-                            assert!(record.polymorph);
-                            b.body
-                                .cast::<node::LiteralExpr>(&builder)
-                                .assert_eq(&node::LiteralExpr::Str(interner["record with spread"]));
-                        })
-                        .execute(&builder)
-                        .next();
-
-                    // Branch 10: "{ x, y } => "simple record""
-                    branches
-                        .get_at(10)
-                        .inspect(|_, b| {
-                            let record = b.pat.cast::<node::RecordPat>(&builder);
-                            let f = record.fields;
-                            assert_eq!(f.get(&builder).len(), 2);
-                            f.get_at(0, &builder)
-                                .field
-                                .assert_name("x", &builder, &interner);
-                            f.get_at(1, &builder)
-                                .field
-                                .assert_name("y", &builder, &interner);
-                            b.body
-                                .cast::<node::LiteralExpr>(&builder)
-                                .assert_eq(&node::LiteralExpr::Str(interner["simple record"]));
-                        })
-                        .execute(&builder)
-                        .next();
-
-                    // Branch 11: "{} => "empty record""
-                    branches
-                        .get_at(11)
-                        .inspect(|_, b| {
-                            let record = b.pat.cast::<node::RecordPat>(&builder);
-                            assert_eq!(record.fields.get(&builder).len(), 0);
-                            b.body
-                                .cast::<node::LiteralExpr>(&builder)
-                                .assert_eq(&node::LiteralExpr::Str(interner["empty record"]));
-                        })
-                        .execute(&builder)
-                        .next();
-
-                    // Branch 12: "< Some : value > => "variant some""
-                    branches
-                        .get_at(12)
-                        .inspect(|_, b| {
-                            let variant = b.pat.cast::<node::VariantPat>(&builder);
-                            let tags = variant.0;
-                            assert_eq!(tags.get(&builder).len(), 1);
-                            tags.get_at(0, &builder)
-                                .tag
-                                .assert_name("Some", &builder, &interner);
-                            tags.get_at(0, &builder)
-                                .pat
-                                .unwrap()
-                                .cast::<node::BindPat>(&builder)
-                                .0
-                                .assert_name("value", &builder, &interner);
-                            b.body
-                                .cast::<node::LiteralExpr>(&builder)
-                                .assert_eq(&node::LiteralExpr::Str(interner["variant some"]));
-                        })
-                        .execute(&builder)
-                        .next();
-
-                    // Branch 13: "< None > => "variant none""
-                    branches
-                        .get_at(13)
-                        .inspect(|_, b| {
-                            let variant = b.pat.cast::<node::VariantPat>(&builder);
-                            let tags = variant.0;
-                            assert_eq!(tags.get(&builder).len(), 1);
-                            tags.get_at(0, &builder)
-                                .tag
-                                .assert_name("None", &builder, &interner);
-                            assert!(tags.get_at(0, &builder).pat.is_none());
-                            b.body
-                                .cast::<node::LiteralExpr>(&builder)
-                                .assert_eq(&node::LiteralExpr::Str(interner["variant none"]));
-                        })
-                        .execute(&builder)
-                        .next();
-
-                    // Branch 14: "< Ok : result, Err : error > => "multiple variants""
-                    branches
-                        .get_at(14)
-                        .inspect(|_, b| {
-                            let variant = b.pat.cast::<node::VariantPat>(&builder);
-                            let tags = variant.0;
-                            assert_eq!(tags.get(&builder).len(), 2);
-                            tags.get_at(0, &builder)
-                                .tag
-                                .assert_name("Ok", &builder, &interner);
-                            tags.get_at(0, &builder)
-                                .pat
-                                .unwrap()
-                                .cast::<node::BindPat>(&builder)
-                                .0
-                                .assert_name("result", &builder, &interner);
-                            tags.get_at(1, &builder)
-                                .tag
-                                .assert_name("Err", &builder, &interner);
-                            tags.get_at(1, &builder)
-                                .pat
-                                .unwrap()
-                                .cast::<node::BindPat>(&builder)
-                                .0
-                                .assert_name("error", &builder, &interner);
-                            b.body
-                                .cast::<node::LiteralExpr>(&builder)
-                                .assert_eq(&node::LiteralExpr::Str(interner["multiple variants"]));
-                        })
-                        .execute(&builder)
-                        .next();
-                });
-            });
-    }
-
-    #[test]
-    fn func_expr() {
-        let mut interner = StrInterner::default();
-
-        let ParseResult { node, builder, .. } =
-            try_parse_str_with("fn name => \"Hello\" + name", expr_parser(), &mut interner);
-
-        query_one::<node::Expr, node::Expr>(node)
-            .cast::<node::LambdaExpr>()
-            .inspect(|_, lambda| {
-                lambda.param.assert_name("name", &builder, &interner);
-                let binary = lambda.body.cast::<node::BinaryExpr>(&builder);
-                binary.op.assert_eq(&node::BinaryOp::Add);
-            })
-            .execute(&builder)
-            .next();
-    }
-
-    #[test]
-    fn arithmetic_expr() {
-        let mut interner = StrInterner::default();
-
-        let ParseResult { node, builder, .. } =
-            try_parse_str_with("-4 * 10 + 40 / 4 + 30 == 0", expr_parser(), &mut interner);
-
-        query_one::<node::Expr, node::Expr>(node)
-            .cast::<node::BinaryExpr>()
-            .inspect(|_, eq| {
-                eq.op.assert_eq(&node::BinaryOp::Eq);
-                eq.rhs
-                    .cast::<node::LiteralExpr>(&builder)
-                    .assert_eq(&node::LiteralExpr::Num(0.0));
-
-                let sum = eq.lhs.cast::<node::BinaryExpr>(&builder);
-                sum.op.assert_eq(&node::BinaryOp::Add);
-                sum.rhs
-                    .cast::<node::LiteralExpr>(&builder)
-                    .assert_eq(&node::LiteralExpr::Num(30.0));
-
-                let sum2 = sum.lhs.cast::<node::BinaryExpr>(&builder);
-                sum2.op.assert_eq(&node::BinaryOp::Add);
-                sum2.lhs
-                    .cast::<node::BinaryExpr>(&builder)
-                    .op
-                    .assert_eq(&node::BinaryOp::Mul);
-                sum2.rhs
-                    .cast::<node::BinaryExpr>(&builder)
-                    .op
-                    .assert_eq(&node::BinaryOp::Div);
-            })
-            .execute(&builder)
-            .next();
-    }
-
-    #[test]
-    fn if_expr() {
-        let mut interner = StrInterner::default();
-
-        let ParseResult { node, builder, .. } =
-            try_parse_str_with("if y then x else 0", expr_parser(), &mut interner);
-
-        query_one::<node::Expr, node::Expr>(node)
-            .cast::<node::IfExpr>()
-            .inspect(|_, if_expr| {
-                if_expr
-                    .pred
-                    .cast::<node::QualifiedExpr>(&builder)
-                    .source
-                    .assert_name("y", &builder, &interner);
-                if_expr
-                    .then
-                    .cast::<node::QualifiedExpr>(&builder)
-                    .source
-                    .assert_name("x", &builder, &interner);
-                if_expr
-                    .or_else
-                    .cast::<node::LiteralExpr>(&builder)
-                    .assert_eq(&node::LiteralExpr::Num(0.0));
-            })
-            .execute(&builder)
-            .next();
-    }
-
-    #[test]
-    fn qualified_expr() {
-        let mut interner = StrInterner::default();
-
-        // Test simple field access
-        let ParseResult { node, builder, .. } =
-            try_parse_str_with("x.y.z", expr_parser(), &mut interner);
-
-        query_one::<node::Expr, node::Expr>(node)
-            .cast::<node::QualifiedExpr>()
-            .inspect(|_, q| {
-                q.source.assert_name("x", &builder, &interner);
-                let path = q.field_path.unwrap().get(&builder);
-                path.0
-                    .get_at(0, &builder)
-                    .assert_name("y", &builder, &interner);
-                path.0
-                    .get_at(1, &builder)
-                    .assert_name("z", &builder, &interner);
-            })
-            .execute(&builder)
-            .next();
-
-        // Test module path with field access
-        let ParseResult { node, builder, .. } = try_parse_str_with(
-            "mod1::mod2::value.field1.field2",
-            expr_parser(),
-            &mut interner,
-        );
-
-        query_one::<node::Expr, node::Expr>(node)
-            .cast::<node::QualifiedExpr>()
-            .inspect(|_, q| {
-                let m_path = q.module_path.unwrap().get(&builder);
-                m_path
-                    .0
-                    .get_at(0, &builder)
-                    .assert_name("mod1", &builder, &interner);
-                m_path
-                    .0
-                    .get_at(1, &builder)
-                    .assert_name("mod2", &builder, &interner);
-
-                q.source.assert_name("value", &builder, &interner);
-
-                let path = q.field_path.unwrap().get(&builder);
-                path.0
-                    .get_at(0, &builder)
-                    .assert_name("field1", &builder, &interner);
-                path.0
-                    .get_at(1, &builder)
-                    .assert_name("field2", &builder, &interner);
-            })
-            .execute(&builder)
-            .next();
-    }
-
-    #[test]
-    fn record_extension() {
-        let mut interner = StrInterner::default();
-
-        let ParseResult { node, builder, .. } =
-            try_parse_str_with("{ y | +x = 10 }", expr_parser(), &mut interner);
-
-        query_one::<node::Expr, node::Expr>(node)
-            .cast::<node::RecordExtendExpr>()
-            .inspect(|_, extend| {
-                extend
-                    .source
-                    .cast::<node::QualifiedExpr>(&builder)
-                    .source
-                    .assert_name("y", &builder, &interner);
-                extend
-                    .field_path
-                    .get(&builder)
-                    .0
-                    .get_at(0, &builder)
-                    .assert_name("x", &builder, &interner);
-                extend
-                    .value
-                    .cast::<node::LiteralExpr>(&builder)
-                    .assert_eq(&node::LiteralExpr::Num(10.0));
-            })
-            .execute(&builder)
-            .next();
-    }
-
-    #[test]
-    fn record() {
-        let mut interner = StrInterner::default();
-
-        let ParseResult { node, builder, .. } =
-            try_parse_str_with("{ x = 10, y = 20 }", expr_parser(), &mut interner);
-
-        query_one::<node::Expr, node::Expr>(node)
-            .cast::<node::RecordExpr>()
-            .inspect(|_, record| {
-                let fields = record.0;
-                assert_eq!(fields.get(&builder).len(), 2);
-                fields
-                    .get_at(0, &builder)
-                    .label
-                    .assert_name("x", &builder, &interner);
-                fields
-                    .get_at(0, &builder)
-                    .value
-                    .cast::<node::LiteralExpr>(&builder)
-                    .assert_eq(&node::LiteralExpr::Num(10.0));
-                fields
-                    .get_at(1, &builder)
-                    .label
-                    .assert_name("y", &builder, &interner);
-                fields
-                    .get_at(1, &builder)
-                    .value
-                    .cast::<node::LiteralExpr>(&builder)
-                    .assert_eq(&node::LiteralExpr::Num(20.0));
-            })
-            .execute(&builder)
-            .next();
-    }
-
-    #[test]
-    fn type_expr() {
-        let mut interner = StrInterner::default();
-
-        let ParseResult { node, builder, .. } = try_parse_str_with(
-            "Num -> { a : Num, b : Num -> Num } -> Str",
-            type_parser(),
-            &mut interner,
-        );
-
-        query_one::<node::TypeExpr, node::TypeExpr>(node)
-            .cast::<node::FuncType>()
-            .inspect(|_, func| {
-                func.input
-                    .cast::<node::QualifiedType>(&builder)
-                    .ty
-                    .assert_name("Num", &builder, &interner);
-
-                let func2 = func.output.ty.cast::<node::FuncType>(&builder);
-                let record = func2.input.cast::<node::RecordType>(&builder);
-                let f = record.0;
-                assert_eq!(f.get(&builder).len(), 2);
-
-                let node::LabelOrVar::Label(label_a) = f.get_at(0, &builder).label_or_var else {
-                    panic!("expected label")
-                };
-                label_a.assert_name("a", &builder, &interner);
-                f.get_at(0, &builder)
-                    .ty
-                    .cast::<node::QualifiedType>(&builder)
-                    .ty
-                    .assert_name("Num", &builder, &interner);
-
-                let node::LabelOrVar::Label(label_b) = f.get_at(1, &builder).label_or_var else {
-                    panic!("expected label")
-                };
-                label_b.assert_name("b", &builder, &interner);
-                f.get_at(1, &builder).ty.cast::<node::FuncType>(&builder);
-
-                func2
-                    .output
-                    .ty
-                    .cast::<node::QualifiedType>(&builder)
-                    .ty
-                    .assert_name("Str", &builder, &interner);
-            })
-            .execute(&builder)
-            .next();
-    }
-
-    #[test]
-    fn type_application() {
-        let mut interner = StrInterner::default();
-
-        let ParseResult { node, builder, .. } = try_parse_str_with(
-            "Map (Num -> Str) (std::List Str)",
-            type_parser(),
-            &mut interner,
-        );
-
-        query_one::<node::TypeExpr, node::TypeExpr>(node)
-            .cast::<node::TypeApplication>()
-            .inspect(|_, app| {
-                let inner_app = app.constructor.cast::<node::TypeApplication>(&builder);
-                inner_app
-                    .constructor
-                    .cast::<node::QualifiedType>(&builder)
-                    .ty
-                    .assert_name("Map", &builder, &interner);
-                inner_app.arg.cast::<node::FuncType>(&builder);
-
-                let list_app = app.arg.cast::<node::TypeApplication>(&builder);
-                list_app.constructor.cast::<node::QualifiedType>(&builder);
-                list_app.arg.cast::<node::QualifiedType>(&builder);
-            })
-            .execute(&builder)
-            .next();
-    }
-
-    #[test]
-    fn type_() {
-        let mut interner = StrInterner::default();
-
-        let ParseResult { node, builder, .. } = try_parse_str_with(
-            "forall a b . { left : a, right : Num -> b }",
-            type_scheme_parser(),
-            &mut interner,
-        );
-
-        let scheme = node.get(&builder);
-        let binders = scheme
-            .forall
-            .unwrap()
-            .get(&builder)
-            .0
-            .get_elements(&builder);
-        let binder_names: Vec<_> = binders
-            .map(|b| interner.get(b.var.get(&builder).0).unwrap())
-            .collect();
-        assert_eq!(binder_names, vec!["a", "b"]);
-
-        let record = scheme.ty.cast::<node::RecordType>(&builder);
-        let f = record.0;
-        assert_eq!(f.get(&builder).len(), 2);
-
-        let node::LabelOrVar::Label(label_l) = f.get_at(0, &builder).label_or_var else {
-            panic!("expected label")
-        };
-        label_l.assert_name("left", &builder, &interner);
-        f.get_at(0, &builder)
-            .ty
-            .cast::<node::QualifiedType>(&builder)
-            .ty
-            .assert_name("a", &builder, &interner);
-
-        let node::LabelOrVar::Label(label_r) = f.get_at(1, &builder).label_or_var else {
-            panic!("expected label")
-        };
-        label_r.assert_name("right", &builder, &interner);
-        let f_right = f.get_at(1, &builder).ty.cast::<node::FuncType>(&builder);
-        f_right
-            .input
-            .cast::<node::QualifiedType>(&builder)
-            .ty
-            .assert_name("Num", &builder, &interner);
-        f_right
-            .output
-            .ty
-            .cast::<node::QualifiedType>(&builder)
-            .ty
-            .assert_name("b", &builder, &interner);
-    }
-
-    #[test]
-    fn type_bind() {
-        let mut interner = StrInterner::default();
-
-        let ParseResult { node, builder, .. } = try_parse_str_with(
-            "type Person = forall a . { id : a, name : Str, age : Num }",
-            type_bind_parser(),
-            &mut interner,
-        );
-
-        let bind = node.get(&builder);
-        bind.name.assert_name("Person", &builder, &interner);
-
-        let scheme = bind.ty_scheme.get(&builder);
-        assert!(scheme.forall.is_some());
-        let record = scheme.ty.cast::<node::RecordType>(&builder);
-        assert_eq!(record.0.get(&builder).len(), 3);
-    }
-
-    #[test]
-    fn variant_type_bind() {
-        let mut interner = StrInterner::default();
-
-        let ParseResult { node, builder, .. } = try_parse_str_with(
-            "type Option = forall a b . < Some : a, None | b >",
-            type_bind_parser(),
-            &mut interner,
-        );
-
-        let bind = node.get(&builder);
-        bind.name.assert_name("Option", &builder, &interner);
-
-        let scheme = bind.ty_scheme.get(&builder);
-        let binder = scheme.forall.unwrap().get(&builder).0;
-        binder
-            .get_at(0, &builder)
-            .var
-            .assert_name("a", &builder, &interner);
-
-        let variant = scheme.ty.cast::<node::VariantType>(&builder);
-        assert_eq!(variant.tags.get(&builder).len(), 2);
-        variant
-            .tags
-            .get_at(0, &builder)
-            .name
-            .assert_name("Some", &builder, &interner);
-        variant
-            .tags
-            .get_at(0, &builder)
-            .ty
-            .unwrap()
-            .cast::<node::QualifiedType>(&builder)
-            .ty
-            .assert_name("a", &builder, &interner);
-
-        variant
-            .tags
-            .get_at(1, &builder)
-            .name
-            .assert_name("None", &builder, &interner);
-        assert!(variant.tags.get_at(1, &builder).ty.is_none());
-
-        variant
-            .extension
-            .unwrap()
-            .assert_name("b", &builder, &interner);
-    }
-
-    #[test]
-    fn module() {
-        let mut interner = StrInterner::default();
-
-        let ParseResult { node, builder, .. } =
-            try_parse_str_with("{ x = 10, type T = Num }", module_parser(), &mut interner);
-
-        let body = node.get(&builder);
-        assert_eq!(body.0.get(&builder).len(), 2);
-
-        let bind_0 = body.0.get_at(0, &builder).cast::<node::ValueBind>(&builder);
-        bind_0.name.assert_name("x", &builder, &interner);
-        bind_0
-            .value
-            .cast::<node::LiteralExpr>(&builder)
-            .assert_eq(&node::LiteralExpr::Num(10.0));
-
-        let bind_1 = body.0.get_at(1, &builder).cast::<node::TypeBind>(&builder);
-        bind_1.name.assert_name("T", &builder, &interner);
-        bind_1
-            .ty_scheme
-            .get(&builder)
-            .ty
-            .cast::<node::QualifiedType>(&builder)
-            .ty
-            .assert_name("Num", &builder, &interner);
-    }
-
-    #[test]
-    fn module_type() {
-        let mut interner = StrInterner::default();
-
-        let ParseResult { node, builder, .. } =
-            try_parse_str_with("{ x : Num }", module_type_parser(), &mut interner);
-
-        let concrete = node.cast::<node::ConcreteModuleType>(&builder);
-        assert_eq!(concrete.0.get(&builder).len(), 1);
-
-        let val_spec = concrete
-            .0
-            .get_at(0, &builder)
-            .cast::<node::ValueSpec>(&builder);
-        val_spec.name.assert_name("x", &builder, &interner);
-        val_spec
-            .ty
-            .ty
-            .cast::<node::QualifiedType>(&builder)
-            .ty
-            .assert_name("Num", &builder, &interner);
-    }
-
-    #[test]
-    fn nested_module() {
-        let mut interner = StrInterner::default();
-
-        let ParseResult { node, builder, .. } =
-            try_parse_str_with("{ module m = { x = 10 } }", module_parser(), &mut interner);
-
-        let body = node.get(&builder);
-        assert_eq!(body.0.get(&builder).len(), 1);
-
-        let m_bind = body
-            .0
-            .get_at(0, &builder)
-            .cast::<node::ModuleBind>(&builder);
-        m_bind.name.assert_name("m", &builder, &interner);
-        assert!(m_bind.ty.is_none());
-
-        let m_body = m_bind.value.cast::<node::ModuleBody>(&builder);
-        assert_eq!(m_body.0.get(&builder).len(), 1);
-
-        let val_bind = m_body
-            .0
-            .get_at(0, &builder)
-            .cast::<node::ValueBind>(&builder);
-        val_bind.name.assert_name("x", &builder, &interner);
-        val_bind
-            .value
-            .cast::<node::LiteralExpr>(&builder)
-            .assert_eq(&node::LiteralExpr::Num(10.0));
-    }
-
-    #[test]
-    fn nested_module_with_type() {
-        let mut interner = StrInterner::default();
-
-        let ParseResult { node, builder, .. } = try_parse_str_with(
-            "{ module m : { x : Num } = { x = 10 } }",
-            module_parser(),
-            &mut interner,
-        );
-
-        let body = node.get(&builder);
-        assert_eq!(body.0.get(&builder).len(), 1);
-
-        let m_bind = body
-            .0
-            .get_at(0, &builder)
-            .cast::<node::ModuleBind>(&builder);
-        m_bind.name.assert_name("m", &builder, &interner);
-
-        // Check interface spec
-        let concrete_ty = m_bind
-            .ty
-            .as_ref()
-            .unwrap()
-            .cast::<node::ConcreteModuleType>(&builder);
-        assert_eq!(concrete_ty.0.get(&builder).len(), 1);
-        let val_spec = concrete_ty
-            .0
-            .get_at(0, &builder)
-            .cast::<node::ValueSpec>(&builder);
-        val_spec.name.assert_name("x", &builder, &interner);
-        val_spec
-            .ty
-            .ty
-            .cast::<node::QualifiedType>(&builder)
-            .ty
-            .assert_name("Num", &builder, &interner);
-
-        // Check implementation body
-        let m_body = m_bind.value.cast::<node::ModuleBody>(&builder);
-        assert_eq!(m_body.0.get(&builder).len(), 1);
-        let val_bind = m_body
-            .0
-            .get_at(0, &builder)
-            .cast::<node::ValueBind>(&builder);
-        val_bind.name.assert_name("x", &builder, &interner);
-        val_bind
-            .value
-            .cast::<node::LiteralExpr>(&builder)
-            .assert_eq(&node::LiteralExpr::Num(10.0));
-    }
-
-    #[test]
-    fn comments_are_transparent_to_parser() {
-        let mut interner = StrInterner::default();
-
-        let ParseResult { node, builder, .. } = try_parse_str_with(
-            r#"{
-                # A regular comment
-                x = 10,
-                ## A doc comment
-                y = 20
-            }"#,
-            module_parser(),
-            &mut interner,
-        );
-
-        let body = node.get(&builder);
-        assert_eq!(body.0.get(&builder).len(), 2);
-
-        let bind_0 = body.0.get_at(0, &builder).cast::<node::ValueBind>(&builder);
-        bind_0.name.assert_name("x", &builder, &interner);
-        bind_0
-            .value
-            .cast::<node::LiteralExpr>(&builder)
-            .assert_eq(&node::LiteralExpr::Num(10.0));
-
-        let bind_1 = body.0.get_at(1, &builder).cast::<node::ValueBind>(&builder);
-        bind_1.name.assert_name("y", &builder, &interner);
-        bind_1
-            .value
-            .cast::<node::LiteralExpr>(&builder)
-            .assert_eq(&node::LiteralExpr::Num(20.0));
-    }
+    //     #[test]
+    //     fn case_expr() {
+    //         let mut interner = StrInterner::default();
+
+    //         let ParseResult { node, builder, .. } = try_parse_str_with(
+    //             "case x | 1 => true | _ => false",
+    //             expr_parser(),
+    //             &mut interner,
+    //         );
+
+    //         query_one::<node::Expr>(node)
+    //             .cast::<node::CaseExpr>()
+    //             .branch(&builder, |case| {
+    //                 // Assert on source "x"
+    //                 case.project(|case| case.source)
+    //                     .cast::<node::QualifiedExpr>()
+    //                     .inspect(|_, source| source.source.assert_name("x", &builder, &interner))
+    //                     .execute(&builder)
+    //                     .next();
+
+    //                 // Assert on branches
+    //                 case.project_slice(|case| case.branches)
+    //                     .branch(&builder, |branches| {
+    //                         // Branch 0: "1 => true"
+    //                         branches
+    //                             .get_at(0)
+    //                             .inspect(|_, b| {
+    //                                 let pat_0 = b.pat.cast::<node::LiteralPat>(&builder);
+    //                                 pat_0.assert_eq(&node::LiteralPat::Num(1.0));
+    //                                 let expr_0 = b.body.cast::<node::LiteralExpr>(&builder);
+    //                                 expr_0.assert_eq(&node::LiteralExpr::Bool(true));
+    //                             })
+    //                             .execute(&builder)
+    //                             .next();
+
+    //                         // Branch 1: "_ => false"
+    //                         branches
+    //                             .get_at(1)
+    //                             .inspect(|_, b| {
+    //                                 b.pat.cast::<node::AnyPat>(&builder);
+    //                                 let expr_1 = b.body.cast::<node::LiteralExpr>(&builder);
+    //                                 expr_1.assert_eq(&node::LiteralExpr::Bool(false));
+    //                             })
+    //                             .execute(&builder)
+    //                             .next();
+    //                     });
+    //             });
+    //     }
+
+    //     #[test]
+    //     fn complex_case_expr() {
+    //         let mut interner = StrInterner::default();
+
+    //         let test_case = r#"
+    //             case data
+    //             | () => "unit"
+    //             | true => "bool true"
+    //             | 42 => "number"
+    //             | "hello" => "string"
+    //             | x => "bind pattern"
+    //             | _ => "wildcard"
+    //             | [a, b, ...rest] => "list with spread"
+    //             | [head, ...] => "list anonymous spread"
+    //             | [] => "empty list"
+    //             | { name, age: years, ... } => "record with spread"
+    //             | { x, y } => "simple record"
+    //             | {} => "empty record"
+    //             | < Some : value > => "variant some"
+    //             | < None > => "variant none"
+    //             | < Ok : result, Err : error > => "multiple variants"
+    //         "#;
+
+    //         let ParseResult { node, builder, .. } =
+    //             try_parse_str_with(test_case, expr_parser(), &mut interner);
+
+    //         query_one::<node::Expr>(node)
+    //             .cast::<node::CaseExpr>()
+    //             .branch(&builder, |case| {
+    //                 case.project(|case| case.source)
+    //                     .cast::<node::QualifiedExpr>()
+    //                     .inspect(|_, s| s.source.assert_name("data", &builder, &interner))
+    //                     .execute(&builder)
+    //                     .next();
+
+    //                 case.project_slice(|case| case.branches)
+    //                     .branch(&builder, |branches| {
+    //                         // Branch 0: "() => "unit""
+    //                         branches
+    //                             .get_at(0)
+    //                             .inspect(|_, b| {
+    //                                 b.pat
+    //                                     .cast::<node::LiteralPat>(&builder)
+    //                                     .assert_eq(&node::LiteralPat::Unit);
+    //                                 b.body
+    //                                     .cast::<node::LiteralExpr>(&builder)
+    //                                     .assert_eq(&node::LiteralExpr::Str(interner["unit"]));
+    //                             })
+    //                             .execute(&builder)
+    //                             .next();
+
+    //                         // Branch 1: "true => "bool true""
+    //                         branches
+    //                             .get_at(1)
+    //                             .inspect(|_, b| {
+    //                                 b.pat
+    //                                     .cast::<node::LiteralPat>(&builder)
+    //                                     .assert_eq(&node::LiteralPat::Bool(true));
+    //                                 b.body
+    //                                     .cast::<node::LiteralExpr>(&builder)
+    //                                     .assert_eq(&node::LiteralExpr::Str(interner["bool true"]));
+    //                             })
+    //                             .execute(&builder)
+    //                             .next();
+
+    //                         // Branch 2: "42 => "number""
+    //                         branches
+    //                             .get_at(2)
+    //                             .inspect(|_, b| {
+    //                                 b.pat
+    //                                     .cast::<node::LiteralPat>(&builder)
+    //                                     .assert_eq(&node::LiteralPat::Num(42.0));
+    //                                 b.body
+    //                                     .cast::<node::LiteralExpr>(&builder)
+    //                                     .assert_eq(&node::LiteralExpr::Str(interner["number"]));
+    //                             })
+    //                             .execute(&builder)
+    //                             .next();
+
+    //                         // Branch 3: ""hello" => "string""
+    //                         branches
+    //                             .get_at(3)
+    //                             .inspect(|_, b| {
+    //                                 b.pat
+    //                                     .cast::<node::LiteralPat>(&builder)
+    //                                     .assert_eq(&node::LiteralPat::Str(interner["hello"]));
+    //                                 b.body
+    //                                     .cast::<node::LiteralExpr>(&builder)
+    //                                     .assert_eq(&node::LiteralExpr::Str(interner["string"]));
+    //                             })
+    //                             .execute(&builder)
+    //                             .next();
+
+    //                         // Branch 4: "x => "bind pattern""
+    //                         branches
+    //                             .get_at(4)
+    //                             .inspect(|_, b| {
+    //                                 b.pat
+    //                                     .cast::<node::BindPat>(&builder)
+    //                                     .0
+    //                                     .assert_name("x", &builder, &interner);
+    //                                 b.body
+    //                                     .cast::<node::LiteralExpr>(&builder)
+    //                                     .assert_eq(&node::LiteralExpr::Str(interner["bind pattern"]));
+    //                             })
+    //                             .execute(&builder)
+    //                             .next();
+
+    //                         // Branch 5: "_ => "wildcard""
+    //                         branches
+    //                             .get_at(5)
+    //                             .inspect(|_, b| {
+    //                                 b.pat.cast::<node::AnyPat>(&builder);
+    //                                 b.body
+    //                                     .cast::<node::LiteralExpr>(&builder)
+    //                                     .assert_eq(&node::LiteralExpr::Str(interner["wildcard"]));
+    //                             })
+    //                             .execute(&builder)
+    //                             .next();
+
+    //                         // Branch 6: "[a, b, ...rest] => "list with spread""
+    //                         branches
+    //                             .get_at(6)
+    //                             .inspect(|_, b| {
+    //                                 let list = b.pat.cast::<node::ListPat>(&builder);
+    //                                 let el = list.0;
+    //                                 assert_eq!(el.get(&builder).len(), 3);
+    //                                 el.get_at(0, &builder)
+    //                                     .cast::<node::Pat>(&builder)
+    //                                     .cast::<node::BindPat>(&builder)
+    //                                     .0
+    //                                     .assert_name("a", &builder, &interner);
+    //                                 el.get_at(1, &builder)
+    //                                     .cast::<node::Pat>(&builder)
+    //                                     .cast::<node::BindPat>(&builder)
+    //                                     .0
+    //                                     .assert_name("b", &builder, &interner);
+    //                                 let node::ListElPat::Spread(some_name) = el.get_at(2, &builder)
+    //                                 else {
+    //                                     panic!("expected Spread")
+    //                                 };
+    //                                 some_name.unwrap().assert_name("rest", &builder, &interner);
+    //                                 b.body.cast::<node::LiteralExpr>(&builder).assert_eq(
+    //                                     &node::LiteralExpr::Str(interner["list with spread"]),
+    //                                 );
+    //                             })
+    //                             .execute(&builder)
+    //                             .next();
+
+    //                         // Branch 7: "[head, ...] => "list anonymous spread""
+    //                         branches
+    //                             .get_at(7)
+    //                             .inspect(|_, b| {
+    //                                 let list = b.pat.cast::<node::ListPat>(&builder);
+    //                                 let el = list.0;
+    //                                 assert_eq!(el.get(&builder).len(), 2);
+    //                                 el.get_at(0, &builder)
+    //                                     .cast::<node::Pat>(&builder)
+    //                                     .cast::<node::BindPat>(&builder)
+    //                                     .0
+    //                                     .assert_name("head", &builder, &interner);
+    //                                 assert!(matches!(
+    //                                     el.get_at(1, &builder),
+    //                                     node::ListElPat::Spread(None)
+    //                                 ));
+    //                                 b.body.cast::<node::LiteralExpr>(&builder).assert_eq(
+    //                                     &node::LiteralExpr::Str(interner["list anonymous spread"]),
+    //                                 );
+    //                             })
+    //                             .execute(&builder)
+    //                             .next();
+
+    //                         // Branch 8: "[] => "empty list""
+    //                         branches
+    //                             .get_at(8)
+    //                             .inspect(|_, b| {
+    //                                 let list = b.pat.cast::<node::ListPat>(&builder);
+    //                                 assert_eq!(list.0.get(&builder).len(), 0);
+    //                                 b.body
+    //                                     .cast::<node::LiteralExpr>(&builder)
+    //                                     .assert_eq(&node::LiteralExpr::Str(interner["empty list"]));
+    //                             })
+    //                             .execute(&builder)
+    //                             .next();
+
+    //                         // Branch 9: "{ name, age: years, ... } => "record with spread""
+    //                         branches
+    //                             .get_at(9)
+    //                             .inspect(|_, b| {
+    //                                 let record = b.pat.cast::<node::RecordPat>(&builder);
+    //                                 let f = record.fields;
+    //                                 assert_eq!(f.get(&builder).len(), 2);
+    //                                 f.get_at(0, &builder)
+    //                                     .field
+    //                                     .assert_name("name", &builder, &interner);
+    //                                 assert!(f.get_at(0, &builder).pat.is_none());
+
+    //                                 f.get_at(1, &builder)
+    //                                     .field
+    //                                     .assert_name("age", &builder, &interner);
+    //                                 f.get_at(1, &builder)
+    //                                     .pat
+    //                                     .unwrap()
+    //                                     .cast::<node::BindPat>(&builder)
+    //                                     .0
+    //                                     .assert_name("years", &builder, &interner);
+
+    //                                 assert!(record.polymorph);
+    //                                 b.body.cast::<node::LiteralExpr>(&builder).assert_eq(
+    //                                     &node::LiteralExpr::Str(interner["record with spread"]),
+    //                                 );
+    //                             })
+    //                             .execute(&builder)
+    //                             .next();
+
+    //                         // Branch 10: "{ x, y } => "simple record""
+    //                         branches
+    //                             .get_at(10)
+    //                             .inspect(|_, b| {
+    //                                 let record = b.pat.cast::<node::RecordPat>(&builder);
+    //                                 let f = record.fields;
+    //                                 assert_eq!(f.get(&builder).len(), 2);
+    //                                 f.get_at(0, &builder)
+    //                                     .field
+    //                                     .assert_name("x", &builder, &interner);
+    //                                 f.get_at(1, &builder)
+    //                                     .field
+    //                                     .assert_name("y", &builder, &interner);
+    //                                 b.body
+    //                                     .cast::<node::LiteralExpr>(&builder)
+    //                                     .assert_eq(&node::LiteralExpr::Str(interner["simple record"]));
+    //                             })
+    //                             .execute(&builder)
+    //                             .next();
+
+    //                         // Branch 11: "{} => "empty record""
+    //                         branches
+    //                             .get_at(11)
+    //                             .inspect(|_, b| {
+    //                                 let record = b.pat.cast::<node::RecordPat>(&builder);
+    //                                 assert_eq!(record.fields.get(&builder).len(), 0);
+    //                                 b.body
+    //                                     .cast::<node::LiteralExpr>(&builder)
+    //                                     .assert_eq(&node::LiteralExpr::Str(interner["empty record"]));
+    //                             })
+    //                             .execute(&builder)
+    //                             .next();
+
+    //                         // Branch 12: "< Some : value > => "variant some""
+    //                         branches
+    //                             .get_at(12)
+    //                             .inspect(|_, b| {
+    //                                 let variant = b.pat.cast::<node::VariantPat>(&builder);
+    //                                 let tags = variant.0;
+    //                                 assert_eq!(tags.get(&builder).len(), 1);
+    //                                 tags.get_at(0, &builder)
+    //                                     .tag
+    //                                     .assert_name("Some", &builder, &interner);
+    //                                 tags.get_at(0, &builder)
+    //                                     .pat
+    //                                     .unwrap()
+    //                                     .cast::<node::BindPat>(&builder)
+    //                                     .0
+    //                                     .assert_name("value", &builder, &interner);
+    //                                 b.body
+    //                                     .cast::<node::LiteralExpr>(&builder)
+    //                                     .assert_eq(&node::LiteralExpr::Str(interner["variant some"]));
+    //                             })
+    //                             .execute(&builder)
+    //                             .next();
+
+    //                         // Branch 13: "< None > => "variant none""
+    //                         branches
+    //                             .get_at(13)
+    //                             .inspect(|_, b| {
+    //                                 let variant = b.pat.cast::<node::VariantPat>(&builder);
+    //                                 let tags = variant.0;
+    //                                 assert_eq!(tags.get(&builder).len(), 1);
+    //                                 tags.get_at(0, &builder)
+    //                                     .tag
+    //                                     .assert_name("None", &builder, &interner);
+    //                                 assert!(tags.get_at(0, &builder).pat.is_none());
+    //                                 b.body
+    //                                     .cast::<node::LiteralExpr>(&builder)
+    //                                     .assert_eq(&node::LiteralExpr::Str(interner["variant none"]));
+    //                             })
+    //                             .execute(&builder)
+    //                             .next();
+
+    //                         // Branch 14: "< Ok : result, Err : error > => "multiple variants""
+    //                         branches
+    //                             .get_at(14)
+    //                             .inspect(|_, b| {
+    //                                 let variant = b.pat.cast::<node::VariantPat>(&builder);
+    //                                 let tags = variant.0;
+    //                                 assert_eq!(tags.get(&builder).len(), 2);
+    //                                 tags.get_at(0, &builder)
+    //                                     .tag
+    //                                     .assert_name("Ok", &builder, &interner);
+    //                                 tags.get_at(0, &builder)
+    //                                     .pat
+    //                                     .unwrap()
+    //                                     .cast::<node::BindPat>(&builder)
+    //                                     .0
+    //                                     .assert_name("result", &builder, &interner);
+    //                                 tags.get_at(1, &builder)
+    //                                     .tag
+    //                                     .assert_name("Err", &builder, &interner);
+    //                                 tags.get_at(1, &builder)
+    //                                     .pat
+    //                                     .unwrap()
+    //                                     .cast::<node::BindPat>(&builder)
+    //                                     .0
+    //                                     .assert_name("error", &builder, &interner);
+    //                                 b.body.cast::<node::LiteralExpr>(&builder).assert_eq(
+    //                                     &node::LiteralExpr::Str(interner["multiple variants"]),
+    //                                 );
+    //                             })
+    //                             .execute(&builder)
+    //                             .next();
+    //                     });
+    //             });
+    //     }
+
+    //     #[test]
+    //     fn func_expr() {
+    //         let mut interner = StrInterner::default();
+
+    //         let ParseResult { node, builder, .. } =
+    //             try_parse_str_with("fn name => \"Hello\" + name", expr_parser(), &mut interner);
+
+    //         query_one::<node::Expr>(node)
+    //             .cast::<node::LambdaExpr>()
+    //             .inspect(|_, lambda| {
+    //                 lambda.param.assert_name("name", &builder, &interner);
+    //                 let binary = lambda.body.cast::<node::BinaryExpr>(&builder);
+    //                 binary.op.assert_eq(&node::BinaryOp::Add);
+    //             })
+    //             .execute(&builder)
+    //             .next();
+    //     }
+
+    //     #[test]
+    //     fn arithmetic_expr() {
+    //         let mut interner = StrInterner::default();
+
+    //         let ParseResult { node, builder, .. } =
+    //             try_parse_str_with("-4 * 10 + 40 / 4 + 30 == 0", expr_parser(), &mut interner);
+
+    //         query_one::<node::Expr>(node)
+    //             .cast::<node::BinaryExpr>()
+    //             .inspect(|_, eq| {
+    //                 eq.op.assert_eq(&node::BinaryOp::Eq);
+    //                 eq.rhs
+    //                     .cast::<node::LiteralExpr>(&builder)
+    //                     .assert_eq(&node::LiteralExpr::Num(0.0));
+
+    //                 let sum = eq.lhs.cast::<node::BinaryExpr>(&builder);
+    //                 sum.op.assert_eq(&node::BinaryOp::Add);
+    //                 sum.rhs
+    //                     .cast::<node::LiteralExpr>(&builder)
+    //                     .assert_eq(&node::LiteralExpr::Num(30.0));
+
+    //                 let sum2 = sum.lhs.cast::<node::BinaryExpr>(&builder);
+    //                 sum2.op.assert_eq(&node::BinaryOp::Add);
+    //                 sum2.lhs
+    //                     .cast::<node::BinaryExpr>(&builder)
+    //                     .op
+    //                     .assert_eq(&node::BinaryOp::Mul);
+    //                 sum2.rhs
+    //                     .cast::<node::BinaryExpr>(&builder)
+    //                     .op
+    //                     .assert_eq(&node::BinaryOp::Div);
+    //             })
+    //             .execute(&builder)
+    //             .next();
+    //     }
+
+    //     #[test]
+    //     fn if_expr() {
+    //         let mut interner = StrInterner::default();
+
+    //         let ParseResult { node, builder, .. } =
+    //             try_parse_str_with("if y then x else 0", expr_parser(), &mut interner);
+
+    //         query_one::<node::Expr>(node)
+    //             .cast::<node::IfExpr>()
+    //             .inspect(|_, if_expr| {
+    //                 if_expr
+    //                     .pred
+    //                     .cast::<node::QualifiedExpr>(&builder)
+    //                     .source
+    //                     .assert_name("y", &builder, &interner);
+    //                 if_expr
+    //                     .then
+    //                     .cast::<node::QualifiedExpr>(&builder)
+    //                     .source
+    //                     .assert_name("x", &builder, &interner);
+    //                 if_expr
+    //                     .or_else
+    //                     .cast::<node::LiteralExpr>(&builder)
+    //                     .assert_eq(&node::LiteralExpr::Num(0.0));
+    //             })
+    //             .execute(&builder)
+    //             .next();
+    //     }
+
+    //     #[test]
+    //     fn qualified_expr() {
+    //         let mut interner = StrInterner::default();
+
+    //         // Test simple field access
+    //         let ParseResult { node, builder, .. } =
+    //             try_parse_str_with("x.y.z", expr_parser(), &mut interner);
+
+    //         query_one::<node::Expr>(node)
+    //             .cast::<node::QualifiedExpr>()
+    //             .inspect(|_, q| {
+    //                 q.source.assert_name("x", &builder, &interner);
+    //                 let path = q.field_path.unwrap().get(&builder);
+    //                 path.0
+    //                     .get_at(0, &builder)
+    //                     .assert_name("y", &builder, &interner);
+    //                 path.0
+    //                     .get_at(1, &builder)
+    //                     .assert_name("z", &builder, &interner);
+    //             })
+    //             .execute(&builder)
+    //             .next();
+
+    //         // Test module path with field access
+    //         let ParseResult { node, builder, .. } = try_parse_str_with(
+    //             "mod1::mod2::value.field1.field2",
+    //             expr_parser(),
+    //             &mut interner,
+    //         );
+
+    //         query_one::<node::Expr>(node)
+    //             .cast::<node::QualifiedExpr>()
+    //             .inspect(|_, q| {
+    //                 let m_path = q.module_path.unwrap().get(&builder);
+    //                 m_path
+    //                     .0
+    //                     .get_at(0, &builder)
+    //                     .assert_name("mod1", &builder, &interner);
+    //                 m_path
+    //                     .0
+    //                     .get_at(1, &builder)
+    //                     .assert_name("mod2", &builder, &interner);
+
+    //                 q.source.assert_name("value", &builder, &interner);
+
+    //                 let path = q.field_path.unwrap().get(&builder);
+    //                 path.0
+    //                     .get_at(0, &builder)
+    //                     .assert_name("field1", &builder, &interner);
+    //                 path.0
+    //                     .get_at(1, &builder)
+    //                     .assert_name("field2", &builder, &interner);
+    //             })
+    //             .execute(&builder)
+    //             .next();
+    //     }
+
+    //     #[test]
+    //     fn record_extension() {
+    //         let mut interner = StrInterner::default();
+
+    //         let ParseResult { node, builder, .. } =
+    //             try_parse_str_with("{ y | +x = 10 }", expr_parser(), &mut interner);
+
+    //         query_one::<node::Expr>(node)
+    //             .cast::<node::RecordExtendExpr>()
+    //             .inspect(|_, extend| {
+    //                 extend
+    //                     .source
+    //                     .cast::<node::QualifiedExpr>(&builder)
+    //                     .source
+    //                     .assert_name("y", &builder, &interner);
+    //                 extend
+    //                     .field_path
+    //                     .get(&builder)
+    //                     .0
+    //                     .get_at(0, &builder)
+    //                     .assert_name("x", &builder, &interner);
+    //                 extend
+    //                     .value
+    //                     .cast::<node::LiteralExpr>(&builder)
+    //                     .assert_eq(&node::LiteralExpr::Num(10.0));
+    //             })
+    //             .execute(&builder)
+    //             .next();
+    //     }
+
+    //     #[test]
+    //     fn record() {
+    //         let mut interner = StrInterner::default();
+
+    //         let ParseResult { node, builder, .. } =
+    //             try_parse_str_with("{ x = 10, y = 20 }", expr_parser(), &mut interner);
+
+    //         query_one::<node::Expr>(node)
+    //             .cast::<node::RecordExpr>()
+    //             .inspect(|_, record| {
+    //                 let fields = record.0;
+    //                 assert_eq!(fields.get(&builder).len(), 2);
+    //                 fields
+    //                     .get_at(0, &builder)
+    //                     .label
+    //                     .assert_name("x", &builder, &interner);
+    //                 fields
+    //                     .get_at(0, &builder)
+    //                     .value
+    //                     .cast::<node::LiteralExpr>(&builder)
+    //                     .assert_eq(&node::LiteralExpr::Num(10.0));
+    //                 fields
+    //                     .get_at(1, &builder)
+    //                     .label
+    //                     .assert_name("y", &builder, &interner);
+    //                 fields
+    //                     .get_at(1, &builder)
+    //                     .value
+    //                     .cast::<node::LiteralExpr>(&builder)
+    //                     .assert_eq(&node::LiteralExpr::Num(20.0));
+    //             })
+    //             .execute(&builder)
+    //             .next();
+    //     }
+
+    //     #[test]
+    //     fn type_expr() {
+    //         let mut interner = StrInterner::default();
+
+    //         let ParseResult { node, builder, .. } = try_parse_str_with(
+    //             "Num -> { a : Num, b : Num -> Num } -> Str",
+    //             type_parser(),
+    //             &mut interner,
+    //         );
+
+    //         query_one::<node::TypeExpr>(node)
+    //             .cast::<node::FuncType>()
+    //             .inspect(|_, func| {
+    //                 func.input
+    //                     .cast::<node::QualifiedType>(&builder)
+    //                     .ty
+    //                     .assert_name("Num", &builder, &interner);
+
+    //                 let func2 = func.output.ty.cast::<node::FuncType>(&builder);
+    //                 let record = func2.input.cast::<node::RecordType>(&builder);
+    //                 let f = record.0;
+    //                 assert_eq!(f.get(&builder).len(), 2);
+
+    //                 let node::LabelOrVar::Label(label_a) = f.get_at(0, &builder).label_or_var else {
+    //                     panic!("expected label")
+    //                 };
+    //                 label_a.assert_name("a", &builder, &interner);
+    //                 f.get_at(0, &builder)
+    //                     .ty
+    //                     .cast::<node::QualifiedType>(&builder)
+    //                     .ty
+    //                     .assert_name("Num", &builder, &interner);
+
+    //                 let node::LabelOrVar::Label(label_b) = f.get_at(1, &builder).label_or_var else {
+    //                     panic!("expected label")
+    //                 };
+    //                 label_b.assert_name("b", &builder, &interner);
+    //                 f.get_at(1, &builder).ty.cast::<node::FuncType>(&builder);
+
+    //                 func2
+    //                     .output
+    //                     .ty
+    //                     .cast::<node::QualifiedType>(&builder)
+    //                     .ty
+    //                     .assert_name("Str", &builder, &interner);
+    //             })
+    //             .execute(&builder)
+    //             .next();
+    //     }
+
+    //     #[test]
+    //     fn type_application() {
+    //         let mut interner = StrInterner::default();
+
+    //         let ParseResult { node, builder, .. } = try_parse_str_with(
+    //             "Map (Num -> Str) (std::List Str)",
+    //             type_parser(),
+    //             &mut interner,
+    //         );
+
+    //         query_one::<node::TypeExpr>(node)
+    //             .cast::<node::TypeApplication>()
+    //             .inspect(|_, app| {
+    //                 let inner_app = app.constructor.cast::<node::TypeApplication>(&builder);
+    //                 inner_app
+    //                     .constructor
+    //                     .cast::<node::QualifiedType>(&builder)
+    //                     .ty
+    //                     .assert_name("Map", &builder, &interner);
+    //                 inner_app.arg.cast::<node::FuncType>(&builder);
+
+    //                 let list_app = app.arg.cast::<node::TypeApplication>(&builder);
+    //                 list_app.constructor.cast::<node::QualifiedType>(&builder);
+    //                 list_app.arg.cast::<node::QualifiedType>(&builder);
+    //             })
+    //             .execute(&builder)
+    //             .next();
+    //     }
+
+    //     #[test]
+    //     fn type_() {
+    //         let mut interner = StrInterner::default();
+
+    //         let ParseResult { node, builder, .. } = try_parse_str_with(
+    //             "forall a b . { left : a, right : Num -> b }",
+    //             type_scheme_parser(),
+    //             &mut interner,
+    //         );
+
+    //         let scheme = node.get(&builder);
+    //         let binders = scheme
+    //             .forall
+    //             .unwrap()
+    //             .get(&builder)
+    //             .0
+    //             .get_elements(&builder);
+    //         let binder_names: Vec<_> = binders
+    //             .map(|b| interner.get(b.var.get(&builder).0).unwrap())
+    //             .collect();
+    //         assert_eq!(binder_names, vec!["a", "b"]);
+
+    //         let record = scheme.ty.cast::<node::RecordType>(&builder);
+    //         let f = record.0;
+    //         assert_eq!(f.get(&builder).len(), 2);
+
+    //         let node::LabelOrVar::Label(label_l) = f.get_at(0, &builder).label_or_var else {
+    //             panic!("expected label")
+    //         };
+    //         label_l.assert_name("left", &builder, &interner);
+    //         f.get_at(0, &builder)
+    //             .ty
+    //             .cast::<node::QualifiedType>(&builder)
+    //             .ty
+    //             .assert_name("a", &builder, &interner);
+
+    //         let node::LabelOrVar::Label(label_r) = f.get_at(1, &builder).label_or_var else {
+    //             panic!("expected label")
+    //         };
+    //         label_r.assert_name("right", &builder, &interner);
+    //         let f_right = f.get_at(1, &builder).ty.cast::<node::FuncType>(&builder);
+    //         f_right
+    //             .input
+    //             .cast::<node::QualifiedType>(&builder)
+    //             .ty
+    //             .assert_name("Num", &builder, &interner);
+    //         f_right
+    //             .output
+    //             .ty
+    //             .cast::<node::QualifiedType>(&builder)
+    //             .ty
+    //             .assert_name("b", &builder, &interner);
+    //     }
+
+    //     #[test]
+    //     fn type_bind() {
+    //         let mut interner = StrInterner::default();
+
+    //         let ParseResult { node, builder, .. } = try_parse_str_with(
+    //             "type Person = forall a . { id : a, name : Str, age : Num }",
+    //             type_bind_parser(),
+    //             &mut interner,
+    //         );
+
+    //         let bind = node.get(&builder);
+    //         bind.name.assert_name("Person", &builder, &interner);
+
+    //         let scheme = bind.ty_scheme.get(&builder);
+    //         assert!(scheme.forall.is_some());
+    //         let record = scheme.ty.cast::<node::RecordType>(&builder);
+    //         assert_eq!(record.0.get(&builder).len(), 3);
+    //     }
+
+    //     #[test]
+    //     fn variant_type_bind() {
+    //         let mut interner = StrInterner::default();
+
+    //         let ParseResult { node, builder, .. } = try_parse_str_with(
+    //             "type Option = forall a b . < Some : a, None | b >",
+    //             type_bind_parser(),
+    //             &mut interner,
+    //         );
+
+    //         let bind = node.get(&builder);
+    //         bind.name.assert_name("Option", &builder, &interner);
+
+    //         let scheme = bind.ty_scheme.get(&builder);
+    //         let binder = scheme.forall.unwrap().get(&builder).0;
+    //         binder
+    //             .get_at(0, &builder)
+    //             .var
+    //             .assert_name("a", &builder, &interner);
+
+    //         let variant = scheme.ty.cast::<node::VariantType>(&builder);
+    //         assert_eq!(variant.tags.get(&builder).len(), 2);
+    //         variant
+    //             .tags
+    //             .get_at(0, &builder)
+    //             .name
+    //             .assert_name("Some", &builder, &interner);
+    //         variant
+    //             .tags
+    //             .get_at(0, &builder)
+    //             .ty
+    //             .unwrap()
+    //             .cast::<node::QualifiedType>(&builder)
+    //             .ty
+    //             .assert_name("a", &builder, &interner);
+
+    //         variant
+    //             .tags
+    //             .get_at(1, &builder)
+    //             .name
+    //             .assert_name("None", &builder, &interner);
+    //         assert!(variant.tags.get_at(1, &builder).ty.is_none());
+
+    //         variant
+    //             .extension
+    //             .unwrap()
+    //             .assert_name("b", &builder, &interner);
+    //     }
+
+    //     #[test]
+    //     fn module() {
+    //         let mut interner = StrInterner::default();
+
+    //         let ParseResult { node, builder, .. } =
+    //             try_parse_str_with("{ x = 10, type T = Num }", module_parser(), &mut interner);
+
+    //         let body = node.get(&builder);
+    //         assert_eq!(body.0.get(&builder).len(), 2);
+
+    //         let bind_0 = body.0.get_at(0, &builder).cast::<node::ValueBind>(&builder);
+    //         bind_0.name.assert_name("x", &builder, &interner);
+    //         bind_0
+    //             .value
+    //             .cast::<node::LiteralExpr>(&builder)
+    //             .assert_eq(&node::LiteralExpr::Num(10.0));
+
+    //         let bind_1 = body.0.get_at(1, &builder).cast::<node::TypeBind>(&builder);
+    //         bind_1.name.assert_name("T", &builder, &interner);
+    //         bind_1
+    //             .ty_scheme
+    //             .get(&builder)
+    //             .ty
+    //             .cast::<node::QualifiedType>(&builder)
+    //             .ty
+    //             .assert_name("Num", &builder, &interner);
+    //     }
+
+    //     #[test]
+    //     fn module_type() {
+    //         let mut interner = StrInterner::default();
+
+    //         let ParseResult { node, builder, .. } =
+    //             try_parse_str_with("{ x : Num }", module_type_parser(), &mut interner);
+
+    //         let concrete = node.cast::<node::ConcreteModuleType>(&builder);
+    //         assert_eq!(concrete.0.get(&builder).len(), 1);
+
+    //         let val_spec = concrete
+    //             .0
+    //             .get_at(0, &builder)
+    //             .cast::<node::ValueSpec>(&builder);
+    //         val_spec.name.assert_name("x", &builder, &interner);
+    //         val_spec
+    //             .ty
+    //             .ty
+    //             .cast::<node::QualifiedType>(&builder)
+    //             .ty
+    //             .assert_name("Num", &builder, &interner);
+    //     }
+
+    //     #[test]
+    //     fn nested_module() {
+    //         let mut interner = StrInterner::default();
+
+    //         let ParseResult { node, builder, .. } =
+    //             try_parse_str_with("{ module m = { x = 10 } }", module_parser(), &mut interner);
+
+    //         let body = node.get(&builder);
+    //         assert_eq!(body.0.get(&builder).len(), 1);
+
+    //         let m_bind = body
+    //             .0
+    //             .get_at(0, &builder)
+    //             .cast::<node::ModuleBind>(&builder);
+    //         m_bind.name.assert_name("m", &builder, &interner);
+    //         assert!(m_bind.ty.is_none());
+
+    //         let m_body = m_bind.value.cast::<node::ModuleBody>(&builder);
+    //         assert_eq!(m_body.0.get(&builder).len(), 1);
+
+    //         let val_bind = m_body
+    //             .0
+    //             .get_at(0, &builder)
+    //             .cast::<node::ValueBind>(&builder);
+    //         val_bind.name.assert_name("x", &builder, &interner);
+    //         val_bind
+    //             .value
+    //             .cast::<node::LiteralExpr>(&builder)
+    //             .assert_eq(&node::LiteralExpr::Num(10.0));
+    //     }
+
+    //     #[test]
+    //     fn nested_module_with_type() {
+    //         let mut interner = StrInterner::default();
+
+    //         let ParseResult { node, builder, .. } = try_parse_str_with(
+    //             "{ module m : { x : Num } = { x = 10 } }",
+    //             module_parser(),
+    //             &mut interner,
+    //         );
+
+    //         let body = node.get(&builder);
+    //         assert_eq!(body.0.get(&builder).len(), 1);
+
+    //         let m_bind = body
+    //             .0
+    //             .get_at(0, &builder)
+    //             .cast::<node::ModuleBind>(&builder);
+    //         m_bind.name.assert_name("m", &builder, &interner);
+
+    //         // Check interface spec
+    //         let concrete_ty = m_bind
+    //             .ty
+    //             .as_ref()
+    //             .unwrap()
+    //             .cast::<node::ConcreteModuleType>(&builder);
+    //         assert_eq!(concrete_ty.0.get(&builder).len(), 1);
+    //         let val_spec = concrete_ty
+    //             .0
+    //             .get_at(0, &builder)
+    //             .cast::<node::ValueSpec>(&builder);
+    //         val_spec.name.assert_name("x", &builder, &interner);
+    //         val_spec
+    //             .ty
+    //             .ty
+    //             .cast::<node::QualifiedType>(&builder)
+    //             .ty
+    //             .assert_name("Num", &builder, &interner);
+
+    //         // Check implementation body
+    //         let m_body = m_bind.value.cast::<node::ModuleBody>(&builder);
+    //         assert_eq!(m_body.0.get(&builder).len(), 1);
+    //         let val_bind = m_body
+    //             .0
+    //             .get_at(0, &builder)
+    //             .cast::<node::ValueBind>(&builder);
+    //         val_bind.name.assert_name("x", &builder, &interner);
+    //         val_bind
+    //             .value
+    //             .cast::<node::LiteralExpr>(&builder)
+    //             .assert_eq(&node::LiteralExpr::Num(10.0));
+    //     }
+
+    //     #[test]
+    //     fn comments_are_transparent_to_parser() {
+    //         let mut interner = StrInterner::default();
+
+    //         let ParseResult { node, builder, .. } = try_parse_str_with(
+    //             r#"{
+    //                 # A regular comment
+    //                 x = 10,
+    //                 ## A doc comment
+    //                 y = 20
+    //             }"#,
+    //             module_parser(),
+    //             &mut interner,
+    //         );
+
+    //         let body = node.get(&builder);
+    //         assert_eq!(body.0.get(&builder).len(), 2);
+
+    //         let bind_0 = body.0.get_at(0, &builder).cast::<node::ValueBind>(&builder);
+    //         bind_0.name.assert_name("x", &builder, &interner);
+    //         bind_0
+    //             .value
+    //             .cast::<node::LiteralExpr>(&builder)
+    //             .assert_eq(&node::LiteralExpr::Num(10.0));
+
+    //         let bind_1 = body.0.get_at(1, &builder).cast::<node::ValueBind>(&builder);
+    //         bind_1.name.assert_name("y", &builder, &interner);
+    //         bind_1
+    //             .value
+    //             .cast::<node::LiteralExpr>(&builder)
+    //             .assert_eq(&node::LiteralExpr::Num(20.0));
+    //     }
 }

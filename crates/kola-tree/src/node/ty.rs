@@ -2,7 +2,7 @@ use derive_more::From;
 use enum_as_inner::EnumAsInner;
 use kola_interner::StrKey;
 use kola_print::prelude::*;
-use kola_relations::Projections;
+use kola_relations::TryProject;
 use serde::{Deserialize, Serialize};
 use std::{borrow::Borrow, ops::Deref};
 
@@ -11,18 +11,7 @@ use crate::prelude::*;
 use crate::print::TreePrinter;
 
 #[derive(
-    Debug,
-    Notate,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    Hash,
-    Serialize,
-    Deserialize,
-    Projections,
+    Debug, Notate, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
 )]
 #[notate(with = TreePrinter<'a>, color = "green")]
 pub struct EffectOpType {
@@ -31,35 +20,13 @@ pub struct EffectOpType {
 }
 
 #[derive(
-    Debug,
-    Notate,
-    From,
-    Clone,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    Hash,
-    Serialize,
-    Deserialize,
-    Projections,
+    Debug, Notate, From, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
 )]
 #[notate(with = TreePrinter<'a>, color = "green")]
 pub struct EffectType(pub SliceId<EffectOpType>);
 
 #[derive(
-    Debug,
-    Notate,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    Hash,
-    Serialize,
-    Deserialize,
-    Projections,
+    Debug, Notate, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
 )]
 #[notate(with = TreePrinter<'a>, color = "cyan")]
 pub struct CompType {
@@ -74,18 +41,7 @@ pub struct CompType {
 pub struct TypeError;
 
 #[derive(
-    Debug,
-    Notate,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    Hash,
-    Serialize,
-    Deserialize,
-    Projections,
+    Debug, Notate, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
 )]
 #[notate(with = TreePrinter<'a>, color = "cyan")]
 pub struct QualifiedType {
@@ -163,7 +119,7 @@ impl<'a> Notate<'a, TypeVar> for TreePrinter<'a> {
     Hash,
     Serialize,
     Deserialize,
-    Projections,
+    TryProject,
 )]
 #[notate(with = TreePrinter<'a>, color = "cyan")]
 pub enum LabelOrVar {
@@ -172,18 +128,7 @@ pub enum LabelOrVar {
 }
 
 #[derive(
-    Debug,
-    Notate,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    Hash,
-    Serialize,
-    Deserialize,
-    Projections,
+    Debug, Notate, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
 )]
 #[notate(with = TreePrinter<'a>, color = "cyan")]
 pub struct RecordFieldType {
@@ -192,18 +137,7 @@ pub struct RecordFieldType {
 }
 
 #[derive(
-    Debug,
-    Notate,
-    From,
-    Clone,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    Hash,
-    Serialize,
-    Deserialize,
-    Projections,
+    Debug, Notate, From, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
 )]
 #[notate(with = TreePrinter<'a>, color = "blue")]
 pub struct RecordType {
@@ -218,18 +152,7 @@ impl RecordType {
 }
 
 #[derive(
-    Debug,
-    Notate,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    Hash,
-    Serialize,
-    Deserialize,
-    Projections,
+    Debug, Notate, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
 )]
 #[notate(with = TreePrinter<'a>, color = "cyan")]
 pub struct TagType {
@@ -238,18 +161,7 @@ pub struct TagType {
 }
 
 #[derive(
-    Debug,
-    Notate,
-    From,
-    Clone,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    Hash,
-    Serialize,
-    Deserialize,
-    Projections,
+    Debug, Notate, From, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
 )]
 #[notate(with = TreePrinter<'a>, color = "blue")]
 pub struct VariantType {
@@ -265,18 +177,7 @@ impl VariantType {
 
 // TODO this needs to be disambiguated with parentheses if a function should be one argument
 #[derive(
-    Debug,
-    Notate,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    Hash,
-    Serialize,
-    Deserialize,
-    Projections,
+    Debug, Notate, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
 )]
 #[notate(with = TreePrinter<'a>, color = "cyan")]
 pub struct FuncType {
@@ -285,18 +186,7 @@ pub struct FuncType {
 }
 
 #[derive(
-    Debug,
-    Notate,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    Hash,
-    Serialize,
-    Deserialize,
-    Projections,
+    Debug, Notate, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
 )]
 #[notate(with = TreePrinter<'a>, color = "cyan")]
 pub struct TypeApplication {
@@ -317,7 +207,7 @@ pub struct TypeApplication {
     Hash,
     Serialize,
     Deserialize,
-    Projections,
+    TryProject,
 )]
 pub enum TypeExpr {
     Error(Id<TypeError>),
@@ -343,18 +233,7 @@ impl<'a> Notate<'a, TypeExpr> for TreePrinter<'a> {
 }
 
 #[derive(
-    Debug,
-    Notate,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    Hash,
-    Serialize,
-    Deserialize,
-    Projections,
+    Debug, Notate, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
 )]
 #[notate(with = TreePrinter<'a>, color = "cyan")]
 pub struct TypeVarBind {
@@ -363,35 +242,13 @@ pub struct TypeVarBind {
 }
 
 #[derive(
-    Debug,
-    Notate,
-    From,
-    Clone,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    Hash,
-    Serialize,
-    Deserialize,
-    Projections,
+    Debug, Notate, From, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
 )]
 #[notate(with = TreePrinter<'a>, color = "cyan")]
 pub struct ForallBinder(pub SliceId<TypeVarBind>);
 
 #[derive(
-    Debug,
-    Notate,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    Hash,
-    Serialize,
-    Deserialize,
-    Projections,
+    Debug, Notate, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
 )]
 #[notate(with = TreePrinter<'a>, color = "green")]
 pub struct TypeScheme {

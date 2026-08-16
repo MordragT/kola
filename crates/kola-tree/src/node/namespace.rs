@@ -3,7 +3,7 @@ use enum_as_inner::EnumAsInner;
 use serde::{Deserialize, Serialize};
 use std::{borrow::Borrow, marker::PhantomData, ops::Deref};
 
-use kola_interner::StrKey;
+use kola_interner::{StrInterner, StrKey};
 use kola_print::prelude::*;
 
 use crate::print::TreePrinter;
@@ -116,6 +116,18 @@ impl<N> Name<N> {
         N: Namespace,
     {
         N::KIND
+    }
+
+    #[inline]
+    pub fn assert_name(&self, expected: &str, interner: &StrInterner) {
+        let actual = interner
+            .get(self.0)
+            .unwrap_or_else(|| panic!("Interner key {:?} not found", self.0));
+        assert_eq!(
+            actual, expected,
+            "AST Name Assertion Failed:\nExpected: '{}'\nActual:   '{}'",
+            expected, actual
+        );
     }
 }
 

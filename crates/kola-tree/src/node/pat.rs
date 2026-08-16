@@ -2,7 +2,7 @@ use derive_more::From;
 use enum_as_inner::EnumAsInner;
 use kola_interner::StrKey;
 use kola_print::prelude::*;
-use kola_relations::Projections;
+use kola_relations::TryProject;
 use serde::{Deserialize, Serialize};
 
 use super::{LiteralExpr, ValueName};
@@ -63,19 +63,7 @@ impl<'a> Notate<'a, LiteralPat> for TreePrinter<'a> {
 }
 
 #[derive(
-    Debug,
-    Notate,
-    From,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    Hash,
-    Serialize,
-    Deserialize,
-    Projections,
+    Debug, Notate, From, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
 )]
 #[notate(with = TreePrinter<'a>, color = "magenta")]
 #[from(forward)]
@@ -103,7 +91,7 @@ impl BindPat {
     Hash,
     Serialize,
     Deserialize,
-    Projections,
+    TryProject,
 )]
 pub enum ListElPat {
     Pat(Id<Pat>),
@@ -163,18 +151,7 @@ impl<'a> Notate<'a, ListElPat> for TreePrinter<'a> {
 }
 
 #[derive(
-    Debug,
-    Notate,
-    From,
-    Clone,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    Hash,
-    Serialize,
-    Deserialize,
-    Projections,
+    Debug, Notate, From, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
 )]
 #[notate(with = TreePrinter<'a>, color = "magenta")]
 pub struct ListPat(pub SliceId<ListElPat>);
@@ -191,18 +168,7 @@ impl ListPat {
 }
 
 #[derive(
-    Debug,
-    Notate,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    Hash,
-    Serialize,
-    Deserialize,
-    Projections,
+    Debug, Notate, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
 )]
 #[notate(with = TreePrinter<'a>, color = "magenta")]
 pub struct RecordFieldPat {
@@ -220,9 +186,7 @@ impl RecordFieldPat {
     }
 }
 
-#[derive(
-    Debug, From, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, Projections,
-)]
+#[derive(Debug, From, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub struct RecordPat {
     pub fields: SliceId<RecordFieldPat>,
     pub polymorph: bool,
@@ -285,18 +249,7 @@ impl<'a> Notate<'a, RecordPat> for TreePrinter<'a> {
 }
 
 #[derive(
-    Debug,
-    Notate,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    Hash,
-    Serialize,
-    Deserialize,
-    Projections,
+    Debug, Notate, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
 )]
 #[notate(with = TreePrinter<'a>)]
 pub struct VariantTagPat {
@@ -315,18 +268,7 @@ impl VariantTagPat {
 }
 
 #[derive(
-    Debug,
-    Notate,
-    From,
-    Clone,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    Hash,
-    Serialize,
-    Deserialize,
-    Projections,
+    Debug, Notate, From, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
 )]
 #[notate(with = TreePrinter<'a>, color = "blue")]
 pub struct VariantPat(pub SliceId<VariantTagPat>);
@@ -347,16 +289,7 @@ impl VariantPat {
 }
 
 #[derive(
-    Debug,
-    EnumAsInner,
-    From,
-    Clone,
-    Copy,
-    PartialEq,
-    PartialOrd,
-    Serialize,
-    Deserialize,
-    Projections,
+    Debug, EnumAsInner, From, Clone, Copy, PartialEq, PartialOrd, Serialize, Deserialize, TryProject,
 )]
 pub enum Pat {
     Error(Id<PatError>),
