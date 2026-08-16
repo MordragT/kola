@@ -1,11 +1,13 @@
-use super::{Expr, FunctorName, ModuleName, ModuleTypeName, TypeName, TypeScheme, ValueName};
-use crate::prelude::*;
-use crate::print::TreePrinter;
 use derive_more::From;
 use enum_as_inner::EnumAsInner;
 use kola_interner::PathKey;
 use kola_print::prelude::*;
+use kola_relations::Projections;
 use serde::{Deserialize, Serialize};
+
+use super::{Expr, FunctorName, ModuleName, ModuleTypeName, TypeName, TypeScheme, ValueName};
+use crate::prelude::*;
+use crate::print::TreePrinter;
 
 #[derive(
     Debug, Notate, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
@@ -35,6 +37,7 @@ impl BindError {
     Hash,
     Serialize,
     Deserialize,
+    Projections,
 )]
 pub enum Bind {
     Value(Id<ValueBind>),
@@ -91,7 +94,18 @@ impl<'a> Notate<'a, Vis> for TreePrinter<'a> {
 }
 
 #[derive(
-    Debug, Notate, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+    Debug,
+    Notate,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
+    Projections,
 )]
 #[notate(with = TreePrinter<'a>, color = "green")]
 pub struct ValueBind {
@@ -127,7 +141,18 @@ impl ValueBind {
 }
 
 #[derive(
-    Debug, Notate, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+    Debug,
+    Notate,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
+    Projections,
 )]
 #[notate(with = TreePrinter<'a>, color = "green")]
 pub struct TypeBind {
@@ -137,7 +162,18 @@ pub struct TypeBind {
 }
 
 #[derive(
-    Debug, Notate, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+    Debug,
+    Notate,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
+    Projections,
 )]
 #[notate(with = TreePrinter<'a>, color = "green")]
 pub struct ModuleBind {
@@ -173,7 +209,18 @@ impl ModuleBind {
 }
 
 #[derive(
-    Debug, Notate, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+    Debug,
+    Notate,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
+    Projections,
 )]
 #[notate(with = TreePrinter<'a>, color = "green")]
 pub struct FunctorParam {
@@ -181,7 +228,9 @@ pub struct FunctorParam {
     pub ty: Id<ModuleType>,
 }
 
-#[derive(Debug, Notate, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[derive(
+    Debug, Notate, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, Projections,
+)]
 #[notate(with = TreePrinter<'a>, color = "green")]
 pub struct FunctorBind {
     pub vis: Id<Vis>,
@@ -233,6 +282,7 @@ impl FunctorBind {
     Hash,
     Serialize,
     Deserialize,
+    Projections,
 )]
 pub enum ModuleExpr {
     Error(Id<ModuleError>),
@@ -262,13 +312,35 @@ pub struct ModuleError;
 
 // TODO rename to ModuleBody ?
 #[derive(
-    Debug, Notate, From, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+    Debug,
+    Notate,
+    From,
+    Clone,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
+    Projections,
 )]
 #[notate(with = TreePrinter<'a>, color = "green")]
 pub struct ModuleBody(pub SliceId<Bind>);
 
 #[derive(
-    Debug, Notate, From, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+    Debug,
+    Notate,
+    From,
+    Clone,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
+    Projections,
 )]
 #[notate(with = TreePrinter<'a>, color = "cyan")]
 pub struct ModulePath(pub SliceId<ModuleName>);
@@ -286,12 +358,25 @@ impl ModulePath {
 pub struct ModuleImport(#[notate(display)] pub PathKey);
 
 #[derive(
-    Debug, Notate, From, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+    Debug,
+    Notate,
+    From,
+    Clone,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
+    Projections,
 )]
 #[notate(with = TreePrinter<'a>, color = "green")]
 pub struct FunctorArgs(pub SliceId<ModulePath>);
 
-#[derive(Debug, Notate, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[derive(
+    Debug, Notate, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, Projections,
+)]
 #[notate(with = TreePrinter<'a>, color = "green")]
 pub struct FunctorApp {
     pub path: Option<Id<ModulePath>>,
@@ -300,7 +385,18 @@ pub struct FunctorApp {
 }
 
 #[derive(
-    Debug, Notate, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+    Debug,
+    Notate,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
+    Projections,
 )]
 #[notate(with = TreePrinter<'a>, color = "green")]
 pub struct ModuleTypeBind {
@@ -310,7 +406,18 @@ pub struct ModuleTypeBind {
 }
 
 #[derive(
-    Debug, From, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+    Debug,
+    From,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
+    Projections,
 )]
 pub enum ModuleType {
     Qualified(Id<QualifiedModuleType>),
@@ -327,7 +434,18 @@ impl<'a> Notate<'a, ModuleType> for TreePrinter<'a> {
 }
 
 #[derive(
-    Debug, Notate, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+    Debug,
+    Notate,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
+    Projections,
 )]
 #[notate(with = TreePrinter<'a>, color = "green")]
 pub struct QualifiedModuleType {
@@ -336,7 +454,18 @@ pub struct QualifiedModuleType {
 }
 
 #[derive(
-    Debug, Notate, From, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+    Debug,
+    Notate,
+    From,
+    Clone,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
+    Projections,
 )]
 #[notate(with = TreePrinter<'a>, color = "green")]
 pub struct ConcreteModuleType(pub SliceId<Spec>);
@@ -354,6 +483,7 @@ pub struct ConcreteModuleType(pub SliceId<Spec>);
     Hash,
     Serialize,
     Deserialize,
+    Projections,
 )]
 pub enum Spec {
     Value(Id<ValueSpec>),
@@ -379,7 +509,18 @@ pub struct SpecError;
 
 // f : Num -> Num
 #[derive(
-    Debug, Notate, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+    Debug,
+    Notate,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
+    Projections,
 )]
 #[notate(with = TreePrinter<'a>, color = "green")]
 pub struct ValueSpec {
@@ -389,7 +530,18 @@ pub struct ValueSpec {
 
 // module M : { ... }
 #[derive(
-    Debug, Notate, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+    Debug,
+    Notate,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
+    Projections,
 )]
 #[notate(with = TreePrinter<'a>, color = "green")]
 pub struct ModuleSpec {

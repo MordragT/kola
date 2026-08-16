@@ -1,5 +1,5 @@
 use kola_relations::*;
-use kola_relations_macro::{RelationProjections, RelationStorage, TryProject};
+use kola_relations_macro::{Projections, RelationStorage, TryProject};
 use std::collections::HashMap;
 
 // --- Mock AST types for tests ---
@@ -9,7 +9,7 @@ pub struct MockLiteral {
     pub value: i32,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, RelationProjections)]
+#[derive(Debug, Clone, PartialEq, Eq, Projections)]
 pub struct MockCall {
     pub func: Id<MockLiteral>,
     pub arg: Id<MockLiteral>,

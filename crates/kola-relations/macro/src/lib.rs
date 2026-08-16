@@ -89,6 +89,10 @@ pub fn derive_try_project(input: TokenStream) -> TokenStream {
             .into();
     };
 
+    derive_try_project_for_enum(enum_name, data_enum)
+}
+
+fn derive_try_project_for_enum(enum_name: &syn::Ident, data_enum: &syn::DataEnum) -> TokenStream {
     let mut impls = Vec::new();
     for variant in &data_enum.variants {
         let variant_name = &variant.ident;
@@ -121,42 +125,60 @@ pub fn derive_try_project(input: TokenStream) -> TokenStream {
     expanded.into()
 }
 
-#[proc_macro_derive(RelationProjections)]
-pub fn derive_relation_projections(input: TokenStream) -> TokenStream {
+#[proc_macro_derive(Projections)]
+pub fn derive_projections(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
-    let struct_name = &input.ident;
-    let syn::Data::Struct(data_struct) = &input.data else {
-        return syn::Error::new_spanned(
-            &input.ident,
-            "RelationProjections can only be derived for structs",
-        )
-        .to_compile_error()
-        .into();
-    };
+    derive_relation_projections_impl(input)
+}
 
+fn derive_relation_projections_impl(input: DeriveInput) -> TokenStream {
+    let struct_name = &input.ident;
+    match &input.data {
+        syn::Data::Enum(data_enum) => {
+            derive_try_project_for_enum(struct_name, data_enum)
+        }
+        syn::Data::Struct(data_struct) => {
+            derive_projections_for_struct(struct_name, data_struct)
+        }
+        syn::Data::Union(_) => {
+            syn::Error::new_spanned(&input.ident, "Projections cannot be derived for unions")
+                .to_compile_error()
+                .into()
+        }
+    }
+}
+
+fn derive_projections_for_struct(struct_name: &syn::Ident, data_struct: &syn::DataStruct) -> TokenStream {
     let ext_trait_name = quote::format_ident!("{}QueryExt", struct_name);
     let mut methods = Vec::new();
     let mut impl_methods = Vec::new();
 
-    for field in &data_struct.fields {
-        let Some(field_name) = &field.ident else {
+    let is_newtype = data_struct.fields.len() == 1 && data_struct.fields.iter().next().unwrap().ident.is_none();
+
+    for (_index, field) in data_struct.fields.iter().enumerate() {
+        let Some(target_type) = extract_id_inner_type(&field.ty) else {
             continue;
         };
-        if let Some(target_type) = extract_id_inner_type(&field.ty) {
-            let method_name = quote::format_ident!("project_{}", field_name);
 
-            let method_sig = quote! {
-                fn #method_name(self) -> kola_relations::KeyedQuery<kola_relations::query::Project<P, #target_type, fn(&&#struct_name) -> kola_relations::Id<#target_type>>>;
-            };
-            methods.push(method_sig);
+        let (method_name, field_access) = if is_newtype {
+            let index = syn::Index::from(0);
+            (quote::format_ident!("project_inner"), quote! { #index })
+        } else {
+            let field_name = field.ident.as_ref().unwrap();
+            (quote::format_ident!("project_{}", field_name), quote! { #field_name })
+        };
 
-            let method_impl = quote! {
-                fn #method_name(self) -> kola_relations::KeyedQuery<kola_relations::query::Project<P, #target_type, fn(&&#struct_name) -> kola_relations::Id<#target_type>>> {
-                    self.project(|node: &&#struct_name| node.#field_name)
-                }
-            };
-            impl_methods.push(method_impl);
-        }
+        let method_sig = quote! {
+            fn #method_name(self) -> kola_relations::KeyedQuery<kola_relations::query::Project<P, #target_type, fn(&&#struct_name) -> kola_relations::Id<#target_type>>>;
+        };
+        methods.push(method_sig);
+
+        let method_impl = quote! {
+            fn #method_name(self) -> kola_relations::KeyedQuery<kola_relations::query::Project<P, #target_type, fn(&&#struct_name) -> kola_relations::Id<#target_type>>> {
+                self.project(|node: &&#struct_name| node.#field_access)
+            }
+        };
+        impl_methods.push(method_impl);
     }
 
     if methods.is_empty() {

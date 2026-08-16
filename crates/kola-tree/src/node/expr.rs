@@ -1,11 +1,13 @@
-use super::{ModulePath, Pat, QualifiedType, TypeExpr, ValueName};
-use crate::prelude::*;
-use crate::print::TreePrinter;
 use derive_more::{Display, From};
 use enum_as_inner::EnumAsInner;
 use kola_interner::StrKey;
 use kola_print::prelude::*;
+use kola_relations::Projections;
 use serde::{Deserialize, Serialize};
+
+use super::{ModulePath, Pat, QualifiedType, TypeExpr, ValueName};
+use crate::prelude::*;
+use crate::print::TreePrinter;
 
 #[derive(
     Debug, Notate, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
@@ -66,7 +68,18 @@ impl<'a> Notate<'a, LiteralExpr> for TreePrinter<'a> {
 }
 
 #[derive(
-    Debug, Notate, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+    Debug,
+    Notate,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
+    Projections,
 )]
 #[notate(with = TreePrinter<'a>, color = "blue")]
 pub struct ListExpr(pub SliceId<Expr>);
@@ -95,7 +108,18 @@ impl ListExpr {
 }
 
 #[derive(
-    Debug, Notate, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+    Debug,
+    Notate,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
+    Projections,
 )]
 #[notate(with = TreePrinter<'a>, color = "blue")]
 pub struct RecordField {
@@ -136,7 +160,18 @@ impl RecordField {
 
 // { x = 10, y = 20 }
 #[derive(
-    Debug, Notate, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+    Debug,
+    Notate,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
+    Projections,
 )]
 #[notate(with = TreePrinter<'a>, color = "blue")]
 pub struct RecordExpr(pub SliceId<RecordField>);
@@ -154,7 +189,18 @@ impl RecordExpr {
 
 // { y [: type] | +x [: type] = 10 }
 #[derive(
-    Debug, Notate, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+    Debug,
+    Notate,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
+    Projections,
 )]
 #[notate(with = TreePrinter<'a>, color = "blue")]
 pub struct RecordExtendExpr {
@@ -215,7 +261,18 @@ impl RecordExtendExpr {
 
 // { y [: type] | -x [: type] }
 #[derive(
-    Debug, Notate, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+    Debug,
+    Notate,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
+    Projections,
 )]
 #[notate(with = TreePrinter<'a>, color = "blue")]
 pub struct RecordRestrictExpr {
@@ -286,7 +343,18 @@ impl<'a> Notate<'a, RecordUpdateOp> for TreePrinter<'a> {
 
 // { y | x = 10 }
 #[derive(
-    Debug, Notate, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+    Debug,
+    Notate,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
+    Projections,
 )]
 #[notate(with = TreePrinter<'a>, color = "blue")]
 pub struct RecordUpdateExpr {
@@ -354,7 +422,18 @@ impl RecordUpdateExpr {
 }
 
 #[derive(
-    Debug, Notate, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+    Debug,
+    Notate,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
+    Projections,
 )]
 #[notate(with = TreePrinter<'a>, color = "blue")]
 pub struct RecordMergeExpr {
@@ -375,7 +454,18 @@ impl RecordMergeExpr {
 }
 
 #[derive(
-    Debug, Notate, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+    Debug,
+    Notate,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
+    Projections,
 )]
 #[notate(with = TreePrinter<'a>, color = "blue")]
 pub struct FieldPath(pub SliceId<ValueName>);
@@ -405,7 +495,18 @@ impl FieldPath {
 }
 
 #[derive(
-    Debug, Notate, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+    Debug,
+    Notate,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
+    Projections,
 )]
 #[notate(with = TreePrinter<'a>, color = "cyan")]
 pub struct QualifiedExpr {
@@ -449,7 +550,18 @@ impl<'a> Notate<'a, UnaryOp> for TreePrinter<'a> {
 }
 
 #[derive(
-    Debug, Notate, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+    Debug,
+    Notate,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
+    Projections,
 )]
 #[notate(with = TreePrinter<'a>, color = "blue")]
 pub struct UnaryExpr {
@@ -504,7 +616,18 @@ impl<'a> Notate<'a, BinaryOp> for TreePrinter<'a> {
 }
 
 #[derive(
-    Debug, Notate, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+    Debug,
+    Notate,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
+    Projections,
 )]
 #[notate(with = TreePrinter<'a>, color = "blue")]
 pub struct BinaryExpr {
@@ -544,7 +667,18 @@ impl BinaryExpr {
 }
 
 #[derive(
-    Debug, Notate, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+    Debug,
+    Notate,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
+    Projections,
 )]
 #[notate(with = TreePrinter<'a>, color = "blue")]
 pub struct LetExpr {
@@ -596,7 +730,18 @@ impl LetExpr {
 }
 
 #[derive(
-    Debug, Notate, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+    Debug,
+    Notate,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
+    Projections,
 )]
 #[notate(with = TreePrinter<'a>, color = "blue")]
 pub struct IfExpr {
@@ -640,7 +785,18 @@ impl IfExpr {
 }
 
 #[derive(
-    Debug, Notate, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+    Debug,
+    Notate,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
+    Projections,
 )]
 #[notate(with = TreePrinter<'a>, color = "blue")]
 pub struct CaseBranch {
@@ -668,7 +824,9 @@ impl CaseBranch {
     }
 }
 
-#[derive(Debug, Notate, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+#[derive(
+    Debug, Notate, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, Projections,
+)]
 #[notate(with = TreePrinter<'a>, color = "blue")]
 pub struct CaseExpr {
     pub source: Id<Expr>,
@@ -693,7 +851,18 @@ impl CaseExpr {
 }
 
 #[derive(
-    Debug, Notate, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+    Debug,
+    Notate,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
+    Projections,
 )]
 #[notate(with = TreePrinter<'a>, color = "blue")]
 pub struct CallExpr {
@@ -722,7 +891,18 @@ impl CallExpr {
 }
 
 #[derive(
-    Debug, Notate, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+    Debug,
+    Notate,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
+    Projections,
 )]
 #[notate(with = TreePrinter<'a>, color = "blue")]
 pub struct LambdaExpr {
@@ -762,7 +942,19 @@ impl LambdaExpr {
 }
 
 #[derive(
-    Debug, Notate, From, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+    Debug,
+    Notate,
+    From,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
+    Projections,
 )]
 #[notate(with = TreePrinter<'a>, color = "blue")]
 pub struct HandlerClause {
@@ -772,7 +964,18 @@ pub struct HandlerClause {
 }
 
 #[derive(
-    Debug, Notate, From, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+    Debug,
+    Notate,
+    From,
+    Clone,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
+    Projections,
 )]
 #[notate(with = TreePrinter<'a>, color = "blue")]
 pub struct HandleExpr {
@@ -781,7 +984,19 @@ pub struct HandleExpr {
 }
 
 #[derive(
-    Debug, Notate, From, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+    Debug,
+    Notate,
+    From,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
+    Projections,
 )]
 #[notate(with = TreePrinter<'a>, color = "blue")]
 pub struct DoExpr {
@@ -790,7 +1005,19 @@ pub struct DoExpr {
 }
 
 #[derive(
-    Debug, Notate, From, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+    Debug,
+    Notate,
+    From,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
+    Projections,
 )]
 #[notate(with = TreePrinter<'a>, color = "blue")]
 pub struct TagExpr(pub Id<ValueName>);
@@ -806,7 +1033,19 @@ impl TagExpr {
 }
 
 #[derive(
-    Debug, Notate, From, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+    Debug,
+    Notate,
+    From,
+    Clone,
+    Copy,
+    PartialEq,
+    Eq,
+    PartialOrd,
+    Ord,
+    Hash,
+    Serialize,
+    Deserialize,
+    Projections,
 )]
 #[notate(with = TreePrinter<'a>, color = "blue")]
 pub enum TypeWitnessExpr {
@@ -827,6 +1066,7 @@ pub enum TypeWitnessExpr {
     Hash,
     Serialize,
     Deserialize,
+    Projections,
 )]
 pub enum Expr {
     Error(Id<ExprError>),

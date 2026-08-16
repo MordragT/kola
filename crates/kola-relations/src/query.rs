@@ -3,6 +3,7 @@ use crate::{
     relation::{PartialRelation, SliceRelation, TotalRelation, TotalRelationMut},
     slice::SliceId,
 };
+use std::borrow::Borrow;
 use std::marker::PhantomData;
 
 /// Conversion trait for attempting to extract/project a child ID of a specific type.
@@ -22,8 +23,6 @@ where
 }
 
 /// A context-free representation of a relational query plan.
-/// This allows the compiler to perform perfect type-inference for closure
-/// parameters without needing the database context type Ctx.
 pub trait QueryPlan: Sized {
     type Key: 'static;
     type Value<'a>: Copy + Clone
@@ -43,6 +42,7 @@ pub trait RelationQuery<Ctx>: QueryPlan {
 }
 
 /// The main lifetime-free, zero-cost query builder.
+#[derive(Clone, Copy)]
 pub struct KeyedQuery<P> {
     pub(crate) plan: P,
 }
@@ -125,6 +125,45 @@ impl<P: QueryPlan> KeyedQuery<P> {
         }
     }
 
+    #[inline]
+    pub fn inspect<I>(self, inspector: I) -> KeyedQuery<Inspect<P, I>>
+    where
+        I: for<'b> Inspector<P::Key, P::Value<'b>>,
+    {
+        KeyedQuery {
+            plan: Inspect {
+                plan: self.plan,
+                inspector,
+            },
+        }
+    }
+
+    #[inline]
+    pub fn get_at<T: 'static>(self, index: usize) -> KeyedQuery<GetAt<P, T>> {
+        KeyedQuery {
+            plan: GetAt {
+                plan: self.plan,
+                index,
+                _marker: PhantomData,
+            },
+        }
+    }
+
+    /// Executes the query plan exactly once against the database context, materializes
+    /// its results, and passes a high-performance Scan query over those cached/materialized
+    /// results to a branching closure. This completely prevents redundant parent traversals.
+    #[inline]
+    pub fn branch<'a, Ctx, F>(self, ctx: &'a Ctx, mut f: F)
+    where
+        P: RelationQuery<Ctx> + 'a,
+        Ctx: 'a,
+        F: for<'b> FnMut(KeyedQuery<ScanItems<'b, P::Key, P::Value<'a>>>),
+    {
+        let results: Vec<(Id<P::Key>, P::Value<'a>)> = self.execute(ctx).collect();
+        let scan = query_items(&results);
+        f(scan);
+    }
+
     /// Execute the query plan against the database context, yielding an iterator of results.
     #[inline]
     pub fn execute<'a, Ctx>(
@@ -139,7 +178,6 @@ impl<P: QueryPlan> KeyedQuery<P> {
     }
 
     /// Gather matching IDs first, then run a mutable closure on each of them.
-    /// This pattern avoids borrow checker issues by decoupling selection from mutation.
     pub fn update<Ctx, V: 'static, F>(self, ctx: &mut Ctx, mut f: F)
     where
         P: RelationQuery<Ctx>,
@@ -161,7 +199,6 @@ impl<P: QueryPlan> KeyedQuery<P> {
 
 impl<K: 'static, V: 'static> KeyedQuery<Scan<K, V>> {
     /// Mutates the entire column in a single-pass contiguous loop.
-    /// Triggers Arc::make_mut exactly once, and avoids repeated index bounds checks.
     #[inline]
     pub fn update_direct<Ctx, F>(self, ctx: &mut Ctx, mut f: F)
     where
@@ -231,11 +268,20 @@ pub fn query_slice<T: 'static>(slice_id: SliceId<T>) -> KeyedQuery<ScanSlice<T>>
     }
 }
 
+// Starter function for scanning an in-memory materialized slice of results
+#[inline]
+pub fn query_items<'a, K, V>(items: &'a [(Id<K>, V)]) -> KeyedQuery<ScanItems<'a, K, V>> {
+    KeyedQuery {
+        plan: ScanItems { items },
+    }
+}
+
 // ==========================================
 // Symbolic Query Plan Steps
 // ==========================================
 
 // Implementation of Scan
+#[derive(Clone, Copy)]
 pub struct Scan<K, V>(pub PhantomData<(K, V)>);
 
 impl<K: 'static, V: 'static> QueryPlan for Scan<K, V> {
@@ -261,6 +307,7 @@ where
 }
 
 // Implementation of ScanOne
+#[derive(Clone, Copy)]
 pub struct ScanOne<K, V>(pub Id<K>, pub PhantomData<V>);
 
 impl<K: 'static, V: 'static> QueryPlan for ScanOne<K, V> {
@@ -286,6 +333,7 @@ where
 }
 
 // Implementation of ScanSlice
+#[derive(Clone, Copy)]
 pub struct ScanSlice<T> {
     slice: SliceId<T>,
     _marker: PhantomData<T>,
@@ -315,7 +363,41 @@ where
     }
 }
 
+// Implementation of ScanItems
+pub struct ScanItems<'a, K, V> {
+    pub(crate) items: &'a [(Id<K>, V)],
+}
+
+impl<'a, K, V> Clone for ScanItems<'a, K, V> {
+    #[inline]
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+impl<'a, K, V> Copy for ScanItems<'a, K, V> {}
+
+impl<'a, K: 'static, V: Clone + Copy + 'static> QueryPlan for ScanItems<'a, K, V> {
+    type Key = K;
+    type Value<'b>
+        = V
+    where
+        Self: 'b;
+}
+
+impl<'a, Ctx, K: 'static, V: Clone + Copy + 'static> RelationQuery<Ctx> for ScanItems<'a, K, V> {
+    #[inline]
+    fn execute<'b>(self, _ctx: &'b Ctx) -> impl Iterator<Item = (Id<K>, Self::Value<'b>)> + 'b
+    where
+        Ctx: 'b,
+        Self: 'b,
+    {
+        self.items.iter().cloned()
+    }
+}
+
 // Implementation of Filter (Values only)
+#[derive(Clone, Copy)]
 pub struct Filter<P, F> {
     pub(crate) plan: P,
     pub(crate) predicate: F,
@@ -347,6 +429,7 @@ where
 }
 
 // Implementation of FilterKeyed (IDs and Values)
+#[derive(Clone, Copy)]
 pub struct FilterKeyed<P, F> {
     pub(crate) plan: P,
     pub(crate) predicate: F,
@@ -378,6 +461,7 @@ where
 }
 
 // Implementation of With
+#[derive(Clone, Copy)]
 pub struct With<P, M> {
     plan: P,
     _marker: PhantomData<M>,
@@ -412,6 +496,7 @@ where
 }
 
 // Implementation of LeftJoin
+#[derive(Clone, Copy)]
 pub struct LeftJoin<P, M> {
     plan: P,
     _marker: PhantomData<M>,
@@ -447,6 +532,7 @@ where
 }
 
 // Implementation of Without
+#[derive(Clone, Copy)]
 pub struct Without<P, M> {
     plan: P,
     _marker: PhantomData<M>,
@@ -478,6 +564,7 @@ where
 }
 
 // Implementation of Cast
+#[derive(Clone, Copy)]
 pub struct Cast<P, Target> {
     plan: P,
     _marker: PhantomData<Target>,
@@ -511,6 +598,7 @@ where
 }
 
 // Implementation of Project
+#[derive(Clone, Copy)]
 pub struct Project<P, Target, F> {
     pub(crate) plan: P,
     pub(crate) projector: F,
@@ -528,7 +616,7 @@ impl<P: QueryPlan, Target: 'static, F> QueryPlan for Project<P, Target, F> {
 impl<Ctx, P, Target: 'static, F> RelationQuery<Ctx> for Project<P, Target, F>
 where
     P: RelationQuery<Ctx>,
-    F: Fn(&P::Value<'_>) -> Id<Target>,
+    F: Fn(&P::Value<'_>) -> Id<Target> + Clone + Copy,
     Ctx: TotalRelation<Target, Target>,
 {
     #[inline]
@@ -541,5 +629,94 @@ where
             let target_id = (self.projector)(&val);
             (target_id, ctx.get(target_id))
         })
+    }
+}
+
+// Implementation of Inspect
+#[derive(Clone, Copy)]
+pub struct Inspect<P, I> {
+    pub(crate) plan: P,
+    pub(crate) inspector: I,
+}
+
+impl<P: QueryPlan, I> QueryPlan for Inspect<P, I> {
+    type Key = P::Key;
+    type Value<'a>
+        = P::Value<'a>
+    where
+        Self: 'a;
+}
+
+impl<Ctx, P, I> RelationQuery<Ctx> for Inspect<P, I>
+where
+    P: RelationQuery<Ctx>,
+    I: for<'b> Inspector<P::Key, P::Value<'b>> + Clone + Copy,
+    Ctx: TotalRelation<P::Key, P::Key>,
+{
+    #[inline]
+    fn execute<'a>(self, ctx: &'a Ctx) -> impl Iterator<Item = (Id<P::Key>, P::Value<'a>)> + 'a
+    where
+        Ctx: 'a,
+        Self: 'a,
+    {
+        let mut inspector = self.inspector;
+        self.plan.execute(ctx).map(move |(id, val)| {
+            inspector.inspect(id, val);
+            (id, val)
+        })
+    }
+}
+
+// Implementation of GetAt
+#[derive(Clone, Copy)]
+pub struct GetAt<P, T> {
+    pub(crate) plan: P,
+    pub(crate) index: usize,
+    pub(crate) _marker: PhantomData<T>,
+}
+
+impl<P: QueryPlan, T: 'static> QueryPlan for GetAt<P, T> {
+    type Key = T;
+    type Value<'a>
+        = &'a T
+    where
+        Self: 'a,
+        T: 'a;
+}
+
+impl<Ctx, P, T: 'static> RelationQuery<Ctx> for GetAt<P, T>
+where
+    P: RelationQuery<Ctx>,
+    for<'b> P::Value<'b>: std::borrow::Borrow<SliceId<T>>,
+    Ctx: SliceRelation<T> + TotalRelation<T, T>,
+{
+    #[inline]
+    fn execute<'a>(self, ctx: &'a Ctx) -> impl Iterator<Item = (Id<T>, &'a T)> + 'a
+    where
+        Ctx: 'a,
+        Self: 'a,
+    {
+        self.plan.execute(ctx).map(move |(_, val)| {
+            let slice_id: SliceId<T> = *val.borrow();
+            let ids = ctx.get_slice(slice_id);
+            let id = ids[self.index];
+            let item = ctx.get(id);
+            (id, item)
+        })
+    }
+}
+
+// Generic Inspector trait for assertions
+pub trait Inspector<K, V> {
+    fn inspect(&mut self, id: Id<K>, value: V);
+}
+
+impl<K, V, F> Inspector<K, V> for F
+where
+    F: FnMut(Id<K>, V),
+{
+    #[inline]
+    fn inspect(&mut self, id: Id<K>, value: V) {
+        self(id, value);
     }
 }

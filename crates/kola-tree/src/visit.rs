@@ -1,8 +1,8 @@
 use pastey::paste;
 use std::ops::ControlFlow;
 
-use crate::{id::Id, id::IdExt, node, tree::Tree};
-use kola_relations::{SliceRelation, TotalRelation};
+use crate::{inspect::IdExt, node, tree::Tree};
+use kola_relations::{Id, SliceRelation, TotalRelation};
 
 pub trait Visitable<M> {
     fn visit_by<V>(&self, visitor: &mut V, tree: &Tree<M>) -> ControlFlow<V::BreakValue>
