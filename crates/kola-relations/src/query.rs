@@ -22,117 +22,121 @@ where
     }
 }
 
-/// Helper trait to safely convert GAT value types to their static counterpart when they are `'static`.
-pub trait IsStaticValue {
-    type StaticVal: 'static;
-    fn into_static(self) -> Self::StaticVal;
-}
-
-impl<T: 'static> IsStaticValue for T {
-    type StaticVal = T;
-
-    #[inline]
-    fn into_static(self) -> T {
-        self
-    }
-}
-
 /// A context-free representation of a relational query plan.
-pub trait QueryPlan: Sized {
+pub trait QueryPlan<'ctx>: Sized {
     type Key: 'static;
-    type Value<'a>: Copy + Clone
-    where
-        Self: 'a;
+    type Value: Copy + Clone + 'ctx;
 }
 
-/// The core Relation Query trait that represents a symbolic query step with GAT.
-pub trait RelationQuery<Ctx>: QueryPlan {
-    fn execute<'a>(
-        self,
-        ctx: &'a Ctx,
-    ) -> impl Iterator<Item = (Id<Self::Key>, Self::Value<'a>)> + 'a
-    where
-        Ctx: 'a,
-        Self: 'a;
+/// The core Relation Query trait that represents a symbolic query step.
+pub trait RelationQuery<'ctx, Ctx>: QueryPlan<'ctx> {
+    fn execute(self, ctx: &'ctx Ctx) -> impl Iterator<Item = (Id<Self::Key>, Self::Value)> + 'ctx;
 }
 
 /// The main lifetime-free, zero-cost query builder.
-#[derive(Clone, Copy)]
-pub struct KeyedQuery<P> {
+pub struct KeyedQuery<'ctx, P> {
     pub(crate) plan: P,
+    pub(crate) _marker: PhantomData<&'ctx ()>,
 }
 
-impl<P: QueryPlan> KeyedQuery<P> {
+impl<'ctx, P> Clone for KeyedQuery<'ctx, P>
+where
+    P: Clone,
+{
     #[inline]
-    pub fn filter<F>(self, predicate: F) -> KeyedQuery<Filter<P, F>>
+    fn clone(&self) -> Self {
+        Self {
+            plan: self.plan.clone(),
+            _marker: PhantomData,
+        }
+    }
+}
+
+impl<'ctx, P> Copy for KeyedQuery<'ctx, P> where P: Copy {}
+
+impl<'ctx, P> KeyedQuery<'ctx, P> {
+    #[inline]
+    pub fn filter<F>(self, predicate: F) -> KeyedQuery<'ctx, Filter<P, F>>
     where
-        F: for<'b> Fn(P::Value<'b>) -> bool,
+        P: QueryPlan<'ctx>,
+        F: Fn(P::Value) -> bool,
     {
         KeyedQuery {
             plan: Filter {
                 plan: self.plan,
                 predicate,
             },
+            _marker: PhantomData,
         }
     }
 
     #[inline]
-    pub fn filter_keyed<F>(self, predicate: F) -> KeyedQuery<FilterKeyed<P, F>>
+    pub fn filter_keyed<F>(self, predicate: F) -> KeyedQuery<'ctx, FilterKeyed<P, F>>
     where
-        F: for<'b> Fn(Id<P::Key>, P::Value<'b>) -> bool,
+        P: QueryPlan<'ctx>,
+        F: Fn(Id<P::Key>, P::Value) -> bool,
     {
         KeyedQuery {
             plan: FilterKeyed {
                 plan: self.plan,
                 predicate,
             },
+            _marker: PhantomData,
         }
     }
 
     #[inline]
-    pub fn with<M: 'static>(self) -> KeyedQuery<With<P, M>> {
+    pub fn with<M: 'static>(self) -> KeyedQuery<'ctx, With<P, M>> {
         KeyedQuery {
             plan: With {
                 plan: self.plan,
                 _marker: PhantomData,
             },
+            _marker: PhantomData,
         }
     }
 
     #[inline]
-    pub fn left_join<M: 'static>(self) -> KeyedQuery<LeftJoin<P, M>> {
+    pub fn left_join<M: 'static>(self) -> KeyedQuery<'ctx, LeftJoin<P, M>> {
         KeyedQuery {
             plan: LeftJoin {
                 plan: self.plan,
                 _marker: PhantomData,
             },
+            _marker: PhantomData,
         }
     }
 
     #[inline]
-    pub fn without<M: 'static>(self) -> KeyedQuery<Without<P, M>> {
+    pub fn without<M: 'static>(self) -> KeyedQuery<'ctx, Without<P, M>> {
         KeyedQuery {
             plan: Without {
                 plan: self.plan,
                 _marker: PhantomData,
             },
+            _marker: PhantomData,
         }
     }
 
     #[inline]
-    pub fn cast<Target: 'static>(self) -> KeyedQuery<Cast<P, Target>> {
+    pub fn cast<Target: 'static>(self) -> KeyedQuery<'ctx, Cast<P, Target>> {
         KeyedQuery {
             plan: Cast {
                 plan: self.plan,
                 _marker: PhantomData,
             },
+            _marker: PhantomData,
         }
     }
 
     #[inline]
-    pub fn project<Target: 'static, F>(self, projector: F) -> KeyedQuery<Project<P, Target, F>>
+    pub fn project<Target: 'static, F>(
+        self,
+        projector: F,
+    ) -> KeyedQuery<'ctx, Project<P, Target, F>>
     where
-        F: Fn(P::Value<'_>) -> Id<Target> + Clone + Copy,
+        P: QueryPlan<'ctx>,
+        F: Fn(P::Value) -> Id<Target> + Clone + Copy,
     {
         KeyedQuery {
             plan: Project {
@@ -140,6 +144,7 @@ impl<P: QueryPlan> KeyedQuery<P> {
                 projector,
                 _marker: PhantomData,
             },
+            _marker: PhantomData,
         }
     }
 
@@ -147,9 +152,10 @@ impl<P: QueryPlan> KeyedQuery<P> {
     pub fn project_slice<Target: 'static, F>(
         self,
         projector: F,
-    ) -> KeyedQuery<ProjectSlice<P, Target, F>>
+    ) -> KeyedQuery<'ctx, ProjectSlice<P, Target, F>>
     where
-        F: Fn(P::Value<'_>) -> SliceId<Target> + Clone + Copy,
+        P: QueryPlan<'ctx>,
+        F: Fn(P::Value) -> SliceId<Target> + Clone + Copy,
     {
         KeyedQuery {
             plan: ProjectSlice {
@@ -157,6 +163,7 @@ impl<P: QueryPlan> KeyedQuery<P> {
                 projector,
                 _marker: PhantomData,
             },
+            _marker: PhantomData,
         }
     }
 
@@ -164,9 +171,10 @@ impl<P: QueryPlan> KeyedQuery<P> {
     pub fn project_opt<Target: 'static, F>(
         self,
         projector: F,
-    ) -> KeyedQuery<ProjectOpt<P, Target, F>>
+    ) -> KeyedQuery<'ctx, ProjectOpt<P, Target, F>>
     where
-        F: Fn(P::Value<'_>) -> Option<Id<Target>> + Clone + Copy,
+        P: QueryPlan<'ctx>,
+        F: Fn(P::Value) -> Option<Id<Target>> + Clone + Copy,
     {
         KeyedQuery {
             plan: ProjectOpt {
@@ -174,56 +182,51 @@ impl<P: QueryPlan> KeyedQuery<P> {
                 projector,
                 _marker: PhantomData,
             },
+            _marker: PhantomData,
         }
     }
 
+    /// Eagerly executes the query and runs the closure on every yielded ID and value.
+    /// This is the preferred way to run assertions, as it allows the closure to
+    /// cleanly capture local stack variables without running into higher-ranked lifetime errors.
     #[inline]
-    pub fn inspect<I>(self, inspector: I) -> KeyedQuery<Inspect<P, I>>
+    pub fn each<Ctx, F>(self, ctx: &'ctx Ctx, mut f: F)
     where
-        I: for<'b> Inspector<P::Key, P::Value<'b>>,
+        P: RelationQuery<'ctx, Ctx>,
+        Ctx: 'ctx,
+        F: FnMut(Id<P::Key>, P::Value),
     {
-        KeyedQuery {
-            plan: Inspect {
-                plan: self.plan,
-                inspector,
-            },
+        for (id, val) in self.execute(ctx) {
+            f(id, val);
         }
     }
 
+    /// Eagerly executes the query and runs the closure on every yielded value.
     #[inline]
-    pub fn inspect_key<F>(self, inspector: F) -> KeyedQuery<InspectKey<P, F>>
+    pub fn each_value<Ctx, F>(self, ctx: &'ctx Ctx, mut f: F)
     where
-        F: FnMut(Id<P::Key>),
+        P: RelationQuery<'ctx, Ctx>,
+        Ctx: 'ctx,
+        F: FnMut(P::Value),
     {
-        KeyedQuery {
-            plan: InspectKey {
-                plan: self.plan,
-                inspector,
-            },
+        for (_, val) in self.execute(ctx) {
+            f(val);
         }
     }
 
     #[inline]
-    pub fn inspect_value<F>(self, inspector: F) -> KeyedQuery<InspectValue<P, F>>
+    pub fn get_at<T: 'static>(self, index: usize) -> KeyedQuery<'ctx, GetAt<P, T>>
     where
-        F: FnMut(P::Value<'_>),
+        P: QueryPlan<'ctx>,
+        P::Value: std::borrow::Borrow<SliceId<T>>,
     {
-        KeyedQuery {
-            plan: InspectValue {
-                plan: self.plan,
-                inspector,
-            },
-        }
-    }
-
-    #[inline]
-    pub fn get_at<T: 'static>(self, index: usize) -> KeyedQuery<GetAt<P, T>> {
         KeyedQuery {
             plan: GetAt {
                 plan: self.plan,
                 index,
                 _marker: PhantomData,
             },
+            _marker: PhantomData,
         }
     }
 
@@ -231,38 +234,40 @@ impl<P: QueryPlan> KeyedQuery<P> {
     /// its results, and passes a high-performance Scan query over those cached/materialized
     /// results to a branching closure. This completely prevents redundant parent traversals.
     #[inline]
-    pub fn branch<'a, Ctx, F>(self, ctx: &'a Ctx, mut f: F)
+    pub fn branch<Ctx, F>(self, ctx: &'ctx Ctx, mut f: F)
     where
-        P: RelationQuery<Ctx> + 'a,
-        Ctx: 'a,
-        F: for<'b> FnMut(KeyedQuery<ScanItems<'b, P::Key, P::Value<'a>>>),
+        P: RelationQuery<'ctx, Ctx>,
+        Ctx: 'ctx,
+        F: FnMut(KeyedQuery<'ctx, ScanItems<'_, P::Key, P::Value>>),
     {
-        let results: Vec<(Id<P::Key>, P::Value<'a>)> = self.execute(ctx).collect();
-        let scan = query_items(&results);
+        let results: Vec<(Id<P::Key>, P::Value)> = self.execute(ctx).collect();
+        let scan = KeyedQuery {
+            plan: ScanItems { items: &results },
+            _marker: PhantomData,
+        };
         f(scan);
     }
 
     /// Execute the query plan against the database context, yielding an iterator of results.
     #[inline]
-    pub fn execute<'a, Ctx>(
-        self,
-        ctx: &'a Ctx,
-    ) -> impl Iterator<Item = (Id<P::Key>, P::Value<'a>)> + 'a
+    pub fn execute<Ctx>(self, ctx: &'ctx Ctx) -> impl Iterator<Item = (Id<P::Key>, P::Value)> + 'ctx
     where
-        P: RelationQuery<Ctx> + 'a,
-        Ctx: 'a,
+        P: RelationQuery<'ctx, Ctx>,
+        Ctx: 'ctx,
     {
         self.plan.execute(ctx)
     }
 
     /// Gather matching IDs first, then run a mutable closure on each of them.
-    pub fn update<Ctx, V: 'static, F>(self, ctx: &mut Ctx, mut f: F)
+    pub fn update<Ctx, V: 'static, F>(self, ctx: &'ctx mut Ctx, mut f: F)
     where
-        P: RelationQuery<Ctx>,
-        Ctx: TotalRelationMut<P::Key, V>,
+        P: RelationQuery<'ctx, Ctx>,
+        Ctx: TotalRelationMut<P::Key, V> + 'ctx,
         F: FnMut(&mut V),
     {
-        let ids: Vec<Id<P::Key>> = self.plan.execute(ctx).map(|(id, _)| id).collect();
+        let ctx_ref: &Ctx = ctx;
+        let ids: Vec<Id<P::Key>> = self.plan.execute(ctx_ref).map(|(id, _)| id).collect();
+        drop(ctx_ref);
 
         for id in ids {
             let val = ctx.get_mut(id);
@@ -275,7 +280,7 @@ impl<P: QueryPlan> KeyedQuery<P> {
 // Fast-path contiguous non-allocating updates
 // ==========================================
 
-impl<K: 'static, V: 'static> KeyedQuery<Scan<K, V>> {
+impl<'ctx, K: 'static, V: 'static> KeyedQuery<'ctx, Scan<K, V>> {
     /// Mutates the entire column in a single-pass contiguous loop.
     #[inline]
     pub fn update_direct<Ctx, F>(self, ctx: &mut Ctx, mut f: F)
@@ -289,7 +294,7 @@ impl<K: 'static, V: 'static> KeyedQuery<Scan<K, V>> {
     }
 }
 
-impl<K: 'static, V: 'static, F> KeyedQuery<Filter<Scan<K, V>, F>> {
+impl<'ctx, K: 'static, V: 'static, F> KeyedQuery<'ctx, Filter<Scan<K, V>, F>> {
     /// Mutates filtered values in a single-pass contiguous loop without allocating or repeated lookups.
     #[inline]
     pub fn update_direct<Ctx, U>(self, ctx: &mut Ctx, mut f: U)
@@ -313,49 +318,59 @@ impl<K: 'static, V: 'static, F> KeyedQuery<Filter<Scan<K, V>, F>> {
 
 // Starter function for scanning a dense AST relation (T -> T)
 #[inline]
-pub fn query<T: 'static>() -> KeyedQuery<Scan<T, T>> {
+pub fn query<'ctx, T: 'static>() -> KeyedQuery<'ctx, Scan<T, T>> {
     KeyedQuery {
         plan: Scan(PhantomData),
+        _marker: PhantomData,
     }
 }
 
 // Starter function for scanning a general relation (K -> V)
 #[inline]
-pub fn query_relation<K: 'static, V: 'static>() -> KeyedQuery<Scan<K, V>> {
+pub fn query_relation<'ctx, K: 'static, V: 'static>() -> KeyedQuery<'ctx, Scan<K, V>> {
     KeyedQuery {
         plan: Scan(PhantomData),
+        _marker: PhantomData,
     }
 }
 
 // Starter function for querying a single ID in a dense AST relation
 #[inline]
-pub fn query_one<T: 'static>(id: Id<T>) -> KeyedQuery<ScanOne<T, T>> {
+pub fn query_one<'ctx, T: 'static>(id: Id<T>) -> KeyedQuery<'ctx, ScanOne<T, T>> {
     KeyedQuery {
         plan: ScanOne(id, PhantomData),
+        _marker: PhantomData,
     }
 }
 
 // Starter function for querying a single ID (for assertions/testing)
 #[inline]
-pub fn query_one_relation<K: 'static, V: 'static>(id: Id<K>) -> KeyedQuery<ScanOne<K, V>> {
+pub fn query_one_relation<'ctx, K: 'static, V: 'static>(
+    id: Id<K>,
+) -> KeyedQuery<'ctx, ScanOneOpt<K, V>> {
     KeyedQuery {
-        plan: ScanOne(id, PhantomData),
+        plan: ScanOneOpt(id, PhantomData),
+        _marker: PhantomData,
     }
 }
 
 // Starter function for scanning a slice of IDs
 #[inline]
-pub fn query_slice<T: 'static>(slice_id: SliceId<T>) -> KeyedQuery<ScanSlice<T>> {
+pub fn query_slice<'ctx, T: 'static>(slice_id: SliceId<T>) -> KeyedQuery<'ctx, ScanSlice<T>> {
     KeyedQuery {
         plan: ScanSlice { slice: slice_id },
+        _marker: PhantomData,
     }
 }
 
 // Starter function for scanning an in-memory materialized slice of results
 #[inline]
-pub fn query_items<'a, K, V>(items: &'a [(Id<K>, V)]) -> KeyedQuery<ScanItems<'a, K, V>> {
+pub fn query_items<'ctx, 'a, K, V>(
+    items: &'a [(Id<K>, V)],
+) -> KeyedQuery<'ctx, ScanItems<'a, K, V>> {
     KeyedQuery {
         plan: ScanItems { items },
+        _marker: PhantomData,
     }
 }
 
@@ -366,24 +381,17 @@ pub fn query_items<'a, K, V>(items: &'a [(Id<K>, V)]) -> KeyedQuery<ScanItems<'a
 // Implementation of Scan
 pub struct Scan<K, V>(pub PhantomData<(K, V)>);
 
-impl<K: 'static, V: 'static> QueryPlan for Scan<K, V> {
+impl<'ctx, K: 'static, V: 'static> QueryPlan<'ctx> for Scan<K, V> {
     type Key = K;
-    type Value<'a>
-        = &'a V
-    where
-        Self: 'a;
+    type Value = &'ctx V;
 }
 
-impl<Ctx, K: 'static, V: 'static> RelationQuery<Ctx> for Scan<K, V>
+impl<'ctx, Ctx, K: 'static, V: 'static> RelationQuery<'ctx, Ctx> for Scan<K, V>
 where
-    Ctx: TotalRelation<K, V>,
+    Ctx: TotalRelation<K, V> + 'ctx,
 {
     #[inline]
-    fn execute<'a>(self, ctx: &'a Ctx) -> impl Iterator<Item = (Id<K>, &'a V)> + 'a
-    where
-        Ctx: 'a,
-        Self: 'a,
-    {
+    fn execute(self, ctx: &'ctx Ctx) -> impl Iterator<Item = (Id<K>, &'ctx V)> + 'ctx {
         ctx.rows()
     }
 }
@@ -400,24 +408,17 @@ impl<K, V> Copy for Scan<K, V> {}
 // Implementation of ScanOne
 pub struct ScanOne<K, V>(pub Id<K>, pub PhantomData<V>);
 
-impl<K: 'static, V: 'static> QueryPlan for ScanOne<K, V> {
+impl<'ctx, K: 'static, V: 'static> QueryPlan<'ctx> for ScanOne<K, V> {
     type Key = K;
-    type Value<'a>
-        = &'a V
-    where
-        Self: 'a;
+    type Value = &'ctx V;
 }
 
-impl<Ctx, K: 'static, V: 'static> RelationQuery<Ctx> for ScanOne<K, V>
+impl<'ctx, Ctx, K: 'static, V: 'static> RelationQuery<'ctx, Ctx> for ScanOne<K, V>
 where
-    Ctx: TotalRelation<K, V>,
+    Ctx: TotalRelation<K, V> + 'ctx,
 {
     #[inline]
-    fn execute<'a>(self, ctx: &'a Ctx) -> impl Iterator<Item = (Id<K>, &'a V)> + 'a
-    where
-        Ctx: 'a,
-        Self: 'a,
-    {
+    fn execute(self, ctx: &'ctx Ctx) -> impl Iterator<Item = (Id<K>, &'ctx V)> + 'ctx {
         std::iter::once((self.0, ctx.get(self.0)))
     }
 }
@@ -431,30 +432,50 @@ impl<K, V> Clone for ScanOne<K, V> {
 
 impl<K, V> Copy for ScanOne<K, V> {}
 
+// Implementation of ScanOneOpt
+pub struct ScanOneOpt<K, V>(pub Id<K>, pub PhantomData<V>);
+
+impl<'ctx, K: 'static, V: 'static> QueryPlan<'ctx> for ScanOneOpt<K, V> {
+    type Key = K;
+    type Value = &'ctx V;
+}
+
+impl<'ctx, Ctx, K: 'static, V: 'static> RelationQuery<'ctx, Ctx> for ScanOneOpt<K, V>
+where
+    Ctx: PartialRelation<K, V> + 'ctx,
+{
+    #[inline]
+    fn execute(self, ctx: &'ctx Ctx) -> impl Iterator<Item = (Id<K>, &'ctx V)> + 'ctx {
+        ctx.get_opt(self.0).map(|val| (self.0, val)).into_iter()
+    }
+}
+
+impl<K, V> Clone for ScanOneOpt<K, V> {
+    #[inline]
+    fn clone(&self) -> Self {
+        *self
+    }
+}
+
+impl<K, V> Copy for ScanOneOpt<K, V> {}
+
 // Implementation of ScanSlice
 #[derive(Clone, Copy)]
 pub struct ScanSlice<T> {
     slice: SliceId<T>,
 }
 
-impl<T: 'static> QueryPlan for ScanSlice<T> {
+impl<'ctx, T: 'static> QueryPlan<'ctx> for ScanSlice<T> {
     type Key = T;
-    type Value<'a>
-        = &'a T
-    where
-        Self: 'a;
+    type Value = &'ctx T;
 }
 
-impl<Ctx, T: 'static> RelationQuery<Ctx> for ScanSlice<T>
+impl<'ctx, Ctx, T: 'static> RelationQuery<'ctx, Ctx> for ScanSlice<T>
 where
-    Ctx: SliceRelation<T> + TotalRelation<T, T>,
+    Ctx: SliceRelation<T> + TotalRelation<T, T> + 'ctx,
 {
     #[inline]
-    fn execute<'a>(self, ctx: &'a Ctx) -> impl Iterator<Item = (Id<T>, &'a T)> + 'a
-    where
-        Ctx: 'a,
-        Self: 'a,
-    {
+    fn execute(self, ctx: &'ctx Ctx) -> impl Iterator<Item = (Id<T>, &'ctx T)> + 'ctx {
         ctx.get_slice(self.slice)
             .iter()
             .map(move |&id| (id, ctx.get(id)))
@@ -475,21 +496,16 @@ impl<'a, K, V> Clone for ScanItems<'a, K, V> {
 
 impl<'a, K, V> Copy for ScanItems<'a, K, V> {}
 
-impl<'a, K: 'static, V: Clone + Copy + 'static> QueryPlan for ScanItems<'a, K, V> {
+impl<'ctx, 'a, K: 'static, V: Clone + Copy + 'ctx> QueryPlan<'ctx> for ScanItems<'a, K, V> {
     type Key = K;
-    type Value<'b>
-        = V
-    where
-        Self: 'b;
+    type Value = V;
 }
 
-impl<'a, Ctx, K: 'static, V: Clone + Copy + 'static> RelationQuery<Ctx> for ScanItems<'a, K, V> {
+impl<'ctx, 'a: 'ctx, Ctx, K: 'static, V: Clone + Copy + 'ctx> RelationQuery<'ctx, Ctx>
+    for ScanItems<'a, K, V>
+{
     #[inline]
-    fn execute<'b>(self, _ctx: &'b Ctx) -> impl Iterator<Item = (Id<K>, Self::Value<'b>)> + 'b
-    where
-        Ctx: 'b,
-        Self: 'b,
-    {
+    fn execute(self, _ctx: &'ctx Ctx) -> impl Iterator<Item = (Id<K>, Self::Value)> + 'ctx {
         self.items.iter().cloned()
     }
 }
@@ -501,25 +517,18 @@ pub struct Filter<P, F> {
     pub(crate) predicate: F,
 }
 
-impl<P: QueryPlan, F> QueryPlan for Filter<P, F> {
+impl<'ctx, P: QueryPlan<'ctx>, F> QueryPlan<'ctx> for Filter<P, F> {
     type Key = P::Key;
-    type Value<'a>
-        = P::Value<'a>
-    where
-        Self: 'a;
+    type Value = P::Value;
 }
 
-impl<Ctx, P, F> RelationQuery<Ctx> for Filter<P, F>
+impl<'ctx, Ctx, P, F> RelationQuery<'ctx, Ctx> for Filter<P, F>
 where
-    P: RelationQuery<Ctx>,
-    F: Fn(P::Value<'_>) -> bool,
+    P: RelationQuery<'ctx, Ctx>,
+    F: Fn(P::Value) -> bool + 'ctx,
 {
     #[inline]
-    fn execute<'a>(self, ctx: &'a Ctx) -> impl Iterator<Item = (Id<P::Key>, P::Value<'a>)> + 'a
-    where
-        Ctx: 'a,
-        Self: 'a,
-    {
+    fn execute(self, ctx: &'ctx Ctx) -> impl Iterator<Item = (Id<P::Key>, P::Value)> + 'ctx {
         self.plan
             .execute(ctx)
             .filter(move |(_, val)| (self.predicate)(*val))
@@ -533,25 +542,18 @@ pub struct FilterKeyed<P, F> {
     pub(crate) predicate: F,
 }
 
-impl<P: QueryPlan, F> QueryPlan for FilterKeyed<P, F> {
+impl<'ctx, P: QueryPlan<'ctx>, F> QueryPlan<'ctx> for FilterKeyed<P, F> {
     type Key = P::Key;
-    type Value<'a>
-        = P::Value<'a>
-    where
-        Self: 'a;
+    type Value = P::Value;
 }
 
-impl<Ctx, P, F> RelationQuery<Ctx> for FilterKeyed<P, F>
+impl<'ctx, Ctx, P, F> RelationQuery<'ctx, Ctx> for FilterKeyed<P, F>
 where
-    P: RelationQuery<Ctx>,
-    F: Fn(Id<P::Key>, P::Value<'_>) -> bool,
+    P: RelationQuery<'ctx, Ctx>,
+    F: Fn(Id<P::Key>, P::Value) -> bool + 'ctx,
 {
     #[inline]
-    fn execute<'a>(self, ctx: &'a Ctx) -> impl Iterator<Item = (Id<P::Key>, P::Value<'a>)> + 'a
-    where
-        Ctx: 'a,
-        Self: 'a,
-    {
+    fn execute(self, ctx: &'ctx Ctx) -> impl Iterator<Item = (Id<P::Key>, P::Value)> + 'ctx {
         self.plan
             .execute(ctx)
             .filter(move |(id, val)| (self.predicate)(*id, *val))
@@ -564,28 +566,21 @@ pub struct With<P, M> {
     _marker: PhantomData<M>,
 }
 
-impl<P: QueryPlan, M: 'static> QueryPlan for With<P, M> {
+impl<'ctx, P: QueryPlan<'ctx>, M: 'static> QueryPlan<'ctx> for With<P, M> {
     type Key = P::Key;
-    type Value<'a>
-        = (P::Value<'a>, &'a M)
-    where
-        Self: 'a;
+    type Value = (P::Value, &'ctx M);
 }
 
-impl<Ctx, P, M: 'static> RelationQuery<Ctx> for With<P, M>
+impl<'ctx, Ctx, P, M: 'static> RelationQuery<'ctx, Ctx> for With<P, M>
 where
-    P: RelationQuery<Ctx>,
-    Ctx: PartialRelation<P::Key, M>,
+    P: RelationQuery<'ctx, Ctx>,
+    Ctx: PartialRelation<P::Key, M> + 'ctx,
 {
     #[inline]
-    fn execute<'a>(
+    fn execute(
         self,
-        ctx: &'a Ctx,
-    ) -> impl Iterator<Item = (Id<P::Key>, (P::Value<'a>, &'a M))> + 'a
-    where
-        Ctx: 'a,
-        Self: 'a,
-    {
+        ctx: &'ctx Ctx,
+    ) -> impl Iterator<Item = (Id<P::Key>, (P::Value, &'ctx M))> + 'ctx {
         self.plan
             .execute(ctx)
             .filter_map(move |(id, val)| ctx.get_opt(id).map(|meta| (id, (val, meta))))
@@ -610,28 +605,21 @@ pub struct LeftJoin<P, M> {
     _marker: PhantomData<M>,
 }
 
-impl<P: QueryPlan, M: 'static> QueryPlan for LeftJoin<P, M> {
+impl<'ctx, P: QueryPlan<'ctx>, M: 'static> QueryPlan<'ctx> for LeftJoin<P, M> {
     type Key = P::Key;
-    type Value<'a>
-        = (P::Value<'a>, Option<&'a M>)
-    where
-        Self: 'a;
+    type Value = (P::Value, Option<&'ctx M>);
 }
 
-impl<Ctx, P, M: 'static> RelationQuery<Ctx> for LeftJoin<P, M>
+impl<'ctx, Ctx, P, M: 'static> RelationQuery<'ctx, Ctx> for LeftJoin<P, M>
 where
-    P: RelationQuery<Ctx>,
-    Ctx: PartialRelation<P::Key, M>,
+    P: RelationQuery<'ctx, Ctx>,
+    Ctx: PartialRelation<P::Key, M> + 'ctx,
 {
     #[inline]
-    fn execute<'a>(
+    fn execute(
         self,
-        ctx: &'a Ctx,
-    ) -> impl Iterator<Item = (Id<P::Key>, (P::Value<'a>, Option<&'a M>))> + 'a
-    where
-        Ctx: 'a,
-        Self: 'a,
-    {
+        ctx: &'ctx Ctx,
+    ) -> impl Iterator<Item = (Id<P::Key>, (P::Value, Option<&'ctx M>))> + 'ctx {
         self.plan.execute(ctx).map(move |(id, val)| {
             let meta = ctx.get_opt(id);
             (id, (val, meta))
@@ -657,25 +645,18 @@ pub struct Without<P, M> {
     _marker: PhantomData<M>,
 }
 
-impl<P: QueryPlan, M: 'static> QueryPlan for Without<P, M> {
+impl<'ctx, P: QueryPlan<'ctx>, M: 'static> QueryPlan<'ctx> for Without<P, M> {
     type Key = P::Key;
-    type Value<'a>
-        = P::Value<'a>
-    where
-        Self: 'a;
+    type Value = P::Value;
 }
 
-impl<Ctx, P, M: 'static> RelationQuery<Ctx> for Without<P, M>
+impl<'ctx, Ctx, P, M: 'static> RelationQuery<'ctx, Ctx> for Without<P, M>
 where
-    P: RelationQuery<Ctx>,
-    Ctx: PartialRelation<P::Key, M>,
+    P: RelationQuery<'ctx, Ctx>,
+    Ctx: PartialRelation<P::Key, M> + 'ctx,
 {
     #[inline]
-    fn execute<'a>(self, ctx: &'a Ctx) -> impl Iterator<Item = (Id<P::Key>, P::Value<'a>)> + 'a
-    where
-        Ctx: 'a,
-        Self: 'a,
-    {
+    fn execute(self, ctx: &'ctx Ctx) -> impl Iterator<Item = (Id<P::Key>, P::Value)> + 'ctx {
         self.plan
             .execute(ctx)
             .filter(move |(id, _)| ctx.get_opt(*id).is_none())
@@ -700,26 +681,19 @@ pub struct Cast<P, Target> {
     _marker: PhantomData<Target>,
 }
 
-impl<P: QueryPlan, Target: 'static> QueryPlan for Cast<P, Target> {
+impl<'ctx, P: QueryPlan<'ctx>, Target: 'static> QueryPlan<'ctx> for Cast<P, Target> {
     type Key = Target;
-    type Value<'a>
-        = &'a Target
-    where
-        Self: 'a;
+    type Value = &'ctx Target;
 }
 
-impl<Ctx, P, Target: 'static> RelationQuery<Ctx> for Cast<P, Target>
+impl<'ctx, Ctx, P, Target: 'static> RelationQuery<'ctx, Ctx> for Cast<P, Target>
 where
-    P: RelationQuery<Ctx>,
-    for<'b> P::Value<'b>: TryProject<Target>,
-    Ctx: TotalRelation<Target, Target>,
+    P: RelationQuery<'ctx, Ctx>,
+    P::Value: TryProject<Target>,
+    Ctx: TotalRelation<Target, Target> + 'ctx,
 {
     #[inline]
-    fn execute<'a>(self, ctx: &'a Ctx) -> impl Iterator<Item = (Id<Target>, &'a Target)> + 'a
-    where
-        Ctx: 'a,
-        Self: 'a,
-    {
+    fn execute(self, ctx: &'ctx Ctx) -> impl Iterator<Item = (Id<Target>, &'ctx Target)> + 'ctx {
         self.plan.execute(ctx).filter_map(move |(_, val)| {
             val.try_project()
                 .map(|target_id| (target_id, ctx.get(target_id)))
@@ -746,26 +720,19 @@ pub struct Project<P, Target, F> {
     pub(crate) _marker: PhantomData<Target>,
 }
 
-impl<P: QueryPlan, Target: 'static, F> QueryPlan for Project<P, Target, F> {
+impl<'ctx, P: QueryPlan<'ctx>, Target: 'static, F> QueryPlan<'ctx> for Project<P, Target, F> {
     type Key = Target;
-    type Value<'a>
-        = &'a Target
-    where
-        Self: 'a;
+    type Value = &'ctx Target;
 }
 
-impl<Ctx, P, Target: 'static, F> RelationQuery<Ctx> for Project<P, Target, F>
+impl<'ctx, Ctx, P, Target: 'static, F> RelationQuery<'ctx, Ctx> for Project<P, Target, F>
 where
-    P: RelationQuery<Ctx>,
-    F: Fn(P::Value<'_>) -> Id<Target> + Clone + Copy,
-    Ctx: TotalRelation<Target, Target>,
+    P: RelationQuery<'ctx, Ctx>,
+    F: Fn(P::Value) -> Id<Target> + Clone + Copy + 'ctx,
+    Ctx: TotalRelation<Target, Target> + 'ctx,
 {
     #[inline]
-    fn execute<'a>(self, ctx: &'a Ctx) -> impl Iterator<Item = (Id<Target>, &'a Target)> + 'a
-    where
-        Ctx: 'a,
-        Self: 'a,
-    {
+    fn execute(self, ctx: &'ctx Ctx) -> impl Iterator<Item = (Id<Target>, &'ctx Target)> + 'ctx {
         self.plan.execute(ctx).map(move |(_, val)| {
             let target_id = (self.projector)(val);
             (target_id, ctx.get(target_id))
@@ -793,25 +760,18 @@ pub struct ProjectSlice<P, Target, F> {
     pub(crate) _marker: PhantomData<Target>,
 }
 
-impl<P: QueryPlan, Target: 'static, F> QueryPlan for ProjectSlice<P, Target, F> {
+impl<'ctx, P: QueryPlan<'ctx>, Target: 'static, F> QueryPlan<'ctx> for ProjectSlice<P, Target, F> {
     type Key = P::Key;
-    type Value<'a>
-        = SliceId<Target>
-    where
-        Self: 'a;
+    type Value = SliceId<Target>;
 }
 
-impl<Ctx, P, Target: 'static, F> RelationQuery<Ctx> for ProjectSlice<P, Target, F>
+impl<'ctx, Ctx, P, Target: 'static, F> RelationQuery<'ctx, Ctx> for ProjectSlice<P, Target, F>
 where
-    P: RelationQuery<Ctx>,
-    F: Fn(P::Value<'_>) -> SliceId<Target> + Clone + Copy,
+    P: RelationQuery<'ctx, Ctx>,
+    F: Fn(P::Value) -> SliceId<Target> + Clone + Copy + 'ctx,
 {
     #[inline]
-    fn execute<'a>(self, ctx: &'a Ctx) -> impl Iterator<Item = (Id<P::Key>, SliceId<Target>)> + 'a
-    where
-        Ctx: 'a,
-        Self: 'a,
-    {
+    fn execute(self, ctx: &'ctx Ctx) -> impl Iterator<Item = (Id<P::Key>, SliceId<Target>)> + 'ctx {
         self.plan.execute(ctx).map(move |(id, val)| {
             let slice_id = (self.projector)(val);
             (id, slice_id)
@@ -839,26 +799,19 @@ pub struct ProjectOpt<P, Target, F> {
     pub(crate) _marker: PhantomData<Target>,
 }
 
-impl<P: QueryPlan, Target: 'static, F> QueryPlan for ProjectOpt<P, Target, F> {
+impl<'ctx, P: QueryPlan<'ctx>, Target: 'static, F> QueryPlan<'ctx> for ProjectOpt<P, Target, F> {
     type Key = Target;
-    type Value<'a>
-        = &'a Target
-    where
-        Self: 'a;
+    type Value = &'ctx Target;
 }
 
-impl<Ctx, P, Target: 'static, F> RelationQuery<Ctx> for ProjectOpt<P, Target, F>
+impl<'ctx, Ctx, P, Target: 'static, F> RelationQuery<'ctx, Ctx> for ProjectOpt<P, Target, F>
 where
-    P: RelationQuery<Ctx>,
-    F: Fn(P::Value<'_>) -> Option<Id<Target>> + Clone + Copy,
-    Ctx: TotalRelation<Target, Target>,
+    P: RelationQuery<'ctx, Ctx>,
+    F: Fn(P::Value) -> Option<Id<Target>> + Clone + Copy + 'ctx,
+    Ctx: TotalRelation<Target, Target> + 'ctx,
 {
     #[inline]
-    fn execute<'a>(self, ctx: &'a Ctx) -> impl Iterator<Item = (Id<Target>, &'a Target)> + 'a
-    where
-        Ctx: 'a,
-        Self: 'a,
-    {
+    fn execute(self, ctx: &'ctx Ctx) -> impl Iterator<Item = (Id<Target>, &'ctx Target)> + 'ctx {
         self.plan.execute(ctx).filter_map(move |(_, val)| {
             let target_id = (self.projector)(val)?;
             Some((target_id, ctx.get(target_id)))
@@ -879,108 +832,6 @@ impl<P: Clone, Target, F: Clone> Clone for ProjectOpt<P, Target, F> {
 
 impl<P: Copy, Target, F: Copy> Copy for ProjectOpt<P, Target, F> {}
 
-// Implementation of Inspect
-#[derive(Clone, Copy)]
-pub struct Inspect<P, I> {
-    pub(crate) plan: P,
-    pub(crate) inspector: I,
-}
-
-impl<P: QueryPlan, I> QueryPlan for Inspect<P, I> {
-    type Key = P::Key;
-    type Value<'a>
-        = P::Value<'a>
-    where
-        Self: 'a;
-}
-
-impl<Ctx, P, I> RelationQuery<Ctx> for Inspect<P, I>
-where
-    P: RelationQuery<Ctx>,
-    I: for<'b> Inspector<P::Key, P::Value<'b>>,
-{
-    #[inline]
-    fn execute<'a>(self, ctx: &'a Ctx) -> impl Iterator<Item = (Id<P::Key>, P::Value<'a>)> + 'a
-    where
-        Ctx: 'a,
-        Self: 'a,
-    {
-        let mut inspector = self.inspector;
-        self.plan.execute(ctx).map(move |(id, val)| {
-            inspector.inspect(id, val);
-            (id, val)
-        })
-    }
-}
-
-// Implementation of InspectKey
-#[derive(Clone, Copy)]
-pub struct InspectKey<P, F> {
-    pub(crate) plan: P,
-    pub(crate) inspector: F,
-}
-
-impl<P: QueryPlan, F> QueryPlan for InspectKey<P, F> {
-    type Key = P::Key;
-    type Value<'a>
-        = P::Value<'a>
-    where
-        Self: 'a;
-}
-
-impl<Ctx, P, F> RelationQuery<Ctx> for InspectKey<P, F>
-where
-    P: RelationQuery<Ctx>,
-    F: FnMut(Id<P::Key>),
-{
-    #[inline]
-    fn execute<'a>(self, ctx: &'a Ctx) -> impl Iterator<Item = (Id<P::Key>, P::Value<'a>)> + 'a
-    where
-        Ctx: 'a,
-        Self: 'a,
-    {
-        let mut inspector = self.inspector;
-        self.plan.execute(ctx).map(move |(id, val)| {
-            inspector(id);
-            (id, val)
-        })
-    }
-}
-
-// Implementation of InspectValue
-#[derive(Clone, Copy)]
-pub struct InspectValue<P, F> {
-    pub(crate) plan: P,
-    pub(crate) inspector: F,
-}
-
-impl<P: QueryPlan, F> QueryPlan for InspectValue<P, F> {
-    type Key = P::Key;
-    type Value<'a>
-        = P::Value<'a>
-    where
-        Self: 'a;
-}
-
-impl<Ctx, P, F> RelationQuery<Ctx> for InspectValue<P, F>
-where
-    P: RelationQuery<Ctx>,
-    F: for<'b> FnMut(P::Value<'b>),
-{
-    #[inline]
-    fn execute<'a>(self, ctx: &'a Ctx) -> impl Iterator<Item = (Id<P::Key>, P::Value<'a>)> + 'a
-    where
-        Ctx: 'a,
-        Self: 'a,
-    {
-        let mut inspector = self.inspector;
-        self.plan.execute(ctx).map(move |(id, val)| {
-            inspector(val);
-            (id, val)
-        })
-    }
-}
-
 // Implementation of GetAt
 pub struct GetAt<P, T> {
     pub(crate) plan: P,
@@ -988,27 +839,19 @@ pub struct GetAt<P, T> {
     pub(crate) _marker: PhantomData<T>,
 }
 
-impl<P: QueryPlan, T: 'static> QueryPlan for GetAt<P, T> {
+impl<'ctx, P: QueryPlan<'ctx>, T: 'static> QueryPlan<'ctx> for GetAt<P, T> {
     type Key = T;
-    type Value<'a>
-        = &'a T
-    where
-        Self: 'a,
-        T: 'a;
+    type Value = &'ctx T;
 }
 
-impl<Ctx, P, T: 'static> RelationQuery<Ctx> for GetAt<P, T>
+impl<'ctx, Ctx, P, T: 'static> RelationQuery<'ctx, Ctx> for GetAt<P, T>
 where
-    P: RelationQuery<Ctx>,
-    for<'b> P::Value<'b>: std::borrow::Borrow<SliceId<T>>,
-    Ctx: SliceRelation<T> + TotalRelation<T, T>,
+    P: RelationQuery<'ctx, Ctx>,
+    P::Value: std::borrow::Borrow<SliceId<T>>,
+    Ctx: SliceRelation<T> + TotalRelation<T, T> + 'ctx,
 {
     #[inline]
-    fn execute<'a>(self, ctx: &'a Ctx) -> impl Iterator<Item = (Id<T>, &'a T)> + 'a
-    where
-        Ctx: 'a,
-        Self: 'a,
-    {
+    fn execute(self, ctx: &'ctx Ctx) -> impl Iterator<Item = (Id<T>, &'ctx T)> + 'ctx {
         self.plan.execute(ctx).map(move |(_, val)| {
             let slice_id = *val.borrow();
             let ids = ctx.get_slice(slice_id);
@@ -1031,18 +874,3 @@ impl<P: Clone, T> Clone for GetAt<P, T> {
 }
 
 impl<P: Copy, T> Copy for GetAt<P, T> {}
-
-// Generic Inspector trait for assertions
-pub trait Inspector<K, V> {
-    fn inspect(&mut self, id: Id<K>, value: V);
-}
-
-impl<K, V, F> Inspector<K, V> for F
-where
-    F: FnMut(Id<K>, V),
-{
-    #[inline]
-    fn inspect(&mut self, id: Id<K>, value: V) {
-        self(id, value);
-    }
-}

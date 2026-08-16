@@ -1280,57 +1280,52 @@ mod tests {
             .project_slice(|r| r.fields)
             .branch(&builder, |fields| {
                 // Field 0: "a: x"
+                fields.get_at(0).each_value(&builder, |f| {
+                    f.field.assert_name("a", &builder, &interner);
+                });
+
                 fields
                     .get_at(0)
-                    .inspect_value(|f: &node::RecordFieldPat| {
-                        f.field.assert_name("a", &builder, &interner)
-                    })
                     .project_opt(|f| f.pat)
                     .cast::<node::BindPat>()
-                    .inspect_value(|b| b.0.assert_name("x", &builder, &interner))
-                    .execute(&builder)
-                    .next();
+                    .each_value(&builder, |b| {
+                        b.0.assert_name("x", &builder, &interner);
+                    });
 
                 // Field 1: "b: { y }"
+                fields.get_at(1).each_value(&builder, |f| {
+                    f.field.assert_name("b", &builder, &interner);
+                });
+
                 fields
                     .get_at(1)
-                    .inspect_value(|f: &node::RecordFieldPat| {
-                        f.field.assert_name("b", &builder, &interner)
-                    })
                     .project_opt(|f| f.pat)
                     .cast::<node::RecordPat>()
                     .project_slice(|r| r.fields)
                     .get_at(0)
-                    .inspect_value(|f: &node::RecordFieldPat| {
+                    .each_value(&builder, |f| {
                         f.field.assert_name("y", &builder, &interner);
                         assert!(f.pat.is_none());
-                    })
-                    .execute(&builder)
-                    .next();
+                    });
 
                 // Field 2: "c: _"
+                fields.get_at(2).each_value(&builder, |f| {
+                    f.field.assert_name("c", &builder, &interner);
+                });
+
                 fields
                     .get_at(2)
-                    .inspect_value(|f: &node::RecordFieldPat| {
-                        f.field.assert_name("c", &builder, &interner)
-                    })
                     .project_opt(|f| f.pat)
                     .cast::<node::AnyPat>()
-                    .execute(&builder)
-                    .next();
+                    .each(&builder, |_, _| {}); // Triggers assertions natively!
 
                 // Field 3: "d"
-                fields
-                    .get_at(3)
-                    .inspect_value(|f: &node::RecordFieldPat| {
-                        f.field.assert_name("d", &builder, &interner);
-                        assert!(f.pat.is_none());
-                    })
-                    .execute(&builder)
-                    .next();
+                fields.get_at(3).each_value(&builder, |f| {
+                    f.field.assert_name("d", &builder, &interner);
+                    assert!(f.pat.is_none());
+                });
             });
     }
-
     //     #[test]
     //     fn case_expr() {
     //         let mut interner = StrInterner::default();
