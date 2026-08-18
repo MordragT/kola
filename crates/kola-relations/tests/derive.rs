@@ -60,7 +60,7 @@ mod tests {
         // No closure annotations are needed thanks to the direct method where clause!
         let results: Vec<_> = query::<MockLiteral>()
             .filter(|lit| lit.value > 50)
-            .execute(&store)
+            .get_row(&store)
             .collect();
 
         assert_eq!(results.len(), 1);
@@ -84,7 +84,7 @@ mod tests {
         // 1. Inner Join (.with)
         let with_results: Vec<_> = query::<MockLiteral>()
             .with::<String>()
-            .execute(&db)
+            .get_row(&db)
             .collect();
 
         assert_eq!(with_results.len(), 1);
@@ -94,7 +94,7 @@ mod tests {
         // 2. Left Join (.left_join)
         let left_results: Vec<_> = query::<MockLiteral>()
             .left_join::<String>()
-            .execute(&db)
+            .get_row(&db)
             .collect();
 
         assert_eq!(left_results.len(), 2);
@@ -106,7 +106,7 @@ mod tests {
         // 3. Anti-Join (.without)
         let without_results: Vec<_> = query::<MockLiteral>()
             .without::<String>()
-            .execute(&db)
+            .get_row(&db)
             .collect();
 
         assert_eq!(without_results.len(), 1);
@@ -129,7 +129,7 @@ mod tests {
         let results: Vec<_> = query::<MockExpr>()
             .cast::<MockCall>()
             .project(|call| call.arg)
-            .execute(&store)
+            .get_row(&store)
             .collect();
 
         assert_eq!(results.len(), 1);
@@ -192,7 +192,7 @@ mod tests {
 
         let results: Vec<_> = query::<MockLiteral>()
             .with::<String>()
-            .execute(&db)
+            .get_row(&db)
             .collect();
 
         assert_eq!(results.len(), 2);

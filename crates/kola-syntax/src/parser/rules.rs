@@ -1275,56 +1275,64 @@ mod tests {
         let ParseResult { node, builder, .. } =
             try_parse_str_with("{ a: x, b: { y }, c: _, d }", pat_parser(), &mut interner);
 
-        query_one::<node::Pat>(node)
+        // 1. Eagerly retrieve the fields SliceId with zero verbosity
+        let fields = node
+            .query()
             .cast::<node::RecordPat>()
             .project_slice(|r| r.fields)
-            .branch(&builder, |fields| {
-                // Field 0: "a: x"
-                fields.get_at(0).each_value(&builder, |f| {
-                    f.field.assert_name("a", &builder, &interner);
-                });
+            .get_slice(&builder);
 
-                fields
-                    .get_at(0)
-                    .project_opt(|f| f.pat)
-                    .cast::<node::BindPat>()
-                    .each_value(&builder, |b| {
-                        b.0.assert_name("x", &builder, &interner);
-                    });
+        // 2. Query the slice eagerly and cleanly without nested closures
 
-                // Field 1: "b: { y }"
-                fields.get_at(1).each_value(&builder, |f| {
-                    f.field.assert_name("b", &builder, &interner);
-                });
-
-                fields
-                    .get_at(1)
-                    .project_opt(|f| f.pat)
-                    .cast::<node::RecordPat>()
-                    .project_slice(|r| r.fields)
-                    .get_at(0)
-                    .each_value(&builder, |f| {
-                        f.field.assert_name("y", &builder, &interner);
-                        assert!(f.pat.is_none());
-                    });
-
-                // Field 2: "c: _"
-                fields.get_at(2).each_value(&builder, |f| {
-                    f.field.assert_name("c", &builder, &interner);
-                });
-
-                fields
-                    .get_at(2)
-                    .project_opt(|f| f.pat)
-                    .cast::<node::AnyPat>()
-                    .each(&builder, |_, _| {}); // Triggers assertions natively!
-
-                // Field 3: "d"
-                fields.get_at(3).each_value(&builder, |f| {
-                    f.field.assert_name("d", &builder, &interner);
-                    assert!(f.pat.is_none());
-                });
+        // Field 0: "a: x"
+        query()
+            .get_at(0)
+            .get_slice_items(&builder, fields)
+            .for_each_value(&builder, |f| {
+                f.field.assert_name("a", &builder, &interner);
             });
+
+        query_slice(fields)
+            .get_at(0)
+            .project_opt(|f| f.pat)
+            .cast::<node::BindPat>()
+            .for_each_value(&builder, |b| {
+                b.0.assert_name("x", &builder, &interner);
+            });
+
+        // Field 1: "b: { y }"
+        query_slice(fields).get_at(1).for_each_value(&builder, |f| {
+            f.field.assert_name("b", &builder, &interner);
+        });
+
+        query_slice(fields)
+            .get_at(1)
+            .project_opt(|f| f.pat)
+            .cast::<node::RecordPat>()
+            .project_slice(|r| r.fields)
+            .get_at(0)
+            .for_each_value(&builder, |f| {
+                f.field.assert_name("y", &builder, &interner);
+                assert!(f.pat.is_none());
+            });
+
+        // Field 2: "c: _"
+        query_slice(fields).get_at(2).for_each_value(&builder, |f| {
+            f.field.assert_name("c", &builder, &interner);
+        });
+
+        // Retrieve AnyPat to assert its presence
+        let _any = query_slice(fields)
+            .get_at(2)
+            .project_opt(|f| f.pat)
+            .cast::<node::AnyPat>()
+            .get_one(&builder);
+
+        // Field 3: "d"
+        query_slice(fields).get_at(3).for_each_value(&builder, |f| {
+            f.field.assert_name("d", &builder, &interner);
+            assert!(f.pat.is_none());
+        });
     }
     //     #[test]
     //     fn case_expr() {

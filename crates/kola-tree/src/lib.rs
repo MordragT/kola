@@ -14,9 +14,5 @@ pub mod prelude {
     pub use crate::visit::{Visitable, Visitor};
     pub use kola_relations::side_table::{SideMap, SideVec};
     pub use kola_relations::slice::{SliceBuilder, SliceId, SliceStorage};
-    pub use kola_relations::{
-        Allocate, Id, IdIter, KeyedQuery, PartialRelation, QueryPlan, RelationIds, RelationQuery,
-        SliceRelation, TotalRelation, TotalRelationMut, query, query_items, query_one,
-        query_relation, query_slice,
-    };
+    pub use kola_relations::*;
 }

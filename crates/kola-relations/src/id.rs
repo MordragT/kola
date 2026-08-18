@@ -1,5 +1,7 @@
 use std::marker::PhantomData;
 
+use crate::{Query, ScanOneQuery, query_id};
+
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct Id<T: ?Sized> {
     id: u32,
@@ -51,13 +53,21 @@ impl<T: ?Sized> std::fmt::Debug for Id<T> {
 
 impl<T: ?Sized> Id<T> {
     #[inline]
-    pub fn as_usize(&self) -> usize {
+    pub fn as_usize(self) -> usize {
         self.id as usize
     }
 
     #[inline]
-    pub fn id(&self) -> u32 {
+    pub fn id(self) -> u32 {
         self.id
+    }
+
+    #[inline]
+    pub fn query(self) -> Query<T, T, ScanOneQuery<T>, Self>
+    where
+        T: Sized + 'static,
+    {
+        query_id(self)
     }
 }
 
