@@ -6,4 +6,7 @@ edition = "2024"
 [dependencies]
 kola-print-macro = { path = "./macro" }
 owo-colors.workspace = true
-bumpalo = { version = "3", features = ["allocator_api", "collections"] }
+bumpalo = { git = "https://github.com/fitzgen/bumpalo", rev = "52816568e32d47cb887d358fde173d5a4a6a550a", features = [
+    "allocator_api",
+    "collections",
+] }

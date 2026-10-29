@@ -10,8 +10,6 @@
 //! implementations (e.g. for symbols or monotypes) live in the crates that own
 //! those types.
 
-#![feature(never_type)]
-
 use indexmap::IndexMap;
 use std::{
     borrow::Cow,
