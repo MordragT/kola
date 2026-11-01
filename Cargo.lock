@@ -982,7 +982,6 @@ name = "kola-relations"
 version = "0.1.0"
 dependencies = [
  "kola-relations-macro",
- "pastey",
  "serde",
 ]
 

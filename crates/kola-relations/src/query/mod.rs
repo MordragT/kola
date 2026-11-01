@@ -1,291 +1,307 @@
 use std::marker::PhantomData;
 
 use crate::Id;
-use crate::relation::{RelationIds, SliceRelation, TotalRelationMut};
+use crate::presence::Presence;
+use crate::relation::SliceRelation;
 use crate::slice::SliceId;
 
-pub mod combinators;
-pub use combinators::*;
+pub mod plan;
+pub mod update;
 
-/// Conversion trait for attempting to extract/project a child ID of a specific type.
-/// Implemented by the compiler AST crate.
-pub trait TryProject<Target: 'static> {
-    fn try_project(&self) -> Option<Id<Target>>;
-}
+pub use plan::*;
+pub use update::*;
 
-impl<T, Target: 'static> TryProject<Target> for &T
-where
-    T: TryProject<Target>,
-{
-    #[inline]
-    fn try_project(&self) -> Option<Id<Target>> {
-        (*self).try_project()
-    }
-}
-
-/// Describes the physical traversal of a query path `Src` -> `Target` against an active context `'ctx`.
-/// Leverages associated types to uniquely constrain source, target, and output types.
-pub trait Traversal<'ctx, Ctx> {
-    type Src: 'static;
-    type Target: 'static;
-    type Output: Copy + Clone + 'ctx;
-
-    /// Eagerly executes the traversal starting at a specific ID by reference,
-    /// yielding both the target ID and the output value.
-    fn execute(
-        &self,
-        ctx: &'ctx Ctx,
-        start: Id<Self::Src>,
-    ) -> Option<(Id<Self::Target>, Self::Output)>;
-}
-
-/// Describes the physical traversal of a query path `Src` -> `SliceId<Target>` against an active context `'ctx`.
-pub trait SliceTraversal<'ctx, Ctx> {
-    type Src: 'static;
-    type Target: 'static;
-
-    /// Eagerly executes the traversal and returns the SliceId key directly.
-    fn execute_slice(&self, ctx: &'ctx Ctx, start: Id<Self::Src>) -> Option<SliceId<Self::Target>>;
-}
-
-/// A stateless, context-free, 'static representation of a relational query.
-/// It contains absolutely no data references, allowing it to compile flawlessly.
+/// A prepared query plan. The seed is supplied at execution time.
 #[derive(Clone, Copy)]
-pub struct Query<Src, Target, Plan, State = ()> {
-    pub plan: Plan,
-    pub state: State,
-    pub(crate) _marker: PhantomData<(Src, Target)>,
+pub struct Query<P> {
+    pub plan: P,
 }
 
-/// Helper starter function for constructing a new relational query path
+/// Helper starter function for constructing a new relational query plan.
 #[inline]
-pub fn query<T: 'static>() -> Query<T, T, ScanOneQuery<T>> {
+pub fn query<T: 'static>() -> Query<ScanOneQuery<T>> {
     Query {
         plan: ScanOneQuery(PhantomData),
-        state: (),
-        _marker: PhantomData,
     }
 }
 
-/// Helper starter function for constructing a new relational query path
-#[inline]
-pub fn query_id<T: 'static>(id: Id<T>) -> Query<T, T, ScanOneQuery<T>, Id<T>> {
-    Query {
-        plan: ScanOneQuery(PhantomData),
-        state: id,
-        _marker: PhantomData,
+impl<P> Query<P> {
+    #[inline]
+    pub fn map<New>(self, f: impl FnOnce(P) -> New) -> Query<New> {
+        Query { plan: f(self.plan) }
     }
 }
 
-/// Helper starter function for constructing a new relational query path starting from a SliceId
-#[inline]
-pub fn query_slice<T: 'static>(id: SliceId<T>) -> Query<T, T, ScanOneQuery<T>, SliceId<T>> {
-    Query {
-        plan: ScanOneQuery(PhantomData),
-        state: id,
-        _marker: PhantomData,
+impl<P: Plan> Query<P> {
+    /// Monadic combinator: Filter target values
+    #[inline]
+    pub fn filter<F>(self, predicate: F) -> Query<FilterQuery<P, F>>
+    where
+        F: for<'a> Fn(<P as Plan>::Value<'a>) -> bool,
+    {
+        self.map(|plan| FilterQuery { plan, predicate })
     }
-}
 
-impl<Src, Target, Plan> Query<Src, Target, Plan> {
-    pub fn new(plan: Plan) -> Self {
-        Self {
+    /// Monadic combinator: Cast the current target type to a specific concrete variant/type (prism)
+    #[inline]
+    pub fn cast<U: 'static>(self) -> Query<CastQuery<P, U>> {
+        self.map(|plan| CastQuery {
             plan,
-            state: (),
             _marker: PhantomData,
-        }
-    }
-}
-
-impl<Src, Target, Plan, State> Query<Src, Target, Plan, State> {
-    pub fn with_state(plan: Plan, state: State) -> Self {
-        Self {
-            plan,
-            state,
-            _marker: PhantomData,
-        }
-    }
-
-    #[inline]
-    pub fn map<U, New>(self, f: impl FnOnce(Plan) -> New) -> Query<Src, U, New, State> {
-        let Self {
-            plan,
-            state,
-            _marker,
-        } = self;
-
-        let plan = f(plan);
-
-        Query {
-            plan,
-            state,
-            _marker: PhantomData,
-        }
-    }
-}
-
-impl<Src: 'static, Target, Plan> Query<Src, Target, Plan, Id<Src>> {
-    /// Eager loader: Executes the traversal starting from a single ID and returns the single target.
-    #[inline]
-    pub fn get_one<'ctx, Ctx>(self, ctx: &'ctx Ctx) -> Plan::Output
-    where
-        Plan: Traversal<'ctx, Ctx, Src = Src, Target = Target>,
-    {
-        self.plan
-            .execute(ctx, self.state)
-            .map(|(_, val)| val)
-            .expect("get_one failed")
-    }
-
-    /// Eager loader: Executes the traversal starting from a single ID, returning an Option.
-    #[inline]
-    pub fn get_opt<'ctx, Ctx>(self, ctx: &'ctx Ctx) -> Option<Plan::Output>
-    where
-        Plan: Traversal<'ctx, Ctx, Src = Src, Target = Target>,
-    {
-        self.plan.execute(ctx, self.state).map(|(_, val)| val)
-    }
-
-    /// Eager loader: Executes the traversal starting from a single ID, returning the SliceId.
-    #[inline]
-    pub fn get_slice<'ctx, Ctx>(self, ctx: &'ctx Ctx) -> SliceId<Target>
-    where
-        Plan: SliceTraversal<'ctx, Ctx, Src = Src, Target = Target>,
-    {
-        self.plan
-            .execute_slice(ctx, self.state)
-            .expect("get_slice failed")
-    }
-
-    /// Eager loader: Executes the traversal starting from a single ID, returning Option<SliceId>.
-    #[inline]
-    pub fn get_slice_opt<'ctx, Ctx>(self, ctx: &'ctx Ctx) -> Option<SliceId<Target>>
-    where
-        Plan: SliceTraversal<'ctx, Ctx, Src = Src, Target = Target>,
-    {
-        self.plan.execute_slice(ctx, self.state)
-    }
-}
-
-impl<Src: 'static, Target, Plan> Query<Src, Target, Plan> {
-    /// Eager loader: Executes the traversal starting from a single ID and returns the single target.
-    #[inline]
-    pub fn get_one<'ctx, Ctx>(self, ctx: &'ctx Ctx, start: Id<Src>) -> Plan::Output
-    where
-        Plan: Traversal<'ctx, Ctx, Src = Src, Target = Target>,
-    {
-        self.plan
-            .execute(ctx, start)
-            .map(|(_, val)| val)
-            .expect("get_one failed")
-    }
-
-    /// Eager loader: Executes the traversal starting from a single ID, returning an Option.
-    #[inline]
-    pub fn get_opt<'ctx, Ctx>(self, ctx: &'ctx Ctx, start: Id<Src>) -> Option<Plan::Output>
-    where
-        Plan: Traversal<'ctx, Ctx, Src = Src, Target = Target>,
-    {
-        self.plan.execute(ctx, start).map(|(_, val)| val)
-    }
-
-    /// Eager loader: Executes the traversal starting from a slice of IDs and yields a lazy iterator of targets.
-    /// This is 100% zero-allocation and extremely high-performance!
-    #[inline]
-    pub fn get_slice_items<'ctx, Ctx>(
-        self,
-        ctx: &'ctx Ctx,
-        start_slice: SliceId<Src>,
-    ) -> impl Iterator<Item = Plan::Output> + 'ctx
-    where
-        Plan: Traversal<'ctx, Ctx, Src = Src, Target = Target> + 'ctx,
-        Ctx: SliceRelation<Src> + 'ctx,
-    {
-        ctx.get_slice(start_slice)
-            .iter()
-            .filter_map(move |&id| self.plan.execute(ctx, id).map(|(_, val)| val))
-    }
-
-    /// Eager loader: Executes the traversal starting from all IDs inside the context's relation.
-    /// This is used to query/scan the entire relation/table dynamically!
-    #[inline]
-    pub fn get_row<'ctx, Ctx>(
-        self,
-        ctx: &'ctx Ctx,
-    ) -> impl Iterator<Item = (Id<Target>, Plan::Output)> + 'ctx
-    where
-        Plan: Traversal<'ctx, Ctx, Src = Src, Target = Target> + 'ctx,
-        Ctx: RelationIds<Src> + 'ctx,
-    {
-        Ctx::ids(ctx).filter_map(move |id| {
-            let (target_id, output) = self.plan.execute(ctx, id)?;
-            Some((target_id, output))
         })
     }
-}
 
-// Plural Loaders (when Plan implements SliceTraversal)
-impl<Src: 'static, Target: 'static, Plan> Query<Src, Target, Plan> {
-    /// Eager loader: Executes the traversal starting from a single ID, returning the SliceId.
+    /// Assert that the plan yields a focus, panicking otherwise
     #[inline]
-    pub fn get_slice<'ctx, Ctx>(self, ctx: &'ctx Ctx, start: Id<Src>) -> SliceId<Target>
-    where
-        Plan: SliceTraversal<'ctx, Ctx, Src = Src, Target = Target>,
-    {
-        self.plan
-            .execute_slice(ctx, start)
-            .expect("get_slice failed")
+    pub fn expect(self) -> Query<ExpectQuery<P>> {
+        self.map(|plan| ExpectQuery { plan })
     }
 
-    /// Eager loader: Executes the traversal starting from a single ID, returning Option<SliceId>.
+    /// Monadic combinator: Project a single target ID
     #[inline]
-    pub fn get_slice_opt<'ctx, Ctx>(self, ctx: &'ctx Ctx, start: Id<Src>) -> Option<SliceId<Target>>
+    pub fn project<U: 'static, F>(self, projector: F) -> Query<ProjectQuery<P, U, F>>
     where
-        Plan: SliceTraversal<'ctx, Ctx, Src = Src, Target = Target>,
+        F: for<'a> Fn(<P as Plan>::Value<'a>) -> Id<U>,
     {
-        self.plan.execute_slice(ctx, start)
+        self.map(|plan| ProjectQuery {
+            plan,
+            projector,
+            _marker: PhantomData,
+        })
     }
-}
 
-impl<Src: 'static, Target: 'static, Plan> Query<Src, Target, Plan> {
-    /// Eager mutator: Scans the relation, runs the path to find matching target elements,
-    /// and mutates them in-place using a mutable closure.
-    pub fn update<'ctx, Ctx, F>(self, ctx: &'ctx mut Ctx, mut f: F)
-    where
-        for<'a> Plan: Traversal<'a, Ctx, Src = Src, Target = Target>,
-        Ctx: RelationIds<Src> + TotalRelationMut<Target, Target> + 'ctx,
-        F: FnMut(&mut Target),
-    {
-        // Phase 1: Retrieve matching target IDs using a temporary immutable borrow of ctx
-        let ids: Vec<Id<Target>> = {
-            let ctx_ref: &Ctx = ctx;
-            <Ctx as RelationIds<Src>>::ids(ctx_ref)
-                .filter_map(|id| {
-                    self.plan
-                        .execute(ctx_ref, id)
-                        .map(|(target_id, _)| target_id)
-                })
-                .collect()
-        };
-
-        // Phase 2: Perform the mutations mutably on each target ID
-        for id in ids {
-            let val = ctx.get_mut(id);
-            f(val);
-        }
-    }
-}
-
-impl<Src: 'static, Target, Plan> Query<Src, Target, Plan, SliceId<Src>> {
-    /// Eager loader: Executes the traversal starting from a stored slice of IDs and yields a lazy iterator of targets.
+    /// Monadic combinator: Project a slice of target IDs
     #[inline]
-    pub fn iter<'ctx, Ctx>(self, ctx: &'ctx Ctx) -> impl Iterator<Item = Plan::Output> + 'ctx
+    pub fn project_slice<U: 'static, F>(self, projector: F) -> Query<ProjectSliceQuery<P, U, F>>
     where
-        Plan: Traversal<'ctx, Ctx, Src = Src, Target = Target> + 'ctx,
-        Ctx: SliceRelation<Src> + 'ctx,
+        F: for<'a> Fn(<P as Plan>::Value<'a>) -> SliceId<U>,
     {
-        ctx.get_slice(self.state)
-            .iter()
-            .filter_map(move |&id| self.plan.execute(ctx, id).map(|(_, val)| val))
+        self.map(|plan| ProjectSliceQuery {
+            plan,
+            projector,
+            _marker: PhantomData,
+        })
+    }
+
+    /// Monadic combinator: Project an optional target ID
+    #[inline]
+    pub fn project_opt<U: 'static, F>(self, projector: F) -> Query<ProjectOptQuery<P, U, F>>
+    where
+        F: for<'a> Fn(<P as Plan>::Value<'a>) -> Option<Id<U>>,
+    {
+        self.map(|plan| ProjectOptQuery {
+            plan,
+            projector,
+            _marker: PhantomData,
+        })
+    }
+
+    /// Monadic combinator: Inner join metadata
+    #[inline]
+    pub fn with<M: 'static>(self) -> Query<WithQuery<P, M>> {
+        self.map(|plan| WithQuery {
+            plan,
+            _marker: PhantomData,
+        })
+    }
+
+    /// Monadic combinator: Required metadata join
+    #[inline]
+    pub fn with_required<M: 'static>(self) -> Query<WithRequiredQuery<P, M>> {
+        self.map(|plan| WithRequiredQuery {
+            plan,
+            _marker: PhantomData,
+        })
+    }
+
+    /// Monadic combinator: Left join metadata
+    #[inline]
+    pub fn left_join<M: 'static>(self) -> Query<LeftJoinQuery<P, M>> {
+        self.map(|plan| LeftJoinQuery {
+            plan,
+            _marker: PhantomData,
+        })
+    }
+
+    /// Monadic combinator: Anti-join metadata
+    #[inline]
+    pub fn without<M: 'static>(self) -> Query<WithoutQuery<P, M>> {
+        self.map(|plan| WithoutQuery {
+            plan,
+            _marker: PhantomData,
+        })
+    }
+
+    /// Monadic combinator: Narrow slice element by index
+    #[inline]
+    pub fn nth<T: 'static>(self, index: usize) -> Query<GetAt<P, T>> {
+        self.map(|plan| GetAt {
+            plan,
+            index,
+            _marker: PhantomData,
+        })
+    }
+
+    /// Inspect each value while preserving the row and presence.
+    #[inline]
+    pub fn inspect<F>(self, inspect: F) -> Query<InspectQuery<P, F>>
+    where
+        F: for<'a> Fn(<P as Plan>::Value<'a>),
+    {
+        self.map(|plan| InspectQuery { plan, inspect })
+    }
+
+    /// Executes the plan from a single seed id.
+    #[inline]
+    pub fn get<'ctx, Ctx>(
+        self,
+        ctx: &'ctx Ctx,
+        id: Id<P::Src>,
+    ) -> <<P as Plan>::Presence as Presence>::Wrap<<P as Plan>::Value<'ctx>>
+    where
+        P: Traversal<'ctx, Ctx> + 'ctx,
+        Ctx: 'ctx,
+    {
+        <<P as Plan>::Presence as Presence>::map(self.plan.execute(ctx, id), |(_, value)| value)
+    }
+
+    /// Executes the plan from a single seed id and returns only the target ID.
+    #[inline]
+    pub fn get_id<'ctx, Ctx>(
+        self,
+        ctx: &'ctx Ctx,
+        id: Id<P::Src>,
+    ) -> <<P as Plan>::Presence as Presence>::Wrap<Id<<P as Plan>::Target>>
+    where
+        P: Traversal<'ctx, Ctx> + 'ctx,
+        Ctx: 'ctx,
+    {
+        <<P as Plan>::Presence as Presence>::map(self.plan.execute(ctx, id), |(target_id, _)| {
+            target_id
+        })
+    }
+
+    /// Executes the plan from a single seed id and returns the target ID together with its value.
+    #[inline]
+    pub fn rows<'ctx, Ctx>(
+        self,
+        ctx: &'ctx Ctx,
+        id: Id<P::Src>,
+    ) -> <<P as Plan>::Presence as Presence>::Wrap<(
+        Id<<P as Plan>::Target>,
+        <P as Plan>::Value<'ctx>,
+    )>
+    where
+        P: Traversal<'ctx, Ctx> + 'ctx,
+        Ctx: 'ctx,
+    {
+        self.plan.execute(ctx, id)
+    }
+
+    /// Executes a slice-valued plan from a single seed id.
+    #[inline]
+    pub fn get_slice<'ctx, Ctx>(
+        self,
+        ctx: &'ctx Ctx,
+        id: Id<P::Src>,
+    ) -> <<P as Plan>::Presence as Presence>::Wrap<SliceId<<P as Plan>::Target>>
+    where
+        P: SliceTraversal<'ctx, Ctx> + 'ctx,
+        Ctx: 'ctx,
+    {
+        self.plan.execute_slice(ctx, id)
+    }
+
+    /// Executes the plan from many seed ids.
+    #[inline]
+    pub fn iter<'ctx, Ctx, I>(
+        self,
+        ctx: &'ctx Ctx,
+        ids: I,
+    ) -> impl Iterator<Item = <<P as Plan>::Presence as Presence>::Wrap<<P as Plan>::Value<'ctx>>> + 'ctx
+    where
+        I: IntoIterator<Item = Id<P::Src>>,
+        I::IntoIter: 'ctx,
+        P: Traversal<'ctx, Ctx> + 'ctx,
+        Ctx: 'ctx,
+    {
+        let plan = self.plan;
+        ids.into_iter().map(move |id| {
+            <<P as Plan>::Presence as Presence>::map(plan.execute(ctx, id), |(_, value)| value)
+        })
+    }
+
+    /// Executes the plan from the seed ids stored in a slice.
+    #[inline]
+    pub fn iter_slice<'ctx, Ctx>(
+        self,
+        ctx: &'ctx Ctx,
+        slice: SliceId<P::Src>,
+    ) -> impl Iterator<Item = <<P as Plan>::Presence as Presence>::Wrap<<P as Plan>::Value<'ctx>>> + 'ctx
+    where
+        Ctx: SliceRelation<P::Src> + 'ctx,
+        P: Traversal<'ctx, Ctx> + 'ctx,
+    {
+        self.iter(ctx, ctx.get_slice(slice).iter().copied())
+    }
+
+    /// Executes the plan from many seed ids and yields target IDs with values.
+    #[inline]
+    pub fn iter_rows<'ctx, Ctx, I>(
+        self,
+        ctx: &'ctx Ctx,
+        ids: I,
+    ) -> impl Iterator<
+        Item = <<P as Plan>::Presence as Presence>::Wrap<(
+            Id<<P as Plan>::Target>,
+            <P as Plan>::Value<'ctx>,
+        )>,
+    > + 'ctx
+    where
+        I: IntoIterator<Item = Id<P::Src>>,
+        I::IntoIter: 'ctx,
+        P: Traversal<'ctx, Ctx> + 'ctx,
+        Ctx: 'ctx,
+    {
+        let plan = self.plan;
+        ids.into_iter().map(move |id| plan.execute(ctx, id))
+    }
+
+    /// Executes the plan from the seed ids stored in a slice and yields target IDs with values.
+    #[inline]
+    pub fn iter_slice_rows<'ctx, Ctx>(
+        self,
+        ctx: &'ctx Ctx,
+        slice: SliceId<P::Src>,
+    ) -> impl Iterator<
+        Item = <<P as Plan>::Presence as Presence>::Wrap<(
+            Id<<P as Plan>::Target>,
+            <P as Plan>::Value<'ctx>,
+        )>,
+    > + 'ctx
+    where
+        Ctx: SliceRelation<P::Src> + 'ctx,
+        P: Traversal<'ctx, Ctx> + 'ctx,
+    {
+        self.iter_rows(ctx, ctx.get_slice(slice).iter().copied())
+    }
+
+    /// Executes a slice-valued plan from many seed ids.
+    #[inline]
+    pub fn iter_slices<'ctx, Ctx, I>(
+        self,
+        ctx: &'ctx Ctx,
+        ids: I,
+    ) -> impl Iterator<
+        Item = <<P as Plan>::Presence as Presence>::Wrap<SliceId<<P as Plan>::Target>>,
+    > + 'ctx
+    where
+        I: IntoIterator<Item = Id<P::Src>>,
+        I::IntoIter: 'ctx,
+        P: SliceTraversal<'ctx, Ctx> + 'ctx,
+        Ctx: 'ctx,
+    {
+        let plan = self.plan;
+        ids.into_iter().map(move |id| plan.execute_slice(ctx, id))
     }
 }

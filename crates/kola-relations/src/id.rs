@@ -1,8 +1,7 @@
 use std::marker::PhantomData;
 
-use crate::{Query, ScanOneQuery, query_id};
-
 #[derive(serde::Serialize, serde::Deserialize)]
+#[repr(transparent)]
 pub struct Id<T: ?Sized> {
     id: u32,
     t: std::marker::PhantomData<T>,
@@ -61,17 +60,11 @@ impl<T: ?Sized> Id<T> {
     pub fn id(self) -> u32 {
         self.id
     }
-
-    #[inline]
-    pub fn query(self) -> Query<T, T, ScanOneQuery<T>, Self>
-    where
-        T: Sized + 'static,
-    {
-        query_id(self)
-    }
 }
 
 impl<T> Id<T> {
+    /// Construct an ID without checking that it fits in the 32-bit ID space.
+    /// Values larger than `u32::MAX` are truncated.
     #[inline]
     pub fn unchecked_from_usize(id: usize) -> Self {
         Self {

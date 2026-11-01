@@ -1,7 +1,9 @@
 use crate::Id;
-use crate::relation::SliceRelation;
+use crate::relation::{SliceRelation, SliceRelationMut};
 use std::marker::PhantomData;
 
+// TODO: make `SliceId` statically non-empty (`NonZeroU32` length) and use
+// `Option<SliceId<T>>` for the empty case.
 /// A typed range representing a contiguous range of `Id<T>` values.
 /// This replaces `Vec<Id<T>>` in node structs.
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -90,6 +92,8 @@ impl<T> SliceId<T> {
 
     #[inline]
     pub fn end(&self) -> usize {
+        // `start + length` is bounded by the allocation length, which is
+        // guaranteed to fit in `u32` by `SliceStorage::alloc`.
         (self.start + self.length) as usize
     }
 
@@ -128,7 +132,9 @@ impl SliceStorage {
     pub fn alloc<T>(&mut self, iter: impl IntoIterator<Item = Id<T>>) -> SliceId<T> {
         let start = self.0.len();
         self.0.extend(iter.into_iter().map(|id| id.id()));
+        debug_assert!(self.0.len() <= u32::MAX as usize);
         let len = self.0.len() - start;
+        // Slice storage is limited to `u32::MAX` elements by construction.
         SliceId::new(start as u32, len as u32)
     }
 
@@ -137,6 +143,10 @@ impl SliceStorage {
         let start = slice_id.start() as usize;
         let end = start + slice_id.len() as usize;
         let ids = &self.0[start..end];
+        debug_assert_eq!(std::mem::size_of::<Id<T>>(), std::mem::size_of::<u32>());
+        debug_assert_eq!(std::mem::align_of::<Id<T>>(), std::mem::align_of::<u32>());
+        // SAFETY: `Id<T>` is a `#[repr(transparent)]` wrapper around `u32`
+        // (checked above), and `ids` is a valid, aligned slice of `Id<T>`.
         unsafe { std::slice::from_raw_parts(ids.as_ptr() as *const Id<T>, ids.len()) }
     }
 
@@ -145,6 +155,11 @@ impl SliceStorage {
         let start = slice_id.start() as usize;
         let end = start + slice_id.len() as usize;
         let ids = &mut self.0[start..end];
+        debug_assert_eq!(std::mem::size_of::<Id<T>>(), std::mem::size_of::<u32>());
+        debug_assert_eq!(std::mem::align_of::<Id<T>>(), std::mem::align_of::<u32>());
+        // SAFETY: `Id<T>` is a `#[repr(transparent)]` wrapper around `u32`
+        // (checked above), `ids` is valid and aligned, and the mutable borrow
+        // guarantees exclusive access for the returned lifetime.
         unsafe { std::slice::from_raw_parts_mut(ids.as_mut_ptr() as *mut Id<T>, ids.len()) }
     }
 
@@ -172,6 +187,8 @@ impl<T> SliceBuilder<T> {
     #[inline]
     #[must_use]
     pub fn finish(mut self, storage: &mut SliceStorage) -> SliceId<T> {
+        debug_assert!(storage.0.len() + self.buffer.len() <= u32::MAX as usize);
+        // Slice storage is limited to `u32::MAX` elements by construction.
         let start = storage.0.len() as u32;
         let len = self.buffer.len() as u32;
         storage.0.append(&mut self.buffer);
@@ -204,5 +221,12 @@ impl<T: 'static> SliceRelation<T> for SliceStorage {
     #[inline]
     fn get_slice(&self, id: SliceId<T>) -> &[Id<T>] {
         self.get(id)
+    }
+}
+
+impl<T: 'static> SliceRelationMut<T> for SliceStorage {
+    #[inline]
+    fn get_slice_mut(&mut self, id: SliceId<T>) -> &mut [Id<T>] {
+        self.get_mut(id)
     }
 }

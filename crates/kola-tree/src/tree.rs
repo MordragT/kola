@@ -3,7 +3,7 @@ use std::sync::Arc;
 
 use kola_relations::id::Id;
 use kola_relations::slice::{SliceId, SliceStorage};
-use kola_relations::{Allocate, SliceRelation, TotalRelation};
+use kola_relations::{Allocate, SliceRelation, SliceRelationMut, TotalRelation};
 use kola_span::Loc;
 
 use crate::node::*;
@@ -430,5 +430,12 @@ impl<T: 'static, M: 'static> SliceRelation<T> for Tree<M> {
     #[inline]
     fn get_slice(&self, slice_id: SliceId<T>) -> &[Id<T>] {
         self.slices.get(slice_id)
+    }
+}
+
+impl<T: 'static, M: 'static> SliceRelationMut<T> for Tree<M> {
+    #[inline]
+    fn get_slice_mut(&mut self, slice_id: SliceId<T>) -> &mut [Id<T>] {
+        self.slices.get_mut(slice_id)
     }
 }

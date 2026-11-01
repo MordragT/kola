@@ -14,6 +14,11 @@ pub trait PartialRelation<K: 'static, V: 'static> {
     fn get_opt(&self, id: Id<K>) -> Option<&V>;
 }
 
+/// Sparse/Optional Mutable Access: Map `Id<K>` to `Option<&mut V>`.
+pub trait PartialRelationMut<K: 'static, V: 'static>: PartialRelation<K, V> {
+    fn get_mut(&mut self, id: Id<K>) -> Option<&mut V>;
+}
+
 /// Dense/Guaranteed Read Access: Map `Id<K>` directly to `&V` without branching,
 /// with support for high-performance direct row iteration.
 pub trait TotalRelation<K: 'static, V: 'static>: RelationIds<K> {
@@ -50,6 +55,16 @@ pub trait Allocate<V: 'static> {
 /// Slice Relation: Resolves a `SliceId<T>` to a physical slice of `Id<T>`.
 pub trait SliceRelation<T: 'static> {
     fn get_slice(&self, id: SliceId<T>) -> &[Id<T>];
+
+    #[inline]
+    fn id_at(&self, id: SliceId<T>, index: usize) -> Option<Id<T>> {
+        self.get_slice(id).get(index).copied()
+    }
+}
+
+/// Mutable slice relation: exposes the `Id<T>` backing storage.
+pub trait SliceRelationMut<T: 'static>: SliceRelation<T> {
+    fn get_slice_mut(&mut self, id: SliceId<T>) -> &mut [Id<T>];
 }
 
 // ==========================================
@@ -109,6 +124,18 @@ where
     #[inline]
     fn get_opt(&self, id: Id<K>) -> Option<&V> {
         (**self).get_opt(id)
+    }
+}
+
+impl<T, K, V> PartialRelationMut<K, V> for &mut T
+where
+    T: PartialRelationMut<K, V> + ?Sized,
+    K: 'static,
+    V: 'static,
+{
+    #[inline]
+    fn get_mut(&mut self, id: Id<K>) -> Option<&mut V> {
+        (**self).get_mut(id)
     }
 }
 
@@ -216,6 +243,17 @@ where
     }
 }
 
+impl<T, U> SliceRelationMut<U> for &mut T
+where
+    T: SliceRelationMut<U> + ?Sized,
+    U: 'static,
+{
+    #[inline]
+    fn get_slice_mut(&mut self, id: SliceId<U>) -> &mut [Id<U>] {
+        (**self).get_slice_mut(id)
+    }
+}
+
 // ==========================================
 // Blanket Standard Library Collections Implementations
 // ==========================================
@@ -240,6 +278,62 @@ where
     #[inline]
     fn get_opt(&self, id: Id<K>) -> Option<&V> {
         self.get(&id)
+    }
+}
+
+impl<K, V, S> PartialRelationMut<K, V> for std::collections::HashMap<Id<K>, V, S>
+where
+    S: std::hash::BuildHasher,
+    K: 'static,
+    V: 'static,
+{
+    #[inline]
+    fn get_mut(&mut self, id: Id<K>) -> Option<&mut V> {
+        self.get_mut(&id)
+    }
+}
+
+impl<K, V> PartialRelationMut<K, V> for std::collections::BTreeMap<Id<K>, V>
+where
+    K: 'static,
+    V: 'static,
+{
+    #[inline]
+    fn get_mut(&mut self, id: Id<K>) -> Option<&mut V> {
+        self.get_mut(&id)
+    }
+}
+
+impl<K, V, S> RelationIds<K> for std::collections::HashMap<Id<K>, V, S>
+where
+    S: std::hash::BuildHasher,
+    K: 'static,
+    V: 'static,
+{
+    type Ids<'a>
+        = std::iter::Copied<std::collections::hash_map::Keys<'a, Id<K>, V>>
+    where
+        Self: 'a;
+
+    #[inline]
+    fn ids(&self) -> Self::Ids<'_> {
+        self.keys().copied()
+    }
+}
+
+impl<K, V> RelationIds<K> for std::collections::BTreeMap<Id<K>, V>
+where
+    K: 'static,
+    V: 'static,
+{
+    type Ids<'a>
+        = std::iter::Copied<std::collections::btree_map::Keys<'a, Id<K>, V>>
+    where
+        Self: 'a;
+
+    #[inline]
+    fn ids(&self) -> Self::Ids<'_> {
+        self.keys().copied()
     }
 }
 
@@ -332,24 +426,102 @@ where
 // Standard Tuple Implementations (2, 3, and 4-Tuples)
 // ==========================================
 
-// --- 2-Tuple (A, B) ---
+macro_rules! impl_tuple_relations {
+    ($first:ident $(, $rest:ident)+) => {
+        impl<$first, $($rest,)+ K> RelationIds<K> for ($first, $($rest,)+)
+        where
+            $first: RelationIds<K>,
+            K: 'static,
+        {
+            type Ids<'a>
+                = $first::Ids<'a>
+            where
+                Self: 'a;
 
-impl<A, B, K> RelationIds<K> for (A, B)
-where
-    A: RelationIds<K>,
-    K: 'static,
-{
-    type Ids<'a>
-        = A::Ids<'a>
-    where
-        Self: 'a;
+            #[inline]
+            fn ids(&self) -> Self::Ids<'_> {
+                self.0.ids()
+            }
+        }
 
-    #[inline]
-    fn ids(&self) -> Self::Ids<'_> {
-        self.0.ids()
-    }
+        impl<$first, $($rest,)+ K, V> TotalRelation<K, V> for ($first, $($rest,)+)
+        where
+            $first: TotalRelation<K, V>,
+            K: 'static,
+            V: 'static,
+        {
+            #[inline]
+            fn get(&self, id: Id<K>) -> &V {
+                self.0.get(id)
+            }
+
+            type Rows<'a>
+                = $first::Rows<'a>
+            where
+                Self: 'a,
+                V: 'a;
+
+            #[inline]
+            fn rows(&self) -> Self::Rows<'_> {
+                self.0.rows()
+            }
+        }
+
+        impl<$first, $($rest,)+ K, V> TotalRelationMut<K, V> for ($first, $($rest,)+)
+        where
+            $first: TotalRelationMut<K, V>,
+            K: 'static,
+            V: 'static,
+        {
+            #[inline]
+            fn get_mut(&mut self, id: Id<K>) -> &mut V {
+                self.0.get_mut(id)
+            }
+
+            type RowsMut<'a>
+                = $first::RowsMut<'a>
+            where
+                Self: 'a,
+                V: 'a;
+
+            #[inline]
+            fn rows_mut(&mut self) -> Self::RowsMut<'_> {
+                self.0.rows_mut()
+            }
+        }
+
+        impl<$first, $($rest,)+ V> Allocate<V> for ($first, $($rest,)+)
+        where
+            $first: Allocate<V>,
+            V: 'static,
+        {
+            type Key = $first::Key;
+
+            #[inline]
+            fn alloc(&mut self, value: V) -> Id<Self::Key> {
+                self.0.alloc(value)
+            }
+        }
+
+        impl<$first, $($rest,)+ T> SliceRelation<T> for ($first, $($rest,)+)
+        where
+            $first: SliceRelation<T>,
+            T: 'static,
+        {
+            #[inline]
+            fn get_slice(&self, id: SliceId<T>) -> &[Id<T>] {
+                self.0.get_slice(id)
+            }
+        }
+    };
 }
 
+impl_tuple_relations!(A, B);
+impl_tuple_relations!(A, B, C);
+impl_tuple_relations!(A, B, C, D);
+
+// Partial relations layer tuples: metadata is looked up in the remaining
+// fields, matching the `(data, local, base)` overlay convention.
 impl<A, B, K, V> PartialRelation<K, V> for (A, B)
 where
     B: PartialRelation<K, V>,
@@ -359,94 +531,6 @@ where
     #[inline]
     fn get_opt(&self, id: Id<K>) -> Option<&V> {
         self.1.get_opt(id)
-    }
-}
-
-impl<A, B, K, V> TotalRelation<K, V> for (A, B)
-where
-    A: TotalRelation<K, V>,
-    K: 'static,
-    V: 'static,
-{
-    #[inline]
-    fn get(&self, id: Id<K>) -> &V {
-        self.0.get(id)
-    }
-
-    type Rows<'a>
-        = A::Rows<'a>
-    where
-        Self: 'a,
-        V: 'a;
-
-    #[inline]
-    fn rows(&self) -> Self::Rows<'_> {
-        self.0.rows()
-    }
-}
-
-impl<A, B, K, V> TotalRelationMut<K, V> for (A, B)
-where
-    A: TotalRelationMut<K, V>,
-    K: 'static,
-    V: 'static,
-{
-    #[inline]
-    fn get_mut(&mut self, id: Id<K>) -> &mut V {
-        self.0.get_mut(id)
-    }
-
-    type RowsMut<'a>
-        = A::RowsMut<'a>
-    where
-        Self: 'a,
-        V: 'a;
-
-    #[inline]
-    fn rows_mut(&mut self) -> Self::RowsMut<'_> {
-        self.0.rows_mut()
-    }
-}
-
-impl<A, B, V> Allocate<V> for (A, B)
-where
-    A: Allocate<V>,
-    V: 'static,
-{
-    type Key = A::Key;
-
-    #[inline]
-    fn alloc(&mut self, value: V) -> Id<Self::Key> {
-        self.0.alloc(value)
-    }
-}
-
-impl<A, B, T> SliceRelation<T> for (A, B)
-where
-    A: SliceRelation<T>,
-    T: 'static,
-{
-    #[inline]
-    fn get_slice(&self, id: SliceId<T>) -> &[Id<T>] {
-        self.0.get_slice(id)
-    }
-}
-
-// --- 3-Tuple (A, B, C) ---
-
-impl<A, B, C, K> RelationIds<K> for (A, B, C)
-where
-    A: RelationIds<K>,
-    K: 'static,
-{
-    type Ids<'a>
-        = A::Ids<'a>
-    where
-        Self: 'a;
-
-    #[inline]
-    fn ids(&self) -> Self::Ids<'_> {
-        self.0.ids()
     }
 }
 
@@ -460,94 +544,6 @@ where
     #[inline]
     fn get_opt(&self, id: Id<K>) -> Option<&V> {
         self.1.get_opt(id).or_else(|| self.2.get_opt(id))
-    }
-}
-
-impl<A, B, C, K, V> TotalRelation<K, V> for (A, B, C)
-where
-    A: TotalRelation<K, V>,
-    K: 'static,
-    V: 'static,
-{
-    #[inline]
-    fn get(&self, id: Id<K>) -> &V {
-        self.0.get(id)
-    }
-
-    type Rows<'a>
-        = A::Rows<'a>
-    where
-        Self: 'a,
-        V: 'a;
-
-    #[inline]
-    fn rows(&self) -> Self::Rows<'_> {
-        self.0.rows()
-    }
-}
-
-impl<A, B, C, K, V> TotalRelationMut<K, V> for (A, B, C)
-where
-    A: TotalRelationMut<K, V>,
-    K: 'static,
-    V: 'static,
-{
-    #[inline]
-    fn get_mut(&mut self, id: Id<K>) -> &mut V {
-        self.0.get_mut(id)
-    }
-
-    type RowsMut<'a>
-        = A::RowsMut<'a>
-    where
-        Self: 'a,
-        V: 'a;
-
-    #[inline]
-    fn rows_mut(&mut self) -> Self::RowsMut<'_> {
-        self.0.rows_mut()
-    }
-}
-
-impl<A, B, C, V> Allocate<V> for (A, B, C)
-where
-    A: Allocate<V>,
-    V: 'static,
-{
-    type Key = A::Key;
-
-    #[inline]
-    fn alloc(&mut self, value: V) -> Id<Self::Key> {
-        self.0.alloc(value)
-    }
-}
-
-impl<A, B, C, T> SliceRelation<T> for (A, B, C)
-where
-    A: SliceRelation<T>,
-    T: 'static,
-{
-    #[inline]
-    fn get_slice(&self, id: SliceId<T>) -> &[Id<T>] {
-        self.0.get_slice(id)
-    }
-}
-
-// --- 4-Tuple (A, B, C, D) ---
-
-impl<A, B, C, D, K> RelationIds<K> for (A, B, C, D)
-where
-    A: RelationIds<K>,
-    K: 'static,
-{
-    type Ids<'a>
-        = A::Ids<'a>
-    where
-        Self: 'a;
-
-    #[inline]
-    fn ids(&self) -> Self::Ids<'_> {
-        self.0.ids()
     }
 }
 
@@ -568,280 +564,115 @@ where
     }
 }
 
-impl<A, B, C, D, K, V> TotalRelation<K, V> for (A, B, C, D)
-where
-    A: TotalRelation<K, V>,
-    K: 'static,
-    V: 'static,
-{
-    #[inline]
-    fn get(&self, id: Id<K>) -> &V {
-        self.0.get(id)
-    }
-
-    type Rows<'a>
-        = A::Rows<'a>
-    where
-        Self: 'a,
-        V: 'a;
-
-    #[inline]
-    fn rows(&self) -> Self::Rows<'_> {
-        self.0.rows()
-    }
-}
-
-impl<A, B, C, D, K, V> TotalRelationMut<K, V> for (A, B, C, D)
-where
-    A: TotalRelationMut<K, V>,
-    K: 'static,
-    V: 'static,
-{
-    #[inline]
-    fn get_mut(&mut self, id: Id<K>) -> &mut V {
-        self.0.get_mut(id)
-    }
-
-    type RowsMut<'a>
-        = A::RowsMut<'a>
-    where
-        Self: 'a,
-        V: 'a;
-
-    #[inline]
-    fn rows_mut(&mut self) -> Self::RowsMut<'_> {
-        self.0.rows_mut()
-    }
-}
-
-impl<A, B, C, D, V> Allocate<V> for (A, B, C, D)
-where
-    A: Allocate<V>,
-    V: 'static,
-{
-    type Key = A::Key;
-
-    #[inline]
-    fn alloc(&mut self, value: V) -> Id<Self::Key> {
-        self.0.alloc(value)
-    }
-}
-
-impl<A, B, C, D, T> SliceRelation<T> for (A, B, C, D)
-where
-    A: SliceRelation<T>,
-    T: 'static,
-{
-    #[inline]
-    fn get_slice(&self, id: SliceId<T>) -> &[Id<T>] {
-        self.0.get_slice(id)
-    }
-}
-
 // ==========================================
 // Blanket Smart Pointer Implementations (Arc and Rc)
 // ==========================================
 
-// --- std::sync::Arc ---
+macro_rules! impl_smart_pointer_relations {
+    ($Ptr:ident, $module:ident) => {
+        impl<T, K> RelationIds<K> for std::$module::$Ptr<T>
+        where
+            T: RelationIds<K> + ?Sized,
+            K: 'static,
+        {
+            type Ids<'a>
+                = T::Ids<'a>
+            where
+                Self: 'a;
 
-impl<T, K> RelationIds<K> for std::sync::Arc<T>
-where
-    T: RelationIds<K> + ?Sized,
-    K: 'static,
-{
-    type Ids<'a>
-        = T::Ids<'a>
-    where
-        Self: 'a;
+            #[inline]
+            fn ids(&self) -> Self::Ids<'_> {
+                (**self).ids()
+            }
+        }
 
-    #[inline]
-    fn ids(&self) -> Self::Ids<'_> {
-        (**self).ids()
-    }
+        impl<T, K, V> PartialRelation<K, V> for std::$module::$Ptr<T>
+        where
+            T: PartialRelation<K, V> + ?Sized,
+            K: 'static,
+            V: 'static,
+        {
+            #[inline]
+            fn get_opt(&self, id: Id<K>) -> Option<&V> {
+                (**self).get_opt(id)
+            }
+        }
+
+        impl<T, K, V> TotalRelation<K, V> for std::$module::$Ptr<T>
+        where
+            T: TotalRelation<K, V> + ?Sized,
+            K: 'static,
+            V: 'static,
+        {
+            #[inline]
+            fn get(&self, id: Id<K>) -> &V {
+                (**self).get(id)
+            }
+
+            type Rows<'a>
+                = T::Rows<'a>
+            where
+                Self: 'a,
+                V: 'a;
+
+            #[inline]
+            fn rows(&self) -> Self::Rows<'_> {
+                (**self).rows()
+            }
+        }
+
+        // Cloning via `make_mut` is intentional: mutating through a shared
+        // smart pointer clones the inner storage on demand (copy-on-write).
+        impl<T, K, V> TotalRelationMut<K, V> for std::$module::$Ptr<T>
+        where
+            T: TotalRelationMut<K, V> + ?Sized,
+            T: Clone,
+            K: 'static,
+            V: 'static,
+        {
+            #[inline]
+            fn get_mut(&mut self, id: Id<K>) -> &mut V {
+                std::$module::$Ptr::make_mut(self).get_mut(id)
+            }
+
+            type RowsMut<'a>
+                = T::RowsMut<'a>
+            where
+                Self: 'a,
+                V: 'a;
+
+            #[inline]
+            fn rows_mut(&mut self) -> Self::RowsMut<'_> {
+                std::$module::$Ptr::make_mut(self).rows_mut()
+            }
+        }
+
+        impl<T, V> Allocate<V> for std::$module::$Ptr<T>
+        where
+            T: Allocate<V> + ?Sized,
+            T: Clone,
+            V: 'static,
+        {
+            type Key = T::Key;
+
+            #[inline]
+            fn alloc(&mut self, value: V) -> Id<Self::Key> {
+                std::$module::$Ptr::make_mut(self).alloc(value)
+            }
+        }
+
+        impl<T, U> SliceRelation<U> for std::$module::$Ptr<T>
+        where
+            T: SliceRelation<U> + ?Sized,
+            U: 'static,
+        {
+            #[inline]
+            fn get_slice(&self, id: SliceId<U>) -> &[Id<U>] {
+                (**self).get_slice(id)
+            }
+        }
+    };
 }
 
-impl<T, K, V> PartialRelation<K, V> for std::sync::Arc<T>
-where
-    T: PartialRelation<K, V> + ?Sized,
-    K: 'static,
-    V: 'static,
-{
-    #[inline]
-    fn get_opt(&self, id: Id<K>) -> Option<&V> {
-        (**self).get_opt(id)
-    }
-}
-
-impl<T, K, V> TotalRelation<K, V> for std::sync::Arc<T>
-where
-    T: TotalRelation<K, V> + ?Sized,
-    K: 'static,
-    V: 'static,
-{
-    #[inline]
-    fn get(&self, id: Id<K>) -> &V {
-        (**self).get(id)
-    }
-
-    type Rows<'a>
-        = T::Rows<'a>
-    where
-        Self: 'a,
-        V: 'a;
-
-    #[inline]
-    fn rows(&self) -> Self::Rows<'_> {
-        (**self).rows()
-    }
-}
-
-impl<T, K, V> TotalRelationMut<K, V> for std::sync::Arc<T>
-where
-    T: TotalRelationMut<K, V> + ?Sized,
-    T: Clone,
-    K: 'static,
-    V: 'static,
-{
-    #[inline]
-    fn get_mut(&mut self, id: Id<K>) -> &mut V {
-        std::sync::Arc::make_mut(self).get_mut(id)
-    }
-
-    type RowsMut<'a>
-        = T::RowsMut<'a>
-    where
-        Self: 'a,
-        V: 'a;
-
-    #[inline]
-    fn rows_mut(&mut self) -> Self::RowsMut<'_> {
-        std::sync::Arc::make_mut(self).rows_mut()
-    }
-}
-
-impl<T, V> Allocate<V> for std::sync::Arc<T>
-where
-    T: Allocate<V> + ?Sized,
-    T: Clone,
-    V: 'static,
-{
-    type Key = T::Key;
-
-    #[inline]
-    fn alloc(&mut self, value: V) -> Id<Self::Key> {
-        std::sync::Arc::make_mut(self).alloc(value)
-    }
-}
-
-impl<T, U> SliceRelation<U> for std::sync::Arc<T>
-where
-    T: SliceRelation<U> + ?Sized,
-    U: 'static,
-{
-    #[inline]
-    fn get_slice(&self, id: SliceId<U>) -> &[Id<U>] {
-        (**self).get_slice(id)
-    }
-}
-
-// --- std::rc::Rc ---
-
-impl<T, K> RelationIds<K> for std::rc::Rc<T>
-where
-    T: RelationIds<K> + ?Sized,
-    K: 'static,
-{
-    type Ids<'a>
-        = T::Ids<'a>
-    where
-        Self: 'a;
-
-    #[inline]
-    fn ids(&self) -> Self::Ids<'_> {
-        (**self).ids()
-    }
-}
-
-impl<T, K, V> PartialRelation<K, V> for std::rc::Rc<T>
-where
-    T: PartialRelation<K, V> + ?Sized,
-    K: 'static,
-    V: 'static,
-{
-    #[inline]
-    fn get_opt(&self, id: Id<K>) -> Option<&V> {
-        (**self).get_opt(id)
-    }
-}
-
-impl<T, K, V> TotalRelation<K, V> for std::rc::Rc<T>
-where
-    T: TotalRelation<K, V> + ?Sized,
-    K: 'static,
-    V: 'static,
-{
-    #[inline]
-    fn get(&self, id: Id<K>) -> &V {
-        (**self).get(id)
-    }
-
-    type Rows<'a>
-        = T::Rows<'a>
-    where
-        Self: 'a,
-        V: 'a;
-
-    #[inline]
-    fn rows(&self) -> Self::Rows<'_> {
-        (**self).rows()
-    }
-}
-
-impl<T, K, V> TotalRelationMut<K, V> for std::rc::Rc<T>
-where
-    T: TotalRelationMut<K, V> + ?Sized,
-    T: Clone,
-    K: 'static,
-    V: 'static,
-{
-    #[inline]
-    fn get_mut(&mut self, id: Id<K>) -> &mut V {
-        std::rc::Rc::make_mut(self).get_mut(id)
-    }
-
-    type RowsMut<'a>
-        = T::RowsMut<'a>
-    where
-        Self: 'a,
-        V: 'a;
-
-    #[inline]
-    fn rows_mut(&mut self) -> Self::RowsMut<'_> {
-        std::rc::Rc::make_mut(self).rows_mut()
-    }
-}
-
-impl<T, V> Allocate<V> for std::rc::Rc<T>
-where
-    T: Allocate<V> + ?Sized,
-    T: Clone,
-    V: 'static,
-{
-    type Key = T::Key;
-
-    #[inline]
-    fn alloc(&mut self, value: V) -> Id<Self::Key> {
-        std::rc::Rc::make_mut(self).alloc(value)
-    }
-}
-
-impl<T, U> SliceRelation<U> for std::rc::Rc<T>
-where
-    T: SliceRelation<U> + ?Sized,
-    U: 'static,
-{
-    #[inline]
-    fn get_slice(&self, id: SliceId<U>) -> &[Id<U>] {
-        (**self).get_slice(id)
-    }
-}
+impl_smart_pointer_relations!(Arc, sync);
+impl_smart_pointer_relations!(Rc, rc);

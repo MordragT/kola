@@ -372,9 +372,10 @@ impl<'t> Lazy<ParseInput<'t>, Id<node::Pat>> for PatCombinator {
         let record = nested_parser(
             field
                 .separated_by(ctrl(CtrlT::COMMA))
+                .allow_trailing()
                 .collect::<Slice<_>>()
                 .throw("Expected field pattern in record pattern")
-                .then(ctrl(CtrlT::COMMA).then(ctrl(CtrlT::TRIPLE_DOT)).or_not())
+                .then(ctrl(CtrlT::TRIPLE_DOT).or_not())
                 .map_to_node(|(fields, spread)| node::RecordPat {
                     fields,
                     polymorph: spread.is_some(),
@@ -1275,455 +1276,502 @@ mod tests {
         let ParseResult { node, builder, .. } =
             try_parse_str_with("{ a: x, b: { y }, c: _, d }", pat_parser(), &mut interner);
 
-        // 1. Eagerly retrieve the fields SliceId with zero verbosity
-        let fields = node
-            .query()
+        let fields = query::<node::Pat>()
             .cast::<node::RecordPat>()
+            .expect()
             .project_slice(|r| r.fields)
-            .get_slice(&builder);
+            .get_slice(&builder, node);
 
-        // 2. Query the slice eagerly and cleanly without nested closures
+        let field_id = |index: usize| builder.get_slice(fields)[index];
 
         // Field 0: "a: x"
-        query()
-            .get_at(0)
-            .get_slice_items(&builder, fields)
-            .for_each_value(&builder, |f| {
-                f.field.assert_name("a", &builder, &interner);
-            });
+        let field = query::<node::RecordFieldPat>().get(&builder, field_id(0));
+        field.field.assert_name("a", &builder, &interner);
 
-        query_slice(fields)
-            .get_at(0)
+        let bind = query::<node::RecordFieldPat>()
             .project_opt(|f| f.pat)
             .cast::<node::BindPat>()
-            .for_each_value(&builder, |b| {
-                b.0.assert_name("x", &builder, &interner);
-            });
+            .get(&builder, field_id(0))
+            .expect("bind x");
+        bind.0.assert_name("x", &builder, &interner);
 
         // Field 1: "b: { y }"
-        query_slice(fields).get_at(1).for_each_value(&builder, |f| {
-            f.field.assert_name("b", &builder, &interner);
-        });
+        let field = query::<node::RecordFieldPat>().get(&builder, field_id(1));
+        field.field.assert_name("b", &builder, &interner);
 
-        query_slice(fields)
-            .get_at(1)
+        let inner = query::<node::RecordFieldPat>()
             .project_opt(|f| f.pat)
             .cast::<node::RecordPat>()
+            .expect()
             .project_slice(|r| r.fields)
-            .get_at(0)
-            .for_each_value(&builder, |f| {
-                f.field.assert_name("y", &builder, &interner);
-                assert!(f.pat.is_none());
-            });
+            .nth(0)
+            .get(&builder, field_id(1))
+            .expect("inner field");
+        inner.field.assert_name("y", &builder, &interner);
+        assert!(inner.pat.is_none());
 
         // Field 2: "c: _"
-        query_slice(fields).get_at(2).for_each_value(&builder, |f| {
-            f.field.assert_name("c", &builder, &interner);
-        });
+        let field = query::<node::RecordFieldPat>().get(&builder, field_id(2));
+        field.field.assert_name("c", &builder, &interner);
 
-        // Retrieve AnyPat to assert its presence
-        let _any = query_slice(fields)
-            .get_at(2)
+        let _any = query::<node::RecordFieldPat>()
             .project_opt(|f| f.pat)
             .cast::<node::AnyPat>()
-            .get_one(&builder);
+            .get(&builder, field_id(2))
+            .expect("any");
 
         // Field 3: "d"
-        query_slice(fields).get_at(3).for_each_value(&builder, |f| {
-            f.field.assert_name("d", &builder, &interner);
-            assert!(f.pat.is_none());
-        });
+        let field = query::<node::RecordFieldPat>().get(&builder, field_id(3));
+        field.field.assert_name("d", &builder, &interner);
+        assert!(field.pat.is_none());
     }
-    //     #[test]
-    //     fn case_expr() {
-    //         let mut interner = StrInterner::default();
+    #[test]
+    fn case_expr() {
+        let mut interner = StrInterner::default();
 
-    //         let ParseResult { node, builder, .. } = try_parse_str_with(
-    //             "case x | 1 => true | _ => false",
-    //             expr_parser(),
-    //             &mut interner,
-    //         );
+        let ParseResult { node, builder, .. } = try_parse_str_with(
+            "case x | 1 => true | _ => false",
+            expr_parser(),
+            &mut interner,
+        );
 
-    //         query_one::<node::Expr>(node)
-    //             .cast::<node::CaseExpr>()
-    //             .branch(&builder, |case| {
-    //                 // Assert on source "x"
-    //                 case.project(|case| case.source)
-    //                     .cast::<node::QualifiedExpr>()
-    //                     .inspect(|_, source| source.source.assert_name("x", &builder, &interner))
-    //                     .execute(&builder)
-    //                     .next();
+        query::<node::Expr>()
+            .cast::<node::CaseExpr>()
+            .expect()
+            .inspect(|case| {
+                query::<node::Expr>()
+                    .cast::<node::QualifiedExpr>()
+                    .expect()
+                    .project(|source| source.source)
+                    .get_id(&builder, case.source)
+                    .assert_name("x", &builder, &interner);
 
-    //                 // Assert on branches
-    //                 case.project_slice(|case| case.branches)
-    //                     .branch(&builder, |branches| {
-    //                         // Branch 0: "1 => true"
-    //                         branches
-    //                             .get_at(0)
-    //                             .inspect(|_, b| {
-    //                                 let pat_0 = b.pat.cast::<node::LiteralPat>(&builder);
-    //                                 pat_0.assert_eq(&node::LiteralPat::Num(1.0));
-    //                                 let expr_0 = b.body.cast::<node::LiteralExpr>(&builder);
-    //                                 expr_0.assert_eq(&node::LiteralExpr::Bool(true));
-    //                             })
-    //                             .execute(&builder)
-    //                             .next();
+                let branches: Vec<_> = query::<node::CaseBranch>()
+                    .iter_slice(&builder, case.branches)
+                    .collect();
+                assert_eq!(branches.len(), 2);
 
-    //                         // Branch 1: "_ => false"
-    //                         branches
-    //                             .get_at(1)
-    //                             .inspect(|_, b| {
-    //                                 b.pat.cast::<node::AnyPat>(&builder);
-    //                                 let expr_1 = b.body.cast::<node::LiteralExpr>(&builder);
-    //                                 expr_1.assert_eq(&node::LiteralExpr::Bool(false));
-    //                             })
-    //                             .execute(&builder)
-    //                             .next();
-    //                     });
-    //             });
-    //     }
+                query::<node::Pat>()
+                    .cast::<node::LiteralPat>()
+                    .expect()
+                    .inspect(|pat| assert_eq!(pat, &node::LiteralPat::Num(1.0)))
+                    .get(&builder, branches[0].pat);
+                query::<node::Expr>()
+                    .cast::<node::LiteralExpr>()
+                    .expect()
+                    .inspect(|expr| assert_eq!(expr, &node::LiteralExpr::Bool(true)))
+                    .get(&builder, branches[0].body);
 
-    //     #[test]
-    //     fn complex_case_expr() {
-    //         let mut interner = StrInterner::default();
+                query::<node::Pat>()
+                    .cast::<node::AnyPat>()
+                    .expect()
+                    .get(&builder, branches[1].pat);
+                query::<node::Expr>()
+                    .cast::<node::LiteralExpr>()
+                    .expect()
+                    .inspect(|expr| assert_eq!(expr, &node::LiteralExpr::Bool(false)))
+                    .get(&builder, branches[1].body);
+            })
+            .get(&builder, node);
+    }
 
-    //         let test_case = r#"
-    //             case data
-    //             | () => "unit"
-    //             | true => "bool true"
-    //             | 42 => "number"
-    //             | "hello" => "string"
-    //             | x => "bind pattern"
-    //             | _ => "wildcard"
-    //             | [a, b, ...rest] => "list with spread"
-    //             | [head, ...] => "list anonymous spread"
-    //             | [] => "empty list"
-    //             | { name, age: years, ... } => "record with spread"
-    //             | { x, y } => "simple record"
-    //             | {} => "empty record"
-    //             | < Some : value > => "variant some"
-    //             | < None > => "variant none"
-    //             | < Ok : result, Err : error > => "multiple variants"
-    //         "#;
+    #[test]
+    fn complex_case_expr() {
+        let mut interner = StrInterner::default();
 
-    //         let ParseResult { node, builder, .. } =
-    //             try_parse_str_with(test_case, expr_parser(), &mut interner);
+        let test_case = r#"
+            case data
+            | () => "unit"
+            | true => "bool true"
+            | 42 => "number"
+            | "hello" => "string"
+            | x => "bind pattern"
+            | _ => "wildcard"
+            | [a, b, ...rest] => "list with spread"
+            | [head, ...] => "list anonymous spread"
+            | [] => "empty list"
+            | { name, age: years, ... } => "record with spread"
+            | { x, y } => "simple record"
+            | {} => "empty record"
+            | < Some : value > => "variant some"
+            | < None > => "variant none"
+            | < Ok : result, Err : error > => "multiple variants"
+        "#;
 
-    //         query_one::<node::Expr>(node)
-    //             .cast::<node::CaseExpr>()
-    //             .branch(&builder, |case| {
-    //                 case.project(|case| case.source)
-    //                     .cast::<node::QualifiedExpr>()
-    //                     .inspect(|_, s| s.source.assert_name("data", &builder, &interner))
-    //                     .execute(&builder)
-    //                     .next();
+        let ParseResult { node, builder, .. } =
+            try_parse_str_with(test_case, expr_parser(), &mut interner);
 
-    //                 case.project_slice(|case| case.branches)
-    //                     .branch(&builder, |branches| {
-    //                         // Branch 0: "() => "unit""
-    //                         branches
-    //                             .get_at(0)
-    //                             .inspect(|_, b| {
-    //                                 b.pat
-    //                                     .cast::<node::LiteralPat>(&builder)
-    //                                     .assert_eq(&node::LiteralPat::Unit);
-    //                                 b.body
-    //                                     .cast::<node::LiteralExpr>(&builder)
-    //                                     .assert_eq(&node::LiteralExpr::Str(interner["unit"]));
-    //                             })
-    //                             .execute(&builder)
-    //                             .next();
+        query::<node::Expr>()
+            .cast::<node::CaseExpr>()
+            .expect()
+            .inspect(|case| {
+                query::<node::Expr>()
+                    .cast::<node::QualifiedExpr>()
+                    .expect()
+                    .project(|source| source.source)
+                    .get_id(&builder, case.source)
+                    .assert_name("data", &builder, &interner);
 
-    //                         // Branch 1: "true => "bool true""
-    //                         branches
-    //                             .get_at(1)
-    //                             .inspect(|_, b| {
-    //                                 b.pat
-    //                                     .cast::<node::LiteralPat>(&builder)
-    //                                     .assert_eq(&node::LiteralPat::Bool(true));
-    //                                 b.body
-    //                                     .cast::<node::LiteralExpr>(&builder)
-    //                                     .assert_eq(&node::LiteralExpr::Str(interner["bool true"]));
-    //                             })
-    //                             .execute(&builder)
-    //                             .next();
+                let branches: Vec<_> = query::<node::CaseBranch>()
+                    .iter_slice(&builder, case.branches)
+                    .collect();
+                assert_eq!(branches.len(), 15);
 
-    //                         // Branch 2: "42 => "number""
-    //                         branches
-    //                             .get_at(2)
-    //                             .inspect(|_, b| {
-    //                                 b.pat
-    //                                     .cast::<node::LiteralPat>(&builder)
-    //                                     .assert_eq(&node::LiteralPat::Num(42.0));
-    //                                 b.body
-    //                                     .cast::<node::LiteralExpr>(&builder)
-    //                                     .assert_eq(&node::LiteralExpr::Str(interner["number"]));
-    //                             })
-    //                             .execute(&builder)
-    //                             .next();
+                query::<node::Pat>()
+                    .cast::<node::LiteralPat>()
+                    .expect()
+                    .inspect(|pat| assert_eq!(pat, &node::LiteralPat::Unit))
+                    .get(&builder, branches[0].pat);
+                query::<node::Expr>()
+                    .cast::<node::LiteralExpr>()
+                    .expect()
+                    .inspect(|expr| {
+                        assert_eq!(expr, &node::LiteralExpr::Str(interner["unit"]));
+                    })
+                    .get(&builder, branches[0].body);
 
-    //                         // Branch 3: ""hello" => "string""
-    //                         branches
-    //                             .get_at(3)
-    //                             .inspect(|_, b| {
-    //                                 b.pat
-    //                                     .cast::<node::LiteralPat>(&builder)
-    //                                     .assert_eq(&node::LiteralPat::Str(interner["hello"]));
-    //                                 b.body
-    //                                     .cast::<node::LiteralExpr>(&builder)
-    //                                     .assert_eq(&node::LiteralExpr::Str(interner["string"]));
-    //                             })
-    //                             .execute(&builder)
-    //                             .next();
+                query::<node::Pat>()
+                    .cast::<node::LiteralPat>()
+                    .expect()
+                    .inspect(|pat| assert_eq!(pat, &node::LiteralPat::Bool(true)))
+                    .get(&builder, branches[1].pat);
+                query::<node::Expr>()
+                    .cast::<node::LiteralExpr>()
+                    .expect()
+                    .inspect(|expr| {
+                        assert_eq!(expr, &node::LiteralExpr::Str(interner["bool true"]));
+                    })
+                    .get(&builder, branches[1].body);
 
-    //                         // Branch 4: "x => "bind pattern""
-    //                         branches
-    //                             .get_at(4)
-    //                             .inspect(|_, b| {
-    //                                 b.pat
-    //                                     .cast::<node::BindPat>(&builder)
-    //                                     .0
-    //                                     .assert_name("x", &builder, &interner);
-    //                                 b.body
-    //                                     .cast::<node::LiteralExpr>(&builder)
-    //                                     .assert_eq(&node::LiteralExpr::Str(interner["bind pattern"]));
-    //                             })
-    //                             .execute(&builder)
-    //                             .next();
+                query::<node::Pat>()
+                    .cast::<node::LiteralPat>()
+                    .expect()
+                    .inspect(|pat| assert_eq!(pat, &node::LiteralPat::Num(42.0)))
+                    .get(&builder, branches[2].pat);
+                query::<node::Expr>()
+                    .cast::<node::LiteralExpr>()
+                    .expect()
+                    .inspect(|expr| {
+                        assert_eq!(expr, &node::LiteralExpr::Str(interner["number"]));
+                    })
+                    .get(&builder, branches[2].body);
 
-    //                         // Branch 5: "_ => "wildcard""
-    //                         branches
-    //                             .get_at(5)
-    //                             .inspect(|_, b| {
-    //                                 b.pat.cast::<node::AnyPat>(&builder);
-    //                                 b.body
-    //                                     .cast::<node::LiteralExpr>(&builder)
-    //                                     .assert_eq(&node::LiteralExpr::Str(interner["wildcard"]));
-    //                             })
-    //                             .execute(&builder)
-    //                             .next();
+                query::<node::Pat>()
+                    .cast::<node::LiteralPat>()
+                    .expect()
+                    .inspect(|pat| assert_eq!(pat, &node::LiteralPat::Str(interner["hello"])))
+                    .get(&builder, branches[3].pat);
+                query::<node::Expr>()
+                    .cast::<node::LiteralExpr>()
+                    .expect()
+                    .inspect(|expr| {
+                        assert_eq!(expr, &node::LiteralExpr::Str(interner["string"]));
+                    })
+                    .get(&builder, branches[3].body);
 
-    //                         // Branch 6: "[a, b, ...rest] => "list with spread""
-    //                         branches
-    //                             .get_at(6)
-    //                             .inspect(|_, b| {
-    //                                 let list = b.pat.cast::<node::ListPat>(&builder);
-    //                                 let el = list.0;
-    //                                 assert_eq!(el.get(&builder).len(), 3);
-    //                                 el.get_at(0, &builder)
-    //                                     .cast::<node::Pat>(&builder)
-    //                                     .cast::<node::BindPat>(&builder)
-    //                                     .0
-    //                                     .assert_name("a", &builder, &interner);
-    //                                 el.get_at(1, &builder)
-    //                                     .cast::<node::Pat>(&builder)
-    //                                     .cast::<node::BindPat>(&builder)
-    //                                     .0
-    //                                     .assert_name("b", &builder, &interner);
-    //                                 let node::ListElPat::Spread(some_name) = el.get_at(2, &builder)
-    //                                 else {
-    //                                     panic!("expected Spread")
-    //                                 };
-    //                                 some_name.unwrap().assert_name("rest", &builder, &interner);
-    //                                 b.body.cast::<node::LiteralExpr>(&builder).assert_eq(
-    //                                     &node::LiteralExpr::Str(interner["list with spread"]),
-    //                                 );
-    //                             })
-    //                             .execute(&builder)
-    //                             .next();
+                query::<node::Pat>()
+                    .cast::<node::BindPat>()
+                    .expect()
+                    .project(|bind| bind.0)
+                    .get_id(&builder, branches[4].pat)
+                    .assert_name("x", &builder, &interner);
+                query::<node::Expr>()
+                    .cast::<node::LiteralExpr>()
+                    .expect()
+                    .inspect(|expr| {
+                        assert_eq!(expr, &node::LiteralExpr::Str(interner["bind pattern"]));
+                    })
+                    .get(&builder, branches[4].body);
 
-    //                         // Branch 7: "[head, ...] => "list anonymous spread""
-    //                         branches
-    //                             .get_at(7)
-    //                             .inspect(|_, b| {
-    //                                 let list = b.pat.cast::<node::ListPat>(&builder);
-    //                                 let el = list.0;
-    //                                 assert_eq!(el.get(&builder).len(), 2);
-    //                                 el.get_at(0, &builder)
-    //                                     .cast::<node::Pat>(&builder)
-    //                                     .cast::<node::BindPat>(&builder)
-    //                                     .0
-    //                                     .assert_name("head", &builder, &interner);
-    //                                 assert!(matches!(
-    //                                     el.get_at(1, &builder),
-    //                                     node::ListElPat::Spread(None)
-    //                                 ));
-    //                                 b.body.cast::<node::LiteralExpr>(&builder).assert_eq(
-    //                                     &node::LiteralExpr::Str(interner["list anonymous spread"]),
-    //                                 );
-    //                             })
-    //                             .execute(&builder)
-    //                             .next();
+                query::<node::Pat>()
+                    .cast::<node::AnyPat>()
+                    .expect()
+                    .get(&builder, branches[5].pat);
+                query::<node::Expr>()
+                    .cast::<node::LiteralExpr>()
+                    .expect()
+                    .inspect(|expr| {
+                        assert_eq!(expr, &node::LiteralExpr::Str(interner["wildcard"]));
+                    })
+                    .get(&builder, branches[5].body);
 
-    //                         // Branch 8: "[] => "empty list""
-    //                         branches
-    //                             .get_at(8)
-    //                             .inspect(|_, b| {
-    //                                 let list = b.pat.cast::<node::ListPat>(&builder);
-    //                                 assert_eq!(list.0.get(&builder).len(), 0);
-    //                                 b.body
-    //                                     .cast::<node::LiteralExpr>(&builder)
-    //                                     .assert_eq(&node::LiteralExpr::Str(interner["empty list"]));
-    //                             })
-    //                             .execute(&builder)
-    //                             .next();
+                let list = query::<node::Pat>()
+                    .cast::<node::ListPat>()
+                    .expect()
+                    .project_slice(|list| list.0)
+                    .get_slice(&builder, branches[6].pat);
+                let elements: Vec<_> = query::<node::ListElPat>()
+                    .iter_slice(&builder, list)
+                    .collect();
+                assert_eq!(elements.len(), 3);
 
-    //                         // Branch 9: "{ name, age: years, ... } => "record with spread""
-    //                         branches
-    //                             .get_at(9)
-    //                             .inspect(|_, b| {
-    //                                 let record = b.pat.cast::<node::RecordPat>(&builder);
-    //                                 let f = record.fields;
-    //                                 assert_eq!(f.get(&builder).len(), 2);
-    //                                 f.get_at(0, &builder)
-    //                                     .field
-    //                                     .assert_name("name", &builder, &interner);
-    //                                 assert!(f.get_at(0, &builder).pat.is_none());
+                let node::ListElPat::Pat(element) = elements[0] else {
+                    panic!("expected list element pattern");
+                };
+                query::<node::Pat>()
+                    .cast::<node::BindPat>()
+                    .expect()
+                    .project(|bind| bind.0)
+                    .get_id(&builder, *element)
+                    .assert_name("a", &builder, &interner);
 
-    //                                 f.get_at(1, &builder)
-    //                                     .field
-    //                                     .assert_name("age", &builder, &interner);
-    //                                 f.get_at(1, &builder)
-    //                                     .pat
-    //                                     .unwrap()
-    //                                     .cast::<node::BindPat>(&builder)
-    //                                     .0
-    //                                     .assert_name("years", &builder, &interner);
+                let node::ListElPat::Pat(element) = elements[1] else {
+                    panic!("expected list element pattern");
+                };
+                query::<node::Pat>()
+                    .cast::<node::BindPat>()
+                    .expect()
+                    .project(|bind| bind.0)
+                    .get_id(&builder, *element)
+                    .assert_name("b", &builder, &interner);
 
-    //                                 assert!(record.polymorph);
-    //                                 b.body.cast::<node::LiteralExpr>(&builder).assert_eq(
-    //                                     &node::LiteralExpr::Str(interner["record with spread"]),
-    //                                 );
-    //                             })
-    //                             .execute(&builder)
-    //                             .next();
+                let node::ListElPat::Spread(name) = elements[2] else {
+                    panic!("expected spread");
+                };
+                let Some(name) = *name else {
+                    panic!("expected named spread");
+                };
+                name.assert_name("rest", &builder, &interner);
 
-    //                         // Branch 10: "{ x, y } => "simple record""
-    //                         branches
-    //                             .get_at(10)
-    //                             .inspect(|_, b| {
-    //                                 let record = b.pat.cast::<node::RecordPat>(&builder);
-    //                                 let f = record.fields;
-    //                                 assert_eq!(f.get(&builder).len(), 2);
-    //                                 f.get_at(0, &builder)
-    //                                     .field
-    //                                     .assert_name("x", &builder, &interner);
-    //                                 f.get_at(1, &builder)
-    //                                     .field
-    //                                     .assert_name("y", &builder, &interner);
-    //                                 b.body
-    //                                     .cast::<node::LiteralExpr>(&builder)
-    //                                     .assert_eq(&node::LiteralExpr::Str(interner["simple record"]));
-    //                             })
-    //                             .execute(&builder)
-    //                             .next();
+                query::<node::Expr>()
+                    .cast::<node::LiteralExpr>()
+                    .expect()
+                    .inspect(|expr| {
+                        assert_eq!(expr, &node::LiteralExpr::Str(interner["list with spread"]));
+                    })
+                    .get(&builder, branches[6].body);
 
-    //                         // Branch 11: "{} => "empty record""
-    //                         branches
-    //                             .get_at(11)
-    //                             .inspect(|_, b| {
-    //                                 let record = b.pat.cast::<node::RecordPat>(&builder);
-    //                                 assert_eq!(record.fields.get(&builder).len(), 0);
-    //                                 b.body
-    //                                     .cast::<node::LiteralExpr>(&builder)
-    //                                     .assert_eq(&node::LiteralExpr::Str(interner["empty record"]));
-    //                             })
-    //                             .execute(&builder)
-    //                             .next();
+                let list = query::<node::Pat>()
+                    .cast::<node::ListPat>()
+                    .expect()
+                    .project_slice(|list| list.0)
+                    .get_slice(&builder, branches[7].pat);
+                let elements: Vec<_> = query::<node::ListElPat>()
+                    .iter_slice(&builder, list)
+                    .collect();
+                assert_eq!(elements.len(), 2);
 
-    //                         // Branch 12: "< Some : value > => "variant some""
-    //                         branches
-    //                             .get_at(12)
-    //                             .inspect(|_, b| {
-    //                                 let variant = b.pat.cast::<node::VariantPat>(&builder);
-    //                                 let tags = variant.0;
-    //                                 assert_eq!(tags.get(&builder).len(), 1);
-    //                                 tags.get_at(0, &builder)
-    //                                     .tag
-    //                                     .assert_name("Some", &builder, &interner);
-    //                                 tags.get_at(0, &builder)
-    //                                     .pat
-    //                                     .unwrap()
-    //                                     .cast::<node::BindPat>(&builder)
-    //                                     .0
-    //                                     .assert_name("value", &builder, &interner);
-    //                                 b.body
-    //                                     .cast::<node::LiteralExpr>(&builder)
-    //                                     .assert_eq(&node::LiteralExpr::Str(interner["variant some"]));
-    //                             })
-    //                             .execute(&builder)
-    //                             .next();
+                let node::ListElPat::Pat(element) = elements[0] else {
+                    panic!("expected list element pattern");
+                };
+                query::<node::Pat>()
+                    .cast::<node::BindPat>()
+                    .expect()
+                    .project(|bind| bind.0)
+                    .get_id(&builder, *element)
+                    .assert_name("head", &builder, &interner);
 
-    //                         // Branch 13: "< None > => "variant none""
-    //                         branches
-    //                             .get_at(13)
-    //                             .inspect(|_, b| {
-    //                                 let variant = b.pat.cast::<node::VariantPat>(&builder);
-    //                                 let tags = variant.0;
-    //                                 assert_eq!(tags.get(&builder).len(), 1);
-    //                                 tags.get_at(0, &builder)
-    //                                     .tag
-    //                                     .assert_name("None", &builder, &interner);
-    //                                 assert!(tags.get_at(0, &builder).pat.is_none());
-    //                                 b.body
-    //                                     .cast::<node::LiteralExpr>(&builder)
-    //                                     .assert_eq(&node::LiteralExpr::Str(interner["variant none"]));
-    //                             })
-    //                             .execute(&builder)
-    //                             .next();
+                assert!(matches!(
+                    query::<node::ListElPat>().get(&builder, list.get(&builder)[1]),
+                    node::ListElPat::Spread(None)
+                ));
 
-    //                         // Branch 14: "< Ok : result, Err : error > => "multiple variants""
-    //                         branches
-    //                             .get_at(14)
-    //                             .inspect(|_, b| {
-    //                                 let variant = b.pat.cast::<node::VariantPat>(&builder);
-    //                                 let tags = variant.0;
-    //                                 assert_eq!(tags.get(&builder).len(), 2);
-    //                                 tags.get_at(0, &builder)
-    //                                     .tag
-    //                                     .assert_name("Ok", &builder, &interner);
-    //                                 tags.get_at(0, &builder)
-    //                                     .pat
-    //                                     .unwrap()
-    //                                     .cast::<node::BindPat>(&builder)
-    //                                     .0
-    //                                     .assert_name("result", &builder, &interner);
-    //                                 tags.get_at(1, &builder)
-    //                                     .tag
-    //                                     .assert_name("Err", &builder, &interner);
-    //                                 tags.get_at(1, &builder)
-    //                                     .pat
-    //                                     .unwrap()
-    //                                     .cast::<node::BindPat>(&builder)
-    //                                     .0
-    //                                     .assert_name("error", &builder, &interner);
-    //                                 b.body.cast::<node::LiteralExpr>(&builder).assert_eq(
-    //                                     &node::LiteralExpr::Str(interner["multiple variants"]),
-    //                                 );
-    //                             })
-    //                             .execute(&builder)
-    //                             .next();
-    //                     });
-    //             });
-    //     }
+                query::<node::Expr>()
+                    .cast::<node::LiteralExpr>()
+                    .expect()
+                    .inspect(|expr| {
+                        assert_eq!(
+                            expr,
+                            &node::LiteralExpr::Str(interner["list anonymous spread"])
+                        );
+                    })
+                    .get(&builder, branches[7].body);
 
-    //     #[test]
-    //     fn func_expr() {
-    //         let mut interner = StrInterner::default();
+                let list = query::<node::Pat>()
+                    .cast::<node::ListPat>()
+                    .expect()
+                    .project_slice(|list| list.0)
+                    .get_slice(&builder, branches[8].pat);
+                assert_eq!(
+                    query::<node::ListElPat>()
+                        .iter_slice(&builder, list)
+                        .count(),
+                    0
+                );
 
-    //         let ParseResult { node, builder, .. } =
-    //             try_parse_str_with("fn name => \"Hello\" + name", expr_parser(), &mut interner);
+                query::<node::Expr>()
+                    .cast::<node::LiteralExpr>()
+                    .expect()
+                    .inspect(|expr| {
+                        assert_eq!(expr, &node::LiteralExpr::Str(interner["empty list"]));
+                    })
+                    .get(&builder, branches[8].body);
 
-    //         query_one::<node::Expr>(node)
-    //             .cast::<node::LambdaExpr>()
-    //             .inspect(|_, lambda| {
-    //                 lambda.param.assert_name("name", &builder, &interner);
-    //                 let binary = lambda.body.cast::<node::BinaryExpr>(&builder);
-    //                 binary.op.assert_eq(&node::BinaryOp::Add);
-    //             })
-    //             .execute(&builder)
-    //             .next();
-    //     }
+                let record = query::<node::Pat>()
+                    .cast::<node::RecordPat>()
+                    .expect()
+                    .get(&builder, branches[9].pat);
+                let fields: Vec<_> = query::<node::RecordFieldPat>()
+                    .iter_slice(&builder, record.fields)
+                    .collect();
+                assert_eq!(fields.len(), 2);
+
+                fields[0].field.assert_name("name", &builder, &interner);
+                assert!(fields[0].pat.is_none());
+
+                fields[1].field.assert_name("age", &builder, &interner);
+                query::<node::Pat>()
+                    .cast::<node::BindPat>()
+                    .expect()
+                    .project(|bind| bind.0)
+                    .get_id(&builder, fields[1].pat.unwrap())
+                    .assert_name("years", &builder, &interner);
+                assert!(record.polymorph);
+
+                query::<node::Expr>()
+                    .cast::<node::LiteralExpr>()
+                    .expect()
+                    .inspect(|expr| {
+                        assert_eq!(
+                            expr,
+                            &node::LiteralExpr::Str(interner["record with spread"])
+                        );
+                    })
+                    .get(&builder, branches[9].body);
+
+                let record = query::<node::Pat>()
+                    .cast::<node::RecordPat>()
+                    .expect()
+                    .get(&builder, branches[10].pat);
+                let fields: Vec<_> = query::<node::RecordFieldPat>()
+                    .iter_slice(&builder, record.fields)
+                    .collect();
+                assert_eq!(fields.len(), 2);
+
+                fields[0].field.assert_name("x", &builder, &interner);
+                assert!(fields[0].pat.is_none());
+                fields[1].field.assert_name("y", &builder, &interner);
+                assert!(fields[1].pat.is_none());
+
+                query::<node::Expr>()
+                    .cast::<node::LiteralExpr>()
+                    .expect()
+                    .inspect(|expr| {
+                        assert_eq!(expr, &node::LiteralExpr::Str(interner["simple record"]));
+                    })
+                    .get(&builder, branches[10].body);
+
+                let record = query::<node::Pat>()
+                    .cast::<node::RecordPat>()
+                    .expect()
+                    .get(&builder, branches[11].pat);
+                assert_eq!(
+                    query::<node::RecordFieldPat>()
+                        .iter_slice(&builder, record.fields)
+                        .count(),
+                    0
+                );
+
+                query::<node::Expr>()
+                    .cast::<node::LiteralExpr>()
+                    .expect()
+                    .inspect(|expr| {
+                        assert_eq!(expr, &node::LiteralExpr::Str(interner["empty record"]));
+                    })
+                    .get(&builder, branches[11].body);
+
+                let variant = query::<node::Pat>()
+                    .cast::<node::VariantPat>()
+                    .expect()
+                    .get(&builder, branches[12].pat);
+                let tags: Vec<_> = query::<node::VariantTagPat>()
+                    .iter_slice(&builder, variant.0)
+                    .collect();
+                assert_eq!(tags.len(), 1);
+
+                tags[0].tag.assert_name("Some", &builder, &interner);
+                query::<node::Pat>()
+                    .cast::<node::BindPat>()
+                    .expect()
+                    .project(|bind| bind.0)
+                    .get_id(&builder, tags[0].pat.unwrap())
+                    .assert_name("value", &builder, &interner);
+
+                query::<node::Expr>()
+                    .cast::<node::LiteralExpr>()
+                    .expect()
+                    .inspect(|expr| {
+                        assert_eq!(expr, &node::LiteralExpr::Str(interner["variant some"]));
+                    })
+                    .get(&builder, branches[12].body);
+
+                let variant = query::<node::Pat>()
+                    .cast::<node::VariantPat>()
+                    .expect()
+                    .get(&builder, branches[13].pat);
+                let tags: Vec<_> = query::<node::VariantTagPat>()
+                    .iter_slice(&builder, variant.0)
+                    .collect();
+                assert_eq!(tags.len(), 1);
+
+                tags[0].tag.assert_name("None", &builder, &interner);
+                assert!(tags[0].pat.is_none());
+
+                query::<node::Expr>()
+                    .cast::<node::LiteralExpr>()
+                    .expect()
+                    .inspect(|expr| {
+                        assert_eq!(expr, &node::LiteralExpr::Str(interner["variant none"]));
+                    })
+                    .get(&builder, branches[13].body);
+
+                let variant = query::<node::Pat>()
+                    .cast::<node::VariantPat>()
+                    .expect()
+                    .get(&builder, branches[14].pat);
+                let tags: Vec<_> = query::<node::VariantTagPat>()
+                    .iter_slice(&builder, variant.0)
+                    .collect();
+                assert_eq!(tags.len(), 2);
+
+                tags[0].tag.assert_name("Ok", &builder, &interner);
+                query::<node::Pat>()
+                    .cast::<node::BindPat>()
+                    .expect()
+                    .project(|bind| bind.0)
+                    .get_id(&builder, tags[0].pat.unwrap())
+                    .assert_name("result", &builder, &interner);
+
+                tags[1].tag.assert_name("Err", &builder, &interner);
+                query::<node::Pat>()
+                    .cast::<node::BindPat>()
+                    .expect()
+                    .project(|bind| bind.0)
+                    .get_id(&builder, tags[1].pat.unwrap())
+                    .assert_name("error", &builder, &interner);
+
+                query::<node::Expr>()
+                    .cast::<node::LiteralExpr>()
+                    .expect()
+                    .inspect(|expr| {
+                        assert_eq!(expr, &node::LiteralExpr::Str(interner["multiple variants"]));
+                    })
+                    .get(&builder, branches[14].body);
+            })
+            .get(&builder, node);
+    }
+
+    #[test]
+    fn func_expr() {
+        let mut interner = StrInterner::default();
+
+        let ParseResult { node, builder, .. } =
+            try_parse_str_with("fn name => \"Hello\" + name", expr_parser(), &mut interner);
+
+        query::<node::Expr>()
+            .cast::<node::LambdaExpr>()
+            .expect()
+            .inspect(|lambda| {
+                lambda.param.assert_name("name", &builder, &interner);
+
+                query::<node::Expr>()
+                    .cast::<node::BinaryExpr>()
+                    .expect()
+                    .inspect(|binary| assert_eq!(binary.op.get(&builder), &node::BinaryOp::Add))
+                    .get(&builder, lambda.body);
+            })
+            .get(&builder, node);
+    }
 
     //     #[test]
     //     fn arithmetic_expr() {

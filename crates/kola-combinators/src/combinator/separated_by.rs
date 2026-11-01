@@ -145,7 +145,12 @@ where
             }
             Err(Failure::Throw(cp)) => return Err(Failure::Throw(cp)),
             Err(Failure::Abort(e)) => {
-                if self.allow_trailing {
+                if state.count == 0 && self.min == 0 {
+                    // No first item: an empty sequence is valid.
+                    input.reset(input_cp);
+                    report.reset(report_cp);
+                    Ok(None)
+                } else if self.allow_trailing {
                     // Trailing sep — roll back sep+item attempt
                     input.reset(input_cp);
 

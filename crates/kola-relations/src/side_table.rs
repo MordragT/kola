@@ -1,4 +1,6 @@
-use crate::relation::{PartialRelation, RelationIds, TotalRelation, TotalRelationMut};
+use crate::relation::{
+    PartialRelation, PartialRelationMut, RelationIds, TotalRelation, TotalRelationMut,
+};
 use crate::{Id, IdIter};
 use std::collections::HashMap;
 use std::marker::PhantomData;
@@ -204,5 +206,12 @@ impl<T: 'static, M: 'static> PartialRelation<T, M> for SideMap<T, M> {
     #[inline]
     fn get_opt(&self, id: Id<T>) -> Option<&M> {
         self.0.get(&id)
+    }
+}
+
+impl<T: 'static, M: 'static> PartialRelationMut<T, M> for SideMap<T, M> {
+    #[inline]
+    fn get_mut(&mut self, id: Id<T>) -> Option<&mut M> {
+        self.0.get_mut(&id)
     }
 }
