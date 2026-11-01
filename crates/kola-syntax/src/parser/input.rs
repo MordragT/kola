@@ -16,11 +16,11 @@ pub struct ParseInput<'t> {
     pub source_id: SourceId,
     pub tokens: Vec<(Token<'t>, Span)>,
     pub cursor: usize,
-    pub state: State<'t>,
+    pub state: State,
 }
 
 impl<'t> ParseInput<'t> {
-    pub fn new(source_id: SourceId, tokens: Tokens<'t>, interner: &'t mut StrInterner) -> Self {
+    pub fn new(source_id: SourceId, tokens: Tokens<'t>, interner: StrInterner) -> Self {
         // TODO: Once doc comments are integrated into the AST, stop filtering
         // CommentT::Doc here and instead handle them in the parser rules so
         // they can be attached to declarations (let, type, module, etc.).
@@ -39,7 +39,7 @@ impl<'t> ParseInput<'t> {
     }
 
     // TODO migrate away from this by just putting the elements of state directly in here
-    pub fn state(&mut self) -> &mut State<'t> {
+    pub fn state(&mut self) -> &mut State {
         &mut self.state
     }
 }

@@ -15,19 +15,17 @@ pub struct StateCheckpoint {
 }
 
 #[derive(Debug)]
-pub struct State<'t> {
+pub struct State {
     pub tokens: SemanticTokens,
     pub builder: Tree,
-    pub interner: &'t mut StrInterner,
     pub recovered: Report,
 }
 
-impl<'t> State<'t> {
-    pub fn new(interner: &'t mut StrInterner) -> Self {
+impl State {
+    pub fn new(interner: StrInterner) -> Self {
         Self {
             tokens: SemanticTokens::default(),
-            builder: Tree::default(),
-            interner,
+            builder: Tree::with_interner(interner),
             recovered: Report::new(),
         }
     }
@@ -57,7 +55,7 @@ impl<'t> State<'t> {
     }
 
     pub fn intern<'a>(&mut self, value: impl Into<Cow<'a, str>>) -> StrKey {
-        self.interner.intern(value)
+        self.builder.interner.intern(value)
     }
 
     pub fn insert_token(&mut self, token: impl Into<SemanticToken>, span: Loc) {

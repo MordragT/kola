@@ -3,7 +3,6 @@ use crate::node::{
     ValueNamespace,
 };
 use crate::tree::{TotalSpan, Tree};
-use kola_interner::StrInterner;
 pub use kola_relations::id::{Id, IdIter};
 pub use kola_relations::slice::SliceId;
 use kola_relations::{SliceRelation, TotalRelation, TryCast};
@@ -125,7 +124,7 @@ impl<T: 'static> SliceIdExt<T> for SliceId<T> {
 
 // Flat Name Assertion helper trait
 pub trait AssertNameExt<M: 'static> {
-    fn assert_name(&self, expected: &str, tree: &Tree<M>, interner: &StrInterner);
+    fn assert_name(&self, expected: &str, tree: &Tree<M>);
 }
 
 macro_rules! impl_assert_name {
@@ -137,8 +136,8 @@ macro_rules! impl_assert_name {
                 Tree<M>: TotalRelation<Name<$Namespace>, Name<$Namespace>>,
             {
                 #[inline]
-                fn assert_name(&self, expected: &str, tree: &Tree<M>, interner: &StrInterner) {
-                    self.get(tree).assert_name(expected, interner);
+                fn assert_name(&self, expected: &str, tree: &Tree<M>) {
+                    self.get(tree).assert_name(expected, tree);
                 }
             }
         )*

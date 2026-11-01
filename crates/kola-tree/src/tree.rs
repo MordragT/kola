@@ -1,6 +1,7 @@
 use pastey::paste;
 use std::sync::Arc;
 
+use kola_interner::{StrInterner, StrKey};
 use kola_relations::id::Id;
 use kola_relations::slice::{SliceId, SliceStorage};
 use kola_relations::{Allocate, SliceRelation, SliceRelationMut, TotalRelation};
@@ -136,6 +137,7 @@ macro_rules! define_tree_and_relations {
             #[derive(Debug, Clone)]
             pub struct Tree<M = Loc> {
                 pub slices: SliceStorage,
+                pub interner: StrInterner,
                 $(pub [< $Name:snake:lower >]: Arc<Vec<([< $Name >], M)>>,)+
             }
 
@@ -144,11 +146,15 @@ macro_rules! define_tree_and_relations {
                 fn default() -> Self {
                     Self {
                         slices: SliceStorage::default(),
+                        interner: StrInterner::default(),
                         $([< $Name:snake:lower >]: Arc::new(Vec::new()),)+
                     }
                 }
             }
 
+            // The interner is append-only and intentionally not checkpointed:
+            // restoring a parse checkpoint must never invalidate `StrKey`s held
+            // by surviving nodes.
             #[derive(Debug, Clone, Copy)]
             pub struct TreeCheckpoint {
                 pub slices: usize,
@@ -366,6 +372,19 @@ impl<M: Clone + 'static> Tree<M> {
     #[inline]
     pub fn new() -> Self {
         Self::default()
+    }
+
+    #[inline]
+    pub fn with_interner(interner: StrInterner) -> Self {
+        Self {
+            interner,
+            ..Self::default()
+        }
+    }
+
+    #[inline]
+    pub fn resolve(&self, key: StrKey) -> &str {
+        &self.interner[key]
     }
 
     #[inline]

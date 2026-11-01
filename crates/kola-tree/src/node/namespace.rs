@@ -3,10 +3,11 @@ use enum_as_inner::EnumAsInner;
 use serde::{Deserialize, Serialize};
 use std::{borrow::Borrow, marker::PhantomData, ops::Deref};
 
-use kola_interner::{StrInterner, StrKey};
+use kola_interner::StrKey;
 use kola_print::prelude::*;
 
 use crate::print::TreePrinter;
+use crate::tree::Tree;
 
 #[derive(
     Debug, Display, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
@@ -119,8 +120,9 @@ impl<N> Name<N> {
     }
 
     #[inline]
-    pub fn assert_name(&self, expected: &str, interner: &StrInterner) {
-        let actual = interner
+    pub fn assert_name<M: 'static>(&self, expected: &str, tree: &Tree<M>) {
+        let actual = tree
+            .interner
             .get(self.0)
             .unwrap_or_else(|| panic!("Interner key {:?} not found", self.0));
         assert_eq!(
