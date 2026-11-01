@@ -2,7 +2,7 @@ use derive_more::{Display, From};
 use enum_as_inner::EnumAsInner;
 use kola_interner::StrKey;
 use kola_print::prelude::*;
-use kola_relations::TryProject;
+use kola_relations::TryCast;
 use serde::{Deserialize, Serialize};
 
 use super::{ModulePath, Pat, QualifiedType, TypeExpr, ValueName};
@@ -820,7 +820,7 @@ impl TagExpr {
     Hash,
     Serialize,
     Deserialize,
-    TryProject,
+    TryCast,
 )]
 #[notate(with = TreePrinter<'a>, color = "blue")]
 pub enum TypeWitnessExpr {
@@ -841,7 +841,7 @@ pub enum TypeWitnessExpr {
     Hash,
     Serialize,
     Deserialize,
-    TryProject,
+    TryCast,
 )]
 pub enum Expr {
     Error(Id<ExprError>),

@@ -2,7 +2,7 @@ use derive_more::From;
 use enum_as_inner::EnumAsInner;
 use kola_interner::StrKey;
 use kola_print::prelude::*;
-use kola_relations::TryProject;
+use kola_relations::TryCast;
 use serde::{Deserialize, Serialize};
 use std::{borrow::Borrow, ops::Deref};
 
@@ -119,7 +119,7 @@ impl<'a> Notate<'a, TypeVar> for TreePrinter<'a> {
     Hash,
     Serialize,
     Deserialize,
-    TryProject,
+    TryCast,
 )]
 #[notate(with = TreePrinter<'a>, color = "cyan")]
 pub enum LabelOrVar {
@@ -207,7 +207,7 @@ pub struct TypeApplication {
     Hash,
     Serialize,
     Deserialize,
-    TryProject,
+    TryCast,
 )]
 pub enum TypeExpr {
     Error(Id<TypeError>),

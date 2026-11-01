@@ -1276,52 +1276,52 @@ mod tests {
         let ParseResult { node, builder, .. } =
             try_parse_str_with("{ a: x, b: { y }, c: _, d }", pat_parser(), &mut interner);
 
-        let fields = query::<node::Pat>()
-            .cast::<node::RecordPat>()
-            .expect()
+        let fields = node
+            .query()
+            .cast_expect::<node::RecordPat>()
             .project_slice(|r| r.fields)
-            .get_slice(&builder, node);
-
-        let field_id = |index: usize| builder.get_slice(fields)[index];
+            .get_slice_elements(&builder);
 
         // Field 0: "a: x"
-        let field = query::<node::RecordFieldPat>().get(&builder, field_id(0));
+        let field = fields[0].query().get(&builder);
         field.field.assert_name("a", &builder, &interner);
 
-        let bind = query::<node::RecordFieldPat>()
+        let bind = fields[0]
+            .query()
             .project_opt(|f| f.pat)
             .cast::<node::BindPat>()
-            .get(&builder, field_id(0))
+            .get(&builder)
             .expect("bind x");
         bind.0.assert_name("x", &builder, &interner);
 
         // Field 1: "b: { y }"
-        let field = query::<node::RecordFieldPat>().get(&builder, field_id(1));
+        let field = fields[1].query().get(&builder);
         field.field.assert_name("b", &builder, &interner);
 
-        let inner = query::<node::RecordFieldPat>()
+        let inner = fields[1]
+            .query()
             .project_opt(|f| f.pat)
-            .cast::<node::RecordPat>()
-            .expect()
+            .cast_expect::<node::RecordPat>()
             .project_slice(|r| r.fields)
             .nth(0)
-            .get(&builder, field_id(1))
+            .get(&builder)
             .expect("inner field");
         inner.field.assert_name("y", &builder, &interner);
         assert!(inner.pat.is_none());
 
         // Field 2: "c: _"
-        let field = query::<node::RecordFieldPat>().get(&builder, field_id(2));
+        let field = fields[2].query().get(&builder);
         field.field.assert_name("c", &builder, &interner);
 
-        let _any = query::<node::RecordFieldPat>()
+        let _any = fields[2]
+            .query()
             .project_opt(|f| f.pat)
             .cast::<node::AnyPat>()
-            .get(&builder, field_id(2))
+            .get(&builder)
             .expect("any");
 
         // Field 3: "d"
-        let field = query::<node::RecordFieldPat>().get(&builder, field_id(3));
+        let field = fields[3].query().get(&builder);
         field.field.assert_name("d", &builder, &interner);
         assert!(field.pat.is_none());
     }
@@ -1335,44 +1335,47 @@ mod tests {
             &mut interner,
         );
 
-        query::<node::Expr>()
-            .cast::<node::CaseExpr>()
-            .expect()
+        node.query()
+            .cast_expect::<node::CaseExpr>()
             .inspect(|case| {
-                query::<node::Expr>()
-                    .cast::<node::QualifiedExpr>()
-                    .expect()
+                case.source
+                    .query()
+                    .cast_expect::<node::QualifiedExpr>()
                     .project(|source| source.source)
-                    .get_id(&builder, case.source)
+                    .get_id(&builder)
                     .assert_name("x", &builder, &interner);
 
                 let branches: Vec<_> = query::<node::CaseBranch>()
-                    .iter_slice(&builder, case.branches)
+                    .iter_from_slice(&builder, case.branches)
                     .collect();
                 assert_eq!(branches.len(), 2);
 
-                query::<node::Pat>()
-                    .cast::<node::LiteralPat>()
-                    .expect()
+                branches[0]
+                    .pat
+                    .query()
+                    .cast_expect::<node::LiteralPat>()
                     .inspect(|pat| assert_eq!(pat, &node::LiteralPat::Num(1.0)))
-                    .get(&builder, branches[0].pat);
-                query::<node::Expr>()
-                    .cast::<node::LiteralExpr>()
-                    .expect()
+                    .get(&builder);
+                branches[0]
+                    .body
+                    .query()
+                    .cast_expect::<node::LiteralExpr>()
                     .inspect(|expr| assert_eq!(expr, &node::LiteralExpr::Bool(true)))
-                    .get(&builder, branches[0].body);
+                    .get(&builder);
 
-                query::<node::Pat>()
-                    .cast::<node::AnyPat>()
-                    .expect()
-                    .get(&builder, branches[1].pat);
-                query::<node::Expr>()
-                    .cast::<node::LiteralExpr>()
-                    .expect()
+                branches[1]
+                    .pat
+                    .query()
+                    .cast_expect::<node::AnyPat>()
+                    .get(&builder);
+                branches[1]
+                    .body
+                    .query()
+                    .cast_expect::<node::LiteralExpr>()
                     .inspect(|expr| assert_eq!(expr, &node::LiteralExpr::Bool(false)))
-                    .get(&builder, branches[1].body);
+                    .get(&builder);
             })
-            .get(&builder, node);
+            .get(&builder);
     }
 
     #[test]
@@ -1401,354 +1404,371 @@ mod tests {
         let ParseResult { node, builder, .. } =
             try_parse_str_with(test_case, expr_parser(), &mut interner);
 
-        query::<node::Expr>()
-            .cast::<node::CaseExpr>()
-            .expect()
+        node.query()
+            .cast_expect::<node::CaseExpr>()
             .inspect(|case| {
-                query::<node::Expr>()
-                    .cast::<node::QualifiedExpr>()
-                    .expect()
+                case.source
+                    .query()
+                    .cast_expect::<node::QualifiedExpr>()
                     .project(|source| source.source)
-                    .get_id(&builder, case.source)
+                    .get_id(&builder)
                     .assert_name("data", &builder, &interner);
 
                 let branches: Vec<_> = query::<node::CaseBranch>()
-                    .iter_slice(&builder, case.branches)
+                    .iter_from_slice(&builder, case.branches)
                     .collect();
                 assert_eq!(branches.len(), 15);
 
-                query::<node::Pat>()
-                    .cast::<node::LiteralPat>()
-                    .expect()
+                branches[0]
+                    .pat
+                    .query()
+                    .cast_expect::<node::LiteralPat>()
                     .inspect(|pat| assert_eq!(pat, &node::LiteralPat::Unit))
-                    .get(&builder, branches[0].pat);
-                query::<node::Expr>()
-                    .cast::<node::LiteralExpr>()
-                    .expect()
+                    .get(&builder);
+                branches[0]
+                    .body
+                    .query()
+                    .cast_expect::<node::LiteralExpr>()
                     .inspect(|expr| {
                         assert_eq!(expr, &node::LiteralExpr::Str(interner["unit"]));
                     })
-                    .get(&builder, branches[0].body);
+                    .get(&builder);
 
-                query::<node::Pat>()
-                    .cast::<node::LiteralPat>()
-                    .expect()
+                branches[1]
+                    .pat
+                    .query()
+                    .cast_expect::<node::LiteralPat>()
                     .inspect(|pat| assert_eq!(pat, &node::LiteralPat::Bool(true)))
-                    .get(&builder, branches[1].pat);
-                query::<node::Expr>()
-                    .cast::<node::LiteralExpr>()
-                    .expect()
+                    .get(&builder);
+                branches[1]
+                    .body
+                    .query()
+                    .cast_expect::<node::LiteralExpr>()
                     .inspect(|expr| {
                         assert_eq!(expr, &node::LiteralExpr::Str(interner["bool true"]));
                     })
-                    .get(&builder, branches[1].body);
+                    .get(&builder);
 
-                query::<node::Pat>()
-                    .cast::<node::LiteralPat>()
-                    .expect()
+                branches[2]
+                    .pat
+                    .query()
+                    .cast_expect::<node::LiteralPat>()
                     .inspect(|pat| assert_eq!(pat, &node::LiteralPat::Num(42.0)))
-                    .get(&builder, branches[2].pat);
-                query::<node::Expr>()
-                    .cast::<node::LiteralExpr>()
-                    .expect()
+                    .get(&builder);
+                branches[2]
+                    .body
+                    .query()
+                    .cast_expect::<node::LiteralExpr>()
                     .inspect(|expr| {
                         assert_eq!(expr, &node::LiteralExpr::Str(interner["number"]));
                     })
-                    .get(&builder, branches[2].body);
+                    .get(&builder);
 
-                query::<node::Pat>()
-                    .cast::<node::LiteralPat>()
-                    .expect()
+                branches[3]
+                    .pat
+                    .query()
+                    .cast_expect::<node::LiteralPat>()
                     .inspect(|pat| assert_eq!(pat, &node::LiteralPat::Str(interner["hello"])))
-                    .get(&builder, branches[3].pat);
-                query::<node::Expr>()
-                    .cast::<node::LiteralExpr>()
-                    .expect()
+                    .get(&builder);
+                branches[3]
+                    .body
+                    .query()
+                    .cast_expect::<node::LiteralExpr>()
                     .inspect(|expr| {
                         assert_eq!(expr, &node::LiteralExpr::Str(interner["string"]));
                     })
-                    .get(&builder, branches[3].body);
+                    .get(&builder);
 
-                query::<node::Pat>()
-                    .cast::<node::BindPat>()
-                    .expect()
+                branches[4]
+                    .pat
+                    .query()
+                    .cast_expect::<node::BindPat>()
                     .project(|bind| bind.0)
-                    .get_id(&builder, branches[4].pat)
+                    .get_id(&builder)
                     .assert_name("x", &builder, &interner);
-                query::<node::Expr>()
-                    .cast::<node::LiteralExpr>()
-                    .expect()
+                branches[4]
+                    .body
+                    .query()
+                    .cast_expect::<node::LiteralExpr>()
                     .inspect(|expr| {
                         assert_eq!(expr, &node::LiteralExpr::Str(interner["bind pattern"]));
                     })
-                    .get(&builder, branches[4].body);
+                    .get(&builder);
 
-                query::<node::Pat>()
-                    .cast::<node::AnyPat>()
-                    .expect()
-                    .get(&builder, branches[5].pat);
-                query::<node::Expr>()
-                    .cast::<node::LiteralExpr>()
-                    .expect()
+                branches[5]
+                    .pat
+                    .query()
+                    .cast_expect::<node::AnyPat>()
+                    .get(&builder);
+                branches[5]
+                    .body
+                    .query()
+                    .cast_expect::<node::LiteralExpr>()
                     .inspect(|expr| {
                         assert_eq!(expr, &node::LiteralExpr::Str(interner["wildcard"]));
                     })
-                    .get(&builder, branches[5].body);
+                    .get(&builder);
 
-                let list = query::<node::Pat>()
-                    .cast::<node::ListPat>()
-                    .expect()
+                let elements = branches[6]
+                    .pat
+                    .query()
+                    .cast_expect::<node::ListPat>()
                     .project_slice(|list| list.0)
-                    .get_slice(&builder, branches[6].pat);
-                let elements: Vec<_> = query::<node::ListElPat>()
-                    .iter_slice(&builder, list)
-                    .collect();
+                    .get_slice_elements(&builder);
                 assert_eq!(elements.len(), 3);
 
-                let node::ListElPat::Pat(element) = elements[0] else {
-                    panic!("expected list element pattern");
-                };
-                query::<node::Pat>()
-                    .cast::<node::BindPat>()
-                    .expect()
+                elements[0]
+                    .query()
+                    .cast_expect::<node::Pat>()
+                    .cast_expect::<node::BindPat>()
                     .project(|bind| bind.0)
-                    .get_id(&builder, *element)
+                    .get_id(&builder)
                     .assert_name("a", &builder, &interner);
 
-                let node::ListElPat::Pat(element) = elements[1] else {
-                    panic!("expected list element pattern");
-                };
-                query::<node::Pat>()
-                    .cast::<node::BindPat>()
-                    .expect()
+                elements[1]
+                    .query()
+                    .cast_expect::<node::Pat>()
+                    .cast_expect::<node::BindPat>()
                     .project(|bind| bind.0)
-                    .get_id(&builder, *element)
+                    .get_id(&builder)
                     .assert_name("b", &builder, &interner);
 
-                let node::ListElPat::Spread(name) = elements[2] else {
-                    panic!("expected spread");
-                };
-                let Some(name) = *name else {
-                    panic!("expected named spread");
-                };
-                name.assert_name("rest", &builder, &interner);
+                elements[2]
+                    .query()
+                    .cast_expect::<node::ValueName>()
+                    .inspect(|name| name.assert_name("rest", &interner))
+                    .get(&builder);
 
-                query::<node::Expr>()
-                    .cast::<node::LiteralExpr>()
-                    .expect()
+                branches[6]
+                    .body
+                    .query()
+                    .cast_expect::<node::LiteralExpr>()
                     .inspect(|expr| {
                         assert_eq!(expr, &node::LiteralExpr::Str(interner["list with spread"]));
                     })
-                    .get(&builder, branches[6].body);
+                    .get(&builder);
 
-                let list = query::<node::Pat>()
-                    .cast::<node::ListPat>()
-                    .expect()
+                let elements = branches[7]
+                    .pat
+                    .query()
+                    .cast_expect::<node::ListPat>()
                     .project_slice(|list| list.0)
-                    .get_slice(&builder, branches[7].pat);
-                let elements: Vec<_> = query::<node::ListElPat>()
-                    .iter_slice(&builder, list)
-                    .collect();
+                    .get_slice_elements(&builder);
                 assert_eq!(elements.len(), 2);
 
-                let node::ListElPat::Pat(element) = elements[0] else {
-                    panic!("expected list element pattern");
-                };
-                query::<node::Pat>()
-                    .cast::<node::BindPat>()
-                    .expect()
+                elements[0]
+                    .query()
+                    .cast_expect::<node::Pat>()
+                    .cast_expect::<node::BindPat>()
                     .project(|bind| bind.0)
-                    .get_id(&builder, *element)
+                    .get_id(&builder)
                     .assert_name("head", &builder, &interner);
 
-                assert!(matches!(
-                    query::<node::ListElPat>().get(&builder, list.get(&builder)[1]),
-                    node::ListElPat::Spread(None)
-                ));
+                assert!(
+                    elements[1]
+                        .query()
+                        .cast::<node::ValueName>()
+                        .get(&builder)
+                        .is_none()
+                );
 
-                query::<node::Expr>()
-                    .cast::<node::LiteralExpr>()
-                    .expect()
+                branches[7]
+                    .body
+                    .query()
+                    .cast_expect::<node::LiteralExpr>()
                     .inspect(|expr| {
                         assert_eq!(
                             expr,
                             &node::LiteralExpr::Str(interner["list anonymous spread"])
                         );
                     })
-                    .get(&builder, branches[7].body);
+                    .get(&builder);
 
-                let list = query::<node::Pat>()
-                    .cast::<node::ListPat>()
-                    .expect()
+                let elements = branches[8]
+                    .pat
+                    .query()
+                    .cast_expect::<node::ListPat>()
                     .project_slice(|list| list.0)
-                    .get_slice(&builder, branches[8].pat);
-                assert_eq!(
-                    query::<node::ListElPat>()
-                        .iter_slice(&builder, list)
-                        .count(),
-                    0
-                );
+                    .get_slice_elements(&builder);
+                assert_eq!(elements.len(), 0);
 
-                query::<node::Expr>()
-                    .cast::<node::LiteralExpr>()
-                    .expect()
+                branches[8]
+                    .body
+                    .query()
+                    .cast_expect::<node::LiteralExpr>()
                     .inspect(|expr| {
                         assert_eq!(expr, &node::LiteralExpr::Str(interner["empty list"]));
                     })
-                    .get(&builder, branches[8].body);
+                    .get(&builder);
 
-                let record = query::<node::Pat>()
-                    .cast::<node::RecordPat>()
-                    .expect()
-                    .get(&builder, branches[9].pat);
-                let fields: Vec<_> = query::<node::RecordFieldPat>()
-                    .iter_slice(&builder, record.fields)
-                    .collect();
+                let record = branches[9]
+                    .pat
+                    .query()
+                    .cast_expect::<node::RecordPat>()
+                    .get(&builder);
+                let fields = branches[9]
+                    .pat
+                    .query()
+                    .cast_expect::<node::RecordPat>()
+                    .project_slice(|record| record.fields)
+                    .get_slice_elements(&builder);
                 assert_eq!(fields.len(), 2);
 
-                fields[0].field.assert_name("name", &builder, &interner);
-                assert!(fields[0].pat.is_none());
+                let field = fields[0].query().get(&builder);
+                field.field.assert_name("name", &builder, &interner);
+                assert!(field.pat.is_none());
 
-                fields[1].field.assert_name("age", &builder, &interner);
-                query::<node::Pat>()
-                    .cast::<node::BindPat>()
-                    .expect()
+                let field = fields[1].query().get(&builder);
+                field.field.assert_name("age", &builder, &interner);
+                field
+                    .pat
+                    .unwrap()
+                    .query()
+                    .cast_expect::<node::BindPat>()
                     .project(|bind| bind.0)
-                    .get_id(&builder, fields[1].pat.unwrap())
+                    .get_id(&builder)
                     .assert_name("years", &builder, &interner);
                 assert!(record.polymorph);
 
-                query::<node::Expr>()
-                    .cast::<node::LiteralExpr>()
-                    .expect()
+                branches[9]
+                    .body
+                    .query()
+                    .cast_expect::<node::LiteralExpr>()
                     .inspect(|expr| {
                         assert_eq!(
                             expr,
                             &node::LiteralExpr::Str(interner["record with spread"])
                         );
                     })
-                    .get(&builder, branches[9].body);
+                    .get(&builder);
 
-                let record = query::<node::Pat>()
-                    .cast::<node::RecordPat>()
-                    .expect()
-                    .get(&builder, branches[10].pat);
-                let fields: Vec<_> = query::<node::RecordFieldPat>()
-                    .iter_slice(&builder, record.fields)
-                    .collect();
+                let fields = branches[10]
+                    .pat
+                    .query()
+                    .cast_expect::<node::RecordPat>()
+                    .project_slice(|record| record.fields)
+                    .get_slice_elements(&builder);
                 assert_eq!(fields.len(), 2);
 
-                fields[0].field.assert_name("x", &builder, &interner);
-                assert!(fields[0].pat.is_none());
-                fields[1].field.assert_name("y", &builder, &interner);
-                assert!(fields[1].pat.is_none());
+                let field = fields[0].query().get(&builder);
+                field.field.assert_name("x", &builder, &interner);
+                assert!(field.pat.is_none());
+                let field = fields[1].query().get(&builder);
+                field.field.assert_name("y", &builder, &interner);
+                assert!(field.pat.is_none());
 
-                query::<node::Expr>()
-                    .cast::<node::LiteralExpr>()
-                    .expect()
+                branches[10]
+                    .body
+                    .query()
+                    .cast_expect::<node::LiteralExpr>()
                     .inspect(|expr| {
                         assert_eq!(expr, &node::LiteralExpr::Str(interner["simple record"]));
                     })
-                    .get(&builder, branches[10].body);
+                    .get(&builder);
 
-                let record = query::<node::Pat>()
-                    .cast::<node::RecordPat>()
-                    .expect()
-                    .get(&builder, branches[11].pat);
-                assert_eq!(
-                    query::<node::RecordFieldPat>()
-                        .iter_slice(&builder, record.fields)
-                        .count(),
-                    0
-                );
+                let fields = branches[11]
+                    .pat
+                    .query()
+                    .cast_expect::<node::RecordPat>()
+                    .project_slice(|record| record.fields)
+                    .get_slice_elements(&builder);
+                assert_eq!(fields.len(), 0);
 
-                query::<node::Expr>()
-                    .cast::<node::LiteralExpr>()
-                    .expect()
+                branches[11]
+                    .body
+                    .query()
+                    .cast_expect::<node::LiteralExpr>()
                     .inspect(|expr| {
                         assert_eq!(expr, &node::LiteralExpr::Str(interner["empty record"]));
                     })
-                    .get(&builder, branches[11].body);
+                    .get(&builder);
 
-                let variant = query::<node::Pat>()
-                    .cast::<node::VariantPat>()
-                    .expect()
-                    .get(&builder, branches[12].pat);
-                let tags: Vec<_> = query::<node::VariantTagPat>()
-                    .iter_slice(&builder, variant.0)
-                    .collect();
+                let tags = branches[12]
+                    .pat
+                    .query()
+                    .cast_expect::<node::VariantPat>()
+                    .project_slice(|variant| variant.0)
+                    .get_slice_elements(&builder);
                 assert_eq!(tags.len(), 1);
 
-                tags[0].tag.assert_name("Some", &builder, &interner);
-                query::<node::Pat>()
-                    .cast::<node::BindPat>()
-                    .expect()
+                let tag = tags[0].query().get(&builder);
+                tag.tag.assert_name("Some", &builder, &interner);
+                tag.pat
+                    .unwrap()
+                    .query()
+                    .cast_expect::<node::BindPat>()
                     .project(|bind| bind.0)
-                    .get_id(&builder, tags[0].pat.unwrap())
+                    .get_id(&builder)
                     .assert_name("value", &builder, &interner);
 
-                query::<node::Expr>()
-                    .cast::<node::LiteralExpr>()
-                    .expect()
+                branches[12]
+                    .body
+                    .query()
+                    .cast_expect::<node::LiteralExpr>()
                     .inspect(|expr| {
                         assert_eq!(expr, &node::LiteralExpr::Str(interner["variant some"]));
                     })
-                    .get(&builder, branches[12].body);
+                    .get(&builder);
 
-                let variant = query::<node::Pat>()
-                    .cast::<node::VariantPat>()
-                    .expect()
-                    .get(&builder, branches[13].pat);
-                let tags: Vec<_> = query::<node::VariantTagPat>()
-                    .iter_slice(&builder, variant.0)
-                    .collect();
+                let tags = branches[13]
+                    .pat
+                    .query()
+                    .cast_expect::<node::VariantPat>()
+                    .project_slice(|variant| variant.0)
+                    .get_slice_elements(&builder);
                 assert_eq!(tags.len(), 1);
 
-                tags[0].tag.assert_name("None", &builder, &interner);
-                assert!(tags[0].pat.is_none());
+                let tag = tags[0].query().get(&builder);
+                tag.tag.assert_name("None", &builder, &interner);
+                assert!(tag.pat.is_none());
 
-                query::<node::Expr>()
-                    .cast::<node::LiteralExpr>()
-                    .expect()
+                branches[13]
+                    .body
+                    .query()
+                    .cast_expect::<node::LiteralExpr>()
                     .inspect(|expr| {
                         assert_eq!(expr, &node::LiteralExpr::Str(interner["variant none"]));
                     })
-                    .get(&builder, branches[13].body);
+                    .get(&builder);
 
-                let variant = query::<node::Pat>()
-                    .cast::<node::VariantPat>()
-                    .expect()
-                    .get(&builder, branches[14].pat);
-                let tags: Vec<_> = query::<node::VariantTagPat>()
-                    .iter_slice(&builder, variant.0)
-                    .collect();
+                let tags = branches[14]
+                    .pat
+                    .query()
+                    .cast_expect::<node::VariantPat>()
+                    .project_slice(|variant| variant.0)
+                    .get_slice_elements(&builder);
                 assert_eq!(tags.len(), 2);
 
-                tags[0].tag.assert_name("Ok", &builder, &interner);
-                query::<node::Pat>()
-                    .cast::<node::BindPat>()
-                    .expect()
+                let tag = tags[0].query().get(&builder);
+                tag.tag.assert_name("Ok", &builder, &interner);
+                tag.pat
+                    .unwrap()
+                    .query()
+                    .cast_expect::<node::BindPat>()
                     .project(|bind| bind.0)
-                    .get_id(&builder, tags[0].pat.unwrap())
+                    .get_id(&builder)
                     .assert_name("result", &builder, &interner);
 
-                tags[1].tag.assert_name("Err", &builder, &interner);
-                query::<node::Pat>()
-                    .cast::<node::BindPat>()
-                    .expect()
+                let tag = tags[1].query().get(&builder);
+                tag.tag.assert_name("Err", &builder, &interner);
+                tag.pat
+                    .unwrap()
+                    .query()
+                    .cast_expect::<node::BindPat>()
                     .project(|bind| bind.0)
-                    .get_id(&builder, tags[1].pat.unwrap())
+                    .get_id(&builder)
                     .assert_name("error", &builder, &interner);
 
-                query::<node::Expr>()
-                    .cast::<node::LiteralExpr>()
-                    .expect()
+                branches[14]
+                    .body
+                    .query()
+                    .cast_expect::<node::LiteralExpr>()
                     .inspect(|expr| {
                         assert_eq!(expr, &node::LiteralExpr::Str(interner["multiple variants"]));
                     })
-                    .get(&builder, branches[14].body);
+                    .get(&builder);
             })
-            .get(&builder, node);
+            .get(&builder);
     }
 
     #[test]
@@ -1758,19 +1778,18 @@ mod tests {
         let ParseResult { node, builder, .. } =
             try_parse_str_with("fn name => \"Hello\" + name", expr_parser(), &mut interner);
 
-        query::<node::Expr>()
-            .cast::<node::LambdaExpr>()
-            .expect()
-            .inspect(|lambda| {
-                lambda.param.assert_name("name", &builder, &interner);
+        let (param, body) =
+            node.query()
+                .cast_expect::<node::LambdaExpr>()
+                .branch(&builder, |_, lambda| {
+                    (
+                        lambda.param.query(),
+                        lambda.body.query().cast_expect::<node::BinaryExpr>(),
+                    )
+                });
 
-                query::<node::Expr>()
-                    .cast::<node::BinaryExpr>()
-                    .expect()
-                    .inspect(|binary| assert_eq!(binary.op.get(&builder), &node::BinaryOp::Add))
-                    .get(&builder, lambda.body);
-            })
-            .get(&builder, node);
+        param.assert_name("name", &interner);
+        assert_eq!(body.op.get(&builder), &node::BinaryOp::Add);
     }
 
     //     #[test]

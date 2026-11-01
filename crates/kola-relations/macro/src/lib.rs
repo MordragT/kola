@@ -79,20 +79,20 @@ fn classify_container(ty: &Type) -> Option<Container> {
     }
 }
 
-#[proc_macro_derive(TryProject)]
-pub fn derive_try_project(input: TokenStream) -> TokenStream {
+#[proc_macro_derive(TryCast)]
+pub fn derive_try_cast(input: TokenStream) -> TokenStream {
     let input = parse_macro_input!(input as DeriveInput);
     let enum_name = &input.ident;
     let syn::Data::Enum(data_enum) = &input.data else {
-        return syn::Error::new_spanned(&input.ident, "TryProject can only be derived for enums")
+        return syn::Error::new_spanned(&input.ident, "TryCast can only be derived for enums")
             .to_compile_error()
             .into();
     };
 
-    derive_try_project_for_enum(enum_name, data_enum)
+    derive_try_cast_for_enum(enum_name, data_enum)
 }
 
-fn derive_try_project_for_enum(enum_name: &syn::Ident, data_enum: &syn::DataEnum) -> TokenStream {
+fn derive_try_cast_for_enum(enum_name: &syn::Ident, data_enum: &syn::DataEnum) -> TokenStream {
     let mut impls = Vec::new();
     for variant in &data_enum.variants {
         let variant_name = &variant.ident;
@@ -105,9 +105,9 @@ fn derive_try_project_for_enum(enum_name: &syn::Ident, data_enum: &syn::DataEnum
         let field = &fields.unnamed[0];
         if let Some(target_type) = extract_id_inner_type(&field.ty) {
             let impl_block = quote! {
-                impl kola_relations::TryProject<#target_type> for #enum_name {
+                impl kola_relations::TryCast<#target_type> for #enum_name {
                     #[inline]
-                    fn try_project(&self) -> Option<kola_relations::Id<#target_type>> {
+                    fn try_cast(&self) -> Option<kola_relations::Id<#target_type>> {
                         match self {
                             #enum_name::#variant_name(id) => Some(*id),
                             _ => None,

@@ -2,7 +2,6 @@
 #![feature(const_trait_impl)]
 
 use std::borrow::{Borrow, Cow, ToOwned};
-use std::collections::HashMap;
 use std::fmt;
 use std::hash::{BuildHasher, Hash, RandomState};
 use std::marker::PhantomData;
@@ -10,6 +9,7 @@ use std::num::NonZeroU32;
 use std::ops::Index;
 
 use camino::Utf8Path;
+use hashbrown::HashTable;
 use kola_utils::DisplayWith;
 use rustc_hash::FxBuildHasher;
 
@@ -135,9 +135,11 @@ where
     /// Storage for all unique values (owned form)
     values: Vec<<B as ToOwned>::Owned>,
 
-    /// Maps from static references to indices
-    /// Uses the borrowed form for lookups
-    map: HashMap<&'static B, Key<B>, S>,
+    /// Hash index from value hashes to interned keys.
+    index: HashTable<Key<B>>,
+
+    /// Hasher used for value hashes.
+    hasher: S,
 }
 
 impl<B, S> fmt::Debug for Interner<B, S>
@@ -148,7 +150,7 @@ where
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         f.debug_struct("Interner")
             .field("values", &self.values)
-            .field("map", &self.map)
+            .field("index", &self.index)
             .finish()
     }
 }
@@ -162,7 +164,8 @@ where
     fn default() -> Self {
         Self {
             values: Vec::new(),
-            map: HashMap::with_hasher(S::default()),
+            index: HashTable::new(),
+            hasher: S::default(),
         }
     }
 }
@@ -176,7 +179,8 @@ where
     fn clone(&self) -> Self {
         Self {
             values: self.values.clone(),
-            map: self.map.clone(),
+            index: self.index.clone(),
+            hasher: self.hasher.clone(),
         }
     }
 }
@@ -188,7 +192,7 @@ where
     S: BuildHasher,
 {
     fn eq(&self, other: &Self) -> bool {
-        self.values == other.values && self.map == other.map
+        self.values == other.values
     }
 }
 
@@ -208,14 +212,16 @@ where
     pub fn new() -> Self {
         Self {
             values: Vec::new(),
-            map: HashMap::new(),
+            index: HashTable::new(),
+            hasher: RandomState::default(),
         }
     }
 
     pub fn with_capacity(capacity: usize) -> Self {
         Self {
             values: Vec::with_capacity(capacity),
-            map: HashMap::with_capacity(capacity),
+            index: HashTable::with_capacity(capacity),
+            hasher: RandomState::default(),
         }
     }
 }
@@ -230,7 +236,8 @@ where
     pub const fn with_hasher(hasher: S) -> Self {
         Self {
             values: Vec::new(),
-            map: HashMap::with_hasher(hasher),
+            index: HashTable::new(),
+            hasher,
         }
     }
 
@@ -238,7 +245,8 @@ where
     pub fn with_capacity_and_hasher(capacity: usize, hasher: S) -> Self {
         Self {
             values: Vec::with_capacity(capacity),
-            map: HashMap::with_capacity_and_hasher(capacity, hasher),
+            index: HashTable::with_capacity(capacity),
+            hasher,
         }
     }
 
@@ -249,32 +257,24 @@ where
     /// Otherwise, adds the owned value to the interner and returns the new index.
     pub fn intern<'a>(&mut self, value: impl Into<Cow<'a, B>>) -> Key<B> {
         let value = value.into();
+        let Self {
+            values,
+            index,
+            hasher,
+        } = self;
 
-        // First check if an equivalent value already exists
-        // This works with the borrowed form without any conversion
         let borrowed: &B = value.borrow();
+        let hash = hasher.hash_one(borrowed);
 
-        if let Some(&key) = self.map.get(borrowed) {
+        if let Some(&key) = index.find(hash, |key| values[key.as_usize()].borrow() == borrowed) {
             return key;
         }
 
-        // Convert to owned if it's not already
-        let owned = value.into_owned();
-
-        // Value not found, add it to our values
-        let key = Key::from_usize(self.values.len());
-        self.values.push(owned);
-
-        // Get a reference to the value we just added and convert it to a static reference
-        // SAFETY: This is safe because:
-        // 1. The value exists in our values vector
-        // 2. The values vector is never shrunk or emptied during the interner's lifetime
-        // 3. The references are only used within the lifetime of the interner itself
-        let borrowed_ref = self.values.last().unwrap().borrow();
-        let static_ref: &'static B = unsafe { std::mem::transmute::<&B, &'static B>(borrowed_ref) };
-
-        // Store the reference -> index mapping
-        self.map.insert(static_ref, key);
+        let key = Key::from_usize(values.len());
+        values.push(value.into_owned());
+        index.insert_unique(hash, key, |key| {
+            hasher.hash_one(values[key.as_usize()].borrow())
+        });
 
         key
     }
@@ -288,7 +288,7 @@ where
 
     /// Checks if the interner contains a value.
     pub fn contains(&self, value: &B) -> bool {
-        self.map.contains_key(value)
+        self.lookup(value).is_some()
     }
 
     /// Looks up a value in the interner.
@@ -296,7 +296,10 @@ where
     /// If the value is interned, returns its index.
     /// Otherwise, returns None.
     pub fn lookup(&self, value: &B) -> Option<Key<B>> {
-        self.map.get(value).copied()
+        let hash = self.hasher.hash_one(value);
+        self.index
+            .find(hash, |key| self.values[key.as_usize()].borrow() == value)
+            .copied()
     }
 
     /// Returns the number of unique values in the interner.
@@ -306,7 +309,7 @@ where
 
     /// Returns the total capacity of the interner.
     pub fn capacity(&self) -> usize {
-        self.values.capacity().min(self.map.capacity())
+        self.values.capacity().min(self.index.capacity())
     }
 
     /// Returns `true` if the interner contains no values.
@@ -316,8 +319,15 @@ where
 
     /// Reserves capacity for at least `additional` more items.
     pub fn reserve(&mut self, additional: usize) {
-        self.values.reserve(additional);
-        self.map.reserve(additional);
+        let Self {
+            values,
+            index,
+            hasher,
+        } = self;
+        values.reserve(additional);
+        index.reserve(additional, |key| {
+            hasher.hash_one(values[key.as_usize()].borrow())
+        });
     }
 
     /// Returns an iterator over all values in the interner.
@@ -329,8 +339,13 @@ where
     ///
     /// Note that this never removes any values, it only reclaims unused capacity.
     pub fn shrink_to_fit(&mut self) {
-        self.values.shrink_to_fit();
-        self.map.shrink_to_fit();
+        let Self {
+            values,
+            index,
+            hasher,
+        } = self;
+        values.shrink_to_fit();
+        index.shrink_to_fit(|key| hasher.hash_one(values[key.as_usize()].borrow()));
     }
 }
 
@@ -356,7 +371,10 @@ where
     type Output = Key<B>;
 
     fn index(&self, value: &B) -> &Self::Output {
-        &self.map[value]
+        let hash = self.hasher.hash_one(value);
+        self.index
+            .find(hash, |key| self.values[key.as_usize()].borrow() == value)
+            .unwrap_or_else(|| panic!("value is not interned"))
     }
 }
 
@@ -412,6 +430,21 @@ mod tests {
 
         // The value should be stored correctly
         assert_eq!(&interner[idx1], "hello");
+    }
+
+    #[test]
+    fn clone_owns_its_map_keys() {
+        let mut interner = Interner::new();
+        let hello = interner.intern("hello");
+
+        let mut clone = interner.clone();
+        drop(interner);
+
+        assert_eq!(&clone[hello], "hello");
+        assert_eq!(clone.lookup("hello"), Some(hello));
+
+        let world = clone.intern("world");
+        assert_eq!(&clone[world], "world");
     }
 
     #[test]

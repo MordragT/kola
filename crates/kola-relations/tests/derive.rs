@@ -1,5 +1,5 @@
 use kola_relations::*;
-use kola_relations_macro::{RelationStorage, TryProject};
+use kola_relations_macro::{RelationStorage, TryCast};
 use std::collections::HashMap;
 
 // --- Mock AST types for tests ---
@@ -15,7 +15,7 @@ pub struct MockCall {
     pub arg: Id<MockLiteral>,
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, TryProject)]
+#[derive(Debug, Clone, PartialEq, Eq, TryCast)]
 pub enum MockExpr {
     Lit(Id<MockLiteral>),
     Call(Id<MockCall>),
@@ -340,19 +340,53 @@ mod tests {
         let seen = std::cell::Cell::new(0);
         let ids: Vec<_> = query::<MockLiteral>()
             .inspect(|_| seen.set(seen.get() + 1))
-            .iter_slice_rows(&store, slice)
-            .map(|(id, _)| id)
+            .iter_from_slice(&store, slice)
+            .map(|lit| lit.value)
             .collect();
 
-        assert_eq!(ids, vec![lit1, lit2]);
+        assert_eq!(ids, vec![10, 20]);
         assert_eq!(seen.get(), 2);
-        assert_eq!(query::<MockLiteral>().get_id(&store, lit1), lit1);
+
+        let ids_from_slice: Vec<_> = query::<MockLiteral>()
+            .iter_ids_from_slice(&store, slice)
+            .collect();
+        assert_eq!(ids_from_slice, vec![lit1, lit2]);
+
+        let rows_from_slice: Vec<_> = query::<MockLiteral>()
+            .iter_rows_from_slice(&store, slice)
+            .collect();
+        assert_eq!(rows_from_slice.len(), 2);
+        assert_eq!(rows_from_slice[1].0, lit2);
+
+        let ids: Vec<_> = query::<MockLiteral>()
+            .iter_ids(&store, [lit1, lit2])
+            .collect();
+        assert_eq!(ids, vec![lit1, lit2]);
+
+        assert_eq!(lit1.query().get_id(&store), lit1);
+        assert_eq!(lit1.query().get(&store).value, 10);
         assert_eq!(
-            query::<MockLiteral>()
-                .filter(|lit| lit.value > 15)
-                .get_id(&store, lit1),
+            lit1.query().filter(|lit| lit.value > 15).get_id(&store),
             None
         );
+
+        let (left, right) = lit1
+            .query()
+            .branch(&store, |id, _| (id.query(), id.query()));
+        assert_eq!(left.value, 10);
+        assert_eq!(right.value, 10);
+
+        let absent = lit1
+            .query()
+            .filter(|lit| lit.value > 15)
+            .branch(&store, |id, _| id.query());
+        assert!(absent.is_none());
+
+        let branch_rows =
+            query::<MockLiteral>().branch_slice(&store, slice, |id, _| (id.query(), id.query()));
+        assert_eq!(branch_rows.len(), 2);
+        assert_eq!(branch_rows[0].0.value, 10);
+        assert_eq!(branch_rows[1].0.value, 20);
     }
 
     #[test]

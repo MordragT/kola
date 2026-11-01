@@ -6,7 +6,7 @@ use crate::tree::{TotalSpan, Tree};
 use kola_interner::StrInterner;
 pub use kola_relations::id::{Id, IdIter};
 pub use kola_relations::slice::SliceId;
-use kola_relations::{SliceRelation, TotalRelation, TryProject};
+use kola_relations::{SliceRelation, TotalRelation, TryCast};
 
 pub trait IdExt<T: 'static>: Sized {
     fn get<'a, M>(self, tree: &'a Tree<M>) -> &'a T
@@ -23,10 +23,10 @@ pub trait IdExt<T: 'static>: Sized {
     fn cast<'a, U: 'static, M>(self, tree: &'a Tree<M>) -> &'a U
     where
         Tree<M>: TotalRelation<T, T> + TotalRelation<U, U>,
-        T: TryProject<U>,
+        T: TryCast<U>,
         M: 'static,
     {
-        let id_u = self.get(tree).try_project().unwrap_or_else(|| {
+        let id_u = self.get(tree).try_cast().unwrap_or_else(|| {
             panic!(
                 "Failed to cast AST ID: expected concrete type {}, found enum variant",
                 std::any::type_name::<U>()
@@ -59,10 +59,10 @@ impl<T: 'static> IdExt<T> for Id<T> {
     fn cast<'a, U: 'static, M>(self, tree: &'a Tree<M>) -> &'a U
     where
         Tree<M>: TotalRelation<T, T> + TotalRelation<U, U>,
-        T: TryProject<U>,
+        T: TryCast<U>,
         M: 'static,
     {
-        let id_u = self.get(tree).try_project().unwrap_or_else(|| {
+        let id_u = self.get(tree).try_cast().unwrap_or_else(|| {
             panic!(
                 "Failed to cast AST ID: expected concrete type {}, found enum variant",
                 std::any::type_name::<U>()

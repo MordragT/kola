@@ -2,7 +2,7 @@ use derive_more::From;
 use enum_as_inner::EnumAsInner;
 use kola_interner::StrKey;
 use kola_print::prelude::*;
-use kola_relations::TryProject;
+use kola_relations::TryCast;
 use serde::{Deserialize, Serialize};
 
 use super::{LiteralExpr, ValueName};
@@ -91,11 +91,21 @@ impl BindPat {
     Hash,
     Serialize,
     Deserialize,
-    TryProject,
+    TryCast,
 )]
 pub enum ListElPat {
     Pat(Id<Pat>),
     Spread(Option<Id<ValueName>>),
+}
+
+impl TryCast<ValueName> for ListElPat {
+    #[inline]
+    fn try_cast(&self) -> Option<Id<ValueName>> {
+        match self {
+            Self::Spread(name) => *name,
+            Self::Pat(_) => None,
+        }
+    }
 }
 
 impl ListElPat {
@@ -289,7 +299,7 @@ impl VariantPat {
 }
 
 #[derive(
-    Debug, EnumAsInner, From, Clone, Copy, PartialEq, PartialOrd, Serialize, Deserialize, TryProject,
+    Debug, EnumAsInner, From, Clone, Copy, PartialEq, PartialOrd, Serialize, Deserialize, TryCast,
 )]
 pub enum Pat {
     Error(Id<PatError>),

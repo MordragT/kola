@@ -2,7 +2,7 @@ use derive_more::From;
 use enum_as_inner::EnumAsInner;
 use kola_interner::PathKey;
 use kola_print::prelude::*;
-use kola_relations::TryProject;
+use kola_relations::TryCast;
 use serde::{Deserialize, Serialize};
 
 use super::{Expr, FunctorName, ModuleName, ModuleTypeName, TypeName, TypeScheme, ValueName};
@@ -37,7 +37,7 @@ impl BindError {
     Hash,
     Serialize,
     Deserialize,
-    TryProject,
+    TryCast,
 )]
 pub enum Bind {
     Value(Id<ValueBind>),
@@ -236,7 +236,7 @@ impl FunctorBind {
     Hash,
     Serialize,
     Deserialize,
-    TryProject,
+    TryCast,
 )]
 pub enum ModuleExpr {
     Error(Id<ModuleError>),
@@ -314,18 +314,7 @@ pub struct ModuleTypeBind {
 }
 
 #[derive(
-    Debug,
-    From,
-    Clone,
-    Copy,
-    PartialEq,
-    Eq,
-    PartialOrd,
-    Ord,
-    Hash,
-    Serialize,
-    Deserialize,
-    TryProject,
+    Debug, From, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize, TryCast,
 )]
 pub enum ModuleType {
     Qualified(Id<QualifiedModuleType>),
@@ -369,7 +358,7 @@ pub struct ConcreteModuleType(pub SliceId<Spec>);
     Hash,
     Serialize,
     Deserialize,
-    TryProject,
+    TryCast,
 )]
 pub enum Spec {
     Value(Id<ValueSpec>),

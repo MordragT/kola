@@ -7,17 +7,17 @@ use crate::slice::SliceId;
 
 /// Conversion trait for attempting to extract/project a child ID of a specific type.
 /// Implemented by the compiler AST crate.
-pub trait TryProject<Target: 'static> {
-    fn try_project(&self) -> Option<Id<Target>>;
+pub trait TryCast<Target: 'static> {
+    fn try_cast(&self) -> Option<Id<Target>>;
 }
 
-impl<T, Target: 'static> TryProject<Target> for &T
+impl<T, Target: 'static> TryCast<Target> for &T
 where
-    T: TryProject<Target>,
+    T: TryCast<Target>,
 {
     #[inline]
-    fn try_project(&self) -> Option<Id<Target>> {
-        (*self).try_project()
+    fn try_cast(&self) -> Option<Id<Target>> {
+        (*self).try_cast()
     }
 }
 
@@ -173,14 +173,14 @@ impl<P: Plan, Target: 'static> Plan for CastQuery<P, Target> {
 impl<'ctx, Ctx, P, Target> Traversal<'ctx, Ctx> for CastQuery<P, Target>
 where
     P: Traversal<'ctx, Ctx>,
-    <P as Plan>::Value<'ctx>: TryProject<Target>,
+    <P as Plan>::Value<'ctx>: TryCast<Target>,
     Ctx: TotalRelation<Target, Target> + 'ctx,
     Target: 'static,
 {
     #[inline]
     fn execute(&self, ctx: &'ctx Ctx, start: Id<Self::Src>) -> Option<(Id<Target>, &'ctx Target)> {
         let (_, mid) = <P::Presence as Presence>::into_option(self.plan.execute(ctx, start))?;
-        let target_id = mid.try_project()?;
+        let target_id = mid.try_cast()?;
         Some((target_id, ctx.get(target_id)))
     }
 }

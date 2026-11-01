@@ -7,7 +7,7 @@ pub mod slice;
 
 // Re-exports
 pub use id::{Id, IdIter};
-pub use kola_relations_macro::{RelationStorage, TryProject};
+pub use kola_relations_macro::{RelationStorage, TryCast};
 pub use presence::{Optional, Presence, Required};
 pub use query::*;
 pub use relation::{
