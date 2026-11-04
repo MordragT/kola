@@ -7,7 +7,7 @@ pub mod visit;
 pub use kola_subst as subst;
 
 pub mod prelude {
-    pub use crate::inspect::{AssertEqExt, AssertNameExt, IdExt, SliceIdExt};
+    pub use crate::inspect::{AssertQueryNameExt, IdExt, SliceIdExt};
     pub use crate::node;
     pub use crate::print::{Decorator, Decorators, TreePrinter};
     pub use crate::tree::{AnyId, Node, NodeKind, TotalSpan, Tree, TreeCheckpoint};

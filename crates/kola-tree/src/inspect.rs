@@ -1,11 +1,10 @@
-use crate::node::{
-    FunctorNamespace, KindNamespace, ModuleNamespace, ModuleTypeNamespace, Name, TypeNamespace,
-    ValueNamespace,
-};
+use std::marker::PhantomData;
+
+use crate::node::Name;
 use crate::tree::{TotalSpan, Tree};
 pub use kola_relations::id::{Id, IdIter};
 pub use kola_relations::slice::SliceId;
-use kola_relations::{SliceRelation, TotalRelation, TryCast};
+use kola_relations::{Plan, Presence, Query, SliceRelation, TotalRelation, Traversal, TryCast};
 
 pub trait IdExt<T: 'static>: Sized {
     fn get<'a, M>(self, tree: &'a Tree<M>) -> &'a T
@@ -122,47 +121,65 @@ impl<T: 'static> SliceIdExt<T> for SliceId<T> {
     }
 }
 
-// Flat Name Assertion helper trait
-pub trait AssertNameExt<M: 'static> {
-    fn assert_name(&self, expected: &str, tree: &Tree<M>);
+/// Lazy plan step that asserts the name of the focused node.
+#[derive(Clone)]
+pub struct AssertNameQuery<P, NS> {
+    plan: P,
+    expected: String,
+    _marker: PhantomData<NS>,
 }
 
-macro_rules! impl_assert_name {
-    ($($Namespace:ty),* $(,)?) => {
-        $(
-            // Implemented on the ID reference (e.g. Id<Name<Namespace>>)
-            impl<M: 'static> AssertNameExt<M> for Id<Name<$Namespace>>
-            where
-                Tree<M>: TotalRelation<Name<$Namespace>, Name<$Namespace>>,
-            {
-                #[inline]
-                fn assert_name(&self, expected: &str, tree: &Tree<M>) {
-                    self.get(tree).assert_name(expected, tree);
-                }
-            }
-        )*
-    };
+impl<P: Plan, NS: 'static> Plan for AssertNameQuery<P, NS> {
+    type Src = P::Src;
+    type Target = P::Target;
+    type Presence = P::Presence;
+    type Value<'a> = <P as Plan>::Value<'a>;
 }
 
-impl_assert_name!(
-    FunctorNamespace,
-    ModuleTypeNamespace,
-    ModuleNamespace,
-    KindNamespace,
-    TypeNamespace,
-    ValueNamespace,
-);
-
-// Generic fluent PartialEq assertion helper
-pub trait AssertEqExt {
-    fn assert_eq(&self, expected: &Self)
-    where
-        Self: PartialEq + std::fmt::Debug;
-}
-
-impl<T: PartialEq + std::fmt::Debug> AssertEqExt for T {
+impl<'ctx, M, P, NS> Traversal<'ctx, Tree<M>> for AssertNameQuery<P, NS>
+where
+    M: 'static,
+    NS: 'static,
+    P: Traversal<'ctx, Tree<M>> + Plan<Target = Name<NS>>,
+    for<'a> P: Plan<Value<'a> = &'a Name<NS>>,
+    Tree<M>: TotalRelation<Name<NS>, Name<NS>>,
+{
     #[inline]
-    fn assert_eq(&self, expected: &Self) {
-        assert_eq!(self, expected);
+    #[track_caller]
+    fn execute(
+        &self,
+        ctx: &'ctx Tree<M>,
+        start: Id<Self::Src>,
+    ) -> <P::Presence as Presence>::Wrap<(Id<P::Target>, <P as Plan>::Value<'ctx>)> {
+        <P::Presence as Presence>::map(self.plan.execute(ctx, start), |(target_id, value)| {
+            value.assert_name(&self.expected, ctx);
+            (target_id, value)
+        })
+    }
+}
+
+/// Lazy name assertion for queries.
+pub trait AssertQueryNameExt {
+    type Name: 'static;
+    type Output;
+
+    fn assert_name(self, expected: &str) -> Self::Output;
+}
+
+impl<P, S, NS> AssertQueryNameExt for Query<P, S>
+where
+    NS: 'static,
+    P: Plan<Target = Name<NS>> + 'static,
+{
+    type Name = Name<NS>;
+    type Output = Query<AssertNameQuery<P, NS>, S>;
+
+    #[inline]
+    fn assert_name(self, expected: &str) -> Self::Output {
+        self.map(|plan| AssertNameQuery {
+            plan,
+            expected: expected.to_owned(),
+            _marker: PhantomData,
+        })
     }
 }

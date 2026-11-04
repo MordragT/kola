@@ -126,7 +126,7 @@ mod tests {
         let _expr = store.alloc(MockExpr::Call(call));
 
         let results: Vec<_> = query::<MockExpr>()
-            .cast::<MockCall>()
+            .try_cast::<MockCall>()
             .project(|call| call.arg)
             .iter_rows(&store, RelationIds::<MockExpr>::ids(&store))
             .flatten()
@@ -223,7 +223,8 @@ mod tests {
 
         let one = query::<MockLiteral>()
             .filter(|lit| lit.value > 15)
-            .get(&store, lit2)
+            .get(lit2)
+            .run(&store)
             .unwrap();
         assert_eq!(one.value, 20);
 
@@ -264,7 +265,7 @@ mod tests {
 
         let updated = update_split(
             query::<MockExpr>()
-                .cast::<MockCall>()
+                .try_cast::<MockCall>()
                 .project(|call| call.arg),
             &read,
             &mut write,
@@ -288,7 +289,7 @@ mod tests {
 
         assert_eq!(
             query::<MockExpr>()
-                .cast::<MockLiteral>()
+                .try_cast::<MockLiteral>()
                 .iter(&store, RelationIds::<MockExpr>::ids(&store))
                 .flatten()
                 .count(),
@@ -308,7 +309,7 @@ mod tests {
         store.alloc(MockExpr::Call(call));
 
         query::<MockExpr>()
-            .cast::<MockLiteral>()
+            .try_cast::<MockLiteral>()
             .expect()
             .iter(&store, RelationIds::<MockExpr>::ids(&store))
             .next();
@@ -363,30 +364,75 @@ mod tests {
             .collect();
         assert_eq!(ids, vec![lit1, lit2]);
 
-        assert_eq!(lit1.query().get_id(&store), lit1);
-        assert_eq!(lit1.query().get(&store).value, 10);
+        assert_eq!(lit1.query().get_id().run(&store), lit1);
+        assert_eq!(lit1.query().get().run(&store).value, 10);
         assert_eq!(
-            lit1.query().filter(|lit| lit.value > 15).get_id(&store),
+            lit1.query()
+                .filter(|lit| lit.value > 15)
+                .get_id()
+                .run(&store),
             None
         );
 
-        let (left, right) = lit1
-            .query()
-            .branch(&store, |id, _| (id.query(), id.query()));
+        let (left, right) = (lit1.query().get(), lit1.query().get()).run(&store);
         assert_eq!(left.value, 10);
         assert_eq!(right.value, 10);
 
-        let absent = lit1
-            .query()
-            .filter(|lit| lit.value > 15)
-            .branch(&store, |id, _| id.query());
+        let absent = lit1.query().filter(|lit| lit.value > 15).get().run(&store);
         assert!(absent.is_none());
 
-        let branch_rows =
-            query::<MockLiteral>().branch_slice(&store, slice, |id, _| (id.query(), id.query()));
-        assert_eq!(branch_rows.len(), 2);
-        assert_eq!(branch_rows[0].0.value, 10);
-        assert_eq!(branch_rows[1].0.value, 20);
+        let branch_values = std::cell::RefCell::new(Vec::new());
+        query::<MockLiteral>()
+            .each_slice(slice, |query| {
+                query.inspect(|lit| branch_values.borrow_mut().push(lit.value))
+            })
+            .run(&store);
+        assert_eq!(*branch_values.borrow(), vec![10, 20]);
+
+        let each_values = std::cell::RefCell::new(Vec::new());
+        lit1.query()
+            .project_slice(|_| slice)
+            .each(|query| query.inspect(|lit| each_values.borrow_mut().push(lit.value)))
+            .run(&store);
+        assert_eq!(*each_values.borrow(), vec![10, 20]);
+    }
+
+    #[test]
+    fn test_batch_and_assertion_terminals() {
+        let mut store = MockStorage::new();
+        let lit1 = store.alloc(MockLiteral { value: 10 });
+        let lit2 = store.alloc(MockLiteral { value: 20 });
+
+        let (left, right) = (lit1.query().get(), lit2.query().get()).run(&store);
+        assert_eq!(left.value, 10);
+        assert_eq!(right.value, 20);
+
+        let _ = (lit1.query(), lit2.query()).run(&store);
+
+        lit1.query().run(&store);
+        assert_eq!(lit1.query().get().run(&store).value, 10);
+
+        let value = lit1
+            .query()
+            .assert_eq(MockLiteral { value: 10 })
+            .get()
+            .run(&store);
+        assert_eq!(value.value, 10);
+        lit1.query()
+            .assert_eq(MockLiteral { value: 10 })
+            .run(&store);
+
+        let value = lit1
+            .query()
+            .filter(|lit| lit.value > 5)
+            .assert_some()
+            .get()
+            .run(&store);
+        assert_eq!(value.value, 10);
+        lit1.query()
+            .filter(|lit| lit.value > 15)
+            .assert_none()
+            .run(&store);
     }
 
     #[test]
@@ -394,16 +440,16 @@ mod tests {
         let mut store = MockStorage::new();
         let lit = store.alloc(MockLiteral { value: 10 });
 
-        let total: &MockLiteral = query::<MockLiteral>().get(&store, lit);
+        let total: &MockLiteral = query::<MockLiteral>().get(lit).run(&store);
         assert_eq!(total.value, 10);
 
         let optional: Option<&MockLiteral> =
-            query::<MockLiteral>().filter(|_| true).get(&store, lit);
+            query::<MockLiteral>().filter(|_| true).get(lit).run(&store);
         assert_eq!(optional.unwrap().value, 10);
 
         let slice = store.slices.alloc([lit]);
         let id = store.id_at(slice, 0).unwrap();
-        let from_slice: &MockLiteral = query::<MockLiteral>().get(&store, id);
+        let from_slice: &MockLiteral = query::<MockLiteral>().get(id).run(&store);
         assert_eq!(from_slice.value, 10);
 
         let many: Vec<&MockLiteral> = query::<MockLiteral>()
