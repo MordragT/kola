@@ -123,20 +123,21 @@ impl<T: 'static> SliceIdExt<T> for SliceId<T> {
 
 /// Lazy plan step that asserts the name of the focused node.
 #[derive(Clone)]
-pub struct AssertNameQuery<P, NS> {
+pub struct AssertNameQuery<'i, P, NS> {
     plan: P,
     expected: String,
+    interner: &'i kola_interner::StrInterner,
     _marker: PhantomData<NS>,
 }
 
-impl<P: Plan, NS: 'static> Plan for AssertNameQuery<P, NS> {
+impl<'i, P: Plan, NS: 'static> Plan for AssertNameQuery<'i, P, NS> {
     type Src = P::Src;
     type Target = P::Target;
     type Presence = P::Presence;
     type Value<'a> = <P as Plan>::Value<'a>;
 }
 
-impl<'ctx, M, P, NS> Traversal<'ctx, Tree<M>> for AssertNameQuery<P, NS>
+impl<'ctx, 'i, M, P, NS> Traversal<'ctx, Tree<M>> for AssertNameQuery<'i, P, NS>
 where
     M: 'static,
     NS: 'static,
@@ -152,33 +153,34 @@ where
         start: Id<Self::Src>,
     ) -> <P::Presence as Presence>::Wrap<(Id<P::Target>, <P as Plan>::Value<'ctx>)> {
         <P::Presence as Presence>::map(self.plan.execute(ctx, start), |(target_id, value)| {
-            value.assert_name(&self.expected, ctx);
+            value.assert_name(&self.expected, self.interner);
             (target_id, value)
         })
     }
 }
 
 /// Lazy name assertion for queries.
-pub trait AssertQueryNameExt {
+pub trait AssertQueryNameExt<'i> {
     type Name: 'static;
     type Output;
 
-    fn assert_name(self, expected: &str) -> Self::Output;
+    fn assert_name(self, expected: &str, interner: &'i kola_interner::StrInterner) -> Self::Output;
 }
 
-impl<P, S, NS> AssertQueryNameExt for Query<P, S>
+impl<'i, P, S, NS> AssertQueryNameExt<'i> for Query<P, S>
 where
     NS: 'static,
     P: Plan<Target = Name<NS>> + 'static,
 {
     type Name = Name<NS>;
-    type Output = Query<AssertNameQuery<P, NS>, S>;
+    type Output = Query<AssertNameQuery<'i, P, NS>, S>;
 
     #[inline]
-    fn assert_name(self, expected: &str) -> Self::Output {
+    fn assert_name(self, expected: &str, interner: &'i kola_interner::StrInterner) -> Self::Output {
         self.map(|plan| AssertNameQuery {
             plan,
             expected: expected.to_owned(),
+            interner,
             _marker: PhantomData,
         })
     }

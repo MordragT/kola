@@ -1,6 +1,7 @@
 pub mod inspect;
 pub mod node;
 pub mod print;
+pub mod source;
 pub mod tree;
 pub mod visit;
 
@@ -8,6 +9,7 @@ pub use kola_subst as subst;
 
 pub mod prelude {
     pub use crate::inspect::{AssertQueryNameExt, IdExt, SliceIdExt};
+    pub use crate::source::{ModuleKey, SourceTrees, TreeMap};
     pub use crate::node;
     pub use crate::print::{Decorator, Decorators, TreePrinter};
     pub use crate::tree::{AnyId, Node, NodeKind, TotalSpan, Tree, TreeCheckpoint};

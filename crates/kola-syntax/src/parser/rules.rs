@@ -1248,7 +1248,7 @@ mod tests {
     fn try_parse_str_with<'t, T, P>(
         text: &'t str,
         parser: P,
-        interner: StrInterner,
+        interner: &'t mut StrInterner,
     ) -> ParseResult<T>
     where
         T: Debug,
@@ -1271,10 +1271,10 @@ mod tests {
 
     #[test]
     fn pat() {
-        let interner = StrInterner::default();
+        let mut interner = StrInterner::default();
 
         let ParseResult { node, builder, .. } =
-            try_parse_str_with("{ a: x, b: { y }, c: _, d }", pat_parser(), interner);
+            try_parse_str_with("{ a: x, b: { y }, c: _, d }", pat_parser(), &mut interner);
 
         let fields = node
             .query()
@@ -1285,24 +1285,24 @@ mod tests {
         (
             fields.nth(0).then(|field| {
                 (
-                    field.project(|f| f.field).assert_name("a"),
+                    field.project(|f| f.field).assert_name("a", &interner),
                     field
                         .project_opt(|f| f.pat)
                         .try_cast::<node::BindPat>()
                         .assert_some()
-                        .then(|bind| bind.project(|b| b.0).assert_name("x")),
+                        .then(|bind| bind.project(|b| b.0).assert_name("x", &interner)),
                 )
             }),
             fields.nth(1).then(|field| {
                 (
-                    field.project(|f| f.field).assert_name("b"),
+                    field.project(|f| f.field).assert_name("b", &interner),
                     field
                         .project_opt_as::<node::RecordPat, _>(|f| f.pat)
                         .project_slice(|r| r.fields)
                         .nth(0)
                         .then(|inner| {
                             (
-                                inner.project(|f| f.field).assert_name("y"),
+                                inner.project(|f| f.field).assert_name("y", &interner),
                                 inner.project_opt(|f| f.pat).assert_none(),
                             )
                         }),
@@ -1310,7 +1310,7 @@ mod tests {
             }),
             fields.nth(2).then(|field| {
                 (
-                    field.project(|f| f.field).assert_name("c"),
+                    field.project(|f| f.field).assert_name("c", &interner),
                     field
                         .project_opt(|f| f.pat)
                         .try_cast::<node::AnyPat>()
@@ -1319,7 +1319,7 @@ mod tests {
             }),
             fields.nth(3).then(|field| {
                 (
-                    field.project(|f| f.field).assert_name("d"),
+                    field.project(|f| f.field).assert_name("d", &interner),
                     field.project_opt(|f| f.pat).assert_none(),
                 )
             }),
@@ -1328,10 +1328,13 @@ mod tests {
     }
     #[test]
     fn case_expr() {
-        let interner = StrInterner::default();
+        let mut interner = StrInterner::default();
 
-        let ParseResult { node, builder, .. } =
-            try_parse_str_with("case x | 1 => true | _ => false", expr_parser(), interner);
+        let ParseResult { node, builder, .. } = try_parse_str_with(
+            "case x | 1 => true | _ => false",
+            expr_parser(),
+            &mut interner,
+        );
 
         let case = node.query().cast::<node::CaseExpr>();
         let branches = case.project_slice(|c| c.branches).assert_len(2);
@@ -1339,7 +1342,7 @@ mod tests {
         (
             case.project_as::<node::QualifiedExpr, _>(|c| c.source)
                 .project(|source| source.source)
-                .assert_name("x"),
+                .assert_name("x", &interner),
             branches.nth(0).then(|branch| {
                 (
                     branch
@@ -1364,7 +1367,7 @@ mod tests {
 
     #[test]
     fn complex_case_expr() {
-        let interner = StrInterner::default();
+        let mut interner = StrInterner::default();
 
         let test_case = r#"
             case data
@@ -1386,7 +1389,7 @@ mod tests {
         "#;
 
         let ParseResult { node, builder, .. } =
-            try_parse_str_with(test_case, expr_parser(), interner);
+            try_parse_str_with(test_case, expr_parser(), &mut interner);
 
         let case = node.query().cast::<node::CaseExpr>();
         let branches = case.project_slice(|c| c.branches).assert_len(15);
@@ -1394,7 +1397,7 @@ mod tests {
         (
             case.project_as::<node::QualifiedExpr, _>(|c| c.source)
                 .project(|source| source.source)
-                .assert_name("data"),
+                .assert_name("data", &interner),
             branches.nth(0).then(|branch| {
                 (
                     branch
@@ -1402,7 +1405,7 @@ mod tests {
                         .assert_eq(node::LiteralPat::Unit),
                     branch
                         .project_as::<node::LiteralExpr, _>(|b| b.body)
-                        .assert_eq(node::LiteralExpr::Str(builder.interner["unit"])),
+                        .assert_eq(node::LiteralExpr::Str(interner["unit"])),
                 )
             }),
             branches.nth(1).then(|branch| {
@@ -1412,7 +1415,7 @@ mod tests {
                         .assert_eq(node::LiteralPat::Bool(true)),
                     branch
                         .project_as::<node::LiteralExpr, _>(|b| b.body)
-                        .assert_eq(node::LiteralExpr::Str(builder.interner["bool true"])),
+                        .assert_eq(node::LiteralExpr::Str(interner["bool true"])),
                 )
             }),
             branches.nth(2).then(|branch| {
@@ -1422,17 +1425,17 @@ mod tests {
                         .assert_eq(node::LiteralPat::Num(42.0)),
                     branch
                         .project_as::<node::LiteralExpr, _>(|b| b.body)
-                        .assert_eq(node::LiteralExpr::Str(builder.interner["number"])),
+                        .assert_eq(node::LiteralExpr::Str(interner["number"])),
                 )
             }),
             branches.nth(3).then(|branch| {
                 (
                     branch
                         .project_as::<node::LiteralPat, _>(|b| b.pat)
-                        .assert_eq(node::LiteralPat::Str(builder.interner["hello"])),
+                        .assert_eq(node::LiteralPat::Str(interner["hello"])),
                     branch
                         .project_as::<node::LiteralExpr, _>(|b| b.body)
-                        .assert_eq(node::LiteralExpr::Str(builder.interner["string"])),
+                        .assert_eq(node::LiteralExpr::Str(interner["string"])),
                 )
             }),
             branches.nth(4).then(|branch| {
@@ -1440,10 +1443,10 @@ mod tests {
                     branch
                         .project_as::<node::BindPat, _>(|b| b.pat)
                         .project(|bind| bind.0)
-                        .assert_name("x"),
+                        .assert_name("x", &interner),
                     branch
                         .project_as::<node::LiteralExpr, _>(|b| b.body)
-                        .assert_eq(node::LiteralExpr::Str(builder.interner["bind pattern"])),
+                        .assert_eq(node::LiteralExpr::Str(interner["bind pattern"])),
                 )
             }),
             branches.nth(5).then(|branch| {
@@ -1451,7 +1454,7 @@ mod tests {
                     branch.project_as::<node::AnyPat, _>(|b| b.pat),
                     branch
                         .project_as::<node::LiteralExpr, _>(|b| b.body)
-                        .assert_eq(node::LiteralExpr::Str(builder.interner["wildcard"])),
+                        .assert_eq(node::LiteralExpr::Str(interner["wildcard"])),
                 )
             }),
             branches.nth(6).then(|branch| {
@@ -1467,22 +1470,22 @@ mod tests {
                                     .cast::<node::Pat>()
                                     .cast::<node::BindPat>()
                                     .project(|bind| bind.0)
-                                    .assert_name("a"),
+                                    .assert_name("a", &interner),
                                 elements
                                     .nth(1)
                                     .cast::<node::Pat>()
                                     .cast::<node::BindPat>()
                                     .project(|bind| bind.0)
-                                    .assert_name("b"),
+                                    .assert_name("b", &interner),
                                 elements
                                     .nth(2)
                                     .cast::<node::ValueName>()
-                                    .assert_name("rest"),
+                                    .assert_name("rest", &interner),
                             )
                         }),
                     branch
                         .project_as::<node::LiteralExpr, _>(|b| b.body)
-                        .assert_eq(node::LiteralExpr::Str(builder.interner["list with spread"])),
+                        .assert_eq(node::LiteralExpr::Str(interner["list with spread"])),
                 )
             }),
             branches.nth(7).then(|branch| {
@@ -1498,15 +1501,13 @@ mod tests {
                                     .cast::<node::Pat>()
                                     .cast::<node::BindPat>()
                                     .project(|bind| bind.0)
-                                    .assert_name("head"),
+                                    .assert_name("head", &interner),
                                 elements.nth(1).try_cast::<node::ValueName>().assert_none(),
                             )
                         }),
                     branch
                         .project_as::<node::LiteralExpr, _>(|b| b.body)
-                        .assert_eq(node::LiteralExpr::Str(
-                            builder.interner["list anonymous spread"],
-                        )),
+                        .assert_eq(node::LiteralExpr::Str(interner["list anonymous spread"])),
                 )
             }),
             branches.nth(8).then(|branch| {
@@ -1518,7 +1519,7 @@ mod tests {
                         .get_slice_id(),
                     branch
                         .project_as::<node::LiteralExpr, _>(|b| b.body)
-                        .assert_eq(node::LiteralExpr::Str(builder.interner["empty list"])),
+                        .assert_eq(node::LiteralExpr::Str(interner["empty list"])),
                 )
             }),
             branches.nth(9).then(|branch| {
@@ -1535,24 +1536,22 @@ mod tests {
                                 fields
                                     .nth(0)
                                     .project(|field| field.field)
-                                    .assert_name("name"),
+                                    .assert_name("name", &interner),
                                 fields.nth(0).project_opt(|field| field.pat).assert_none(),
                                 fields
                                     .nth(1)
                                     .project(|field| field.field)
-                                    .assert_name("age"),
+                                    .assert_name("age", &interner),
                                 fields
                                     .nth(1)
                                     .project_opt_as::<node::BindPat, _>(|field| field.pat)
                                     .project(|bind| bind.0)
-                                    .assert_name("years"),
+                                    .assert_name("years", &interner),
                             )
                         }),
                     branch
                         .project_as::<node::LiteralExpr, _>(|b| b.body)
-                        .assert_eq(node::LiteralExpr::Str(
-                            builder.interner["record with spread"],
-                        )),
+                        .assert_eq(node::LiteralExpr::Str(interner["record with spread"])),
                 )
             }),
             branches.nth(10).then(|branch| {
@@ -1563,15 +1562,21 @@ mod tests {
                         .assert_len(2)
                         .then(|fields| {
                             (
-                                fields.nth(0).project(|field| field.field).assert_name("x"),
+                                fields
+                                    .nth(0)
+                                    .project(|field| field.field)
+                                    .assert_name("x", &interner),
                                 fields.nth(0).project_opt(|field| field.pat).assert_none(),
-                                fields.nth(1).project(|field| field.field).assert_name("y"),
+                                fields
+                                    .nth(1)
+                                    .project(|field| field.field)
+                                    .assert_name("y", &interner),
                                 fields.nth(1).project_opt(|field| field.pat).assert_none(),
                             )
                         }),
                     branch
                         .project_as::<node::LiteralExpr, _>(|b| b.body)
-                        .assert_eq(node::LiteralExpr::Str(builder.interner["simple record"])),
+                        .assert_eq(node::LiteralExpr::Str(interner["simple record"])),
                 )
             }),
             branches.nth(11).then(|branch| {
@@ -1583,7 +1588,7 @@ mod tests {
                         .get_slice_id(),
                     branch
                         .project_as::<node::LiteralExpr, _>(|b| b.body)
-                        .assert_eq(node::LiteralExpr::Str(builder.interner["empty record"])),
+                        .assert_eq(node::LiteralExpr::Str(interner["empty record"])),
                 )
             }),
             branches.nth(12).then(|branch| {
@@ -1594,16 +1599,18 @@ mod tests {
                         .assert_len(1)
                         .then(|tags| {
                             (
-                                tags.nth(0).project(|tag| tag.tag).assert_name("Some"),
+                                tags.nth(0)
+                                    .project(|tag| tag.tag)
+                                    .assert_name("Some", &interner),
                                 tags.nth(0)
                                     .project_opt_as::<node::BindPat, _>(|tag| tag.pat)
                                     .project(|bind| bind.0)
-                                    .assert_name("value"),
+                                    .assert_name("value", &interner),
                             )
                         }),
                     branch
                         .project_as::<node::LiteralExpr, _>(|b| b.body)
-                        .assert_eq(node::LiteralExpr::Str(builder.interner["variant some"])),
+                        .assert_eq(node::LiteralExpr::Str(interner["variant some"])),
                 )
             }),
             branches.nth(13).then(|branch| {
@@ -1614,13 +1621,15 @@ mod tests {
                         .assert_len(1)
                         .then(|tags| {
                             (
-                                tags.nth(0).project(|tag| tag.tag).assert_name("None"),
+                                tags.nth(0)
+                                    .project(|tag| tag.tag)
+                                    .assert_name("None", &interner),
                                 tags.nth(0).project_opt(|tag| tag.pat).assert_none(),
                             )
                         }),
                     branch
                         .project_as::<node::LiteralExpr, _>(|b| b.body)
-                        .assert_eq(node::LiteralExpr::Str(builder.interner["variant none"])),
+                        .assert_eq(node::LiteralExpr::Str(interner["variant none"])),
                 )
             }),
             branches.nth(14).then(|branch| {
@@ -1631,23 +1640,25 @@ mod tests {
                         .assert_len(2)
                         .then(|tags| {
                             (
-                                tags.nth(0).project(|tag| tag.tag).assert_name("Ok"),
+                                tags.nth(0)
+                                    .project(|tag| tag.tag)
+                                    .assert_name("Ok", &interner),
                                 tags.nth(0)
                                     .project_opt_as::<node::BindPat, _>(|tag| tag.pat)
                                     .project(|bind| bind.0)
-                                    .assert_name("result"),
-                                tags.nth(1).project(|tag| tag.tag).assert_name("Err"),
+                                    .assert_name("result", &interner),
+                                tags.nth(1)
+                                    .project(|tag| tag.tag)
+                                    .assert_name("Err", &interner),
                                 tags.nth(1)
                                     .project_opt_as::<node::BindPat, _>(|tag| tag.pat)
                                     .project(|bind| bind.0)
-                                    .assert_name("error"),
+                                    .assert_name("error", &interner),
                             )
                         }),
                     branch
                         .project_as::<node::LiteralExpr, _>(|b| b.body)
-                        .assert_eq(node::LiteralExpr::Str(
-                            builder.interner["multiple variants"],
-                        )),
+                        .assert_eq(node::LiteralExpr::Str(interner["multiple variants"])),
                 )
             }),
         )
@@ -1656,10 +1667,10 @@ mod tests {
 
     #[test]
     fn func_expr() {
-        let interner = StrInterner::default();
+        let mut interner = StrInterner::default();
 
         let ParseResult { node, builder, .. } =
-            try_parse_str_with("fn name => \"Hello\" + name", expr_parser(), interner);
+            try_parse_str_with("fn name => \"Hello\" + name", expr_parser(), &mut interner);
 
         let lambda = node.query().cast::<node::LambdaExpr>();
         let body = lambda
@@ -1667,7 +1678,7 @@ mod tests {
             .project(|body| body.op);
 
         (
-            lambda.project(|l| l.param).assert_name("name"),
+            lambda.project(|l| l.param).assert_name("name", &interner),
             body.assert_eq(node::BinaryOp::Add),
         )
             .run(&builder);
@@ -1675,10 +1686,10 @@ mod tests {
 
     #[test]
     fn arithmetic_expr() {
-        let interner = StrInterner::default();
+        let mut interner = StrInterner::default();
 
         let ParseResult { node, builder, .. } =
-            try_parse_str_with("-4 * 10 + 40 / 4 + 30 == 0", expr_parser(), interner);
+            try_parse_str_with("-4 * 10 + 40 / 4 + 30 == 0", expr_parser(), &mut interner);
 
         let eq = node.query().cast::<node::BinaryExpr>();
         let sum = eq.project_as::<node::BinaryExpr, _>(|e| e.lhs);
@@ -1710,10 +1721,10 @@ mod tests {
 
     #[test]
     fn if_expr() {
-        let interner = StrInterner::default();
+        let mut interner = StrInterner::default();
 
         let ParseResult { node, builder, .. } =
-            try_parse_str_with("if y then x else 0", expr_parser(), interner);
+            try_parse_str_with("if y then x else 0", expr_parser(), &mut interner);
 
         let if_expr = node.query().cast::<node::IfExpr>();
 
@@ -1721,11 +1732,11 @@ mod tests {
             if_expr
                 .project_as::<node::QualifiedExpr, _>(|i| i.pred)
                 .project(|q| q.source)
-                .assert_name("y"),
+                .assert_name("y", &interner),
             if_expr
                 .project_as::<node::QualifiedExpr, _>(|i| i.then)
                 .project(|q| q.source)
-                .assert_name("x"),
+                .assert_name("x", &interner),
             if_expr
                 .project_as::<node::LiteralExpr, _>(|i| i.or_else)
                 .assert_eq(node::LiteralExpr::Num(0.0)),
@@ -1735,10 +1746,10 @@ mod tests {
 
     #[test]
     fn qualified_expr() {
-        let interner = StrInterner::default();
+        let mut interner = StrInterner::default();
 
         let ParseResult { node, builder, .. } =
-            try_parse_str_with("x.y.z", expr_parser(), interner.clone());
+            try_parse_str_with("x.y.z", expr_parser(), &mut interner);
 
         let q = node.query().cast::<node::QualifiedExpr>();
         let path = q
@@ -1747,16 +1758,16 @@ mod tests {
             .project_slice(|path| path.0);
 
         (
-            q.project(|q| q.source).assert_name("x"),
-            path.nth(0).assert_name("y"),
-            path.nth(1).assert_name("z"),
+            q.project(|q| q.source).assert_name("x", &interner),
+            path.nth(0).assert_name("y", &interner),
+            path.nth(1).assert_name("z", &interner),
         )
             .run(&builder);
 
         let ParseResult { node, builder, .. } = try_parse_str_with(
             "mod1::mod2::value.field1.field2",
             expr_parser(),
-            interner.clone(),
+            &mut interner,
         );
 
         let q = node.query().cast::<node::QualifiedExpr>();
@@ -1770,21 +1781,21 @@ mod tests {
             .project_slice(|path| path.0);
 
         (
-            modules.nth(0).assert_name("mod1"),
-            modules.nth(1).assert_name("mod2"),
-            q.project(|q| q.source).assert_name("value"),
-            fields.nth(0).assert_name("field1"),
-            fields.nth(1).assert_name("field2"),
+            modules.nth(0).assert_name("mod1", &interner),
+            modules.nth(1).assert_name("mod2", &interner),
+            q.project(|q| q.source).assert_name("value", &interner),
+            fields.nth(0).assert_name("field1", &interner),
+            fields.nth(1).assert_name("field2", &interner),
         )
             .run(&builder);
     }
 
     #[test]
     fn record_extension() {
-        let interner = StrInterner::default();
+        let mut interner = StrInterner::default();
 
         let ParseResult { node, builder, .. } =
-            try_parse_str_with("{ y | +x = 10 }", expr_parser(), interner);
+            try_parse_str_with("{ y | +x = 10 }", expr_parser(), &mut interner);
 
         let extend = node.query().cast::<node::RecordExtendExpr>();
 
@@ -1792,12 +1803,12 @@ mod tests {
             extend
                 .project_as::<node::QualifiedExpr, _>(|e| e.source)
                 .project(|q| q.source)
-                .assert_name("y"),
+                .assert_name("y", &interner),
             extend
                 .project(|e| e.field_path)
                 .project_slice(|path| path.0)
                 .nth(0)
-                .assert_name("x"),
+                .assert_name("x", &interner),
             extend
                 .project_as::<node::LiteralExpr, _>(|e| e.value)
                 .assert_eq(node::LiteralExpr::Num(10.0)),
@@ -1807,10 +1818,10 @@ mod tests {
 
     #[test]
     fn record() {
-        let interner = StrInterner::default();
+        let mut interner = StrInterner::default();
 
         let ParseResult { node, builder, .. } =
-            try_parse_str_with("{ x = 10, y = 20 }", expr_parser(), interner);
+            try_parse_str_with("{ x = 10, y = 20 }", expr_parser(), &mut interner);
 
         let fields = node
             .query()
@@ -1821,7 +1832,7 @@ mod tests {
         (
             fields.nth(0).then(|field| {
                 (
-                    field.project(|f| f.label).assert_name("x"),
+                    field.project(|f| f.label).assert_name("x", &interner),
                     field
                         .project_as::<node::LiteralExpr, _>(|f| f.value)
                         .assert_eq(node::LiteralExpr::Num(10.0)),
@@ -1829,7 +1840,7 @@ mod tests {
             }),
             fields.nth(1).then(|field| {
                 (
-                    field.project(|f| f.label).assert_name("y"),
+                    field.project(|f| f.label).assert_name("y", &interner),
                     field
                         .project_as::<node::LiteralExpr, _>(|f| f.value)
                         .assert_eq(node::LiteralExpr::Num(20.0)),
@@ -1841,12 +1852,12 @@ mod tests {
 
     #[test]
     fn type_expr() {
-        let interner = StrInterner::default();
+        let mut interner = StrInterner::default();
 
         let ParseResult { node, builder, .. } = try_parse_str_with(
             "Num -> { a : Num, b : Num -> Num } -> Str",
             type_parser(),
-            interner,
+            &mut interner,
         );
 
         let func = node.query().cast::<node::FuncType>();
@@ -1862,17 +1873,17 @@ mod tests {
         (
             func.project_as::<node::QualifiedType, _>(|f| f.input)
                 .project(|q| q.ty)
-                .assert_name("Num"),
+                .assert_name("Num", &interner),
             fields.nth(0).then(|field| {
                 (
                     field
                         .project(|f| f.label_or_var)
                         .cast::<node::ValueName>()
-                        .assert_name("a"),
+                        .assert_name("a", &interner),
                     field
                         .project_as::<node::QualifiedType, _>(|f| f.ty)
                         .project(|q| q.ty)
-                        .assert_name("Num"),
+                        .assert_name("Num", &interner),
                 )
             }),
             fields.nth(1).then(|field| {
@@ -1880,7 +1891,7 @@ mod tests {
                     field
                         .project(|f| f.label_or_var)
                         .cast::<node::ValueName>()
-                        .assert_name("b"),
+                        .assert_name("b", &interner),
                     field.project_as::<node::FuncType, _>(|f| f.ty),
                 )
             }),
@@ -1889,17 +1900,20 @@ mod tests {
                 .project(|c| c.ty)
                 .cast::<node::QualifiedType>()
                 .project(|q| q.ty)
-                .assert_name("Str"),
+                .assert_name("Str", &interner),
         )
             .run(&builder);
     }
 
     #[test]
     fn type_application() {
-        let interner = StrInterner::default();
+        let mut interner = StrInterner::default();
 
-        let ParseResult { node, builder, .. } =
-            try_parse_str_with("Map (Num -> Str) (std::List Str)", type_parser(), interner);
+        let ParseResult { node, builder, .. } = try_parse_str_with(
+            "Map (Num -> Str) (std::List Str)",
+            type_parser(),
+            &mut interner,
+        );
 
         let app = node.query().cast::<node::TypeApplication>();
 
@@ -1909,7 +1923,7 @@ mod tests {
                     (
                         app.project_as::<node::QualifiedType, _>(|a| a.constructor)
                             .project(|q| q.ty)
-                            .assert_name("Map"),
+                            .assert_name("Map", &interner),
                         app.project_as::<node::FuncType, _>(|a| a.arg),
                     )
                 }),
@@ -1926,12 +1940,12 @@ mod tests {
 
     #[test]
     fn type_() {
-        let interner = StrInterner::default();
+        let mut interner = StrInterner::default();
 
         let ParseResult { node, builder, .. } = try_parse_str_with(
             "forall a b . { left : a, right : Num -> b }",
             type_scheme_parser(),
-            interner,
+            &mut interner,
         );
 
         let scheme = node.query();
@@ -1948,21 +1962,21 @@ mod tests {
             binders
                 .nth(0)
                 .project(|binder| binder.var)
-                .inspect(|var| assert_eq!(builder.interner.get(var.0), Some("a"))),
+                .inspect(|var| assert_eq!(interner.get(var.0), Some("a"))),
             binders
                 .nth(1)
                 .project(|binder| binder.var)
-                .inspect(|var| assert_eq!(builder.interner.get(var.0), Some("b"))),
+                .inspect(|var| assert_eq!(interner.get(var.0), Some("b"))),
             fields.nth(0).then(|field| {
                 (
                     field
                         .project(|f| f.label_or_var)
                         .cast::<node::ValueName>()
-                        .assert_name("left"),
+                        .assert_name("left", &interner),
                     field
                         .project_as::<node::QualifiedType, _>(|f| f.ty)
                         .project(|q| q.ty)
-                        .assert_name("a"),
+                        .assert_name("a", &interner),
                 )
             }),
             fields.nth(1).then(|field| {
@@ -1970,19 +1984,19 @@ mod tests {
                     field
                         .project(|f| f.label_or_var)
                         .cast::<node::ValueName>()
-                        .assert_name("right"),
+                        .assert_name("right", &interner),
                     field
                         .project_as::<node::FuncType, _>(|f| f.ty)
                         .then(|func| {
                             (
                                 func.project_as::<node::QualifiedType, _>(|f| f.input)
                                     .project(|q| q.ty)
-                                    .assert_name("Num"),
+                                    .assert_name("Num", &interner),
                                 func.project(|f| f.output)
                                     .project(|c| c.ty)
                                     .cast::<node::QualifiedType>()
                                     .project(|q| q.ty)
-                                    .assert_name("b"),
+                                    .assert_name("b", &interner),
                             )
                         }),
                 )
@@ -1993,12 +2007,12 @@ mod tests {
 
     #[test]
     fn type_bind() {
-        let interner = StrInterner::default();
+        let mut interner = StrInterner::default();
 
         let ParseResult { node, builder, .. } = try_parse_str_with(
             "type Person = forall a . { id : a, name : Str, age : Num }",
             type_bind_parser(),
-            interner,
+            &mut interner,
         );
 
         let bind = node.query();
@@ -2008,7 +2022,7 @@ mod tests {
         let fields = record.project_slice(|record| record.fields).assert_len(3);
 
         (
-            bind.project(|b| b.name).assert_name("Person"),
+            bind.project(|b| b.name).assert_name("Person", &interner),
             forall,
             fields.get_slice_id(),
         )
@@ -2017,12 +2031,12 @@ mod tests {
 
     #[test]
     fn variant_type_bind() {
-        let interner = StrInterner::default();
+        let mut interner = StrInterner::default();
 
         let ParseResult { node, builder, .. } = try_parse_str_with(
             "type Option = forall a b . < Some : a, None | b >",
             type_bind_parser(),
-            interner,
+            &mut interner,
         );
 
         let bind = node.query();
@@ -2031,61 +2045,61 @@ mod tests {
         let tags = variant.project_slice(|variant| variant.tags).assert_len(2);
 
         (
-            bind.project(|b| b.name).assert_name("Option"),
+            bind.project(|b| b.name).assert_name("Option", &interner),
             scheme
                 .project_opt(|s| s.forall)
                 .assert_some()
                 .project_slice(|binder| binder.0)
                 .nth(0)
                 .project(|b| b.var)
-                .inspect(|var| assert_eq!(builder.interner.get(var.0), Some("a"))),
+                .inspect(|var| assert_eq!(interner.get(var.0), Some("a"))),
             tags.nth(0).then(|tag| {
                 (
-                    tag.project(|t| t.name).assert_name("Some"),
+                    tag.project(|t| t.name).assert_name("Some", &interner),
                     tag.project_opt_as::<node::QualifiedType, _>(|t| t.ty)
                         .project(|q| q.ty)
-                        .assert_name("a"),
+                        .assert_name("a", &interner),
                 )
             }),
             tags.nth(1).then(|tag| {
                 (
-                    tag.project(|t| t.name).assert_name("None"),
+                    tag.project(|t| t.name).assert_name("None", &interner),
                     tag.project_opt(|t| t.ty).assert_none(),
                 )
             }),
             variant
                 .project_opt(|v| v.extension)
                 .assert_some()
-                .assert_name("b"),
+                .assert_name("b", &interner),
         )
             .run(&builder);
     }
 
     #[test]
     fn module() {
-        let interner = StrInterner::default();
+        let mut interner = StrInterner::default();
 
         let ParseResult { node, builder, .. } =
-            try_parse_str_with("{ x = 10, type T = Num }", module_parser(), interner);
+            try_parse_str_with("{ x = 10, type T = Num }", module_parser(), &mut interner);
 
         let binds = node.query().project_slice(|body| body.0).assert_len(2);
 
         (
             binds.nth(0).cast::<node::ValueBind>().then(|bind| {
                 (
-                    bind.project(|b| b.name).assert_name("x"),
+                    bind.project(|b| b.name).assert_name("x", &interner),
                     bind.project_as::<node::LiteralExpr, _>(|b| b.value)
                         .assert_eq(node::LiteralExpr::Num(10.0)),
                 )
             }),
             binds.nth(1).cast::<node::TypeBind>().then(|bind| {
                 (
-                    bind.project(|b| b.name).assert_name("T"),
+                    bind.project(|b| b.name).assert_name("T", &interner),
                     bind.project(|b| b.ty_scheme)
                         .project(|s| s.ty)
                         .cast::<node::QualifiedType>()
                         .project(|q| q.ty)
-                        .assert_name("Num"),
+                        .assert_name("Num", &interner),
                 )
             }),
         )
@@ -2094,10 +2108,10 @@ mod tests {
 
     #[test]
     fn module_type() {
-        let interner = StrInterner::default();
+        let mut interner = StrInterner::default();
 
         let ParseResult { node, builder, .. } =
-            try_parse_str_with("{ x : Num }", module_type_parser(), interner);
+            try_parse_str_with("{ x : Num }", module_type_parser(), &mut interner);
 
         let concrete = node.query().cast::<node::ConcreteModuleType>();
         let specs = concrete.project_slice(|spec| spec.0).assert_len(1);
@@ -2106,12 +2120,12 @@ mod tests {
         value_spec
             .then(|spec| {
                 (
-                    spec.project(|s| s.name).assert_name("x"),
+                    spec.project(|s| s.name).assert_name("x", &interner),
                     spec.project(|s| s.ty)
                         .project(|s| s.ty)
                         .cast::<node::QualifiedType>()
                         .project(|q| q.ty)
-                        .assert_name("Num"),
+                        .assert_name("Num", &interner),
                 )
             })
             .run(&builder);
@@ -2119,10 +2133,10 @@ mod tests {
 
     #[test]
     fn nested_module() {
-        let interner = StrInterner::default();
+        let mut interner = StrInterner::default();
 
         let ParseResult { node, builder, .. } =
-            try_parse_str_with("{ module m = { x = 10 } }", module_parser(), interner);
+            try_parse_str_with("{ module m = { x = 10 } }", module_parser(), &mut interner);
 
         let binds = node.query().project_slice(|body| body.0).assert_len(1);
         let module_bind = binds.nth(0).cast::<node::ModuleBind>();
@@ -2130,7 +2144,7 @@ mod tests {
         (
             module_bind.then(|bind| {
                 (
-                    bind.project(|b| b.name).assert_name("m"),
+                    bind.project(|b| b.name).assert_name("m", &interner),
                     bind.project_opt(|b| b.ty).assert_none(),
                 )
             }),
@@ -2142,7 +2156,7 @@ mod tests {
                 .cast::<node::ValueBind>()
                 .then(|bind| {
                     (
-                        bind.project(|b| b.name).assert_name("x"),
+                        bind.project(|b| b.name).assert_name("x", &interner),
                         bind.project_as::<node::LiteralExpr, _>(|b| b.value)
                             .assert_eq(node::LiteralExpr::Num(10.0)),
                     )
@@ -2153,19 +2167,19 @@ mod tests {
 
     #[test]
     fn nested_module_with_type() {
-        let interner = StrInterner::default();
+        let mut interner = StrInterner::default();
 
         let ParseResult { node, builder, .. } = try_parse_str_with(
             "{ module m : { x : Num } = { x = 10 } }",
             module_parser(),
-            interner,
+            &mut interner,
         );
 
         let binds = node.query().project_slice(|body| body.0).assert_len(1);
         let module_bind = binds.nth(0).cast::<node::ModuleBind>();
 
         (
-            module_bind.project(|b| b.name).assert_name("m"),
+            module_bind.project(|b| b.name).assert_name("m", &interner),
             module_bind
                 .project_opt_as::<node::ConcreteModuleType, _>(|b| b.ty)
                 .project_slice(|spec| spec.0)
@@ -2174,12 +2188,12 @@ mod tests {
                 .cast::<node::ValueSpec>()
                 .then(|spec| {
                     (
-                        spec.project(|s| s.name).assert_name("x"),
+                        spec.project(|s| s.name).assert_name("x", &interner),
                         spec.project(|s| s.ty)
                             .project(|s| s.ty)
                             .cast::<node::QualifiedType>()
                             .project(|q| q.ty)
-                            .assert_name("Num"),
+                            .assert_name("Num", &interner),
                     )
                 }),
             module_bind
@@ -2190,7 +2204,7 @@ mod tests {
                 .cast::<node::ValueBind>()
                 .then(|bind| {
                     (
-                        bind.project(|b| b.name).assert_name("x"),
+                        bind.project(|b| b.name).assert_name("x", &interner),
                         bind.project_as::<node::LiteralExpr, _>(|b| b.value)
                             .assert_eq(node::LiteralExpr::Num(10.0)),
                     )
@@ -2201,7 +2215,7 @@ mod tests {
 
     #[test]
     fn comments_are_transparent_to_parser() {
-        let interner = StrInterner::default();
+        let mut interner = StrInterner::default();
 
         let ParseResult { node, builder, .. } = try_parse_str_with(
             r#"{
@@ -2211,7 +2225,7 @@ mod tests {
                 y = 20
             }"#,
             module_parser(),
-            interner,
+            &mut interner,
         );
 
         let binds = node.query().project_slice(|body| body.0).assert_len(2);
@@ -2219,14 +2233,14 @@ mod tests {
         (
             binds.nth(0).cast::<node::ValueBind>().then(|bind| {
                 (
-                    bind.project(|b| b.name).assert_name("x"),
+                    bind.project(|b| b.name).assert_name("x", &interner),
                     bind.project_as::<node::LiteralExpr, _>(|b| b.value)
                         .assert_eq(node::LiteralExpr::Num(10.0)),
                 )
             }),
             binds.nth(1).cast::<node::ValueBind>().then(|bind| {
                 (
-                    bind.project(|b| b.name).assert_name("y"),
+                    bind.project(|b| b.name).assert_name("y", &interner),
                     bind.project_as::<node::LiteralExpr, _>(|b| b.value)
                         .assert_eq(node::LiteralExpr::Num(20.0)),
                 )
