@@ -348,6 +348,7 @@ define_tree_and_relations! {
     Bind,
     ModuleError,
     ModuleBody,
+    ModuleRef,
     ModulePath,
     ModuleImport,
     FunctorArgs,

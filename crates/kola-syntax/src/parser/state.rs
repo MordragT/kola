@@ -2,6 +2,7 @@ use std::borrow::Cow;
 
 use kola_interner::{StrInterner, StrKey};
 use kola_span::{Loc, Located, Report, ReportCheckpoint};
+use kola_tree::node::ModuleBody;
 use kola_tree::prelude::*;
 use kola_tree::tree::TotalSpan;
 
@@ -102,5 +103,14 @@ impl<'t> State<'t> {
     #[inline]
     pub fn push_module(&mut self, key: ModuleKey, tree: Tree) {
         self.modules.push((key, tree));
+    }
+
+    #[inline]
+    pub fn finish(self, root: Id<ModuleBody>) -> SourceTrees {
+        let mut source = SourceTrees::from_root(self.root_module, self.builder.finish(root));
+        for (key, tree) in self.modules {
+            source.insert(key, tree);
+        }
+        source
     }
 }

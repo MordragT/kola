@@ -101,6 +101,7 @@ impl_visitable!(
     Bind,
     ModuleError,
     ModuleBody,
+    ModuleRef,
     ModulePath,
     ModuleImport,
     FunctorArgs,
@@ -1178,6 +1179,22 @@ pub trait Visitor<M: 'static> {
         ControlFlow::Continue(())
     }
 
+    fn walk_module_ref(
+        &mut self,
+        id: Id<node::ModuleRef>,
+        tree: &Tree<M>,
+    ) -> ControlFlow<Self::BreakValue> {
+        let key = tree.get(id).0;
+        self.visit_module_key(key, tree)
+    }
+    fn visit_module_ref(
+        &mut self,
+        id: Id<node::ModuleRef>,
+        tree: &Tree<M>,
+    ) -> ControlFlow<Self::BreakValue> {
+        self.walk_module_ref(id, tree)
+    }
+
     fn walk_module_body(
         &mut self,
         id: Id<node::ModuleBody>,
@@ -1261,6 +1278,14 @@ pub trait Visitor<M: 'static> {
         self.walk_functor_app(id, tree)
     }
 
+    fn visit_module_key(
+        &mut self,
+        _key: crate::source::ModuleKey,
+        _tree: &Tree<M>,
+    ) -> ControlFlow<Self::BreakValue> {
+        ControlFlow::Continue(())
+    }
+
     fn walk_module_expr(
         &mut self,
         id: Id<node::ModuleExpr>,
@@ -1270,7 +1295,7 @@ pub trait Visitor<M: 'static> {
         match *tree.get(id) {
             Error(id) => self.visit_module_error(id, tree),
             Import(id) => self.visit_module_import(id, tree),
-            Body(id) => self.visit_module_body(id, tree),
+            Body(id) => self.visit_module_ref(id, tree),
             Path(id) => self.visit_module_path(id, tree),
             FunctorApp(id) => self.visit_functor_app(id, tree),
         }

@@ -16,6 +16,13 @@ pub struct OpaqueFn<I, O> {
     f: fn(&mut I, &mut Report) -> Result<O, Failure>,
 }
 
+impl<I, O> OpaqueFn<I, O> {
+    #[inline]
+    pub const fn new(f: fn(&mut I, &mut Report) -> Result<O, Failure>) -> Self {
+        Self { f }
+    }
+}
+
 impl<I, O> Clone for OpaqueFn<I, O> {
     fn clone(&self) -> Self {
         Self { f: self.f }

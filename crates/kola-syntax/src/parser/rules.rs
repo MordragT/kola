@@ -1,12 +1,12 @@
 use kola_combinators::input::Input;
-use kola_combinators::parser::Parser;
+use kola_combinators::parser::{Failure, Parser};
 use kola_combinators::primitive::{Lazy, OpaqueFn, choice, group, lazy};
 use kola_combinators::select;
 use kola_combinators::{
     combinator::{Combinator, IterCombinator},
     skip::{skip_delimiters, skip_until},
 };
-use kola_span::Located;
+use kola_span::{Located, Report};
 use kola_tree::{node::ValueName, prelude::*};
 
 use super::ParseInput;
@@ -109,6 +109,31 @@ pub const fn module_parser<'t>() -> OpaqueFn<ParseInput<'t>, Id<node::ModuleBody
     lazy::<ParseInput<'t>, Id<node::ModuleBody>, ModuleCombinator>()
 }
 
+fn parse_module_tree<'t>(
+    input: &mut ParseInput<'t>,
+    report: &mut Report,
+) -> Result<Id<node::ModuleRef>, Failure> {
+    let checkpoint = input.state.checkpoint();
+    let key = input.state.next_module_key();
+
+    let parent = std::mem::replace(&mut input.state.builder, Tree::default());
+    let result = module_parser().parse(input, report);
+    let child = std::mem::replace(&mut input.state.builder, parent);
+
+    match result {
+        Ok(root) => {
+            input.state.push_module(key, child.finish(root));
+            let loc = input.prev_loc();
+            let module_ref = input.state.insert(node::ModuleRef(key), loc);
+            Ok(module_ref)
+        }
+        Err(error) => {
+            input.state.reset(checkpoint);
+            Err(error)
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy)]
 pub struct ModuleCombinator;
 
@@ -116,6 +141,7 @@ impl<'t> Lazy<ParseInput<'t>, Id<node::ModuleBody>> for ModuleCombinator {
     type Combinator = impl const KolaCombinator<'t, Id<node::ModuleBody>>;
     const COMBINATOR: Self::Combinator = {
         let module = module_parser();
+        let module_tree = OpaqueFn::new(parse_module_tree);
 
         let module_import = select! { Token::Import(id) => id }
             .map_to_node(node::ModuleImport)
@@ -149,7 +175,7 @@ impl<'t> Lazy<ParseInput<'t>, Id<node::ModuleBody>> for ModuleCombinator {
 
         let module_expr = choice((
             functor_app,
-            module.to_module_expr(),
+            module_tree.map(node::ModuleExpr::Body).to_node(),
             module_import,
             module_path_parser().to_module_expr(),
         ));
@@ -2135,41 +2161,63 @@ mod tests {
     fn nested_module() {
         let mut interner = StrInterner::default();
 
-        let ParseResult { node, builder, .. } =
-            try_parse_str_with("{ module m = { x = 10 } }", module_parser(), &mut interner);
+        let ParseResult {
+            node,
+            builder,
+            modules,
+            ..
+        } = try_parse_str_with("{ module m = { x = 10 } }", module_parser(), &mut interner);
 
         let binds = node.query().project_slice(|body| body.0).assert_len(1);
         let module_bind = binds.nth(0).cast::<node::ModuleBind>();
+        let module_bind_id = module_bind.get_id().run(&builder);
+        let module_ref = match *builder.get(builder.get(module_bind_id).value) {
+            node::ModuleExpr::Body(module_ref) => module_ref,
+            _ => panic!("expected an inline module body"),
+        };
+        let module_key = builder.get(module_ref).0;
+        let child = modules
+            .iter()
+            .find(|(key, _)| *key == module_key)
+            .map(|(_, tree)| tree)
+            .expect("nested module tree missing");
 
-        (
-            module_bind.then(|bind| {
+        module_bind
+            .then(|bind| {
                 (
                     bind.project(|b| b.name).assert_name("m", &interner),
                     bind.project_opt(|b| b.ty).assert_none(),
                 )
-            }),
-            module_bind
-                .project_as::<node::ModuleBody, _>(|b| b.value)
-                .project_slice(|body| body.0)
-                .assert_len(1)
-                .nth(0)
-                .cast::<node::ValueBind>()
-                .then(|bind| {
-                    (
-                        bind.project(|b| b.name).assert_name("x", &interner),
-                        bind.project_as::<node::LiteralExpr, _>(|b| b.value)
-                            .assert_eq(node::LiteralExpr::Num(10.0)),
-                    )
-                }),
-        )
+            })
             .run(&builder);
+
+        child
+            .root_id()
+            .query()
+            .project_slice(|body| body.0)
+            .assert_len(1)
+            .nth(0)
+            .cast::<node::ValueBind>()
+            .then(|bind| {
+                (
+                    bind.project(|b| b.name).assert_name("x", &interner),
+                    bind.project_as::<node::LiteralExpr, _>(|b| b.value)
+                        .assert_eq(node::LiteralExpr::Num(10.0)),
+                )
+            })
+            .run(child);
     }
 
     #[test]
     fn nested_module_with_type() {
         let mut interner = StrInterner::default();
 
-        let ParseResult { node, builder, .. } = try_parse_str_with(
+        let ParseResult {
+            node,
+            builder,
+            modules,
+            ..
+        } = try_parse_str_with(
             "{ module m : { x : Num } = { x = 10 } }",
             module_parser(),
             &mut interner,
@@ -2177,40 +2225,56 @@ mod tests {
 
         let binds = node.query().project_slice(|body| body.0).assert_len(1);
         let module_bind = binds.nth(0).cast::<node::ModuleBind>();
+        let module_bind_id = module_bind.get_id().run(&builder);
+        let module_ref = match *builder.get(builder.get(module_bind_id).value) {
+            node::ModuleExpr::Body(module_ref) => module_ref,
+            _ => panic!("expected an inline module body"),
+        };
+        let module_key = builder.get(module_ref).0;
+        let child = modules
+            .iter()
+            .find(|(key, _)| *key == module_key)
+            .map(|(_, tree)| tree)
+            .expect("nested module tree missing");
 
-        (
-            module_bind.project(|b| b.name).assert_name("m", &interner),
-            module_bind
-                .project_opt_as::<node::ConcreteModuleType, _>(|b| b.ty)
-                .project_slice(|spec| spec.0)
-                .assert_len(1)
-                .nth(0)
-                .cast::<node::ValueSpec>()
-                .then(|spec| {
-                    (
-                        spec.project(|s| s.name).assert_name("x", &interner),
-                        spec.project(|s| s.ty)
-                            .project(|s| s.ty)
-                            .cast::<node::QualifiedType>()
-                            .project(|q| q.ty)
-                            .assert_name("Num", &interner),
-                    )
-                }),
-            module_bind
-                .project_as::<node::ModuleBody, _>(|b| b.value)
-                .project_slice(|body| body.0)
-                .assert_len(1)
-                .nth(0)
-                .cast::<node::ValueBind>()
-                .then(|bind| {
-                    (
-                        bind.project(|b| b.name).assert_name("x", &interner),
-                        bind.project_as::<node::LiteralExpr, _>(|b| b.value)
-                            .assert_eq(node::LiteralExpr::Num(10.0)),
-                    )
-                }),
-        )
+        module_bind
+            .then(|bind| {
+                (
+                    bind.project(|b| b.name).assert_name("m", &interner),
+                    bind.project_opt_as::<node::ConcreteModuleType, _>(|b| b.ty)
+                        .project_slice(|spec| spec.0)
+                        .assert_len(1)
+                        .nth(0)
+                        .cast::<node::ValueSpec>()
+                        .then(|spec| {
+                            (
+                                spec.project(|s| s.name).assert_name("x", &interner),
+                                spec.project(|s| s.ty)
+                                    .project(|s| s.ty)
+                                    .cast::<node::QualifiedType>()
+                                    .project(|q| q.ty)
+                                    .assert_name("Num", &interner),
+                            )
+                        }),
+                )
+            })
             .run(&builder);
+
+        child
+            .root_id()
+            .query()
+            .project_slice(|body| body.0)
+            .assert_len(1)
+            .nth(0)
+            .cast::<node::ValueBind>()
+            .then(|bind| {
+                (
+                    bind.project(|b| b.name).assert_name("x", &interner),
+                    bind.project_as::<node::LiteralExpr, _>(|b| b.value)
+                        .assert_eq(node::LiteralExpr::Num(10.0)),
+                )
+            })
+            .run(child);
     }
 
     #[test]

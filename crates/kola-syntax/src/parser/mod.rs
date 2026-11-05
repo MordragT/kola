@@ -20,7 +20,7 @@ use crate::token::SemanticTokens;
 
 pub struct ParseOutput {
     pub tokens: SemanticTokens,
-    pub tree: Option<Tree>,
+    pub tree: Option<SourceTrees>,
     pub recovered: Report,
 }
 
@@ -35,16 +35,21 @@ pub fn parse<'t>(input: ParseInput<'t>, report: &mut Report) -> ParseOutput {
     let State {
         tokens,
         builder,
+        modules,
+        root_module,
         recovered,
         ..
     } = input.state;
 
     match result {
         Ok(root) => {
-            let tree = Some(builder.finish(root));
+            let mut source = SourceTrees::from_root(root_module, builder.finish(root));
+            for (key, tree) in modules {
+                source.insert(key, tree);
+            }
             ParseOutput {
                 tokens,
-                tree,
+                tree: Some(source),
                 recovered,
             }
         }
@@ -64,6 +69,8 @@ pub struct ParseResult<T> {
     pub node: T,
     pub tokens: SemanticTokens,
     pub builder: Tree,
+    pub modules: Vec<(ModuleKey, Tree)>,
+    pub root_module: ModuleKey,
     pub recovered: Report,
 }
 
@@ -86,6 +93,8 @@ where
     let State {
         tokens,
         builder,
+        modules,
+        root_module,
         recovered,
         ..
     } = input.state;
@@ -94,6 +103,8 @@ where
         node,
         tokens,
         builder,
+        modules,
+        root_module,
         recovered,
     })
 }

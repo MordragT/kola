@@ -9,7 +9,9 @@ use crate::tree::Tree;
 ///
 /// This is deliberately distinct from the resolver's `ModuleSym`, which
 /// identifies a semantic module instance.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize)]
+#[derive(
+    Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, serde::Serialize, serde::Deserialize,
+)]
 pub struct ModuleKey(u32);
 
 impl ModuleKey {

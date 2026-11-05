@@ -224,6 +224,18 @@ impl FunctorBind {
 }
 
 #[derive(
+    Debug, From, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+)]
+pub struct ModuleRef(pub ModuleKey);
+
+impl<'a> Notate<'a, ModuleRef> for TreePrinter<'a> {
+    fn notate(self, value: &ModuleRef, arena: &'a Bump) -> Notation<'a> {
+        value.0.to_string().display_in(arena)
+    }
+}
+
+/// A module expression.
+#[derive(
     Debug,
     EnumAsInner,
     From,
@@ -240,7 +252,7 @@ impl FunctorBind {
 )]
 pub enum ModuleExpr {
     Error(Id<ModuleError>),
-    Body(Id<ModuleBody>),
+    Body(Id<ModuleRef>),
     Import(Id<ModuleImport>),
     Path(Id<ModulePath>),
     FunctorApp(Id<FunctorApp>),
