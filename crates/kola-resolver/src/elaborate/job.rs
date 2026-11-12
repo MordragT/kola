@@ -182,7 +182,7 @@ impl ElabPath {
 
             if let Some(Binding { sym, vis }) = current_module.names.get_module(next_segment) {
                 // Enforce visibility checking
-                if self.current_scope != definition_scope && vis != Vis::Export {
+                if self.current_scope != definition_scope && vis == Vis::Private {
                     let err = Diagnostic::error(
                         self.loc,
                         format!("Module '{:?}' is private", next_segment), // TODO: interner retrieval
@@ -306,7 +306,7 @@ impl ElabFunctorAppl {
 
             inst_body
                 .names
-                .insert_module(ctx.super_name, Vis::None, definition_scope);
+                .insert_module(ctx.super_name, Vis::Private, definition_scope);
 
             // Queue the downstream compiler tasks returned by the functor body instantiation
             for inner_job in inst_elab_jobs {

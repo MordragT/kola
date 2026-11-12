@@ -81,7 +81,7 @@ pub fn lookup_modules(
 
             if let Some(Binding { sym: next_sym, vis }) = current_module.names.get_module(*name) {
                 // 3. Enforce export visibility rules
-                if vis != Vis::Export && current_sym != *source {
+                if vis == Vis::Private && current_sym != *source {
                     let (_, def_loc) = defs[next_sym];
 
                     report.add_diagnostic(

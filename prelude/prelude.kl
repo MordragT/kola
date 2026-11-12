@@ -1,18 +1,18 @@
 {
-    export module bool = import bool,
-    export module cmp = import cmp,
-    export module func = import func,
-    export module io = import io,
-    export module list = import list,
-    export module num = import num,
-    export module option = import option,
-    export module range = import range,
-    export module record = import record,
-    export module result = import result,
-    export module serde = import serde,
-    export module str = import str,
-    export module table = import table,
-    export module tuple = import tuple,
+    module bool = import bool,
+    module cmp = import cmp,
+    module func = import func,
+    module io = import io,
+    module list = import list,
+    module num = import num,
+    module option = import option,
+    module range = import range,
+    module record = import record,
+    module result = import result,
+    module serde = import serde,
+    module str = import str,
+    module table = import table,
+    module tuple = import tuple,
 
     #main = (serde::to_json my_config::config),
 
@@ -81,9 +81,9 @@
 
 
     # module table_shape = {
-    #     export type Row = { a : Num, b : Num },
+    #     type Row = { a : Num, b : Num },
     # },
-    # module join_table = (table::join table_shape),
+    # module join_table = table::join using { module t = table_shape },
 
     table1 = (table::prepend_row { a = 1, b = 2 } [
         { a = 3, b = 4 },

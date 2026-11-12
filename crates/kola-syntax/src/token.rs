@@ -218,8 +218,6 @@ define_token_type!(Op {
 define_token_type!(Kw {
     None => "None",
     Module => "module",
-    Export => "export",
-    Functor => "functor",
     Effect => "effect",
     Type => "type",
     Forall => "forall",
@@ -232,6 +230,10 @@ define_token_type!(Kw {
     Else => "else",
     Case => "case",
     Handle => "handle",
+    With => "with",
+    Over => "over",
+    Using => "using",
+    Private => "private",
 });
 
 define_token_type!(Ctrl {
@@ -297,7 +299,6 @@ const impl<'t> From<LiteralT<'t>> for Literal {
     Debug, Display, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
 )]
 pub enum Symbol {
-    Functor,
     ModuleType,
     Module,
     Kind,

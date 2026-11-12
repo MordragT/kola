@@ -69,11 +69,11 @@
 //! - **Entry module**: Designate a specific module as program entry
 //! - **Explicit**: User specifies entry point at compile time
 //!
-//! ### 4. **Functor Readiness**
-//! This compilation strategy naturally supports SML-style functors:
-//! - Functors compile to parameterized module templates
-//! - Functor application becomes module instantiation with parameter substitution
-//! - Each functor application creates a new module record
+//! ### 4. **Module Composition Readiness**
+//! This compilation strategy supports the v1 module system:
+//! - An open module is elaborated before lowering; abstract members must be supplied
+//! - Composition (`with`, `over`, `using`) is resolved statically by the resolver
+//! - Each complete module lowers to a record of its public definitions
 //!
 //! ## Implementation Details
 //!

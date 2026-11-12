@@ -5,7 +5,7 @@ use kola_print::prelude::*;
 use kola_relations::TryCast;
 use serde::{Deserialize, Serialize};
 
-use super::{Expr, FunctorName, ModuleName, ModuleTypeName, TypeName, TypeScheme, ValueName};
+use super::{Expr, ModuleName, ModuleTypeName, TypeName, TypeScheme, ValueName};
 use crate::prelude::*;
 use crate::print::TreePrinter;
 
@@ -44,7 +44,6 @@ pub enum Bind {
     Type(Id<TypeBind>),
     Module(Id<ModuleBind>),
     ModuleType(Id<ModuleTypeBind>),
-    Functor(Id<FunctorBind>),
     Error(Id<BindError>),
 }
 
@@ -55,7 +54,6 @@ impl<'a> Notate<'a, Bind> for TreePrinter<'a> {
             Bind::Type(t) => self.notate(t, arena),
             Bind::Module(m) => self.notate(m, arena),
             Bind::ModuleType(mt) => self.notate(mt, arena),
-            Bind::Functor(f) => self.notate(f, arena),
             Bind::Error(e) => self.notate(e, arena),
         }
     }
@@ -66,7 +64,7 @@ impl Bind {
         vis: Vis,
         name: ValueName,
         ty_scheme: Option<TypeScheme>,
-        value: Expr,
+        value: Option<Expr>,
         builder: &mut Tree<M>,
     ) -> Id<Self>
     where
@@ -80,15 +78,15 @@ impl Bind {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
 pub enum Vis {
-    Export,
-    None,
+    Public,
+    Private,
 }
 
 impl<'a> Notate<'a, Vis> for TreePrinter<'a> {
     fn notate(self, value: &Vis, arena: &'a Bump) -> Notation<'a> {
         match value {
-            Vis::Export => "Export".purple().display_in(arena),
-            Vis::None => arena.empty(),
+            Vis::Public => arena.empty(),
+            Vis::Private => "Private".purple().display_in(arena),
         }
     }
 }
@@ -101,7 +99,7 @@ pub struct ValueBind {
     pub vis: Id<Vis>,
     pub name: Id<ValueName>,
     pub ty_scheme: Option<Id<TypeScheme>>,
-    pub value: Id<Expr>,
+    pub value: Option<Id<Expr>>,
 }
 
 impl ValueBind {
@@ -109,7 +107,7 @@ impl ValueBind {
         vis: Vis,
         name: ValueName,
         ty_scheme: Option<TypeScheme>,
-        value: Expr,
+        value: Option<Expr>,
         builder: &mut Tree<M>,
     ) -> Id<Self>
     where
@@ -118,7 +116,7 @@ impl ValueBind {
         let vis = builder.alloc(vis);
         let name = builder.alloc(name);
         let ty_scheme = ty_scheme.map(|ty| builder.alloc(ty));
-        let value = builder.alloc(value);
+        let value = value.map(|value| builder.alloc(value));
 
         builder.alloc(Self {
             vis,
@@ -147,7 +145,7 @@ pub struct ModuleBind {
     pub vis: Id<Vis>,
     pub name: Id<ModuleName>,
     pub ty: Option<Id<ModuleType>>,
-    pub value: Id<ModuleExpr>,
+    pub value: Option<Id<ModuleExpr>>,
 }
 
 impl ModuleBind {
@@ -155,7 +153,7 @@ impl ModuleBind {
         vis: Vis,
         name: ModuleName,
         ty: Option<ModuleType>,
-        value: ModuleExpr,
+        value: Option<ModuleExpr>,
         builder: &mut Tree<M>,
     ) -> Id<Self>
     where
@@ -164,61 +162,13 @@ impl ModuleBind {
         let vis = builder.alloc(vis);
         let name = builder.alloc(name);
         let ty = ty.map(|sig| builder.alloc(sig));
-        let value = builder.alloc(value);
+        let value = value.map(|value| builder.alloc(value));
 
         builder.alloc(Self {
             vis,
             name,
             ty,
             value,
-        })
-    }
-}
-
-#[derive(
-    Debug, Notate, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
-)]
-#[notate(with = TreePrinter<'a>, color = "green")]
-pub struct FunctorParam {
-    pub name: Id<ModuleName>,
-    pub ty: Id<ModuleType>,
-}
-
-#[derive(Debug, Notate, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
-#[notate(with = TreePrinter<'a>, color = "green")]
-pub struct FunctorBind {
-    pub vis: Id<Vis>,
-    pub name: Id<FunctorName>,
-    pub params: SliceId<FunctorParam>,
-    pub body: Id<ModuleBody>,
-}
-
-impl FunctorBind {
-    pub fn new_in<M>(
-        vis: Vis,
-        name: FunctorName,
-        params: impl IntoIterator<Item = FunctorParam>,
-        body: ModuleBody,
-        builder: &mut Tree<M>,
-    ) -> Id<Self>
-    where
-        M: Clone + Default + 'static,
-    {
-        let vis = builder.alloc(vis);
-        let name = builder.alloc(name);
-
-        let params: Vec<_> = params
-            .into_iter()
-            .map(|param| builder.alloc(param))
-            .collect();
-        let params = builder.slices.alloc(params);
-        let body = builder.alloc(body);
-
-        builder.alloc(Self {
-            vis,
-            name,
-            params,
-            body,
         })
     }
 }
@@ -255,7 +205,7 @@ pub enum ModuleExpr {
     Body(Id<ModuleRef>),
     Import(Id<ModuleImport>),
     Path(Id<ModulePath>),
-    FunctorApp(Id<FunctorApp>),
+    Merge(Id<ModuleMergeExpr>),
 }
 
 impl<'a> Notate<'a, ModuleExpr> for TreePrinter<'a> {
@@ -265,7 +215,7 @@ impl<'a> Notate<'a, ModuleExpr> for TreePrinter<'a> {
             ModuleExpr::Body(id) => self.notate(id, arena),
             ModuleExpr::Import(id) => self.notate(id, arena),
             ModuleExpr::Path(id) => self.notate(id, arena),
-            ModuleExpr::FunctorApp(id) => self.notate(id, arena),
+            ModuleExpr::Merge(id) => self.notate(id, arena),
         }
     }
 }
@@ -301,18 +251,26 @@ impl ModulePath {
 #[notate(with = TreePrinter<'a>, color = "green")]
 pub struct ModuleImport(#[notate(display)] pub PathKey);
 
+/// Module composition operator.
 #[derive(
-    Debug, Notate, From, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+    Debug, Notate, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
 )]
 #[notate(with = TreePrinter<'a>, color = "green")]
-pub struct FunctorArgs(pub SliceId<ModulePath>);
+pub enum ModuleOp {
+    With,
+    Over,
+    Using,
+}
 
-#[derive(Debug, Notate, Clone, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize)]
+/// `lhs <op> rhs`
+#[derive(
+    Debug, Notate, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
+)]
 #[notate(with = TreePrinter<'a>, color = "green")]
-pub struct FunctorApp {
-    pub path: Option<Id<ModulePath>>,
-    pub func: Id<FunctorName>,
-    pub args: Id<FunctorArgs>,
+pub struct ModuleMergeExpr {
+    pub lhs: Id<ModuleExpr>,
+    pub rhs: Id<ModuleExpr>,
+    pub op: ModuleOp,
 }
 
 #[derive(

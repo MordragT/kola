@@ -28,7 +28,6 @@ macro_rules! impl_visitable {
 }
 
 impl_visitable!(
-    FunctorName,
     ModuleTypeName,
     ModuleName,
     KindName,
@@ -96,16 +95,13 @@ impl_visitable!(
     TypeBind,
     ModuleBind,
     ModuleTypeBind,
-    FunctorParam,
-    FunctorBind,
     Bind,
     ModuleError,
     ModuleBody,
     ModuleRef,
     ModulePath,
     ModuleImport,
-    FunctorArgs,
-    FunctorApp,
+    ModuleMergeExpr,
     ModuleExpr,
     SpecError,
     ValueSpec,
@@ -119,13 +115,6 @@ impl_visitable!(
 pub trait Visitor<M: 'static> {
     type BreakValue;
 
-    fn visit_functor_name(
-        &mut self,
-        _id: Id<node::FunctorName>,
-        _tree: &Tree<M>,
-    ) -> ControlFlow<Self::BreakValue> {
-        ControlFlow::Continue(())
-    }
     fn visit_module_type_name(
         &mut self,
         _id: Id<node::ModuleTypeName>,
@@ -1239,45 +1228,6 @@ pub trait Visitor<M: 'static> {
         ControlFlow::Continue(())
     }
 
-    fn walk_functor_args(
-        &mut self,
-        id: Id<node::FunctorArgs>,
-        tree: &Tree<M>,
-    ) -> ControlFlow<Self::BreakValue> {
-        for arg_id in tree.get_slice(id.get(tree).0).iter().copied() {
-            self.visit_module_path(arg_id, tree)?;
-        }
-        ControlFlow::Continue(())
-    }
-    fn visit_functor_args(
-        &mut self,
-        id: Id<node::FunctorArgs>,
-        tree: &Tree<M>,
-    ) -> ControlFlow<Self::BreakValue> {
-        self.walk_functor_args(id, tree)
-    }
-
-    fn walk_functor_app(
-        &mut self,
-        id: Id<node::FunctorApp>,
-        tree: &Tree<M>,
-    ) -> ControlFlow<Self::BreakValue> {
-        let node::FunctorApp { path, func, args } = tree.get(id);
-        if let Some(p) = path {
-            self.visit_module_path(*p, tree)?;
-        }
-        self.visit_functor_name(*func, tree)?;
-        self.visit_functor_args(*args, tree)?;
-        ControlFlow::Continue(())
-    }
-    fn visit_functor_app(
-        &mut self,
-        id: Id<node::FunctorApp>,
-        tree: &Tree<M>,
-    ) -> ControlFlow<Self::BreakValue> {
-        self.walk_functor_app(id, tree)
-    }
-
     fn visit_module_key(
         &mut self,
         _key: crate::source::ModuleKey,
@@ -1297,7 +1247,7 @@ pub trait Visitor<M: 'static> {
             Import(id) => self.visit_module_import(id, tree),
             Body(id) => self.visit_module_ref(id, tree),
             Path(id) => self.visit_module_path(id, tree),
-            FunctorApp(id) => self.visit_functor_app(id, tree),
+            Merge(id) => self.visit_module_merge_expr(id, tree),
         }
     }
     fn visit_module_expr(
@@ -1328,7 +1278,9 @@ pub trait Visitor<M: 'static> {
         if let Some(ts) = ty_scheme {
             self.visit_type_scheme(ts, tree)?;
         }
-        self.visit_expr(value, tree)?;
+        if let Some(v) = value {
+            self.visit_expr(v, tree)?;
+        }
         ControlFlow::Continue(())
     }
     fn visit_value_bind(
@@ -1378,7 +1330,9 @@ pub trait Visitor<M: 'static> {
         if let Some(t) = ty {
             self.visit_module_type(t, tree)?;
         }
-        self.visit_module_expr(value, tree)?;
+        if let Some(v) = value {
+            self.visit_module_expr(v, tree)?;
+        }
         ControlFlow::Continue(())
     }
     fn visit_module_bind(
@@ -1408,49 +1362,22 @@ pub trait Visitor<M: 'static> {
         self.walk_module_type_bind(id, tree)
     }
 
-    fn walk_functor_param(
+    fn walk_module_merge_expr(
         &mut self,
-        id: Id<node::FunctorParam>,
+        id: Id<node::ModuleMergeExpr>,
         tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
-        let node::FunctorParam { name, ty } = *tree.get(id);
-        self.visit_module_name(name, tree)?;
-        self.visit_module_type(ty, tree)?;
+        let node::ModuleMergeExpr { lhs, rhs, .. } = *tree.get(id);
+        self.visit_module_expr(lhs, tree)?;
+        self.visit_module_expr(rhs, tree)?;
         ControlFlow::Continue(())
     }
-    fn visit_functor_param(
+    fn visit_module_merge_expr(
         &mut self,
-        id: Id<node::FunctorParam>,
+        id: Id<node::ModuleMergeExpr>,
         tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
-        self.walk_functor_param(id, tree)
-    }
-
-    fn walk_functor_bind(
-        &mut self,
-        id: Id<node::FunctorBind>,
-        tree: &Tree<M>,
-    ) -> ControlFlow<Self::BreakValue> {
-        let node::FunctorBind {
-            vis,
-            name,
-            params,
-            body,
-        } = tree.get(id);
-        self.visit_vis(*vis, tree)?;
-        self.visit_functor_name(*name, tree)?;
-        for param_id in tree.get_slice(*params).iter().copied() {
-            self.visit_functor_param(param_id, tree)?;
-        }
-        self.visit_module_body(*body, tree)?;
-        ControlFlow::Continue(())
-    }
-    fn visit_functor_bind(
-        &mut self,
-        id: Id<node::FunctorBind>,
-        tree: &Tree<M>,
-    ) -> ControlFlow<Self::BreakValue> {
-        self.walk_functor_bind(id, tree)
+        self.walk_module_merge_expr(id, tree)
     }
 
     fn visit_bind_error(
@@ -1468,7 +1395,6 @@ pub trait Visitor<M: 'static> {
             Type(id) => self.visit_type_bind(id, tree),
             Module(id) => self.visit_module_bind(id, tree),
             ModuleType(id) => self.visit_module_type_bind(id, tree),
-            Functor(id) => self.visit_functor_bind(id, tree),
             Error(id) => self.visit_bind_error(id, tree),
         }
     }

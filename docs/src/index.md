@@ -22,8 +22,8 @@ features:
     title: Guaranteed Termination
     details: All programs are guaranteed to terminate - no infinite loops, no surprises.
   - icon: 🧩
-    title: Algebraic Effects & Functors
-    details: Model complex behaviors and modularize your configuration logic with principled algebraic effects and functors.
+    title: Algebraic Effects & Modules
+    details: Model complex behaviors and modularize your configuration logic with principled algebraic effects and a compile-time module system.
   - icon: 🏗️
     title: Expressive & Composable
     details: Templating, parameterization, and advanced abstraction patterns are first-class citizens.

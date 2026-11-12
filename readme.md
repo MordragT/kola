@@ -2,10 +2,10 @@
 
 # Kola - Konfiguration Language
 
- [![NixOS][nixos-badge]][nixos-url]
- [![Docs][docs.rs-badge]][docs.rs-url]
- [![Website][website-badge]][website-url]
- ![License][license]
+[![NixOS][nixos-badge]][nixos-url]
+[![Docs][docs.rs-badge]][docs.rs-url]
+[![Website][website-badge]][website-url]
+![License][license]
 
 [website-badge]: https://img.shields.io/website?url=https%3A%2F%2Fmordragt.github.io%2Fkola&style=for-the-badge
 [website-url]: https://mordragt.github.io/kola
@@ -23,7 +23,7 @@ Structurally and statically typed configuration language.
 
 Kola is a statically and structurally typed configuration language based on the simply-typed lambda calculus (STLC). It preserves the termination guarantees of STLC, ensuring that all programs are guaranteed to terminate and are not Turing complete.
 
-Kola extends this foundation with row polymorphism, full type inference, algebraic effects, and functors. This combination enables expressive configuration patterns such as templating and parameterization, while providing strong static checks and composability.
+Kola extends this foundation with row polymorphism, full type inference, algebraic effects, and a compile-time module system. Modules express configuration patterns such as templating, dependency injection, and composition, while providing strong static checks.
 
 The effect system is designed to offer principled and precise control over side effects, making it possible to implement features like plugins (planned) that handle effects in a modular way. Kola aims to provide a robust foundation for configuration tasks, balancing safety, expressiveness, and predictability.
 

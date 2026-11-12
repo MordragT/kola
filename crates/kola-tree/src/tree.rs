@@ -275,7 +275,6 @@ macro_rules! define_tree_and_relations {
 }
 
 define_tree_and_relations! {
-    FunctorName,
     ModuleTypeName,
     ModuleName,
     KindName,
@@ -343,16 +342,13 @@ define_tree_and_relations! {
     TypeBind,
     ModuleBind,
     ModuleTypeBind,
-    FunctorParam,
-    FunctorBind,
     Bind,
     ModuleError,
     ModuleBody,
     ModuleRef,
     ModulePath,
     ModuleImport,
-    FunctorArgs,
-    FunctorApp,
+    ModuleMergeExpr,
     ModuleExpr,
     SpecError,
     ValueSpec,

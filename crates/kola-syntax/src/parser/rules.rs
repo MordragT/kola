@@ -6,7 +6,7 @@ use kola_combinators::{
     combinator::{Combinator, IterCombinator},
     skip::{skip_delimiters, skip_until},
 };
-use kola_span::{Located, Report};
+use kola_span::{Issue, Located, Report};
 use kola_tree::{node::ValueName, prelude::*};
 
 use super::ParseInput;
@@ -19,13 +19,6 @@ use super::primitives::*;
 // ---------------------------------------------------------------------------
 // Name parsers
 // ---------------------------------------------------------------------------
-
-pub const fn functor_name_parser<'t>() -> impl const KolaCombinator<'t, Id<node::FunctorName>> {
-    // TODO SCREAMING_CASE ?
-    lower_symbol(Symbol::Functor)
-        .map(node::FunctorName::new)
-        .to_node()
-}
 
 pub const fn module_type_name_parser<'t>() -> impl const KolaCombinator<'t, Id<node::ModuleTypeName>>
 {
@@ -109,6 +102,10 @@ pub const fn module_parser<'t>() -> OpaqueFn<ParseInput<'t>, Id<node::ModuleBody
     lazy::<ParseInput<'t>, Id<node::ModuleBody>, ModuleCombinator>()
 }
 
+pub const fn module_expr_parser<'t>() -> OpaqueFn<ParseInput<'t>, Id<node::ModuleExpr>> {
+    lazy::<ParseInput<'t>, Id<node::ModuleExpr>, ModuleExprCombinator>()
+}
+
 fn parse_module_tree<'t>(
     input: &mut ParseInput<'t>,
     report: &mut Report,
@@ -135,66 +132,87 @@ fn parse_module_tree<'t>(
 }
 
 #[derive(Debug, Clone, Copy)]
-pub struct ModuleCombinator;
+pub struct ModuleExprCombinator;
 
-impl<'t> Lazy<ParseInput<'t>, Id<node::ModuleBody>> for ModuleCombinator {
-    type Combinator = impl const KolaCombinator<'t, Id<node::ModuleBody>>;
+impl<'t> Lazy<ParseInput<'t>, Id<node::ModuleExpr>> for ModuleExprCombinator {
+    type Combinator = impl const KolaCombinator<'t, Id<node::ModuleExpr>>;
     const COMBINATOR: Self::Combinator = {
-        let module = module_parser();
         let module_tree = OpaqueFn::new(parse_module_tree);
 
         let module_import = select! { Token::Import(id) => id }
             .map_to_node(node::ModuleImport)
             .to_module_expr();
 
-        let functor_args = module_path_parser()
-            .separated_by(ctrl(CtrlT::COMMA))
-            .at_least(1)
-            .collect::<Slice<_>>()
-            .map_to_node(node::FunctorArgs);
-
-        let module_path = module_name_parser()
-            .then_ignore(ctrl(CtrlT::DOUBLE_COLON).rewind())
-            .then_ignore(ctrl(CtrlT::DOUBLE_COLON))
-            .repeated()
-            .at_least(1)
-            .collect::<Slice<_>>()
-            .map_to_node(node::ModulePath)
-            .or_not();
-
-        let functor_app = nested_parser(
-            module_path
-                .then(functor_name_parser())
-                .then(functor_args)
-                .map(|((path, func), args)| node::FunctorApp { path, func, args })
-                .to_node()
-                .to_module_expr(),
-            Delim::Paren,
-            node::ModuleError,
-        );
-
-        let module_expr = choice((
-            functor_app,
+        // Ordered so that `module` and `import` win over a bare path.
+        let atom = choice((
             module_tree.map(node::ModuleExpr::Body).to_node(),
             module_import,
             module_path_parser().to_module_expr(),
+            nested_parser(module_expr_parser(), Delim::Paren, node::ModuleError),
         ));
 
+        let op = choice((
+            kw(KwT::WITH).to(node::ModuleOp::With),
+            kw(KwT::OVER).to(node::ModuleOp::Over),
+            kw(KwT::USING).to(node::ModuleOp::Using),
+        ));
+
+        // Uniform left-associative: `a with b over c` parses as `(a with b) over c`.
+        atom.foldl_with(
+            op.then(atom).repeated(),
+            |lhs, (op, rhs), loc, input: &mut ParseInput<'t>| {
+                let state: &mut State = input.state();
+                let merge = state.insert(node::ModuleMergeExpr { lhs, rhs, op }, loc);
+                state.insert(node::ModuleExpr::Merge(merge), loc)
+            },
+        )
+    };
+}
+
+#[derive(Debug, Clone, Copy)]
+pub struct ModuleCombinator;
+
+impl<'t> Lazy<ParseInput<'t>, Id<node::ModuleBody>> for ModuleCombinator {
+    type Combinator = impl const KolaCombinator<'t, Id<node::ModuleBody>>;
+    const COMBINATOR: Self::Combinator = {
         let value_bind = group((
             vis_parser(),
             value_name_parser(),
             ctrl(CtrlT::COLON)
                 .ignore_then(type_scheme_parser().throw("Expected type annotation after ':'"))
                 .or_not(),
-            op(OpT::ASSIGN).ignore_then(expr_parser().throw("Expected expression after '='")),
+            op(OpT::ASSIGN)
+                .ignore_then(expr_parser().throw("Expected expression after '='"))
+                .or_not(),
         ))
-        .map_to_node(|(vis, name, ty_scheme, value)| node::ValueBind {
-            vis,
-            name,
-            ty_scheme,
-            value,
-        })
-        .to_bind();
+        .map_with(
+            |(vis, name, ty_scheme, value), loc, input: &mut ParseInput<'t>| {
+                let state: &mut State = input.state();
+
+                if ty_scheme.is_none() && value.is_none() {
+                    let mut report = Report::new();
+                    report.add_issue(
+                        Issue::error(
+                            "Binding needs either a type annotation or a body",
+                            0,
+                        )
+                        .with_help("Write `x : T` for an abstract member or `x = e` for a definition."),
+                    );
+                    state.recovered.append(report);
+
+                    return state.insert_as::<node::Bind, _>(node::BindError, loc);
+                }
+
+                let bind = node::ValueBind {
+                    vis,
+                    name,
+                    ty_scheme,
+                    value,
+                };
+                let bind = state.insert(bind, loc);
+                state.insert(node::Bind::Value(bind), loc)
+            },
+        );
 
         let type_bind = type_bind_parser().to_bind();
 
@@ -204,15 +222,33 @@ impl<'t> Lazy<ParseInput<'t>, Id<node::ModuleBody>> for ModuleCombinator {
             ctrl(CtrlT::COLON)
                 .ignore_then(module_type_parser().throw("Expected module type after ':'"))
                 .or_not(),
-            op(OpT::ASSIGN).ignore_then(module_expr.throw("Expected module expression after '='")),
+            op(OpT::ASSIGN)
+                .ignore_then(module_expr_parser())
+                .or_not(),
         ))
-        .map_to_node(|(vis, name, ty, value)| node::ModuleBind {
-            vis,
-            name,
-            ty,
-            value,
-        })
-        .to_bind();
+        .map_with(|(vis, name, ty, value), loc, input: &mut ParseInput<'t>| {
+            let state: &mut State = input.state();
+
+            if ty.is_none() && value.is_none() {
+                let mut report = Report::new();
+                report.add_issue(
+                    Issue::error("Module binding needs either a signature or a body", 0)
+                        .with_help("Write `module m : S` for an abstract submodule or `module m = M`."),
+                );
+                state.recovered.append(report);
+
+                return state.insert_as::<node::Bind, _>(node::BindError, loc);
+            }
+
+            let bind = node::ModuleBind {
+                vis,
+                name,
+                ty,
+                value,
+            };
+            let bind = state.insert(bind, loc);
+            state.insert(node::Bind::Module(bind), loc)
+        });
 
         let module_type_bind = group((
             vis_parser(),
@@ -225,34 +261,7 @@ impl<'t> Lazy<ParseInput<'t>, Id<node::ModuleBody>> for ModuleCombinator {
         .map_to_node(|(vis, name, ty)| node::ModuleTypeBind { vis, name, ty })
         .to_bind();
 
-        let functor_param = module_name_parser()
-            .then(ctrl(CtrlT::COLON).ignore_then(module_type_parser()))
-            .map_to_node(|(name, ty)| node::FunctorParam { name, ty })
-            .delimited_by(open_delim(OpenT::PAREN), close_delim(CloseT::PAREN));
-
-        let functor_bind = group((
-            vis_parser(),
-            kw(KwT::MODULE).ignore_then(kw(KwT::FUNCTOR).ignore_then(
-                functor_name_parser().throw("Expected functor name after 'module functor'"),
-            )),
-            functor_param.repeated().at_least(1).collect::<Slice<_>>(),
-            ctrl(CtrlT::DOUBLE_ARROW).ignore_then(module.throw("Expected functor body after '=>'")),
-        ))
-        .map_to_node(|(vis, name, params, body)| node::FunctorBind {
-            vis,
-            name,
-            params,
-            body,
-        })
-        .to_bind();
-
-        let bind = choice((
-            functor_bind,
-            module_type_bind,
-            module_bind,
-            type_bind,
-            value_bind,
-        ));
+        let bind = choice((module_type_bind, module_bind, type_bind, value_bind));
 
         bind.separated_by(ctrl(CtrlT::COMMA))
             .allow_trailing()
@@ -1103,15 +1112,16 @@ impl<'t> Lazy<ParseInput<'t>, Id<node::TypeExpr>> for TypeCombinator {
 // ---------------------------------------------------------------------------
 
 const fn vis_parser<'t>() -> impl const KolaCombinator<'t, Id<node::Vis>> {
-    kw(KwT::EXPORT)
-        .to(node::Vis::Export)
+    kw(KwT::PRIVATE)
+        .to(node::Vis::Private)
         .or_not()
-        .map_to_node(|vis| vis.unwrap_or(node::Vis::None))
+        .map_to_node(|vis| vis.unwrap_or(node::Vis::Public))
 }
 
 const fn module_path_parser<'t>() -> impl const KolaCombinator<'t, Id<node::ModulePath>> {
     module_name_parser()
         .separated_by(ctrl(CtrlT::DOUBLE_COLON))
+        .at_least(1)
         .collect::<Slice<_>>()
         .map_to_node(node::ModulePath)
 }
@@ -2114,7 +2124,7 @@ mod tests {
             binds.nth(0).cast::<node::ValueBind>().then(|bind| {
                 (
                     bind.project(|b| b.name).assert_name("x", &interner),
-                    bind.project_as::<node::LiteralExpr, _>(|b| b.value)
+                    bind.project_opt_as::<node::LiteralExpr, _>(|b| b.value).assert_some()
                         .assert_eq(node::LiteralExpr::Num(10.0)),
                 )
             }),
@@ -2171,7 +2181,10 @@ mod tests {
         let binds = node.query().project_slice(|body| body.0).assert_len(1);
         let module_bind = binds.nth(0).cast::<node::ModuleBind>();
         let module_bind_id = module_bind.get_id().run(&builder);
-        let module_ref = match *builder.get(builder.get(module_bind_id).value) {
+        let Some(value) = builder.get(module_bind_id).value else {
+            panic!("expected an inline module body");
+        };
+        let module_ref = match *builder.get(value) {
             node::ModuleExpr::Body(module_ref) => module_ref,
             _ => panic!("expected an inline module body"),
         };
@@ -2201,7 +2214,7 @@ mod tests {
             .then(|bind| {
                 (
                     bind.project(|b| b.name).assert_name("x", &interner),
-                    bind.project_as::<node::LiteralExpr, _>(|b| b.value)
+                    bind.project_opt_as::<node::LiteralExpr, _>(|b| b.value).assert_some()
                         .assert_eq(node::LiteralExpr::Num(10.0)),
                 )
             })
@@ -2226,7 +2239,10 @@ mod tests {
         let binds = node.query().project_slice(|body| body.0).assert_len(1);
         let module_bind = binds.nth(0).cast::<node::ModuleBind>();
         let module_bind_id = module_bind.get_id().run(&builder);
-        let module_ref = match *builder.get(builder.get(module_bind_id).value) {
+        let Some(value) = builder.get(module_bind_id).value else {
+            panic!("expected an inline module body");
+        };
+        let module_ref = match *builder.get(value) {
             node::ModuleExpr::Body(module_ref) => module_ref,
             _ => panic!("expected an inline module body"),
         };
@@ -2270,11 +2286,297 @@ mod tests {
             .then(|bind| {
                 (
                     bind.project(|b| b.name).assert_name("x", &interner),
-                    bind.project_as::<node::LiteralExpr, _>(|b| b.value)
+                    bind.project_opt_as::<node::LiteralExpr, _>(|b| b.value).assert_some()
                         .assert_eq(node::LiteralExpr::Num(10.0)),
                 )
             })
             .run(child);
+    }
+
+    #[test]
+    fn abstract_value_bind() {
+        let mut interner = StrInterner::default();
+
+        let ParseResult { node, builder, .. } =
+            try_parse_str_with("{ port : Num }", module_parser(), &mut interner);
+
+        node.query()
+            .project_slice(|body| body.0)
+            .assert_len(1)
+            .nth(0)
+            .cast::<node::ValueBind>()
+            .then(|bind| {
+                (
+                    bind.project(|b| b.vis)
+                        .inspect(|vis| assert_eq!(vis, &node::Vis::Public)),
+                    bind.project(|b| b.name).assert_name("port", &interner),
+                    bind.project_opt(|b| b.ty_scheme)
+                        .project(|s| s.ty)
+                        .cast::<node::QualifiedType>()
+                        .project(|q| q.ty)
+                        .assert_name("Num", &interner),
+                    bind.project_opt(|b| b.value).assert_none(),
+                )
+            })
+            .run(&builder);
+    }
+
+    #[test]
+    fn abstract_module_bind() {
+        let mut interner = StrInterner::default();
+
+        let ParseResult { node, builder, .. } =
+            try_parse_str_with("{ module db : { x : Num } }", module_parser(), &mut interner);
+
+        node.query()
+            .project_slice(|body| body.0)
+            .assert_len(1)
+            .nth(0)
+            .cast::<node::ModuleBind>()
+            .then(|bind| {
+                (
+                    bind.project(|b| b.vis)
+                        .inspect(|vis| assert_eq!(vis, &node::Vis::Public)),
+                    bind.project(|b| b.name).assert_name("db", &interner),
+                    bind.project_opt_as::<node::ConcreteModuleType, _>(|b| b.ty)
+                        .project_slice(|spec| spec.0)
+                        .assert_len(1)
+                        .nth(0)
+                        .cast::<node::ValueSpec>()
+                        .project(|s| s.name)
+                        .assert_name("x", &interner),
+                    bind.project_opt(|b| b.value).assert_none(),
+                )
+            })
+            .run(&builder);
+    }
+
+    #[test]
+    fn private_bind() {
+        let mut interner = StrInterner::default();
+
+        let ParseResult { node, builder, .. } =
+            try_parse_str_with("{ private p = 1, q = 2 }", module_parser(), &mut interner);
+
+        let binds = node.query().project_slice(|body| body.0).assert_len(2);
+
+        (
+            binds.nth(0).cast::<node::ValueBind>().then(|bind| {
+                (
+                    bind.project(|b| b.vis)
+                        .inspect(|vis| assert_eq!(vis, &node::Vis::Private)),
+                    bind.project(|b| b.name).assert_name("p", &interner),
+                )
+            }),
+            binds.nth(1).cast::<node::ValueBind>().then(|bind| {
+                (
+                    bind.project(|b| b.vis)
+                        .inspect(|vis| assert_eq!(vis, &node::Vis::Public)),
+                    bind.project(|b| b.name).assert_name("q", &interner),
+                )
+            }),
+        )
+            .run(&builder);
+    }
+
+    #[test]
+    fn module_merge_expr_with() {
+        let mut interner = StrInterner::default();
+
+        let ParseResult { node, builder, .. } =
+            try_parse_str_with("{ module c = a with b }", module_parser(), &mut interner);
+
+        node.query()
+            .project_slice(|body| body.0)
+            .assert_len(1)
+            .nth(0)
+            .cast::<node::ModuleBind>()
+            .project_opt_as::<node::ModuleMergeExpr, _>(|bind| bind.value)
+            .then(|merge| {
+                (
+                    merge.inspect(|m| assert_eq!(m.op, node::ModuleOp::With)),
+                    merge
+                        .project(|m| m.lhs)
+                        .cast::<node::ModulePath>()
+                        .project_slice(|p| p.0)
+                        .assert_len(1)
+                        .nth(0)
+                        .assert_name("a", &interner),
+                    merge
+                        .project(|m| m.rhs)
+                        .cast::<node::ModulePath>()
+                        .project_slice(|p| p.0)
+                        .assert_len(1)
+                        .nth(0)
+                        .assert_name("b", &interner),
+                )
+            })
+            .run(&builder);
+    }
+
+    #[test]
+    fn module_merge_expr_chain_is_left_assoc() {
+        let mut interner = StrInterner::default();
+
+        let ParseResult { node, builder, .. } =
+            try_parse_str_with("{ module c = a with b over d }", module_parser(), &mut interner);
+
+        node.query()
+            .project_slice(|body| body.0)
+            .assert_len(1)
+            .nth(0)
+            .cast::<node::ModuleBind>()
+            .project_opt_as::<node::ModuleMergeExpr, _>(|bind| bind.value)
+            .then(|outer| {
+                (
+                    outer.inspect(|m| assert_eq!(m.op, node::ModuleOp::Over)),
+                    outer.project(|m| m.lhs).cast::<node::ModuleMergeExpr>().then(|inner| {
+                        (
+                            inner.inspect(|m| assert_eq!(m.op, node::ModuleOp::With)),
+                            inner
+                                .project(|m| m.lhs)
+                                .cast::<node::ModulePath>()
+                                .project_slice(|p| p.0)
+                                .nth(0)
+                                .assert_name("a", &interner),
+                            inner
+                                .project(|m| m.rhs)
+                                .cast::<node::ModulePath>()
+                                .project_slice(|p| p.0)
+                                .nth(0)
+                                .assert_name("b", &interner),
+                        )
+                    }),
+                    outer
+                        .project(|m| m.rhs)
+                        .cast::<node::ModulePath>()
+                        .project_slice(|p| p.0)
+                        .nth(0)
+                        .assert_name("d", &interner),
+                )
+            })
+            .run(&builder);
+    }
+
+    #[test]
+    fn module_merge_expr_parenthesized() {
+        let mut interner = StrInterner::default();
+
+        let ParseResult { node, builder, .. } =
+            try_parse_str_with("{ module c = a with (b over d) }", module_parser(), &mut interner);
+
+        node.query()
+            .project_slice(|body| body.0)
+            .assert_len(1)
+            .nth(0)
+            .cast::<node::ModuleBind>()
+            .project_opt_as::<node::ModuleMergeExpr, _>(|bind| bind.value)
+            .then(|outer| {
+                (
+                    outer.inspect(|m| assert_eq!(m.op, node::ModuleOp::With)),
+                    outer
+                        .project(|m| m.lhs)
+                        .cast::<node::ModulePath>()
+                        .project_slice(|p| p.0)
+                        .nth(0)
+                        .assert_name("a", &interner),
+                    outer.project(|m| m.rhs).cast::<node::ModuleMergeExpr>().then(|inner| {
+                        (
+                            inner.inspect(|m| assert_eq!(m.op, node::ModuleOp::Over)),
+                            inner
+                                .project(|m| m.lhs)
+                                .cast::<node::ModulePath>()
+                                .project_slice(|p| p.0)
+                                .nth(0)
+                                .assert_name("b", &interner),
+                            inner
+                                .project(|m| m.rhs)
+                                .cast::<node::ModulePath>()
+                                .project_slice(|p| p.0)
+                                .nth(0)
+                                .assert_name("d", &interner),
+                        )
+                    }),
+                )
+            })
+            .run(&builder);
+    }
+
+    #[test]
+    fn bodyless_unannotated_bind_recovers() {
+        let mut interner = StrInterner::default();
+
+        let ParseResult {
+            node,
+            builder,
+            recovered,
+            ..
+        } = try_parse_str_with("{ x }", module_parser(), &mut interner);
+
+        assert!(
+            !recovered.is_empty(),
+            "expected a recovered diagnostic for a bodyless unannotated binding"
+        );
+
+        node.query()
+            .project_slice(|body| body.0)
+            .assert_len(1)
+            .nth(0)
+            .cast::<node::BindError>()
+            .run(&builder);
+    }
+
+    #[test]
+    fn repository_kl_files_parse_without_recovery() {
+        // Guards the checked-in .kl sources against grammar drift. Files that
+        // fail to parse for pre-existing reasons are listed in SKIP with the
+        // reason, so this test stays honest instead of being weakened.
+        const SKIP: &[(&str, &str)] = &[
+            (
+                "prelude/prelude.kl",
+                "imports sibling files; the mock filesystem holds only one file",
+            ),
+            (
+                "test/a.kl",
+                "imports sibling files; the mock filesystem holds only one file",
+            ),
+            (
+                "examples/expr.kl",
+                "pre-existing syntax errors: char literal and a malformed comparison",
+            ),
+        ];
+
+        let root = "/home/tom/Desktop/Mordrag/kola";
+        let mut paths = Vec::new();
+        for dir in ["prelude/prelude", "examples"] {
+            let Ok(entries) = std::fs::read_dir(format!("{root}/{dir}")) else {
+                continue;
+            };
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.extension().is_some_and(|ext| ext == "kl") {
+                    paths.push(path.strip_prefix(root).unwrap().to_str().unwrap().to_owned());
+                }
+            }
+        }
+        paths.sort();
+        assert!(!paths.is_empty(), "no .kl files discovered");
+
+        for path in paths {
+            if SKIP.iter().any(|(skipped, _)| *skipped == path) {
+                continue;
+            }
+
+            let text = std::fs::read_to_string(format!("{root}/{path}")).unwrap();
+            let mut interner = StrInterner::default();
+            let ParseResult { recovered, .. } =
+                try_parse_str_with(&text, module_parser(), &mut interner);
+
+            assert!(
+                recovered.is_empty(),
+                "{path} recovered errors: {recovered:?}"
+            );
+        }
     }
 
     #[test]
@@ -2298,14 +2600,14 @@ mod tests {
             binds.nth(0).cast::<node::ValueBind>().then(|bind| {
                 (
                     bind.project(|b| b.name).assert_name("x", &interner),
-                    bind.project_as::<node::LiteralExpr, _>(|b| b.value)
+                    bind.project_opt_as::<node::LiteralExpr, _>(|b| b.value).assert_some()
                         .assert_eq(node::LiteralExpr::Num(10.0)),
                 )
             }),
             binds.nth(1).cast::<node::ValueBind>().then(|bind| {
                 (
                     bind.project(|b| b.name).assert_name("y", &interner),
-                    bind.project_as::<node::LiteralExpr, _>(|b| b.value)
+                    bind.project_opt_as::<node::LiteralExpr, _>(|b| b.value).assert_some()
                         .assert_eq(node::LiteralExpr::Num(20.0)),
                 )
             }),

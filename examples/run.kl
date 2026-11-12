@@ -21,10 +21,10 @@
         else if score >= 70 then "C"
         else "F",
 
-    export module formula = {
+    module formula = {
 
         # Complex arithmetic
-        export formula = fn x => fn y =>
+        formula = fn x => fn y =>
             let sum = x + y in
             let diff = x - y in
             let product = sum * diff in

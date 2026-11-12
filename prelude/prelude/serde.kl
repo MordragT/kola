@@ -1,8 +1,8 @@
 {
     type Result = forall a b . super::result::Result a b,
 
-    export to_json : forall a . a -> Result Str Str = serde_to_json,
+    to_json : forall a . a -> Result Str Str = serde_to_json,
 
-    export from_json : forall a . Type a -> Str -> Result a Str = fn proto =>
+    from_json : forall a . Type a -> Str -> Result a Str = fn proto =>
         fn json => (serde_from_json { proto = proto, json = json }),
 }

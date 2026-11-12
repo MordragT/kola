@@ -39,7 +39,6 @@ pub enum SemanticTokenKind {
 impl SemanticTokenKind {
     pub fn from_token(token: SemanticToken) -> Option<Self> {
         match token {
-            SemanticToken::Symbol(Symbol::Functor) => Some(Self::Function),
             SemanticToken::Symbol(Symbol::ModuleType) => Some(Self::Interface),
             SemanticToken::Symbol(Symbol::Module) => Some(Self::Namespace),
             SemanticToken::Symbol(Symbol::Kind)

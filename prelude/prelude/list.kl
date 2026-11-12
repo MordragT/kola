@@ -6,37 +6,37 @@
     ### High-frequency, low-level operations - direct builtins
     #############################################
 
-    export length : forall a . List a -> Num = list_length,
-    export is_empty : forall a . List a -> Bool = list_is_empty,
-    export reverse : forall a . List a -> List a = list_reverse,
-    export sum : List Num -> Num = list_sum,
-    export first : forall a . List a -> Option a = list_first,
-    export last : forall a . List a -> Option a = list_last,
+    length : forall a . List a -> Num = list_length,
+    is_empty : forall a . List a -> Bool = list_is_empty,
+    reverse : forall a . List a -> List a = list_reverse,
+    sum : List Num -> Num = list_sum,
+    first : forall a . List a -> Option a = list_first,
+    last : forall a . List a -> Option a = list_last,
 
     #############################################
     ### High-frequency, low-level operations - wrapped builtins
     #############################################
 
-    export prepend : forall a . a -> List a -> List a = fn head =>
+    prepend : forall a . a -> List a -> List a = fn head =>
         fn tail_list => (list_prepend { head = head, tail = tail_list }),
 
-    export append : forall a . List a -> a -> List a = fn head_list =>
+    append : forall a . List a -> a -> List a = fn head_list =>
         fn tail => (list_append { head = head_list, tail = tail }),
 
-    export concat : forall a . List a -> List a -> List a = fn list_a =>
+    concat : forall a . List a -> List a -> List a = fn list_a =>
         fn list_b => (list_concat { head = list_a, tail = list_b }),
 
-    export contains : forall a . a -> List a -> Bool = fn value =>
+    contains : forall a . a -> List a -> Bool = fn value =>
         fn list => (list_contains { list = list, value = value }),
 
-    export at : forall a . Num -> List a -> Option a = fn index =>
+    at : forall a . Num -> List a -> Option a = fn index =>
         fn list => (list_at { list = list, index = index }),
 
     #############################################
     ### Primitive Recursive Functions using list_rec
     #############################################
 
-    export map : forall a b . (a -> b) -> List a -> List b = fn f => fn list =>
+    map : forall a b . (a -> b) -> List a -> List b = fn f => fn list =>
         (list_rec {
             list = list,
             base = [],
@@ -45,7 +45,7 @@
                 (prepend mapped_head pair.acc)
         }),
 
-    export filter : forall a . (a -> Bool) -> List a -> List a = fn predicate => fn list =>
+    filter : forall a . (a -> Bool) -> List a -> List a = fn predicate => fn list =>
         (list_rec {
             list = list,
             base = [],
@@ -55,7 +55,7 @@
                 else pair.acc
         }),
 
-    export find : forall a . (a -> Bool) -> List a -> Option a = fn predicate => fn list =>
+    find : forall a . (a -> Bool) -> List a -> Option a = fn predicate => fn list =>
         (list_rec {
             list = list,
             base = None,
@@ -66,21 +66,21 @@
                 else pair.acc
         }),
 
-    export fold_left : forall a b . (b -> a -> b) -> b -> List a -> b = fn f => fn init => fn list =>
+    fold_left : forall a b . (b -> a -> b) -> b -> List a -> b = fn f => fn init => fn list =>
         (list_rec {
             list = list,
             base = init,
             step = fn pair => (f pair.acc pair.head)
         }),
 
-    export fold_right : forall a b . (a -> b -> b) -> b -> List a -> b = fn f => fn init => fn list =>
+    fold_right : forall a b . (a -> b -> b) -> b -> List a -> b = fn f => fn init => fn list =>
         (list_rec {
             list = list,
             base = init,
             step = fn pair => (f pair.head pair.acc)
         }),
 
-    export all : forall a . (a -> Bool) -> List a -> Bool = fn predicate => fn list =>
+    all : forall a . (a -> Bool) -> List a -> Bool = fn predicate => fn list =>
         (list_rec {
             list = list,
             base = true,
@@ -90,7 +90,7 @@
                 else false
         }),
 
-    export any : forall a . (a -> Bool) -> List a -> Bool = fn predicate => fn list =>
+    any : forall a . (a -> Bool) -> List a -> Bool = fn predicate => fn list =>
         (list_rec {
             list = list,
             base = false,
@@ -105,7 +105,7 @@
     #############################################
 
 
-    export flat_map : forall a b . (a -> List b) -> List a -> List b = fn f => fn list =>
+    flat_map : forall a b . (a -> List b) -> List a -> List b = fn f => fn list =>
         (fold_right
             (fn x => fn acc => (concat (f x) acc))
                 [] list)

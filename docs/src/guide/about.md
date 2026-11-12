@@ -6,7 +6,7 @@
 
 - **Statically & Structurally Typed:** Robust static and structural typing with full type inference.
 - **Guaranteed Termination:** All programs are guaranteed to terminate — no infinite loops, no surprises.
-- **Algebraic Effects & Functors:** Model complex behaviors and modularize configuration logic.
+- **Algebraic Effects & Modules:** Model complex behaviors and modularize configuration logic with open modules, composition, and dependency injection.
 - **Expressive & Composable:** Templating, parameterization, and advanced abstraction patterns are first-class citizens.
 - **Strict Evaluation:** Predictable results and easier reasoning about configurations.
 - **Precise Effect Control:** Fine-grained control over effects, with a system designed for safe extensibility (plugins coming soon).
@@ -50,9 +50,9 @@ TODO: Add example that shows the most important features of Kola.
         else if score >= 70 then "C"
         else "F",
 
-    export module formula = {
+    module formula = {
         # Complex arithmetic
-        export formula = fn x => fn y =>
+        formula = fn x => fn y =>
             let sum = x + y in
             let diff = x - y in
             let product = sum * diff in

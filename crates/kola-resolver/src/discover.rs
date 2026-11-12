@@ -372,7 +372,7 @@ where
 
                 this.scope
                     .names
-                    .insert_module(param_name, Vis::None, param_sym);
+                    .insert_module(param_name, Vis::Private, param_sym);
                 param_syms.push(param_sym);
             }
 

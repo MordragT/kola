@@ -1,0 +1,29 @@
+{
+    # Public by default; `private` hides a binding from the module's exports.
+    module base = {
+        private separator = ":",
+        image = "ghcr.io/acme/api",
+        tag = "v1",
+        replicas = 1,
+        full_image = image ++ separator ++ tag,
+    },
+
+    # An open module: `port` is abstract until provided.
+    module service = {
+        port : Num,
+        url = "http://localhost",
+    },
+
+    # `using` supplies the outstanding abstract members of the left module
+    # from a complete provider, without importing the provider's other fields.
+    module configured = service using { port = 8080 },
+
+    # `with` merges symmetrically and rejects competing definitions.
+    module defaults = { replicas = 1, tag = "v1" },
+    module merged = base with { replicas = 2 },
+
+    # `over` prefers the left-hand definitions.
+    module deployed = { tag = "v2" } over base,
+
+    main = configured::url,
+}

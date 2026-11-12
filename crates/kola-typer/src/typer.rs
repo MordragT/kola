@@ -389,7 +389,7 @@ where
 
             let poly_t = &self.global_env[binding.sym];
 
-            if binding.vis != Vis::Export {
+            if binding.vis == Vis::Private {
                 let type_def = self.defs[binding.sym];
 
                 return ControlFlow::Break(
@@ -998,7 +998,7 @@ where
 
             let poly_t = &self.global_env[binding.sym];
 
-            if binding.vis != Vis::Export {
+            if binding.vis == Vis::Private {
                 let value_def = self.defs[binding.sym];
 
                 return ControlFlow::Break(

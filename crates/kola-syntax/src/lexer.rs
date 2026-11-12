@@ -339,8 +339,6 @@ fn lex_word<'t>(
             };
             Token::Import(id)
         }
-        "export" => Token::Atom("export"),
-        "functor" => Token::Atom("functor"),
         "effect" => Token::Atom("effect"),
         "type" => Token::Atom("type"),
         "forall" => Token::Atom("forall"),
@@ -353,6 +351,10 @@ fn lex_word<'t>(
         "else" => Token::Atom("else"),
         "case" => Token::Atom("case"),
         "handle" => Token::Atom("handle"),
+        "with" => Token::Atom("with"),
+        "over" => Token::Atom("over"),
+        "using" => Token::Atom("using"),
+        "private" => Token::Atom("private"),
         // Boolean literals
         "true" => Token::Literal(LiteralT::Bool(true)),
         "false" => Token::Literal(LiteralT::Bool(false)),
@@ -590,26 +592,27 @@ mod test {
 
     #[test]
     fn test_keywords() {
-        let input = "module import export functor type forall fn let in if then else case handle effect do None";
+        let input = "module effect type forall fn let in if then else case handle with over using private do None";
         let tokens = tokenize_str(input);
-        assert_eq!(tokens.len(), 17);
+        assert_eq!(tokens.len(), 18);
         assert_eq!(tokens[0].0, Token::Atom("module"));
-        assert_eq!(tokens[1].0, Token::Atom("import"));
-        assert_eq!(tokens[2].0, Token::Atom("export"));
-        assert_eq!(tokens[3].0, Token::Atom("functor"));
-        assert_eq!(tokens[4].0, Token::Atom("type"));
-        assert_eq!(tokens[5].0, Token::Atom("forall"));
-        assert_eq!(tokens[6].0, Token::Atom("fn"));
-        assert_eq!(tokens[7].0, Token::Atom("let"));
-        assert_eq!(tokens[8].0, Token::Atom("in"));
-        assert_eq!(tokens[9].0, Token::Atom("if"));
-        assert_eq!(tokens[10].0, Token::Atom("then"));
-        assert_eq!(tokens[11].0, Token::Atom("else"));
-        assert_eq!(tokens[12].0, Token::Atom("case"));
-        assert_eq!(tokens[13].0, Token::Atom("handle"));
-        assert_eq!(tokens[14].0, Token::Atom("effect"));
-        assert_eq!(tokens[15].0, Token::Atom("do"));
-        assert_eq!(tokens[16].0, Token::Atom("None"));
+        assert_eq!(tokens[1].0, Token::Atom("effect"));
+        assert_eq!(tokens[2].0, Token::Atom("type"));
+        assert_eq!(tokens[3].0, Token::Atom("forall"));
+        assert_eq!(tokens[4].0, Token::Atom("fn"));
+        assert_eq!(tokens[5].0, Token::Atom("let"));
+        assert_eq!(tokens[6].0, Token::Atom("in"));
+        assert_eq!(tokens[7].0, Token::Atom("if"));
+        assert_eq!(tokens[8].0, Token::Atom("then"));
+        assert_eq!(tokens[9].0, Token::Atom("else"));
+        assert_eq!(tokens[10].0, Token::Atom("case"));
+        assert_eq!(tokens[11].0, Token::Atom("handle"));
+        assert_eq!(tokens[12].0, Token::Atom("with"));
+        assert_eq!(tokens[13].0, Token::Atom("over"));
+        assert_eq!(tokens[14].0, Token::Atom("using"));
+        assert_eq!(tokens[15].0, Token::Atom("private"));
+        assert_eq!(tokens[16].0, Token::Atom("do"));
+        assert_eq!(tokens[17].0, Token::Atom("None"));
     }
 
     #[test]

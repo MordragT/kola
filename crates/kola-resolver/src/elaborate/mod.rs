@@ -31,7 +31,7 @@ pub fn elaborate_modules(
     for (sym, module) in modules.iter_mut() {
         let mut dependents = module_graph.dependents_of(*sym);
         if let Some(parent) = dependents.next() {
-            module.names.insert_module(super_name, Vis::None, *parent);
+            module.names.insert_module(super_name, Vis::Private, *parent);
         }
         assert!(dependents.next().is_none(), "Multiple parent modules found");
     }

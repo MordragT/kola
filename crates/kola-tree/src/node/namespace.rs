@@ -12,7 +12,6 @@ use crate::print::TreePrinter;
     Debug, Display, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
 )]
 pub enum NamespaceKind {
-    Functor,
     ModuleType,
     Module,
     Kind,
@@ -23,7 +22,6 @@ pub enum NamespaceKind {
 mod sealed {
     pub trait Sealed {}
 
-    impl Sealed for super::FunctorNamespace {}
     impl Sealed for super::ModuleTypeNamespace {}
     impl Sealed for super::ModuleNamespace {}
     impl Sealed for super::KindNamespace {}
@@ -33,15 +31,6 @@ mod sealed {
 
 pub trait Namespace: sealed::Sealed {
     const KIND: NamespaceKind;
-}
-
-#[derive(
-    Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash, Serialize, Deserialize,
-)]
-pub struct FunctorNamespace;
-
-impl Namespace for FunctorNamespace {
-    const KIND: NamespaceKind = NamespaceKind::Functor;
 }
 
 #[derive(
@@ -89,7 +78,6 @@ impl Namespace for ValueNamespace {
     const KIND: NamespaceKind = NamespaceKind::Value;
 }
 
-pub type FunctorName = Name<FunctorNamespace>;
 pub type ModuleTypeName = Name<ModuleTypeNamespace>;
 pub type ModuleName = Name<ModuleNamespace>;
 pub type KindName = Name<KindNamespace>;
@@ -255,7 +243,6 @@ impl<'a, N> Notate<'a, Name<N>> for TreePrinter<'a> {
     Deserialize,
 )]
 pub enum AnyName {
-    Functor(FunctorName),
     ModuleType(ModuleTypeName),
     Module(ModuleName),
     Kind(KindName),
@@ -266,7 +253,6 @@ pub enum AnyName {
 impl AnyName {
     pub fn kind(&self) -> NamespaceKind {
         match self {
-            AnyName::Functor(_) => NamespaceKind::Functor,
             AnyName::ModuleType(_) => NamespaceKind::ModuleType,
             AnyName::Module(_) => NamespaceKind::Module,
             AnyName::Kind(_) => NamespaceKind::Kind,
@@ -277,7 +263,6 @@ impl AnyName {
 
     pub fn as_str_key(&self) -> &StrKey {
         match self {
-            AnyName::Functor(name) => name.as_str_key(),
             AnyName::ModuleType(name) => name.as_str_key(),
             AnyName::Module(name) => name.as_str_key(),
             AnyName::Kind(name) => name.as_str_key(),

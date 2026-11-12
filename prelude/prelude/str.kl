@@ -5,29 +5,29 @@
     ### High-frequency, low-level operations - direct builtins
     #############################################
 
-    export length : Str -> Num = str_length,
-    export is_empty : Str -> Bool = str_is_empty,
-    export reverse : Str -> Str = str_reverse,
-    export first : Str -> Option Char = str_first,
-    export last : Str -> Option Char = str_last,
+    length : Str -> Num = str_length,
+    is_empty : Str -> Bool = str_is_empty,
+    reverse : Str -> Str = str_reverse,
+    first : Str -> Option Char = str_first,
+    last : Str -> Option Char = str_last,
 
     #############################################
     ### High-frequency, low-level operations - wrapped builtins
     #############################################
 
-    export prepend : Char -> Str -> Str = fn head =>
+    prepend : Char -> Str -> Str = fn head =>
         fn tail_str => (str_prepend { head = head, tail = tail_str }),
 
-    export append : Str -> Char -> Str = fn head_str =>
+    append : Str -> Char -> Str = fn head_str =>
         fn tail => (str_append { head = head_str, tail = tail }),
 
-    export concat : Str -> Str -> Str = fn str_a =>
+    concat : Str -> Str -> Str = fn str_a =>
         fn str_b => (str_concat { head = str_a, tail = str_b }),
 
-    export contains : Char -> Str -> Bool = fn value =>
+    contains : Char -> Str -> Bool = fn value =>
         fn str => (str_contains { str = str, value = value }),
 
-    export at : Num -> Str -> Option Char = fn index =>
+    at : Num -> Str -> Option Char = fn index =>
         fn str => (str_at { str = str, index = index }),
 
     #############################################
@@ -36,7 +36,7 @@
 
     # to_list, from_list, join, split
 
-    export map :  (Char -> Char) -> Str -> Str = fn f => fn str =>
+    map :  (Char -> Char) -> Str -> Str = fn f => fn str =>
         (str_rec {
             str = str,
             base = "",
@@ -45,7 +45,7 @@
                 (prepend mapped_head pair.acc)
         }),
 
-    export filter : (Char -> Bool) -> Str -> Str = fn predicate => fn str =>
+    filter : (Char -> Bool) -> Str -> Str = fn predicate => fn str =>
         (str_rec {
             str = str,
             base = "",
@@ -55,7 +55,7 @@
                 else pair.acc
         }),
 
-    export find : (Char -> Bool) -> Str -> Option Char = fn predicate => fn str =>
+    find : (Char -> Bool) -> Str -> Option Char = fn predicate => fn str =>
         (str_rec {
             str = str,
             base = None,
@@ -66,21 +66,21 @@
                 else pair.acc
         }),
 
-    export fold_left : forall a . (a -> Char -> a) -> a -> Str -> a = fn f => fn init => fn str =>
+    fold_left : forall a . (a -> Char -> a) -> a -> Str -> a = fn f => fn init => fn str =>
         (str_rec {
             str = str,
             base = init,
             step = fn pair => (f pair.acc pair.head)
         }),
 
-    export fold_right : forall a . (Char -> a -> a) -> a -> Str -> a = fn f => fn init => fn str =>
+    fold_right : forall a . (Char -> a -> a) -> a -> Str -> a = fn f => fn init => fn str =>
         (str_rec {
             str = str,
             base = init,
             step = fn pair => (f pair.head pair.acc)
         }),
 
-    export all : (Char -> Bool) -> Str -> Bool = fn predicate => fn str =>
+    all : (Char -> Bool) -> Str -> Bool = fn predicate => fn str =>
         (str_rec {
             str = str,
             base = true,
@@ -90,7 +90,7 @@
                 else false
         }),
 
-    export any : (Char -> Bool) -> Str -> Bool = fn predicate => fn str =>
+    any : (Char -> Bool) -> Str -> Bool = fn predicate => fn str =>
         (str_rec {
             str = str,
             base = false,
