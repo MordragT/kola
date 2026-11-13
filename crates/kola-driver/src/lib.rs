@@ -14,13 +14,12 @@ use kola_runtime::heap::Heap;
 use kola_span::{Issue, Report, SourceManager, io::FileSystem};
 use kola_syntax::{
     lexer::{TokenOutput, tokenize},
-    loc::LocMap,
     parser::{ParseInput, ParseOutput, parse},
     token::TokenPrinter,
 };
 use kola_tree::{
     print::{Decorators, TreePrinter},
-    tree::TreeMap,
+    source::TreeMap,
 };
 use kola_typer::{
     check::{TypeCheckOutput, type_check},
@@ -55,7 +54,7 @@ impl Driver {
     pub fn parse(
         &mut self,
         path: impl AsRef<Utf8Path>,
-    ) -> io::Result<(TreeMap, LocMap, SourceManager)> {
+    ) -> io::Result<(TreeMap, SourceManager)> {
         self._parse(path, true)
     }
 
@@ -63,7 +62,7 @@ impl Driver {
         &mut self,
         path: impl AsRef<Utf8Path>,
         print: bool,
-    ) -> io::Result<(TreeMap, LocMap, SourceManager)> {
+    ) -> io::Result<(TreeMap, SourceManager)> {
         let mut report = Report::new();
         let mut source_manager = SourceManager::new(Arc::clone(&self.io));
 
@@ -79,26 +78,23 @@ impl Driver {
         }
 
         let mut tree_map = TreeMap::new();
-        let mut loc_map = LocMap::new();
 
         for (source_id, tokens) in token_map {
             let ParseOutput {
                 tokens: _,
                 tree,
-                spans,
                 recovered,
             } = parse(
                 ParseInput::new(source_id, tokens, &mut self.str_interner),
                 &mut report,
             );
 
-            loc_map.insert(source_id, spans);
-
             if let Some(tree) = tree {
                 if print {
                     let decorators = Decorators::new();
-                    let printer = TreePrinter::new(&tree, &self.str_interner, decorators);
-                    printer.print(&tree.root_id(), self.print_options, &self.arena);
+                    let printer =
+                        TreePrinter::new(tree.root_tree(), &self.str_interner, decorators, false);
+                    printer.print(&tree.root_tree().root_id(), self.print_options, &self.arena);
                 }
                 tree_map.insert(source_id, tree);
             }
@@ -118,7 +114,7 @@ impl Driver {
             }
         }
 
-        Ok((tree_map, loc_map, source_manager))
+        Ok((tree_map, source_manager))
     }
 
     #[inline]
@@ -129,12 +125,11 @@ impl Driver {
     fn _resolve(&mut self, path: impl AsRef<Utf8Path>, print: bool) -> io::Result<Option<Db>> {
         let mut report = Report::new();
 
-        let (tree_map, loc_map, source_manager) = self._parse(path.as_ref(), false)?;
+        let (tree_map, source_manager) = self._parse(path.as_ref(), false)?;
 
         let db = resolve(
             source_manager,
             tree_map,
-            loc_map,
             &self.arena,
             &mut self.str_interner,
             &mut report,
@@ -153,10 +148,9 @@ impl Driver {
                 let decorators = Decorators::new().with(&resolution_decorator);
 
                 let source_id = view.module.loc.path;
-                let tree = &view.tree_map[&source_id];
+                let tree = view.tree();
 
-                // TODO: tree.root_id() is wrong, need to find the correct root id for the module (should be the id of the module def)
-                let tree_printer = TreePrinter::new(tree, &self.str_interner, decorators);
+                let tree_printer = TreePrinter::new(tree, &self.str_interner, decorators, false);
 
                 println!(
                     "{} SourceId {}, ModuleSym {}\n{}",
@@ -217,10 +211,9 @@ impl Driver {
                     .with(&type_decorator);
 
                 let source_id = view.module.loc.path;
-                let tree = &view.tree_map[&source_id];
+                let tree = view.tree();
 
-                // TODO: tree.root_id() is wrong, need to find the correct root id for the module (should be the id of the module def)
-                let tree_printer = TreePrinter::new(&tree, &self.str_interner, decorators);
+                let tree_printer = TreePrinter::new(tree, &self.str_interner, decorators, false);
 
                 println!(
                     "{} SourceId {}, ModuleSym {}\n{}",

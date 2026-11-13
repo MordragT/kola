@@ -31,19 +31,15 @@ impl<'a> PatternTyper<'a> {
         }
     }
 
-    pub fn run<T, N>(mut self, id: Id<N>, tree: &T)
+    pub fn run<N>(mut self, id: Id<N>, tree: &Tree)
     where
-        T: TreeView,
-        Id<N>: Visitable<T>,
+        Id<N>: Visitable<Loc>,
     {
         ControlFlow::Continue(()) = id.visit_by(&mut self, tree)
     }
 }
 
-impl<'a, T> Visitor<T> for PatternTyper<'a>
-where
-    T: TreeView,
-{
+impl<'a> Visitor<Loc> for PatternTyper<'a> {
     type BreakValue = !;
 
     /// **Error Pattern:**
@@ -51,7 +47,7 @@ where
     fn visit_pat_error(
         &mut self,
         _id: Id<node::PatError>,
-        _tree: &T,
+        _tree: &Tree,
     ) -> ControlFlow<Self::BreakValue> {
         todo!()
     }
@@ -63,7 +59,7 @@ where
     /// ∆;Γ ⊢ _ ⇒ α ⊣ Γ
     /// ```
     /// Wildcard matches any type without binding variables.
-    fn visit_any_pat(&mut self, _id: Id<node::AnyPat>, _tree: &T) -> ControlFlow<Self::BreakValue> {
+    fn visit_any_pat(&mut self, _id: Id<node::AnyPat>, _tree: &Tree) -> ControlFlow<Self::BreakValue> {
         // Wildcard pattern matches any type - no constraints needed
         // The source type can be anything, and we don't bind any variables
         // This implements the rule: ∆;Γ ⊢ _ ⇒ α ⊣ Γ (where α is the source type)
@@ -80,7 +76,7 @@ where
     fn visit_literal_pat(
         &mut self,
         id: Id<node::LiteralPat>,
-        _tree: &T,
+        _tree: &Tree,
     ) -> ControlFlow<Self::BreakValue> {
         // Get the literal pattern and determine its type
         let literal_type = match *id.get(_tree) {
@@ -107,7 +103,7 @@ where
     /// ∆;Γ ⊢ x ⇒ α ⊣ Γ[x : α]
     /// ```
     /// Bind pattern matches any type and binds the variable to that type.
-    fn visit_bind_pat(&mut self, id: Id<node::BindPat>, tree: &T) -> ControlFlow<Self::BreakValue> {
+    fn visit_bind_pat(&mut self, id: Id<node::BindPat>, tree: &Tree) -> ControlFlow<Self::BreakValue> {
         // Get the variable name from the bind pattern
         let var_name = id.get(tree).0.get(tree).0;
 
@@ -134,7 +130,7 @@ where
     /// -----------------------
     /// ∆;Γ ⊢ [p₁, p₂, ..., pₙ, ...x] ⇒ List τ ⊣ Γₙ[x : List τ]
     /// ```
-    fn visit_list_pat(&mut self, id: Id<node::ListPat>, tree: &T) -> ControlFlow<Self::BreakValue> {
+    fn visit_list_pat(&mut self, id: Id<node::ListPat>, tree: &Tree) -> ControlFlow<Self::BreakValue> {
         // Get the list elements from the pattern
         let elements = id.get(tree).0;
 
@@ -148,14 +144,14 @@ where
             .constrain_equal(self.source.clone(), expected_list_type, self.span);
 
         // Process each element in the list pattern
-        for element_id in elements.iter(tree) {
+        for element_id in elements.get(tree).iter().copied() {
             match *element_id.get(tree) {
                 node::ListElPat::Pat(pat_id) => {
                     // Regular pattern element - type it against the element type
                     // TODO create better functionality for this
                     let element_typer =
                         PatternTyper::new(self.env, self.cons, element_type.clone(), self.span);
-                    element_typer.run::<T, node::Pat>(pat_id, tree);
+                    element_typer.run::<node::Pat>(pat_id, tree);
                 }
                 node::ListElPat::Spread(maybe_name) => {
                     // Spread pattern - if there's a name, bind it to List(element_type)
@@ -178,7 +174,7 @@ where
     fn visit_record_pat(
         &mut self,
         id: Id<node::RecordPat>,
-        tree: &T,
+        tree: &Tree,
     ) -> ControlFlow<Self::BreakValue> {
         let node::RecordPat { fields, polymorph } = id.get(tree);
 
@@ -189,7 +185,7 @@ where
         let mut expected = if *polymorph { Row::var() } else { Row::Empty };
 
         // Process fields in reverse to build the row type correctly // TODO probably not necessary ?
-        for field_id in fields.iter(tree).rev() {
+        for field_id in fields.get(tree).iter().copied().rev() {
             let node::RecordFieldPat { field, pat } = *field_id.get(tree);
             let field_name = field.get(tree).0;
 
@@ -200,7 +196,7 @@ where
 
             if let Some(pat_id) = pat {
                 let field_typer = PatternTyper::new(self.env, self.cons, field_type, self.span);
-                field_typer.run::<T, node::Pat>(pat_id, tree);
+                field_typer.run::<node::Pat>(pat_id, tree);
             } else {
                 // Field shorthand: { field } means { field: field }
                 // Bind the field name to the field type
@@ -227,7 +223,7 @@ where
     fn visit_variant_pat(
         &mut self,
         id: Id<node::VariantPat>,
-        tree: &T,
+        tree: &Tree,
     ) -> ControlFlow<Self::BreakValue> {
         let cases = id.get(tree).0;
 
@@ -239,7 +235,7 @@ where
         let mut expected = Row::var();
 
         // Process cases in reverse to build the row type correctly (inside-out)
-        for case_id in cases.iter(tree).rev() {
+        for case_id in cases.get(tree).iter().copied().rev() {
             let node::VariantTagPat { tag, pat } = *case_id.get(tree);
             let tag_name = tag.get(tree).0;
 
@@ -250,7 +246,7 @@ where
 
             if let Some(pat_id) = pat {
                 let case_typer = PatternTyper::new(self.env, self.cons, tag_type, self.span);
-                case_typer.run::<T, node::Pat>(pat_id, tree);
+                case_typer.run::<node::Pat>(pat_id, tree);
             }
             // If no pattern, the case has Unit type (no additional constraint needed)
             // TODO but I then must restrict the case type to be Unit ?
@@ -264,7 +260,7 @@ where
         ControlFlow::Continue(())
     }
 
-    fn visit_pat(&mut self, id: Id<node::Pat>, tree: &T) -> ControlFlow<Self::BreakValue> {
+    fn visit_pat(&mut self, id: Id<node::Pat>, tree: &Tree) -> ControlFlow<Self::BreakValue> {
         match *id.get(tree) {
             node::Pat::Error(error_id) => self.visit_pat_error(error_id, tree),
             node::Pat::Any(any_id) => self.visit_any_pat(any_id, tree),

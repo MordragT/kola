@@ -947,6 +947,7 @@ dependencies = [
  "kola-print",
  "kola-resolver",
  "kola-runtime",
+ "kola-span",
  "kola-tree",
  "log",
 ]
@@ -1025,7 +1026,6 @@ dependencies = [
  "kola-interner",
  "kola-print",
  "kola-span",
- "kola-subst",
  "kola-syntax",
  "kola-tree",
  "kola-utils",

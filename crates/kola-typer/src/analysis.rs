@@ -45,7 +45,6 @@ use derive_more::Display;
 use enumset::{EnumSet, EnumSetType};
 use kola_collections::Errors;
 use kola_span::{Diagnostic, Loc};
-use kola_syntax::loc::LocVec;
 use kola_tree::prelude::*;
 use kola_types::types::{
     Label, LabelOrVar, ListType, MonoType, PrimitiveType, RecordType, Row, VariantType,
@@ -84,16 +83,16 @@ impl From<ExhaustError> for Diagnostic {
 pub type ExhaustResult<T> = Result<T, ExhaustError>;
 
 /// Check all tracked case expressions
-pub fn exhaust_check_all<T: TreeView>(
+pub fn exhaust_check_all(
     cases: &[Id<node::CaseExpr>],
-    tree: &T,
+    tree: &Tree,
     types: &TypedNodes,
-    spans: &LocVec,
+    spans: &Tree,
 ) -> Result<(), Errors<ExhaustError>> {
     let mut errors = Errors::new();
 
     for &case_id in cases {
-        let loc = *spans.get(case_id);
+        let loc = *spans.get_span(case_id);
         let checker = ExhaustChecker::new(case_id, tree, types, loc);
         if let Err(error) = checker.check() {
             errors.push(error);
@@ -597,11 +596,11 @@ impl RequiredSet for MonoType {
 
 /// Patterns that can determine what values they actually cover
 pub trait ActualSet {
-    fn actual_set(&self, tree: &impl TreeView) -> CoverSet;
+    fn actual_set(&self, tree: &Tree) -> CoverSet;
 }
 
 impl ActualSet for Id<node::LiteralPat> {
-    fn actual_set(&self, tree: &impl TreeView) -> CoverSet {
+    fn actual_set(&self, tree: &Tree) -> CoverSet {
         match *self.get(tree) {
             node::LiteralPat::Bool(true) => CoverSet::Atom(Atom::True.into()),
             node::LiteralPat::Bool(false) => CoverSet::Atom(Atom::False.into()),
@@ -612,7 +611,7 @@ impl ActualSet for Id<node::LiteralPat> {
 }
 
 impl ActualSet for Id<node::ListPat> {
-    fn actual_set(&self, tree: &impl TreeView) -> CoverSet {
+    fn actual_set(&self, tree: &Tree) -> CoverSet {
         let elements = self.get(tree).0;
 
         if elements.is_empty() {
@@ -624,7 +623,7 @@ impl ActualSet for Id<node::ListPat> {
         let mut non_spread_count = 0u32;
         let mut has_spread = false;
 
-        for el_id in elements.iter(tree) {
+        for el_id in elements.get(tree).iter().copied() {
             match el_id.get(tree) {
                 node::ListElPat::Spread(_) => {
                     has_spread = true;
@@ -648,7 +647,7 @@ impl ActualSet for Id<node::ListPat> {
 }
 
 impl ActualSet for Id<node::RecordPat> {
-    fn actual_set(&self, tree: &impl TreeView) -> CoverSet {
+    fn actual_set(&self, tree: &Tree) -> CoverSet {
         let node::RecordPat { fields, polymorph } = self.get(tree);
 
         let tail = if *polymorph {
@@ -658,7 +657,7 @@ impl ActualSet for Id<node::RecordPat> {
         };
 
         // Process fields in reverse order to build the row set correctly
-        let row_set = fields.iter(tree).rev().fold(tail, |accu, field| {
+        let row_set = fields.get(tree).iter().copied().rev().fold(tail, |accu, field| {
             let node::RecordFieldPat { field, pat } = field.get(tree);
             let label = Label(field.get(tree).0);
             let set = pat
@@ -679,10 +678,10 @@ impl ActualSet for Id<node::RecordPat> {
 }
 
 impl ActualSet for Id<node::VariantPat> {
-    fn actual_set(&self, tree: &impl TreeView) -> CoverSet {
+    fn actual_set(&self, tree: &Tree) -> CoverSet {
         let tags = self.get(tree).0;
 
-        let row_set = tags.iter(tree).rev().fold(RowSet::Empty, |accu, tag| {
+        let row_set = tags.get(tree).iter().copied().rev().fold(RowSet::Empty, |accu, tag| {
             let node::VariantTagPat { tag, pat } = tag.get(tree);
             let label = Label(tag.get(tree).0);
             let set = pat
@@ -703,7 +702,7 @@ impl ActualSet for Id<node::VariantPat> {
 }
 
 impl ActualSet for Id<node::Pat> {
-    fn actual_set(&self, tree: &impl TreeView) -> CoverSet {
+    fn actual_set(&self, tree: &Tree) -> CoverSet {
         match *self.get(tree) {
             node::Pat::Error(_) => todo!(),
             node::Pat::Any(_) | node::Pat::Bind(_) => CoverSet::Universal,
@@ -717,15 +716,15 @@ impl ActualSet for Id<node::Pat> {
 
 // TODO this is essentially a function ? maybe just use a function instead of a struct
 // Checker for a single case expression
-pub struct ExhaustChecker<'a, T: TreeView> {
+pub struct ExhaustChecker<'a> {
     case_id: Id<node::CaseExpr>,
-    tree: &'a T,
+    tree: &'a Tree,
     types: &'a TypedNodes,
     loc: Loc,
 }
 
-impl<'a, T: TreeView> ExhaustChecker<'a, T> {
-    pub fn new(case_id: Id<node::CaseExpr>, tree: &'a T, types: &'a TypedNodes, loc: Loc) -> Self {
+impl<'a> ExhaustChecker<'a> {
+    pub fn new(case_id: Id<node::CaseExpr>, tree: &'a Tree, types: &'a TypedNodes, loc: Loc) -> Self {
         Self {
             case_id,
             tree,
@@ -739,7 +738,7 @@ impl<'a, T: TreeView> ExhaustChecker<'a, T> {
         let source_type = self.types.get_unchecked(*source);
 
         let actual_set = branches
-            .iter(self.tree)
+            .get(self.tree).iter().copied()
             .map(|branch_id| {
                 let branch = branch_id.get(self.tree);
                 branch.pat.actual_set(self.tree)

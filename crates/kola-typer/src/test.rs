@@ -2,9 +2,7 @@ use camino::Utf8PathBuf;
 use kola_builtins::BuiltinLexicon;
 use kola_interner::{PathInterner, StrInterner};
 use kola_resolver::{def::DefMap, env::ModuleMap, phase::NodeMap};
-use kola_span::{Loc, Located, Report, SourceId, Span};
-use kola_subst::Substitutable;
-use kola_syntax::loc::LocVec;
+use kola_span::{Loc, Located, Report, SourceId};
 use kola_tree::prelude::*;
 use kola_types::{class::TypeClassEnv, env::TypeEnv, subst::Substitution};
 
@@ -15,17 +13,12 @@ pub fn mocked_source() -> SourceId {
     interner.intern(Utf8PathBuf::from("test"))
 }
 
-pub fn mocked_spans(source_id: SourceId, tree: &impl TreeView) -> LocVec {
-    let loc = Loc::new(source_id, Span::new(0, 0));
-    LocVec::from_checkpoint_with(tree.nodes().checkpoint(), loc)
-}
-
 pub fn run_typer<T>(tree: Tree, root_id: Id<T>) -> Result<TypedNodes, Located<TypeErrors>>
 where
-    Id<T>: Visitable<Tree>,
+    Id<T>: Visitable<Loc>,
 {
-    let source_id = mocked_source();
-    let spans = mocked_spans(source_id, &tree);
+    let _source_id = mocked_source();
+    let spans = &tree;
 
     let global_type_env = TypeEnv::new();
     let module_type_env = TypeEnv::new();
@@ -40,7 +33,7 @@ where
 
     let typer = Typer::new(
         root_id,
-        &spans,
+        spans,
         &module_type_env,
         &global_type_env,
         &modules,

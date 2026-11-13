@@ -190,6 +190,35 @@ impl<T, M> Default for SideMap<T, M> {
     }
 }
 
+impl<T, M> SideMap<T, M> {
+    /// Merge `other` into this map, overwriting on conflicts.
+    #[inline]
+    pub fn extend<I>(&mut self, other: I)
+    where
+        I: IntoIterator<Item = (Id<T>, M)>,
+    {
+        self.0.extend(other);
+    }
+
+    /// Iterate over `(id, value)` pairs.
+    #[inline]
+    pub fn iter(&self) -> impl Iterator<Item = (Id<T>, &M)> + '_ {
+        self.0.iter().map(|(id, value)| (*id, value))
+    }
+
+    /// Iterate mutably over `(id, value)` pairs.
+    #[inline]
+    pub fn iter_mut(&mut self) -> impl Iterator<Item = (Id<T>, &mut M)> + '_ {
+        self.0.iter_mut().map(|(id, value)| (*id, value))
+    }
+
+    /// Consume the map, yielding `(id, value)` pairs.
+    #[inline]
+    pub fn into_iter(self) -> impl Iterator<Item = (Id<T>, M)> {
+        self.0.into_iter()
+    }
+}
+
 impl<T: 'static, M: 'static> RelationIds<T> for SideMap<T, M> {
     type Ids<'a>
         = std::iter::Copied<std::collections::hash_map::Keys<'a, Id<T>, M>>
@@ -214,4 +243,118 @@ impl<T: 'static, M: 'static> PartialRelationMut<T, M> for SideMap<T, M> {
     fn get_mut(&mut self, id: Id<T>) -> Option<&mut M> {
         self.0.get_mut(&id)
     }
+}
+
+/// Type-level dispatch for a per-node metadata table.
+///
+/// A side-table struct maps many node kinds to different value types, so the
+/// generic `get_unchecked`/`set` accessors need a way to select the column from
+/// the node type alone. `NodeMeta` is that selector: implemented once per
+/// (struct, node kind) pair by [`define_side_table!`].
+pub trait NodeMeta<S>: 'static {
+    type Value: 'static;
+
+    fn get(table: &S, id: Id<Self>) -> Option<&Self::Value>;
+    fn get_mut(table: &mut S, id: Id<Self>) -> Option<&mut Self::Value>;
+    fn set(table: &mut S, id: Id<Self>, value: Self::Value);
+}
+
+/// Declare a metadata table over `SideMap` columns.
+///
+/// Generates the struct, one [`NodeMeta`] impl per column, and the generic
+/// `get_unchecked` / `get_unchecked_mut` / `set` / `extend` accessors.
+#[macro_export]
+macro_rules! define_side_table {
+    (
+        $(#[$meta:meta])*
+        $name:ident {
+            $( $field:ident : Self:: $node:ty => $value:ty ),* $(,)?
+        }
+    ) => {
+        $(#[$meta])*
+        #[derive(Debug, Clone, Default)]
+        pub struct $name {
+            $( pub $field: $crate::side_table::SideMap<$node, $value>, )*
+        }
+
+        impl $name {
+            #[inline]
+            pub fn new() -> Self {
+                Self::default()
+            }
+
+            /// Merge the entries of `other` into this table.
+            pub fn extend(&mut self, other: Self) {
+                $( self.$field.extend(other.$field.into_iter()); )*
+            }
+
+            #[inline]
+            pub fn get_opt<T: $crate::side_table::NodeMeta<Self>>(
+                &self,
+                id: $crate::Id<T>,
+            ) -> Option<&T::Value> {
+                T::get(self, id)
+            }
+
+            #[inline]
+            pub fn set<T: $crate::side_table::NodeMeta<Self>>(&mut self, id: $crate::Id<T>, value: T::Value) {
+                T::set(self, id, value)
+            }
+
+            #[inline]
+            #[track_caller]
+            pub fn get_unchecked<T: $crate::side_table::NodeMeta<Self>>(
+                &self,
+                id: $crate::Id<T>,
+            ) -> &T::Value {
+                T::get(self, id).expect("node metadata missing")
+            }
+
+            #[inline]
+            #[track_caller]
+            pub fn get_unchecked_mut<T: $crate::side_table::NodeMeta<Self>>(
+                &mut self,
+                id: $crate::Id<T>,
+            ) -> &mut T::Value {
+                T::get_mut(self, id).expect("node metadata missing")
+            }
+        }
+
+        $(
+            impl $crate::relation::PartialRelation<$node, $value> for $name {
+                #[inline]
+                fn get_opt(&self, id: $crate::Id<$node>) -> Option<&$value> {
+                    $crate::relation::PartialRelation::<$node, $value>::get_opt(&self.$field, id)
+                }
+            }
+
+            impl $crate::relation::PartialRelationMut<$node, $value> for $name {
+                #[inline]
+                fn get_mut(&mut self, id: $crate::Id<$node>) -> Option<&mut $value> {
+                    $crate::relation::PartialRelationMut::<$node, $value>::get_mut(&mut self.$field, id)
+                }
+            }
+        )*
+
+        $(
+            impl $crate::side_table::NodeMeta<$name> for $node {
+                type Value = $value;
+
+                #[inline]
+                fn get(table: &$name, id: $crate::Id<Self>) -> Option<&Self::Value> {
+                    $crate::relation::PartialRelation::<$node, $value>::get_opt(&table.$field, id)
+                }
+
+                #[inline]
+                fn get_mut(table: &mut $name, id: $crate::Id<Self>) -> Option<&mut Self::Value> {
+                    $crate::relation::PartialRelationMut::<$node, $value>::get_mut(&mut table.$field, id)
+                }
+
+                #[inline]
+                fn set(table: &mut $name, id: $crate::Id<Self>, value: Self::Value) {
+                    $crate::side_table::SideMap::<$node, $value>::insert(&mut table.$field, id, value);
+                }
+            }
+        )*
+    };
 }

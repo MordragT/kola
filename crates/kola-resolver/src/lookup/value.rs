@@ -2,11 +2,9 @@ use std::collections::HashMap;
 
 use indexmap::IndexMap;
 use kola_span::{Diagnostic, Issue, Loc, Report};
-use kola_subst::{Substitutable, merge};
 use kola_tree::{
-    id::Id,
     node::{self, ValueName},
-    query::GetOpt,
+    prelude::Id,
 };
 use log::debug;
 
@@ -48,20 +46,6 @@ impl ValueLookup {
     }
 }
 
-impl Substitutable<Substitution> for ValueLookup {
-    fn try_apply(&self, s: &mut HashMap<AnySym, AnySym>) -> Option<Self> {
-        let source_opt = self.source.try_apply(s);
-        let module_opt = self.module.try_apply(s);
-
-        merge(source_opt, || self.source, module_opt, || self.module)
-            .map(|(source, module)| Self::new(self.name, self.id, source, self.loc, module))
-    }
-
-    fn apply_mut(&mut self, s: &mut HashMap<AnySym, AnySym>) {
-        self.source.apply_mut(s);
-        self.module.apply_mut(s);
-    }
-}
 
 pub fn lookup_values(
     modules: &mut ModuleMap,

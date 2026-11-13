@@ -100,6 +100,7 @@
 //! - **Open Records**: Module extension and record operations
 //! - **Hot Reloading**: Individual module recompilation and replacement
 
+use kola_span::Loc;
 use kola_interner::StrInterner;
 use kola_ir::{
     id::Id as InstrId,
@@ -112,7 +113,7 @@ use kola_resolver::{
     db::{Db, ModuleView},
     symbol::{ModuleSym, ValueSym},
 };
-use kola_tree::query::GetOpt;
+use kola_tree::prelude::{IdExt, NodeMeta};
 use log::trace;
 
 use crate::normalizer::Normalizer;
@@ -189,7 +190,10 @@ pub fn lower_module(
 
     // Collect field information first
     for &value_sym in view.value_order {
-        let (id, tree, _) = view.value_node(value_sym);
+        let (id, tree) = view.value_node(value_sym);
+        if id.get(tree).value.is_none() {
+            continue;
+        }
         let label = id.get(tree).name.get(tree).0;
         let hole = Symbol::new(view.module.nodes.get_unchecked(id).id());
         fields.add_field((label, ir::Atom::Symbol(hole)), builder);
@@ -202,11 +206,14 @@ pub fn lower_module(
     let mut next = record_expr;
 
     for &value_sym in view.value_order.iter().rev() {
-        let (id, tree, _) = view.value_node(value_sym);
+        let (id, tree) = view.value_node(value_sym);
         let value_bind = id.get(tree);
         let hole = Symbol::new(view.module.nodes.get_unchecked(id).id());
 
-        let normalizer = Normalizer::new(value_bind.value, next, hole, &view.module.nodes, builder);
+        let Some(value) = value_bind.value else {
+            continue;
+        };
+        let normalizer = Normalizer::new(value, next, hole, &view.module.nodes, builder);
         next = normalizer.run(tree);
     }
 

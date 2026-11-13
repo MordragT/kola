@@ -14,5 +14,5 @@ pub use relation::{
     Allocate, PartialRelation, PartialRelationMut, RelationIds, SliceRelation, SliceRelationMut,
     TotalRelation, TotalRelationMut,
 };
-pub use side_table::{SideMap, SideVec};
+pub use side_table::{NodeMeta, SideMap, SideVec};
 pub use slice::{SliceBuilder, SliceId, SliceStorage};

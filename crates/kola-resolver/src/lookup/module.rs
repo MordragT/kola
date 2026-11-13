@@ -1,11 +1,9 @@
 use std::collections::HashMap;
 
 use kola_span::{Diagnostic, Loc, Report};
-use kola_subst::Substitutable;
 use kola_tree::{
-    id::Id,
     node::{self, ModuleName, Vis},
-    query::GetOpt,
+    prelude::Id,
 };
 
 use crate::{
@@ -44,19 +42,6 @@ impl ModuleLookup {
     }
 }
 
-impl Substitutable<Substitution> for ModuleLookup {
-    fn try_apply(&self, s: &mut HashMap<AnySym, AnySym>) -> Option<Self> {
-        if let Some(source) = self.source.try_apply(s) {
-            Some(Self::new(self.path.clone(), self.id, source, self.loc))
-        } else {
-            None
-        }
-    }
-
-    fn apply_mut(&mut self, s: &mut HashMap<AnySym, AnySym>) {
-        self.source.apply_mut(s);
-    }
-}
 
 pub fn lookup_modules(
     modules: &mut ModuleMap,

@@ -30,7 +30,6 @@ pub fn name_collision(
         Module => NameCollision::module_bind(this.1, other.1, help),
         Value => NameCollision::value_bind(this.1, other.1, help),
         Type => NameCollision::type_bind(this.1, other.1, help),
-        Functor => NameCollision::functor_bind(this.1, other.1, help),
         _ => unreachable!(),
     }
 }
@@ -63,11 +62,6 @@ pub enum NameCollision {
         help: &'static str,
     },
     ModuleTypeBind {
-        span: Loc,
-        other: Loc,
-        help: &'static str,
-    },
-    FunctorBind {
         span: Loc,
         other: Loc,
         help: &'static str,
@@ -105,10 +99,6 @@ impl NameCollision {
         NameCollision::ModuleTypeBind { span, other, help }
     }
 
-    #[inline]
-    pub const fn functor_bind(span: Loc, other: Loc, help: &'static str) -> Self {
-        NameCollision::FunctorBind { span, other, help }
-    }
 }
 
 impl From<NameCollision> for Diagnostic {
@@ -146,11 +136,6 @@ impl From<NameCollision> for Diagnostic {
             )
             .with_trace([("This module type bind here".to_owned(), other)])
             .with_help(help),
-            NameCollision::FunctorBind { span, other, help } => {
-                Diagnostic::error(span, "A functor bind with the same name was defined before")
-                    .with_trace([("This functor bind here".to_owned(), other)])
-                    .with_help(help)
-            }
         }
     }
 }

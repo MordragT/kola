@@ -2,12 +2,8 @@ use std::collections::HashMap;
 
 use indexmap::IndexMap;
 use kola_span::{Diagnostic, Issue, Loc, Report};
-use kola_subst::{Substitutable, merge};
-use kola_tree::{
-    id::Id,
-    node::{self, ModuleTypeName},
-    query::GetOpt,
-};
+use kola_tree::node::{self, ModuleTypeName};
+use kola_tree::prelude::Id;
 use log::debug;
 
 use crate::{
@@ -48,20 +44,6 @@ impl ModuleTypeLookup {
     }
 }
 
-impl Substitutable<Substitution> for ModuleTypeLookup {
-    fn try_apply(&self, s: &mut HashMap<AnySym, AnySym>) -> Option<Self> {
-        let source_opt = self.source.try_apply(s);
-        let module_opt = self.module.try_apply(s);
-
-        merge(source_opt, || self.source, module_opt, || self.module)
-            .map(|(source, module)| Self::new(self.name, self.id, source, self.loc, module))
-    }
-
-    fn apply_mut(&mut self, s: &mut HashMap<AnySym, AnySym>) {
-        self.source.apply_mut(s);
-        self.module.apply_mut(s);
-    }
-}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ModuleTypeAnnotLookup {
@@ -91,19 +73,6 @@ impl ModuleTypeAnnotLookup {
     }
 }
 
-impl Substitutable<Substitution> for ModuleTypeAnnotLookup {
-    fn try_apply(&self, s: &mut HashMap<AnySym, AnySym>) -> Option<Self> {
-        if let Some(module) = self.module.try_apply(s) {
-            Some(Self::new(self.name, self.id, self.loc, module))
-        } else {
-            None
-        }
-    }
-
-    fn apply_mut(&mut self, s: &mut HashMap<AnySym, AnySym>) {
-        self.module.apply_mut(s);
-    }
-}
 
 pub fn lookup_module_types(
     modules: &mut ModuleMap,

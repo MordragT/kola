@@ -37,7 +37,7 @@ use crate::{
 
 pub struct Typer<'a, N> {
     root_id: Id<N>,
-    spans: &'a LocVec,
+    spans: &'a Tree,
     types: TypedNodes,
     cases: Vec<Id<node::CaseExpr>>, // TODO maybe proper wrapper
     effects_stack: Vec<Row>,
@@ -56,7 +56,7 @@ pub struct Typer<'a, N> {
 impl<'a, N> Typer<'a, N> {
     pub fn new(
         root_id: Id<N>,
-        spans: &'a LocVec,
+        spans: &'a Tree,
         module_env: &'a TypeEnv,
         global_env: &'a TypeEnv,
         modules: &'a ModuleMap,
@@ -86,14 +86,13 @@ impl<'a, N> Typer<'a, N> {
         }
     }
 
-    pub fn run<Tree>(
+    pub fn run(
         mut self,
         tree: &Tree,
         report: &mut Report,
     ) -> Option<(TypedNodes, Vec<Id<node::CaseExpr>>)>
     where
-        Tree: TreeView,
-        Id<N>: Visitable<Tree>,
+        Id<N>: Visitable<Loc>,
     {
         let root = self.root_id;
 
@@ -111,37 +110,36 @@ impl<'a, N> Typer<'a, N> {
     #[inline]
     fn insert_type<T, S>(&mut self, id: Id<T>, t: S)
     where
-        TypedNodes: GetOpt<T, Item = S>,
+        T: kola_tree::prelude::NodeMeta<TypedNodes, Value = S>,
     {
         self.types.set(id, t);
     }
 
     #[inline]
-    fn span<T>(&self, id: Id<T>) -> Loc
+    fn span<T: 'static>(&self, id: Id<T>) -> Loc
     where
-        LocVec: Get<T, Item = Loc>,
+        Tree: TotalSpan<T, Loc>,
     {
-        *self.spans.get(id)
+        *self.spans.get_span(id)
     }
 }
 
-impl<'a, T, N> Visitor<T> for Typer<'a, N>
+impl<'a, N> Visitor<Loc> for Typer<'a, N>
 where
-    T: TreeView,
-    Id<N>: Visitable<T>,
+    Id<N>: Visitable<Loc>,
 {
     type BreakValue = Diagnostic;
 
     fn visit_effect_type(
         &mut self,
         id: Id<node::EffectType>,
-        tree: &T,
+        tree: &Tree,
     ) -> ControlFlow<Self::BreakValue> {
         let effects = id.get(tree).0;
 
         let mut row_t = Row::var();
 
-        for effect in effects.iter(tree) {
+        for effect in effects.get(tree).iter().copied() {
             self.visit_effect_op_type(effect, tree)?;
             let effect_t = self.types.get_unchecked(effect).clone();
             row_t = row_t.extend(effect_t);
@@ -154,7 +152,7 @@ where
     fn visit_effect_op_type(
         &mut self,
         id: Id<node::EffectOpType>,
-        tree: &T,
+        tree: &Tree,
     ) -> ControlFlow<Self::BreakValue> {
         let node::EffectOpType { name, ty } = *id.get(tree);
 
@@ -187,7 +185,7 @@ where
     fn visit_type_bind(
         &mut self,
         id: Id<node::TypeBind>,
-        tree: &T,
+        tree: &Tree,
     ) -> ControlFlow<Self::BreakValue> {
         let node::TypeBind { ty_scheme, .. } = *id.get(tree);
 
@@ -206,7 +204,7 @@ where
     fn visit_type_var_bind(
         &mut self,
         id: Id<node::TypeVarBind>,
-        tree: &T,
+        tree: &Tree,
     ) -> ControlFlow<Self::BreakValue> {
         let node::TypeVarBind { kind, var } = *id.get(tree);
 
@@ -247,11 +245,11 @@ where
     fn visit_forall_binder(
         &mut self,
         id: Id<node::ForallBinder>,
-        tree: &T,
+        tree: &Tree,
     ) -> ControlFlow<Self::BreakValue> {
         let mut vars = Vec::new();
 
-        for bind_id in id.get(tree).0.iter(tree) {
+        for bind_id in id.get(tree).0.get(tree).iter().copied() {
             self.visit_type_var_bind(bind_id, tree)?;
             let kinded_var = self.types.get_unchecked(bind_id).clone();
             vars.push(kinded_var);
@@ -283,7 +281,7 @@ where
     fn visit_type_scheme(
         &mut self,
         id: Id<node::TypeScheme>,
-        tree: &T,
+        tree: &Tree,
     ) -> ControlFlow<Self::BreakValue> {
         let node::TypeScheme { forall, ty } = *id.get(tree);
 
@@ -312,7 +310,7 @@ where
     fn visit_type_expr(
         &mut self,
         id: Id<node::TypeExpr>,
-        tree: &T,
+        tree: &Tree,
     ) -> ControlFlow<Self::BreakValue> {
         self.walk_type_expr(id, tree)?;
 
@@ -366,7 +364,7 @@ where
     fn visit_qualified_type(
         &mut self,
         id: Id<node::QualifiedType>,
-        tree: &T,
+        tree: &Tree,
     ) -> ControlFlow<Self::BreakValue> {
         let node::QualifiedType { path, ty } = *id.get(tree);
 
@@ -406,13 +404,13 @@ where
             PolyType::from_mono(local_t.clone())
         } else if let Some(poly_t) = self
             .nodes
-            .get_unchecked(id)
+            .get_opt(id).expect("typed metadata missing")
             .into_reference()
             .and_then(|sym| self.module_env.get_type(sym))
         {
             // Module-level type definition (like 'Person')
             poly_t.clone()
-        } else if let Some(builtin_t) = self.nodes.get_unchecked(id).into_builtin() {
+        } else if let Some(builtin_t) = self.nodes.get_opt(id).expect("typed metadata missing").into_builtin() {
             match builtin_t {
                 BuiltinType::Unit => PolyType::from_mono(MonoType::UNIT),
                 BuiltinType::Bool => PolyType::from_mono(MonoType::BOOL),
@@ -455,7 +453,7 @@ where
     fn visit_comp_type(
         &mut self,
         id: Id<node::CompType>,
-        tree: &T,
+        tree: &Tree,
     ) -> ControlFlow<Self::BreakValue> {
         let node::CompType { ty, effect } = *id.get(tree);
 
@@ -495,7 +493,7 @@ where
     fn visit_func_type(
         &mut self,
         id: Id<node::FuncType>,
-        tree: &T,
+        tree: &Tree,
     ) -> ControlFlow<Self::BreakValue> {
         let node::FuncType { input, output } = *id.get(tree);
 
@@ -536,7 +534,7 @@ where
     fn visit_type_application(
         &mut self,
         id: Id<node::TypeApplication>,
-        tree: &T,
+        tree: &Tree,
     ) -> ControlFlow<Self::BreakValue> {
         let node::TypeApplication { constructor, arg } = *id.get(tree);
 
@@ -597,7 +595,7 @@ where
     fn visit_record_type(
         &mut self,
         id: Id<node::RecordType>,
-        tree: &T,
+        tree: &Tree,
     ) -> ControlFlow<Self::BreakValue> {
         self.walk_record_type(id, tree)?;
 
@@ -623,7 +621,7 @@ where
             Row::Empty
         };
 
-        let fields = fields.iter(tree).fold(tail_t, |acc_t, field| {
+        let fields = fields.get(tree).iter().copied().fold(tail_t, |acc_t, field| {
             let head_t = self.types.get_unchecked(field).clone();
             acc_t.extend(head_t)
         });
@@ -635,7 +633,7 @@ where
     fn visit_label_or_var(
         &mut self,
         id: Id<node::LabelOrVar>,
-        tree: &T,
+        tree: &Tree,
     ) -> ControlFlow<Self::BreakValue> {
         let label = match *id.get(tree) {
             node::LabelOrVar::Label(id) => LabelOrVar::Label(Label(id.get(tree).0)),
@@ -678,7 +676,7 @@ where
     fn visit_record_field_type(
         &mut self,
         id: Id<node::RecordFieldType>,
-        tree: &T,
+        tree: &Tree,
     ) -> ControlFlow<Self::BreakValue> {
         let node::RecordFieldType { label_or_var, ty } = *id.get(tree);
 
@@ -726,7 +724,7 @@ where
     fn visit_variant_type(
         &mut self,
         id: Id<node::VariantType>,
-        tree: &T,
+        tree: &Tree,
     ) -> ControlFlow<Self::BreakValue> {
         self.walk_variant_type(id, tree)?;
 
@@ -753,7 +751,7 @@ where
             Row::Empty
         };
 
-        let cases = tags.iter(tree).fold(tail_t, |acc_t, case| {
+        let cases = tags.get(tree).iter().copied().fold(tail_t, |acc_t, case| {
             let head_t = self.types.get_unchecked(case).clone();
             acc_t.extend(head_t)
         });
@@ -784,7 +782,7 @@ where
     /// - Creates a labeled type for the variant case
     ///
     /// Type signature: Creates `LabeledType` for variant type construction
-    fn visit_tag_type(&mut self, id: Id<node::TagType>, tree: &T) -> ControlFlow<Self::BreakValue> {
+    fn visit_tag_type(&mut self, id: Id<node::TagType>, tree: &Tree) -> ControlFlow<Self::BreakValue> {
         let node::TagType { name, ty } = *id.get(tree);
 
         let label = Label(name.get(tree).0);
@@ -822,14 +820,14 @@ where
     fn visit_value_bind(
         &mut self,
         id: Id<node::ValueBind>,
-        tree: &T,
+        tree: &Tree,
     ) -> ControlFlow<Self::BreakValue> {
         let node::ValueBind {
             ty_scheme, value, ..
         } = *id.get(tree);
 
         // TODO: instead of these entrypoint hacks it would be nicer if main would just be an own node maybe ?
-        let is_entrypoint = self.entry_points.contains(self.nodes.get_unchecked(id));
+        let is_entrypoint = self.entry_points.contains(self.nodes.get_opt(id).expect("typed metadata missing"));
 
         if is_entrypoint {
             self.effects_stack.push(Row::var());
@@ -844,6 +842,9 @@ where
             self.visit_type_scheme(ty_scheme, tree)?;
         }
 
+        let Some(value) = value else {
+            return ControlFlow::Continue(());
+        };
         self.visit_expr(value, tree)?;
         let mut value_t = self.types.get_unchecked(value).clone();
 
@@ -888,7 +889,7 @@ where
     fn visit_literal_expr(
         &mut self,
         id: Id<node::LiteralExpr>,
-        tree: &T,
+        tree: &Tree,
     ) -> ControlFlow<Self::BreakValue> {
         let actual = match id.get(tree) {
             &node::LiteralExpr::Unit => MonoType::UNIT,
@@ -921,18 +922,18 @@ where
     fn visit_list_expr(
         &mut self,
         id: Id<node::ListExpr>,
-        tree: &T,
+        tree: &Tree,
     ) -> ControlFlow<Self::BreakValue> {
         self.walk_list_expr(id, tree)?;
 
         let node::ListExpr(list) = id.get(tree);
 
-        if let Some(first_elem) = list.first(tree) {
+        if let Some(first_elem) = list.get(tree).first().copied() {
             let first_t = self.types.get_unchecked(first_elem).clone();
 
             self.insert_type(id, MonoType::list(first_t.clone()));
 
-            for elem in list.iter(tree) {
+            for elem in list.get(tree).iter().copied() {
                 let span = self.span(id);
                 let elem_t = self.types.get_unchecked(elem).clone();
 
@@ -970,7 +971,7 @@ where
     fn visit_qualified_expr(
         &mut self,
         id: Id<node::QualifiedExpr>,
-        tree: &T,
+        tree: &Tree,
     ) -> ControlFlow<Self::BreakValue> {
         let span = self.span(id);
 
@@ -1015,13 +1016,13 @@ where
             local_t.clone()
         } else if let Some(poly_t) = self
             .nodes
-            .get_unchecked(id)
+            .get_opt(id).expect("typed metadata missing")
             .into_reference()
             .and_then(|sym| self.module_env.get_value(sym))
         {
             // Module-level value definition
             poly_t.instantiate(|from, to| self.cons.constrain_inst(from, to))
-        } else if let Some(builtin_id) = self.nodes.get_unchecked(id).into_builtin() {
+        } else if let Some(builtin_id) = self.nodes.get_opt(id).expect("typed metadata missing").into_builtin() {
             let pt = builtin_type(builtin_id, &self.lexicon);
 
             pt.instantiate(|from, to| self.cons.constrain_inst(from, to))
@@ -1037,7 +1038,7 @@ where
 
         let mut result_t = base_t;
 
-        for field in field_path.get(tree).0.iter(tree) {
+        for field in field_path.get(tree).0.get(tree).iter().copied() {
             let value_t = MonoType::var();
             let label = Label(field.get(tree).0.clone());
 
@@ -1073,7 +1074,7 @@ where
     fn visit_record_field(
         &mut self,
         id: Id<node::RecordField>,
-        tree: &T,
+        tree: &Tree,
     ) -> ControlFlow<Self::BreakValue> {
         self.walk_record_field(id, tree)?;
 
@@ -1114,13 +1115,13 @@ where
     fn visit_record_expr(
         &mut self,
         id: Id<node::RecordExpr>,
-        tree: &T,
+        tree: &Tree,
     ) -> ControlFlow<Self::BreakValue> {
         self.walk_record_expr(id, tree)?;
 
         let mut fields = Row::Empty;
 
-        for field in id.get(tree).0.iter(tree) {
+        for field in id.get(tree).0.get(tree).iter().copied() {
             let head_t = self.types.get_unchecked(field).clone();
             fields = fields.extend(head_t);
         }
@@ -1143,7 +1144,7 @@ where
     fn visit_record_extend_expr(
         &mut self,
         id: Id<node::RecordExtendExpr>,
-        tree: &T,
+        tree: &Tree,
     ) -> ControlFlow<Self::BreakValue> {
         self.walk_record_extend_expr(id, tree)?; // TODO maybe make this explicit ?
 
@@ -1238,7 +1239,7 @@ where
     fn visit_record_restrict_expr(
         &mut self,
         id: Id<node::RecordRestrictExpr>,
-        tree: &T,
+        tree: &Tree,
     ) -> ControlFlow<Self::BreakValue> {
         self.walk_record_restrict_expr(id, tree)?;
 
@@ -1320,7 +1321,7 @@ where
     fn visit_record_update_op(
         &mut self,
         id: Id<node::RecordUpdateOp>,
-        tree: &T,
+        tree: &Tree,
     ) -> ControlFlow<Self::BreakValue> {
         let span = self.span(id);
 
@@ -1369,7 +1370,7 @@ where
     fn visit_record_update_expr(
         &mut self,
         id: Id<node::RecordUpdateExpr>,
-        tree: &T,
+        tree: &Tree,
     ) -> ControlFlow<Self::BreakValue> {
         self.walk_record_update_expr(id, tree)?;
 
@@ -1460,7 +1461,7 @@ where
     fn visit_record_merge_expr(
         &mut self,
         id: Id<node::RecordMergeExpr>,
-        tree: &T,
+        tree: &Tree,
     ) -> ControlFlow<Self::BreakValue> {
         let node::RecordMergeExpr { lhs, rhs } = *id.get(tree);
 
@@ -1490,7 +1491,7 @@ where
     /// Type signatures:
     /// - `-`: `Num → Num` (numeric negation)
     /// - `!`: `Bool → Bool` (logical negation)
-    fn visit_unary_op(&mut self, id: Id<node::UnaryOp>, tree: &T) -> ControlFlow<Self::BreakValue> {
+    fn visit_unary_op(&mut self, id: Id<node::UnaryOp>, tree: &Tree) -> ControlFlow<Self::BreakValue> {
         let operand_t = match id.get(tree) {
             &node::UnaryOp::Neg => MonoType::NUM,
             &node::UnaryOp::Not => MonoType::BOOL,
@@ -1517,7 +1518,7 @@ where
     fn visit_unary_expr(
         &mut self,
         id: Id<node::UnaryExpr>,
-        tree: &T,
+        tree: &Tree,
     ) -> ControlFlow<Self::BreakValue> {
         self.walk_unary_expr(id, tree)?;
 
@@ -1549,7 +1550,7 @@ where
     fn visit_binary_op(
         &mut self,
         id: Id<node::BinaryOp>,
-        tree: &T,
+        tree: &Tree,
     ) -> ControlFlow<Self::BreakValue> {
         let span = self.span(id);
 
@@ -1613,7 +1614,7 @@ where
     fn visit_binary_expr(
         &mut self,
         id: Id<node::BinaryExpr>,
-        tree: &T,
+        tree: &Tree,
     ) -> ControlFlow<Self::BreakValue> {
         self.walk_binary_expr(id, tree)?;
 
@@ -1648,7 +1649,7 @@ where
     /// supporting polymorphism at top-level value bindings.
     ///
     /// For polymorphic local bindings, use (non-exported) top-level value bindings instead.
-    fn visit_let_expr(&mut self, id: Id<node::LetExpr>, tree: &T) -> ControlFlow<Self::BreakValue> {
+    fn visit_let_expr(&mut self, id: Id<node::LetExpr>, tree: &Tree) -> ControlFlow<Self::BreakValue> {
         let &node::LetExpr {
             name,
             value_type,
@@ -1707,7 +1708,7 @@ where
     fn visit_case_expr(
         &mut self,
         id: Id<node::CaseExpr>,
-        tree: &T,
+        tree: &Tree,
     ) -> ControlFlow<Self::BreakValue> {
         let node::CaseExpr { source, branches } = id.get(tree);
         let span = self.span(id);
@@ -1723,7 +1724,7 @@ where
         // Step 2: Process each branch
         let mut result_types = Vec::new();
 
-        for branch_id in branches.iter(tree) {
+        for branch_id in branches.get(tree).iter().copied() {
             let node::CaseBranch { pat, body } = *branch_id.get(tree);
 
             // TODO: Implement proper pattern typing that:
@@ -1742,7 +1743,7 @@ where
             // Create fresh PatternTyper for this branch
             let pattern_typer =
                 PatternTyper::new(&mut self.local_env, self.cons, source_t.clone(), span);
-            pattern_typer.run::<T, node::Pat>(pat, tree);
+            pattern_typer.run::<node::Pat>(pat, tree);
 
             // Type branch expression with extended environment
             self.visit_expr(body, tree)?;
@@ -1787,7 +1788,7 @@ where
     /// ```
     ///
     /// Type signature: `Bool → α → α → α`
-    fn visit_if_expr(&mut self, id: Id<node::IfExpr>, tree: &T) -> ControlFlow<Self::BreakValue> {
+    fn visit_if_expr(&mut self, id: Id<node::IfExpr>, tree: &Tree) -> ControlFlow<Self::BreakValue> {
         self.walk_if_expr(id, tree)?;
 
         let span = self.span(id);
@@ -1824,7 +1825,7 @@ where
     fn visit_lambda_expr(
         &mut self,
         id: Id<node::LambdaExpr>,
-        tree: &T,
+        tree: &Tree,
     ) -> ControlFlow<Self::BreakValue> {
         let node::LambdaExpr {
             param,
@@ -1878,7 +1879,7 @@ where
     fn visit_call_expr(
         &mut self,
         id: Id<node::CallExpr>,
-        tree: &T,
+        tree: &Tree,
     ) -> ControlFlow<Self::BreakValue> {
         self.walk_call_expr(id, tree)?;
 
@@ -1916,7 +1917,7 @@ where
     fn visit_handler_clause(
         &mut self,
         id: Id<node::HandlerClause>,
-        tree: &T,
+        tree: &Tree,
     ) -> ControlFlow<Self::BreakValue> {
         let node::HandlerClause { op, param, body } = id.get(tree);
 
@@ -1957,7 +1958,7 @@ where
     fn visit_handle_expr(
         &mut self,
         id: Id<node::HandleExpr>,
-        tree: &T,
+        tree: &Tree,
     ) -> ControlFlow<Self::BreakValue> {
         let span = self.span(id);
 
@@ -1972,7 +1973,7 @@ where
         // 2. Peel handled labels off the source's effect row
         let mut remaining_effect = source_effect.clone();
 
-        for clause_id in clauses.iter(tree) {
+        for clause_id in clauses.get(tree).iter().copied() {
             self.visit_handler_clause(clause_id, tree)?;
             let head = self.types.get_unchecked(clause_id).clone();
 
@@ -2004,7 +2005,7 @@ where
         ControlFlow::Continue(())
     }
 
-    fn visit_do_expr(&mut self, id: Id<node::DoExpr>, tree: &T) -> ControlFlow<Self::BreakValue> {
+    fn visit_do_expr(&mut self, id: Id<node::DoExpr>, tree: &Tree) -> ControlFlow<Self::BreakValue> {
         let span = self.span(id);
 
         let node::DoExpr { op, arg } = *id.get(tree);
@@ -2044,7 +2045,7 @@ where
         ControlFlow::Continue(())
     }
 
-    fn visit_tag_expr(&mut self, id: Id<node::TagExpr>, tree: &T) -> ControlFlow<Self::BreakValue> {
+    fn visit_tag_expr(&mut self, id: Id<node::TagExpr>, tree: &Tree) -> ControlFlow<Self::BreakValue> {
         let tag = Label(id.get(tree).0.get(tree).0);
 
         // We want to create an open row type for the tag expression
@@ -2062,7 +2063,7 @@ where
     fn visit_type_witness_expr(
         &mut self,
         id: Id<node::TypeWitnessExpr>,
-        tree: &T,
+        tree: &Tree,
     ) -> ControlFlow<Self::BreakValue> {
         let t = match *id.get(tree) {
             node::TypeWitnessExpr::Qualified(qual_id) => self
@@ -2077,30 +2078,30 @@ where
         ControlFlow::Continue(())
     }
 
-    fn visit_expr(&mut self, id: Id<node::Expr>, tree: &T) -> ControlFlow<Self::BreakValue> {
+    fn visit_expr(&mut self, id: Id<node::Expr>, tree: &Tree) -> ControlFlow<Self::BreakValue> {
         self.walk_expr(id, tree)?;
 
         let expr_t = match *id.get(tree) {
             node::Expr::Error(_) => todo!(),
-            node::Expr::Literal(id) => self.types.get_unchecked(id),
-            node::Expr::Qualified(id) => self.types.get_unchecked(id),
-            node::Expr::List(id) => self.types.get_unchecked(id),
-            node::Expr::Record(id) => self.types.get_unchecked(id),
-            node::Expr::RecordExtend(id) => self.types.get_unchecked(id),
-            node::Expr::RecordRestrict(id) => self.types.get_unchecked(id),
-            node::Expr::RecordUpdate(id) => self.types.get_unchecked(id),
-            node::Expr::RecordMerge(id) => self.types.get_unchecked(id),
-            node::Expr::Unary(id) => self.types.get_unchecked(id),
-            node::Expr::Binary(id) => self.types.get_unchecked(id),
-            node::Expr::Let(id) => self.types.get_unchecked(id),
-            node::Expr::If(id) => self.types.get_unchecked(id),
-            node::Expr::Case(id) => self.types.get_unchecked(id),
-            node::Expr::Lambda(id) => self.types.get_unchecked(id),
-            node::Expr::Call(id) => &self.types.get_unchecked(id).ty, // TODO this discards the effect
-            node::Expr::Handle(id) => &self.types.get_unchecked(id).ty, // TODO this discards the effect
-            node::Expr::Do(id) => &self.types.get_unchecked(id).ty, // TODO this discards the effect
-            node::Expr::Tag(id) => self.types.get_unchecked(id),
-            node::Expr::TypeWitness(id) => self.types.get_unchecked(id),
+            node::Expr::Literal(id) => self.types.get_opt(id).expect("typed metadata missing"),
+            node::Expr::Qualified(id) => self.types.get_opt(id).expect("typed metadata missing"),
+            node::Expr::List(id) => self.types.get_opt(id).expect("typed metadata missing"),
+            node::Expr::Record(id) => self.types.get_opt(id).expect("typed metadata missing"),
+            node::Expr::RecordExtend(id) => self.types.get_opt(id).expect("typed metadata missing"),
+            node::Expr::RecordRestrict(id) => self.types.get_opt(id).expect("typed metadata missing"),
+            node::Expr::RecordUpdate(id) => self.types.get_opt(id).expect("typed metadata missing"),
+            node::Expr::RecordMerge(id) => self.types.get_opt(id).expect("typed metadata missing"),
+            node::Expr::Unary(id) => self.types.get_opt(id).expect("typed metadata missing"),
+            node::Expr::Binary(id) => self.types.get_opt(id).expect("typed metadata missing"),
+            node::Expr::Let(id) => self.types.get_opt(id).expect("typed metadata missing"),
+            node::Expr::If(id) => self.types.get_opt(id).expect("typed metadata missing"),
+            node::Expr::Case(id) => self.types.get_opt(id).expect("typed metadata missing"),
+            node::Expr::Lambda(id) => self.types.get_opt(id).expect("typed metadata missing"),
+            node::Expr::Call(id) => &self.types.get_opt(id).expect("typed metadata missing").ty, // TODO this discards the effect
+            node::Expr::Handle(id) => &self.types.get_opt(id).expect("typed metadata missing").ty, // TODO this discards the effect
+            node::Expr::Do(id) => &self.types.get_opt(id).expect("typed metadata missing").ty, // TODO this discards the effect
+            node::Expr::Tag(id) => self.types.get_opt(id).expect("typed metadata missing"),
+            node::Expr::TypeWitness(id) => self.types.get_opt(id).expect("typed metadata missing"),
         }
         .clone();
 

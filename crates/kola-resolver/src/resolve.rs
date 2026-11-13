@@ -1,14 +1,13 @@
-use std::io;
+use std::{collections::HashMap, io};
 
 use indexmap::IndexMap;
 
 use kola_interner::StrInterner;
 use kola_print::prelude::*;
-use kola_span::{Issue, Report, SourceManager};
-use kola_syntax::loc::LocMap;
+use kola_span::{Issue, Report, SourceId, SourceManager};
 use kola_tree::{
     print::{Decorators, TreePrinter},
-    tree::TreeMap,
+    source::{ModuleKey, TreeMap},
 };
 use log::{debug, trace};
 
@@ -17,7 +16,7 @@ use crate::{
     def::DefMap,
     discover::{DiscoverOutput, discover},
     elaborate::{ElabJobs, elaborate_modules},
-    env::{FunctorMap, ModuleMap},
+    env::ModuleMap,
     lookup::{Lookups, lookup_module_types, lookup_modules, lookup_types, lookup_values},
     print::ResolutionDecorator,
     symbol::{FileMap, ModuleGraph, ModuleSym},
@@ -26,14 +25,12 @@ use crate::{
 pub fn resolve(
     source_manager: SourceManager,
     tree_map: TreeMap,
-    loc_map: LocMap,
     arena: &Bump,
     interner: &mut StrInterner,
     report: &mut Report,
     print_options: PrintOptions,
 ) -> io::Result<Db> {
     let mut modules = ModuleMap::new();
-    let mut functors = FunctorMap::new();
     let mut entry_points = Vec::new();
     let mut defs = DefMap::new();
 
@@ -45,53 +42,66 @@ pub fn resolve(
     let mut module_type_graph = IndexMap::new();
     let mut module_graph = ModuleGraph::new();
 
-    // Precompute the module symbols for each file to ensure consistent symbol assignment across modules.
+    // One `ModuleSym` per module tree. `files` still maps a source to its root
+    // module, which is what `import` resolves to.
+    let mut module_of: HashMap<(SourceId, ModuleKey), ModuleSym> = HashMap::new();
+    for (source_id, source) in &tree_map {
+        for key in source.trees.keys() {
+            module_of.insert((*source_id, *key), ModuleSym::new());
+        }
+    }
+
     let files = tree_map
-        .keys()
-        .map(|id| (*id, ModuleSym::new()))
+        .iter()
+        .map(|(id, source)| (*id, module_of[&(*id, source.root)]))
         .collect::<FileMap>();
 
     let root = *files.first().unwrap().1;
 
-    for (source_id, tree) in &tree_map {
-        let sym = files[source_id];
+    for (source_id, source) in &tree_map {
+        let mut entries: Vec<_> = source.iter().collect();
+        // Discover the root module first; children follow in key order.
+        entries.sort_by_key(|(key, _)| *key != source.root);
 
-        let DiscoverOutput {
-            report: module_report,
-        } = discover(
-            sym,
-            tree,
-            &loc_map[source_id],
-            &files,
-            interner,
-            &mut modules,
-            &mut functors,
-            &mut entry_points,
-            &mut defs,
-            &mut value_graph_map,
-            &mut type_graph_map,
-            &mut module_type_graph,
-            &mut module_graph,
-            &mut lookups,
-            &mut elab_jobs,
-        );
+        for (key, tree) in entries {
+            let sym = module_of[&(*source_id, key)];
 
-        if !module_report.is_empty() {
-            report.append(module_report);
+            let DiscoverOutput {
+                report: module_report,
+            } = discover(
+                sym,
+                *source_id,
+                key,
+                tree,
+                &files,
+                &module_of,
+                interner,
+                &mut modules,
+                &mut entry_points,
+                &mut defs,
+                &mut value_graph_map,
+                &mut type_graph_map,
+                &mut module_type_graph,
+                &mut module_graph,
+                &mut lookups,
+                &mut elab_jobs,
+            );
 
-            return Ok(Db {
-                root,
-                source_manager,
-                tree_map,
-                loc_map,
-                files,
-                modules,
-                defs,
-                functors,
-                module_graph,
-                entry_points,
-                ..Default::default()
-            });
+            if !module_report.is_empty() {
+                report.append(module_report);
+
+                return Ok(Db {
+                    root,
+                    source_manager,
+                    tree_map,
+                    files,
+                    modules,
+                    defs,
+                    module_graph,
+                    entry_points,
+                    ..Default::default()
+                });
+            }
         }
     }
 
@@ -105,7 +115,6 @@ pub fn resolve(
         elab_jobs,
         &mut lookups,
         &mut modules,
-        &functors,
         &mut defs,
         &mut module_graph,
         interner,
@@ -117,11 +126,9 @@ pub fn resolve(
             root,
             source_manager,
             tree_map,
-            loc_map,
             files,
             modules,
             defs,
-            functors,
             module_graph,
             entry_points,
             ..Default::default()
@@ -150,11 +157,9 @@ pub fn resolve(
             root,
             source_manager,
             tree_map,
-            loc_map,
             files,
             modules,
             defs,
-            functors,
             module_graph,
             entry_points,
             ..Default::default()
@@ -172,11 +177,9 @@ pub fn resolve(
                 root,
                 source_manager,
                 tree_map,
-                loc_map,
                 files,
                 modules,
                 defs,
-                functors,
                 module_graph,
                 entry_points,
                 ..Default::default()
@@ -212,11 +215,9 @@ pub fn resolve(
             root,
             source_manager,
             tree_map,
-            loc_map,
             files,
             modules,
             defs,
-            functors,
             module_graph,
             entry_points,
             module_order,
@@ -240,11 +241,9 @@ pub fn resolve(
             root,
             source_manager,
             tree_map,
-            loc_map,
             files,
             modules,
             defs,
-            functors,
             module_graph,
             entry_points,
             module_order,
@@ -262,11 +261,9 @@ pub fn resolve(
             root,
             source_manager,
             tree_map,
-            loc_map,
             files,
             modules,
             defs,
-            functors,
             module_graph,
             entry_points,
             module_order,
@@ -277,12 +274,13 @@ pub fn resolve(
     }
 
     for (source_id, sym) in &files {
-        let tree = &tree_map[source_id];
+        let trees = &tree_map[source_id];
+        let tree = trees.root_tree();
 
         let resolution_decorator = ResolutionDecorator(&modules[sym].nodes);
         let decorators = Decorators::new().with(&resolution_decorator);
 
-        let tree_printer = TreePrinter::new(tree, interner, decorators);
+        let tree_printer = TreePrinter::new(tree, interner, decorators, false);
 
         trace!(
             "{} SourceId {}, ModuleSym {}\n{}",
@@ -303,11 +301,9 @@ pub fn resolve(
         root,
         source_manager,
         tree_map,
-        loc_map,
         files,
         modules,
         defs,
-        functors,
         module_graph,
         entry_points,
         module_order,

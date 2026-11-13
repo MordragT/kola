@@ -4,7 +4,7 @@ use kola_tree::node::{ModuleName, Vis};
 
 use crate::{
     def::DefMap,
-    env::{FunctorMap, ModuleMap},
+    env::ModuleMap,
     lookup::Lookups,
     symbol::ModuleGraph,
 };
@@ -17,7 +17,6 @@ pub fn elaborate_modules(
     elab_jobs: ElabJobs,
     lookups: &mut Lookups,
     modules: &mut ModuleMap,
-    functors: &FunctorMap,
     def_map: &mut DefMap,
     module_graph: &mut ModuleGraph,
     interner: &mut StrInterner,
@@ -60,7 +59,6 @@ pub fn elaborate_modules(
             let step_result = {
                 let mut ctx = ElabCtx {
                     modules,
-                    functors,
                     unresolved_binds: &mut unresolved_binds,
                     worklist: &mut worklist,
                     lookups,
@@ -102,7 +100,6 @@ pub fn elaborate_modules(
             for blocked in &worklist {
                 let loc = match &blocked.expr {
                     ElabExpr::Path(p) => p.loc,
-                    ElabExpr::FunctorAppl(f) => f.loc,
                     ElabExpr::Done(_) => continue,
                 };
 

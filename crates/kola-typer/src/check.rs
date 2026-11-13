@@ -44,7 +44,6 @@ use kola_span::{IntoDiagnostic, Report};
 use kola_subst::Substitutable;
 use kola_tree::{
     print::{Decorators, TreePrinter},
-    query::GetOpt,
 };
 use kola_types::{class::TypeClassEnv, env::TypeEnv, subst::Substitution};
 use log::trace;
@@ -96,13 +95,13 @@ pub fn type_check(
         let mut module_env = TypeEnv::new();
 
         for &type_sym in view.type_order {
-            let (id, tree, spans) = view.type_node(type_sym);
+            let (id, tree) = view.type_node(type_sym);
 
             let mut constraints = Constraints::new();
 
             let typer = Typer::new(
                 id,
-                spans,
+                tree,
                 &module_env,
                 &global_env,
                 &db.modules,
@@ -125,7 +124,7 @@ pub fn type_check(
                 break;
             }
 
-            let type_ = typed_nodes.get_unchecked(id).clone().apply(&mut subs);
+            let type_ = typed_nodes.get_opt(id).expect("typed metadata missing").clone().apply(&mut subs);
 
             // TODO generalize ?
 
@@ -139,13 +138,13 @@ pub fn type_check(
         }
 
         for &value_sym in view.value_order {
-            let (id, tree, spans) = view.value_node(value_sym);
+            let (id, tree) = view.value_node(value_sym);
 
             let mut constraints = Constraints::new();
 
             let typer = Typer::new(
                 id,
-                spans,
+                tree,
                 &module_env,
                 &global_env,
                 &db.modules,
@@ -172,13 +171,13 @@ pub fn type_check(
             typed_nodes.apply_mut(&mut subs);
 
             // Check for exhaustiveness in case expressions
-            if let Err(errs) = exhaust_check_all(&cases, tree, &typed_nodes, &*spans) {
+            if let Err(errs) = exhaust_check_all(&cases, tree, &typed_nodes, tree) {
                 report.extend_diagnostics(errs.into_iter().map(Into::into));
                 break;
             }
 
             // Generalize immediately (making it available for subsequent binds)
-            let actual_t = typed_nodes.get_unchecked(id).to_mono().unwrap();
+            let actual_t = typed_nodes.get_opt(id).expect("typed metadata missing").to_mono().unwrap();
             let poly_type = actual_t.generalize(&[]); // TODO should bound be something ? &type_env.bound_vars()
             module_env.insert_value(value_sym, poly_type.clone());
 
@@ -202,10 +201,10 @@ pub fn type_check(
             .with(&type_decorator);
 
         let source_id = view.module.loc.path;
-        let tree = &view.tree_map[&source_id];
+        let tree = view.tree();
 
         // TODO: tree.root_id() is wrong, need to find the correct root id for the module (should be the id of the module def)
-        let tree_printer = TreePrinter::new(tree, &str_interner, decorators);
+        let tree_printer = TreePrinter::new(tree, &str_interner, decorators, false);
 
         trace!(
             "{} SourceId {}, ModuleSym {}\n{}",

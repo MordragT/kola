@@ -1,20 +1,20 @@
-use std::ops::ControlFlow;
+use std::{collections::HashMap, ops::ControlFlow};
 
 use indexmap::IndexMap;
 use kola_builtins::{BuiltinType, find_builtin_id};
 use kola_collections::scope::LinearScope;
 use kola_interner::StrInterner;
-use kola_span::{Loc, Report};
+use kola_span::{Diagnostic, Loc, Report, SourceId};
 use kola_syntax::prelude::*;
 use kola_tree::{
-    node::{FunctorName, ModuleName, ModuleTypeName, TypeName, ValueName, Vis},
+    node::{ModuleName, ModuleTypeName, TypeName, ValueName, Vis},
     prelude::*,
 };
 
 use crate::{
     def::{AnyDef, DefMap},
     elaborate::{ElabJob, ElabJobs, ElabPath},
-    env::{Functor, FunctorMap, Module, ModuleMap},
+    env::{Module, ModuleMap},
     error::name_collision,
     lookup::{
         Lookups, ModuleLookup, ModuleTypeAnnotLookup, ModuleTypeLookup, TypeAnnotLookup,
@@ -22,8 +22,8 @@ use crate::{
     },
     phase::{NodeMap, ResolvedModuleType, ResolvedType, ResolvedValue},
     symbol::{
-        FileMap, FunctorSym, ModuleGraph, ModuleSym, ModuleTypeGraph, ModuleTypeSym, TypeGraph,
-        TypeSym, ValueGraph, ValueSym,
+        FileMap, ModuleGraph, ModuleSym, ModuleTypeGraph, ModuleTypeSym, TypeGraph, TypeSym,
+        ValueGraph, ValueSym,
     },
 };
 
@@ -34,12 +34,13 @@ pub struct DiscoverOutput {
 
 pub fn discover(
     sym: ModuleSym,
+    source: SourceId,
+    key: ModuleKey,
     tree: &Tree,
-    locs: &LocVec,
     files: &FileMap,
+    module_of: &HashMap<(SourceId, ModuleKey), ModuleSym>,
     interner: &StrInterner,
     modules: &mut ModuleMap,
-    functors: &mut FunctorMap,
     entry_points: &mut Vec<ValueSym>,
     defs: &mut DefMap,
     value_graph_map: &mut IndexMap<ModuleSym, ValueGraph>,
@@ -49,7 +50,7 @@ pub fn discover(
     lookups: &mut Lookups,
     elab_jobs: &mut ElabJobs,
 ) -> DiscoverOutput {
-    let loc = *locs.get(tree.root_id());
+    let loc = *tree.get_span(tree.root_id());
 
     value_graph_map.insert(sym, ValueGraph::new());
     type_graph_map.insert(sym, TypeGraph::new());
@@ -59,12 +60,14 @@ pub fn discover(
     // Create a visitor to walk the tree and collect declarations
     let mut discoverer = Discoverer::new(
         sym,
+        source,
+        key,
         loc,
-        locs,
+        tree,
         files,
+        module_of,
         interner,
         modules,
-        functors,
         entry_points,
         defs,
         value_graph_map,
@@ -111,17 +114,19 @@ impl Bindings {
 
 struct Discoverer<'a> {
     root: ModuleSym,
+    root_key: ModuleKey,
+    source: SourceId,
     scope: Module,
     lookups: &'a mut Lookups,
     elab_jobs: &'a mut ElabJobs,
     bindings: Bindings,
     scopes: Scopes,
     report: Report,
-    locs: &'a LocVec,
+    locs: &'a Tree,
     files: &'a FileMap,
+    module_of: &'a HashMap<(SourceId, ModuleKey), ModuleSym>,
     interner: &'a StrInterner,
     modules: &'a mut ModuleMap,
-    functors: &'a mut FunctorMap,
     entry_points: &'a mut Vec<ValueSym>,
     defs: &'a mut DefMap,
     value_graph_map: &'a mut IndexMap<ModuleSym, ValueGraph>,
@@ -133,12 +138,14 @@ struct Discoverer<'a> {
 impl<'a> Discoverer<'a> {
     fn new(
         root: ModuleSym,
+        source: SourceId,
+        root_key: ModuleKey,
         loc: Loc,
-        locs: &'a LocVec,
+        locs: &'a Tree,
         files: &'a FileMap,
+        module_of: &'a HashMap<(SourceId, ModuleKey), ModuleSym>,
         interner: &'a StrInterner,
         modules: &'a mut ModuleMap,
-        functors: &'a mut FunctorMap,
         entry_points: &'a mut Vec<ValueSym>,
         defs: &'a mut DefMap,
         value_graph_map: &'a mut IndexMap<ModuleSym, ValueGraph>,
@@ -150,7 +157,9 @@ impl<'a> Discoverer<'a> {
     ) -> Self {
         Self {
             root,
-            scope: Module::new(loc),
+            root_key,
+            source,
+            scope: Module::new(loc, root_key),
             lookups,
             elab_jobs,
             bindings: Bindings::new(),
@@ -158,9 +167,9 @@ impl<'a> Discoverer<'a> {
             report: Report::new(),
             locs,
             files,
+            module_of,
             interner,
             modules,
-            functors,
             entry_points,
             defs,
             value_graph_map,
@@ -178,40 +187,18 @@ impl<'a> Discoverer<'a> {
     }
 
     #[inline]
-    fn span<T>(&self, id: Id<T>) -> Loc
+    fn span<T: 'static>(&self, id: Id<T>) -> Loc
     where
-        LocVec: Get<T, Item = Loc>,
+        Tree: TotalSpan<T, Loc>,
     {
-        *self.locs.get(id)
+        *self.locs.get_span(id)
     }
 
     fn insert_symbol<T, S>(&mut self, id: Id<T>, sym: S)
     where
-        NodeMap: GetOpt<T, Item = S>,
+        T: NodeMeta<NodeMap, Value = S>,
     {
         self.scope.nodes.set(id, sym);
-    }
-
-    pub fn insert_functor(
-        &mut self,
-        id: Id<node::FunctorBind>,
-        loc: Loc,
-        vis: node::Vis,
-        name: FunctorName,
-        sym: FunctorSym,
-    ) {
-        if let Some(bind) = self
-            .scope
-            .names
-            .get(name)
-            .and_then(|binding| self.defs.get(binding.sym))
-        {
-            self.name_collision((id, loc), bind);
-            return;
-        }
-
-        self.scope.names.insert_functor(name, vis, sym);
-        self.defs.insert_functor(sym, id, loc);
     }
 
     pub fn insert_module_type(
@@ -319,7 +306,9 @@ impl<'a> Discoverer<'a> {
 
         let saved = self.bindings.replace();
 
-        let mut child_scope = Module::new(loc);
+        // One discoverer handles exactly one module tree, so the fresh scope is
+        // always the root module of this tree.
+        let mut child_scope = Module::new(loc, self.root_key);
         std::mem::swap(&mut child_scope, &mut self.scope);
         self.root = child;
 
@@ -333,71 +322,13 @@ impl<'a> Discoverer<'a> {
     }
 }
 
-impl<'a, T> Visitor<T> for Discoverer<'a>
-where
-    T: TreeView,
-{
+impl<'a> Visitor<Loc> for Discoverer<'a> {
     type BreakValue = !;
-
-    fn visit_functor_bind(&mut self, id: Id<node::FunctorBind>, tree: &T) -> ControlFlow<!> {
-        let node::FunctorBind {
-            vis,
-            name,
-            params,
-            body,
-        } = tree.get(id);
-
-        let loc = self.span(id);
-        let name = *name.get(tree);
-
-        // Visit parameter types in parent scope
-        for param in params.iter(tree) {
-            self.visit_module_type(tree.get(param).ty, tree)?;
-        }
-
-        // Functor body gets its own fresh scope
-        let lookups = std::mem::take(self.lookups);
-        let elab_jobs = std::mem::take(self.elab_jobs);
-        let prototype = ModuleSym::new();
-        let (param_syms, body_scope) = self.with_fresh_scope(prototype, loc, |this| {
-            // Insert parameter modules into the fresh scope
-            let mut param_syms = Vec::with_capacity(params.len());
-
-            for param in params.iter(tree) {
-                let node::FunctorParam {
-                    name: param_name, ..
-                } = *tree.get(param);
-                let param_name = *param_name.get(tree);
-                let param_sym = ModuleSym::new();
-
-                this.scope
-                    .names
-                    .insert_module(param_name, Vis::Private, param_sym);
-                param_syms.push(param_sym);
-            }
-
-            // Walk the body in the fresh scope
-            let _ = this.walk_module_body(*body, tree);
-
-            param_syms
-        });
-
-        let sym = FunctorSym::new();
-        self.insert_symbol(id, sym);
-        self.insert_functor(id, loc, *vis.get(tree), name, sym);
-
-        let lookups = std::mem::replace(self.lookups, lookups);
-        let elab_jobs = std::mem::replace(self.elab_jobs, elab_jobs);
-
-        let functor = Functor::new(prototype, param_syms, body_scope, lookups, elab_jobs);
-        self.functors.insert(sym, functor);
-        ControlFlow::Continue(())
-    }
 
     fn visit_module_type_bind(
         &mut self,
         id: Id<node::ModuleTypeBind>,
-        tree: &T,
+        tree: &Tree,
     ) -> ControlFlow<Self::BreakValue> {
         let node::ModuleTypeBind { vis, name, .. } = *tree.get(id);
 
@@ -422,7 +353,7 @@ where
     fn visit_qualified_module_type(
         &mut self,
         id: Id<node::QualifiedModuleType>,
-        tree: &T,
+        tree: &Tree,
     ) -> ControlFlow<Self::BreakValue> {
         let node::QualifiedModuleType { path, ty } = *tree.get(id);
 
@@ -459,7 +390,7 @@ where
     fn visit_module_bind(
         &mut self,
         id: Id<node::ModuleBind>,
-        tree: &T,
+        tree: &Tree,
     ) -> ControlFlow<Self::BreakValue> {
         let node::ModuleBind {
             vis, name, value, ..
@@ -468,6 +399,15 @@ where
         let name = *tree.get(name);
         let vis = tree.get(vis);
         let loc = self.span(id);
+
+        let Some(value) = value else {
+            // TODO(phase B): record abstract module bindings as obligations.
+            self.report.add_diagnostic(Diagnostic::error(
+                loc,
+                "Abstract module bindings are not implemented yet",
+            ));
+            return ControlFlow::Continue(());
+        };
 
         match *tree.get(value) {
             node::ModuleExpr::Import(import_id) => {
@@ -486,8 +426,9 @@ where
                 let path = tree
                     .get(path_id)
                     .0
-                    .iter(tree)
-                    .map(|id| *tree.get(id))
+                    .get(tree)
+                    .iter()
+                    .map(|id| *id.get(tree))
                     .collect();
 
                 let job = ElabJob::path(id, loc, *vis, name, self.root, path_id, loc, path);
@@ -495,72 +436,34 @@ where
 
                 ControlFlow::Continue(())
             }
-            node::ModuleExpr::FunctorApp(appl_id) => {
-                let node::FunctorApp { path, func, args } = *tree.get(appl_id);
+            node::ModuleExpr::Body(module_ref) => {
+                // The body lives in its own tree; this bind only references it.
+                let key = module_ref.get(tree).0;
+                let sym = self.module_of[&(self.source, key)];
 
-                let functor_name = *func.get(tree);
+                self.insert_symbol(id, sym);
+                self.insert_module(id, loc, *vis, name, sym);
+                self.module_graph.add_dependency(self.root, sym);
 
-                let path = if let Some(path_id) = path {
-                    let path = tree
-                        .get(path_id)
-                        .0
-                        .iter(tree)
-                        .map(|id| *tree.get(id))
-                        .collect();
-                    let expr = ElabPath::new(path_id, self.span(path_id), self.root, path).into();
-                    Some(Box::new(expr))
-                } else {
-                    None
-                };
-
-                let args = args.get(tree);
-                let mut arg_exprs = Vec::with_capacity(args.0.len());
-
-                for path_id in args.0.iter(tree) {
-                    let path = tree
-                        .get(path_id)
-                        .0
-                        .iter(tree)
-                        .map(|id| *tree.get(id))
-                        .collect();
-                    let expr = ElabPath::new(path_id, self.span(path_id), self.root, path).into();
-
-                    arg_exprs.push(expr);
-                }
-
-                let job = ElabJob::functor_appl(
-                    id,
-                    loc,
-                    *vis,
-                    name,
-                    self.root,
-                    appl_id,
-                    self.span(appl_id),
-                    path,
-                    functor_name,
-                    arg_exprs,
-                );
-                self.elab_jobs.push_back(job);
-
-                ControlFlow::Continue(())
-            }
-            _ => {
-                let module_sym = ModuleSym::new();
-                self.bindings.module = Some(module_sym);
-
-                self.insert_symbol(id, module_sym);
-
-                // Register the module binding in the current scope
-                self.insert_module(id, loc, *vis, name, module_sym);
+                // Still visit the module type annotation, if any.
                 self.walk_module_bind(id, tree)
             }
+            node::ModuleExpr::Merge(_) => {
+                // TODO(phase C): compose module surfaces for `with`/`over`/`using`.
+                self.report.add_diagnostic(Diagnostic::error(
+                    loc,
+                    "Module composition is not implemented yet",
+                ));
+                ControlFlow::Continue(())
+            }
+            node::ModuleExpr::Error(_) => ControlFlow::Continue(()),
         }
     }
 
     fn visit_module_body(
         &mut self,
         id: Id<node::ModuleBody>,
-        tree: &T,
+        tree: &Tree,
     ) -> ControlFlow<Self::BreakValue> {
         // Either inline module or root module
         let sym = self.bindings.module.take().unwrap_or(self.root);
@@ -571,10 +474,11 @@ where
             self.module_graph.add_dependency(self.root, sym);
         }
 
-        let (_, module) = self.with_fresh_scope(sym, loc, |this| {
+        let (_, mut module) = self.with_fresh_scope(sym, loc, |this| {
             let _ = this.walk_module_body(id, tree);
         });
 
+        module.nodes.set(id, sym);
         self.modules.insert(sym, module);
 
         ControlFlow::Continue(())
@@ -583,13 +487,14 @@ where
     fn visit_module_path(
         &mut self,
         id: Id<node::ModulePath>,
-        tree: &T,
+        tree: &Tree,
     ) -> ControlFlow<Self::BreakValue> {
         let path = tree
             .get(id)
             .0
-            .iter(tree)
-            .map(|id| *tree.get(id))
+            .get(tree)
+            .iter()
+            .map(|id| *id.get(tree))
             .collect::<Vec<_>>();
 
         let loc = self.span(id);
@@ -604,7 +509,7 @@ where
     fn visit_value_bind(
         &mut self,
         id: Id<node::ValueBind>,
-        tree: &T,
+        tree: &Tree,
     ) -> ControlFlow<Self::BreakValue> {
         let node::ValueBind {
             vis,
@@ -640,7 +545,9 @@ where
             self.visit_type_scheme(ty_scheme, tree)?;
         }
 
-        self.visit_expr(value, tree)?;
+        if let Some(value) = value {
+            self.visit_expr(value, tree)?;
+        }
 
         self.scopes.type_.restore_depth(depth);
         self.bindings.value = None;
@@ -648,7 +555,7 @@ where
         ControlFlow::Continue(())
     }
 
-    fn visit_let_expr(&mut self, id: Id<node::LetExpr>, tree: &T) -> ControlFlow<Self::BreakValue> {
+    fn visit_let_expr(&mut self, id: Id<node::LetExpr>, tree: &Tree) -> ControlFlow<Self::BreakValue> {
         let node::LetExpr {
             name,
             value_type,
@@ -662,9 +569,7 @@ where
             self.visit_type_expr(type_, tree)?;
         }
 
-        ValueSym::enter();
         self.visit_expr(value, tree)?;
-        ValueSym::exit();
 
         let sym = ValueSym::new();
         self.insert_symbol(id, sym);
@@ -679,7 +584,7 @@ where
     fn visit_lambda_expr(
         &mut self,
         id: Id<node::LambdaExpr>,
-        tree: &T,
+        tree: &Tree,
     ) -> ControlFlow<Self::BreakValue> {
         let node::LambdaExpr {
             param,
@@ -706,7 +611,7 @@ where
     fn visit_case_branch(
         &mut self,
         id: Id<node::CaseBranch>,
-        tree: &T,
+        tree: &Tree,
     ) -> ControlFlow<Self::BreakValue> {
         let depth = self.scopes.value.depth();
         self.walk_case_branch(id, tree)?;
@@ -718,7 +623,7 @@ where
     fn visit_handler_clause(
         &mut self,
         id: Id<node::HandlerClause>,
-        tree: &T,
+        tree: &Tree,
     ) -> ControlFlow<Self::BreakValue> {
         let node::HandlerClause { op: _, param, body } = *tree.get(id);
 
@@ -735,7 +640,7 @@ where
         ControlFlow::Continue(())
     }
 
-    fn visit_bind_pat(&mut self, id: Id<node::BindPat>, tree: &T) -> ControlFlow<Self::BreakValue> {
+    fn visit_bind_pat(&mut self, id: Id<node::BindPat>, tree: &Tree) -> ControlFlow<Self::BreakValue> {
         let name = *id.get(tree).0.get(tree);
         let sym = ValueSym::new();
         self.insert_symbol(id, sym);
@@ -744,10 +649,10 @@ where
         ControlFlow::Continue(())
     }
 
-    fn visit_list_pat(&mut self, id: Id<node::ListPat>, tree: &T) -> ControlFlow<Self::BreakValue> {
+    fn visit_list_pat(&mut self, id: Id<node::ListPat>, tree: &Tree) -> ControlFlow<Self::BreakValue> {
         let elements = &id.get(tree).0;
 
-        for el in elements.iter(tree) {
+        for el in elements.get(tree).iter().copied() {
             match *el.get(tree) {
                 node::ListElPat::Pat(pat) => self.visit_pat(pat, tree)?,
                 node::ListElPat::Spread(Some(name_id)) => {
@@ -769,11 +674,11 @@ where
     fn visit_record_pat(
         &mut self,
         id: Id<node::RecordPat>,
-        tree: &T,
+        tree: &Tree,
     ) -> ControlFlow<Self::BreakValue> {
         let node::RecordPat { fields, .. } = tree.get(id);
 
-        for field_id in fields.iter(tree) {
+        for field_id in fields.get(tree).iter().copied() {
             let node::RecordFieldPat { field, pat } = *field_id.get(tree);
 
             if let Some(pat) = pat {
@@ -795,7 +700,7 @@ where
     fn visit_variant_pat(
         &mut self,
         id: Id<node::VariantPat>,
-        tree: &T,
+        tree: &Tree,
     ) -> ControlFlow<Self::BreakValue> {
         // Actually I think nothing needs to be done here, for example:
         // < Some : { a } > => ...
@@ -810,7 +715,7 @@ where
     fn visit_qualified_expr(
         &mut self,
         id: Id<node::QualifiedExpr>,
-        tree: &T,
+        tree: &Tree,
     ) -> ControlFlow<Self::BreakValue> {
         let node::QualifiedExpr {
             module_path,
@@ -856,7 +761,7 @@ where
     fn visit_type_bind(
         &mut self,
         id: Id<node::TypeBind>,
-        tree: &T,
+        tree: &Tree,
     ) -> ControlFlow<Self::BreakValue> {
         let node::TypeBind {
             vis,
@@ -892,7 +797,7 @@ where
     fn visit_type_var_bind(
         &mut self,
         id: Id<node::TypeVarBind>,
-        tree: &T,
+        tree: &Tree,
     ) -> ControlFlow<Self::BreakValue> {
         let node::TypeVarBind { var, .. } = *id.get(tree);
 
@@ -908,7 +813,7 @@ where
     fn visit_qualified_type(
         &mut self,
         id: Id<node::QualifiedType>,
-        tree: &T,
+        tree: &Tree,
     ) -> ControlFlow<Self::BreakValue> {
         let node::QualifiedType { path, ty } = *tree.get(id);
 

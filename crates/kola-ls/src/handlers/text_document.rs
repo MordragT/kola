@@ -3,7 +3,7 @@ use std::sync::Arc;
 use kola_interner::StrInterner;
 use kola_span::{Report, Source};
 use kola_syntax::{
-    lexer::{LexInput, tokenize},
+    lexer::tokenize,
     parser::{ParseInput, parse},
 };
 use tower_lsp_server::ls_types as ls;
@@ -18,39 +18,59 @@ async fn on_enter(server: &Server, uri: ls::Uri, version: i32, text: String) {
             .await;
         return;
     };
-    let text: Arc<str> = text.into();
 
-    let source_id = server.interner.write().await.intern(path.as_path());
+    // `Source` is `ariadne::Source<&'static str>`, so the document text has to
+    // outlive the request. The LSP session is the effective lifetime here.
+    let text: &'static str = Box::leak(text.into_boxed_str());
     let source = Source::from(text);
 
-    let mut interner = StrInterner::default();
-    let mut report = Report::new();
+    // Lexing and parsing are synchronous, and `SourceManager` is not `Send`, so
+    // the whole compile step is scoped to drop before any `.await`.
+    let (report, parse_output) = {
+        // Tokenizing resolves imports through the filesystem, and the document
+        // may not be on disk yet, so serve it from an in-memory filesystem.
+        let mut fs = kola_span::io::MockFileSystem::new();
+        fs.add_file(path.clone(), text.to_owned());
 
-    let Some(tokens) = tokenize(LexInput::new(source_id, source.text()), &mut report) else {
-        let diags = utils::report_to_diags(report, &source);
-        server
-            .client
-            .publish_diagnostics(uri, diags, Some(version))
-            .await;
-        return;
+        let mut source_manager = kola_span::SourceManager::new(Arc::new(fs));
+        let mut interner = StrInterner::default();
+        let mut report = Report::new();
+
+        match kola_syntax::lexer::try_tokenize(&mut source_manager, path.as_path()) {
+            Ok(output) => {
+
+                let source_id = output.root_id;
+                let tokens = output.token_map[&source_id].clone();
+                let parse_output =
+                    parse(ParseInput::new(source_id, tokens, &mut interner), &mut report);
+                (report, Some(parse_output))
+            }
+            Err(err) => (err, None),
+        }
     };
 
-    let output = parse(
-        ParseInput::new(source_id, tokens, &mut interner),
-        &mut report,
-    );
-
     if !report.is_empty() {
-        let diags = utils::report_to_diags(report, &source);
-
-        server
-            .client
-            .publish_diagnostics(uri, diags, Some(version))
-            .await;
+        publish(server, uri.clone(), version, &source, report).await;
     }
 
-    server.sources.insert(path.clone(), source);
-    server.outputs.insert(path, output);
+    if let Some(parse_output) = parse_output {
+        server.outputs.insert(path.clone(), parse_output);
+    }
+    server.sources.insert(path, source);
+}
+
+async fn publish(
+    server: &Server,
+    uri: ls::Uri,
+    version: i32,
+    source: &Source,
+    report: Report,
+) {
+    let diags = utils::report_to_diags(report, source);
+    server
+        .client
+        .publish_diagnostics(uri, diags, Some(version))
+        .await;
 }
 
 pub async fn on_opened(server: &Server, params: ls::DidOpenTextDocumentParams) {

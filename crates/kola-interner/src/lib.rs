@@ -70,6 +70,16 @@ impl<T: ?Sized> std::fmt::Debug for Key<T> {
     }
 }
 
+/// A synthetic key used by tooling that needs a placeholder before anything is
+/// interned (for example building span-less ASTs in tests).
+///
+/// It is *not* guaranteed to correspond to an interned value.
+impl<T: ?Sized> Default for Key<T> {
+    fn default() -> Self {
+        Self::from_usize(0)
+    }
+}
+
 impl<T: ?Sized> Key<T> {
     pub fn as_usize(&self) -> usize {
         self.id.get() as usize - 1

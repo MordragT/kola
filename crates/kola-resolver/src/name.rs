@@ -1,10 +1,9 @@
 use std::{collections::HashMap, ops::Index};
 
-use kola_subst::{Substitutable, merge5};
-use kola_tree::node::{AnyName, FunctorName, ModuleName, ModuleTypeName, TypeName, ValueName, Vis};
+use kola_tree::node::{AnyName, ModuleName, ModuleTypeName, TypeName, ValueName, Vis};
 
 use crate::symbol::{
-    AnySym, FunctorSym, ModuleSym, ModuleTypeSym, Substitution, TypeSym, ValueSym,
+    AnySym, ModuleSym, ModuleTypeSym, Substitution, TypeSym, ValueSym,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -26,26 +25,9 @@ impl<S> Binding<S> {
     }
 }
 
-impl<S> Substitutable<Substitution> for Binding<S>
-where
-    S: Substitutable<Substitution>,
-{
-    fn try_apply(&self, s: &mut HashMap<AnySym, AnySym>) -> Option<Self> {
-        if let Some(sym) = self.sym.try_apply(s) {
-            Some(Self::new(self.vis, sym))
-        } else {
-            None
-        }
-    }
-
-    fn apply_mut(&mut self, s: &mut HashMap<AnySym, AnySym>) {
-        self.sym.apply_mut(s);
-    }
-}
 
 #[derive(Debug, Clone, Default)]
 pub struct NameMap {
-    functors: HashMap<FunctorName, Binding<FunctorSym>>,
     module_types: HashMap<ModuleTypeName, Binding<ModuleTypeSym>>,
     modules: HashMap<ModuleName, Binding<ModuleSym>>,
     types: HashMap<TypeName, Binding<TypeSym>>,
@@ -56,16 +38,6 @@ impl NameMap {
     #[inline]
     pub fn new() -> Self {
         Self::default()
-    }
-
-    #[inline]
-    pub fn insert_functor(
-        &mut self,
-        name: FunctorName,
-        vis: Vis,
-        sym: FunctorSym,
-    ) -> Option<Binding<FunctorSym>> {
-        self.functors.insert(name, Binding::new(vis, sym))
     }
 
     #[inline]
@@ -111,18 +83,12 @@ impl NameMap {
     #[inline]
     pub fn contains_name(&self, name: AnyName) -> bool {
         match name {
-            AnyName::Functor(name) => self.functors.contains_key(&name),
             AnyName::ModuleType(name) => self.module_types.contains_key(&name),
             AnyName::Module(name) => self.modules.contains_key(&name),
             AnyName::Type(name) => self.types.contains_key(&name),
             AnyName::Value(name) => self.values.contains_key(&name),
             _ => false,
         }
-    }
-
-    #[inline]
-    pub fn get_functor(&self, name: FunctorName) -> Option<Binding<FunctorSym>> {
-        self.functors.get(&name).copied()
     }
 
     #[inline]
@@ -148,7 +114,6 @@ impl NameMap {
     #[inline]
     pub fn get(&self, name: impl Into<AnyName>) -> Option<Binding<AnySym>> {
         match name.into() {
-            AnyName::Functor(name) => self.get_functor(name).map(|b| b.map_sym(AnySym::Functor)),
             AnyName::ModuleType(name) => self
                 .get_module_type(name)
                 .map(|b| b.map_sym(AnySym::ModuleType)),
@@ -157,13 +122,6 @@ impl NameMap {
             AnyName::Value(name) => self.get_value(name).map(|b| b.map_sym(AnySym::Value)),
             _ => None,
         }
-    }
-
-    #[inline]
-    pub fn iter_functors(&self) -> impl Iterator<Item = (FunctorName, Vis, FunctorSym)> {
-        self.functors
-            .iter()
-            .map(|(&name, binding)| (name, binding.vis, binding.sym))
     }
 
     #[inline]
@@ -197,27 +155,17 @@ impl NameMap {
     pub fn into_raw(
         self,
     ) -> (
-        HashMap<FunctorName, Binding<FunctorSym>>,
         HashMap<ModuleTypeName, Binding<ModuleTypeSym>>,
         HashMap<ModuleName, Binding<ModuleSym>>,
         HashMap<TypeName, Binding<TypeSym>>,
         HashMap<ValueName, Binding<ValueSym>>,
     ) {
         (
-            self.functors,
             self.module_types,
             self.modules,
             self.types,
             self.values,
         )
-    }
-}
-
-impl Index<FunctorName> for NameMap {
-    type Output = Binding<FunctorSym>;
-
-    fn index(&self, index: FunctorName) -> &Self::Output {
-        &self.functors[&index]
     }
 }
 
@@ -253,40 +201,3 @@ impl Index<ValueName> for NameMap {
     }
 }
 
-impl Substitutable<Substitution> for NameMap {
-    fn try_apply(&self, s: &mut HashMap<AnySym, AnySym>) -> Option<Self> {
-        let functors = self.functors.try_apply(s);
-        let module_types = self.module_types.try_apply(s);
-        let modules = self.modules.try_apply(s);
-        let types = self.types.try_apply(s);
-        let values = self.values.try_apply(s);
-
-        merge5(
-            functors,
-            || self.functors.clone(),
-            module_types,
-            || self.module_types.clone(),
-            modules,
-            || self.modules.clone(),
-            types,
-            || self.types.clone(),
-            values,
-            || self.values.clone(),
-        )
-        .map(|(functors, module_types, modules, types, values)| Self {
-            functors,
-            module_types,
-            modules,
-            types,
-            values,
-        })
-    }
-
-    fn apply_mut(&mut self, s: &mut HashMap<AnySym, AnySym>) {
-        self.functors.apply_mut(s);
-        self.module_types.apply_mut(s);
-        self.modules.apply_mut(s);
-        self.types.apply_mut(s);
-        self.values.apply_mut(s);
-    }
-}
