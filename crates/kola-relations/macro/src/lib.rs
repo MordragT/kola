@@ -41,6 +41,7 @@ fn peel_smart_pointers(ty: &Type) -> Type {
 enum Container {
     Vec(Type),
     SideVec(Type, Type),
+    MaybeVec(Type, Type),
     SideMap(Type, Type),
 }
 
@@ -66,6 +67,14 @@ fn classify_container(ty: &Type) -> Option<Container> {
             return None;
         };
         Some(Container::SideVec(k.clone(), v.clone()))
+    } else if segment.ident == "MaybeVec" {
+        let syn::GenericArgument::Type(k) = args.args.first()? else {
+            return None;
+        };
+        let syn::GenericArgument::Type(v) = args.args.get(1)? else {
+            return None;
+        };
+        Some(Container::MaybeVec(k.clone(), v.clone()))
     } else if segment.ident == "SideMap" {
         let syn::GenericArgument::Type(k) = args.args.first()? else {
             return None;
@@ -237,6 +246,75 @@ pub fn derive_relation_storage(input: TokenStream) -> TokenStream {
                         }
                     }
 
+                    impl kola_relations::PartialRelationMut<#k, #v> for #struct_name {
+                        #[inline]
+                        fn get_mut(&mut self, id: kola_relations::Id<#k>) -> Option<&mut #v> {
+                            kola_relations::PartialRelationMut::<#k, #v>::get_mut(&mut self.#field_name, id)
+                        }
+                    }
+
+                    impl kola_relations::TotalRelation<#k, #v> for #struct_name {
+                        #[inline]
+                        fn get(&self, id: kola_relations::Id<#k>) -> &#v {
+                            kola_relations::TotalRelation::<#k, #v>::get(&self.#field_name, id)
+                        }
+
+                        type Rows<'a> = <#field_type as kola_relations::TotalRelation<#k, #v>>::Rows<'a> where Self: 'a;
+
+                        #[inline]
+                        fn rows(&self) -> Self::Rows<'_> {
+                            kola_relations::TotalRelation::<#k, #v>::rows(&self.#field_name)
+                        }
+                    }
+
+                    impl kola_relations::TotalRelationMut<#k, #v> for #struct_name {
+                        #[inline]
+                        fn get_mut(&mut self, id: kola_relations::Id<#k>) -> &mut #v {
+                            kola_relations::TotalRelationMut::<#k, #v>::get_mut(&mut self.#field_name, id)
+                        }
+
+                        type RowsMut<'a> = <#field_type as kola_relations::TotalRelationMut<#k, #v>>::RowsMut<'a> where Self: 'a;
+
+                        #[inline]
+                        fn rows_mut(&mut self) -> Self::RowsMut<'_> {
+                            kola_relations::TotalRelationMut::<#k, #v>::rows_mut(&mut self.#field_name)
+                        }
+                    }
+                };
+                impls.push(impl_block);
+            }
+            Container::MaybeVec(k, v) => {
+                let impl_block = quote! {
+                    impl kola_relations::RelationIds<#k> for #struct_name {
+                        type Ids<'a> = <#field_type as kola_relations::RelationIds<#k>>::Ids<'a> where Self: 'a;
+
+                        #[inline]
+                        fn ids(&self) -> Self::Ids<'_> {
+                            kola_relations::RelationIds::<#k>::ids(&self.#field_name)
+                        }
+                    }
+
+                    impl kola_relations::PartialRelation<#k, #v> for #struct_name {
+                        #[inline]
+                        fn get_opt(&self, id: kola_relations::Id<#k>) -> Option<&#v> {
+                            kola_relations::PartialRelation::<#k, #v>::get_opt(&self.#field_name, id)
+                        }
+                    }
+
+                    impl kola_relations::PartialRelationMut<#k, #v> for #struct_name {
+                        #[inline]
+                        fn get_mut(&mut self, id: kola_relations::Id<#k>) -> Option<&mut #v> {
+                            kola_relations::PartialRelationMut::<#k, #v>::get_mut(&mut self.#field_name, id)
+                        }
+                    }
+
+                    impl kola_relations::PartialRelationSet<#k, #v> for #struct_name {
+                        #[inline]
+                        fn set(&mut self, id: kola_relations::Id<#k>, value: #v) {
+                            kola_relations::PartialRelationSet::<#k, #v>::set(&mut self.#field_name, id, value)
+                        }
+                    }
+
                     impl kola_relations::TotalRelation<#k, #v> for #struct_name {
                         #[inline]
                         fn get(&self, id: kola_relations::Id<#k>) -> &#v {
@@ -284,6 +362,20 @@ pub fn derive_relation_storage(input: TokenStream) -> TokenStream {
                             kola_relations::PartialRelation::<#k, #v>::get_opt(&self.#field_name, id)
                         }
                     }
+
+                    impl kola_relations::PartialRelationMut<#k, #v> for #struct_name {
+                        #[inline]
+                        fn get_mut(&mut self, id: kola_relations::Id<#k>) -> Option<&mut #v> {
+                            kola_relations::PartialRelationMut::<#k, #v>::get_mut(&mut self.#field_name, id)
+                        }
+                    }
+
+                    impl kola_relations::PartialRelationSet<#k, #v> for #struct_name {
+                        #[inline]
+                        fn set(&mut self, id: kola_relations::Id<#k>, value: #v) {
+                            kola_relations::PartialRelationSet::<#k, #v>::set(&mut self.#field_name, id, value)
+                        }
+                    }
                 };
                 impls.push(impl_block);
             }
@@ -293,5 +385,48 @@ pub fn derive_relation_storage(input: TokenStream) -> TokenStream {
     let expanded = quote! {
         #(#impls)*
     };
+    expanded.into()
+}
+
+/// Generate a [`kola_relations::Merge`] impl that merges every `#[relation]`
+/// column.
+///
+/// Every marked field must implement `Merge`, which the relation containers
+/// (`MaybeVec`, `SideMap`) do.
+#[proc_macro_derive(Merge, attributes(relation))]
+pub fn derive_merge(input: TokenStream) -> TokenStream {
+    let input = parse_macro_input!(input as DeriveInput);
+    let name = &input.ident;
+
+    let syn::Data::Struct(data) = &input.data else {
+        return syn::Error::new_spanned(&input.ident, "Merge can only be derived for structs")
+            .to_compile_error()
+            .into();
+    };
+
+    let accessors = data
+        .fields
+        .iter()
+        .enumerate()
+        .filter(|(_, field)| field.attrs.iter().any(|attr| attr.path().is_ident("relation")))
+        .map(|(index, field)| match &field.ident {
+            Some(ident) => quote! { #ident },
+            None => {
+                let index = syn::Index::from(index);
+                quote! { #index }
+            }
+        })
+        .collect::<Vec<_>>();
+
+    let (impl_generics, ty_generics, where_clause) = input.generics.split_for_impl();
+
+    let expanded = quote! {
+        impl #impl_generics kola_relations::Merge for #name #ty_generics #where_clause {
+            fn merge(&mut self, other: Self) {
+                #( self.#accessors.merge(other.#accessors); )*
+            }
+        }
+    };
+
     expanded.into()
 }

@@ -260,7 +260,8 @@ macro_rules! define_tree_and_relations {
                     }
                 }
 
-                // Allocate raw T directly using M::default()
+                // Span-less allocation, only for metadata types with a meaningful
+                // default. `Loc` deliberately does not implement `Default`.
                 impl<M: Clone + Default + 'static> kola_relations::Allocate<[< $Name >]> for Tree<M> {
                     type Key = [< $Name >];
 
@@ -269,6 +270,7 @@ macro_rules! define_tree_and_relations {
                         kola_relations::Allocate::<([< $Name >], M)>::alloc(self, (value, M::default()))
                     }
                 }
+
             )*
         }
     };

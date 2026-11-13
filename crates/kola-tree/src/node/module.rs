@@ -16,11 +16,11 @@ use crate::print::TreePrinter;
 pub struct BindError;
 
 impl BindError {
-    pub fn new_in<M>(builder: &mut Tree<M>) -> Id<Self>
+    pub fn new_in<M>(meta: M, builder: &mut Tree<M>) -> Id<Self>
     where
-        M: Clone + Default + 'static,
+        M: Clone + 'static,
     {
-        builder.alloc(Self)
+        builder.alloc_located((Self, meta.clone()))
     }
 }
 
@@ -65,14 +65,15 @@ impl Bind {
         name: ValueName,
         ty_scheme: Option<TypeScheme>,
         value: Option<Expr>,
+        meta: M,
         builder: &mut Tree<M>,
     ) -> Id<Self>
     where
-        M: Clone + Default + 'static,
+        M: Clone + 'static,
     {
-        let bind = ValueBind::new_in(vis, name, ty_scheme, value, builder);
+        let bind = ValueBind::new_in(vis, name, ty_scheme, value, meta.clone(), builder);
 
-        builder.alloc(Self::Value(bind))
+        builder.alloc_located((Self::Value(bind), meta.clone()))
     }
 }
 
@@ -108,22 +109,23 @@ impl ValueBind {
         name: ValueName,
         ty_scheme: Option<TypeScheme>,
         value: Option<Expr>,
+        meta: M,
         builder: &mut Tree<M>,
     ) -> Id<Self>
     where
-        M: Clone + Default + 'static,
+        M: Clone + 'static,
     {
-        let vis = builder.alloc(vis);
-        let name = builder.alloc(name);
-        let ty_scheme = ty_scheme.map(|ty| builder.alloc(ty));
-        let value = value.map(|value| builder.alloc(value));
+        let vis = builder.alloc_located((vis, meta.clone()));
+        let name = builder.alloc_located((name, meta.clone()));
+        let ty_scheme = ty_scheme.map(|ty| builder.alloc_located((ty, meta.clone())));
+        let value = value.map(|value| builder.alloc_located((value, meta.clone())));
 
-        builder.alloc(Self {
+        builder.alloc_located((Self {
             vis,
             name,
             ty_scheme,
             value,
-        })
+        }, meta.clone()))
     }
 }
 
@@ -154,22 +156,23 @@ impl ModuleBind {
         name: ModuleName,
         ty: Option<ModuleType>,
         value: Option<ModuleExpr>,
+        meta: M,
         builder: &mut Tree<M>,
     ) -> Id<Self>
     where
-        M: Clone + Default + 'static,
+        M: Clone + 'static,
     {
-        let vis = builder.alloc(vis);
-        let name = builder.alloc(name);
-        let ty = ty.map(|sig| builder.alloc(sig));
-        let value = value.map(|value| builder.alloc(value));
+        let vis = builder.alloc_located((vis, meta.clone()));
+        let name = builder.alloc_located((name, meta.clone()));
+        let ty = ty.map(|sig| builder.alloc_located((sig, meta.clone())));
+        let value = value.map(|value| builder.alloc_located((value, meta.clone())));
 
-        builder.alloc(Self {
+        builder.alloc_located((Self {
             vis,
             name,
             ty,
             value,
-        })
+        }, meta.clone()))
     }
 }
 

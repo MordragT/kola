@@ -5,15 +5,14 @@ use kola_builtins::{BuiltinType, find_builtin_id};
 use kola_collections::scope::LinearScope;
 use kola_interner::StrInterner;
 use kola_span::{Diagnostic, Loc, Report, SourceId};
-use kola_syntax::prelude::*;
 use kola_tree::{
-    node::{ModuleName, ModuleTypeName, TypeName, ValueName, Vis},
+    node::{ModuleName, ModuleTypeName, TypeName, ValueName},
     prelude::*,
 };
 
 use crate::{
     def::{AnyDef, DefMap},
-    elaborate::{ElabJob, ElabJobs, ElabPath},
+    elaborate::{ElabJob, ElabJobs},
     env::{Module, ModuleMap},
     error::name_collision,
     lookup::{
@@ -194,9 +193,9 @@ impl<'a> Discoverer<'a> {
         *self.locs.get_span(id)
     }
 
-    fn insert_symbol<T, S>(&mut self, id: Id<T>, sym: S)
+    fn insert_symbol<T: 'static, S: 'static>(&mut self, id: Id<T>, sym: S)
     where
-        T: NodeMeta<NodeMap, Value = S>,
+        NodeMap: PartialRelationSet<T, S>,
     {
         self.scope.nodes.set(id, sym);
     }

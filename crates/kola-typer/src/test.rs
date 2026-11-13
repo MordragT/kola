@@ -2,7 +2,8 @@ use camino::Utf8PathBuf;
 use kola_builtins::BuiltinLexicon;
 use kola_interner::{PathInterner, StrInterner};
 use kola_resolver::{def::DefMap, env::ModuleMap, phase::NodeMap};
-use kola_span::{Loc, Located, Report, SourceId};
+use kola_span::{Loc, Located, Report, SourceId, Span};
+use kola_subst::Substitutable;
 use kola_tree::prelude::*;
 use kola_types::{class::TypeClassEnv, env::TypeEnv, subst::Substitution};
 
@@ -11,6 +12,10 @@ use crate::{constraints::Constraints, error::TypeErrors, phase::TypedNodes, type
 pub fn mocked_source() -> SourceId {
     let mut interner = PathInterner::default();
     interner.intern(Utf8PathBuf::from("test"))
+}
+
+pub fn test_loc() -> Loc {
+    Loc::new(mocked_source(), Span::new(0, 0))
 }
 
 pub fn run_typer<T>(tree: Tree, root_id: Id<T>) -> Result<TypedNodes, Located<TypeErrors>>

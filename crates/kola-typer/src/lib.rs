@@ -1,6 +1,3 @@
-#![feature(never_type)]
-#![feature(exhaustive_patterns)]
-
 //! # Constraint-Based Type Inference
 //!
 //! This crate implements a constraint-based Hindley-Milner type system with:

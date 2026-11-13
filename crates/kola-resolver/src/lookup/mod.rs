@@ -3,14 +3,12 @@ mod module_ty;
 mod ty;
 mod value;
 
-use std::collections::HashMap;
 
 pub use module::{ModuleLookup, lookup_modules};
 pub use module_ty::{ModuleTypeAnnotLookup, ModuleTypeLookup, lookup_module_types};
 pub use ty::{TypeAnnotLookup, TypeLookup, lookup_types};
 pub use value::{ValueLookup, lookup_values};
 
-use crate::symbol::{AnySym, Substitution};
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
 pub struct Lookups {

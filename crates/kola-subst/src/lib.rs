@@ -10,6 +10,8 @@
 //! implementations (e.g. for symbols or monotypes) live in the crates that own
 //! those types.
 
+pub use kola_subst_macro::Substitutable;
+
 use indexmap::IndexMap;
 use std::{
     borrow::Cow,
@@ -229,128 +231,4 @@ where
         (None, Some(b)) => Some((default_a(), b)),
         (None, None) => None,
     }
-}
-
-/// Combine the results of three `try_apply` calls.
-pub fn merge3<A, B, C, DA, DB, DC>(
-    a: Option<A>,
-    default_a: DA,
-    b: Option<B>,
-    default_b: DB,
-    c: Option<C>,
-    default_c: DC,
-) -> Option<(A, B, C)>
-where
-    DA: Fn() -> A,
-    DB: Fn() -> B,
-    DC: Fn() -> C,
-{
-    merge(a, &default_a, b, &default_b).and_then(|(a, b)| {
-        merge(Some((a, b)), || (default_a(), default_b()), c, default_c)
-            .map(|((a, b), c)| (a, b, c))
-    })
-}
-
-/// Combine the results of four `try_apply` calls.
-pub fn merge4<A, B, C, D, DA, DB, DC, DD>(
-    a: Option<A>,
-    default_a: DA,
-    b: Option<B>,
-    default_b: DB,
-    c: Option<C>,
-    default_c: DC,
-    d: Option<D>,
-    default_d: DD,
-) -> Option<(A, B, C, D)>
-where
-    DA: Fn() -> A,
-    DB: Fn() -> B,
-    DC: Fn() -> C,
-    DD: Fn() -> D,
-{
-    merge3(a, &default_a, b, &default_b, c, &default_c).and_then(|(a, b, c)| {
-        merge(
-            Some((a, b, c)),
-            || (default_a(), default_b(), default_c()),
-            d,
-            default_d,
-        )
-        .map(|((a, b, c), d)| (a, b, c, d))
-    })
-}
-
-/// Combine the results of five `try_apply` calls.
-pub fn merge5<A, B, C, D, E, DA, DB, DC, DD, DE>(
-    a: Option<A>,
-    default_a: DA,
-    b: Option<B>,
-    default_b: DB,
-    c: Option<C>,
-    default_c: DC,
-    d: Option<D>,
-    default_d: DD,
-    e: Option<E>,
-    default_e: DE,
-) -> Option<(A, B, C, D, E)>
-where
-    DA: Fn() -> A,
-    DB: Fn() -> B,
-    DC: Fn() -> C,
-    DD: Fn() -> D,
-    DE: Fn() -> E,
-{
-    merge4(a, &default_a, b, &default_b, c, &default_c, d, &default_d).and_then(|(a, b, c, d)| {
-        merge(
-            Some((a, b, c, d)),
-            || (default_a(), default_b(), default_c(), default_d()),
-            e,
-            default_e,
-        )
-        .map(|((a, b, c, d), e)| (a, b, c, d, e))
-    })
-}
-
-/// Combine the results of six `try_apply` calls.
-pub fn merge6<A, B, C, D, E, F, DA, DB, DC, DD, DE, DF>(
-    a: Option<A>,
-    default_a: DA,
-    b: Option<B>,
-    default_b: DB,
-    c: Option<C>,
-    default_c: DC,
-    d: Option<D>,
-    default_d: DD,
-    e: Option<E>,
-    default_e: DE,
-    f: Option<F>,
-    default_f: DF,
-) -> Option<(A, B, C, D, E, F)>
-where
-    DA: Fn() -> A,
-    DB: Fn() -> B,
-    DC: Fn() -> C,
-    DD: Fn() -> D,
-    DE: Fn() -> E,
-    DF: Fn() -> F,
-{
-    merge5(
-        a, &default_a, b, &default_b, c, &default_c, d, &default_d, e, &default_e,
-    )
-    .and_then(|(a, b, c, d, e)| {
-        merge(
-            Some((a, b, c, d, e)),
-            || {
-                (
-                    default_a(),
-                    default_b(),
-                    default_c(),
-                    default_d(),
-                    default_e(),
-                )
-            },
-            f,
-            default_f,
-        )
-        .map(|((a, b, c, d, e), f)| (a, b, c, d, e, f))
-    })
 }

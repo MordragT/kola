@@ -100,7 +100,6 @@
 //! - **Open Records**: Module extension and record operations
 //! - **Hot Reloading**: Individual module recompilation and replacement
 
-use kola_span::Loc;
 use kola_interner::StrInterner;
 use kola_ir::{
     id::Id as InstrId,
@@ -113,7 +112,7 @@ use kola_resolver::{
     db::{Db, ModuleView},
     symbol::{ModuleSym, ValueSym},
 };
-use kola_tree::prelude::{IdExt, NodeMeta};
+use kola_tree::prelude::IdExt;
 use log::trace;
 
 use crate::normalizer::Normalizer;

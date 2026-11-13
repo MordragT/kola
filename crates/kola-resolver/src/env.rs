@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 
 use indexmap::IndexMap;
 use kola_span::Loc;
@@ -7,7 +6,7 @@ use kola_tree::source::ModuleKey;
 use crate::{
     name::NameMap,
     phase::NodeMap,
-    symbol::{AnySym, ModuleSym, Substitution},
+    symbol::ModuleSym,
 };
 
 pub type ModuleMap = IndexMap<ModuleSym, Module>;

@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 
 use indexmap::IndexMap;
 use kola_span::{Diagnostic, Issue, Loc, Report};
@@ -11,7 +10,7 @@ use log::debug;
 use crate::{
     env::ModuleMap,
     phase::ResolvedValue,
-    symbol::{AnySym, ModuleSym, Substitution, ValueGraph, ValueOrders, ValueSym},
+    symbol::{ModuleSym, ValueGraph, ValueOrders, ValueSym},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]

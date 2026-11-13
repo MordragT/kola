@@ -15,7 +15,7 @@ use kola_tree::{
 };
 
 use crate::symbol::{
-    AnySym, ModuleSym, ModuleTypeSym, Substitution, Sym, TypeSym, ValueSym,
+    AnySym, ModuleSym, ModuleTypeSym, Sym, TypeSym, ValueSym,
 };
 
 pub type ModuleTypeDef = Located<Id<node::ModuleTypeBind>>;

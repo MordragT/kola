@@ -3,18 +3,17 @@ members = [
     "crates/*",
     "crates/kola-print/macro",
     "crates/kola-relations/macro",
+    "crates/kola-subst/macro",
 ]
 
 [workspace.dependencies]
 # Kola Crates
 kola-relations = { path = "crates/kola-relations" }
-kola-relations-macro = { path = "crates/kola-relations/macro" }
 kola-builtins = { path = "crates/kola-builtins" }
 kola-collections = { path = "crates/kola-collections" }
 kola-driver = { path = "crates/kola-driver" }
 kola-ir = { path = "crates/kola-ir" }
 kola-lowerer = { path = "crates/kola-lowerer" }
-kola-ls = { path = "crates/kola-ls" }
 kola-machine = { path = "crates/kola-machine" }
 kola-print = { path = "crates/kola-print" }
 kola-resolver = { path = "crates/kola-resolver" }
@@ -49,7 +48,6 @@ pastey = "0.2"
 log = "0.4"
 enumset = "1.1"
 unscanny = "0.1"
-rayon = "1.12"
 
 
 [package]

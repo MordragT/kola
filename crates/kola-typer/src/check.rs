@@ -39,6 +39,7 @@
 use kola_builtins::BuiltinLexicon;
 use kola_interner::{StrInterner, ext::InternerExt};
 use kola_print::prelude::*;
+use kola_relations::Merge;
 use kola_resolver::{db::Db, print::ResolutionDecorator};
 use kola_span::{IntoDiagnostic, Report};
 use kola_subst::Substitutable;
@@ -129,7 +130,7 @@ pub fn type_check(
             // TODO generalize ?
 
             module_env.insert_type(type_sym, type_);
-            module_annotations.extend(typed_nodes);
+            module_annotations.merge(typed_nodes);
         }
 
         if !report.is_empty() {
@@ -183,7 +184,7 @@ pub fn type_check(
 
             // Update annotations with the final type
             *typed_nodes.get_unchecked_mut(id) = poly_type;
-            module_annotations.extend(typed_nodes);
+            module_annotations.merge(typed_nodes);
         }
 
         if !report.is_empty() {

@@ -3,9 +3,6 @@
 //! This crate implements a **forward reference symbol system** for resolving module dependencies,
 //! imports, and symbol bindings in the Kola language.
 
-#![feature(never_type)]
-#![feature(exhaustive_patterns)]
-
 pub mod db;
 pub mod def;
 pub mod discover;

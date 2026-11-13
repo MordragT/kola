@@ -1,5 +1,3 @@
-#![feature(never_type)]
-
 pub mod class;
 pub mod env;
 pub mod kind;

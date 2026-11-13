@@ -1,4 +1,3 @@
-use kola_span::Loc;
 use std::ops::ControlFlow;
 
 use kola_ir::prelude::{Id as InstrId, instr as ir, *};
@@ -45,12 +44,11 @@ impl<'a, Node> Normalizer<'a, Node> {
         symbol
     }
 
-    pub fn symbol_of<T, N>(&self, id: TreeId<T>) -> ir::Symbol
+    pub fn symbol_of<T: 'static, N: Namespace + 'static>(&self, id: TreeId<T>) -> ir::Symbol
     where
-        N: Namespace,
-        T: NodeMeta<NodeMap, Value = Sym<N>>,
+        NodeMap: PartialRelation<T, Sym<N>>,
     {
-        let sym = self.nodes.get_unchecked(id);
+        let sym: &Sym<N> = self.nodes.get_unchecked(id);
         ir::Symbol::new(sym.id())
     }
 
@@ -66,9 +64,9 @@ impl<'a, Node> Normalizer<'a, Node> {
 
     /// Run a nested normalization with fresh state, then restore original state
     /// Returns the normalized expression
-    fn with_fresh_context<F>(&mut self, tree: &Tree, f: F) -> InstrId<ir::Expr>
+    fn with_fresh_context<M: 'static, F>(&mut self, tree: &Tree<M>, f: F) -> InstrId<ir::Expr>
     where
-        F: FnOnce(&mut Self, &Tree) -> ControlFlow<!>,
+        F: FnOnce(&mut Self, &Tree<M>) -> ControlFlow<!>,
     {
         // Create fresh symbols for the nested context
         let fresh_hole = Self::next_symbol();
@@ -96,9 +94,9 @@ impl<'a, Node> Normalizer<'a, Node> {
         result
     }
 
-    pub fn run(mut self, tree: &Tree) -> InstrId<ir::Expr>
+    pub fn run<M: 'static>(mut self, tree: &Tree<M>) -> InstrId<ir::Expr>
     where
-        TreeId<Node>: Visitable<Loc>,
+        TreeId<Node>: Visitable<M>,
     {
         let root = self.root_id;
 
@@ -108,10 +106,10 @@ impl<'a, Node> Normalizer<'a, Node> {
     }
 
     // Helper method to build FieldPath from AST field path
-    fn build_field_path(
+    fn build_field_path<M: 'static>(
         &mut self,
         field_path: &[TreeId<node::ValueName>],
-        tree: &Tree,
+        tree: &Tree<M>,
     ) -> InstrId<ir::FieldPath> {
         field_path
             .iter()
@@ -123,13 +121,13 @@ impl<'a, Node> Normalizer<'a, Node> {
     }
 }
 
-impl<'a, Node> Visitor<Loc> for Normalizer<'a, Node> {
+impl<'a, Node, M: 'static> Visitor<M> for Normalizer<'a, Node> {
     type BreakValue = !;
 
     fn visit_literal_expr(
         &mut self,
         id: TreeId<node::LiteralExpr>,
-        tree: &Tree,
+        tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         let atom = match *id.get(tree) {
             node::LiteralExpr::Unit => ir::Atom::Noop,
@@ -147,7 +145,7 @@ impl<'a, Node> Visitor<Loc> for Normalizer<'a, Node> {
     fn visit_qualified_expr(
         &mut self,
         id: TreeId<node::QualifiedExpr>,
-        tree: &Tree,
+        tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         let node::QualifiedExpr {
             module_path,
@@ -231,7 +229,7 @@ impl<'a, Node> Visitor<Loc> for Normalizer<'a, Node> {
     fn visit_tag_expr(
         &mut self,
         id: TreeId<node::TagExpr>,
-        tree: &Tree,
+        tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         let tag = id.get(tree).0.get(tree).0;
         let tag_atom = self.builder.add(ir::Atom::Tag(tag.into()));
@@ -243,7 +241,7 @@ impl<'a, Node> Visitor<Loc> for Normalizer<'a, Node> {
     fn visit_type_witness_expr(
         &mut self,
         id: TreeId<node::TypeWitnessExpr>,
-        tree: &Tree,
+        tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         let wit = *id.get(tree);
 
@@ -271,7 +269,7 @@ impl<'a, Node> Visitor<Loc> for Normalizer<'a, Node> {
     fn visit_let_expr(
         &mut self,
         id: TreeId<node::LetExpr>,
-        tree: &Tree,
+        tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         let node::LetExpr { value, body, .. } = *id.get(tree);
 
@@ -285,7 +283,7 @@ impl<'a, Node> Visitor<Loc> for Normalizer<'a, Node> {
     fn visit_lambda_expr(
         &mut self,
         id: TreeId<node::LambdaExpr>,
-        tree: &Tree,
+        tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         let node::LambdaExpr { body, .. } = *id.get(tree);
 
@@ -302,7 +300,7 @@ impl<'a, Node> Visitor<Loc> for Normalizer<'a, Node> {
     fn visit_call_expr(
         &mut self,
         id: TreeId<node::CallExpr>,
-        tree: &Tree,
+        tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         let node::CallExpr { func, arg } = *id.get(tree);
 
@@ -335,7 +333,7 @@ impl<'a, Node> Visitor<Loc> for Normalizer<'a, Node> {
     fn visit_handle_expr(
         &mut self,
         id: TreeId<node::HandleExpr>,
-        tree: &Tree,
+        tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         let node::HandleExpr { source, clauses } = id.get(tree);
 
@@ -388,7 +386,7 @@ impl<'a, Node> Visitor<Loc> for Normalizer<'a, Node> {
     fn visit_do_expr(
         &mut self,
         id: TreeId<node::DoExpr>,
-        tree: &Tree,
+        tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         let node::DoExpr { op, arg } = *id.get(tree);
 
@@ -415,7 +413,7 @@ impl<'a, Node> Visitor<Loc> for Normalizer<'a, Node> {
     fn visit_if_expr(
         &mut self,
         id: TreeId<node::IfExpr>,
-        tree: &Tree,
+        tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         let node::IfExpr {
             pred,
@@ -449,7 +447,7 @@ impl<'a, Node> Visitor<Loc> for Normalizer<'a, Node> {
     fn visit_unary_expr(
         &mut self,
         id: TreeId<node::UnaryExpr>,
-        tree: &Tree,
+        tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         let node::UnaryExpr { op, operand } = *id.get(tree);
 
@@ -479,7 +477,7 @@ impl<'a, Node> Visitor<Loc> for Normalizer<'a, Node> {
     fn visit_binary_expr(
         &mut self,
         id: TreeId<node::BinaryExpr>,
-        tree: &Tree,
+        tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         let node::BinaryExpr { lhs, op, rhs } = *id.get(tree);
 
@@ -530,7 +528,7 @@ impl<'a, Node> Visitor<Loc> for Normalizer<'a, Node> {
     fn visit_list_expr(
         &mut self,
         id: TreeId<node::ListExpr>,
-        tree: &Tree,
+        tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         let items = &id.get(tree).0;
 
@@ -561,7 +559,7 @@ impl<'a, Node> Visitor<Loc> for Normalizer<'a, Node> {
     fn visit_record_expr(
         &mut self,
         id: TreeId<node::RecordExpr>,
-        tree: &Tree,
+        tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         let fields = &id.get(tree).0;
 
@@ -604,7 +602,7 @@ impl<'a, Node> Visitor<Loc> for Normalizer<'a, Node> {
     fn visit_record_extend_expr(
         &mut self,
         id: TreeId<node::RecordExtendExpr>,
-        tree: &Tree,
+        tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         let node::RecordExtendExpr {
             source,
@@ -649,7 +647,7 @@ impl<'a, Node> Visitor<Loc> for Normalizer<'a, Node> {
     fn visit_record_restrict_expr(
         &mut self,
         id: TreeId<node::RecordRestrictExpr>,
-        tree: &Tree,
+        tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         let node::RecordRestrictExpr {
             source, field_path, ..
@@ -684,7 +682,7 @@ impl<'a, Node> Visitor<Loc> for Normalizer<'a, Node> {
     fn visit_record_update_expr(
         &mut self,
         id: TreeId<node::RecordUpdateExpr>,
-        tree: &Tree,
+        tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         let node::RecordUpdateExpr {
             source,
@@ -740,7 +738,7 @@ impl<'a, Node> Visitor<Loc> for Normalizer<'a, Node> {
     fn visit_record_merge_expr(
         &mut self,
         id: TreeId<node::RecordMergeExpr>,
-        tree: &Tree,
+        tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         let node::RecordMergeExpr { lhs, rhs } = *id.get(tree);
 
@@ -774,7 +772,7 @@ impl<'a, Node> Visitor<Loc> for Normalizer<'a, Node> {
     fn visit_case_expr(
         &mut self,
         id: TreeId<node::CaseExpr>,
-        tree: &Tree,
+        tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         let node::CaseExpr { source, branches } = id.get(tree);
 
@@ -873,23 +871,22 @@ impl<'a> PatternNormalizer<'a> {
         symbol
     }
 
-    pub fn symbol_of<T, N>(&self, id: TreeId<T>) -> ir::Symbol
+    pub fn symbol_of<T: 'static, N: Namespace + 'static>(&self, id: TreeId<T>) -> ir::Symbol
     where
-        N: Namespace,
-        T: NodeMeta<NodeMap, Value = Sym<N>>,
+        NodeMap: PartialRelation<T, Sym<N>>,
     {
-        let sym = self.nodes.get_unchecked(id);
+        let sym: &Sym<N> = self.nodes.get_unchecked(id);
         ir::Symbol::new(sym.id())
     }
 }
 
-impl<'a> Visitor<Loc> for PatternNormalizer<'a> {
+impl<'a, M: 'static> Visitor<M> for PatternNormalizer<'a> {
     type BreakValue = !;
 
     fn visit_any_pat(
         &mut self,
         _id: TreeId<node::AnyPat>,
-        _tree: &Tree,
+        _tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         // No testing nor extraction needed
         // Not even a symbol needed so maybe just do nothing here ?
@@ -900,7 +897,7 @@ impl<'a> Visitor<Loc> for PatternNormalizer<'a> {
     fn visit_bind_pat(
         &mut self,
         id: TreeId<node::BindPat>,
-        _tree: &Tree,
+        _tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         let bind = self.symbol_of(id);
 
@@ -916,7 +913,7 @@ impl<'a> Visitor<Loc> for PatternNormalizer<'a> {
     fn visit_literal_pat(
         &mut self,
         id: TreeId<node::LiteralPat>,
-        tree: &Tree,
+        tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         // I think I should actually only create ExtractIdentity in the bind pat
         // LiteralPat are only tests anyway and will never be doing any binding
@@ -974,7 +971,7 @@ impl<'a> Visitor<Loc> for PatternNormalizer<'a> {
     fn visit_list_pat(
         &mut self,
         id: TreeId<node::ListPat>,
-        tree: &Tree,
+        tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         let elements = &id.get(tree).0;
 
@@ -1158,7 +1155,7 @@ impl<'a> Visitor<Loc> for PatternNormalizer<'a> {
     fn visit_record_pat(
         &mut self,
         id: TreeId<node::RecordPat>,
-        tree: &Tree,
+        tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         let node::RecordPat { fields, polymorph } = id.get(tree);
 
@@ -1238,7 +1235,7 @@ impl<'a> Visitor<Loc> for PatternNormalizer<'a> {
     fn visit_variant_pat(
         &mut self,
         id: TreeId<node::VariantPat>,
-        tree: &Tree,
+        tree: &Tree<M>,
     ) -> ControlFlow<Self::BreakValue> {
         let variant_pat = id.get(tree);
         let tags = &variant_pat.0;
@@ -1329,10 +1326,9 @@ mod tests {
     use kola_tree::prelude::*;
 
     use super::Normalizer;
-    use kola_span::Loc;
 
-    // TODO this wont work for path expressions using bound symbols,
-    fn mock_resolved(tree: &Tree) -> NodeMap {
+        // TODO this wont work for path expressions using bound symbols,
+    fn mock_resolved(tree: &Tree<()>) -> NodeMap {
         let mut resolved = NodeMap::default();
 
         for (id, _) in tree.qualified_expr.iter().enumerate() {
@@ -1341,19 +1337,21 @@ mod tests {
         }
 
         for (id, _) in tree.let_expr.iter().enumerate() {
-            resolved.set::<node::LetExpr>(Id::new(id as u32), ValueSym::new());
+            let id: Id<node::LetExpr> = Id::new(id as u32);
+            resolved.set(id, ValueSym::new());
         }
 
         for (id, _) in tree.lambda_expr.iter().enumerate() {
-            resolved.set::<node::LambdaExpr>(Id::new(id as u32), ValueSym::new());
+            let id: Id<node::LambdaExpr> = Id::new(id as u32);
+            resolved.set(id, ValueSym::new());
         }
 
         resolved
     }
 
-    fn normalize<T>(tree: Tree, root_id: Id<T>, resolved: &NodeMap) -> Ir
+    fn normalize<T>(tree: Tree<()>, root_id: Id<T>, resolved: &NodeMap) -> Ir
     where
-        Id<T>: Visitable<Loc>,
+        Id<T>: Visitable<()>,
     {
         let mut builder = IrBuilder::new();
 
@@ -1377,8 +1375,8 @@ mod tests {
 
     #[test]
     fn literal() {
-        let mut builder = Tree::new();
-        let lit = builder.alloc_located((node::LiteralExpr::Num(10.0), Loc::default()));
+        let mut builder = Tree::<()>::new();
+        let lit = builder.alloc(node::LiteralExpr::Num(10.0));
 
         let resolved = mock_resolved(&builder);
         let ir = normalize(builder, lit, &resolved);
@@ -1391,12 +1389,12 @@ mod tests {
     #[test]
     fn qualified_expr_unbound() {
         let mut interner = StrInterner::default();
-        let mut builder = Tree::new();
+        let mut builder = Tree::<()>::new();
 
         let x = interner.intern("x");
 
         // Build a simple path expression: x (no module path, just binding)
-        let path_expr = node::QualifiedExpr::new_in(None, x, None, &mut builder);
+        let path_expr = node::QualifiedExpr::new_in(None, x, None, (), &mut builder);
 
         let resolved = mock_resolved(&builder);
         let ir = normalize(builder, path_expr, &resolved);
@@ -1408,7 +1406,7 @@ mod tests {
     #[test]
     fn let_expr() {
         let mut interner = StrInterner::default();
-        let mut builder = Tree::new();
+        let mut builder = Tree::<()>::new();
         let mut resolved = NodeMap::default();
 
         let x = interner.intern("x");
@@ -1416,11 +1414,11 @@ mod tests {
 
         // Build: let x = 42 in x
 
-        let inside = node::QualifiedExpr::new_in(None, x, None, &mut builder);
+        let inside = node::QualifiedExpr::new_in(None, x, None, (), &mut builder);
         resolved.set(inside, ResolvedValue::Reference(x_sym));
 
-        let value = builder.alloc_located((node::LiteralExpr::Num(42.0), Loc::default()));
-        let let_expr = node::LetExpr::new_in(x, None, value, inside, &mut builder);
+        let value = builder.alloc(node::LiteralExpr::Num(42.0));
+        let let_expr = node::LetExpr::new_in(x, None, value, inside, (), &mut builder);
         resolved.set(let_expr, x_sym);
 
         let ir = normalize(builder, let_expr, &resolved);
@@ -1434,7 +1432,7 @@ mod tests {
     #[test]
     fn lambda_call_expr() {
         let mut interner = StrInterner::default();
-        let mut builder = Tree::new();
+        let mut builder = Tree::<()>::new();
         let mut resolved = NodeMap::default();
 
         let x = interner.intern("x");
@@ -1443,20 +1441,20 @@ mod tests {
         // Build: (\x => x) 42  (identity function applied to 42)
 
         // Create the lambda parameter reference in body: x
-        let lambda_body = node::QualifiedExpr::new_in(None, x, None, &mut builder);
+        let lambda_body = node::QualifiedExpr::new_in(None, x, None, (), &mut builder);
         resolved.set(lambda_body, ResolvedValue::Reference(x_sym));
 
         // Create the lambda: \x => x
-        let lambda_expr = node::LambdaExpr::new_in(x, None, lambda_body, &mut builder);
+        let lambda_expr = node::LambdaExpr::new_in(x, None, lambda_body, (), &mut builder);
         resolved.set(lambda_expr, x_sym); // Lambda gets parameter symbol
-        let lambda = builder.alloc_located((node::Expr::Lambda(lambda_expr), Loc::default()));
+        let lambda = builder.alloc(node::Expr::Lambda(lambda_expr));
 
         // Create the argument: 42
-        let arg_literal = builder.alloc_located((node::LiteralExpr::Num(42.0), Loc::default()));
-        let arg = builder.alloc_located((node::Expr::Literal(arg_literal), Loc::default()));
+        let arg_literal = builder.alloc(node::LiteralExpr::Num(42.0));
+        let arg = builder.alloc(node::Expr::Literal(arg_literal));
 
         // Create the call: (\x => x) 42
-        let call_expr = builder.alloc_located((node::CallExpr { func: lambda, arg }, Loc::default()));
+        let call_expr = builder.alloc(node::CallExpr { func: lambda, arg });
 
         let ir = normalize(builder, call_expr, &resolved);
 
@@ -1469,7 +1467,7 @@ mod tests {
     #[test]
     fn record_expr() {
         let mut interner = StrInterner::default();
-        let mut builder = Tree::new();
+        let mut builder = Tree::<()>::new();
         let resolved = NodeMap::default();
 
         // Build: { a = 42, b = "hello" }
@@ -1478,16 +1476,16 @@ mod tests {
         let b = interner.intern("b");
 
         // Create the field values
-        let a_value = builder.alloc_located((node::LiteralExpr::Num(42.0), Loc::default()));
-        let b_value = builder.alloc_located((node::LiteralExpr::Str(interner.intern("hello")), Loc::default()));
+        let a_value = builder.alloc(node::LiteralExpr::Num(42.0));
+        let b_value = builder.alloc(node::LiteralExpr::Str(interner.intern("hello")));
 
         // Create the record fields
-        let a_field = node::RecordField::new_in(a, None, a_value, &mut builder);
-        let b_field = node::RecordField::new_in(b, None, b_value, &mut builder);
+        let a_field = node::RecordField::new_in(a, None, a_value, (), &mut builder);
+        let b_field = node::RecordField::new_in(b, None, b_value, (), &mut builder);
 
         // Create the record expression
-        let record_expr = node::RecordExpr::new_in([a_field, b_field], &mut builder);
-        let record_id = builder.alloc_located((node::Expr::Record(record_expr), Loc::default()));
+        let record_expr = node::RecordExpr::new_in([a_field, b_field], (), &mut builder);
+        let record_id = builder.alloc(node::Expr::Record(record_expr));
 
         let ir = normalize(builder, record_id, &resolved);
 
@@ -1500,7 +1498,7 @@ mod tests {
     #[test]
     fn record_access_expr() {
         let mut interner = StrInterner::default();
-        let mut builder = Tree::new();
+        let mut builder = Tree::<()>::new();
         let mut resolved = NodeMap::default();
 
         // Build: let r = { a = { b = { c = "hello" } } } in r.a.b.c
@@ -1513,17 +1511,17 @@ mod tests {
         let r_sym = ValueSym::new();
 
         // Create the innermost record: { c = "hello" }
-        let c_value = builder.alloc_located((node::LiteralExpr::Str(interner.intern("hello")), Loc::default()));
-        let c_field = node::RecordField::new_in(c, None, c_value, &mut builder);
-        let c_record = node::RecordExpr::new_in([c_field], &mut builder);
+        let c_value = builder.alloc(node::LiteralExpr::Str(interner.intern("hello")));
+        let c_field = node::RecordField::new_in(c, None, c_value, (), &mut builder);
+        let c_record = node::RecordExpr::new_in([c_field], (), &mut builder);
 
         // Create the middle record: { b = { c = "hello" } }
-        let b_field = node::RecordField::new_in(b, None, c_record, &mut builder);
-        let b_record = node::RecordExpr::new_in([b_field], &mut builder);
+        let b_field = node::RecordField::new_in(b, None, c_record, (), &mut builder);
+        let b_record = node::RecordExpr::new_in([b_field], (), &mut builder);
 
         // Create the outer record: { a = { b = { c = "hello" } } }
-        let a_field = node::RecordField::new_in(a, None, b_record, &mut builder);
-        let record_expr = node::RecordExpr::new_in([a_field], &mut builder);
+        let a_field = node::RecordField::new_in(a, None, b_record, (), &mut builder);
+        let record_expr = node::RecordExpr::new_in([a_field], (), &mut builder);
 
         // Create the let expression: let r = { a = { b = { c = "hello" } } } in r.a.b.c
         let field_path = node::FieldPath::new_in(
@@ -1532,13 +1530,12 @@ mod tests {
                 node::ValueName::new(b),
                 node::ValueName::new(c),
             ],
-            &mut builder,
-        );
+            (), &mut builder);
 
-        let qualified_expr = node::QualifiedExpr::new_in(None, r, Some(field_path), &mut builder);
+        let qualified_expr = node::QualifiedExpr::new_in(None, r, Some(field_path), (), &mut builder);
         resolved.set(qualified_expr, ResolvedValue::Reference(r_sym));
 
-        let let_expr = node::LetExpr::new_in(r, None, record_expr, qualified_expr, &mut builder);
+        let let_expr = node::LetExpr::new_in(r, None, record_expr, qualified_expr, (), &mut builder);
         resolved.set(let_expr, r_sym);
 
         let ir = normalize(builder, let_expr, &resolved);

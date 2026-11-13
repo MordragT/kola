@@ -5,4 +5,5 @@ edition = "2024"
 
 [dependencies]
 kola-relations-macro = { path = "./macro" }
+kola-subst.workspace = true
 serde.workspace = true

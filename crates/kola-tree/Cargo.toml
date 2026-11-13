@@ -6,12 +6,10 @@ edition = "2024"
 [dependencies]
 kola-relations = { path = "../kola-relations" }
 kola-span.workspace = true
-kola-subst.workspace = true
 kola-interner.workspace = true
 kola-print.workspace = true
 serde.workspace = true
 derive_more.workspace = true
 pastey.workspace = true
 enum-as-inner.workspace = true
-kinded.workspace = true
 indexmap.workspace = true

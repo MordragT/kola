@@ -1,4 +1,3 @@
-use std::collections::HashMap;
 
 use kola_span::{Diagnostic, Loc, Report};
 use kola_tree::{
@@ -11,7 +10,7 @@ use crate::{
     env::ModuleMap,
     name::Binding,
     phase::ResolvedModule,
-    symbol::{AnySym, ModuleGraph, ModuleSym, Substitution},
+    symbol::{ModuleGraph, ModuleSym},
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Hash)]

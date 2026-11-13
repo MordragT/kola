@@ -3,7 +3,7 @@ use std::{collections::HashMap, ops::Index};
 use kola_tree::node::{AnyName, ModuleName, ModuleTypeName, TypeName, ValueName, Vis};
 
 use crate::symbol::{
-    AnySym, ModuleSym, ModuleTypeSym, Substitution, TypeSym, ValueSym,
+    AnySym, ModuleSym, ModuleTypeSym, TypeSym, ValueSym,
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]

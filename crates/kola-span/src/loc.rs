@@ -10,19 +10,6 @@ pub struct Loc {
     pub span: Span,
 }
 
-/// A synthetic location, for tests and tools that need a span-less tree.
-///
-/// `Tree<Loc>` requires `Loc: Default` in order to build nodes without an
-/// explicit position. Real source locations are always constructed explicitly.
-impl Default for Loc {
-    fn default() -> Self {
-        Self {
-            path: SourceId::default(),
-            span: Span::new(0, 0),
-        }
-    }
-}
-
 impl fmt::Debug for Loc {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         let Self { path, span } = self;

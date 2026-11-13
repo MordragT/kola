@@ -1,4 +1,4 @@
-use std::collections::{HashMap, HashSet, VecDeque};
+use std::collections::{HashSet, VecDeque};
 
 use kola_span::{Diagnostic, Loc};
 use kola_tree::{
@@ -10,7 +10,7 @@ use crate::{
     env::ModuleMap,
     lookup::Lookups,
     name::Binding,
-    symbol::{AnySym, ModuleGraph, ModuleSym, Substitution},
+    symbol::{ModuleGraph, ModuleSym},
 };
 
 /// A work list of pending elaboration jobs.

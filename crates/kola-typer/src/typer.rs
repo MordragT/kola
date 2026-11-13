@@ -10,7 +10,6 @@ use kola_resolver::{
 };
 use kola_span::{Diagnostic, IntoDiagnostic, Loc, Report};
 use kola_subst::Substitutable;
-use kola_syntax::prelude::*;
 use kola_tree::{node::Vis, prelude::*};
 use kola_types::{
     class::TypeClass,
@@ -108,9 +107,9 @@ impl<'a, N> Typer<'a, N> {
     }
 
     #[inline]
-    fn insert_type<T, S>(&mut self, id: Id<T>, t: S)
+    fn insert_type<T: 'static, S: 'static>(&mut self, id: Id<T>, t: S)
     where
-        T: kola_tree::prelude::NodeMeta<TypedNodes, Value = S>,
+        TypedNodes: kola_tree::prelude::PartialRelationSet<T, S>,
     {
         self.types.set(id, t);
     }
@@ -2117,12 +2116,15 @@ mod tests {
     use kola_tree::prelude::*;
     use kola_types::types::*;
 
-    use crate::{error::TypeError, test::run_typer};
+    use crate::{
+        error::TypeError,
+        test::{run_typer, test_loc},
+    };
 
     #[test]
     fn literal() {
         let mut builder = Tree::new();
-        let lit = builder.alloc(node::LiteralExpr::Num(10.0));
+        let lit = builder.alloc_located((node::LiteralExpr::Num(10.0), test_loc()));
 
         let types = run_typer(builder, lit).unwrap();
 
@@ -2133,8 +2135,8 @@ mod tests {
     fn unary() {
         let mut builder = Tree::new();
 
-        let target = builder.alloc(node::LiteralExpr::Num(10.0));
-        let unary = node::UnaryExpr::new_in(node::UnaryOp::Neg, target, &mut builder);
+        let target = builder.alloc_located((node::LiteralExpr::Num(10.0), test_loc()));
+        let unary = node::UnaryExpr::new_in(node::UnaryOp::Neg, target, test_loc(), &mut builder);
 
         let types = run_typer(builder, unary).unwrap();
 
@@ -2145,8 +2147,8 @@ mod tests {
     fn unary_err() {
         let mut builder = Tree::new();
 
-        let target = builder.alloc(node::LiteralExpr::Num(10.0));
-        let unary = node::UnaryExpr::new_in(node::UnaryOp::Not, target, &mut builder);
+        let target = builder.alloc_located((node::LiteralExpr::Num(10.0), test_loc()));
+        let unary = node::UnaryExpr::new_in(node::UnaryOp::Not, target, test_loc(), &mut builder);
 
         let (errors, _) = run_typer(builder, unary).unwrap_err();
 
@@ -2163,9 +2165,9 @@ mod tests {
     fn binary_err() {
         let mut builder = Tree::new();
 
-        let left = builder.alloc(node::LiteralExpr::Bool(true));
-        let right = builder.alloc(node::LiteralExpr::Num(10.0));
-        let binary = node::BinaryExpr::new_in(node::BinaryOp::Eq, left, right, &mut builder);
+        let left = builder.alloc_located((node::LiteralExpr::Bool(true), test_loc()));
+        let right = builder.alloc_located((node::LiteralExpr::Num(10.0), test_loc()));
+        let binary = node::BinaryExpr::new_in(node::BinaryOp::Eq, left, right, test_loc(), &mut builder);
 
         let (errors, _) = run_typer(builder, binary).unwrap_err();
 
@@ -2183,10 +2185,10 @@ mod tests {
         let mut interner = StrInterner::default();
         let mut builder = Tree::new();
 
-        let value = builder.alloc(node::LiteralExpr::Num(10.0));
+        let value = builder.alloc_located((node::LiteralExpr::Num(10.0), test_loc()));
         let x = interner.intern("x");
-        let inside = node::QualifiedExpr::new_in(None, x, None, &mut builder);
-        let let_ = node::LetExpr::new_in(x, None, value, inside, &mut builder);
+        let inside = node::QualifiedExpr::new_in(None, x, None, test_loc(), &mut builder);
+        let let_ = node::LetExpr::new_in(x, None, value, inside, test_loc(), &mut builder);
 
         let types = run_typer(builder, let_).unwrap();
 
@@ -2197,10 +2199,10 @@ mod tests {
     fn if_() {
         let mut builder = Tree::new();
 
-        let predicate = builder.alloc(node::LiteralExpr::Bool(true));
-        let then = builder.alloc(node::LiteralExpr::Num(5.0));
-        let or = builder.alloc(node::LiteralExpr::Num(10.0));
-        let if_ = node::IfExpr::new_in(predicate, then, or, &mut builder);
+        let predicate = builder.alloc_located((node::LiteralExpr::Bool(true), test_loc()));
+        let then = builder.alloc_located((node::LiteralExpr::Num(5.0), test_loc()));
+        let or = builder.alloc_located((node::LiteralExpr::Num(10.0), test_loc()));
+        let if_ = node::IfExpr::new_in(predicate, then, or, test_loc(), &mut builder);
 
         let types = run_typer(builder, if_).unwrap();
 
@@ -2211,10 +2213,10 @@ mod tests {
     fn if_err() {
         let mut builder = Tree::new();
 
-        let predicate = builder.alloc(node::LiteralExpr::Bool(true));
-        let then = builder.alloc(node::LiteralExpr::Num(5.0));
-        let or = builder.alloc(node::LiteralExpr::Char('x'));
-        let if_ = node::IfExpr::new_in(predicate, then, or, &mut builder);
+        let predicate = builder.alloc_located((node::LiteralExpr::Bool(true), test_loc()));
+        let then = builder.alloc_located((node::LiteralExpr::Num(5.0), test_loc()));
+        let or = builder.alloc_located((node::LiteralExpr::Char('x'), test_loc()));
+        let if_ = node::IfExpr::new_in(predicate, then, or, test_loc(), &mut builder);
 
         let (errors, _) = run_typer(builder, if_).unwrap_err();
 

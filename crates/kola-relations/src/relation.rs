@@ -19,6 +19,16 @@ pub trait PartialRelationMut<K: 'static, V: 'static>: PartialRelation<K, V> {
     fn get_mut(&mut self, id: Id<K>) -> Option<&mut V>;
 }
 
+/// Optional Write Access: insert or replace the value for an `Id<K>`.
+pub trait PartialRelationSet<K: 'static, V: 'static>: PartialRelation<K, V> {
+    fn set(&mut self, id: Id<K>, value: V);
+}
+
+/// In-place combination of two values of the same relation-storage type.
+pub trait Merge: Sized {
+    fn merge(&mut self, other: Self);
+}
+
 /// Dense/Guaranteed Read Access: Map `Id<K>` directly to `&V` without branching,
 /// with support for high-performance direct row iteration.
 pub trait TotalRelation<K: 'static, V: 'static>: RelationIds<K> {

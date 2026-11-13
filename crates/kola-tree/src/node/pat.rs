@@ -70,12 +70,12 @@ impl<'a> Notate<'a, LiteralPat> for TreePrinter<'a> {
 pub struct BindPat(pub Id<ValueName>);
 
 impl BindPat {
-    pub fn new_in<M>(name: impl Into<ValueName>, builder: &mut Tree<M>) -> Id<Self>
+    pub fn new_in<M>(name: impl Into<ValueName>, meta: M, builder: &mut Tree<M>) -> Id<Self>
     where
-        M: Clone + Default + 'static,
+        M: Clone + 'static,
     {
-        let name_id = builder.alloc(name.into());
-        builder.alloc(Self(name_id))
+        let name_id = builder.alloc_located((name.into(), meta.clone()));
+        builder.alloc_located((Self(name_id), meta.clone()))
     }
 }
 
@@ -109,20 +109,20 @@ impl TryCast<ValueName> for ListElPat {
 }
 
 impl ListElPat {
-    pub fn pat<M>(pat: impl Into<Pat>, builder: &mut Tree<M>) -> Id<Self>
+    pub fn pat<M>(pat: impl Into<Pat>, meta: M, builder: &mut Tree<M>) -> Id<Self>
     where
-        M: Clone + Default + 'static,
+        M: Clone + 'static,
     {
-        let pat_id = builder.alloc(pat.into());
-        builder.alloc(Self::Pat(pat_id))
+        let pat_id = builder.alloc_located((pat.into(), meta.clone()));
+        builder.alloc_located((Self::Pat(pat_id), meta.clone()))
     }
 
-    pub fn spread<M>(name: Option<ValueName>, builder: &mut Tree<M>) -> Id<Self>
+    pub fn spread<M>(name: Option<ValueName>, meta: M, builder: &mut Tree<M>) -> Id<Self>
     where
-        M: Clone + Default + 'static,
+        M: Clone + 'static,
     {
-        let name = name.map(|n| builder.alloc(n));
-        builder.alloc(Self::Spread(name))
+        let name = name.map(|n| builder.alloc_located((n, meta.clone())));
+        builder.alloc_located((Self::Spread(name), meta.clone()))
     }
 }
 
@@ -167,13 +167,13 @@ impl<'a> Notate<'a, ListElPat> for TreePrinter<'a> {
 pub struct ListPat(pub SliceId<ListElPat>);
 
 impl ListPat {
-    pub fn new_in<M>(items: impl IntoIterator<Item = ListElPat>, builder: &mut Tree<M>) -> Id<Self>
+    pub fn new_in<M>(items: impl IntoIterator<Item = ListElPat>, meta: M, builder: &mut Tree<M>) -> Id<Self>
     where
-        M: Clone + Default + 'static,
+        M: Clone + 'static,
     {
-        let ids: Vec<_> = items.into_iter().map(|item| builder.alloc(item)).collect();
+        let ids: Vec<_> = items.into_iter().map(|item| builder.alloc_located((item, meta.clone()))).collect();
         let slice_id = builder.slices.alloc(ids);
-        builder.alloc(Self(slice_id))
+        builder.alloc_located((Self(slice_id), meta.clone()))
     }
 }
 
@@ -203,19 +203,19 @@ pub struct RecordPat {
 }
 
 impl RecordPat {
-    pub fn new_in<I, M>(fields: I, polymorph: bool, builder: &mut Tree<M>) -> Id<Self>
+    pub fn new_in<I, M>(fields: I, polymorph: bool, meta: M, builder: &mut Tree<M>) -> Id<Self>
     where
-        M: Clone + Default + 'static,
+        M: Clone + 'static,
         I: IntoIterator<Item = RecordFieldPat>,
     {
         let ids: Vec<_> = fields
             .into_iter()
-            .map(|field| builder.alloc(field))
+            .map(|field| builder.alloc_located((field, meta.clone())))
             .collect();
 
         let fields = builder.slices.alloc(ids);
 
-        builder.alloc(Self { fields, polymorph })
+        builder.alloc_located((Self { fields, polymorph }, meta.clone()))
     }
 }
 
@@ -286,15 +286,16 @@ pub struct VariantPat(pub SliceId<VariantTagPat>);
 impl VariantPat {
     pub fn new_in<M>(
         items: impl IntoIterator<Item = VariantTagPat>,
+        meta: M,
         builder: &mut Tree<M>,
     ) -> Id<Self>
     where
-        M: Clone + Default + 'static,
+        M: Clone + 'static,
     {
-        let ids: Vec<_> = items.into_iter().map(|item| builder.alloc(item)).collect();
+        let ids: Vec<_> = items.into_iter().map(|item| builder.alloc_located((item, meta.clone()))).collect();
 
         let slice_id = builder.slices.alloc(ids);
-        builder.alloc(Self(slice_id))
+        builder.alloc_located((Self(slice_id), meta.clone()))
     }
 }
 

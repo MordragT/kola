@@ -280,24 +280,27 @@ mod tests {
     use kola_tree::prelude::*;
     use kola_types::types::*;
 
-    use crate::{error::TypeError, test::run_typer};
+    use crate::{
+        error::TypeError,
+        test::{run_typer, test_loc},
+    };
 
     #[test]
     fn case_literal_pattern() {
         let mut builder = Tree::new();
 
         // case 42 of 42 => true, _ => false
-        let source = builder.alloc(node::LiteralExpr::Num(42.0));
+        let source = builder.alloc_located((node::LiteralExpr::Num(42.0), test_loc()));
 
-        let pat1 = builder.alloc(node::LiteralPat::Num(42.0));
-        let expr1 = builder.alloc(node::LiteralExpr::Bool(true));
-        let branch1 = node::CaseBranch::new_in(pat1, expr1, &mut builder);
+        let pat1 = builder.alloc_located((node::LiteralPat::Num(42.0), test_loc()));
+        let expr1 = builder.alloc_located((node::LiteralExpr::Bool(true), test_loc()));
+        let branch1 = node::CaseBranch::new_in(pat1, expr1, test_loc(), &mut builder);
 
-        let pat2 = builder.alloc(node::AnyPat);
-        let expr2 = builder.alloc(node::LiteralExpr::Bool(false));
-        let branch2 = node::CaseBranch::new_in(pat2, expr2, &mut builder);
+        let pat2 = builder.alloc_located((node::AnyPat, test_loc()));
+        let expr2 = builder.alloc_located((node::LiteralExpr::Bool(false), test_loc()));
+        let branch2 = node::CaseBranch::new_in(pat2, expr2, test_loc(), &mut builder);
 
-        let case_expr = node::CaseExpr::new_in(source, vec![branch1, branch2], &mut builder);
+        let case_expr = node::CaseExpr::new_in(source, vec![branch1, branch2], test_loc(), &mut builder);
 
         let types = run_typer(builder, case_expr).unwrap();
 
@@ -310,13 +313,13 @@ mod tests {
         let mut builder = Tree::new();
 
         // case "hello" of 42 => true, _ => false (should fail: string vs number)
-        let source = builder.alloc(node::LiteralExpr::Str(interner.intern("hello")));
+        let source = builder.alloc_located((node::LiteralExpr::Str(interner.intern("hello")), test_loc()));
 
-        let pat1 = builder.alloc(node::LiteralPat::Num(42.0));
-        let expr1 = builder.alloc(node::LiteralExpr::Bool(true));
-        let branch1 = node::CaseBranch::new_in(pat1, expr1, &mut builder);
+        let pat1 = builder.alloc_located((node::LiteralPat::Num(42.0), test_loc()));
+        let expr1 = builder.alloc_located((node::LiteralExpr::Bool(true), test_loc()));
+        let branch1 = node::CaseBranch::new_in(pat1, expr1, test_loc(), &mut builder);
 
-        let case_expr = node::CaseExpr::new_in(source, vec![branch1], &mut builder);
+        let case_expr = node::CaseExpr::new_in(source, vec![branch1], test_loc(), &mut builder);
 
         let (errors, _) = run_typer(builder, case_expr).unwrap_err();
 
@@ -335,12 +338,12 @@ mod tests {
         let mut builder = Tree::new();
 
         // case 42 of _ => "anything"
-        let source = builder.alloc(node::LiteralExpr::Num(42.0));
-        let pat = builder.alloc(node::AnyPat);
-        let expr = builder.alloc(node::LiteralExpr::Str(interner.intern("anything")));
-        let branch = node::CaseBranch::new_in(pat, expr, &mut builder);
+        let source = builder.alloc_located((node::LiteralExpr::Num(42.0), test_loc()));
+        let pat = builder.alloc_located((node::AnyPat, test_loc()));
+        let expr = builder.alloc_located((node::LiteralExpr::Str(interner.intern("anything")), test_loc()));
+        let branch = node::CaseBranch::new_in(pat, expr, test_loc(), &mut builder);
 
-        let case_expr = node::CaseExpr::new_in(source, vec![branch], &mut builder);
+        let case_expr = node::CaseExpr::new_in(source, vec![branch], test_loc(), &mut builder);
 
         let types = run_typer(builder, case_expr).unwrap();
 
@@ -353,14 +356,14 @@ mod tests {
         let mut builder = Tree::new();
 
         // case 42 of x => x
-        let source = builder.alloc(node::LiteralExpr::Num(42.0));
+        let source = builder.alloc_located((node::LiteralExpr::Num(42.0), test_loc()));
 
         let x = interner.intern("x");
-        let pat = node::BindPat::new_in(x, &mut builder);
-        let expr = node::QualifiedExpr::new_in(None, x, None, &mut builder);
-        let branch = node::CaseBranch::new_in(pat, expr, &mut builder);
+        let pat = node::BindPat::new_in(x, test_loc(), &mut builder);
+        let expr = node::QualifiedExpr::new_in(None, x, None, test_loc(), &mut builder);
+        let branch = node::CaseBranch::new_in(pat, expr, test_loc(), &mut builder);
 
-        let case_expr = node::CaseExpr::new_in(source, vec![branch], &mut builder);
+        let case_expr = node::CaseExpr::new_in(source, vec![branch], test_loc(), &mut builder);
 
         let types = run_typer(builder, case_expr).unwrap();
 
@@ -373,17 +376,17 @@ mod tests {
         let mut builder = Tree::new();
 
         // case [] of [] => "empty", _ => "not empty"
-        let source = node::ListExpr::empty_in(&mut builder);
+        let source = node::ListExpr::empty_in(test_loc(), &mut builder);
 
-        let pat1 = builder.alloc(node::ListPat(SliceId::empty()));
-        let expr1 = builder.alloc(node::LiteralExpr::Str(interner.intern("empty")));
-        let branch1 = node::CaseBranch::new_in(pat1, expr1, &mut builder);
+        let pat1 = builder.alloc_located((node::ListPat(SliceId::empty()), test_loc()));
+        let expr1 = builder.alloc_located((node::LiteralExpr::Str(interner.intern("empty")), test_loc()));
+        let branch1 = node::CaseBranch::new_in(pat1, expr1, test_loc(), &mut builder);
 
-        let pat2 = builder.alloc(node::AnyPat);
-        let expr2 = builder.alloc(node::LiteralExpr::Str(interner.intern("not empty")));
-        let branch2 = node::CaseBranch::new_in(pat2, expr2, &mut builder);
+        let pat2 = builder.alloc_located((node::AnyPat, test_loc()));
+        let expr2 = builder.alloc_located((node::LiteralExpr::Str(interner.intern("not empty")), test_loc()));
+        let branch2 = node::CaseBranch::new_in(pat2, expr2, test_loc(), &mut builder);
 
-        let case_expr = node::CaseExpr::new_in(source, vec![branch1, branch2], &mut builder);
+        let case_expr = node::CaseExpr::new_in(source, vec![branch1, branch2], test_loc(), &mut builder);
 
         let types = run_typer(builder, case_expr).unwrap();
 
@@ -396,29 +399,29 @@ mod tests {
         let mut builder = Tree::new();
 
         // case [1, 2, 3] of [x, y, z] => x
-        let elem1 = builder.alloc(node::LiteralExpr::Num(1.0));
-        let elem2 = builder.alloc(node::LiteralExpr::Num(2.0));
-        let elem3 = builder.alloc(node::LiteralExpr::Num(3.0));
-        let source = node::ListExpr::new_in(vec![elem1, elem2, elem3], &mut builder);
+        let elem1 = builder.alloc_located((node::LiteralExpr::Num(1.0), test_loc()));
+        let elem2 = builder.alloc_located((node::LiteralExpr::Num(2.0), test_loc()));
+        let elem3 = builder.alloc_located((node::LiteralExpr::Num(3.0), test_loc()));
+        let source = node::ListExpr::new_in(vec![elem1, elem2, elem3], test_loc(), &mut builder);
 
         let x = interner.intern("x");
         let y = interner.intern("y");
         let z = interner.intern("z");
 
-        let pat_x = node::BindPat::new_in(x, &mut builder);
-        let pat_y = node::BindPat::new_in(y, &mut builder);
-        let pat_z = node::BindPat::new_in(z, &mut builder);
+        let pat_x = node::BindPat::new_in(x, test_loc(), &mut builder);
+        let pat_y = node::BindPat::new_in(y, test_loc(), &mut builder);
+        let pat_z = node::BindPat::new_in(z, test_loc(), &mut builder);
 
-        let el_x = node::ListElPat::pat(pat_x, &mut builder);
-        let el_y = node::ListElPat::pat(pat_y, &mut builder);
-        let el_z = node::ListElPat::pat(pat_z, &mut builder);
+        let el_x = node::ListElPat::pat(pat_x, test_loc(), &mut builder);
+        let el_y = node::ListElPat::pat(pat_y, test_loc(), &mut builder);
+        let el_z = node::ListElPat::pat(pat_z, test_loc(), &mut builder);
 
         let list_pat_slice = builder.alloc_slice([el_x, el_y, el_z]);
-        let list_pat = builder.alloc(node::ListPat(list_pat_slice));
-        let expr = node::QualifiedExpr::new_in(None, x, None, &mut builder);
-        let branch = node::CaseBranch::new_in(list_pat, expr, &mut builder);
+        let list_pat = builder.alloc_located((node::ListPat(list_pat_slice), test_loc()));
+        let expr = node::QualifiedExpr::new_in(None, x, None, test_loc(), &mut builder);
+        let branch = node::CaseBranch::new_in(list_pat, expr, test_loc(), &mut builder);
 
-        let case_expr = node::CaseExpr::new_in(source, vec![branch], &mut builder);
+        let case_expr = node::CaseExpr::new_in(source, vec![branch], test_loc(), &mut builder);
 
         let types = run_typer(builder, case_expr).unwrap();
 
@@ -431,25 +434,25 @@ mod tests {
         let mut builder = Tree::new();
 
         // case [1, 2, 3] of [head, ...tail] => head
-        let elem1 = builder.alloc(node::LiteralExpr::Num(1.0));
-        let elem2 = builder.alloc(node::LiteralExpr::Num(2.0));
-        let elem3 = builder.alloc(node::LiteralExpr::Num(3.0));
-        let source = node::ListExpr::new_in(vec![elem1, elem2, elem3], &mut builder);
+        let elem1 = builder.alloc_located((node::LiteralExpr::Num(1.0), test_loc()));
+        let elem2 = builder.alloc_located((node::LiteralExpr::Num(2.0), test_loc()));
+        let elem3 = builder.alloc_located((node::LiteralExpr::Num(3.0), test_loc()));
+        let source = node::ListExpr::new_in(vec![elem1, elem2, elem3], test_loc(), &mut builder);
 
         let head = interner.intern("head");
         let tail = interner.intern("tail");
 
-        let pat_head = node::BindPat::new_in(head, &mut builder);
-        let el_head = node::ListElPat::pat(pat_head, &mut builder);
+        let pat_head = node::BindPat::new_in(head, test_loc(), &mut builder);
+        let el_head = node::ListElPat::pat(pat_head, test_loc(), &mut builder);
 
-        let el_spread = node::ListElPat::spread(Some(tail.into()), &mut builder);
+        let el_spread = node::ListElPat::spread(Some(tail.into()), test_loc(), &mut builder);
 
         let list_pat_slice = builder.alloc_slice([el_head, el_spread]);
-        let list_pat = builder.alloc(node::ListPat(list_pat_slice));
-        let expr = node::QualifiedExpr::new_in(None, head, None, &mut builder);
-        let branch = node::CaseBranch::new_in(list_pat, expr, &mut builder);
+        let list_pat = builder.alloc_located((node::ListPat(list_pat_slice), test_loc()));
+        let expr = node::QualifiedExpr::new_in(None, head, None, test_loc(), &mut builder);
+        let branch = node::CaseBranch::new_in(list_pat, expr, test_loc(), &mut builder);
 
-        let case_expr = node::CaseExpr::new_in(source, vec![branch], &mut builder);
+        let case_expr = node::CaseExpr::new_in(source, vec![branch], test_loc(), &mut builder);
 
         let types = run_typer(builder, case_expr).unwrap();
 
@@ -465,29 +468,29 @@ mod tests {
         let x_field = interner.intern("x");
         let y_field = interner.intern("y");
 
-        let val_x = builder.alloc(node::LiteralExpr::Num(10.0));
-        let val_y = builder.alloc(node::LiteralExpr::Num(20.0));
+        let val_x = builder.alloc_located((node::LiteralExpr::Num(10.0), test_loc()));
+        let val_y = builder.alloc_located((node::LiteralExpr::Num(20.0), test_loc()));
 
-        let field_x = node::RecordField::new_in(x_field, None, val_x, &mut builder);
-        let field_y = node::RecordField::new_in(y_field, None, val_y, &mut builder);
-        let source = node::RecordExpr::new_in(vec![field_x, field_y], &mut builder);
+        let field_x = node::RecordField::new_in(x_field, None, val_x, test_loc(), &mut builder);
+        let field_y = node::RecordField::new_in(y_field, None, val_y, test_loc(), &mut builder);
+        let source = node::RecordExpr::new_in(vec![field_x, field_y], test_loc(), &mut builder);
 
         // Pattern: {x, y} (shorthand for {x: x, y: y})
         let pat_field_x = node::RecordFieldPat {
-            field: builder.alloc(x_field.into()),
+            field: builder.alloc_located((x_field.into(), test_loc())),
             pat: None,
         };
         let pat_field_y = node::RecordFieldPat {
-            field: builder.alloc(y_field.into()),
+            field: builder.alloc_located((y_field.into(), test_loc())),
             pat: None,
         };
 
-        let record_pat = node::RecordPat::new_in([pat_field_x, pat_field_y], false, &mut builder);
+        let record_pat = node::RecordPat::new_in([pat_field_x, pat_field_y], false, test_loc(), &mut builder);
 
-        let expr = node::QualifiedExpr::new_in(None, x_field, None, &mut builder);
-        let branch = node::CaseBranch::new_in(record_pat, expr, &mut builder);
+        let expr = node::QualifiedExpr::new_in(None, x_field, None, test_loc(), &mut builder);
+        let branch = node::CaseBranch::new_in(record_pat, expr, test_loc(), &mut builder);
 
-        let case_expr = node::CaseExpr::new_in(source, vec![branch], &mut builder);
+        let case_expr = node::CaseExpr::new_in(source, vec![branch], test_loc(), &mut builder);
 
         let types = run_typer(builder, case_expr).unwrap();
 
@@ -504,35 +507,34 @@ mod tests {
         let y_field = interner.intern("y");
         let z_field = interner.intern("z");
 
-        let val_x = builder.alloc(node::LiteralExpr::Num(10.0));
-        let val_y = builder.alloc(node::LiteralExpr::Num(20.0));
-        let val_z = builder.alloc(node::LiteralExpr::Str(interner.intern("hello")));
+        let val_x = builder.alloc_located((node::LiteralExpr::Num(10.0), test_loc()));
+        let val_y = builder.alloc_located((node::LiteralExpr::Num(20.0), test_loc()));
+        let val_z = builder.alloc_located((node::LiteralExpr::Str(interner.intern("hello")), test_loc()));
 
-        let field_x = node::RecordField::new_in(x_field, None, val_x, &mut builder);
-        let field_y = node::RecordField::new_in(y_field, None, val_y, &mut builder);
-        let field_z = node::RecordField::new_in(z_field, None, val_z, &mut builder);
-        let source = node::RecordExpr::new_in(vec![field_x, field_y, field_z], &mut builder);
+        let field_x = node::RecordField::new_in(x_field, None, val_x, test_loc(), &mut builder);
+        let field_y = node::RecordField::new_in(y_field, None, val_y, test_loc(), &mut builder);
+        let field_z = node::RecordField::new_in(z_field, None, val_z, test_loc(), &mut builder);
+        let source = node::RecordExpr::new_in(vec![field_x, field_y, field_z], test_loc(), &mut builder);
 
         // Pattern: {x, y, ...} (polymorphic - allows extra fields)
         let pat_field_x = node::RecordFieldPat {
-            field: builder.alloc(x_field.into()),
+            field: builder.alloc_located((x_field.into(), test_loc())),
             pat: None,
         };
         let pat_field_y = node::RecordFieldPat {
-            field: builder.alloc(y_field.into()),
+            field: builder.alloc_located((y_field.into(), test_loc())),
             pat: None,
         };
 
         let record_pat = node::RecordPat::new_in(
             [pat_field_x, pat_field_y],
             true, // polymorphic
-            &mut builder,
-        );
+            test_loc(), &mut builder);
 
-        let expr = node::QualifiedExpr::new_in(None, x_field, None, &mut builder);
-        let branch = node::CaseBranch::new_in(record_pat, expr, &mut builder);
+        let expr = node::QualifiedExpr::new_in(None, x_field, None, test_loc(), &mut builder);
+        let branch = node::CaseBranch::new_in(record_pat, expr, test_loc(), &mut builder);
 
-        let case_expr = node::CaseExpr::new_in(source, vec![branch], &mut builder);
+        let case_expr = node::CaseExpr::new_in(source, vec![branch], test_loc(), &mut builder);
 
         let types = run_typer(builder, case_expr).unwrap();
 
@@ -547,18 +549,18 @@ mod tests {
         // case 42 of
         //   x => 10,     // returns Num
         //   _ => "hello" // returns Str - should fail!
-        let source = builder.alloc(node::LiteralExpr::Num(42.0));
+        let source = builder.alloc_located((node::LiteralExpr::Num(42.0), test_loc()));
 
         let x = interner.intern("x");
-        let pat1 = node::BindPat::new_in(x, &mut builder);
-        let expr1 = builder.alloc(node::LiteralExpr::Num(10.0));
-        let branch1 = node::CaseBranch::new_in(pat1, expr1, &mut builder);
+        let pat1 = node::BindPat::new_in(x, test_loc(), &mut builder);
+        let expr1 = builder.alloc_located((node::LiteralExpr::Num(10.0), test_loc()));
+        let branch1 = node::CaseBranch::new_in(pat1, expr1, test_loc(), &mut builder);
 
-        let pat2 = builder.alloc(node::AnyPat);
-        let expr2 = builder.alloc(node::LiteralExpr::Str(interner.intern("hello")));
-        let branch2 = node::CaseBranch::new_in(pat2, expr2, &mut builder);
+        let pat2 = builder.alloc_located((node::AnyPat, test_loc()));
+        let expr2 = builder.alloc_located((node::LiteralExpr::Str(interner.intern("hello")), test_loc()));
+        let branch2 = node::CaseBranch::new_in(pat2, expr2, test_loc(), &mut builder);
 
-        let case_expr = node::CaseExpr::new_in(source, vec![branch1, branch2], &mut builder);
+        let case_expr = node::CaseExpr::new_in(source, vec![branch1, branch2], test_loc(), &mut builder);
 
         let (errors, _) = run_typer(builder, case_expr).unwrap_err();
 
