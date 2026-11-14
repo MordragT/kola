@@ -1,78 +1,13 @@
-
 use indexmap::IndexMap;
-use kola_span::{Diagnostic, Issue, Loc, Report};
-use kola_tree::{
-    node::{self, ValueName},
-    prelude::Id,
-};
+use kola_span::{Issue, Report};
 use log::debug;
 
-use crate::{
-    env::ModuleMap,
-    phase::ResolvedValue,
-    symbol::{ModuleSym, ValueGraph, ValueOrders, ValueSym},
-};
+use crate::symbol::{ModuleSym, ValueGraph, ValueOrders};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct ValueLookup {
-    /// The name of the value reference.
-    pub name: ValueName,
-    /// The identifier of the path expression that references some other value bind.
-    pub id: Id<node::QualifiedExpr>,
-    /// The symbol of the value bind, this reference occured inside.
-    pub source: ValueSym,
-    /// The location of the value reference in the source code.
-    pub loc: Loc,
-    /// The module this value reference is located in
-    pub module: ModuleSym,
-}
-
-impl ValueLookup {
-    pub fn new(
-        name: ValueName,
-        id: Id<node::QualifiedExpr>,
-        source: ValueSym,
-        loc: Loc,
-        module: ModuleSym,
-    ) -> Self {
-        Self {
-            name,
-            id,
-            source,
-            loc,
-            module,
-        }
-    }
-}
-
-
-pub fn lookup_values(
-    modules: &mut ModuleMap,
-    queries: &[ValueLookup],
+pub fn order_values(
     value_graph_map: &mut IndexMap<ModuleSym, ValueGraph>,
     report: &mut Report,
 ) -> ValueOrders {
-    // Resolve all forward term references inside local function bodies or bindings
-    for &ValueLookup {
-        name,
-        id,
-        source,
-        loc,
-        module: module_sym,
-    } in queries
-    {
-        let module = &mut modules[&module_sym];
-
-        if let Some(target) = module.names.get_value(name) {
-            value_graph_map[&module_sym].add_dependency(source, target.sym);
-            module.nodes.set(id, ResolvedValue::Reference(target.sym));
-        } else {
-            report.add_diagnostic(Diagnostic::error(loc, "Value not found").with_help(
-                "Check that the value is defined in this module or has been brought into scope.",
-            ));
-        }
-    }
-
     value_graph_map
         .iter()
         .map(|(module_sym, value_graph)| {

@@ -1,12 +1,13 @@
 use kola_interner::StrInterner;
 use kola_span::{Diagnostic, Report};
-use kola_tree::node::{ModuleName, Vis};
+use kola_tree::node::{AnyId, ModuleName, Vis};
 
 use crate::{
     def::DefMap,
     env::ModuleMap,
     lookup::Lookups,
-    symbol::ModuleGraph,
+    surface::{Definition, DefinitionBody, Key},
+    symbol::{AnySym, ModuleGraph},
 };
 
 mod job;
@@ -85,6 +86,20 @@ pub fn elaborate_modules(
                         final_evaluated_sym,
                     );
                     def_map.insert_module(final_evaluated_sym, job.id, job.loc);
+
+                    if job.vis == Vis::Public {
+                        let id = AnyId::ModuleBind(job.id);
+                        modules[&job.definition_scope].surface.define(
+                            Key::Module(job.name),
+                            Definition {
+                                sym: AnySym::Module(final_evaluated_sym),
+                                origin: AnySym::Module(final_evaluated_sym),
+                                vis: job.vis,
+                                site: (job.definition_scope, id),
+                                body: DefinitionBody::Source(id),
+                            },
+                        );
+                    }
 
                     // Maintain dependency mapping integrity across true module aliases
                     module_graph.add_dependency(job.definition_scope, final_evaluated_sym);

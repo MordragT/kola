@@ -1,125 +1,13 @@
-
 use indexmap::IndexMap;
-use kola_span::{Diagnostic, Issue, Loc, Report};
-use kola_tree::node::{self, ModuleTypeName};
-use kola_tree::prelude::Id;
+use kola_span::{Issue, Report};
 use log::debug;
 
-use crate::{
-    env::ModuleMap,
-    phase::ResolvedModuleType,
-    symbol::{ModuleSym, ModuleTypeGraph, ModuleTypeOrders, ModuleTypeSym},
-};
+use crate::symbol::{ModuleSym, ModuleTypeGraph, ModuleTypeOrders};
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct ModuleTypeLookup {
-    /// The name of the module type reference.
-    pub name: ModuleTypeName,
-    /// The identifier of the qualified module type that references some other module type bind.
-    pub id: Id<node::QualifiedModuleType>,
-    /// The symbol of the module type bind, this reference occured inside.
-    pub source: ModuleTypeSym,
-    /// The location of the module type reference in the source code.
-    pub loc: Loc,
-    /// The module this module type reference is located in
-    pub module: ModuleSym,
-}
-
-impl ModuleTypeLookup {
-    pub fn new(
-        name: ModuleTypeName,
-        id: Id<node::QualifiedModuleType>,
-        source: ModuleTypeSym,
-        loc: Loc,
-        module: ModuleSym,
-    ) -> Self {
-        Self {
-            name,
-            id,
-            source,
-            loc,
-            module,
-        }
-    }
-}
-
-
-#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
-pub struct ModuleTypeAnnotLookup {
-    /// The name of the module type reference.
-    pub name: ModuleTypeName,
-    /// The identifier of the qualified module type that references some other module type bind.
-    pub id: Id<node::QualifiedModuleType>,
-    /// The location of the type reference in the source code.
-    pub loc: Loc,
-    /// The module this module type reference is located in
-    pub module: ModuleSym,
-}
-
-impl ModuleTypeAnnotLookup {
-    pub fn new(
-        name: ModuleTypeName,
-        id: Id<node::QualifiedModuleType>,
-        loc: Loc,
-        module: ModuleSym,
-    ) -> Self {
-        Self {
-            name,
-            id,
-            loc,
-            module,
-        }
-    }
-}
-
-
-pub fn lookup_module_types(
-    modules: &mut ModuleMap,
-    queries: &[ModuleTypeLookup],
-    annot_queries: &[ModuleTypeAnnotLookup],
+pub fn order_module_types(
     module_type_graph_map: &mut IndexMap<ModuleSym, ModuleTypeGraph>,
     report: &mut Report,
 ) -> ModuleTypeOrders {
-    // 1. Resolve local module type binding references (e.g., dependencies inside signature declarations)
-    for &ModuleTypeLookup {
-        name,
-        id,
-        source,
-        loc,
-        module: module_sym,
-    } in queries
-    {
-        let module = &mut modules[&module_sym];
-        if let Some(target) = module.names.get_module_type(name) {
-            module_type_graph_map[&module_sym].add_dependency(source, target.sym);
-            module.nodes.set(id, ResolvedModuleType(target.sym));
-        } else {
-            report.add_diagnostic(
-                Diagnostic::error(loc, "Module type not found")
-                    .with_help("Check that the module type is defined in this module."),
-            );
-        }
-    }
-
-    // 2. Resolve flat module type usage references (e.g., annotations like `module x : MY_SIG`)
-    for &ModuleTypeAnnotLookup {
-        name,
-        id,
-        loc,
-        module: module_sym,
-    } in annot_queries
-    {
-        let module = &mut modules[&module_sym];
-        if let Some(binding) = module.names.get_module_type(name) {
-            module.nodes.set(id, ResolvedModuleType(binding.sym));
-        } else {
-            report.add_diagnostic(
-                Diagnostic::error(loc, "Module type not found in annotation")
-                    .with_help("Check that the module type is defined in this module."),
-            );
-        }
-    }
-
     module_type_graph_map
         .iter()
         .map(|(module_sym, module_type_graph)| {

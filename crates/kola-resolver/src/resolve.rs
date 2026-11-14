@@ -17,7 +17,9 @@ use crate::{
     discover::{DiscoverOutput, discover},
     elaborate::{ElabJobs, elaborate_modules},
     env::ModuleMap,
-    lookup::{Lookups, lookup_module_types, lookup_modules, lookup_types, lookup_values},
+    lookup::{
+        Lookups, lookup_modules, order_module_types, order_types, order_values,
+    },
     print::ResolutionDecorator,
     symbol::{FileMap, ModuleGraph, ModuleSym},
 };
@@ -136,12 +138,7 @@ pub fn resolve(
     }
 
     let Lookups {
-        module_types: mut module_type_lookups,
-        module_type_annots: mut module_type_annot_lookups,
         modules: module_lookups,
-        types: mut type_lookups,
-        type_annots: mut type_annot_lookups,
-        values: mut value_lookups,
     } = lookups;
 
     lookup_modules(
@@ -187,28 +184,7 @@ pub fn resolve(
         }
     };
 
-    // Precompute the module ranks to efficiently order lookups
-    // by their containing module's position in the module graph.
-    let max_sym = module_order
-        .iter()
-        .map(|sym| sym.as_usize())
-        .max()
-        .unwrap_or_default();
-    let mut rank = vec![max_sym; max_sym + 1];
-    for (i, sym) in module_order.iter().enumerate() {
-        rank[sym.as_usize()] = i;
-    }
-
-    module_type_lookups.sort_unstable_by_key(|lookup| rank[lookup.module.as_usize()]);
-    module_type_annot_lookups.sort_unstable_by_key(|lookup| rank[lookup.module.as_usize()]);
-
-    let module_type_orders = lookup_module_types(
-        &mut modules,
-        &module_type_lookups,
-        &module_type_annot_lookups,
-        &mut IndexMap::new(), // TODO: this should be part of discovery probably
-        report,
-    );
+    let module_type_orders = order_module_types(&mut module_type_graph, report);
 
     if !report.is_empty() {
         return Ok(Db {
@@ -225,16 +201,7 @@ pub fn resolve(
         });
     }
 
-    type_lookups.sort_unstable_by_key(|lookup| rank[lookup.module.as_usize()]);
-    type_annot_lookups.sort_unstable_by_key(|lookup| rank[lookup.module.as_usize()]);
-
-    let type_orders = lookup_types(
-        &mut modules,
-        &type_lookups,
-        &type_annot_lookups,
-        &mut type_graph_map,
-        report,
-    );
+    let type_orders = order_types(&mut type_graph_map, report);
 
     if !report.is_empty() {
         return Ok(Db {
@@ -252,9 +219,7 @@ pub fn resolve(
         });
     }
 
-    value_lookups.sort_unstable_by_key(|lookup| rank[lookup.module.as_usize()]);
-
-    let value_orders = lookup_values(&mut modules, &value_lookups, &mut value_graph_map, report);
+    let value_orders = order_values(&mut value_graph_map, report);
 
     if !report.is_empty() {
         return Ok(Db {

@@ -14,6 +14,7 @@ pub mod name;
 pub mod phase;
 pub mod print;
 pub mod resolve;
+pub mod surface;
 pub mod symbol;
 
 pub mod prelude {

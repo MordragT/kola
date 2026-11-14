@@ -112,11 +112,6 @@ impl ElabPath {
         }
     }
 
-    fn with_current_scope(mut self, current_scope: ModuleSym) -> Self {
-        self.current_scope = current_scope;
-        self
-    }
-
     pub fn step(&mut self, definition_scope: ModuleSym, ctx: &mut ElabCtx) -> StepResult {
         while let Some(&next_segment) = self.remaining_path.front() {
             if ctx

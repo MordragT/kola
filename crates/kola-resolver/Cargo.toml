@@ -17,3 +17,7 @@ indexmap.workspace = true
 log.workspace = true
 derive_more.workspace = true
 enum-as-inner.workspace = true
+
+[dev-dependencies]
+camino.workspace = true
+kola-syntax.workspace = true

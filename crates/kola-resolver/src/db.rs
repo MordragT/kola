@@ -8,9 +8,10 @@ use kola_tree::{
 
 use crate::{
     def::{AnyDef, DefMap, ModuleDef},
-    env::{Module, ModuleMap},
+    env::{ModuleBuilder, ModuleMap},
     name::Binding,
     phase::NodeMap,
+    surface::ModuleSurface,
     symbol::{
         AnySym, FileMap, ModuleGraph, ModuleSym, ModuleTypeOrders, ModuleTypeSym, TypeOrders,
         TypeSym, ValueOrders, ValueSym,
@@ -41,8 +42,9 @@ pub struct Db {
 pub struct ModuleView<'db> {
     pub is_root: bool,
     pub sym: ModuleSym,
-    pub module: &'db Module,
+    pub module: &'db ModuleBuilder,
     pub tree_map: &'db TreeMap,
+    pub surface: &'db ModuleSurface,
     pub defs: &'db DefMap,
     pub value_order: &'db [ValueSym],
     pub type_order: &'db [TypeSym],
@@ -60,6 +62,7 @@ impl Db {
             sym,
             tree_map: &self.tree_map,
             module: &self.modules[&sym],
+            surface: &self.modules[&sym].surface,
             defs: &self.defs,
             value_order: self
                 .value_orders

@@ -1016,6 +1016,7 @@ dependencies = [
 name = "kola-resolver"
 version = "0.1.0"
 dependencies = [
+ "camino",
  "derive_more",
  "enum-as-inner",
  "indexmap",
@@ -1025,6 +1026,7 @@ dependencies = [
  "kola-print",
  "kola-relations",
  "kola-span",
+ "kola-syntax",
  "kola-tree",
  "kola-utils",
  "log",
