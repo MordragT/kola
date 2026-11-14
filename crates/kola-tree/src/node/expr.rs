@@ -187,13 +187,16 @@ impl RecordExtendExpr {
         let value = builder.alloc_located((value.into(), meta.clone()));
         let value_type = value_type.map(|t| builder.alloc_located((t, meta.clone())));
 
-        builder.alloc_located((Self {
-            source,
-            source_type,
-            field_path,
-            value,
-            value_type,
-        }, meta.clone()))
+        builder.alloc_located((
+            Self {
+                source,
+                source_type,
+                field_path,
+                value,
+                value_type,
+            },
+            meta.clone(),
+        ))
     }
 
     pub fn source(self, tree: &Tree) -> Expr {
@@ -246,12 +249,15 @@ impl RecordRestrictExpr {
         let field_path = builder.alloc_located((field_path.into(), meta.clone()));
         let value_type = value_type.map(|t| builder.alloc_located((t, meta.clone())));
 
-        builder.alloc_located((Self {
-            source,
-            source_type,
-            field_path,
-            value_type,
-        }, meta.clone()))
+        builder.alloc_located((
+            Self {
+                source,
+                source_type,
+                field_path,
+                value_type,
+            },
+            meta.clone(),
+        ))
     }
 
     pub fn source(self, tree: &Tree) -> Expr {
@@ -324,14 +330,17 @@ impl RecordUpdateExpr {
         let value = builder.alloc_located((value.into(), meta.clone()));
         let value_type = value_type.map(|t| builder.alloc_located((t, meta.clone())));
 
-        builder.alloc_located((Self {
-            source,
-            source_type,
-            field_path,
-            op,
-            value,
-            value_type,
-        }, meta.clone()))
+        builder.alloc_located((
+            Self {
+                source,
+                source_type,
+                field_path,
+                op,
+                value,
+                value_type,
+            },
+            meta.clone(),
+        ))
     }
 
     pub fn source(self, tree: &Tree) -> Expr {
@@ -369,7 +378,12 @@ pub struct RecordMergeExpr {
 }
 
 impl RecordMergeExpr {
-    pub fn new_in<M>(lhs: impl Into<Expr>, rhs: impl Into<Expr>, meta: M, builder: &mut Tree<M>) -> Id<Self>
+    pub fn new_in<M>(
+        lhs: impl Into<Expr>,
+        rhs: impl Into<Expr>,
+        meta: M,
+        builder: &mut Tree<M>,
+    ) -> Id<Self>
     where
         M: Clone + 'static,
     {
@@ -433,11 +447,14 @@ impl QualifiedExpr {
     {
         let source = builder.alloc_located((source.into(), meta.clone()));
 
-        builder.alloc_located((Self {
-            module_path,
-            source,
-            field_path,
-        }, meta.clone()))
+        builder.alloc_located((
+            Self {
+                module_path,
+                source,
+                field_path,
+            },
+            meta.clone(),
+        ))
     }
 }
 
@@ -465,7 +482,12 @@ pub struct UnaryExpr {
 }
 
 impl UnaryExpr {
-    pub fn new_in<M>(op: UnaryOp, operand: impl Into<Expr>, meta: M, builder: &mut Tree<M>) -> Id<Self>
+    pub fn new_in<M>(
+        op: UnaryOp,
+        operand: impl Into<Expr>,
+        meta: M,
+        builder: &mut Tree<M>,
+    ) -> Id<Self>
     where
         M: Clone + 'static,
     {
@@ -579,12 +601,15 @@ impl LetExpr {
         let value = builder.alloc_located((value.into(), meta.clone()));
         let body = builder.alloc_located((body.into(), meta.clone()));
 
-        builder.alloc_located((Self {
-            name,
-            value_type,
-            value,
-            body,
-        }, meta.clone()))
+        builder.alloc_located((
+            Self {
+                name,
+                value_type,
+                value,
+                body,
+            },
+            meta.clone(),
+        ))
     }
 
     pub fn name(self, tree: &Tree) -> ValueName {
@@ -629,11 +654,14 @@ impl IfExpr {
         let then = builder.alloc_located((then.into(), meta.clone()));
         let or_else = builder.alloc_located((or_else.into(), meta.clone()));
 
-        builder.alloc_located((Self {
-            pred,
-            then,
-            or_else,
-        }, meta.clone()))
+        builder.alloc_located((
+            Self {
+                pred,
+                then,
+                or_else,
+            },
+            meta.clone(),
+        ))
     }
 
     pub fn pred(self, tree: &Tree) -> Expr {
@@ -659,7 +687,12 @@ pub struct CaseBranch {
 }
 
 impl CaseBranch {
-    pub fn new_in<M>(pat: impl Into<Pat>, body: impl Into<Expr>, meta: M, builder: &mut Tree<M>) -> Id<Self>
+    pub fn new_in<M>(
+        pat: impl Into<Pat>,
+        body: impl Into<Expr>,
+        meta: M,
+        builder: &mut Tree<M>,
+    ) -> Id<Self>
     where
         M: Clone + 'static,
     {
@@ -686,7 +719,12 @@ pub struct CaseExpr {
 }
 
 impl CaseExpr {
-    pub fn new_in<I, M>(source: impl Into<Expr>, branches: I, meta: M, builder: &mut Tree<M>) -> Id<Self>
+    pub fn new_in<I, M>(
+        source: impl Into<Expr>,
+        branches: I,
+        meta: M,
+        builder: &mut Tree<M>,
+    ) -> Id<Self>
     where
         M: Clone + 'static,
         I: IntoIterator<Item = Id<CaseBranch>>,
@@ -712,7 +750,12 @@ pub struct CallExpr {
 }
 
 impl CallExpr {
-    pub fn new_in<M>(func: impl Into<Expr>, arg: impl Into<Expr>, meta: M, builder: &mut Tree<M>) -> Id<Self>
+    pub fn new_in<M>(
+        func: impl Into<Expr>,
+        arg: impl Into<Expr>,
+        meta: M,
+        builder: &mut Tree<M>,
+    ) -> Id<Self>
     where
         M: Clone + 'static,
     {
@@ -756,11 +799,14 @@ impl LambdaExpr {
         let param_type = param_type.map(|t| builder.alloc_located((t, meta.clone())));
         let body = builder.alloc_located((body.into(), meta.clone()));
 
-        builder.alloc_located((Self {
-            param,
-            param_type,
-            body,
-        }, meta.clone()))
+        builder.alloc_located((
+            Self {
+                param,
+                param_type,
+                body,
+            },
+            meta.clone(),
+        ))
     }
 
     pub fn param(self, tree: &Tree) -> ValueName {

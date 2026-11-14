@@ -143,16 +143,16 @@ impl<'a> Visitor<Loc> for BodyVisitor<'a> {
             // Only in the former case we need to add a dependency.
             if let Some(current_sym) = self.bindings.module_type {
                 // Add dependency from the current type bind to this type
-                self.state.module_type_graph.add_dependency(current_sym, binding.sym);
+                self.state
+                    .module_type_graph
+                    .add_dependency(current_sym, binding.sym);
             }
-        }
-        else {
+        } else {
             // Every top-level name is collected before bodies are visited, so
             // this can no longer be a forward reference.
             self.state.report.add_diagnostic(
-                Diagnostic::error(loc, "Module type not found").with_help(
-                    "Check that the module type is defined in this module.",
-                ),
+                Diagnostic::error(loc, "Module type not found")
+                    .with_help("Check that the module type is defined in this module."),
             );
         }
         ControlFlow::Continue(())
@@ -180,7 +180,11 @@ impl<'a> Visitor<Loc> for BodyVisitor<'a> {
         ControlFlow::Continue(())
     }
 
-    fn visit_let_expr(&mut self, id: Id<node::LetExpr>, tree: &Tree) -> ControlFlow<Self::BreakValue> {
+    fn visit_let_expr(
+        &mut self,
+        id: Id<node::LetExpr>,
+        tree: &Tree,
+    ) -> ControlFlow<Self::BreakValue> {
         let node::LetExpr {
             name,
             value_type,
@@ -265,7 +269,11 @@ impl<'a> Visitor<Loc> for BodyVisitor<'a> {
         ControlFlow::Continue(())
     }
 
-    fn visit_bind_pat(&mut self, id: Id<node::BindPat>, tree: &Tree) -> ControlFlow<Self::BreakValue> {
+    fn visit_bind_pat(
+        &mut self,
+        id: Id<node::BindPat>,
+        tree: &Tree,
+    ) -> ControlFlow<Self::BreakValue> {
         let name = *id.get(tree).0.get(tree);
         let sym = ValueSym::new();
         self.insert_symbol(id, sym);
@@ -274,7 +282,11 @@ impl<'a> Visitor<Loc> for BodyVisitor<'a> {
         ControlFlow::Continue(())
     }
 
-    fn visit_list_pat(&mut self, id: Id<node::ListPat>, tree: &Tree) -> ControlFlow<Self::BreakValue> {
+    fn visit_list_pat(
+        &mut self,
+        id: Id<node::ListPat>,
+        tree: &Tree,
+    ) -> ControlFlow<Self::BreakValue> {
         let elements = &id.get(tree).0;
 
         for el in elements.get(tree).iter().copied() {
@@ -364,7 +376,9 @@ impl<'a> Visitor<Loc> for BodyVisitor<'a> {
             self.insert_symbol(id, ResolvedValue::Reference(binding.sym));
 
             let current_sym = self.bindings.value.unwrap();
-            self.state.value_graph.add_dependency(current_sym, binding.sym);
+            self.state
+                .value_graph
+                .add_dependency(current_sym, binding.sym);
 
             ControlFlow::Continue(())
         } else if let Some(builtin) = self.input.interner.get(name.0).and_then(find_builtin_id) {
@@ -424,7 +438,9 @@ impl<'a> Visitor<Loc> for BodyVisitor<'a> {
             // Only in the former case we need to add a dependency.
             if let Some(current_sym) = self.bindings.type_ {
                 // Add dependency from the current type bind to this type
-                self.state.type_graph.add_dependency(current_sym, binding.sym);
+                self.state
+                    .type_graph
+                    .add_dependency(current_sym, binding.sym);
             }
 
             ControlFlow::Continue(())
@@ -432,12 +448,16 @@ impl<'a> Visitor<Loc> for BodyVisitor<'a> {
             // Local quantifier will not create type bind cycle either
             self.insert_symbol(id, ResolvedType::Reference(*type_sym));
             ControlFlow::Continue(())
-        } else if let Some(builtin) = self.input.interner.get(name.0).and_then(BuiltinType::from_name) {
+        } else if let Some(builtin) = self
+            .input
+            .interner
+            .get(name.0)
+            .and_then(BuiltinType::from_name)
+        {
             // This is a builtin type - resolve immediately, no dependencies needed
             self.insert_symbol(id, ResolvedType::Builtin(builtin));
             ControlFlow::Continue(())
-        }
-        else {
+        } else {
             // Every top-level name is collected before bodies are visited, so
             // this can no longer be a forward reference.
             self.state.report.add_diagnostic(

@@ -570,7 +570,9 @@ impl<'a, Node, M: 'static> Visitor<M> for Normalizer<'a, Node> {
         // We use a stable sort to preserve original shadowing order if duplicate keys exist
         // and reverse the order because the ir builder prepends fields to the head of the list.
         let mut field_pairs: Vec<_> = fields
-            .get(tree).iter().copied()
+            .get(tree)
+            .iter()
+            .copied()
             .zip(&field_value_syms)
             .map(|(field_id, &value_sym)| {
                 let field = field_id.get(tree);
@@ -590,7 +592,13 @@ impl<'a, Node, M: 'static> Visitor<M> for Normalizer<'a, Node> {
         self.next = self.builder.add(ir::Expr::Record(record_expr));
 
         // Normalize field values in reverse order (CPS style)
-        for (field_id, &value_sym) in fields.get(tree).iter().copied().rev().zip(field_value_syms.iter().rev()) {
+        for (field_id, &value_sym) in fields
+            .get(tree)
+            .iter()
+            .copied()
+            .rev()
+            .zip(field_value_syms.iter().rev())
+        {
             let field = field_id.get(tree);
             self.hole = value_sym;
             self.visit_expr(field.value, tree)?;
@@ -1327,7 +1335,7 @@ mod tests {
 
     use super::Normalizer;
 
-        // TODO this wont work for path expressions using bound symbols,
+    // TODO this wont work for path expressions using bound symbols,
     fn mock_resolved(tree: &Tree<()>) -> NodeMap {
         let mut resolved = NodeMap::default();
 
@@ -1530,12 +1538,16 @@ mod tests {
                 node::ValueName::new(b),
                 node::ValueName::new(c),
             ],
-            (), &mut builder);
+            (),
+            &mut builder,
+        );
 
-        let qualified_expr = node::QualifiedExpr::new_in(None, r, Some(field_path), (), &mut builder);
+        let qualified_expr =
+            node::QualifiedExpr::new_in(None, r, Some(field_path), (), &mut builder);
         resolved.set(qualified_expr, ResolvedValue::Reference(r_sym));
 
-        let let_expr = node::LetExpr::new_in(r, None, record_expr, qualified_expr, (), &mut builder);
+        let let_expr =
+            node::LetExpr::new_in(r, None, record_expr, qualified_expr, (), &mut builder);
         resolved.set(let_expr, r_sym);
 
         let ir = normalize(builder, let_expr, &resolved);

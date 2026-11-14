@@ -167,11 +167,18 @@ impl<'a> Notate<'a, ListElPat> for TreePrinter<'a> {
 pub struct ListPat(pub SliceId<ListElPat>);
 
 impl ListPat {
-    pub fn new_in<M>(items: impl IntoIterator<Item = ListElPat>, meta: M, builder: &mut Tree<M>) -> Id<Self>
+    pub fn new_in<M>(
+        items: impl IntoIterator<Item = ListElPat>,
+        meta: M,
+        builder: &mut Tree<M>,
+    ) -> Id<Self>
     where
         M: Clone + 'static,
     {
-        let ids: Vec<_> = items.into_iter().map(|item| builder.alloc_located((item, meta.clone()))).collect();
+        let ids: Vec<_> = items
+            .into_iter()
+            .map(|item| builder.alloc_located((item, meta.clone())))
+            .collect();
         let slice_id = builder.slices.alloc(ids);
         builder.alloc_located((Self(slice_id), meta.clone()))
     }
@@ -292,7 +299,10 @@ impl VariantPat {
     where
         M: Clone + 'static,
     {
-        let ids: Vec<_> = items.into_iter().map(|item| builder.alloc_located((item, meta.clone()))).collect();
+        let ids: Vec<_> = items
+            .into_iter()
+            .map(|item| builder.alloc_located((item, meta.clone())))
+            .collect();
 
         let slice_id = builder.slices.alloc(ids);
         builder.alloc_located((Self(slice_id), meta.clone()))

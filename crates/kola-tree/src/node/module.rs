@@ -120,12 +120,15 @@ impl ValueBind {
         let ty_scheme = ty_scheme.map(|ty| builder.alloc_located((ty, meta.clone())));
         let value = value.map(|value| builder.alloc_located((value, meta.clone())));
 
-        builder.alloc_located((Self {
-            vis,
-            name,
-            ty_scheme,
-            value,
-        }, meta.clone()))
+        builder.alloc_located((
+            Self {
+                vis,
+                name,
+                ty_scheme,
+                value,
+            },
+            meta.clone(),
+        ))
     }
 }
 
@@ -167,12 +170,15 @@ impl ModuleBind {
         let ty = ty.map(|sig| builder.alloc_located((sig, meta.clone())));
         let value = value.map(|value| builder.alloc_located((value, meta.clone())));
 
-        builder.alloc_located((Self {
-            vis,
-            name,
-            ty,
-            value,
-        }, meta.clone()))
+        builder.alloc_located((
+            Self {
+                vis,
+                name,
+                ty,
+                value,
+            },
+            meta.clone(),
+        ))
     }
 }
 

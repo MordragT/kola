@@ -2,9 +2,7 @@ use std::{collections::HashMap, ops::Index};
 
 use kola_tree::node::{AnyName, ModuleName, ModuleTypeName, TypeName, ValueName, Vis};
 
-use crate::symbol::{
-    AnySym, ModuleSym, ModuleTypeSym, TypeSym, ValueSym,
-};
+use crate::symbol::{AnySym, ModuleSym, ModuleTypeSym, TypeSym, ValueSym};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
 pub struct Binding<S> {
@@ -24,7 +22,6 @@ impl<S> Binding<S> {
         }
     }
 }
-
 
 #[derive(Debug, Clone, Default)]
 pub struct NameMap {
@@ -160,12 +157,7 @@ impl NameMap {
         HashMap<TypeName, Binding<TypeSym>>,
         HashMap<ValueName, Binding<ValueSym>>,
     ) {
-        (
-            self.module_types,
-            self.modules,
-            self.types,
-            self.values,
-        )
+        (self.module_types, self.modules, self.types, self.values)
     }
 }
 
@@ -200,4 +192,3 @@ impl Index<ValueName> for NameMap {
         &self.values[&index]
     }
 }
-

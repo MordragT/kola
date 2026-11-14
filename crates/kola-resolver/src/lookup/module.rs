@@ -1,4 +1,3 @@
-
 use kola_span::{Diagnostic, Loc, Report};
 use kola_tree::{
     node::{self, ModuleName, Vis},
@@ -40,7 +39,6 @@ impl ModuleLookup {
         }
     }
 }
-
 
 pub fn lookup_modules(
     modules: &mut ModuleMap,

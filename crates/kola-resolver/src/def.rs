@@ -14,9 +14,7 @@ use kola_tree::{
     prelude::Id,
 };
 
-use crate::symbol::{
-    AnySym, ModuleSym, ModuleTypeSym, Sym, TypeSym, ValueSym,
-};
+use crate::symbol::{AnySym, ModuleSym, ModuleTypeSym, Sym, TypeSym, ValueSym};
 
 pub type ModuleTypeDef = Located<Id<node::ModuleTypeBind>>;
 pub type ModuleDef = Located<Id<node::ModuleBind>>;
@@ -126,10 +124,6 @@ impl<N: Namespace, T> Index<Sym<N>> for Defs<N, T> {
         self.0.get(&sym).expect("Bind not found")
     }
 }
-
-
-
-
 
 #[derive(Debug, Clone, Default)]
 pub struct DefMap {
@@ -252,4 +246,3 @@ impl Index<ValueSym> for DefMap {
         &self.values[index]
     }
 }
-

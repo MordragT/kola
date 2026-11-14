@@ -174,8 +174,3 @@ impl fmt::Display for AnySym {
 }
 
 pub type Substitution = HashMap<AnySym, AnySym>;
-
-
-
-
-

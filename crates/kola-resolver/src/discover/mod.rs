@@ -9,13 +9,11 @@ mod bodies;
 mod collect;
 
 use crate::{
+    compose::ComposeJob,
     def::DefMap,
-    elaborate::ElabJobs,
     env::{ModuleBuilder, ModuleMap},
     lookup::Lookups,
-    symbol::{
-        FileMap, ModuleGraph, ModuleSym, ModuleTypeGraph, TypeGraph, ValueGraph, ValueSym,
-    },
+    symbol::{FileMap, ModuleGraph, ModuleSym, ModuleTypeGraph, TypeGraph, ValueGraph, ValueSym},
 };
 
 use bodies::BodyVisitor;
@@ -24,6 +22,7 @@ use collect::Collector;
 #[derive(Debug, Clone)]
 pub struct DiscoverOutput {
     pub report: Report,
+    pub compose_jobs: Vec<ComposeJob>,
 }
 
 /// Immutable input shared by both discovery stages.
@@ -51,6 +50,8 @@ impl Inputs<'_> {
 /// Per-module state that is built by collection and consumed by body traversal.
 pub(super) struct ModuleState {
     pub module: ModuleBuilder,
+    pub composed: Vec<(ModuleSym, ModuleBuilder)>,
+    pub compose_jobs: Vec<ComposeJob>,
     pub value_graph: ValueGraph,
     pub type_graph: TypeGraph,
     pub module_type_graph: ModuleTypeGraph,
@@ -61,6 +62,8 @@ impl ModuleState {
     pub fn new(loc: Loc, key: ModuleKey) -> Self {
         Self {
             module: ModuleBuilder::new(loc, key),
+            composed: Vec::new(),
+            compose_jobs: Vec::new(),
             value_graph: ValueGraph::new(),
             type_graph: TypeGraph::new(),
             module_type_graph: ModuleTypeGraph::new(),
@@ -85,7 +88,6 @@ pub fn discover(
     module_type_graph_map: &mut IndexMap<ModuleSym, ModuleTypeGraph>,
     module_graph: &mut ModuleGraph,
     lookups: &mut Lookups,
-    elab_jobs: &mut ElabJobs,
 ) -> DiscoverOutput {
     let loc = *tree.get_span(tree.root_id());
     module_graph.add_node(sym);
@@ -101,7 +103,7 @@ pub fn discover(
         interner,
     };
 
-    let collector = Collector::new(&inputs, defs, entry_points, module_graph, elab_jobs);
+    let collector = Collector::new(&inputs, defs, entry_points, module_graph);
     let state = collector.collect();
 
     let mut bodies = BodyVisitor::new(&inputs, state, lookups);
@@ -110,12 +112,27 @@ pub fn discover(
     let mut state = bodies.into_state();
     state.module.nodes.set(tree.root_id(), sym);
 
-    value_graph_map.insert(sym, state.value_graph);
-    type_graph_map.insert(sym, state.type_graph);
-    module_type_graph_map.insert(sym, state.module_type_graph);
-    modules.insert(sym, state.module);
+    for (composed_sym, module) in state.composed {
+        modules.insert(composed_sym, module);
+    }
+
+    let ModuleState {
+        module,
+        compose_jobs,
+        value_graph,
+        type_graph,
+        module_type_graph,
+        report,
+        ..
+    } = state;
+
+    value_graph_map.insert(sym, value_graph);
+    type_graph_map.insert(sym, type_graph);
+    module_type_graph_map.insert(sym, module_type_graph);
+    modules.insert(sym, module);
 
     DiscoverOutput {
-        report: state.report,
+        report,
+        compose_jobs,
     }
 }

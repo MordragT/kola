@@ -5,12 +5,13 @@ use kola_tree::{
 };
 
 use crate::{
+    compose::ComposeJob,
     def::{AnyDef, DefMap},
-    elaborate::{ElabJob, ElabJobs},
+    env::ModuleBuilder,
     error::name_collision,
     phase::NodeMap,
-    surface::{Definition, DefinitionBody, Key, Obligation, ObligationKind},
-    symbol::{AnySym, ModuleGraph, ModuleSym, ModuleTypeSym, TypeSym, ValueSym},
+    surface::{Definition, Obligation},
+    symbol::{ModuleGraph, ModuleSym, ModuleTypeSym, TypeSym, ValueSym},
 };
 
 use super::{Inputs, ModuleState};
@@ -21,7 +22,6 @@ pub(super) struct Collector<'a> {
     defs: &'a mut DefMap,
     entry_points: &'a mut Vec<ValueSym>,
     module_graph: &'a mut ModuleGraph,
-    elab_jobs: &'a mut ElabJobs,
 }
 
 impl<'a> Collector<'a> {
@@ -30,7 +30,6 @@ impl<'a> Collector<'a> {
         defs: &'a mut DefMap,
         entry_points: &'a mut Vec<ValueSym>,
         module_graph: &'a mut ModuleGraph,
-        elab_jobs: &'a mut ElabJobs,
     ) -> Self {
         Self {
             input,
@@ -38,7 +37,6 @@ impl<'a> Collector<'a> {
             defs,
             entry_points,
             module_graph,
-            elab_jobs,
         }
     }
 
@@ -67,34 +65,6 @@ impl<'a> Collector<'a> {
         NodeMap: PartialRelationSet<T, S>,
     {
         self.state.module.nodes.set(id, sym);
-    }
-
-    fn define(&mut self, key: Key, sym: AnySym, vis: node::Vis, id: AnyId, body: DefinitionBody) {
-        if vis != node::Vis::Public {
-            return;
-        }
-
-        self.state.module.surface.define(
-            key,
-            Definition {
-                sym,
-                origin: sym,
-                vis,
-                site: (self.input.sym, id),
-                body,
-            },
-        );
-    }
-
-    fn obligate(&mut self, key: Key, vis: node::Vis, loc: Loc, declared: ObligationKind) {
-        if vis != node::Vis::Public {
-            return;
-        }
-
-        self.state
-            .module
-            .surface
-            .obligate(key, Obligation { loc, declared });
     }
 
     pub fn insert_module_type(
@@ -231,22 +201,24 @@ impl<'a> Collector<'a> {
             self.entry_points.push(sym);
         }
 
-        if self.insert_value(id, loc, vis, name, sym) {
+        if self.insert_value(id, loc, vis, name, sym) && vis == node::Vis::Public {
             match bind.value {
-                Some(_) => self.define(
-                    Key::Value(name),
-                    AnySym::Value(sym),
-                    vis,
-                    AnyId::ValueBind(id),
-                    DefinitionBody::Source(AnyId::ValueBind(id)),
+                Some(_) => self.state.module.members.definitions.values.define(
+                    name,
+                    Definition {
+                        sym,
+                        origin: sym,
+                        site: (self.input.sym, id),
+                    },
                 ),
                 None => {
                     if let Some(ty_scheme) = bind.ty_scheme {
-                        self.obligate(
-                            Key::Value(name),
-                            vis,
-                            loc,
-                            ObligationKind::Value(ty_scheme),
+                        self.state.module.members.obligations.values.obligate(
+                            name,
+                            Obligation {
+                                loc,
+                                declared: ty_scheme,
+                            },
                         );
                     }
                 }
@@ -263,13 +235,14 @@ impl<'a> Collector<'a> {
         self.insert_symbol(id, sym);
         self.state.type_graph.add_node(sym);
 
-        if self.insert_type(id, loc, vis, name, sym) {
-            self.define(
-                Key::Type(name),
-                AnySym::Type(sym),
-                vis,
-                AnyId::TypeBind(id),
-                DefinitionBody::Source(AnyId::TypeBind(id)),
+        if self.insert_type(id, loc, vis, name, sym) && vis == node::Vis::Public {
+            self.state.module.members.definitions.types.define(
+                name,
+                Definition {
+                    sym,
+                    origin: sym,
+                    site: (self.input.sym, id),
+                },
             );
         }
     }
@@ -288,13 +261,14 @@ impl<'a> Collector<'a> {
         self.insert_symbol(id, sym);
         self.state.module_type_graph.add_node(sym);
 
-        if self.insert_module_type(id, loc, vis, name, sym) {
-            self.define(
-                Key::ModuleType(name),
-                AnySym::ModuleType(sym),
-                vis,
-                AnyId::ModuleTypeBind(id),
-                DefinitionBody::Source(AnyId::ModuleTypeBind(id)),
+        if self.insert_module_type(id, loc, vis, name, sym) && vis == node::Vis::Public {
+            self.state.module.members.definitions.module_types.define(
+                name,
+                Definition {
+                    sym,
+                    origin: sym,
+                    site: (self.input.sym, id),
+                },
             );
         }
     }
@@ -305,8 +279,15 @@ impl<'a> Collector<'a> {
         let loc = self.span(id);
 
         let Some(value) = bind.value else {
-            if let Some(ty) = bind.ty {
-                self.obligate(Key::Module(name), vis, loc, ObligationKind::Module(ty));
+            if let Some(ty) = bind.ty
+                && vis == node::Vis::Public
+            {
+                self.state
+                    .module
+                    .members
+                    .obligations
+                    .modules
+                    .obligate(name, Obligation { loc, declared: ty });
             }
             return;
         };
@@ -319,38 +300,25 @@ impl<'a> Collector<'a> {
                 self.insert_symbol(id, sym);
                 self.insert_symbol(import_id, sym);
 
-                if self.insert_module(id, loc, vis, name, sym) {
-                    self.define(
-                        Key::Module(name),
-                        AnySym::Module(sym),
-                        vis,
-                        AnyId::ModuleBind(id),
-                        DefinitionBody::Source(AnyId::ModuleBind(id)),
+                if self.insert_module(id, loc, vis, name, sym) && vis == node::Vis::Public {
+                    self.state.module.members.definitions.modules.define(
+                        name,
+                        Definition {
+                            sym,
+                            origin: sym,
+                            site: (self.input.sym, id),
+                        },
                     );
                 }
 
                 self.module_graph.add_dependency(self.input.sym, sym);
             }
-            node::ModuleExpr::Path(path_id) => {
-                let path = tree
-                    .get(path_id)
-                    .0
-                    .get(tree)
-                    .iter()
-                    .map(|id| *id.get(tree))
-                    .collect();
-
-                let job = ElabJob::path(
-                    id,
+            node::ModuleExpr::Path(_) => {
+                // TODO(phase C): resolve path module aliases in compose.
+                self.state.report.add_diagnostic(Diagnostic::error(
                     loc,
-                    vis,
-                    name,
-                    self.input.sym,
-                    path_id,
-                    loc,
-                    path,
-                );
-                self.elab_jobs.push_back(job);
+                    "Module path aliases are not implemented yet",
+                ));
             }
             node::ModuleExpr::Body(module_ref) => {
                 let key = module_ref.get(tree).0;
@@ -358,26 +326,92 @@ impl<'a> Collector<'a> {
 
                 self.insert_symbol(id, sym);
 
-                if self.insert_module(id, loc, vis, name, sym) {
-                    self.define(
-                        Key::Module(name),
-                        AnySym::Module(sym),
-                        vis,
-                        AnyId::ModuleBind(id),
-                        DefinitionBody::Source(AnyId::ModuleBind(id)),
+                if self.insert_module(id, loc, vis, name, sym) && vis == node::Vis::Public {
+                    self.state.module.members.definitions.modules.define(
+                        name,
+                        Definition {
+                            sym,
+                            origin: sym,
+                            site: (self.input.sym, id),
+                        },
                     );
                 }
 
                 self.module_graph.add_dependency(self.input.sym, sym);
             }
-            node::ModuleExpr::Merge(_) => {
-                // TODO(phase C): compose module surfaces for `with`/`over`/`using`.
-                self.state.report.add_diagnostic(Diagnostic::error(
-                    loc,
-                    "Module composition is not implemented yet",
-                ));
+            node::ModuleExpr::Merge(merge_id) => {
+                let Some(sym) = self.collect_merge_expr(merge_id, tree) else {
+                    return;
+                };
+
+                self.insert_symbol(id, sym);
+
+                if self.insert_module(id, loc, vis, name, sym) && vis == node::Vis::Public {
+                    self.state.module.members.definitions.modules.define(
+                        name,
+                        Definition {
+                            sym,
+                            origin: sym,
+                            site: (self.input.sym, id),
+                        },
+                    );
+                }
+
+                self.module_graph.add_dependency(self.input.sym, sym);
             }
             node::ModuleExpr::Error(_) => {}
         }
+    }
+
+    fn collect_module_expr(
+        &mut self,
+        expr: Id<node::ModuleExpr>,
+        tree: &Tree,
+    ) -> Option<ModuleSym> {
+        match *tree.get(expr) {
+            node::ModuleExpr::Merge(merge_id) => self.collect_merge_expr(merge_id, tree),
+            node::ModuleExpr::Import(import_id) => {
+                let target = import_id.get(tree).0;
+                self.input.files.get(&target).copied()
+            }
+            node::ModuleExpr::Body(module_ref) => {
+                let key = module_ref.get(tree).0;
+                self.input.module_of.get(&(self.input.source, key)).copied()
+            }
+            node::ModuleExpr::Path(_) | node::ModuleExpr::Error(_) => None,
+        }
+    }
+
+    fn collect_merge_expr(
+        &mut self,
+        merge_id: Id<node::ModuleMergeExpr>,
+        tree: &Tree,
+    ) -> Option<ModuleSym> {
+        if let Some(sym) = self.state.module.nodes.get_opt(merge_id) {
+            return Some(*sym);
+        }
+
+        let loc = self.span(merge_id);
+        let sym = ModuleSym::new();
+
+        self.state.module.nodes.set(merge_id, sym);
+        self.state
+            .composed
+            .push((sym, ModuleBuilder::new(loc, self.input.key)));
+        self.module_graph.add_node(sym);
+        self.state.compose_jobs.push(ComposeJob {
+            sym,
+            parent: self.input.sym,
+            source: self.input.source,
+            key: self.input.key,
+            merge: merge_id,
+            loc,
+        });
+
+        let merge = *tree.get(merge_id);
+        let _ = self.collect_module_expr(merge.lhs, tree);
+        let _ = self.collect_module_expr(merge.rhs, tree);
+
+        Some(sym)
     }
 }

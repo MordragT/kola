@@ -408,7 +408,12 @@ pub fn derive_merge(input: TokenStream) -> TokenStream {
         .fields
         .iter()
         .enumerate()
-        .filter(|(_, field)| field.attrs.iter().any(|attr| attr.path().is_ident("relation")))
+        .filter(|(_, field)| {
+            field
+                .attrs
+                .iter()
+                .any(|attr| attr.path().is_ident("relation"))
+        })
         .map(|(index, field)| match &field.ident {
             Some(ident) => quote! { #ident },
             None => {

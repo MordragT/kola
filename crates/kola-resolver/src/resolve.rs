@@ -12,14 +12,12 @@ use kola_tree::{
 use log::{debug, trace};
 
 use crate::{
+    compose::compose,
     db::Db,
     def::DefMap,
     discover::{DiscoverOutput, discover},
-    elaborate::{ElabJobs, elaborate_modules},
     env::ModuleMap,
-    lookup::{
-        Lookups, lookup_modules, order_module_types, order_types, order_values,
-    },
+    lookup::{Lookups, lookup_modules, order_module_types, order_types, order_values},
     print::ResolutionDecorator,
     symbol::{FileMap, ModuleGraph, ModuleSym},
 };
@@ -36,8 +34,8 @@ pub fn resolve(
     let mut entry_points = Vec::new();
     let mut defs = DefMap::new();
 
-    let mut elab_jobs = ElabJobs::new();
     let mut lookups = Lookups::new();
+    let mut compose_jobs = Vec::new();
 
     let mut value_graph_map = IndexMap::new();
     let mut type_graph_map = IndexMap::new();
@@ -70,6 +68,7 @@ pub fn resolve(
 
             let DiscoverOutput {
                 report: module_report,
+                compose_jobs: module_compose_jobs,
             } = discover(
                 sym,
                 *source_id,
@@ -86,8 +85,9 @@ pub fn resolve(
                 &mut module_type_graph,
                 &mut module_graph,
                 &mut lookups,
-                &mut elab_jobs,
             );
+
+            compose_jobs.extend(module_compose_jobs);
 
             if !module_report.is_empty() {
                 report.append(module_report);
@@ -113,13 +113,17 @@ pub fn resolve(
         module_graph.to_dot()
     );
 
-    elaborate_modules(
-        elab_jobs,
-        &mut lookups,
+    let Lookups {
+        modules: module_lookups,
+    } = lookups;
+
+    compose(
         &mut modules,
-        &mut defs,
+        &compose_jobs,
+        &files,
+        &module_of,
+        &tree_map,
         &mut module_graph,
-        interner,
         report,
     );
 
@@ -136,10 +140,6 @@ pub fn resolve(
             ..Default::default()
         });
     }
-
-    let Lookups {
-        modules: module_lookups,
-    } = lookups;
 
     lookup_modules(
         &mut modules,

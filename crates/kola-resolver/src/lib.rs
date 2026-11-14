@@ -6,7 +6,6 @@
 pub mod db;
 pub mod def;
 pub mod discover;
-pub mod elaborate;
 pub mod env;
 pub mod error;
 pub mod lookup;
@@ -16,6 +15,8 @@ pub mod print;
 pub mod resolve;
 pub mod surface;
 pub mod symbol;
+
+mod compose;
 
 pub mod prelude {
     pub use crate::{

@@ -4,9 +4,7 @@ use kola_builtins::{BuiltinId, BuiltinType};
 use kola_tree::prelude::*;
 use kola_utils::as_variant;
 
-use crate::symbol::{
-    ModuleSym, ModuleTypeSym, TypeSym, ValueSym,
-};
+use crate::symbol::{ModuleSym, ModuleTypeSym, TypeSym, ValueSym};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum ResolvedValue {
@@ -33,7 +31,6 @@ impl fmt::Display for ResolvedValue {
     }
 }
 
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub enum ResolvedType {
     Reference(TypeSym),
@@ -59,10 +56,8 @@ impl fmt::Display for ResolvedType {
     }
 }
 
-
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ResolvedModule(pub ModuleSym);
-
 
 impl fmt::Display for ResolvedModule {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -72,7 +67,6 @@ impl fmt::Display for ResolvedModule {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct ResolvedModuleType(pub ModuleTypeSym);
-
 
 impl fmt::Display for ResolvedModuleType {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
@@ -113,6 +107,8 @@ pub struct NodeMap {
     pub module_type_binds: MaybeVec<node::ModuleTypeBind, ModuleTypeSym>,
     #[relation]
     pub module_bodies: MaybeVec<node::ModuleBody, ModuleSym>,
+    #[relation]
+    pub module_merge_exprs: MaybeVec<node::ModuleMergeExpr, ModuleSym>,
     #[relation]
     pub module_paths: MaybeVec<node::ModulePath, ResolvedModule>,
     #[relation]

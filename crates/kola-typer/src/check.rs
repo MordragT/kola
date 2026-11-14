@@ -43,9 +43,7 @@ use kola_relations::Merge;
 use kola_resolver::{db::Db, print::ResolutionDecorator};
 use kola_span::{IntoDiagnostic, Report};
 use kola_subst::Substitutable;
-use kola_tree::{
-    print::{Decorators, TreePrinter},
-};
+use kola_tree::print::{Decorators, TreePrinter};
 use kola_types::{class::TypeClassEnv, env::TypeEnv, subst::Substitution};
 use log::trace;
 
@@ -125,7 +123,11 @@ pub fn type_check(
                 break;
             }
 
-            let type_ = typed_nodes.get_opt(id).expect("typed metadata missing").clone().apply(&mut subs);
+            let type_ = typed_nodes
+                .get_opt(id)
+                .expect("typed metadata missing")
+                .clone()
+                .apply(&mut subs);
 
             // TODO generalize ?
 
@@ -178,7 +180,11 @@ pub fn type_check(
             }
 
             // Generalize immediately (making it available for subsequent binds)
-            let actual_t = typed_nodes.get_opt(id).expect("typed metadata missing").to_mono().unwrap();
+            let actual_t = typed_nodes
+                .get_opt(id)
+                .expect("typed metadata missing")
+                .to_mono()
+                .unwrap();
             let poly_type = actual_t.generalize(&[]); // TODO should bound be something ? &type_env.bound_vars()
             module_env.insert_value(value_sym, poly_type.clone());
 

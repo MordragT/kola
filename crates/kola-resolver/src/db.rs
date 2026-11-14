@@ -11,7 +11,7 @@ use crate::{
     env::{ModuleBuilder, ModuleMap},
     name::Binding,
     phase::NodeMap,
-    surface::ModuleSurface,
+    surface::ModuleMembers,
     symbol::{
         AnySym, FileMap, ModuleGraph, ModuleSym, ModuleTypeOrders, ModuleTypeSym, TypeOrders,
         TypeSym, ValueOrders, ValueSym,
@@ -44,7 +44,7 @@ pub struct ModuleView<'db> {
     pub sym: ModuleSym,
     pub module: &'db ModuleBuilder,
     pub tree_map: &'db TreeMap,
-    pub surface: &'db ModuleSurface,
+    pub members: &'db ModuleMembers,
     pub defs: &'db DefMap,
     pub value_order: &'db [ValueSym],
     pub type_order: &'db [TypeSym],
@@ -62,7 +62,7 @@ impl Db {
             sym,
             tree_map: &self.tree_map,
             module: &self.modules[&sym],
-            surface: &self.modules[&sym].surface,
+            members: &self.modules[&sym].members,
             defs: &self.defs,
             value_order: self
                 .value_orders
@@ -116,7 +116,6 @@ impl Db {
     pub fn def(&self, sym: impl Into<AnySym>) -> Option<AnyDef> {
         self.defs.get(sym.into())
     }
-
 }
 
 // ── dependency ──

@@ -87,7 +87,10 @@ fn derive(input: &DeriveInput) -> syn::Result<TokenStream2> {
     let (impl_generics, _, where_clause) = generics.split_for_impl();
     let (_, ty_generics, _) = input.generics.split_for_impl();
 
-    let accessors = fields.iter().map(|(accessor, _)| accessor).collect::<Vec<_>>();
+    let accessors = fields
+        .iter()
+        .map(|(accessor, _)| accessor)
+        .collect::<Vec<_>>();
     let try_accessors = accessors.iter();
     let mut_accessors = accessors.iter();
 

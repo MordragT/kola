@@ -537,7 +537,10 @@ where
 
         for (id, value) in self.0.iter() {
             if let Some(next) = value.try_apply(s) {
-                result.get_or_insert_with(|| self.clone()).0.insert(*id, next);
+                result
+                    .get_or_insert_with(|| self.clone())
+                    .0
+                    .insert(*id, next);
             }
         }
 

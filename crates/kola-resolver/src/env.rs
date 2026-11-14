@@ -1,14 +1,8 @@
-
 use indexmap::IndexMap;
 use kola_span::Loc;
 use kola_tree::source::ModuleKey;
 
-use crate::{
-    name::NameMap,
-    phase::NodeMap,
-    surface::ModuleSurface,
-    symbol::ModuleSym,
-};
+use crate::{name::NameMap, phase::NodeMap, surface::ModuleMembers, symbol::ModuleSym};
 
 pub type ModuleMap = IndexMap<ModuleSym, ModuleBuilder>;
 
@@ -19,7 +13,7 @@ pub struct ModuleBuilder {
     pub key: ModuleKey,
     pub names: NameMap,
     pub nodes: NodeMap,
-    pub surface: ModuleSurface,
+    pub members: ModuleMembers,
 }
 
 impl ModuleBuilder {
@@ -29,8 +23,7 @@ impl ModuleBuilder {
             key,
             names: NameMap::new(),
             nodes: NodeMap::new(),
-            surface: ModuleSurface::new(),
+            members: ModuleMembers::new(),
         }
     }
 }
-

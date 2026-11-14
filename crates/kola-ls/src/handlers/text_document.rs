@@ -35,11 +35,12 @@ async fn on_enter(server: &Server, uri: ls::Uri, version: i32, text: String) {
 
         match kola_syntax::lexer::try_tokenize(&mut source_manager, path.as_path()) {
             Ok(output) => {
-
                 let source_id = output.root_id;
                 let tokens = output.token_map[&source_id].clone();
-                let parse_output =
-                    parse(ParseInput::new(source_id, tokens, &mut interner), &mut report);
+                let parse_output = parse(
+                    ParseInput::new(source_id, tokens, &mut interner),
+                    &mut report,
+                );
                 (report, Some(parse_output))
             }
             Err(err) => (err, None),
@@ -56,13 +57,7 @@ async fn on_enter(server: &Server, uri: ls::Uri, version: i32, text: String) {
     server.sources.insert(path, source);
 }
 
-async fn publish(
-    server: &Server,
-    uri: ls::Uri,
-    version: i32,
-    source: &Source,
-    report: Report,
-) {
+async fn publish(server: &Server, uri: ls::Uri, version: i32, source: &Source, report: Report) {
     let diags = utils::report_to_diags(report, source);
     server
         .client
